@@ -50,7 +50,7 @@ from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
-from ralph.process.teardown import teardown_subtree
+from ralph.process.teardown import ProcessTeardown, teardown_subtree
 from ralph.recovery.failure_classifier import (
     SESSION_NOT_FOUND_SUBSTRINGS,
     FailureClassifier,
@@ -59,18 +59,10 @@ from ralph.recovery.failure_classifier import (
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
-#: Hard upper bound on the bytes captured from the subprocess stderr pipe on
-#: a non-zero exit. A crashing agent that spews megabytes of traceback to
-#: stderr otherwise OOMs the parent. 64 KiB is generous for any human-readable
-#: error frame and matches typical subprocess ``stderr=capture`` defaults in
-#: the Python ecosystem. When the pipe holds more than this, the captured
-#: string is truncated and a ``[stderr truncated: <N> more bytes]`` marker
-#: is appended so an operator can still see the truncation (AC-05).
+#: Bounded stderr capture prevents a crashing agent from exhausting parent memory.
 _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
-#: ``message.stopReason`` pi sets when the model turn failed outright
-#: (unreachable provider, rejected model, transport fault). The turn
-#: produced NO content, so nothing else in the stream names the cause.
+#: Pi's explicit model-turn failure marker.
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
@@ -172,7 +164,12 @@ def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
     return opts.completion_run_id or opts.captured_session_id
 
 
-def _teardown_subtree_if_pid_available(handle: object) -> None:
+def _teardown_subtree_if_pid_available(
+    handle: object,
+    *,
+    issuer: str,
+    teardown: ProcessTeardown | None = None,
+) -> None:
     """Best-effort subtree teardown when the handle exposes a PID.
 
     Test fakes may not implement ``pid``; this helper ignores them so
@@ -182,7 +179,10 @@ def _teardown_subtree_if_pid_available(handle: object) -> None:
         "int | None", getattr(handle, "pid", None)
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if pid is not None:
-        teardown_subtree(pid)
+        if teardown is None:
+            teardown_subtree(pid, issuer=issuer)
+        else:
+            teardown.teardown_subtree(pid, issuer=issuer)
 
 
 def _is_pi_agent(agent_name: str) -> bool:
@@ -334,22 +334,8 @@ class CompletionCheckOptions:
     captured_session_id: str | None = None
     completion_run_id: str | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
-    # R7 (Trustworthy Idle Watchdog spec) root-cause diagnostic
-    # fields. Threaded from the line-reader layer at construction
-    # time (see ``_process_reader.py:945`` and ``_pty_runner.py:154``)
-    # and forwarded to ``OpenCodeResumableExitError`` at the raise
-    # site at line 368 below so the diagnostic payload surfaces the
-    # captured watchdog state at the moment of the rc=0 exit. The
-    # ``KW_ONLY`` sentinel below makes these four fields
-    # keyword-only at the dataclass level (Python 3.10+ ``@dataclass``
-    # feature) so positional construction of the diagnostic
-    # surface is a ``TypeError`` -- callers MUST pass these by
-    # keyword. Defaults ``None`` / ``()`` preserve backward
-    # compatibility for the original nine fields; only the
-    # watchdog-firing path (where the line-reader layer populates
-    # ``opts``) carries the diagnostic context. See
-    # ``ralph/agents/invoke/_open_code_resumable_exit_error.py`` for
-    # the R7 root-cause triage contract.
+    # Watchdog diagnostic fields are keyword-only and preserve the original
+    # positional construction contract when absent.
     _: KW_ONLY
     last_observed_tool_call: str | None = None
     last_evidence_summary: str | None = None
@@ -443,10 +429,12 @@ def _apply_sentinel_signal(
 
 def _wait_for_completion_grace(
     handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
     opts: CompletionCheckOptions,
     parsed_output: list[str],
     *,
     clock: Clock | None = None,
+    teardown: ProcessTeardown | None = None,
 ) -> AgentExecutionState:
     """Wait up to policy.parent_exit_grace_seconds for completion signals or children to appear.
 
@@ -486,7 +474,11 @@ def _wait_for_completion_grace(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
-    _teardown_subtree_if_pid_available(handle)
+    _teardown_subtree_if_pid_available(
+        handle,
+        issuer=f"invoke:completion:{agent_name}",
+        teardown=teardown,
+    )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
     if verdict == PostExitVerdict.CHILDREN_ACTIVE:
@@ -496,30 +488,30 @@ def _wait_for_completion_grace(
 
 def _wait_for_descendants_then_recheck(
     handle: ManagedProcess | ManagedPtyProcess,
-    opts: CompletionCheckOptions,
-    parsed_output: list[str],
+    agent_name_or_opts: str | CompletionCheckOptions,
+    opts_or_parsed_output: CompletionCheckOptions | list[str],
+    parsed_output: list[str] | None = None,
     *,
     clock: Clock | None = None,
+    teardown: ProcessTeardown | None = None,
 ) -> AgentExecutionState:
     """Wait for descendant processes to finish, then re-evaluate completion signals.
 
-    Polls the execution strategy's classify_exit at policy.descendant_wait_poll_seconds
-    intervals until either the tree is quiet (state != WAITING_ON_CHILD) or the deadline
-    elapses. This allows artifacts written by background subagents to become visible before
-    OpenCodeResumableExitError is raised.
-
-    Args:
-        handle: Completed parent process handle.
-        opts: Completion check options including liveness_probe and policy.
-        parsed_output: Raw NDJSON output lines from the agent.
-        clock: Injectable Clock; defaults to SystemClock.
-
-    Returns:
-        TERMINAL_COMPLETE if tree quiessed and completion signals present.
-        RESUMABLE_CONTINUE if deadline elapsed with children still alive (fallback to
-        retry rather than silent success). WAITING_ON_CHILD is only returned during
-        the active polling loop, never after deadline.
+    Supports the legacy public ``(handle, opts, parsed_output)`` form while
+    internal callers supply an agent name for teardown attribution.
     """
+    if isinstance(agent_name_or_opts, CompletionCheckOptions):
+        agent_name = "unknown"
+        opts = agent_name_or_opts
+        if not isinstance(opts_or_parsed_output, list):
+            raise TypeError("parsed_output must be a list")
+        parsed_output = opts_or_parsed_output
+    else:
+        agent_name = agent_name_or_opts
+        if not isinstance(opts_or_parsed_output, CompletionCheckOptions) or parsed_output is None:
+            raise TypeError("completion options and parsed_output are required")
+        opts = opts_or_parsed_output
+
     assert opts.workspace_path is not None
     workspace_path = opts.workspace_path
     execution_strategy = opts.execution_strategy
@@ -550,7 +542,11 @@ def _wait_for_descendants_then_recheck(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
-    _teardown_subtree_if_pid_available(handle)
+    _teardown_subtree_if_pid_available(
+        handle,
+        issuer=f"invoke:completion:{agent_name}",
+        teardown=teardown,
+    )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
     if verdict == PostExitVerdict.QUIESCED_NO_SIGNALS:
@@ -565,6 +561,7 @@ def _raise_if_broken_agent_exit(
     opts: CompletionCheckOptions,
     *,
     stderr_text: str = "",
+    teardown: ProcessTeardown | None = None,
 ) -> None:
     returncode = int(handle.returncode or 0)
     credentials_marker_seen = looks_like_credentials_failure(stderr_text) or any(
@@ -573,7 +570,11 @@ def _raise_if_broken_agent_exit(
     if credentials_marker_seen and (
         not bounded_output or is_structurally_small_bounded_output(bounded_output)
     ):
-        _teardown_subtree_if_pid_available(handle)
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=teardown,
+        )
         raise BrokenAgentExitError(
             agent_name,
             reason="no_output",
@@ -591,7 +592,11 @@ def _raise_if_broken_agent_exit(
         and opts.has_meaningful_output is False
         and is_structurally_small_bounded_output(bounded_output)
     ):
-        _teardown_subtree_if_pid_available(handle)
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=teardown,
+        )
         raise BrokenAgentExitError(
             agent_name,
             reason="no_llm_activity",
@@ -601,7 +606,11 @@ def _raise_if_broken_agent_exit(
             stderr=stderr_text,
         )
     if opts.elapsed_seconds is not None and not bounded_output:
-        _teardown_subtree_if_pid_available(handle)
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=teardown,
+        )
         raise BrokenAgentExitError(
             agent_name,
             reason="no_output",
@@ -614,7 +623,11 @@ def _raise_if_broken_agent_exit(
     if nonblank_output and all(
         is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
     ):
-        _teardown_subtree_if_pid_available(handle)
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=teardown,
+        )
         raise BrokenAgentExitError(
             agent_name,
             reason="prompt_echo",
@@ -630,6 +643,7 @@ def check_process_result(
     check_options: CompletionCheckOptions | None = None,
     *,
     _clock: Clock | None = None,
+    process_teardown: ProcessTeardown | None = None,
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
 
@@ -663,7 +677,11 @@ def check_process_result(
             stderr_text,
             check_options.elapsed_seconds if check_options is not None else None,
         ):
-            _teardown_subtree_if_pid_available(handle)
+            _teardown_subtree_if_pid_available(
+                handle,
+                issuer=f"invoke:completion:{agent_name}",
+                teardown=process_teardown,
+            )
             raise BrokenAgentExitError(
                 agent_name,
                 reason="no_output",
@@ -692,7 +710,11 @@ def check_process_result(
             issuer=issuer if intentional else None,
         )
         log_invocation_exit(exc)
-        _teardown_subtree_if_pid_available(handle)
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=process_teardown,
+        )
         raise exc
 
     opts = check_options
@@ -738,9 +760,11 @@ def check_process_result(
         ):
             exit_state = _wait_for_completion_grace(
                 handle,
+                agent_name,
                 opts,
                 bounded_output,
                 clock=_clock,
+                teardown=process_teardown,
             )
 
         if (
@@ -749,9 +773,11 @@ def check_process_result(
         ):
             exit_state = _wait_for_descendants_then_recheck(
                 handle,
+                agent_name,
                 opts,
                 bounded_output,
                 clock=_clock,
+                teardown=process_teardown,
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
@@ -761,22 +787,11 @@ def check_process_result(
                 bounded_output,
                 opts,
                 stderr_text=stderr_text,
+                teardown=process_teardown,
             )
             session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
             if session_id is None and bounded_output:
-                # PTY fallback: the bounded_output window may have closed
-                # BEFORE the live captured_session_id was read on the live
-                # stream, and the legacy extractor returns None for lines
-                # that contain ANSI escape codes (the visible-TUI pattern).
-                # Iterate the bounded lines and consult the per-line
-                # PTY-aware extractor so a session id carried in a TUI
-                # banner / status line (e.g. ``\x1b[32mClaude session
-                # ready. Session ID: abc123\x1b[0m``) is recovered. The
-                # legacy extractor handles plain text + JSON envelopes;
-                # the per-line PTY extractor handles ANSI-wrapped text.
-                # Use the first non-None result and stop searching. Do
-                # NOT widen the OpenCodeResumableExitError signature; the
-                # ``session_id`` parameter accepts ``str-or-None``.
+                # PTY fallback recovers ANSI-wrapped session IDs from bounded output.
                 for line in bounded_output:
                     candidate = extract_transport_session_id_with_visible_tui(line)
                     if candidate is not None:
@@ -789,7 +804,11 @@ def check_process_result(
             # which is the infinite-retry loop this guard exists to break.
             provider_failure = _pi_provider_failure_reason(agent_name, bounded_output)
             if provider_failure is not None:
-                _teardown_subtree_if_pid_available(handle)
+                _teardown_subtree_if_pid_available(
+                    handle,
+                    issuer=f"invoke:completion:{agent_name}",
+                    teardown=process_teardown,
+                )
                 raise PiProviderFailureExitError(agent_name, provider_failure)
             raise OpenCodeResumableExitError(
                 agent_name,
@@ -831,7 +850,11 @@ def check_process_result(
             handle, signals, liveness_probe=opts.liveness_probe
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
-            _teardown_subtree_if_pid_available(handle)
+            _teardown_subtree_if_pid_available(
+                handle,
+                issuer=f"invoke:completion:{agent_name}",
+                teardown=process_teardown,
+            )
             diagnostic_factory = lookup_empty_output_diagnostic_factory(agent_name)
             diagnostic = (
                 diagnostic_factory(bounded_output, opts.agy_cli_log_path)
@@ -920,23 +943,7 @@ def log_invocation_exit(exc: AgentInvocationError) -> None:
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
     retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
     if classified.reset_session:
-        # Stale-session recovery: the operator-visible log line must name the
-        # recovery action ("resetting session id, retrying with a fresh
-        # session") so this is clearly distinguishable from a generic retryable
-        # exit. The "(no output captured)" placeholder from
-        # ``summarize_retry_failure_evidence`` is suppressed ONLY when stderr
-        # actually carries a stale-session marker -- matching the same
-        # ``SESSION_NOT_FOUND_SUBSTRINGS`` vocabulary the classifier already
-        # used to set ``reset_session=True``. Generic non-empty stderr (e.g.
-        # ``"agent exited"``) is not sufficient: the parsed_output often holds
-        # the only concrete stale-session clue (a marker like ``Error: Session
-        # not found`` carried in stdout) and the operator must still see it.
-        # When stderr is empty, fall back to the summarized evidence (which
-        # itself may return "(no output captured)") so the operator still gets
-        # a useful diagnostic line. Any future hardening of the evidence
-        # payload (e.g. deque(maxlen=N) per AGENTS.md bounded-accumulator rule)
-        # is a follow-up; the same risk applies to the existing
-        # summarize_retry_failure_evidence path used by the legacy branches.
+        # Keep stale-session recovery distinct from generic retryable exits.
         stderr_has_session_marker = contains_casefolded_marker(
             [exc.stderr] if exc.stderr else [], SESSION_NOT_FOUND_SUBSTRINGS
         )

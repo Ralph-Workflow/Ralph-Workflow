@@ -105,6 +105,7 @@ from ralph.process.manager import (
 )
 from ralph.process.teardown import teardown_subtree
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
+from ralph.runtime_events import current_runtime_event
 from ralph.timeout_defaults import (
     BROKEN_AGENT_EXIT_SETTLE_SECONDS,
     BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
@@ -334,9 +335,9 @@ def check_broken_agent_timer(
     pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
         if process_teardown is None:
-            teardown_subtree(pid)
+            teardown_subtree(pid, issuer="invoke:process")
         else:
-            process_teardown.teardown_subtree(pid)
+            process_teardown.teardown_subtree(pid, issuer="invoke:process")
     raise BrokenAgentExitError(
         agent_name,
         reason="no_llm_activity" if watchdog.has_any_output() else "no_output",
@@ -451,6 +452,11 @@ def _convert_idle_stream_timeout_to_agent_error(
             session_resume_safe=session_resume_safe,
             resumable_session_id=captured_session_id or expected_session_id,
             diagnostic=exc.diagnostic,
+            runtime_event=(
+                exc.__cause__.runtime_event
+                if isinstance(exc.__cause__, IdleWatchdogKilledError)
+                else None
+            ),
         ),
     )
 
@@ -1024,9 +1030,9 @@ class ProcessLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid)
+                teardown_subtree(pid, issuer="invoke:process")
             else:
-                self._process_teardown.teardown_subtree(pid)
+                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
@@ -1051,9 +1057,9 @@ class ProcessLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid)
+                teardown_subtree(pid, issuer="invoke:process")
             else:
-                self._process_teardown.teardown_subtree(pid)
+                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1123,9 +1129,9 @@ class ProcessLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid)
+                teardown_subtree(pid, issuer="invoke:process")
             else:
-                self._process_teardown.teardown_subtree(pid)
+                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         # Always merge the watchdog's per-channel evidence summary into
@@ -1220,6 +1226,7 @@ class ProcessLineReader:
             child_alive=_child_alive,
             resumable_session_id=captured_session_id,
             issuer=fire_reason.value,
+            runtime_event=current_runtime_event(),
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
@@ -1798,9 +1805,9 @@ def _run_subprocess_and_read_lines(
                     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     if exit_pid is not None:
                         if ctx.process_teardown is None:
-                            teardown_subtree(exit_pid)
+                            teardown_subtree(exit_pid, issuer="invoke:process")
                         else:
-                            ctx.process_teardown.teardown_subtree(exit_pid)
+                            ctx.process_teardown.teardown_subtree(exit_pid, issuer="invoke:process")
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,

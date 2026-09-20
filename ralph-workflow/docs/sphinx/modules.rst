@@ -179,6 +179,13 @@ ralph.verify
    :members:
    :show-inheritance:
 
+ralph.runtime_events
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.runtime_events
+   :members:
+   :show-inheritance:
+
 ralph.timeout_defaults
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4320,6 +4327,12 @@ ralph.testing.audit_resource_lifecycle
 .. automodule:: ralph.testing.audit_resource_lifecycle
    :members:
    :show-inheritance:
+
+ralph.testing.audit_mcp_agent_boundary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_mcp_agent_boundary
+   :no-members:
 
 ralph.testing.audit_prompt_single_sourcing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -37,16 +37,32 @@ process group is not.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import signal
 import threading
 import time
 from collections import OrderedDict
-from typing import Protocol, runtime_checkable
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import psutil
 
 from ralph.timeout_defaults import KILL_ESCALATION_CEILING_MS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.process.manager import ProcessManager
+    from ralph.process.manager._process_record import ProcessRecord
+
+class _ProcessManagerModule(Protocol):
+    """Typed late-bound process-manager module surface."""
+
+    def get_process_manager(self) -> ProcessManager: ...
+
+
+_LOG = logging.getLogger(__name__)
 
 # Depth bound for the parent-chain walk that proves ownership. Real spawn
 # trees are shallow (host -> worker -> fork); the bound only stops a walk
@@ -167,6 +183,10 @@ def _forget_child_session(pid: int) -> None:
         _SESSION_REGISTRY.pop(pid, None)
 
 
+def _label_family(value: str) -> str:
+    """Return the subsystem family used to authorize a teardown."""
+    return value.split(":", 1)[0]
+
 def _resolve_target(host_pid: int, pgid: int | None) -> tuple[psutil.Process | None, int | None]:
     """Resolve what may legitimately be killed for ``host_pid``.
 
@@ -207,7 +227,7 @@ def _resolve_target(host_pid: int, pgid: int | None) -> tuple[psutil.Process | N
 class ProcessTeardown(Protocol):
     """Protocol for reaping a process subtree."""
 
-    def teardown_subtree(self, host_pid: int) -> None:
+    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None:
         """Kill the entire process subtree rooted at ``host_pid``.
 
         Must reap the host and all descendants, transitively. Implementations
@@ -229,10 +249,17 @@ class DefaultProcessTeardown:
             Defaults to ``KILL_ESCALATION_CEILING_MS``.
     """
 
-    def __init__(self, kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS) -> None:
+    def __init__(
+        self,
+        kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS,
+        record_lookup: Callable[[int], ProcessRecord | None] | None = None,
+    ) -> None:
         self._kill_escalation_ms = kill_escalation_ms
+        self._record_lookup = record_lookup
 
-    def teardown_subtree(self, host_pid: int, *, pgid: int | None = None) -> None:
+    def teardown_subtree(
+        self, host_pid: int, *, issuer: str, pgid: int | None = None
+    ) -> None:
         """Kill the host process and all of its descendants.
 
         Args:
@@ -244,6 +271,13 @@ class DefaultProcessTeardown:
                 is a no-op, because its PID number may since have been reused.
         """
         host, group = _resolve_target(host_pid, pgid)
+        record = self._record_for(host_pid)
+        label = record.label if record is not None else None
+        if label is not None and _label_family(label) != _label_family(issuer):
+            _LOG.warning(
+                "refusing process teardown pid=%s issuer=%s label=%s", host_pid, issuer, label
+            )
+            return
         _forget_child_session(host_pid)
 
         if host is None:
@@ -286,6 +320,14 @@ class DefaultProcessTeardown:
         # still a member of the session we created.
         if group is not None:
             self._signal_process_group(group)
+
+    def _record_for(self, host_pid: int) -> ProcessRecord | None:
+        if self._record_lookup is not None:
+            return self._record_lookup(host_pid)
+        manager_module = cast(
+            "_ProcessManagerModule", import_module("ralph.process.manager")
+        )
+        return manager_module.get_process_manager().get_record(host_pid)
 
     def _await_exit(self, procs: list[psutil.Process]) -> set[int]:
         """Poll until every process in ``procs`` is gone or the grace expires.
@@ -348,12 +390,13 @@ class DefaultProcessTeardown:
 def teardown_subtree(
     host_pid: int,
     *,
+    issuer: str,
     kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS,
     pgid: int | None = None,
 ) -> None:
     """Convenience function that reaps a subtree with the default implementation."""
     DefaultProcessTeardown(kill_escalation_ms=kill_escalation_ms).teardown_subtree(
-        host_pid, pgid=pgid
+        host_pid, issuer=issuer, pgid=pgid
     )
 
 

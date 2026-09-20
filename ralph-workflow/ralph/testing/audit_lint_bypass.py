@@ -283,6 +283,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # existing idle_watchdog / _waiting_branch / _stuck_classifier /
     # subscriber kind-dispatch fan-out allowlist rationale.
     ("_ndjson_base", "PLR0911"),
+    # teardown.py: the manager import stays lazy to prevent the proven
+    # teardown<->manager import cycle at module initialization.
+    ("teardown", "PLC0415"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

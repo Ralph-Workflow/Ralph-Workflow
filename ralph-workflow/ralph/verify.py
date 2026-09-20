@@ -580,23 +580,28 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("test-visual-smoke",),
         _TOTAL_TEST_BUDGET_SECONDS,
     ),
+    (
+        "audit_mcp_agent_boundary",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_mcp_agent_boundary"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
-#: Indices 2 and the final three entries are the test steps charged against
-#: steps charged against ``_TOTAL_TEST_BUDGET_SECONDS`` together with
+#: Index 2 and the three entries before the final audit are the test steps charged
+#: against ``_TOTAL_TEST_BUDGET_SECONDS`` together with
 #: every other test step whose label is in ``_KNOWN_TEST_STEP_LABELS``.
 #: ``make test`` is the primary test step (index 2);
 #: ``make test-install-make-smoke`` proves the real offline installer;
 #: ``make test-multimodal-smoke`` (criterion 5 multimodal proof) and
 #: ``make test-visual-smoke`` (criterion 12 deterministic visual-smoke tier)
-#: follow it so the index-based timeout assertions in
-#: ``tests/test_verify.py`` keep ``make test`` at index 2. Adding a
+#: precede the final non-test boundary audit. Adding a
 #: new test step without also adding its label to
 #: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
 #: contributing to the combined budget, which the immutable 60 s ceiling
 #: prohibits.
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset(
-    {2, len(_VERIFY_STEPS) - 3, len(_VERIFY_STEPS) - 2, len(_VERIFY_STEPS) - 1}
+    {2, len(_VERIFY_STEPS) - 4, len(_VERIFY_STEPS) - 3, len(_VERIFY_STEPS) - 2}
 )
 
 # --- Module-level invariants ---

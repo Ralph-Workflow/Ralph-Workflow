@@ -66,7 +66,7 @@ def test_teardown_subtree_reaps_nested_children() -> None:
     child_pids = {p.pid for p in children}
 
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(host.pid)
+    teardown.teardown_subtree(host.pid, issuer="invoke:test")
 
     with contextlib.suppress(subprocess.TimeoutExpired):
         host.wait(timeout=0.5)
@@ -92,7 +92,7 @@ def test_teardown_subtree_missing_process_is_noop() -> None:
     """Tearing down a non-existent PID does not raise."""
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
     # PID 999999 is unlikely to exist.
-    teardown.teardown_subtree(999_999)
+    teardown.teardown_subtree(999_999, issuer="invoke:test")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
@@ -144,7 +144,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     # Now teardown_subtree cannot enumerate via psutil, but it should fall
     # back to signaling the host's process group and reap the child.
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(host.pid, pgid=host_pgid)
+    teardown.teardown_subtree(host.pid, issuer="invoke:test", pgid=host_pgid)
 
     deadline = time.monotonic() + 0.5
     while time.monotonic() < deadline:

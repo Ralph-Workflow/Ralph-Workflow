@@ -66,7 +66,8 @@ def _make_reader(handle: _OrderHandle) -> PtyLineReader:
 
 
 def _no_teardown(monkeypatch: pytest.MonkeyPatch, calls: list[int]) -> None:
-    def _track(pid: int) -> None:
+    def _track(pid: int, *, issuer: str) -> None:
+        assert issuer == "invoke:pty"
         calls.append(pid)
 
     monkeypatch.setattr(

@@ -72,7 +72,9 @@ def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> 
         lambda *_args, **_kwargs: calls.append("write:/exit"),
     )
     monkeypatch.setattr(
-        _MODULE, "teardown_subtree", lambda pid: calls.append(f"teardown:{pid}")
+        _MODULE,
+        "teardown_subtree",
+        lambda pid, *, issuer: calls.append(f"teardown:{pid}:{issuer}"),
     )
 
     reader._request_interactive_exit()
@@ -84,7 +86,7 @@ def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> 
         f"wait:{_MAX_INTERACTIVE_EXIT_GRACE_SECONDS}",
         "poll",
         "terminate:0.5",
-        "teardown:12345",
+        "teardown:12345:invoke:pty",
     ]
 
 
@@ -98,7 +100,9 @@ def test_natural_exit_uses_default_grace_without_termination(monkeypatch: Any) -
         lambda *_args, **_kwargs: calls.append("write:/exit"),
     )
     monkeypatch.setattr(
-        _MODULE, "teardown_subtree", lambda pid: calls.append(f"teardown:{pid}")
+        _MODULE,
+        "teardown_subtree",
+        lambda pid, *, issuer: calls.append(f"teardown:{pid}:{issuer}"),
     )
 
     reader._request_interactive_exit()

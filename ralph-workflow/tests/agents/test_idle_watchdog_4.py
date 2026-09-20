@@ -129,7 +129,7 @@ def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path)
             check_options=None,
         )
 
-    mock_teardown.assert_called_once_with(1234)
+    mock_teardown.assert_called_once_with(1234, issuer="invoke:completion:test-agent")
     # Also verify the real function can still be imported (sanity).
     assert teardown_subtree is not None
 
@@ -159,7 +159,7 @@ def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
             check_options=options,
         )
 
-    mock_teardown.assert_called_once_with(5678)
+    mock_teardown.assert_called_once_with(5678, issuer="invoke:completion:test-agent")
 
 
 def testcheck_process_result_error_path_does_not_mutate_clock() -> None:

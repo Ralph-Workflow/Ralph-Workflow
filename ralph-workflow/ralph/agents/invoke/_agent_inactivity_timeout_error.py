@@ -23,6 +23,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         self.diagnostic = dict(_opts.diagnostic) if _opts.diagnostic is not None else {}
         self.session_resume_safe = _opts.session_resume_safe
         self.resumable_session_id = _opts.resumable_session_id
+        self.runtime_event = _opts.runtime_event
         if _opts.reason == WatchdogFireReason.OPERATOR_CAP_REACHED:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"OPERATOR_CAP_REACHED after {duration}; active resolution stopped by configured cap"
@@ -101,6 +102,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
             -1,
             stderr_msg,
             list(parsed_output) if parsed_output is not None else [],
+            failure_origin="watchdog_observation",
         )
 
 

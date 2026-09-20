@@ -47,6 +47,7 @@ from ralph.process.manager._process_termination_error import ProcessTerminationE
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.teardown import register_child_session
+from ralph.runtime_events import record_runtime_event
 
 _PERMITTED_TERMINAL_REASONS = frozenset(
     {
@@ -588,6 +589,7 @@ class ProcessManager:
                         cwd=effective.cwd,
                     ),
                 )
+                record_runtime_event("runtime_launch", str(exc))
                 exc = AgentLaunchError(effective.label or cmd[0], exc, payload_bytes)
             record = ProcessRecord(
                 pid=-1,
@@ -689,6 +691,7 @@ class ProcessManager:
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+                record_runtime_event("runtime_launch", str(exc))
                 raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
             raise
 
@@ -771,6 +774,7 @@ class ProcessManager:
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+                record_runtime_event("runtime_launch", str(exc))
                 raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
             raise
 

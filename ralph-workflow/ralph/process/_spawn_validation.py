@@ -37,6 +37,9 @@ from collections.abc import Buffer
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ralph.process._agent_launch_error import AgentLaunchError
+from ralph.runtime_events import record_runtime_event
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
@@ -214,4 +217,7 @@ def validate_spawn_arguments(
     payload_bytes = spawn_payload_bytes(command, env)
     limit = arg_max_limit() if payload_limit is None else payload_limit
     if payload_bytes > limit:
-        raise OSError(7, f"argv+env = {payload_bytes} bytes exceeds limit {limit}")
+        detail = f"argv+env = {payload_bytes} bytes exceeds limit {limit}"
+        record_runtime_event("runtime_launch", detail)
+        exc = OSError(7, detail)
+        raise AgentLaunchError(_as_text(command[0]), exc, payload_bytes) from exc

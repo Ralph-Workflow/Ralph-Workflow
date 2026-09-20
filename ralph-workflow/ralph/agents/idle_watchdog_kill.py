@@ -15,6 +15,11 @@ sees ``isinstance(exc, IdleWatchdogKilledError)`` and consults
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.agents.invoke._failure_origin import FailureOrigin
+
 
 class IdleWatchdogKilledError(Exception):
     """The idle watchdog killed the agent.
@@ -59,6 +64,7 @@ class IdleWatchdogKilledError(Exception):
         child_alive: bool | None = None,
         resumable_session_id: str | None = None,
         issuer: str | None = None,
+        runtime_event: FailureOrigin | None = None,
     ) -> None:
         # The message may legitimately contain misleading tokens (e.g. the
         # word "timeout") to stress-test the classifier; the recovery decision
@@ -80,6 +86,7 @@ class IdleWatchdogKilledError(Exception):
         self.resumable_session_id = resumable_session_id
         self.failure_origin = "watchdog_observation"
         self.issuer = issuer or reason
+        self.runtime_event = runtime_event
 
 
 __all__ = ["IdleWatchdogKilledError"]

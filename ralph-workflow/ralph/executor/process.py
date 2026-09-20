@@ -65,7 +65,7 @@ def _reap_subtree(pid: int | None, pgid: int | None = None) -> None:
     if pid is None:
         return
     with contextlib.suppress(Exception):
-        teardown_subtree(pid, pgid=pgid)
+        teardown_subtree(pid, issuer="executor:run-process", pgid=pgid)
 
 
 def _verified_pgid(pid: int | None) -> int | None:

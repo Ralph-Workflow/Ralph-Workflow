@@ -113,6 +113,7 @@ from ralph.process.manager import (
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.process.teardown import teardown_subtree
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
+from ralph.runtime_events import current_runtime_event
 
 from ._monitor_factory import _make_process_monitor
 
@@ -1094,7 +1095,7 @@ class PtyLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             with contextlib.suppress(Exception):
-                teardown_subtree(pid)
+                teardown_subtree(pid, issuer="invoke:pty")
 
     def _completion_evidence_thread(self) -> None:
         if self._workspace_path is None or self._completion_run_id is None:
@@ -1178,7 +1179,7 @@ class PtyLineReader:
             "int | None", getattr(self._handle, "pid", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None and self._handle.poll() is None:
-            teardown_subtree(pid)
+            teardown_subtree(pid, issuer="invoke:pty")
         # Real resume-safety from the canonical helper at
         # ``_process_reader._is_resumable_fire_reason`` so the PTY
         # watchdog kill path produces the same resume-safety signal
@@ -1285,6 +1286,7 @@ class PtyLineReader:
             child_alive=_child_alive,
             resumable_session_id=captured_session_id,
             issuer=fire_reason.value,
+            runtime_event=current_runtime_event(),
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
@@ -1446,7 +1448,7 @@ class PtyLineReader:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             with contextlib.suppress(Exception):
-                teardown_subtree(pid)
+                teardown_subtree(pid, issuer="invoke:pty")
 
     def _cleanup(
         self,
@@ -1483,7 +1485,7 @@ class PtyLineReader:
             "int | None", getattr(self._handle, "pid", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
-            teardown_subtree(pid)
+            teardown_subtree(pid, issuer="invoke:pty")
         self._lines_event.set()
 
     def _record_terminal_reason(self, reason: str) -> None:
@@ -1522,7 +1524,7 @@ class PtyLineReader:
             "int | None", getattr(self._handle, "pid", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
-            teardown_subtree(pid)
+            teardown_subtree(pid, issuer="invoke:pty")
         raise AgentInvocationError(
             self._agent_name,
             1,

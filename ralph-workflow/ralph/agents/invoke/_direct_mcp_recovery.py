@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final, cast
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
+from ralph.runtime_events import RuntimeEventRecorder, record_runtime_event, runtime_event_scope
 
 from ._session import (
     extract_transport_session_id,
@@ -186,7 +187,7 @@ def _retry_plan_for_exception(
     )
 
 
-def run_with_direct_mcp_recovery[T](
+def _run_with_direct_mcp_recovery[T](
     run_attempt: Callable[[str | None, Callable[[str], None]], T],
     *,
     max_retries: int,
@@ -253,6 +254,7 @@ def run_with_direct_mcp_recovery[T](
             if on_retry_failure is not None:
                 on_retry_failure(list(_exception_parsed_output(exc)))
             if retry_plan.reset_tool_registry:
+                record_runtime_event("mcp_operation", "reset_tool_registry")
                 try:
                     reset_tool_registry()
                 except Exception as mcp_exc:
@@ -261,7 +263,7 @@ def run_with_direct_mcp_recovery[T](
             retries_used += 1
 
 
-def iter_with_direct_mcp_recovery(
+def _iter_with_direct_mcp_recovery(
     run_attempt: Callable[[str | None], Iterable[str]],
     *,
     max_retries: int,
@@ -333,12 +335,57 @@ def iter_with_direct_mcp_recovery(
             if on_retry_failure is not None:
                 on_retry_failure(list(_exception_parsed_output(exc_with_output)))
             if retry_plan.reset_tool_registry:
+                record_runtime_event("mcp_operation", "reset_tool_registry")
                 try:
                     reset_tool_registry()
                 except Exception as mcp_exc:
                     raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
             current_session_id = retry_plan.session_id
             retries_used += 1
+
+
+def run_with_direct_mcp_recovery[T](
+    run_attempt: Callable[[str | None, Callable[[str], None]], T],
+    *,
+    max_retries: int,
+    reset_tool_registry: Callable[[], object] | None = None,
+    on_retry_failure: Callable[[list[str]], object] | None = None,
+    on_session_observed: Callable[[str], object] | None = None,
+    retry_resumable_exit: bool = False,
+    sleep: Callable[[float], object] | None = None,
+) -> T:
+    """Run one recovery loop with invocation-local runtime attribution."""
+    with runtime_event_scope(RuntimeEventRecorder()):
+        return _run_with_direct_mcp_recovery(
+            run_attempt,
+            max_retries=max_retries,
+            reset_tool_registry=reset_tool_registry,
+            on_retry_failure=on_retry_failure,
+            on_session_observed=on_session_observed,
+            retry_resumable_exit=retry_resumable_exit,
+            sleep=sleep,
+        )
+
+
+def iter_with_direct_mcp_recovery(
+    run_attempt: Callable[[str | None], Iterable[str]],
+    *,
+    max_retries: int,
+    reset_tool_registry: Callable[[], object] | None = None,
+    on_retry_failure: Callable[[list[str]], object] | None = None,
+    on_session_observed: Callable[[str], object] | None = None,
+    sleep: Callable[[float], object] | None = None,
+) -> Iterator[str]:
+    """Yield one recovery loop with invocation-local runtime attribution."""
+    with runtime_event_scope(RuntimeEventRecorder()):
+        yield from _iter_with_direct_mcp_recovery(
+            run_attempt,
+            max_retries=max_retries,
+            reset_tool_registry=reset_tool_registry,
+            on_retry_failure=on_retry_failure,
+            on_session_observed=on_session_observed,
+            sleep=sleep,
+        )
 
 
 def _invocation_error_with_output(

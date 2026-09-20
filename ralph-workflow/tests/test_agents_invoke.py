@@ -5000,7 +5000,8 @@ class _RecordingProcessTeardown:
     def __init__(self) -> None:
         self.calls: tuple[int, ...] = ()
 
-    def teardown_subtree(self, host_pid: int) -> None:
+    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None:
+        del issuer
         self.calls = (*self.calls, host_pid)
 
 

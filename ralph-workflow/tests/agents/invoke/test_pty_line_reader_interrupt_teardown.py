@@ -53,8 +53,9 @@ def _make_reader_for_interrupt() -> PtyLineReader:
     return reader
 
 
-def _track_teardown(teardown_calls: list[int]) -> Callable[[int], None]:
-    def _record(pid: int) -> None:
+def _track_teardown(teardown_calls: list[int]) -> Callable[..., None]:
+    def _record(pid: int, *, issuer: str) -> None:
+        del issuer
         teardown_calls.append(pid)
 
     return _record
@@ -161,4 +162,4 @@ def test_on_interrupt_skips_teardown_when_pid_missing(
 def test_on_interrupt_real_teardown_subtree_call() -> None:
     """Sanity-check that the production ``teardown_subtree`` is callable and
     tolerates a nonexistent pid."""
-    teardown_subtree(2**30)
+    teardown_subtree(2**30, issuer="invoke:test")

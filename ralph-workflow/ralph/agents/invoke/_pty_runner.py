@@ -99,7 +99,7 @@ def _terminate_pty_tree(handle: object) -> None:
     pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
     if pid is not None:
         with contextlib.suppress(Exception):
-            teardown_subtree(pid)
+            teardown_subtree(pid, issuer="invoke:pty")
 
 
 def _spawn_pty_with_agy_log_offset(
@@ -202,7 +202,7 @@ def run_pty_and_read_lines(
                     handle.terminate(grace_period_s=0.5)
                     exit_pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
                     if exit_pid is not None:
-                        teardown_subtree(exit_pid)
+                        teardown_subtree(exit_pid, issuer="invoke:pty")
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,

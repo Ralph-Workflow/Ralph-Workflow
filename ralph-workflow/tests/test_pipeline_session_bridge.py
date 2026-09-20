@@ -24,7 +24,7 @@ from ralph.pipeline.session_bridge import (
     WorkspaceFactoryFn,
     bridge_env_for,
     build_session_bridge,
-    reset_tool_registry_callback,
+    scoped_reset_tool_registry_callback,
 )
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -514,15 +514,15 @@ class TestBridgeEnvFor:
         assert bridge_env_for(bridge_b)[str(MCP_RUN_ID_ENV)] == "run-B"
 
 
-class TestResetToolRegistryCallback:
-    """Black-box tests for reset_tool_registry_callback."""
+class TestScopedResetToolRegistryCallback:
+    """Black-box tests for scoped registry-reset callbacks."""
 
     def test_returns_none_when_bridge_is_none(self) -> None:
-        assert reset_tool_registry_callback(None) is None
+        assert scoped_reset_tool_registry_callback(None, "test") is None
 
     def test_returns_callable_when_reset_tool_registry_exists(self, tmp_path: Path) -> None:
         bridge = FakeSessionBridge()
-        callback = reset_tool_registry_callback(bridge)
+        callback = scoped_reset_tool_registry_callback(bridge, "test")
 
         assert callback is not None
         assert callback() == "reset"
@@ -532,7 +532,7 @@ class TestResetToolRegistryCallback:
         class NoResetBridge:
             pass
 
-        assert reset_tool_registry_callback(NoResetBridge()) is None
+        assert scoped_reset_tool_registry_callback(NoResetBridge(), "test") is None
 
 
 class TestProtocolAliases:

@@ -8,6 +8,7 @@ wiring cannot drift between the two paths.
 
 from __future__ import annotations
 
+import threading
 import uuid
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -18,6 +19,16 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
 from ralph.workspace.fs import FsWorkspace
+
+
+class _ResetScopeState:
+    """Shared reset ownership state, protected by ``_RESET_SCOPE_LOCK``."""
+
+    scope: str | None = None
+
+
+_ACTIVE_RESET_STATE = _ResetScopeState()
+_RESET_SCOPE_LOCK = threading.Lock()
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -282,6 +293,8 @@ def scoped_reset_tool_registry_callback(
     recorder: Callable[[str], object] | None = None,
 ) -> Callable[[], object] | None:
     """Bind a bridge registry reset to exactly one invocation scope."""
+    if scope_key == "unscoped":
+        raise ValueError("a tool-registry reset requires an invocation scope")
     if bridge is None:
         return None
     reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
@@ -291,14 +304,17 @@ def scoped_reset_tool_registry_callback(
     def reset() -> object:
         if recorder is not None:
             recorder(scope_key)
-        return cast("Callable[[], object]", reset_tool_registry_obj)()
+        with _RESET_SCOPE_LOCK:
+            if _ACTIVE_RESET_STATE.scope is not None:
+                return None
+            _ACTIVE_RESET_STATE.scope = scope_key
+        try:
+            return cast("Callable[[], object]", reset_tool_registry_obj)()
+        finally:
+            with _RESET_SCOPE_LOCK:
+                _ACTIVE_RESET_STATE.scope = None
 
     return reset
-
-
-def reset_tool_registry_callback(bridge: object | None) -> object | None:
-    """Compatibility wrapper for callers without a known invocation scope."""
-    return scoped_reset_tool_registry_callback(bridge, "unscoped")
 
 
 __all__ = [
@@ -309,6 +325,5 @@ __all__ = [
     "WorkspaceFactoryFn",
     "bridge_env_for",
     "build_session_bridge",
-    "reset_tool_registry_callback",
     "scoped_reset_tool_registry_callback",
 ]

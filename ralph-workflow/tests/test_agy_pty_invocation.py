@@ -504,7 +504,8 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         def read_lines(self) -> object:
             yield "Nanocoder banner\n"
 
-    def fake_teardown_subtree(pid: int) -> None:
+    def fake_teardown_subtree(pid: int, *, issuer: str) -> None:
+        del issuer
         teardown_calls.append(pid)
 
     def fake_get_process_manager() -> _FakeProcessManager:
