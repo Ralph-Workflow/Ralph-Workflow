@@ -112,6 +112,7 @@ class McpSupervisorFactoryFn(Protocol):
         *,
         check_interval: timedelta,
         on_restart: Callable[[int], None] | None,
+        agent_label_scope: str,
     ) -> AbstractContextManager[object, bool | None]: ...
 
 
@@ -173,6 +174,7 @@ def _mcp_supervisor_factory(
     *,
     check_interval: timedelta,
     on_restart: Callable[[int], None] | None,
+    agent_label_scope: str,
 ) -> AbstractContextManager[object, bool | None]:
     return cast(
         "AbstractContextManager[object, bool | None]",
@@ -180,6 +182,7 @@ def _mcp_supervisor_factory(
             bridge,
             check_interval=check_interval,
             on_restart=on_restart,
+            agent_label_scope=agent_label_scope,
         ),
     )
 

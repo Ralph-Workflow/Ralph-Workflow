@@ -35,6 +35,10 @@ AGENT_PROCESS_LABEL_PREFIX = "invoke:"
 _INTERRUPT_GRACE_PERIOD_S = 0.5
 
 
+def _agent_process_label_prefix(agent_label_scope: str) -> str:
+    return f"{AGENT_PROCESS_LABEL_PREFIX}{agent_label_scope}:"
+
+
 def _terminate_agent_processes(label_prefix: str) -> None:
     """Terminate every live agent subprocess under ``label_prefix``."""
     get_process_manager().shutdown_all_for_label(
@@ -65,12 +69,14 @@ class McpSupervisor:
         check_interval: timedelta = DEFAULT_INTERVAL,
         on_restart: Callable[[int], None] | None = None,
         on_error: Callable[[McpServerError], None] | None = None,
+        agent_label_scope: str | None = None,
         terminate_agents: Callable[[str], None] = _terminate_agent_processes,
     ) -> None:
         self._bridge = bridge
         self._check_interval = check_interval
         self._on_restart = on_restart
         self._on_error = on_error
+        self._agent_label_scope = agent_label_scope or bridge.run_id
         self._terminate_agents = terminate_agents
         self._mcp_error: McpServerError | None = None
         self._done = threading.Event()
@@ -109,11 +115,11 @@ class McpSupervisor:
         logger.error(
             "MCP supervision is terminal; interrupting agent processes under {!r} so the"
             " run fails instead of hanging: {}",
-            AGENT_PROCESS_LABEL_PREFIX,
+            _agent_process_label_prefix(self._agent_label_scope),
             exc,
         )
         try:
-            self._terminate_agents(AGENT_PROCESS_LABEL_PREFIX)
+            self._terminate_agents(_agent_process_label_prefix(self._agent_label_scope))
         except Exception:
             logger.exception("Failed to interrupt agent processes after terminal MCP failure")
 

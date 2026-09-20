@@ -532,6 +532,7 @@ def _invoke_agent_with_recovery(
                     rendered_output,
                     capture_session_id,
                     pipeline_deps,
+                    agent_label_scope=effective_run_id,
                     raw_line_sink=raw_line_sink,
                 )
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
@@ -970,6 +971,7 @@ def _consume_attempt_output(
     capture_session_id: Callable[[str], None],
     pipeline_deps: PipelineDeps,
     *,
+    agent_label_scope: str,
     raw_line_sink: Callable[[str], None] | None = None,
 ) -> None:
     on_mcp_restart = (
@@ -1052,6 +1054,7 @@ def _consume_attempt_output(
             bridge_ctx.bridge,
             check_interval=get_heartbeat().interval,
             on_restart=on_mcp_restart,
+            agent_label_scope=agent_label_scope,
         ):
             _run_invocation()
     except ctx.deps.agent_invocation_error as exc:

@@ -28,7 +28,7 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.process.mcp_supervisor import AGENT_PROCESS_LABEL_PREFIX, McpSupervisor
+from ralph.process.mcp_supervisor import McpSupervisor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -174,17 +174,13 @@ def test_exhausted_budget_interrupts_a_blocked_invocation() -> None:
 
 
 def test_supervision_interrupts_the_agent_by_default() -> None:
-    """The interrupt must be wired in production, not just available.
-
-    ``on_error`` existed but no production call site ever passed one, so
-    a terminal MCP failure was diagnosed and then silently dropped.
-    """
     bridge, _ = _make_bridge(probe_outcomes=[True], process_poll=1, max_restarts=0)
     killed: list[str] = []
 
     supervisor = McpSupervisor(
         bridge,
         check_interval=timedelta(milliseconds=10),
+        agent_label_scope="run-owned-by-this-bridge",
         terminate_agents=killed.append,
     )
 
@@ -196,7 +192,7 @@ def test_supervision_interrupts_the_agent_by_default() -> None:
             threading.Event().wait(step)
             waited += step
 
-    assert killed == [AGENT_PROCESS_LABEL_PREFIX]
+    assert killed == ["invoke:run-owned-by-this-bridge:"]
 
 
 def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(

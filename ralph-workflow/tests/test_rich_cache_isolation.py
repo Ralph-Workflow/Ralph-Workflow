@@ -26,7 +26,7 @@ def _clear_rich_style_color_caches() -> None:
 
 def _render_hex_colour(color_system: str) -> str:
     stream = StringIO()
-    Console(file=stream, force_terminal=True, color_system=color_system).print(
+    Console(file=stream, force_terminal=True, color_system=color_system, no_color=False).print(
         "carrier",
         style=Style.parse("#ef8a62"),
     )

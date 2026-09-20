@@ -633,6 +633,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
 
     custom_interval = timedelta(milliseconds=750)
     captured_intervals: list[timedelta] = []
+    captured_scopes: list[str] = []
 
     def fake_heartbeat_policy_from_env() -> HeartbeatPolicy:
         return HeartbeatPolicy(interval=custom_interval)
@@ -642,9 +643,11 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         *,
         check_interval: timedelta,
         on_restart: Callable[[int], None] | None,
+        agent_label_scope: str,
     ) -> object:
         del bridge, on_restart
         captured_intervals.append(check_interval)
+        captured_scopes.append(agent_label_scope)
         return nullcontext()
 
     deps = make_test_pipeline_deps(
@@ -669,3 +672,4 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     assert captured_intervals[0] == custom_interval, (
         f"expected {custom_interval}, got {captured_intervals[0]}"
     )
+    assert captured_scopes and captured_scopes[0]

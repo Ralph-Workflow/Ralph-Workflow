@@ -23,6 +23,7 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
+    _agent_process_label,
     _has_meaningful_output_from_reader,
     _is_resumable_fire_reason,
     _parent_broker_secret,
@@ -112,7 +113,7 @@ def _spawn_pty_with_agy_log_offset(
         PtySpawnOptions(
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
-            label=f"invoke:{_agent_command_name(ctx.config)}",
+            label=_agent_process_label(ctx),
         ),
     )
     return handle, agy_cli_log

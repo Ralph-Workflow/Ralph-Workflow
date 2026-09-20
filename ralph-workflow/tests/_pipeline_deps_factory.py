@@ -188,8 +188,9 @@ def _mcp_supervisor_factory(
     *,
     check_interval: object,
     on_restart: object,
+    agent_label_scope: object,
 ) -> object:
-    del bridge, check_interval, on_restart
+    del bridge, check_interval, on_restart, agent_label_scope
     return nullcontext()
 
 

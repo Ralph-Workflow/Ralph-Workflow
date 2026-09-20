@@ -80,6 +80,7 @@ from ralph.display.raw_overflow import (
     get_or_create_raw_overflow_log,
     raw_log_unit_id_for,
 )
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.server._activity_sink import (
     ActivitySink,
     reset_active_sink,
@@ -1653,6 +1654,13 @@ def _spawn_process_with_agy_log_offset(
     return get_process_manager().spawn(argv, spawn_options), agy_cli_log
 
 
+def _agent_process_label(ctx: AgentRunCtx) -> str:
+    scope = (ctx.extra_env or {}).get(str(AGENT_LABEL_SCOPE_ENV))
+    if scope:
+        return f"invoke:{scope}:{_agent_command_name(ctx.config)}"
+    return f"invoke:{_agent_command_name(ctx.config)}"
+
+
 def _run_subprocess_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
@@ -1676,7 +1684,7 @@ def _run_subprocess_and_read_lines(
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
-            label=f"invoke:{_agent_command_name(ctx.config)}",
+            label=_agent_process_label(ctx),
             text=True,
         )
         if stdin_prompt is not None
@@ -1687,7 +1695,7 @@ def _run_subprocess_and_read_lines(
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
-            label=f"invoke:{_agent_command_name(ctx.config)}",
+            label=_agent_process_label(ctx),
             text=True,
         )
     )
