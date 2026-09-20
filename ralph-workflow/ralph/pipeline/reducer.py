@@ -50,6 +50,7 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
+from ralph.pipeline.auto_integrate_resolution_state import CONFLICT_RESOLUTION_STRATEGIES
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
@@ -496,14 +497,14 @@ def _enter_failed_recovery(
         explain_routing_decision(state.phase, target, "failure", reason, recovery=True)
     )
     rebase = state.rebase
+    retry_delay_ms = 0
     if "integration conflict requires resolution:" in reason:
-        strategies = ("rebase_resolver", "refresh_retry", "merge_instead", "resolver_with_history")
-        index = rebase.conflict_strategy_index
+        index: int = rebase.conflict_strategy_index
         tried = rebase.conflict_strategies_tried
-        if index < len(strategies):
-            tried = (*tried, f"{strategies[index]}: {reason}")
+        if index < len(CONFLICT_RESOLUTION_STRATEGIES):
+            tried = (*tried, f"{CONFLICT_RESOLUTION_STRATEGIES[index]}: {reason}")
             index += 1
-        exhausted = index >= len(strategies)
+        exhausted = index >= len(CONFLICT_RESOLUTION_STRATEGIES)
         rebase = rebase.model_copy(
             update={
                 "conflict_strategy_index": index,
@@ -512,10 +513,13 @@ def _enter_failed_recovery(
                 "resolution_exhaustion_reason": "; ".join(tried) if exhausted else None,
             }
         )
+        if not exhausted:
+            retry_delay_ms = min(1000 * (1 << index), 10_000)
     new_state = progress.advance_phase(state, target, policy=policy).copy_with(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
         rebase=rebase,
+        last_retry_delay_ms=retry_delay_ms,
     )
     # The cycle timer is deliberately NOT concluded here. The recovery failed
     # route is a terminal to this reducer but does not end the run: the effect

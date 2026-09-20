@@ -30,7 +30,15 @@ from ralph.pipeline.integration_resolution import persisted_integration_resoluti
 if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
+CONFLICT_RESOLUTION_STRATEGIES = (
+    "rebase_resolver",
+    "refresh_retry",
+    "merge_instead",
+    "resolver_with_history",
+)
+
 __all__ = [
+    "CONFLICT_RESOLUTION_STRATEGIES",
     "preserve_unresolved_resolution_state",
     "reconcile_stale_unresolved_state",
     "retains_unresolved_resolution_state",
@@ -46,16 +54,19 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
     """
     if persisted_integration_resolution_verdict(state) is None:
         return state
-    return state.model_copy(
-        update={
-            "last_action": None if state.last_action == "conflict" else state.last_action,
-            "unresolved_integration_carried": False,
-            "resolution_exhausted": False,
-            "resolution_exhaustion_reason": None,
-            "conflict_strategy_index": 0,
-            "conflict_strategies_tried": (),
-        }
-    )
+    clear_strategy = state.resolution_exhausted or state.conflict_strategy_index == 0
+    update: dict[str, object] = {
+        "last_action": None if state.last_action == "conflict" else state.last_action,
+        "unresolved_integration_carried": False,
+        "resolution_exhausted": False,
+        "resolution_exhaustion_reason": None,
+    }
+    if clear_strategy:
+        update.update(
+            conflict_strategy_index=0,
+            conflict_strategies_tried=(),
+        )
+    return state.model_copy(update=update)
 
 
 def retains_unresolved_resolution_state(state: RebaseState) -> bool:

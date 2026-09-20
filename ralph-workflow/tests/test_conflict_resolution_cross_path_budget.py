@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     resolver_allowed,
@@ -26,7 +27,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
     state = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=2,
+        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
         last_conflict_paths=("a.py",),
@@ -291,7 +292,7 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
     state = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=2,
+        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
         last_conflict_paths=("a.py",),

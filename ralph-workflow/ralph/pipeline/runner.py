@@ -948,7 +948,7 @@ def _integrate_inline_effect(
                 _integration_conflict_failure(state, outcome),
                 policy_bundle.pipeline if policy_bundle is not None else None,
             )
-            return failed_state.copy_with(rebase=outcome)
+            return failed_state.copy_with(rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome))
         # ExitSuccessEffect returns an int, so it cannot carry rebase state.
         # Never return its successful value while recovery still owns a record
         # or a resolver left a conflict unresolved.
@@ -961,6 +961,18 @@ def _integrate_inline_effect(
             rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome)
         )
     return inline_result
+
+
+def _merge_strategy_onto_outcome(reducer_rebase: RebaseState, outcome: RebaseState) -> RebaseState:
+    """Keep reducer-owned conflict strategy progress on a seam outcome."""
+    return outcome.model_copy(
+        update={
+            "conflict_strategy_index": reducer_rebase.conflict_strategy_index,
+            "conflict_strategies_tried": reducer_rebase.conflict_strategies_tried,
+            "resolution_exhausted": reducer_rebase.resolution_exhausted,
+            "resolution_exhaustion_reason": reducer_rebase.resolution_exhaustion_reason,
+        }
+    )
 
 
 def _reconcile_rebase_if_live_resolved(
@@ -1349,7 +1361,7 @@ def _integrate_after_fan_out(
             _integration_conflict_failure(state, outcome),
             policy_bundle.pipeline if policy_bundle is not None else None,
         )
-        return failed_state.copy_with(rebase=outcome)
+        return failed_state.copy_with(rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome))
     return state.copy_with(rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome))
 
 

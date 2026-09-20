@@ -68,6 +68,7 @@ def test_fan_out_join_conflict_routes_through_recovery(monkeypatch: MonkeyPatch)
         MagicMock(return_value=conflict),
     )
     failed_state = MagicMock(spec=PipelineState)
+    failed_state.rebase = RebaseState()
     failed_state.copy_with.return_value = failed_state
     reduced = MagicMock(return_value=(failed_state, []))
     monkeypatch.setattr(runner_module, "reducer_reduce", reduced)
@@ -196,6 +197,7 @@ def test_fan_out_retained_recovery_routes_through_recovery(monkeypatch: MonkeyPa
         MagicMock(return_value=retained),
     )
     failed_state = MagicMock(spec=PipelineState)
+    failed_state.rebase = RebaseState()
     failed_state.copy_with.return_value = failed_state
     reduced = MagicMock(return_value=(failed_state, []))
     monkeypatch.setattr(runner_module, "reducer_reduce", reduced)

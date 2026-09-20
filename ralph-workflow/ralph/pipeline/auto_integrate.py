@@ -86,6 +86,7 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     remote_sync_enabled,
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
+    CONFLICT_RESOLUTION_STRATEGIES,
     preserve_unresolved_resolution_state,
 )
 from ralph.pipeline.auto_integrate_terminal import (
@@ -280,10 +281,12 @@ def _auto_integrate_after_commit_inner(
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:
+        strategy_index = min(state.conflict_strategy_index, len(CONFLICT_RESOLUTION_STRATEGIES) - 1)
         logger.warning(
             "auto_integrate: conflict resolution budget exhausted for '{}'; "
-            "moving to the next configured resolution strategy",
+            "moving to resolution strategy '{}'",
             target,
+            CONFLICT_RESOLUTION_STRATEGIES[strategy_index],
         )
 
     record: RebaseState | None = None
