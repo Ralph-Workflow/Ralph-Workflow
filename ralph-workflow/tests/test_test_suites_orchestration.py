@@ -131,12 +131,10 @@ def test_explicit_worker_count_capped_at_cores_minus_two(
     """Explicit PYTEST_WORKERS is capped at available_cores - 2.
 
     One core is reserved for the parent process (shard polling, SIGCHLD
-    cleanup) and one for OS / I/O overhead. On a 12-core host the Makefile
-    default ``PYTEST_WORKERS=8`` is preserved (8 + runner + harness = 10
-    Python processes on 12 cores, two cores of headroom); on a 32-core CI
-    host 12 is preserved unchanged. Empirically, 8 shards produces a
-    slowest-shard wall clock of 31-50 s on the 12-core (6P+6E) dev host
-    after wt-056, under the 60 s cumulative budget.
+    cleanup) and one for OS / I/O overhead. On a 12-core host, the Makefile's
+    twelve-shard default is capped to ten effective shards; on
+    a 32-core CI host 12 is preserved unchanged. Explicit overrides retain
+    their documented cap.
     """
     monkeypatch.setenv("PYTEST_WORKERS", requested)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

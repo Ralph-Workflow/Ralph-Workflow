@@ -74,7 +74,7 @@ def test_default_worker_count_preserves_verify_budget_headroom() -> None:
     """The maintained worker baseline avoids host oversubscription."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
-    assert "PYTEST_WORKERS ?= 8" in makefile_text
+    assert "PYTEST_WORKERS ?= 12" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:
