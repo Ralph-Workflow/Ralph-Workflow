@@ -20,7 +20,6 @@ from ralph.prompts.materialize import (
     PromptPhaseOptions,
     collect_media_entries_for_phase,
     materialize_prompt_for_phase,
-    resolve_planning_history_path,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
@@ -334,26 +333,7 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
     )
 
 
-def test_resolve_planning_history_path_returns_empty_when_no_index(tmp_path: Path) -> None:
-    """Returns empty string when no history index exists."""
-
-    result = resolve_planning_history_path(tmp_path)
-    assert result == ""
-
-
-def test_resolve_planning_history_path_returns_path_when_index_exists(tmp_path: Path) -> None:
-    """Returns the index path string when the history index file exists."""
-
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    index = history_index_path(artifact_dir, "plan")
-    index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text("# History", encoding="utf-8")
-
-    result = resolve_planning_history_path(tmp_path)
-    assert result == str(index)
-
-
-def test_planning_regression_fresh_entry_omits_prior_history_but_resume_preserves_it(
+def test_planning_regression_omits_prior_history_on_fresh_and_resume_entries(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -385,15 +365,6 @@ def test_planning_regression_fresh_entry_omits_prior_history_but_resume_preserve
     assert "Prior plan history is available" not in fresh_rendered
     assert str(history_path) not in fresh_rendered
     _write_plan_handoff(workspace)
-    captured_history_paths: list[str] = []
-
-    def capture_planning_prompt(*, inputs: object, **_kwargs: object) -> str:
-        artifact_history_path = getattr(inputs, "artifact_history_path", None)
-        assert isinstance(artifact_history_path, str)
-        captured_history_paths.append(artifact_history_path)
-        return ""
-
-    monkeypatch.setattr(materialize_module, "prompt_planning_xml_with_context", capture_planning_prompt)
 
     resumed_prompt_path = materialize_prompt_for_phase(
         PromptPhaseContext(
@@ -406,8 +377,58 @@ def test_planning_regression_fresh_entry_omits_prior_history_but_resume_preserve
         PromptPhaseOptions(artifacts_policy=policy.artifacts, resume_existing_phase=True),
     )
 
-    assert workspace.read(resumed_prompt_path) == ""
-    assert captured_history_paths == [str(history_path)]
+    resumed_rendered = workspace.read(resumed_prompt_path)
+    assert "Prior plan history is available" not in resumed_rendered
+    assert str(history_path) not in resumed_rendered
+
+
+def test_planning_regression_fresh_entry_omits_prior_work_payloads_and_retry_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3: a new planning cycle cannot inherit retained plan-loop context."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    prior_plan = "prior plan secret\n" + ("P" * (100 * 1024 + 1))
+    prior_feedback = (
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S-1] prior feedback secret\n"
+        + ("F" * (100 * 1024 + 1))
+    )
+    workspace.write("PROMPT.md", "Plan a new feature")
+    workspace.write(".agent/PLAN.md", prior_plan)
+    workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", prior_feedback)
+    workspace.write(".agent/artifacts/planning_analysis_decision.md", prior_feedback)
+    retry_hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_planning.txt"
+    retry_hint_path.parent.mkdir(parents=True, exist_ok=True)
+    retry_hint_path.write_text("prior retry secret", encoding="utf-8")
+    monkeypatch.setattr(
+        materialize_module,
+        "_clear_artifact_history_per_policy",
+        lambda *_args: None,
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts),
+    )
+
+    rendered = workspace.read(prompt_path)
+    payload_dir = tmp_path / ".agent" / "tmp" / "prompt_payloads"
+    assert "prior plan secret" not in rendered
+    assert "prior feedback secret" not in rendered
+    assert "prior retry secret" not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") not in rendered
+    assert not (payload_dir / "planning_plan.txt").exists()
+    assert not (payload_dir / "planning_analysis_feedback.txt").exists()
+    assert retry_hint_path.read_text(encoding="utf-8") == "prior retry secret"
 
 
 def test_planning_loopback_from_analysis_preserves_history(

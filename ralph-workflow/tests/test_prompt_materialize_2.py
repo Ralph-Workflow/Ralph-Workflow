@@ -234,7 +234,7 @@ def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
     workspace.write(".agent/PLAN.md", MINIMAL_PLAN_HANDOFF)
 
 
-def test_planning_retry_prompt_includes_artifact_history_path_when_history_exists(
+def test_planning_retry_prompt_omits_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
 
@@ -301,7 +301,9 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
 
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
+    assert "PREVIOUS ATTEMPT FAILED: validation error during planning retry" in rendered
     assert str(plan_history_file) not in rendered
+    assert str(development_history_file) not in rendered
 
 
 @pytest.mark.parametrize("decision_status", ["request_changes", "failed"])

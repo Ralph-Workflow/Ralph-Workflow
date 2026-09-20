@@ -39,8 +39,6 @@ class PlanningPromptInputs:
     plan_path: str = ""
     analysis_feedback_path: str = ""
     analysis_feedback_status: str = ""
-    artifact_history_path: str = ""
-    artifact_history_dir: str = ""
     product_criteria_path: str = ""
     payload_root: str = ""
     last_retry_error: str = ""
@@ -167,30 +165,22 @@ def prompt_planning_xml_with_context(
             product_criteria_path,
         )
     )
-    payload_values = {
-        "PLAN": inputs.plan_content or "(no plan available)",
-        "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
-    }
-    base_vars.update(
-        _prompt_payload_variables(
-            payload_values,
-            workspace=workspace,
-            payload_root=payload_root,
-            prompt_name_prefix="planning",
-        )
-    )
-    if inputs.plan_path:
-        base_vars.update({"PLAN": "", "PLAN_PATH": inputs.plan_path})
-    if inputs.analysis_feedback_path:
+    if template_name == "planning_edit.jinja":
         base_vars.update(
-            {
-                "ANALYSIS_FEEDBACK": "",
-                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path,
-            }
+            _prompt_payload_variables(
+                {"ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or ""},
+                workspace=workspace,
+                payload_root=payload_root,
+                prompt_name_prefix="planning",
+            )
         )
-    base_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
-    base_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
-
+        if inputs.analysis_feedback_path:
+            base_vars.update(
+                {
+                    "ANALYSIS_FEEDBACK": "",
+                    "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path,
+                }
+            )
     capability_vars = capability_template_variables(
         session_caps.capabilities,
         session_caps.policy_flags,
@@ -210,13 +200,11 @@ def prompt_planning_xml_with_context(
         fallback_vars: dict[str, str] = {
             **capability_vars,
             "PRODUCT_CRITERIA": inputs.prompt_content or "No requirements provided",
-            "PLAN": inputs.plan_content or "(no plan available)",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
             "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
             "LAST_RETRY_ERROR": inputs.last_retry_error,
             "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
             "PRODUCT_CRITERIA_PATH": product_criteria_path,
-            "PLAN_PATH": inputs.plan_path or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
             or str(
                 Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
@@ -225,8 +213,6 @@ def prompt_planning_xml_with_context(
             "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
             "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
         }
-        fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
-        fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
         return _render_static_fallback(
             context,
             fallback_template,

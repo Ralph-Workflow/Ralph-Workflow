@@ -68,14 +68,14 @@ def test_planning_edit_treats_analysis_as_advice(tmp_path: Path) -> None:
     assert "ralph_edit_md_plan_step" not in prompt
 
 
-def test_planning_history_is_referenced_when_available(tmp_path: Path) -> None:
+def test_planning_prompt_omits_plan_history(tmp_path: Path) -> None:
     workspace = MemoryWorkspace(root=str(tmp_path))
-    history = str(tmp_path / ".agent" / "artifacts" / "history" / "plan" / "index.md")
     prompt = prompt_planning_xml_with_context(
         context=TemplateContext.default(),
-        inputs=PlanningPromptInputs(prompt_content="Plan it", artifact_history_path=history),
+        inputs=PlanningPromptInputs(prompt_content="Plan it"),
         workspace=workspace,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
     )
 
-    assert history in prompt
+    assert "Prior plan history is available" not in prompt
+    assert "ARTIFACT_HISTORY_PATH" not in prompt

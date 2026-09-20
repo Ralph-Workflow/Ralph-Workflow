@@ -22,10 +22,7 @@ from ralph.mcp.artifacts.history import (
 from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
-from ralph.mcp.artifacts.plan import (
-    PLAN_ARTIFACT_PATH,
-    PLAN_ARTIFACT_TYPE,
-)
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.tools.names import (
     SUBMIT_MD_ARTIFACT_TOOL,
     claude_tool_name,
@@ -450,14 +447,15 @@ def _render_planning_prompt(
         template_name,
         preserve_planning_context,
     ) = _prepare_planning_prompt_context(context, options)
-    last_retry_error = read_and_clear_retry_hint(
-        workspace,
-        phase,
-        worker_namespace=options.worker_namespace,
-        pipeline_policy=context.pipeline_policy,
-    )
-    artifact_history_path = (
-        resolve_planning_history_path(workspace_root) if preserve_planning_context else ""
+    last_retry_error = (
+        read_and_clear_retry_hint(
+            workspace,
+            phase,
+            worker_namespace=options.worker_namespace,
+            pipeline_policy=context.pipeline_policy,
+        )
+        if preserve_planning_context
+        else ""
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
@@ -470,8 +468,6 @@ def _render_planning_prompt(
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
             analysis_feedback_status=analysis_feedback_status,
-            artifact_history_path=artifact_history_path,
-            artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
             product_criteria_path=str(
                 options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
@@ -819,15 +815,20 @@ def _prepare_planning_prompt_context(
         analysis_feedback_content,
         analysis_feedback_path,
         analysis_feedback_status,
-    ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
-    if _template_allows_missing_plan_handoff(template_name):
-        plan_content, plan_path = _resolve_plan_handoff(workspace)
-    else:
+    ) = (
+        _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
+        if preserve_planning_context
+        else ("", "", "")
+    )
+    # A planning edit requires a valid retained draft, but its template never renders it.
+    if preserve_planning_context and not _template_allows_missing_plan_handoff(template_name):
         plan_content, plan_path = _resolve_required_plan_handoff(
             workspace,
             template_name=template_name,
             allow_draft_fallback=resume_existing_phase,
         )
+    else:
+        plan_content, plan_path = None, ""
     return (
         plan_content,
         plan_path,
@@ -853,13 +854,6 @@ def _artifact_history_dir_from_path(history_path: str) -> str:
     if not history_path:
         return ""
     return str(Path(history_path).parent)
-
-
-def resolve_planning_history_path(
-    workspace_root: Path,
-) -> str:
-    """Return the absolute path to the planning artifact history index, if it exists."""
-    return _resolve_artifact_history_path(workspace_root, PLAN_ARTIFACT_TYPE)
 
 
 def _clear_accepted_analysis_history_if_needed(
