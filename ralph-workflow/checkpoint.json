@@ -32,6 +32,7 @@
     "last_conflict_paths": [],
     "last_conflict_stage_oids": [],
     "last_conflict_scope": "",
+    "last_conflict_strategy_index": 0,
     "recovery_record_retained": false,
     "resolution_exhausted": false,
     "resolution_exhaustion_reason": null,
