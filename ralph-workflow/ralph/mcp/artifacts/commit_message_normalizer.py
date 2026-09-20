@@ -1,4 +1,10 @@
-"""Conservative, evidence-grounded normalization for commit-message drafts."""
+"""Permissive, evidence-aware normalization for commit-message drafts.
+
+Body prose is accepted by default. Token overlap with precomputed evidence facts
+is used only to score confidence, never as a hard rejection gate. Regeneration
+is reserved for ambiguous commit subjects (and other safety/executability
+failures outside this module).
+"""
 
 from __future__ import annotations
 
@@ -40,7 +46,7 @@ def normalize_commit_message_draft(
     *,
     draft_revision: int = 0,
 ) -> NormalizationResult:
-    """Repair recognizable drafts from live facts; reject ungrounded claims."""
+    """Repair recognizable drafts from live facts; keep relevant body prose."""
     if re.search(r"(?m)^type:\s*skip\s*$", content):
         return NormalizationResult(content, (), "high", ("draft",))
     match = _FRONTMATTER_SUBJECT.search(content) or _SUBJECT.search(content)
@@ -59,13 +65,7 @@ def normalize_commit_message_draft(
         ))
     ir = build_commit_message_ir(evidence, subject=subject)
     claims = _extract_claims(content)
-    grounded, claim_transformations, unsupported = _grounded_claims(claims, evidence)
-    if unsupported:
-        raise ValueError(_regeneration_diagnostic(
-            "unsupported body claim", "a claim grounded in live diff or durable evidence",
-            unsupported, evidence, draft_revision,
-            "conventional-subject repair and live-file refresh; claim could not be matched to any evidence fact",
-        ))
+    grounded, claim_transformations = _reconcile_claims(claims, evidence)
     if grounded:
         known_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
         additional_claims = tuple(claim for claim in grounded if claim not in known_claims)
@@ -145,9 +145,15 @@ def _sentence_claims(body: str) -> tuple[str, ...]:
     return tuple(sentences)
 
 
-def _grounded_claims(
+def _reconcile_claims(
     claims: tuple[str, ...], evidence: CommitEvidenceBundle
-) -> tuple[tuple[str, ...], tuple[NormalizationTransformation, ...], str | None]:
+) -> tuple[tuple[str, ...], tuple[NormalizationTransformation, ...]]:
+    """Accept body claims; score confidence from overlap without hard rejection.
+
+    Missing evidence, weak lexical overlap, architectural paraphrases, and
+    different phrasing are not conflicts. Prefer live facts only for confidence
+    scoring and for completing the rendered IR from the evidence bundle.
+    """
     facts = _facts(evidence)
     canonical = tuple(f"Changed {area}." for area in evidence.change_areas)
     grounded: list[str] = []
@@ -157,10 +163,15 @@ def _grounded_claims(
             grounded.append(claim)
         elif any(_claim_matches(claim, fact) == "medium" for fact in facts):
             grounded.append(claim)
-            transformations.append(NormalizationTransformation("preserved partial-overlap draft claim", "live evidence", "medium"))
+            transformations.append(NormalizationTransformation(
+                "preserved partial-overlap draft claim", "live evidence", "medium"
+            ))
         else:
-            return (), (), claim
-    return tuple(grounded), tuple(transformations), None
+            grounded.append(claim)
+            transformations.append(NormalizationTransformation(
+                "preserved relevant draft claim without exact evidence match", "draft", "medium"
+            ))
+    return tuple(grounded), tuple(transformations)
 
 
 def _facts(evidence: CommitEvidenceBundle) -> tuple[str, ...]:
