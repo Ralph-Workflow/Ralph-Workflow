@@ -39,10 +39,10 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec import (
     _shell_command_segments,
     _workspace_root,
+    parse_exec_timeout,
     resolve_spill_dir,
     run_command,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -108,19 +108,7 @@ def handle_unsafe_exec(
         raise InvalidParamsError("'command' must not contain an embedded NUL")
     _enforce_vcs_blacklist(command, workspace)
 
-    # Require a strictly positive timeout: 0/negative/non-int falls back to the
-    # default. Zero must NOT mean "unbounded" — that would make unsafe_exec a
-    # blocking-forever call (an agent-controllable hang).
-    timeout_value = params.get("timeout_ms", EXEC_DEFAULT_TIMEOUT_MS)
-    timeout_ms = (
-        timeout_value
-        if isinstance(timeout_value, int) and timeout_value > 0
-        else EXEC_DEFAULT_TIMEOUT_MS
-    )
-    # Cap the per-call override: the MCP client request timeout is derived to exceed
-    # EXEC_MAX_TIMEOUT_MS, so this call can never outrun the client and re-trigger
-    # the -32001 "Request timed out" storm.
-    timeout_ms = min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
+    timeout_ms = parse_exec_timeout(params)
 
     try:
         # Run the arbitrary command through a shell, but via the bounded

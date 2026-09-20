@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Literal
+
+import pytest
+
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_run_deps import ExecRunDeps
+from ralph.mcp.tools.coordination import ToolContent
+from ralph.mcp.tools.exec import (
+    PROCESS_EXEC_BOUNDED_CAPABILITY,
+    _CompletedProcessAdapter,
+    handle_exec_command,
+)
+from ralph.process.manager import DeadlineTimeoutExpired
+from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
+from tests.mock_session import MockSession
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 
 def test_cache_full_message_describes_automatic_reset_without_internal_tool() -> None:
@@ -89,3 +105,41 @@ def test_timeout_message_without_suggestion_still_warns_about_stuck_commands() -
     )
     message = str(err).lower()
     assert any(word in message for word in ("loop", "stuck", "hang", "deadlock"))
+
+
+@pytest.mark.parametrize(
+    ("timeout_ms", "timeout_cause", "expected_elapsed_ms", "expected_suggestion"),
+    [
+        (EXEC_MAX_TIMEOUT_MS, "hard_cap", EXEC_MAX_TIMEOUT_MS, None),
+        (5_000, "inactivity", 5_000, 10_000),
+    ],
+)
+def test_run_command_timeout_reports_the_expired_deadline_and_useful_suggestion(
+    tmp_path: Path,
+    timeout_ms: int,
+    timeout_cause: Literal["hard_cap", "inactivity"],
+    expected_elapsed_ms: int,
+    expected_suggestion: int | None,
+) -> None:
+    def timeout_runner(
+        _argv: list[str], _cwd: Path, timeout: float | None
+    ) -> _CompletedProcessAdapter:
+        raise DeadlineTimeoutExpired(
+            ["slow"], timeout or 1, timeout_cause=timeout_cause
+        )
+
+    result = handle_exec_command(
+        MockSession({PROCESS_EXEC_BOUNDED_CAPABILITY}),
+        MockWorkspaceRoot(tmp_path),
+        {"command": "slow", "timeout_ms": timeout_ms},
+        deps=ExecRunDeps(runner=timeout_runner),
+    )
+
+    content = result.content[0]
+    assert result.is_error is True
+    assert isinstance(content, ToolContent)
+    assert f"after {expected_elapsed_ms}ms" in content.text
+    if expected_suggestion is None:
+        assert "Suggested timeout_ms" not in content.text
+    else:
+        assert f"Suggested timeout_ms: {expected_suggestion}." in content.text

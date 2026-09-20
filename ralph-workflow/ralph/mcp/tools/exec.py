@@ -176,7 +176,7 @@ def _reject_nul_params(params: Mapping[str, object]) -> None:
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
     _reject_nul_params(params)
-    timeout_ms = _parse_exec_timeout(params)
+    timeout_ms = parse_exec_timeout(params)
 
     # A command/argv STRING carrying an unquoted shell operator is a compound
     # shell command (pipe, redirection, ``&&``/``;`` sequence). Route it through
@@ -201,7 +201,8 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
 
-def _parse_exec_timeout(params: Mapping[str, object]) -> int:
+def parse_exec_timeout(params: Mapping[str, object]) -> int:
+    """Return the bounded exec-family timeout from untrusted tool parameters."""
     # Require a strictly positive timeout: timeout_ms<=0 (or non-int) falls back to
     # the default. Zero must NOT mean "unbounded" — that would make exec a blocking-
     # forever call on the MCP server thread, an agent-controllable hang vector.
@@ -682,18 +683,23 @@ def run_command(
     except PermissionError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except subprocess.TimeoutExpired as exc:
+        timeout_cause = (
+            exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
+        )
         # Suggest a larger timeout but never above the cap (the MCP client request
         # timeout is derived to exceed EXEC_MAX_TIMEOUT_MS; suggesting more would
         # let the next call outrun the client and re-trigger -32001).
         suggested = min(timeout_ms * 2, EXEC_MAX_TIMEOUT_MS) if timeout_ms > 0 else None
+        if suggested is not None and suggested <= timeout_ms:
+            suggested = None
+        deadline_timeout_ms = EXEC_MAX_TIMEOUT_MS if timeout_cause == "hard_cap" else None
         raise ExecutionError(
-            f"Failed to execute '{command}': timed out after {timeout_ms}ms",
+            f"Failed to execute '{command}': timed out after {deadline_timeout_ms or timeout_ms}ms",
             timed_out=True,
             timeout_ms=timeout_ms,
+            deadline_timeout_ms=deadline_timeout_ms,
             suggested_timeout_ms=suggested,
-            timeout_cause=(
-                exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
-            ),
+            timeout_cause=timeout_cause,
             partial_output=_timeout_partial_output(exc),
         ) from exc
     except OSError as exc:
@@ -920,6 +926,7 @@ __all__ = [
     "ExecRunDeps",
     "ExecutionError",
     "WorkspaceWithRoot",
+    "_CompletedProcessAdapter",
     "_format_exec_error",
     "_scan_text_for_vcs_violation",
     "apply_exec_policy",
@@ -930,6 +937,7 @@ __all__ = [
     "format_exec_result",
     "handle_exec_command",
     "parse_exec_params",
+    "parse_exec_timeout",
     "resolve_spill_dir",
     "run_command",
 ]

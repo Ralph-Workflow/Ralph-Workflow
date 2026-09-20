@@ -30,6 +30,7 @@ class ExecutionError(ToolError):
         # Timeout fields
         timed_out: bool = False,
         timeout_ms: int | None = None,
+        deadline_timeout_ms: int | None = None,
         suggested_timeout_ms: int | None = None,
         timeout_cause: Literal["inactivity", "hard_cap"] | None = None,
         partial_output: str | None = None,
@@ -46,6 +47,7 @@ class ExecutionError(ToolError):
         self.max_workspace_bytes = max_workspace_bytes
         self.timed_out = timed_out
         self.timeout_ms = timeout_ms
+        self.deadline_timeout_ms = deadline_timeout_ms
         self.suggested_timeout_ms = suggested_timeout_ms
         self.timeout_cause = timeout_cause
         self.partial_output = partial_output
@@ -72,7 +74,7 @@ class ExecutionError(ToolError):
         return base
 
     def _render_timeout(self) -> str:
-        ms = self.timeout_ms if self.timeout_ms is not None else "?"
+        ms = self.deadline_timeout_ms or self.timeout_ms or "?"
         lines: list[str] = [f"Command timed out after {ms}ms (process killed)."]
         if self.timeout_cause == "hard_cap":
             lines.append(
