@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ralph.prompts.commit_evidence import CommitEvidenceBundle
+    from ralph.prompts.commit_evidence import CommitEvidenceBundle, CommitMessageBudget
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class CommitMessageIR:
     files: tuple[str, ...]
     excluded_files: tuple[tuple[str, str], ...] = ()
     fact_provenance: tuple[tuple[str, str, str, str], ...] = ()
+    message_budget: CommitMessageBudget | None = None
 
 
 def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> CommitMessageIR:
@@ -31,15 +32,25 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
     return CommitMessageIR(
         subject, evidence.change_areas, rationale, behavior_risk, verification,
         evidence.changed_files, fact_provenance=evidence.fact_provenance,
+        message_budget=evidence.message_budget,
     )
+
+
+def _body_items(ir: CommitMessageIR) -> tuple[str, ...]:
+    """Cover grounded categories before applying the evidence-derived cap."""
+    categories = tuple(parts for parts in (ir.rationale, ir.behavior_risk, ir.verification) if parts)
+    if not categories:
+        return ()
+    # The artifact reader exposes only the primary Body item, so preserve all
+    # grounded categories by consolidating rather than serializing siblings.
+    return ("; ".join(part for category in categories for part in category),)
 
 
 def render_commit_message_artifact(ir: CommitMessageIR) -> str:
     """Render the IR into the canonical commit_message Markdown grammar."""
     lines = ["---", "type: commit", f"subject: {ir.intent}", "---"]
-    body_parts = (*ir.rationale, *ir.behavior_risk, *ir.verification)
-    if body_parts:
-        lines.extend(("", "## Body", f"- [B-1] {'; '.join(body_parts)}"))
+    if body_items := _body_items(ir):
+        lines.extend(("", "## Body", *(f"- [B-{index}] {item}" for index, item in enumerate(body_items, 1))))
     if ir.files:
         lines.extend(("", "## Files", *(f"- [F-{index}] {path}" for index, path in enumerate(ir.files, 1))))
     if ir.excluded_files:

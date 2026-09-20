@@ -5,6 +5,7 @@ from pathlib import Path
 from ralph.prompts import _commit_evidence as _impl
 
 CommitEvidenceBundle = _impl.CommitEvidenceBundle
+CommitMessageBudget = _impl.CommitMessageBudget
 
 
 def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
@@ -23,4 +24,4 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
 list_changed_paths = _impl.list_changed_paths
 commit_generation_diff = _impl.commit_generation_diff
 
-__all__ = ["CommitEvidenceBundle", "build_commit_evidence_bundle"]
+__all__ = ["CommitEvidenceBundle", "CommitMessageBudget", "build_commit_evidence_bundle"]

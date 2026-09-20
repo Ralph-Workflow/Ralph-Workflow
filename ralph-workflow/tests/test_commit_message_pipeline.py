@@ -18,7 +18,7 @@ from ralph.mcp.artifacts.completion_receipts import (
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.state_db import RunStateDB
-from ralph.prompts.commit_evidence import CommitEvidenceBundle
+from ralph.prompts.commit_evidence import CommitEvidenceBundle, CommitMessageBudget
 
 
 def _evidence(*paths: str) -> CommitEvidenceBundle:
@@ -40,8 +40,8 @@ def _evidence(*paths: str) -> CommitEvidenceBundle:
 @pytest.mark.parametrize(
     ("paths", "expected_budget"),
     [
-        (("docs/guide.md",), "small: one focused body point"),
-        (("ralph/api.py", "tests/test_api.py"), "medium: two or three focused body points"),
+        (("docs/guide.md",), CommitMessageBudget("medium", 3)),
+        (("ralph/api.py", "tests/test_api.py"), CommitMessageBudget("medium", 3)),
         (
             (
                 "ralph/api.py",
@@ -50,11 +50,13 @@ def _evidence(*paths: str) -> CommitEvidenceBundle:
                 "ralph/pipeline/run.py",
                 "tests/test_api.py",
             ),
-            "large: cover each material area, risks, and verification",
+            CommitMessageBudget("large", 7),
         ),
     ],
 )
-def test_evidence_sets_a_proportional_detail_budget(paths: tuple[str, ...], expected_budget: str) -> None:
+def test_evidence_sets_a_proportional_detail_budget(
+    paths: tuple[str, ...], expected_budget: CommitMessageBudget
+) -> None:
     assert _evidence(*paths).message_budget == expected_budget
 
 
@@ -133,6 +135,7 @@ def test_normalization_audit_flags_partial_overlap_at_medium_confidence(
     assert audit["transformations"] == [
         {"action": "rendered canonical artifact from live evidence", "source": "live evidence", "confidence": "high"},
         {"action": "preserved partial-overlap draft claim", "source": "live evidence", "confidence": "medium"},
+        {"action": "expanded body with grounded evidence facts", "source": "live evidence", "confidence": "high"},
     ]
 
 

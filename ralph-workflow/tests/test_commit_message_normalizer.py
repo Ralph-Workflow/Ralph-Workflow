@@ -124,6 +124,25 @@ def test_normalizer_extracts_key_value_fields() -> None:
     assert "Preserve retry evidence for submit artifacts." in result.content
 
 
+def test_normalizer_records_grounded_expansion_and_budget_compression() -> None:
+    evidence = CommitEvidenceBundle(
+        "diff", ("docs/guide.md",), ("docs",), (), (),
+        behavior_facts=("Preserves compatibility.",), verification_facts=("pytest passed",),
+    )
+    expanded = normalize_commit_message_draft("fix: preserve evidence", evidence)
+    compressed = normalize_commit_message_draft(
+        "fix: preserve evidence\n\n## Body\n- Changed docs.\n- Preserves compatibility.\n- pytest passed\n- pytest passed",
+        evidence,
+    )
+
+    assert any("expanded body" in item.action for item in expanded.transformations)
+    assert any("compressed" in item.action for item in compressed.transformations)
+    assert "Changed docs." in compressed.content
+    assert "Preserves compatibility." in compressed.content
+    assert "pytest passed" in compressed.content
+    assert normalize_commit_message_draft(compressed.content, evidence).transformations == ()
+
+
 def test_normalizer_is_idempotent() -> None:
     first = normalize_commit_message_draft("fix: preserve evidence", EVIDENCE)
     second = normalize_commit_message_draft(first.content, EVIDENCE)

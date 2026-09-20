@@ -142,6 +142,22 @@ def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     assert ai.auto_integrate_on_phase_transition(config, scope, RebaseState()) is None
 
 
+def test_dirty_clean_target_boundary_stays_silent_on_repeated_evaluations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Expected local work never becomes a repeated auto-integration failure."""
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
+    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(boundary, "get_head_sha", lambda _root: _HEAD_SHA)
+    monkeypatch.setattr(boundary, "branch_sha", lambda _root, _name: _TARGET_SHA)
+    monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: True)
+
+    scope = WorkspaceScope(tmp_path)
+    assert ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState()) is None
+    assert ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState()) is None
+
+
 def test_dirty_boundary_regression_suppressed_divergence_forces_a_refresh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

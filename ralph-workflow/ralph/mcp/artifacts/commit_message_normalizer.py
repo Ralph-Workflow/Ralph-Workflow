@@ -78,6 +78,15 @@ def normalize_commit_message_draft(
         NormalizationTransformation("rendered canonical artifact from live evidence", "live evidence", "high"),
         *claim_transformations,
     ]
+    canonical_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
+    if len(tuple(_BODY_ITEM.finditer(content))) > evidence.message_budget.max_body_points:
+        transformations.append(NormalizationTransformation(
+            "compressed duplicate or incidental body claims to evidence budget", "draft", "high"
+        ))
+    elif canonical_claims and not all(claim in claims for claim in canonical_claims):
+        transformations.append(NormalizationTransformation(
+            "expanded body with grounded evidence facts", "live evidence", "high"
+        ))
     if "## Files" in content:
         transformations.append(NormalizationTransformation("refreshed file selection from live changed set", "changed files", "high"))
     confidence: Confidence = "medium" if any(item.confidence == "medium" for item in transformations) else "high"

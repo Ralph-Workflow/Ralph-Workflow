@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 
 from ralph.git.operations import list_changed_paths
 from ralph.prompts._commit_diff import commit_generation_diff
+from ralph.prompts._commit_message_budget import CommitMessageBudget
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,13 +43,30 @@ class CommitEvidenceBundle:
     fact_provenance: tuple[tuple[str, str, str, str], ...] = ()
 
     @property
-    def message_budget(self) -> str:
-        """Return the evidence-derived detail target for message authors."""
-        if len(self.change_areas) <= 1 and len(self.public_behavior_paths) <= 1:
-            return "small: one focused body point"
-        if len(self.change_areas) <= _MEDIUM_CHANGE_AREAS and len(self.public_behavior_paths) <= _MEDIUM_PRODUCTION_FILES:
-            return "medium: two or three focused body points"
-        return "large: cover each material area, risks, and verification"
+    def message_budget(self) -> CommitMessageBudget:
+        """Derive one body-item cap from all objective scope signals."""
+        grounded_fact_count = sum(
+            len(facts)
+            for facts in (
+                self.change_areas,
+                self.behavior_facts,
+                self.compatibility_hints,
+                self.risk_hints,
+                self.verification_facts,
+            )
+        )
+        has_elevated_signal = bool(
+            self.public_behavior_paths
+            or self.compatibility_hints
+            or self.risk_hints
+            or self.verification_facts
+            or self.verification_hints
+        )
+        if len(self.change_areas) > _MEDIUM_CHANGE_AREAS or len(self.public_behavior_paths) > _MEDIUM_PRODUCTION_FILES:
+            return CommitMessageBudget("large", max(3, grounded_fact_count))
+        if len(self.change_areas) > 1 or has_elevated_signal:
+            return CommitMessageBudget("medium", 3)
+        return CommitMessageBudget("small", 1)
 
 
 def _read_text(path: Path) -> str:
@@ -140,6 +158,7 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
 
 __all__ = [
     "CommitEvidenceBundle",
+    "CommitMessageBudget",
     "build_commit_evidence_bundle",
     "commit_generation_diff",
     "list_changed_paths",

@@ -53,6 +53,19 @@ def test_evidence_bundle_reads_persisted_behavior_and_verification_facts(
     assert bundle.verification_facts == ("post-fanout workspace verification passed",)
 
 
+def test_message_budget_elevates_compatibility_or_verification_over_equal_scope() -> None:
+    base = commit_evidence.CommitEvidenceBundle("diff", ("docs/guide.md",), ("docs",), (), ())
+    compatibility = commit_evidence.CommitEvidenceBundle(
+        "diff", ("docs/guide.md",), ("docs",), (), (), compatibility_hints=("migration required",)
+    )
+    verified = commit_evidence.CommitEvidenceBundle(
+        "diff", ("docs/guide.md",), ("docs",), (), (), verification_facts=("pytest passed",)
+    )
+
+    assert base.message_budget.tier == "small"
+    assert compatibility.message_budget.tier == verified.message_budget.tier == "medium"
+
+
 def test_evidence_bundle_does_not_turn_suggestions_into_verification_facts(
     monkeypatch, tmp_path: Path
 ) -> None:
