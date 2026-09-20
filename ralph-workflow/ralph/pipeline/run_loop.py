@@ -286,27 +286,40 @@ def _setup_connectivity_monitor(
         return connectivity_monitor, None
 
     real_monitor = ConnectivityMonitor()
-    shutdown = threading.Event()
-
-    async def _serve_monitor() -> None:
-        try:
-            await real_monitor.start()
-            await asyncio.to_thread(shutdown.wait)
-        finally:
-            await real_monitor.stop()
+    mon_loop = asyncio.new_event_loop()
 
     def _run_mon_thread() -> None:
-        # The monitor is advisory: a broken selector must not turn cleanup into
-        # an unhandled daemon-thread failure.
-        with suppress(OSError):
-            asyncio.run(_serve_monitor())
+        asyncio.set_event_loop(mon_loop)
+        try:
+            mon_loop.run_until_complete(real_monitor.start())
+            mon_loop.run_forever()
+        finally:
+            pending_tasks = cast("set[asyncio.Task[object]]", asyncio.all_tasks(mon_loop))
+            for task in pending_tasks:
+                task.cancel()
+            if pending_tasks:
+                mon_loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+            mon_loop.close()
 
     mon_thread = threading.Thread(target=_run_mon_thread, daemon=True, name="connectivity-probe")
     mon_thread.start()
 
     def _stop_mon() -> None:
-        shutdown.set()
-        mon_thread.join(timeout=3.0)
+        if not mon_thread.is_alive():
+            return
+        stop_coro = real_monitor.stop()
+        try:
+            future = asyncio.run_coroutine_threadsafe(stop_coro, mon_loop)
+        except (RuntimeError, OSError):
+            stop_coro.close()
+            mon_thread.join(timeout=3.0)
+            return
+        try:
+            future.result(timeout=2.0)
+        finally:
+            with suppress(RuntimeError, OSError):
+                mon_loop.call_soon_threadsafe(mon_loop.stop)
+            mon_thread.join(timeout=3.0)
 
     return real_monitor, _stop_mon
 

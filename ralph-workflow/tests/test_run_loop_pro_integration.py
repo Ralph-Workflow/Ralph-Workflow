@@ -9,6 +9,7 @@ mode, stopped during cleanup, and exit codes are preserved.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import threading
@@ -375,6 +376,35 @@ def test_start_pro_heartbeat_returns_none_when_token_missing(
     marker_dir.mkdir()
     (marker_dir / "run.json").write_text(json.dumps({"runId": "x"}), encoding="utf-8")
     assert run_loop_module._start_pro_heartbeat_if_active(tmp_path) is None
+
+
+def test_connectivity_monitor_regression_teardown_cancels_pending_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3: cleanup cancels tasks the monitor itself does not own."""
+    run_loop_module = _load_run_loop()
+
+    class _MonitorWithPendingTask:
+        def __init__(self) -> None:
+            self.pending_task: asyncio.Task[bool] | None = None
+            self.stopped = False
+
+        async def start(self) -> None:
+            self.pending_task = asyncio.create_task(asyncio.Event().wait())
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    monitor = _MonitorWithPendingTask()
+    monkeypatch.setattr(run_loop_module, "ConnectivityMonitor", lambda: monitor)
+
+    _, stop_monitor = run_loop_module._setup_connectivity_monitor(None)
+    assert stop_monitor is not None
+    stop_monitor()
+
+    assert monitor.stopped
+    assert monitor.pending_task is not None
+    assert monitor.pending_task.cancelled()
 
 
 class _RecordingHeartbeat:
