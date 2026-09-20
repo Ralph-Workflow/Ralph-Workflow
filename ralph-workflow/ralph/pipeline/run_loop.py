@@ -286,22 +286,26 @@ def _setup_connectivity_monitor(
         return connectivity_monitor, None
 
     real_monitor = ConnectivityMonitor()
-    mon_loop = asyncio.new_event_loop()
+    shutdown = threading.Event()
+
+    async def _serve_monitor() -> None:
+        try:
+            await real_monitor.start()
+            await asyncio.to_thread(shutdown.wait)
+        finally:
+            await real_monitor.stop()
 
     def _run_mon_thread() -> None:
-        asyncio.set_event_loop(mon_loop)
-        mon_loop.run_until_complete(real_monitor.start())
-        mon_loop.run_forever()
-        mon_loop.close()
+        # The monitor is advisory: a broken selector must not turn cleanup into
+        # an unhandled daemon-thread failure.
+        with suppress(OSError):
+            asyncio.run(_serve_monitor())
 
     mon_thread = threading.Thread(target=_run_mon_thread, daemon=True, name="connectivity-probe")
     mon_thread.start()
 
     def _stop_mon() -> None:
-        future = asyncio.run_coroutine_threadsafe(real_monitor.stop(), mon_loop)
-        with suppress(Exception):
-            future.result(timeout=2.0)
-        mon_loop.call_soon_threadsafe(mon_loop.stop)
+        shutdown.set()
         mon_thread.join(timeout=3.0)
 
     return real_monitor, _stop_mon

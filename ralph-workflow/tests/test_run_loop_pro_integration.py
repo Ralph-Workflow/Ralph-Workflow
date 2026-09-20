@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -318,6 +319,31 @@ def test_pro_mode_exit_code_preserved_on_pipeline_failure(
     exit_code = run_loop_module.run(config, initial_state=state)
     assert exit_code == 7
     assert recording.stopped
+
+
+def test_connectivity_monitor_cleanup_stops_its_probe_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The owned monitor loop finishes its task before the probe thread exits."""
+    run_loop_module = _load_run_loop()
+    started = threading.Event()
+    stopped = threading.Event()
+
+    class _Monitor:
+        async def start(self) -> None:
+            started.set()
+
+        async def stop(self) -> None:
+            stopped.set()
+
+    monkeypatch.setattr(run_loop_module, "ConnectivityMonitor", _Monitor)
+    _monitor, stop = run_loop_module._setup_connectivity_monitor(None)
+
+    assert stop is not None
+    assert started.wait(timeout=1.0)
+    stop()
+    assert stopped.is_set()
+    assert not any(thread.name == "connectivity-probe" for thread in threading.enumerate())
 
 
 def test_start_pro_heartbeat_returns_none_when_marker_missing(
