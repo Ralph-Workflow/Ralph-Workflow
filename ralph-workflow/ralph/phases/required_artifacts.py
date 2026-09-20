@@ -151,6 +151,36 @@ def read_validation_retry_hint(
 _VALIDATION_RETRY_BODY_CAP = 4_096
 _VALIDATION_RETRY_HISTORY_CAP = 16_384
 _MINIMUM_VALIDATION_RETRY_ATTEMPTS = 2
+_DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS = frozenset(
+    {"DEV011", "DEV012", "DEV013", "DEV014", "DEV015"}
+)
+
+
+def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
+    """Return the corrective action the retry prompt must demand."""
+    if artifact_type == "commit_message":
+        return (
+            "Rewrite the commit message itself (subject and body) so it satisfies "
+            "the diagnostics above, then resubmit it with ralph_edit_md_artifact. "
+            "Do not change code to make the message fit, and do not resubmit the "
+            "same message unchanged."
+        )
+    if artifact_type == "development_result" and any(
+        d.severity == "error" and d.rule_id in _DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS
+        for d in diagnostics
+    ):
+        return (
+            "The result claims work or evidence the validator cannot find. Complete "
+            "the underlying work first: implement the missing plan items, run the "
+            "verification commands, and capture the proof the diagnostics name. Only "
+            "then update the staged draft with ralph_edit_md_artifact and resubmit. "
+            "Do not edit the result to claim proof you have not produced."
+        )
+    return (
+        "The submitted document remains staged as the retained draft. Repair it in "
+        "place with ralph_edit_md_artifact, which resubmits automatically once valid. "
+        "Fix the underlying document issue before resubmitting."
+    )
 
 
 def build_validation_retry_hint(
@@ -173,15 +203,9 @@ def build_validation_retry_hint(
             f"- {diagnostic.rule_id} at line {diagnostic.line}, section {section}: "
             f"{diagnostic.message}"
         )
-    lines.extend(
-        [
-            "",
-            "The submitted document remains staged as the retained draft. Repair it in place ",
-            "with ralph_edit_md_artifact, which resubmits automatically once valid. ",
-            "Fix the underlying document issue before resubmitting. Do not blindly resubmit identical ",
-            "content. Do not restart the task from scratch or discard prior work.",
-        ]
-    )
+    lines.extend(["", validation_corrective_action(artifact_type, diagnostics),
+                  "Do not blindly resubmit identical content. "
+                  "Do not restart the task from scratch or discard prior work."])
     current_attempt = "\n".join(lines)
     attempts = [*_validation_retry_attempts(prior_hint), current_attempt]
     numbered_attempts = [

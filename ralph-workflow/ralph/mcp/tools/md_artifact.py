@@ -5,6 +5,8 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
@@ -26,6 +28,9 @@ from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._wire_ledger import params_digest, wire_evidence_for
 from ralph.mcp.tools._development_result_session_gate import (
     pre_warning_development_result_diagnostics,
+)
+from ralph.mcp.tools._md_artifact_validation_logging import (
+    log_validation_rejection as _log_validation_rejection,
 )
 from ralph.mcp.tools._validation_retry_hints import (
     clear_validation_retry_hint as _clear_validation_retry_hint,
@@ -121,10 +126,13 @@ def handle_submit_md_artifact(
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
+        _log_validation_rejection(artifact_type, diagnostics)
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
     recovered = _clear_validation_retry_hint(session, workspace, deps)
+    if recovered:
+        logger.info("VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type)
     return _submitted_validation_result(
         artifact_type, content, diagnostics, overridden, validation_recovered=recovered
     )
@@ -216,7 +224,7 @@ def handle_edit_md_artifact(
         validation_recovered = _clear_validation_retry_hint(session, workspace, deps)
     else:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
-    return _edit_result(
+    result = _edit_result(
         artifact_type,
         outcome.content,
         outcome.diff,
@@ -227,6 +235,11 @@ def handle_edit_md_artifact(
         analysis=(diagnostics, overridden),
         validation_recovered=validation_recovered,
     )
+    if submitted and validation_recovered:
+        logger.info("VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type)
+    elif not submitted:
+        _log_validation_rejection(artifact_type, diagnostics)
+    return result
 
 
 def handle_stage_md_artifact(
@@ -344,6 +357,7 @@ def handle_finalize_md_artifact(
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
+        _log_validation_rejection(artifact_type, diagnostics)
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
