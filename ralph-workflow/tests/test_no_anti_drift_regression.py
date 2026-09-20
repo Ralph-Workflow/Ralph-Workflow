@@ -81,20 +81,11 @@ def _walk_python_files(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
     return tuple(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
-def _has_legacy_console_display_reference(source: str) -> bool:
-    return "LegacyConsoleDisplay" in source
-
-
-def _has_legacy_console_display_classdef(path: pathlib.Path) -> bool:
-    # Route through the cached ``_parse`` rather than re-parsing the
-    # source: every file this scan visits is parsed by other checks in
-    # this module too, so a second parse is pure duplicate CPU charged
-    # against the 60 s combined test budget.
-    tree = _parse(path)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "LegacyConsoleDisplay":
-            return True
-    return False
+@cache
+def _legacy_console_display_references() -> tuple[pathlib.Path, ...]:
+    """Return production files that mention the retired display type."""
+    needle = b"LegacyConsoleDisplay"
+    return tuple(path for path in _walk_python_files(RALPH_ROOT) if needle in _read_bytes(path))
 
 
 def _all_string_literals(source: str) -> set[str]:
@@ -167,24 +158,13 @@ class TestDisplayIsOnlyParallelDisplay:
             f"{legacy_module} still exists; Step 3 (delete LegacyConsoleDisplay) is incomplete."
         )
 
-    def test_no_legacy_console_display_class_definition_anywhere(self) -> None:
-        """No `.py` file may define `class LegacyConsoleDisplay`."""
-        for path in _walk_python_files(RALPH_ROOT):
-            if "LegacyConsoleDisplay" not in _read(path):
-                continue
-            assert not _has_legacy_console_display_classdef(path), (
-                f"{path.relative_to(RALPH_ROOT.parent)} still defines "
-                "class LegacyConsoleDisplay; Step 3 is incomplete."
-            )
-
-    def test_no_legacy_console_display_import_outside_tests(self) -> None:
-        """No production code may import `LegacyConsoleDisplay` after Step 3."""
-        for path in _walk_python_files(RALPH_ROOT):
-            if "LegacyConsoleDisplay" in _read(path):
-                pytest.fail(
-                    f"{path.relative_to(RALPH_ROOT.parent)} still references "
-                    "LegacyConsoleDisplay after Step 3 delete."
-                )
+    def test_no_legacy_console_display_reference_outside_tests(self) -> None:
+        """No production file may reference the retired display type."""
+        references = _legacy_console_display_references()
+        assert references == (), (
+            "Production files still reference LegacyConsoleDisplay after Step 3 delete: "
+            + str([str(path.relative_to(RALPH_ROOT.parent)) for path in references])
+        )
 
     def test_no_isinstance_check_against_legacy_console_display(self) -> None:
         """No production code may use `isinstance(x, LegacyConsoleDisplay)`."""
