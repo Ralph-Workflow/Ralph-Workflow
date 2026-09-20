@@ -22,16 +22,11 @@ Keep a narrow change to one short paragraph. Give a broad change a concise summa
 
 ## Subject
 
-Write `<kind>(<scope>)?!?: <description>` once. Kind is one of
-`feat|fix|docs|refactor|test|style|perf|build|ci|chore`; use `chore` only for repo maintenance, tooling, config, or dependencies. Scope is optional; when absent, omit it and its parentheses. A scope uses only
-lowercase letters, digits, `/`, `_`, or `-`: no dots, no uppercase. Use one space after the colon and
-a lowercase imperative description. Keep the frontmatter value unquoted. Write the first valid subject;
-do not generate alternatives. There is no length limit.
+Summarize the primary intent rather than the largest directory or diff mechanics. Write one concise imperative subject as `<kind>(<scope>)?!?: <description>`, choosing `feat|fix|docs|refactor|test|style|perf|build|ci|chore`. Use a scope only for one stable product concept, `!` only for a breaking change, and language that completes “This commit will…”. Keep the value unquoted, lowercase the type and scope, use one space after the colon, and do not generate alternatives or end with punctuation.
 
 ## Body
 
-Omit the body only for a one-line typo, formatting, or comment change; every other commit gets a body. Otherwise
-explain why in one `## Body` item. Use `## Body Summary`, `## Body Details`, and
+Omit the body only for a one-line typo, formatting, or comment change; every other commit gets a body. Otherwise explain the problem or motivation first, then the behavioral or architectural outcome in one `## Body` item. Include migration risk or verification only when useful; do not repeat the subject, narrate the diff, or inventory components. Use `## Body Summary`, `## Body Details`, and
 `## Body Footer` instead only for migration steps, breaking changes, or issue
 references.
 

@@ -19,30 +19,13 @@ Detail target: **{{ MESSAGE_BUDGET }}**. Keep a narrow change to one short parag
 
 ## HOW TO WRITE THE SUBJECT
 
-Use this sequence once, then write the body.
+Summarize the change's primary intent, not its largest directory or the mechanics of the diff. Choose the conventional-commit type that best describes that intent: `feat`, `fix`, `docs`, `refactor`, `test`, `style`, `perf`, `build`, `ci`, or `chore`. Use a scope only when one stable product concept clearly owns the change; omit it for cross-cutting work. Mark a breaking change with `!`.
 
-1. Choose the first matching kind:
-
-| The diff mainly... | kind |
-|---|---|
-| changes only repo maintenance, tooling, config, or dependencies | chore |
-| changes only CI/workflow files | ci |
-| changes only build scripts or packaging | build |
-| changes only documentation or comments | docs |
-| changes only tests | test |
-| changes only formatting, with no behavior change | style |
-| fixes wrong behavior | fix |
-| adds behavior that did not exist | feat |
-| restructures code with no behavior change | refactor |
-| changes code to make it faster | perf |
-
-2. Use the directory or subsystem that owns most of the diff as the scope. Otherwise omit the scope and the parentheses entirely.
-3. Write the first valid lowercase imperative subject; do not generate alternatives. There is no length limit.
-4. Confirm `<kind>(<scope>)?!?: <description>`: a scope uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; the description starts with a lowercase letter or digit; and the frontmatter value is unquoted. Quotes become part of the subject and are rejected.
+Write one concise imperative subject in the form `<kind>(<scope>)?!?: <description>`. Prefer language that completes “This commit will…”. Do not enumerate alternatives, end with punctuation, quote the frontmatter value, or use a ticket number as the description. The grammar requires lowercase type and scope, one space after the colon, and a description beginning with a lowercase letter or digit.
 
 ## HOW TO WRITE THE BODY
 
-For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item containing a self-contained commit body. Describe intent and impact, not an implementation inventory. Use `## Body Summary`, `## Body Details`, and `## Body Footer` only when separation materially improves a complex migration, breaking change, or issue reference.
+For any change beyond a one-line typo, formatting, or comment change, include one `## Body` item containing a self-contained commit body. Explain the problem or motivation first, then the behavioral or architectural outcome. Include migration risk or verification only when it helps a future maintainer understand or trust the change. Do not repeat the subject, narrate the diff, or inventory components. Use `## Body Summary`, `## Body Details`, and `## Body Footer` only when separation materially improves a complex migration, breaking change, or issue reference.
 
 ## Submit the result
 

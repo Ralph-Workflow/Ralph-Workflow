@@ -339,7 +339,7 @@ def commit_receipt_matches_changed_files(
     if not isinstance(audit, dict):
         return False
     recorded = optional_str_list(audit.get("changed_files"))
-    return recorded is not None and tuple(recorded) == changed_files
+    return recorded is not None and set(recorded) == set(changed_files)
 
 
 def delete_artifact_receipt(
