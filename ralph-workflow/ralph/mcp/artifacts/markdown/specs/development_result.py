@@ -29,7 +29,10 @@ from ralph.mcp.artifacts.development_result import (
 from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
-from ralph.mcp.protocol.cycle_deadline_env import cycle_warning_is_active
+from ralph.mcp.protocol.cycle_deadline_env import (
+    cycle_warning_is_active,
+    development_warning_is_active,
+)
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
@@ -138,7 +141,7 @@ def _free_form_content(document: ParsedDocument) -> Content:
     }
     # When the cycle timebox fired a warning before the partial/failed
     # outcome, require an Incomplete Work section listing what remains.
-    if _cycle_timebox_warned(document):
+    if _cycle_timebox_warned(document) or _development_timebox_warned(document):
         incomplete_items = _optional_items(document, "Incomplete Work")
         if not incomplete_items:
             # A bracket-less bullet never becomes an item -- the parser reads it
@@ -229,6 +232,14 @@ def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
             f"be dropped from the report. Give every remaining item its own "
             f"stable-ID bullet."
         )
+
+
+def _development_timebox_warned(document: ParsedDocument) -> bool:
+    """Return whether the independent development timer passed its warning."""
+    if development_warning_is_active(now_epoch=time.time()):
+        return True
+    declared = document.frontmatter.get("development_timebox_warned")
+    return declared is not None and declared.lower() in ("true", "1", "yes")
 
 
 def _cycle_timebox_warned(document: ParsedDocument) -> bool:
@@ -322,7 +333,9 @@ def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
 def _to_content(document: ParsedDocument) -> Content:
     if not _is_completed(document):
         return _free_form_content(document)
-    if _cycle_timebox_warned(document) and not _optional_items(document, "Plan Items Proven"):
+    if (
+        _cycle_timebox_warned(document) or _development_timebox_warned(document)
+    ) and not _optional_items(document, "Plan Items Proven"):
         # Gating only the partial/failed branch left the honesty requirement
         # keyed on the single word the reporting agent chooses: under a live
         # deadline warning the honest partial was rejected while a bare
@@ -352,7 +365,7 @@ def _to_content(document: ParsedDocument) -> Content:
         # `completed` result carrying a byte-identical section that `partial`
         # accepted, for a rule the format documentation scopes to warned
         # results — leaving no way to reconcile the diagnostic.
-        if _cycle_timebox_warned(document):
+        if _cycle_timebox_warned(document) or _development_timebox_warned(document):
             _validate_warned_incomplete_items(completed_incomplete)
         _reject_unbracketed_incomplete_bullets(document)
         content["incomplete_work"] = [

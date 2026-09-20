@@ -17,9 +17,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.mcp.protocol.cycle_deadline_env import (
+    cycle_warning_is_active,
+    development_warning_is_active,
+)
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
     CYCLE_WARN_EPOCH_ENV,
+    DEV_DEADLINE_EPOCH_ENV,
+    DEV_WARN_EPOCH_ENV,
 )
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.pipeline import runner as runner_module
@@ -51,7 +57,12 @@ def test_cycle_deadline_regression_mcp_server_has_no_notice_provider() -> None:
 
 def _reserve_env(monkeypatch: MonkeyPatch) -> None:
     """Register the published names with monkeypatch so the test restores them."""
-    for name in (CYCLE_WARN_EPOCH_ENV, CYCLE_DEADLINE_EPOCH_ENV):
+    for name in (
+        CYCLE_WARN_EPOCH_ENV,
+        CYCLE_DEADLINE_EPOCH_ENV,
+        DEV_WARN_EPOCH_ENV,
+        DEV_DEADLINE_EPOCH_ENV,
+    ):
         monkeypatch.setenv(name, "stale-value")
 
 
@@ -61,6 +72,7 @@ def _materialize(
     tmp_path: Path,
     *,
     cycle_total_elapsed: float | None,
+    development_total_elapsed: float | None = None,
 ) -> None:
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Do the work")
@@ -80,6 +92,7 @@ def _materialize(
         registry,
         materialize_fn=lambda **_kwargs: "fake-prompt.md",
         cycle_total_elapsed=cycle_total_elapsed,
+        development_total_elapsed=development_total_elapsed,
     )
 
 
@@ -104,6 +117,31 @@ def test_guarded_invocation_publishes_warning_and_deadline_epochs(
         abs((deadline_epoch - warn_epoch) - _EXPECTED_WARNING_TO_DEADLINE)
         < _CLOCK_TOLERANCE_SECONDS
     )
+
+
+def test_development_epochs_are_independent_and_warn_at_seventy_minutes(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _reserve_env(monkeypatch)
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=_ELAPSED_SECONDS,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+    )
+    before = time.time()
+    _materialize(
+        "development",
+        state,
+        tmp_path,
+        cycle_total_elapsed=_ELAPSED_SECONDS,
+        development_total_elapsed=4200.0,
+    )
+    assert abs(float(os.environ[DEV_WARN_EPOCH_ENV]) - before) < _CLOCK_TOLERANCE_SECONDS
+    assert abs(float(os.environ[DEV_DEADLINE_EPOCH_ENV]) - before - 1200.0) < _CLOCK_TOLERANCE_SECONDS
+    assert development_warning_is_active(now_epoch=time.time())
+    assert not cycle_warning_is_active(now_epoch=time.time())
 
 
 def test_invocation_outside_a_cycle_withdraws_a_stale_deadline(

@@ -25,7 +25,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import CycleTimeboxPolicy, PhaseDefinition, PipelinePolicy
+    from ralph.policy.models import (
+        CycleTimeboxPolicy,
+        PhaseDefinition,
+        PipelinePolicy,
+    )
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,7 @@ class _RoutingTiming:
     """
 
     total_elapsed_seconds: float
+    development_elapsed_seconds: float | None = None
 
 
 #: Public alias so callers import ``RoutingTiming`` while the repo-structure
@@ -195,6 +200,108 @@ def apply_cycle_timebox(
     return CycleTimeboxDecision(state=state, target_phase=target_phase)
 
 
+def development_timebox_redirect_reason(
+    *,
+    limit_seconds: float,
+    elapsed_seconds: float,
+    target: str,
+) -> str:
+    """Return the operator reason for a development deadline redirect."""
+    return (
+        f"development timebox reached {limit_seconds:.0f}s "
+        f"(elapsed {elapsed_seconds:.0f}s); redirecting to {target}"
+    )
+
+
+def apply_development_timebox(
+    state: PipelineState,
+    target_phase: str,
+    *,
+    policy: PipelinePolicy,
+    routing_timing: RoutingTiming | None,
+) -> CycleTimeboxDecision:
+    """Apply the independent development timer to a pending transition."""
+    dt = policy.development_timebox
+    if dt is None or routing_timing is None:
+        return CycleTimeboxDecision(state=state, target_phase=target_phase)
+    if target_phase in (dt.end_entry, dt.finalization_target) and state.dev_timebox_active:
+        return CycleTimeboxDecision(
+            state=state.copy_with(dev_timebox_active=False), target_phase=target_phase
+        )
+    if (
+        not state.dev_timebox_active
+        and state.phase == dt.start_source
+        and target_phase == dt.start_entry
+    ):
+        return CycleTimeboxDecision(
+            state=state.copy_with(
+                dev_timebox_active=True,
+                dev_timebox_consumed_seconds=0.0,
+                dev_timebox_redirect_reason=None,
+            ),
+            target_phase=target_phase,
+            timing_started=True,
+        )
+    if target_phase == dt.guarded_entry and state.dev_timebox_active:
+        elapsed = routing_timing.development_elapsed_seconds
+        if elapsed is None:
+            elapsed = routing_timing.total_elapsed_seconds
+        if elapsed >= dt.duration_seconds:
+            reason = development_timebox_redirect_reason(
+                limit_seconds=dt.duration_seconds,
+                elapsed_seconds=elapsed,
+                target=dt.finalization_target,
+            )
+            updates: dict[str, object] = {
+                "dev_timebox_active": False,
+                "dev_timebox_redirect_reason": reason,
+            }
+            if state.pending_cycle_outcome is None:
+                updates["pending_cycle_outcome"] = dt.finalization_cycle_outcome
+            return CycleTimeboxDecision(
+                state=state.copy_with(**updates),
+                target_phase=dt.finalization_target,
+                redirected=True,
+                redirect_reason=reason,
+            )
+    return CycleTimeboxDecision(state=state, target_phase=target_phase)
+
+
+def development_deadline_epochs(
+    state: PipelineState,
+    target_phase: str,
+    *,
+    policy: PipelinePolicy,
+    routing_timing: RoutingTiming | None,
+    now_epoch: float,
+) -> tuple[float, float] | None:
+    """Return independent development warning/deadline wall-clock epochs."""
+    dt = policy.development_timebox
+    if dt is None or routing_timing is None:
+        return None
+    if target_phase != dt.guarded_entry or not state.dev_timebox_active:
+        return None
+    elapsed = routing_timing.development_elapsed_seconds
+    if elapsed is None:
+        elapsed = routing_timing.total_elapsed_seconds
+    return (
+        now_epoch + max(0.0, dt.warning_seconds - elapsed),
+        now_epoch + max(0.0, dt.duration_seconds - elapsed),
+    )
+
+
+def initialize_legacy_development_timebox_on_resume(
+    state: PipelineState, policy: PipelinePolicy
+) -> PipelineState:
+    """Start a fresh development timer for a legacy checkpoint in development."""
+    dt = policy.development_timebox
+    if dt is None or state.dev_timebox_active or state.dev_timebox_consumed_seconds > 0:
+        return state
+    if state.phase == dt.guarded_entry:
+        return state.copy_with(dev_timebox_active=True)
+    return state
+
+
 def conclude_cycle_on_route_out_of_cycle(
     state: PipelineState,
     next_phase: str,
@@ -332,6 +439,7 @@ def _declared_targets(phase_def: PhaseDefinition) -> list[str]:
 #: layer render it as a bracketed ``[cycle timebox ...]`` item rather than a
 #: bare ``key=value`` pair.
 _STATUS_ITEM_KEY = "cycle timebox"
+_DEVELOPMENT_STATUS_ITEM_KEY = "development timebox"
 
 _SECONDS_PER_MINUTE = 60.0
 
@@ -354,20 +462,26 @@ def cycle_timebox_status_item(
     surfaces through the routing log line and the run-time report's ``[CT-2]``
     line instead.
     """
+    items: dict[str, object] = {}
     ct = policy.cycle_timebox
-    if ct is None:
-        return None
-    if not state.cycle_timebox_active:
-        return None
-    consumed = state.cycle_timebox_consumed_seconds
-    remaining = max(0.0, ct.duration_seconds - consumed)
-    return {
-        _STATUS_ITEM_KEY: (
+    if ct is not None and state.cycle_timebox_active:
+        consumed = state.cycle_timebox_consumed_seconds
+        remaining = max(0.0, ct.duration_seconds - consumed)
+        items[_STATUS_ITEM_KEY] = (
             f"{consumed / _SECONDS_PER_MINUTE:.0f}m/"
             f"{ct.duration_seconds / _SECONDS_PER_MINUTE:.0f}m, "
             f"{remaining / _SECONDS_PER_MINUTE:.0f}m left"
         )
-    }
+    dt = policy.development_timebox
+    if dt is not None and state.dev_timebox_active:
+        consumed = state.dev_timebox_consumed_seconds
+        remaining = max(0.0, dt.duration_seconds - consumed)
+        items[_DEVELOPMENT_STATUS_ITEM_KEY] = (
+            f"{consumed / _SECONDS_PER_MINUTE:.0f}m/"
+            f"{dt.duration_seconds / _SECONDS_PER_MINUTE:.0f}m, "
+            f"{remaining / _SECONDS_PER_MINUTE:.0f}m left"
+        )
+    return items or None
 
 
 def cycle_deadline_epochs(

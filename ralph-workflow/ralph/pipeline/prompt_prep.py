@@ -14,12 +14,15 @@ from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
     CYCLE_WARN_EPOCH_ENV,
+    DEV_DEADLINE_EPOCH_ENV,
+    DEV_WARN_EPOCH_ENV,
     WORKER_NAMESPACE_ENV,
 )
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     cycle_deadline_epochs,
+    development_deadline_epochs,
 )
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
@@ -309,6 +312,8 @@ def _materialize_prepared_prompt(
 _CYCLE_DEADLINE_ENV_NAMES = (
     CYCLE_WARN_EPOCH_ENV,
     CYCLE_DEADLINE_EPOCH_ENV,
+    DEV_WARN_EPOCH_ENV,
+    DEV_DEADLINE_EPOCH_ENV,
 )
 
 
@@ -350,6 +355,7 @@ def _publish_cycle_deadline_env(
     target_phase: str,
     policy_bundle: PolicyBundle,
     cycle_total_elapsed: float | None,
+    development_total_elapsed: float | None = None,
 ) -> None:
     """Publish (or withdraw) the cycle deadline for the invocation about to start.
 
@@ -360,23 +366,36 @@ def _publish_cycle_deadline_env(
     agent about a budget that no longer applies.
     """
     routing_timing = (
-        RoutingTiming(total_elapsed_seconds=cycle_total_elapsed)
-        if cycle_total_elapsed is not None
+        RoutingTiming(
+            total_elapsed_seconds=cycle_total_elapsed or 0.0,
+            development_elapsed_seconds=development_total_elapsed,
+        )
+        if cycle_total_elapsed is not None or development_total_elapsed is not None
         else None
     )
-    published = cycle_deadline_epochs(
+    cycle_published = cycle_deadline_epochs(
         state,
         target_phase,
         policy=policy_bundle.pipeline,
         routing_timing=routing_timing,
         now_epoch=time.time(),
     )
-    if published is None:
-        _withdraw_cycle_deadline_env()
-        return
-    warn_epoch, deadline_epoch = published
-    os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
-    os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
+    development_published = development_deadline_epochs(
+        state,
+        target_phase,
+        policy=policy_bundle.pipeline,
+        routing_timing=routing_timing,
+        now_epoch=time.time(),
+    )
+    _withdraw_cycle_deadline_env()
+    if cycle_published is not None:
+        warn_epoch, deadline_epoch = cycle_published
+        os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
+        os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
+    if development_published is not None:
+        warn_epoch, deadline_epoch = development_published
+        os.environ[DEV_WARN_EPOCH_ENV] = repr(warn_epoch)
+        os.environ[DEV_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
 
 
 def _materialize_agent_prompt_if_needed(
@@ -388,11 +407,18 @@ def _materialize_agent_prompt_if_needed(
     *,
     materialize_fn: _MaterializePromptFn | None = None,
     cycle_total_elapsed: float | None = None,
+    development_total_elapsed: float | None = None,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
 
-    _publish_cycle_deadline_env(state, effect.phase, policy_bundle, cycle_total_elapsed)
+    _publish_cycle_deadline_env(
+        state,
+        effect.phase,
+        policy_bundle,
+        cycle_total_elapsed,
+        development_total_elapsed,
+    )
 
     agent = registry.get(effect.agent_name)
     agent_drain = (
@@ -414,6 +440,22 @@ def _materialize_agent_prompt_if_needed(
             cycle_total_elapsed,
             timebox.duration_seconds,
             cycle_total_elapsed / timebox.duration_seconds * 100.0,
+            effect.phase,
+        )
+    development_timebox = policy_bundle.pipeline.development_timebox
+    if (
+        development_timebox is not None
+        and development_total_elapsed is not None
+        and state.dev_timebox_active
+        and effect.phase == development_timebox.guarded_entry
+        and development_timebox.warning_seconds
+        <= development_total_elapsed
+        < development_timebox.duration_seconds
+    ):
+        logger.warning(
+            "development-timebox warning: {:.0f}s consumed of {:.0f}s budget on phase {!r}",
+            development_total_elapsed,
+            development_timebox.duration_seconds,
             effect.phase,
         )
     _mat = materialize_fn or materialize_prompt_for_phase

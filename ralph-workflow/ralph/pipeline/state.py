@@ -180,6 +180,11 @@ class PipelineState(_FrozenPipelineStateModel):
     # which is the normal path after a redirect, so the count is what survives
     # to the end-of-run report. Defaults so legacy checkpoints load cleanly.
     cycle_timebox_redirects: int = 0
+    # Independent development-phase hard-stop state. Defaults preserve older
+    # checkpoints; elapsed time is folded by the runner while active.
+    dev_timebox_active: bool = False
+    dev_timebox_consumed_seconds: float = 0.0
+    dev_timebox_redirect_reason: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

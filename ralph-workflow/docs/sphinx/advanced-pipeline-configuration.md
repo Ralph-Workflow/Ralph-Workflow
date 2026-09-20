@@ -443,6 +443,28 @@ redirect is logged and named on the end-of-run report's
 consumed time, and any redirect. The count survives across a multi-cycle
 run; the recorded reason is for the most recent redirect.
 
+### `[development_timebox]`
+
+The development timebox is a separate timer for uninterrupted development
+work. Its bundled default warns at `4200` seconds (70 minutes) and redirects
+at `5400` seconds (90 minutes). It is independent of `[cycle_timebox]`: changing
+one limit does not reset, extend, or otherwise change the other timer.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `duration_seconds` | `5400` | Finite positive hard stop for development work. |
+| `warning_seconds` | `4200` | Finite non-negative warning point, strictly less than `duration_seconds`. |
+| `start_source` / `start_entry` | `planning_analysis` / `development` | Transition that starts the timer. |
+| `guarded_entry` | `development` | Development entry guarded by the hard stop. |
+| `end_entry` / `finalization_target` | `development_final_commit_cleanup` | Entry that ends timing and redirect target. |
+
+Validation failures, retries, and development-analysis loopbacks do not reset
+or pause this timer. Once the configured hard stop is reached, the next
+attempt (including a same-phase retry) follows the existing finalization route.
+The runtime publishes its warning and deadline as `RALPH_DEV_WARN_EPOCH` and
+`RALPH_DEV_DEADLINE_EPOCH`; these names remain distinct from cycle epochs.
+Unknown `[development_timebox]` keys are rejected rather than ignored.
+
 #### Relationship to other limits
 
 The cycle timebox is independent of the existing **60-minute

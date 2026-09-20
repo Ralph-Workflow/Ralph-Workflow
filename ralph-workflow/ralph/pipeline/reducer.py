@@ -53,6 +53,7 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
+    apply_development_timebox,
     conclude_cycle_on_route_out_of_cycle,
     start_cycle_for_bypassed_start_source,
 )
@@ -646,6 +647,10 @@ def redirect_expired_cycle_in_place(
     if policy is None or routing_timing is None:
         return None
     decision = apply_cycle_timebox(state, state.phase, policy=policy, routing_timing=routing_timing)
+    if not decision.redirected:
+        decision = apply_development_timebox(
+            state, state.phase, policy=policy, routing_timing=routing_timing
+        )
     if not decision.redirected:
         return None
     logger.bind(component="policy.routing").warning(decision.redirect_reason)
@@ -1454,6 +1459,13 @@ def _prepare_phase_advance(
         logger.bind(component="policy.routing").warning(timebox.redirect_reason)
     state = timebox.state
     target_phase = timebox.target_phase
+    development_timebox = apply_development_timebox(
+        state, target_phase, policy=policy, routing_timing=routing_timing
+    )
+    if development_timebox.redirected and development_timebox.redirect_reason is not None:
+        logger.bind(component="policy.routing").warning(development_timebox.redirect_reason)
+    state = development_timebox.state
+    target_phase = development_timebox.target_phase
 
     current_phase_def = policy.phases.get(state.phase)
     if current_phase_def is not None and current_phase_def.role == "analysis":
@@ -1529,14 +1541,19 @@ def _with_bypassed_cycle_timing(
     )
     if timebox.redirected and timebox.redirect_reason is not None:
         logger.bind(component="policy.routing").warning(timebox.redirect_reason)
+    development_timebox = apply_development_timebox(
+        timebox.state, timebox.target_phase, policy=policy, routing_timing=routing_timing
+    )
+    if development_timebox.redirected and development_timebox.redirect_reason is not None:
+        logger.bind(component="policy.routing").warning(development_timebox.redirect_reason)
     return (
         start_cycle_for_bypassed_start_source(
-            timebox.state,
-            timebox.target_phase,
+            development_timebox.state,
+            development_timebox.target_phase,
             tuple(skip.phase for skip in bypass.skipped),
             policy=policy,
         ),
-        timebox.target_phase,
+        development_timebox.target_phase,
     )
 
 

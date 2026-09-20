@@ -43,7 +43,10 @@ from ralph.pipeline.auto_integrate_agent import (
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
-from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
+from ralph.pipeline.cycle_timing import (
+    initialize_legacy_cycle_on_resume,
+    initialize_legacy_development_timebox_on_resume,
+)
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
@@ -114,6 +117,7 @@ if TYPE_CHECKING:
             _monitor_stop_cb: Callable[[], None] | None,
             pipeline_deps: PipelineDeps | None = None,
             _cycle_sample_box: list[float | None] | None = None,
+            _development_sample_box: list[float | None] | None = None,
         ) -> PipelineState | int: ...
 
     class _ConnectivityMonitorLike(Protocol):
@@ -925,6 +929,9 @@ def _resolve_initial_state(
         resumed = initial_state
         with suppress(AttributeError, TypeError):
             resumed = initialize_legacy_cycle_on_resume(initial_state, policy_bundle.pipeline)
+            resumed = initialize_legacy_development_timebox_on_resume(
+                resumed, policy_bundle.pipeline
+            )
         return _with_counter_overrides(resumed, counter_overrides)
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
@@ -1805,10 +1812,12 @@ def _run_inner_loop_after_startup(
     # baseline sample and the serialized ``cycle_timebox_consumed_seconds``
     # already carries the budget accumulated before the restart.
     cycle_sample_box: list[float | None] = [None]
+    development_sample_box: list[float | None] = [None]
     # Initialize cycle timing for an older checkpoint resumed directly inside
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
     state = initialize_legacy_cycle_on_resume(state, ctx.policy_bundle.pipeline)
+    state = initialize_legacy_development_timebox_on_resume(state, ctx.policy_bundle.pipeline)
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         if (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
@@ -1852,6 +1861,7 @@ def _run_inner_loop_after_startup(
             _monitor_stop_cb=ctx.monitor_stop,
             pipeline_deps=iter_pipeline_deps,
             _cycle_sample_box=cycle_sample_box,
+            _development_sample_box=development_sample_box,
         )
         if isinstance(step_result, int):
             return state, prev_phase, step_result
@@ -2490,6 +2500,7 @@ def _execute_with_cleanup(
             outcome="completed" if exit_code == 0 else "failed",
             elapsed_seconds=time.monotonic() - started_at,
             cycle_timebox=loop_ctx.policy_bundle.pipeline.cycle_timebox,
+            development_timebox=loop_ctx.policy_bundle.pipeline.development_timebox,
         )
         _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)
     return exit_code

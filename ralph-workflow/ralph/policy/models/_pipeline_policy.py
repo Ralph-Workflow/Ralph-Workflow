@@ -6,6 +6,7 @@ from pydantic import Field, model_validator
 
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
 from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
+from ralph.policy.models._development_timebox_policy import DevelopmentTimeboxPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._lifecycle_phase_policy import LifecyclePhasePolicy
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
@@ -68,6 +69,10 @@ class PipelinePolicy(_FrozenPolicyModel):
     recovery: RecoveryPolicy = Field(
         default_factory=RecoveryPolicy,
         description="Pipeline-wide recovery configuration",
+    )
+    development_timebox: DevelopmentTimeboxPolicy | None = Field(
+        default=None,
+        description="Optional independent hard-stop timebox for the development phase.",
     )
     cycle_timebox: CycleTimeboxPolicy | None = Field(
         default=None,
@@ -287,6 +292,32 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
+    def development_timebox_references_known_phases(self) -> Self:
+        dt = self.development_timebox
+        if dt is None:
+            return self
+        ts = self.terminal_states()
+        for label, target in (
+            ("start_source", dt.start_source),
+            ("start_entry", dt.start_entry),
+            ("guarded_entry", dt.guarded_entry),
+            ("end_entry", dt.end_entry),
+            ("finalization_target", dt.finalization_target),
+        ):
+            if target not in ts and target not in self.phases:
+                raise ValueError(
+                    f"development_timebox.{label} references unknown phase or terminal "
+                    f"'{target}'."
+                )
+        inside = self._phases_inside_cycle(dt)
+        if dt.finalization_target in inside:
+            raise ValueError(
+                f"development_timebox.finalization_target '{dt.finalization_target}' is inside "
+                "the development loop"
+            )
+        return self
+
+    @model_validator(mode="after")
     def recordable_cycle_outcomes_are_routable(self) -> Self:
         """Reject a cycle outcome this workflow can record but cannot route.
 
@@ -379,7 +410,9 @@ class PipelinePolicy(_FrozenPolicyModel):
                 )
         return self
 
-    def _phases_inside_cycle(self, ct: CycleTimeboxPolicy) -> set[str]:
+    def _phases_inside_cycle(
+        self, ct: CycleTimeboxPolicy | DevelopmentTimeboxPolicy
+    ) -> set[str]:
         """Return the phases a cycle routes through on its way round again.
 
         A phase is inside the cycle when it is reachable from the guarded
@@ -439,6 +472,11 @@ class PipelinePolicy(_FrozenPolicyModel):
                 f"bypass route, result-status post-commit route, or post-commit "
                 f"route of '{ct.start_source}'. Update start_source/start_entry "
                 f"to a declared edge, or remove the [cycle_timebox] section."
+            )
+        dt = self.development_timebox
+        if dt is not None and not _phase_declares_edge(self, dt.start_source, dt.start_entry):
+            raise ValueError(
+                "development_timebox.start_source -> start_entry is not a declared edge"
             )
         return self
 

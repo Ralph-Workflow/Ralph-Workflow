@@ -101,7 +101,11 @@ from ralph.pipeline.cycle_baseline import (
     read_cycle_baseline,
     write_cycle_baseline,
 )
-from ralph.pipeline.cycle_timing import RoutingTiming, apply_cycle_timebox
+from ralph.pipeline.cycle_timing import (
+    RoutingTiming,
+    apply_cycle_timebox,
+    apply_development_timebox,
+)
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
@@ -191,6 +195,7 @@ if TYPE_CHECKING:
         AgentsPolicy,
         ArtifactsPolicy,
         CycleTimeboxPolicy,
+        DevelopmentTimeboxPolicy,
         PhaseDefinition,
         PipelinePolicy,
         PolicyBundle,
@@ -1438,6 +1443,133 @@ def _sample_cycle_timing(
     return routing_timing, cycle_now, cycle_delta, ct_policy
 
 
+def _sample_development_timing(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    pipeline_deps: PipelineDeps | None,
+    sample_box: list[float | None] | None,
+) -> tuple[RoutingTiming | None, float | None, float, DevelopmentTimeboxPolicy | None]:
+    """Sample the independent development timer using the runner's clock."""
+    policy = pipeline_policy.development_timebox
+    if sample_box is None or policy is None:
+        return None, None, 0.0, policy
+    monotonic_fn = (
+        pipeline_deps.monotonic
+        if pipeline_deps is not None and pipeline_deps.monotonic is not None
+        else time.monotonic
+    )
+    now = monotonic_fn()
+    last_sample = sample_box[0]
+    delta = (
+        max(0.0, now - last_sample)
+        if state.dev_timebox_active and last_sample is not None
+        else 0.0
+    )
+    return (
+        RoutingTiming(total_elapsed_seconds=state.dev_timebox_consumed_seconds + delta),
+        now,
+        delta,
+        policy,
+    )
+
+
+def _merge_routing_timings(
+    cycle_timing: RoutingTiming | None, development_timing: RoutingTiming | None
+) -> RoutingTiming | None:
+    """Combine independently sampled timers for routing without cross-charging."""
+    if cycle_timing is None:
+        return development_timing
+    if development_timing is None:
+        return cycle_timing
+    return RoutingTiming(
+        total_elapsed_seconds=cycle_timing.total_elapsed_seconds,
+        development_elapsed_seconds=development_timing.total_elapsed_seconds,
+    )
+
+
+def _sample_step_routing_timing(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    pipeline_deps: PipelineDeps | None,
+    cycle_sample_box: list[float | None] | None,
+    development_sample_box: list[float | None] | None,
+) -> tuple[
+    RoutingTiming | None,
+    RoutingTiming | None,
+    RoutingTiming | None,
+    CycleTimeboxPolicy | None,
+    DevelopmentTimeboxPolicy | None,
+]:
+    """Sample both timers for pre-invocation routing and prompt publication."""
+    cycle_timing, _, _, cycle_policy = _sample_cycle_timing(
+        state, pipeline_policy, pipeline_deps, cycle_sample_box
+    )
+    development_timing, _, _, development_policy = _sample_development_timing(
+        state, pipeline_policy, pipeline_deps, development_sample_box
+    )
+    return (
+        cycle_timing,
+        development_timing,
+        _merge_routing_timings(cycle_timing, development_timing),
+        cycle_policy,
+        development_policy,
+    )
+
+
+def _fold_development_elapsed(
+    before: PipelineState,
+    after: PipelineState,
+    *,
+    delta_seconds: float,
+    timing_enabled: bool,
+) -> PipelineState:
+    """Persist development elapsed time across validation retries and resumes."""
+    if not timing_enabled or not before.dev_timebox_active or delta_seconds <= 0.0:
+        return after
+    return after.model_copy(
+        update={
+            "dev_timebox_consumed_seconds": after.dev_timebox_consumed_seconds + delta_seconds
+        }
+    )
+
+
+def _fold_sampled_timeboxes(
+    before: PipelineState,
+    after: PipelineState,
+    *,
+    cycle_delta: float,
+    cycle_now: float | None,
+    cycle_sample_box: list[float | None] | None,
+    cycle_policy: CycleTimeboxPolicy | None,
+    development_delta: float,
+    development_now: float | None,
+    development_sample_box: list[float | None] | None,
+    development_policy: DevelopmentTimeboxPolicy | None,
+) -> PipelineState:
+    """Persist sampled timer deltas and advance their monotonic anchors."""
+    after = fold_cycle_elapsed(
+        before,
+        after,
+        delta_seconds=cycle_delta,
+        timing_enabled=cycle_sample_box is not None and cycle_policy is not None,
+    )
+    if cycle_sample_box is not None and cycle_policy is not None and cycle_now is not None:
+        cycle_sample_box[0] = cycle_now
+    after = _fold_development_elapsed(
+        before,
+        after,
+        delta_seconds=development_delta,
+        timing_enabled=development_sample_box is not None and development_policy is not None,
+    )
+    if (
+        development_sample_box is not None
+        and development_policy is not None
+        and development_now is not None
+    ):
+        development_sample_box[0] = development_now
+    return after
+
+
 def _fold_cycle_elapsed(
     before: PipelineState,
     after: PipelineState,
@@ -1551,6 +1683,7 @@ def _publish_fan_out_cycle_deadline(
         phase,
         policy_bundle,
         routing_timing.total_elapsed_seconds if routing_timing is not None else None,
+        routing_timing.development_elapsed_seconds if routing_timing is not None else None,
     )
 
 
@@ -1571,6 +1704,7 @@ def _run_pipeline_step(
     _monitor_stop_cb: Callable[[], None] | None = None,
     pipeline_deps: PipelineDeps | None = None,
     _cycle_sample_box: list[float | None] | None = None,
+    _development_sample_box: list[float | None] | None = None,
 ) -> PipelineState | int:
     # Phase telemetry primitives — bound BEFORE the try/except so the
     # ``finally`` clause can read them on every exit path. PhaseRole is
@@ -1601,8 +1735,18 @@ def _run_pipeline_step(
     # --- Cycle timebox: sample the monotonic clock ONCE per step and build
     # routing timing for both prompt materialization (the 80% warning) and
     # the reducer (deadline enforcement).
-    _routing_timing, _cycle_now, _cycle_delta, ct_policy = _sample_cycle_timing(
-        state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
+    (
+        _routing_timing,
+        _development_routing_timing,
+        _effective_routing_timing,
+        ct_policy,
+        dt_policy,
+    ) = _sample_step_routing_timing(
+        state,
+        policy_bundle.pipeline,
+        pipeline_deps,
+        _cycle_sample_box,
+        _development_sample_box,
     )
 
     try:
@@ -1630,7 +1774,7 @@ def _run_pipeline_step(
             pipeline_deps=pipeline_deps,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
-            routing_timing=_routing_timing,
+            routing_timing=_effective_routing_timing,
         )
         if inline_result is not None:
             # Inline-effect early-return path: a phase transition realized
@@ -1679,7 +1823,7 @@ def _run_pipeline_step(
                     pipeline_deps=pipeline_deps,
                     registry=registry,
                     display_context=display_context,
-                    routing_timing=_routing_timing,
+                    routing_timing=_effective_routing_timing,
                 )
             )
 
@@ -1708,6 +1852,11 @@ def _run_pipeline_step(
                     cycle_total_elapsed=(
                         _routing_timing.total_elapsed_seconds
                         if _routing_timing is not None
+                        else None
+                    ),
+                    development_total_elapsed=(
+                        _development_routing_timing.total_elapsed_seconds
+                        if _development_routing_timing is not None
                         else None
                     ),
                 )
@@ -1785,21 +1934,33 @@ def _run_pipeline_step(
         _reduce_routing_timing, _reduce_now, _reduce_delta, _ = _sample_cycle_timing(
             state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
         )
+        _reduce_development_timing, _reduce_development_now, _reduce_development_delta, _ = (
+            _sample_development_timing(
+                state, policy_bundle.pipeline, pipeline_deps, _development_sample_box
+            )
+        )
+        _effective_reduce_timing = _merge_routing_timings(
+            _reduce_routing_timing, _reduce_development_timing
+        )
         next_state, _ = reducer_reduce(
             state,
             event,
             policy_bundle.pipeline,
             recovery=recovery_controller,
-            routing_timing=_reduce_routing_timing,
+            routing_timing=_effective_reduce_timing,
         )
-        next_state = fold_cycle_elapsed(
+        next_state = _fold_sampled_timeboxes(
             state,
             next_state,
-            delta_seconds=_reduce_delta,
-            timing_enabled=_cycle_sample_box is not None and ct_policy is not None,
+            cycle_delta=_reduce_delta,
+            cycle_now=_reduce_now,
+            cycle_sample_box=_cycle_sample_box,
+            cycle_policy=ct_policy,
+            development_delta=_reduce_development_delta,
+            development_now=_reduce_development_now,
+            development_sample_box=_development_sample_box,
+            development_policy=dt_policy,
         )
-        if _cycle_sample_box is not None and ct_policy is not None and _reduce_now is not None:
-            _cycle_sample_box[0] = _reduce_now
         # Thread the integration outcome into the persisted checkpoint.
         # Must happen AFTER reducer_reduce (so the state model is
         # consistent) and BEFORE _save_checkpoint_or_log (so the
@@ -1994,10 +2155,25 @@ def _handle_inline_effect(
                     total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
                 ),
             )
-            target_phase = timeboxed.target_phase
+            development_timeboxed = apply_development_timebox(
+                timeboxed.state,
+                timeboxed.target_phase,
+                policy=pipeline_policy,
+                routing_timing=routing_timing
+                or RoutingTiming(
+                    total_elapsed_seconds=state.dev_timebox_consumed_seconds,
+                ),
+            )
+            target_phase = development_timeboxed.target_phase
             if timeboxed.redirected:
                 logger.bind(component="policy.routing").warning(timeboxed.redirect_reason)
-            prepared_state = _reset_phase_chain_for_recovery(timeboxed.state, target_phase)
+            if development_timeboxed.redirected:
+                logger.bind(component="policy.routing").warning(
+                    development_timeboxed.redirect_reason
+                )
+            prepared_state = _reset_phase_chain_for_recovery(
+                development_timeboxed.state, target_phase
+            )
             target_phase_def = pipeline_policy.phases.get(target_phase)
             if target_phase_def is not None and target_phase_def.role == "commit":
                 prepared_state = prepared_state.copy_with(commit=CommitState())

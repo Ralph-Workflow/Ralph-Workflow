@@ -352,64 +352,39 @@ def _edge_declared_in_normalized(normalized: dict[str, object], source: str, tar
     return False
 
 
-def _disable_incompatible_inherited_cycle_timebox(
-    normalized: dict[str, object],
+def _disable_incompatible_inherited_timebox(
+    normalized: dict[str, object], name: str
 ) -> dict[str, object]:
-    """Disable an inherited ``[cycle_timebox]`` that does not fit the graph.
-
-    When the bundled default ``[cycle_timebox]`` is inherited (not explicitly
-    supplied by a project-local or user-global override) and the fully merged
-    active graph lacks a referenced phase or the declared start edge, the
-    timebox is silently disabled rather than rejected. An explicitly supplied
-    timebox is validated strictly by the Pydantic model instead.
-    """
-    ct = normalized.get("cycle_timebox")
-    if not isinstance(ct, Mapping):
-        return normalized
+    """Disable an inherited timebox that does not fit the compiled graph."""
+    timebox = normalized.get(name)
     phases = normalized.get("phases")
-    if not isinstance(phases, Mapping):
+    if not isinstance(timebox, Mapping) or not isinstance(phases, Mapping):
         return normalized
-    typed_phases: Mapping[str, PhaseDefinition] = cast("Mapping[str, PhaseDefinition]", phases)
-    phase_names: set[str] = set(typed_phases.keys())
-    for key in (
-        "start_source",
-        "start_entry",
-        "guarded_entry",
-        "end_entry",
-        "finalization_target",
-    ):
-        val = ct.get(key)
-        if not isinstance(val, str) or val not in phase_names:
-            logger.warning(
-                "cycle_timebox disabled: the inherited default names "
-                "{key}={value!r}, which the active graph does not declare. "
-                "This run has no cycle deadline. Declare [cycle_timebox] "
-                "explicitly to bound cycles on a custom graph.",
-                key=key,
-                value=val,
-            )
+    phase_names = set(cast("Mapping[str, PhaseDefinition]", phases))
+    for key in ("start_source", "start_entry", "guarded_entry", "end_entry", "finalization_target"):
+        value = timebox.get(key)
+        if not isinstance(value, str) or value not in phase_names:
+            logger.warning("{name} disabled: inherited default names {key}={value!r}, which the active graph does not declare.{deadline}", name=name, key=key, value=value, deadline=" This run has no cycle deadline." if name == "cycle_timebox" else "")
             result = dict(normalized)
-            result.pop("cycle_timebox", None)
+            result.pop(name, None)
             return result
-    start_source = ct.get("start_source")
-    start_entry = ct.get("start_entry")
-    if not _edge_declared_in_normalized(
-        normalized,
-        start_source if isinstance(start_source, str) else "",
-        start_entry if isinstance(start_entry, str) else "",
-    ):
-        logger.warning(
-            "cycle_timebox disabled: the inherited default starts on "
-            "{source!r} -> {entry!r}, which the active graph does not declare "
-            "as an edge. This run has no cycle deadline. Declare "
-            "[cycle_timebox] explicitly to bound cycles on a custom graph.",
-            source=start_source,
-            entry=start_entry,
-        )
+    source, entry = timebox.get("start_source"), timebox.get("start_entry")
+    if not _edge_declared_in_normalized(normalized, source if isinstance(source, str) else "", entry if isinstance(entry, str) else ""):
+        logger.warning("{name} disabled: inherited default start edge does not fit the graph", name=name)
         result = dict(normalized)
-        result.pop("cycle_timebox", None)
+        result.pop(name, None)
         return result
     return normalized
+
+
+def _disable_incompatible_inherited_development_timebox(normalized: dict[str, object]) -> dict[str, object]:
+    """Disable an inherited development timebox that does not fit the graph."""
+    return _disable_incompatible_inherited_timebox(normalized, "development_timebox")
+
+
+def _disable_incompatible_inherited_cycle_timebox(normalized: dict[str, object]) -> dict[str, object]:
+    """Disable an inherited cycle timebox that does not fit the graph."""
+    return _disable_incompatible_inherited_timebox(normalized, "cycle_timebox")
 
 
 #: Public alias for :func:`_disable_incompatible_inherited_cycle_timebox`.
@@ -419,15 +394,19 @@ disable_incompatible_inherited_cycle_timebox = _disable_incompatible_inherited_c
 
 
 def _validate_pipeline(
-    data: dict[str, object], *, cycle_timebox_explicit: bool = True
+    data: dict[str, object],
+    *,
+    timeboxes_explicit: bool = True,
+    cycle_timebox_explicit: bool | None = None,
 ) -> PipelinePolicy:
     """Validate and return PipelinePolicy.
 
     Args:
         data: Raw TOML dictionary.
-        cycle_timebox_explicit: When False, an inherited ``[cycle_timebox]``
-            that does not fit the compiled graph is disabled rather than
-            rejected.
+        timeboxes_explicit: When False, inherited timebox defaults that do
+            not fit the compiled graph are disabled rather than rejected.
+        cycle_timebox_explicit: Backward-compatible alias for
+            ``timeboxes_explicit`` used by direct loader callers.
 
     Returns:
         Validated PipelinePolicy instance.
@@ -435,9 +414,12 @@ def _validate_pipeline(
     Raises:
         PolicyValidationError: On validation failure.
     """
+    if cycle_timebox_explicit is not None:
+        timeboxes_explicit = cycle_timebox_explicit
     normalized = _normalize_pipeline_data(data)
-    if not cycle_timebox_explicit:
+    if not timeboxes_explicit:
         normalized = _disable_incompatible_inherited_cycle_timebox(normalized)
+        normalized = _disable_incompatible_inherited_development_timebox(normalized)
     try:
         return PipelinePolicy.model_validate(normalized)
     except ValidationError as exc:
@@ -571,17 +553,18 @@ def _resolve_pipeline_data(
 ) -> tuple[dict[str, object], bool]:
     """Resolve merged pipeline data and whether cycle_timebox was explicit.
 
-    Returns ``(pipeline_data, cycle_timebox_explicit)``. The explicit flag is
-    True when either the local or global override supplies a ``[cycle_timebox]``
-    block; it is False when the block is inherited from the bundled default.
-    The loader uses the flag to distinguish strict validation (explicit) from
-    disable-if-incompatible (inherited) for custom graphs.
+    Returns ``(pipeline_data, timeboxes_explicit)``. The flag is True when an
+    override supplies either timebox block; otherwise inherited defaults are
+    disabled when they do not fit a custom graph.
     """
     default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
     local_pipeline_data = _load_toml(pipeline_path)
     if global_pipeline_path is None:
         data = local_pipeline_data or default_pipeline_data
-        explicit = bool(local_pipeline_data and "cycle_timebox" in local_pipeline_data)
+        explicit = bool(
+            local_pipeline_data
+            and ("cycle_timebox" in local_pipeline_data or "development_timebox" in local_pipeline_data)
+        )
         return data, explicit
 
     global_pipeline_data = _load_toml(global_pipeline_path)
@@ -593,8 +576,12 @@ def _resolve_pipeline_data(
     pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
     if local_pipeline_data:
         pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
-    explicit = (bool(global_pipeline_data) and "cycle_timebox" in global_pipeline_data) or (
-        bool(local_pipeline_data) and "cycle_timebox" in local_pipeline_data
+    explicit = (
+        bool(global_pipeline_data)
+        and ("cycle_timebox" in global_pipeline_data or "development_timebox" in global_pipeline_data)
+    ) or (
+        bool(local_pipeline_data)
+        and ("cycle_timebox" in local_pipeline_data or "development_timebox" in local_pipeline_data)
     )
     return pipeline_data, explicit
 
@@ -859,7 +846,7 @@ def _load_policy_from_paths(
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
     default_policy_dir = default_dir()
-    pipeline_data, cycle_timebox_explicit = _resolve_pipeline_data(
+    pipeline_data, timeboxes_explicit = _resolve_pipeline_data(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
         global_pipeline_path=global_pipeline_path,
@@ -880,7 +867,7 @@ def _load_policy_from_paths(
 
     agents_policy = _load_agents_policy_from_path(agents_path, config=config)
     pipeline_policy = _validate_pipeline(
-        pipeline_data, cycle_timebox_explicit=cycle_timebox_explicit
+        pipeline_data, timeboxes_explicit=timeboxes_explicit
     )
     artifacts_policy = _validate_artifacts(artifacts_data)
 

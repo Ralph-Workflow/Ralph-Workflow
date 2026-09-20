@@ -76,6 +76,19 @@ finalization_target = "development_final_commit_cleanup"
 # cycle should end an out-of-budget run in the failure terminal.
 finalization_cycle_outcome = "completed"
 
+# Independent development-phase timer. Unlike [cycle_timebox], this measures
+# uninterrupted development work only: validation retries and loopbacks do not
+# reset or extend it.
+[development_timebox]
+duration_seconds = 5400
+warning_seconds = 4200
+start_source = "planning_analysis"
+start_entry = "development"
+guarded_entry = "development"
+end_entry = "development_final_commit_cleanup"
+finalization_target = "development_final_commit_cleanup"
+finalization_cycle_outcome = "completed"
+
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing the workflow phases or their order.
 # Block-authored default workflow
