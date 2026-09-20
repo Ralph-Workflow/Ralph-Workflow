@@ -339,8 +339,9 @@ def _derive_severity(kind: ActivityEventKind, metadata: dict[str, object]) -> st
     * ``TOOL_RESULT``: outcome metadata drives the verdict. A
       truthy ``is_error``, a nonzero ``exit_code`` / ``status``
       / ``error_code`` (or any numeric metadata value whose
-      ``int(...)`` is nonzero), or a present ``error`` /
-      ``stderr`` payload \u2192 ``error``. A missing or zero outcome
+      ``int(...)`` is nonzero), or a truthy explicit ``error`` payload \u2192
+      ``error``. Ordinary diagnostic
+      ``stderr`` output is never fatal; a missing or zero outcome
       \u2192 ``info`` (missing-data graceful-degrade).
     * ``UNKNOWN`` \u2192 ``info`` (the designed fallback).
     * Everything else \u2192 ``info``.
@@ -368,9 +369,8 @@ def outcome_is_failure(metadata: dict[str, object]) -> bool:
     Inspects the conventional parser metadata keys
     (``is_error``, ``exit_code``, ``status``, ``error_code``,
     ``error``, ``stderr``). The first three are explicit signals;
-    a present ``error`` or ``stderr`` payload is treated as a
-    failure even without an explicit code, because the parser
-    only emits those when something went wrong.
+    explicit ``error`` payload is a failure. Ordinary diagnostic
+    ``stderr`` output is not a failure signal without an explicit outcome.
     """
     if not metadata:
         return False
@@ -380,7 +380,7 @@ def outcome_is_failure(metadata: dict[str, object]) -> bool:
     for key in ("exit_code", "status", "error_code"):
         if _code_value_is_failure(metadata.get(key)):
             return True
-    return bool(metadata.get("error") or metadata.get("stderr"))
+    return bool(metadata.get("error"))
 
 
 def _code_value_is_failure(value: object) -> bool:
