@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeGuard
+import errno
+import itertools
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Never, TypeGuard
 
 import pytest
 
@@ -12,7 +14,9 @@ from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recover
 from ralph.pipeline.session_bridge import scoped_reset_tool_registry_callback
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_validation import prepare_spawn_command
-from ralph.runtime_events import current_runtime_event
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.runtime_events import RuntimeEventRecorder, current_runtime_event, runtime_event_scope
+from ralph.testing.fake_process import make_async_process_factory
 
 if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
@@ -46,8 +50,24 @@ def test_seam_1_and_2_scoped_resets_coalesce_and_clear() -> None:
     reset_c()
 
     assert bridge.resets == 2
-    with pytest.raises(ValueError, match="invocation scope"):
-        scoped_reset_tool_registry_callback(bridge, "unscoped")
+    for invalid_scope in ("unscoped", "", "   ", None):
+        with pytest.raises(ValueError, match="invocation scope"):
+            scoped_reset_tool_registry_callback(bridge, invalid_scope)
+
+
+def test_scoped_reset_records_only_its_invocation_event() -> None:
+    bridge = _SharedBridge()
+    reset = scoped_reset_tool_registry_callback(bridge, "invocation-a")
+    assert reset is not None
+    recorder_a = RuntimeEventRecorder()
+    recorder_b = RuntimeEventRecorder()
+
+    with runtime_event_scope(recorder_a):
+        reset()
+    with runtime_event_scope(recorder_b):
+        assert current_runtime_event() is None
+
+    assert recorder_a.latest() == "mcp_operation"
 
 
 def test_seam_3_oversized_payload_has_runtime_launch_origin() -> None:
@@ -58,6 +78,41 @@ def test_seam_3_oversized_payload_has_runtime_launch_origin() -> None:
 
     assert raised.value.failure_origin == "runtime_launch"
     assert prepare_spawn_command(("agent",), cwd=None, env={}, payload_limit=32) == ("agent",)
+
+
+def _raising_factory(command: Sequence[str], _opts: SpawnOptions) -> Never:
+    del command
+    raise OSError(errno.E2BIG, "Argument list too long")
+
+
+def _non_e2big_factory(command: Sequence[str], _opts: SpawnOptions) -> Never:
+    del command
+    raise OSError(errno.ENOENT, "not found")
+
+
+def _process_manager(factory: Callable[[Sequence[str], SpawnOptions], Never]) -> ProcessManager:
+    return ProcessManager(
+        policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False),
+        sync_process_factory=factory,
+        async_process_factory=make_async_process_factory(itertools.count(1)),
+    )
+
+
+def test_kernel_e2big_is_typed_at_process_manager_boundary() -> None:
+    with pytest.raises(AgentLaunchError) as raised:
+        _process_manager(_raising_factory).spawn(("agent", "arg"), SpawnOptions(label="agent"))
+
+    assert raised.value.failure_origin == "runtime_launch"
+    assert raised.value.returncode == -1
+    assert raised.value.agent_name == "agent"
+    assert raised.value.payload_bytes > 0
+
+
+def test_non_e2big_oserror_is_not_reclassified() -> None:
+    with pytest.raises(OSError) as raised:
+        _process_manager(_non_e2big_factory).spawn(("agent",), SpawnOptions(label="agent"))
+
+    assert raised.value.errno == errno.ENOENT
 
 
 def test_seam_4_watchdog_retains_reset_causality() -> None:

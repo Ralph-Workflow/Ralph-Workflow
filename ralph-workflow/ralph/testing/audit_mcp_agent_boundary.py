@@ -41,6 +41,15 @@ def _has_keyword(call: ast.Call, name: str) -> bool:
     return any(keyword.arg == name for keyword in call.keywords)
 
 
+def _is_e2big_handler(handler: ast.ExceptHandler) -> bool:
+    return handler.type is not None and "errno.E2BIG" in ast.unparse(handler)
+
+
+def _translates_e2big(handler: ast.ExceptHandler) -> bool:
+    source = ast.unparse(handler)
+    return "errno.E2BIG" in source and "AgentLaunchError" in source
+
+
 def audit_source(path: Path, source: str) -> list[BoundaryViolation]:
     try:
         tree = ast.parse(source, filename=str(path))
@@ -56,6 +65,14 @@ def audit_source(path: Path, source: str) -> list[BoundaryViolation]:
         "raise OSError(7" in source or "raise OSError(errno.E2BIG" in source
     ):
         violations.append(BoundaryViolation(path, 1, "bare E2BIG raise is forbidden"))
+    if path.name == "_process_manager.py":
+        violations.extend(
+            BoundaryViolation(path, handler.lineno, "OSError handler needs typed E2BIG translation")
+            for handler in ast.walk(tree)
+            if isinstance(handler, ast.ExceptHandler)
+            and _is_e2big_handler(handler)
+            and not _translates_e2big(handler)
+        )
     violations.extend(
         BoundaryViolation(path, call.lineno, "watchdog error needs issuer and runtime_event")
         for call in _calls_named(tree, "IdleWatchdogKilledError")

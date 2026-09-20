@@ -18,6 +18,7 @@ from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+from ralph.runtime_events import record_runtime_event
 from ralph.workspace.fs import FsWorkspace
 
 
@@ -289,11 +290,11 @@ def bridge_env_for(bridge: SessionBridgeLike) -> dict[str, str]:
 
 def scoped_reset_tool_registry_callback(
     bridge: object | None,
-    scope_key: str,
+    scope_key: str | None,
     recorder: Callable[[str], object] | None = None,
 ) -> Callable[[], object] | None:
-    """Bind a bridge registry reset to exactly one invocation scope."""
-    if scope_key == "unscoped":
+    """Bind a bridge registry reset to exactly one concrete invocation scope."""
+    if not isinstance(scope_key, str) or not scope_key.strip() or scope_key == "unscoped":
         raise ValueError("a tool-registry reset requires an invocation scope")
     if bridge is None:
         return None
@@ -302,6 +303,7 @@ def scoped_reset_tool_registry_callback(
         return None
 
     def reset() -> object:
+        record_runtime_event("mcp_operation", "reset_tool_registry")
         if recorder is not None:
             recorder(scope_key)
         with _RESET_SCOPE_LOCK:
