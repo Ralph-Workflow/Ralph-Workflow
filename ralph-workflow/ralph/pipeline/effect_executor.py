@@ -1751,6 +1751,9 @@ def _handle_terminal_agent_invocation_error(
     agent_invocation_error_sink: Callable[[Exception], object] | None,
 ) -> PipelineEvent:
     _set_pi_context_exhaustion_intent(exc)
+    origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
+    issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
+    logger.error("Agent invocation failed: origin={} issuer={} error={}", origin, issuer, exc)
     agent_invocation_error_sink and agent_invocation_error_sink(exc)
     return PipelineEvent.AGENT_FAILURE
 

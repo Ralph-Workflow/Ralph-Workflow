@@ -56,6 +56,10 @@ class ManagedAsyncProcess:
     def returncode(self) -> int | None:
         return self._proc.returncode
 
+    def termination_issuer(self) -> str | None:
+        """Return the lifecycle issuer that intentionally stopped this process."""
+        return self._manager.termination_issuer(self._record.pid)
+
     def record_terminal_reason(self, reason: str) -> None:
         """Authorize this process's termination with a named terminal reason."""
         self._manager.record_terminal_reason(self._record.pid, reason)
@@ -96,7 +100,7 @@ class ManagedAsyncProcess:
         # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self.record_terminal_reason("operator_cancellation")
+        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
         gp = (
             grace_period_s
             if grace_period_s is not None

@@ -6,6 +6,7 @@ dictionary that maps every AgentTransport value to its corresponding CommandBuil
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -158,6 +159,21 @@ def _load_prompt_with_master(
     return f"{master.rstrip()}\n\n{prompt}"
 
 
+
+def _materialize_prompt_file(text: str, dest_path: Path) -> str:
+    """Write ``text`` once and return its stable file-path argv value."""
+    DEFAULT_FILE_BACKEND.mkdir(dest_path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(DEFAULT_FILE_BACKEND, dest_path, text, encoding="utf-8")
+    return str(dest_path)
+
+
+def materialize_argv_prompt(text: str, cwd: str | None) -> str:
+    """Materialize an oversized inline Claude prompt at the spawn boundary."""
+    base = Path(cwd) if cwd is not None else Path.cwd()
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return _materialize_prompt_file(text, base / ".agent" / "tmp" / f"prompt_{digest}_argv.md")
+
+
 def _materialize_generic_prompt_with_master(
     prompt_file: str,
     workspace_path: Path | None,
@@ -176,14 +192,7 @@ def _materialize_generic_prompt_with_master(
         workspace_path,
         master_prompt_file,
     )
-    DEFAULT_FILE_BACKEND.mkdir(combined_path.parent, parents=True, exist_ok=True)
-    write_text_if_changed(
-        DEFAULT_FILE_BACKEND,
-        combined_path,
-        combined_prompt,
-        encoding="utf-8",
-    )
-    return str(combined_path)
+    return _materialize_prompt_file(combined_prompt, combined_path)
 
 
 def _split_optional_flag(flag: str | None) -> list[str]:

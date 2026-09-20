@@ -675,6 +675,9 @@ def check_process_result(
                 stderr=stderr_text,
             )
         stderr = stderr_text if stderr_available else ""
+        issuer_method = cast("Callable[[], str | None] | None", getattr(handle, "termination_issuer", None))
+        issuer = issuer_method() if issuer_method is not None else None
+        intentional = returncode in {-15, 143} and isinstance(issuer, str)
         exc = AgentInvocationError(
             agent_name,
             returncode,
@@ -685,6 +688,8 @@ def check_process_result(
                     check_options.explicit_completion_seen if check_options is not None else False
                 ),
             ),
+            failure_origin="intentional_termination" if intentional else "agent",
+            issuer=issuer if intentional else None,
         )
         log_invocation_exit(exc)
         _teardown_subtree_if_pid_available(handle)

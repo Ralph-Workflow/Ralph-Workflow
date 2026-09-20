@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Buffer
+from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -44,6 +45,14 @@ type SpawnArgument = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 _NUL_TEXT = "\x00"
 _NUL_BYTES = b"\x00"
+
+
+@runtime_checkable
+class _PromptMaterializerModule(Protocol):
+    """The minimal typed interface imported lazily to avoid a cycle."""
+
+    def materialize_argv_prompt(self, prompt: str, cwd: str | None) -> str:
+        """Persist one prompt and return its file path."""
 
 
 @runtime_checkable
@@ -119,6 +128,43 @@ def arg_max_limit(sysconf: Callable[[str], int] = os.sysconf) -> int:
     except (AttributeError, OSError, ValueError):
         return 1024 * 1024
     return limit if limit > 0 else 1024 * 1024
+
+
+def reduce_oversized_inline_prompt(
+    command: Sequence[str],
+    *,
+    cwd: str | None,
+) -> tuple[str, ...]:
+    """Replace a Claude-style ``-- <prompt>`` positional with a file path."""
+    if "--" not in command:
+        return tuple(command)
+    prompt_index = command.index("--") + 1
+    if prompt_index >= len(command) or not isinstance(command[prompt_index], str):
+        return tuple(command)
+    module: object = import_module("ralph.agents.invoke._command_builders")
+    if not isinstance(module, _PromptMaterializerModule):
+        raise RuntimeError("prompt materializer is unavailable")
+    prompt = command[prompt_index]
+    replacement = module.materialize_argv_prompt(prompt, cwd)
+    reduced = list(command)
+    reduced[prompt_index] = replacement
+    return tuple(reduced)
+
+
+def prepare_spawn_command(
+    command: Sequence[str],
+    *,
+    cwd: str | None,
+    env: Mapping[str, str] | None,
+    payload_limit: int | None = None,
+) -> tuple[str, ...]:
+    """Return a validated argv, spilling an oversized inline prompt to a file."""
+    limit = arg_max_limit() if payload_limit is None else payload_limit
+    prepared: tuple[str, ...] = tuple(command)
+    if spawn_payload_bytes(prepared, env) > limit:
+        prepared = reduce_oversized_inline_prompt(prepared, cwd=cwd)
+    validate_spawn_arguments(prepared, cwd=cwd, env=env, payload_limit=limit)
+    return prepared
 
 
 def validate_spawn_arguments(

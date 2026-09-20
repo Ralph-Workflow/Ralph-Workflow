@@ -58,6 +58,7 @@ class IdleWatchdogKilledError(Exception):
         evidence_summary: str | None = None,
         child_alive: bool | None = None,
         resumable_session_id: str | None = None,
+        issuer: str | None = None,
     ) -> None:
         # The message may legitimately contain misleading tokens (e.g. the
         # word "timeout") to stress-test the classifier; the recovery decision
@@ -77,6 +78,8 @@ class IdleWatchdogKilledError(Exception):
         # ``_apply_chain_retry`` resume path consumes it instead of
         # starting a fresh session.
         self.resumable_session_id = resumable_session_id
+        self.failure_origin = "watchdog_observation"
+        self.issuer = issuer or reason
 
 
 __all__ = ["IdleWatchdogKilledError"]

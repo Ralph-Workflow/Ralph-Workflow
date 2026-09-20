@@ -68,6 +68,10 @@ class ManagedProcess:
     def returncode(self) -> int | None:
         return self._proc.returncode
 
+    def termination_issuer(self) -> str | None:
+        """Return the lifecycle issuer that intentionally stopped this process."""
+        return self._manager.termination_issuer(self._record.pid)
+
     def record_terminal_reason(self, reason: str) -> None:
         """Authorize this process's termination with a named terminal reason."""
         self._manager.record_terminal_reason(self._record.pid, reason)
@@ -510,7 +514,7 @@ class ManagedProcess:
                 f"skipping terminate"
             )
             return
-        self.record_terminal_reason("operator_cancellation")
+        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -519,7 +523,7 @@ class ManagedProcess:
         self._manager._escalate_termination_sync(self._record, self._proc, gp)
 
     def kill(self) -> None:
-        self.record_terminal_reason("operator_cancellation")
+        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def cleanup_orphans(self) -> None:

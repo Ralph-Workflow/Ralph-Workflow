@@ -20,7 +20,7 @@ from loguru import logger
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_argv import sanitize_spawn_command
 from ralph.process._spawn_env import child_env_for_spawn
-from ralph.process._spawn_validation import spawn_payload_bytes, validate_spawn_arguments
+from ralph.process._spawn_validation import prepare_spawn_command, spawn_payload_bytes
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -492,20 +492,35 @@ class ProcessManager:
             )
         return terminated
 
-    def _record_termination_outcome(self, pid: int, stage: str, outcome: str) -> None:
-        """Record a termination outcome for a PID."""
-        if pid not in self._termination_outcomes:
-            self._termination_outcomes[pid] = []
-        self._termination_outcomes[pid].append({"stage": stage, "outcome": outcome})
+    def _record_termination_outcome(
+        self, pid: int, stage: str, outcome: str, issuer: str | None = None
+    ) -> None:
+        """Record a termination outcome and its responsible lifecycle issuer."""
+        outcomes = self._termination_outcomes.setdefault(pid, [])
+        record = {"stage": stage, "outcome": outcome}
+        if issuer is not None:
+            record["issuer"] = issuer
+        outcomes.append(record)
 
-    def record_terminal_reason(self, pid: int, reason: str) -> None:
+    def record_terminal_reason(self, pid: int, reason: str, issuer: str | None = None) -> None:
         """Record a permitted reason that authorizes a later termination."""
         if reason not in _PERMITTED_TERMINAL_REASONS:
-            self._record_termination_outcome(pid, "terminal_reason_refused", reason)
+            self._record_termination_outcome(pid, "terminal_reason_refused", reason, issuer)
             return
         outcomes = self._termination_outcomes.setdefault(pid, [])
         if not any(outcome["stage"] == "terminal_reason" for outcome in outcomes):
-            outcomes.append({"stage": "terminal_reason", "outcome": reason})
+            record = {"stage": "terminal_reason", "outcome": reason}
+            if issuer is not None:
+                record["issuer"] = issuer
+            outcomes.append(record)
+
+    def termination_issuer(self, pid: int) -> str | None:
+        """Return the issuer of an intentional termination for ``pid``."""
+        for outcome in reversed(self._termination_outcomes.get(pid, [])):
+            if outcome["stage"] in {"terminal_reason", "graceful_terminate", "force_kill"}:
+                issuer = outcome.get("issuer")
+                return issuer if issuer is not None else outcome["outcome"]
+        return None
 
     def _termination_is_authorized(self, pid: int) -> bool:
         return any(
@@ -554,20 +569,13 @@ class ProcessManager:
             # caller asked for. Both run inside the guard so a rejected
             # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
-            validate_spawn_arguments(
-                cmd,
+            child_env = child_env_for_spawn(
+                effective.env,
+                allow_activity_relay_controls=effective.allow_activity_relay_controls,
+                allow_broker_secret=effective.allow_broker_secret,
                 cwd=effective.cwd,
-                # The map the child actually gets, matching the PTY and async
-                # seams: a variable scrubbed before the child exists cannot
-                # poison it, so rejecting the spawn over it would refuse a
-                # launch that would have succeeded.
-                env=child_env_for_spawn(
-                    effective.env,
-                    allow_activity_relay_controls=effective.allow_activity_relay_controls,
-                    allow_broker_secret=effective.allow_broker_secret,
-                    cwd=effective.cwd,
-                ),
             )
+            cmd = prepare_spawn_command(cmd, cwd=effective.cwd, env=child_env)
             proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
         except (OSError, ValueError) as exc:
             if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
@@ -594,6 +602,8 @@ class ProcessManager:
                 label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
+            if isinstance(exc, AgentLaunchError):
+                raise exc from exc.__cause__
             raise
 
         pid = proc.pid
@@ -656,7 +666,7 @@ class ProcessManager:
             # caller asked for. Both run inside the guard so a rejected
             # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
-            validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
+            cmd = prepare_spawn_command(cmd, cwd=effective.cwd, env=child_env)
             proc = self._pty_process_factory(
                 cmd,
                 cwd=effective.cwd,
@@ -736,7 +746,7 @@ class ProcessManager:
             # caller asked for. Both run inside the guard so a rejected
             # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
-            validate_spawn_arguments(cmd, cwd=effective.cwd, env=child_env)
+            cmd = prepare_spawn_command(cmd, cwd=effective.cwd, env=child_env)
             proc = await self._async_process_factory(
                 cmd,
                 cwd=effective.cwd,
@@ -844,7 +854,7 @@ class ProcessManager:
         grace_period_s: float | None = None,
     ) -> None:
         """Terminate a tracked process with explicit operator cancellation."""
-        self.record_terminal_reason(handle.record.pid, "operator_cancellation")
+        self.record_terminal_reason(handle.record.pid, "operator_cancellation", "process_manager.terminate")
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
@@ -1062,7 +1072,7 @@ class ProcessManager:
                 if record.status in _TERMINAL_STATUSES:
                     continue
                 try:
-                    self.record_terminal_reason(pid, "operator_cancellation")
+                    self.record_terminal_reason(pid, "operator_cancellation", "process_manager.shutdown_all")
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)
@@ -1140,7 +1150,7 @@ class ProcessManager:
                 ):
                     continue
                 try:
-                    self.record_terminal_reason(pid, "operator_cancellation")
+                    self.record_terminal_reason(pid, "operator_cancellation", "process_manager.shutdown_all_for_label")
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)

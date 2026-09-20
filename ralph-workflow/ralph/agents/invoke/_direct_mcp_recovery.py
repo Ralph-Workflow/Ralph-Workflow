@@ -113,6 +113,26 @@ def _apply_retry_cooldown(
         sleep_fn(cooldown_seconds)
 
 
+def _mcp_operation_error(exc: Exception, mcp_exc: Exception) -> AgentInvocationError:
+    """Attach the recovery boundary when its registry operation fails."""
+    if isinstance(exc, AgentInvocationError):
+        return AgentInvocationError(
+            exc.agent_name,
+            exc.returncode,
+            str(mcp_exc),
+            parsed_output=exc.parsed_output,
+            failure_origin="mcp_operation" if exc.failure_origin == "agent" else exc.failure_origin,
+            issuer="direct_mcp_recovery.reset_tool_registry",
+        )
+    return AgentInvocationError(
+        "mcp",
+        1,
+        str(mcp_exc),
+        failure_origin="mcp_operation",
+        issuer="direct_mcp_recovery.reset_tool_registry",
+    )
+
+
 def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exception:
     """Preserve the failure evidence while making same-signature exhaustion explicit."""
 
@@ -233,7 +253,10 @@ def run_with_direct_mcp_recovery[T](
             if on_retry_failure is not None:
                 on_retry_failure(list(_exception_parsed_output(exc)))
             if retry_plan.reset_tool_registry:
-                reset_tool_registry()
+                try:
+                    reset_tool_registry()
+                except Exception as mcp_exc:
+                    raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
             current_session_id = retry_plan.session_id
             retries_used += 1
 
@@ -310,7 +333,10 @@ def iter_with_direct_mcp_recovery(
             if on_retry_failure is not None:
                 on_retry_failure(list(_exception_parsed_output(exc_with_output)))
             if retry_plan.reset_tool_registry:
-                reset_tool_registry()
+                try:
+                    reset_tool_registry()
+                except Exception as mcp_exc:
+                    raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
             current_session_id = retry_plan.session_id
             retries_used += 1
 

@@ -68,6 +68,10 @@ class ManagedPtyProcess:
     def isatty(self) -> bool:
         return self._proc.isatty()
 
+    def termination_issuer(self) -> str | None:
+        """Return the lifecycle issuer that intentionally stopped this process."""
+        return self._manager.termination_issuer(self._record.pid)
+
     def record_terminal_reason(self, reason: str) -> None:
         self._manager.record_terminal_reason(self._record.pid, reason)
 
@@ -75,7 +79,7 @@ class ManagedPtyProcess:
         # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self.record_terminal_reason("operator_cancellation")
+        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -84,7 +88,7 @@ class ManagedPtyProcess:
         self._manager._escalate_termination_pty(self._record, self._proc, gp)
 
     def kill(self) -> None:
-        self.record_terminal_reason("operator_cancellation")
+        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
         self._manager._escalate_termination_pty(self._record, self._proc, 0.0)
 
     def has_live_descendants(self) -> bool:

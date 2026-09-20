@@ -1219,6 +1219,7 @@ class ProcessLineReader:
             evidence_summary=str(merged_diag),
             child_alive=_child_alive,
             resumable_session_id=captured_session_id,
+            issuer=fire_reason.value,
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
