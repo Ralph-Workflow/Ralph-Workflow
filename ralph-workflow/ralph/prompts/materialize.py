@@ -448,6 +448,7 @@ def _render_planning_prompt(
         analysis_feedback_path,
         analysis_feedback_status,
         template_name,
+        preserve_planning_context,
     ) = _prepare_planning_prompt_context(context, options)
     last_retry_error = read_and_clear_retry_hint(
         workspace,
@@ -455,7 +456,9 @@ def _render_planning_prompt(
         worker_namespace=options.worker_namespace,
         pipeline_policy=context.pipeline_policy,
     )
-    artifact_history_path = resolve_planning_history_path(workspace_root)
+    artifact_history_path = (
+        resolve_planning_history_path(workspace_root) if preserve_planning_context else ""
+    )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
     rendered = prompt_planning_xml_with_context(
@@ -779,7 +782,7 @@ def _should_preserve_planning_context(
 def _prepare_planning_prompt_context(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
-) -> tuple[str | None, str, str, str, str, str]:
+) -> tuple[str | None, str, str, str, str, str, bool]:
     phase = context.phase
     workspace = context.workspace
     pipeline_policy = context.pipeline_policy
@@ -832,6 +835,7 @@ def _prepare_planning_prompt_context(
         analysis_feedback_path,
         analysis_feedback_status,
         template_name,
+        preserve_planning_context,
     )
 
 

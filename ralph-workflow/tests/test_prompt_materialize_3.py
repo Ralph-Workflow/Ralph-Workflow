@@ -353,6 +353,63 @@ def test_resolve_planning_history_path_returns_path_when_index_exists(tmp_path: 
     assert result == str(index)
 
 
+def test_planning_regression_fresh_entry_omits_prior_history_but_resume_preserves_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """[S-3] Fresh planning must not expose archived prior-plan history."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the new feature")
+    history_path = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.write_text("# Prior plan history", encoding="utf-8")
+    monkeypatch.setattr(
+        materialize_module,
+        "_clear_artifact_history_per_policy",
+        lambda *_args: None,
+    )
+
+    fresh_prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts),
+    )
+
+    fresh_rendered = workspace.read(fresh_prompt_path)
+    assert "Prior plan history is available" not in fresh_rendered
+    assert str(history_path) not in fresh_rendered
+    _write_plan_handoff(workspace)
+    captured_history_paths: list[str] = []
+
+    def capture_planning_prompt(*, inputs: object, **_kwargs: object) -> str:
+        artifact_history_path = getattr(inputs, "artifact_history_path", None)
+        assert isinstance(artifact_history_path, str)
+        captured_history_paths.append(artifact_history_path)
+        return ""
+
+    monkeypatch.setattr(materialize_module, "prompt_planning_xml_with_context", capture_planning_prompt)
+
+    resumed_prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts, resume_existing_phase=True),
+    )
+
+    assert workspace.read(resumed_prompt_path) == ""
+    assert captured_history_paths == [str(history_path)]
+
+
 def test_planning_loopback_from_analysis_preserves_history(
     tmp_path: Path,
 ) -> None:
