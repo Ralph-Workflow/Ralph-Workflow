@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from ralph.mcp.tools.coordination import ToolError
 
 
@@ -29,6 +31,7 @@ class ExecutionError(ToolError):
         timed_out: bool = False,
         timeout_ms: int | None = None,
         suggested_timeout_ms: int | None = None,
+        timeout_cause: Literal["inactivity", "hard_cap"] | None = None,
         partial_output: str | None = None,
         # Diagnostics summary line
         diagnostics: str | None = None,
@@ -44,6 +47,7 @@ class ExecutionError(ToolError):
         self.timed_out = timed_out
         self.timeout_ms = timeout_ms
         self.suggested_timeout_ms = suggested_timeout_ms
+        self.timeout_cause = timeout_cause
         self.partial_output = partial_output
         self.diagnostics = diagnostics
 
@@ -70,25 +74,40 @@ class ExecutionError(ToolError):
     def _render_timeout(self) -> str:
         ms = self.timeout_ms if self.timeout_ms is not None else "?"
         lines: list[str] = [f"Command timed out after {ms}ms (process killed)."]
-        lines.append(
-            "Re-issuing the IDENTICAL call will time out again. A timeout has two"
-            " possible causes — decide which before retrying:"
-        )
-        if self.suggested_timeout_ms is not None:
+        if self.timeout_cause == "hard_cap":
+            lines.append(
+                "The command already ran to the EXEC_MAX_TIMEOUT_MS ceiling; a larger"
+                " timeout_ms cannot extend it. Split the work or run it in the background."
+            )
+        elif self.timeout_cause == "inactivity":
+            lines.append(
+                "No output was received for the inactivity window. Output resets that window;"
+                " raise timeout_ms up to the cap for a legitimately quiet command, or fix a"
+                " command stuck waiting on input, deadlocked, or looping."
+            )
+            if self.suggested_timeout_ms is not None:
+                lines.append(f"Suggested timeout_ms: {self.suggested_timeout_ms}.")
+        else:
+            lines.append(
+                "Re-issuing the IDENTICAL call will time out again. A timeout has two"
+                " possible causes — decide which before retrying:"
+            )
+        if self.timeout_cause is None and self.suggested_timeout_ms is not None:
             lines.append(
                 f"1. The command is legitimately long-running: pass a larger timeout_ms"
                 f" (e.g. {self.suggested_timeout_ms}) or run a shorter command."
             )
-        else:
+        elif self.timeout_cause is None:
             lines.append(
                 "1. The command is legitimately long-running: pass a larger timeout_ms"
                 " or run a shorter command."
             )
-        lines.append(
-            "2. The command is genuinely stuck (infinite loop, deadlock, or blocked"
-            " waiting on input): raising timeout_ms will only waste more time — fix the"
-            " command itself. Do not retry unchanged."
-        )
+        if self.timeout_cause is None:
+            lines.append(
+                "2. The command is genuinely stuck (infinite loop, deadlock, or blocked"
+                " waiting on input): raising timeout_ms will only waste more time — fix the"
+                " command itself. Do not retry unchanged."
+            )
         if self.partial_output:
             lines.append(f"Partial output before timeout:\n{self.partial_output}")
         if self.diagnostics:

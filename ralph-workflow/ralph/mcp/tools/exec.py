@@ -85,7 +85,7 @@ from ralph.mcp.tools.coordination import (
     require_capability,
 )
 from ralph.process._spawn_env import scrub_activity_relay_controls
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import DeadlineTimeoutExpired, SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -691,6 +691,9 @@ def run_command(
             timed_out=True,
             timeout_ms=timeout_ms,
             suggested_timeout_ms=suggested,
+            timeout_cause=(
+                exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
+            ),
             partial_output=_timeout_partial_output(exc),
         ) from exc
     except OSError as exc:

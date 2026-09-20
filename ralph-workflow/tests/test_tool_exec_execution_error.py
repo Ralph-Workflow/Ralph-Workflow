@@ -53,6 +53,34 @@ def test_timeout_message_presents_both_interpretations() -> None:
     assert any(word in message for word in ("loop", "stuck", "hang", "deadlock"))
 
 
+def test_hard_cap_timeout_message_tells_agent_to_split_or_background_work() -> None:
+    err = ExecutionError(
+        timed_out=True,
+        timeout_ms=90_000,
+        timeout_cause="hard_cap",
+    )
+
+    message = str(err).lower()
+    assert "ceiling" in message
+    assert "split" in message
+    assert "background" in message
+    assert "pass a larger timeout_ms" not in message
+
+
+def test_inactivity_timeout_message_explains_output_resets_the_window() -> None:
+    err = ExecutionError(
+        timed_out=True,
+        timeout_ms=90_000,
+        timeout_cause="inactivity",
+        suggested_timeout_ms=180_000,
+    )
+
+    message = str(err).lower()
+    assert "no output" in message
+    assert "resets" in message
+    assert "180000" in message
+
+
 def test_timeout_message_without_suggestion_still_warns_about_stuck_commands() -> None:
     err = ExecutionError(
         "Failed to execute 'x': timed out",

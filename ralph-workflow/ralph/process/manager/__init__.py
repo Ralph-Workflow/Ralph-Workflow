@@ -7,6 +7,7 @@ import subprocess
 from typing import TYPE_CHECKING, Final, cast
 
 from ralph.process._spawn_env import child_env_for_spawn
+from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -127,6 +128,7 @@ _set_defaults(
 )
 
 __all__ = [
+    "DeadlineTimeoutExpired",
     "LivenessResult",
     "ManagedAsyncProcess",
     "ManagedProcess",

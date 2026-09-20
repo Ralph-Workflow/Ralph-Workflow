@@ -7,10 +7,11 @@ import io
 import subprocess
 import threading
 import time as _time
-from typing import IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Literal
 
 from loguru import logger
 
+from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -349,18 +350,23 @@ class ManagedProcess:
                     )
                     timeout_stdout = bytes(stdout_buffer)
                     timeout_stderr = bytes(stderr_buffer)
-                if (
-                    (inactivity_deadline is not None and now >= inactivity_deadline)
-                    or (absolute_deadline is not None and now >= absolute_deadline)
-                ):
-                    timeout_value = timeout if timeout is not None else hard_timeout
+                timeout_cause: Literal["inactivity", "hard_cap"] | None = None
+                timeout_value: float | None = None
+                if absolute_deadline is not None and now >= absolute_deadline:
+                    timeout_cause = "hard_cap"
+                    timeout_value = hard_timeout
+                elif inactivity_deadline is not None and now >= inactivity_deadline:
+                    timeout_cause = "inactivity"
+                    timeout_value = timeout
+                if timeout_cause is not None:
                     if timeout_value is None:
                         raise RuntimeError("timeout deadline requires a timeout value")
                     # Close the pipes before the finally block joins their readers.
                     self.terminate(grace_period_s=cleanup_grace_period_s)
-                    raise subprocess.TimeoutExpired(
+                    raise DeadlineTimeoutExpired(
                         [],
                         timeout_value,
+                        timeout_cause=timeout_cause,
                         output=timeout_stdout,
                         stderr=timeout_stderr,
                     )
@@ -581,4 +587,4 @@ class ManagedProcess:
                 self._proc.wait(timeout=PROCESS_EXIT_WAIT_SECONDS)
 
 
-__all__ = ["ManagedProcess"]
+__all__ = ["DeadlineTimeoutExpired", "ManagedProcess"]

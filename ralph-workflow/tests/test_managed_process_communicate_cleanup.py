@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.process.manager import (
+    DeadlineTimeoutExpired,
     ManagedProcess,
     ProcessManager,
     ProcessManagerPolicy,
@@ -573,7 +574,8 @@ def test_silent_process_still_times_out_at_the_inactivity_deadline() -> None:
     with pytest.raises(subprocess.TimeoutExpired) as excinfo:
         handle.communicate_and_cleanup(timeout=0.1, hard_timeout=1.0, output_limit_bytes=4096)
 
-    assert excinfo.value.timeout == 0.1
+    assert isinstance(excinfo.value, DeadlineTimeoutExpired)
+    assert excinfo.value.timeout_cause == "inactivity"
     assert handle.record.status == ProcessStatus.KILLED
 
 
@@ -596,7 +598,8 @@ def test_streaming_process_still_stops_at_the_absolute_hard_deadline() -> None:
     with pytest.raises(subprocess.TimeoutExpired) as excinfo:
         handle.communicate_and_cleanup(timeout=0.15, hard_timeout=0.3, output_limit_bytes=4096)
 
-    assert excinfo.value.timeout == 0.15
+    assert isinstance(excinfo.value, DeadlineTimeoutExpired)
+    assert excinfo.value.timeout_cause == "hard_cap"
     assert excinfo.value.stdout is not None
     assert b"progress" in excinfo.value.stdout
     assert handle.record.status == ProcessStatus.KILLED
