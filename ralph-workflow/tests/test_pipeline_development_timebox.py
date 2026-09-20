@@ -6,11 +6,19 @@ from pathlib import Path
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.cycle_timing import RoutingTiming, apply_development_timebox
+from ralph.pipeline.cycle_timing import (
+    RoutingTiming,
+    apply_development_timebox,
+    cycle_deadline_epochs,
+    development_deadline_epochs,
+)
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import DevelopmentTimeboxPolicy
+from ralph.recovery.classifier import FailureCategory
 from ralph.timeout_defaults import IDLE_TIMEOUT_SECONDS, MAX_SESSION_SECONDS
 
 _DEFAULTS = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -20,8 +28,8 @@ def _policy():
     return load_policy(_DEFAULTS).pipeline
 
 
-def _timing(development_elapsed: float) -> RoutingTiming:
-    return RoutingTiming(0.0, development_elapsed_seconds=development_elapsed)
+def _timing(development_elapsed: float, cycle_elapsed: float = 0.0) -> RoutingTiming:
+    return RoutingTiming(cycle_elapsed, development_elapsed_seconds=development_elapsed)
 
 
 def test_defaults_start_at_development_and_preserve_retry_elapsed() -> None:
@@ -104,8 +112,54 @@ def test_custom_development_limit_does_not_change_cycle_elapsed() -> None:
         dev_timebox_active=True,
         dev_timebox_consumed_seconds=599.0,
     )
-    decision = apply_development_timebox(
-        state, "development", policy=custom, routing_timing=_timing(600.0)
+    timing = _timing(600.0, cycle_elapsed=1234.0)
+    before = cycle_deadline_epochs(
+        state, "development", policy=policy, routing_timing=timing, now_epoch=1000.0
+    )
+    decision = apply_development_timebox(state, "development", policy=custom, routing_timing=timing)
+    after = cycle_deadline_epochs(
+        decision.state, "development", policy=custom, routing_timing=timing, now_epoch=1000.0
     )
     assert decision.redirected
     assert decision.state.cycle_timebox_consumed_seconds == 1234.0
+    assert after == before
+
+
+def test_validation_retry_preserves_original_development_timebox_deadlines() -> None:
+    policy = _policy()
+    state = PipelineState(
+        phase="development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=1234.0,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+        phase_chains={"development": AgentChainState(agents=["claude"])},
+    )
+    warning_timing = _timing(4200.0, cycle_elapsed=1234.0)
+
+    retried, _ = reducer_reduce(
+        state,
+        PhaseFailureEvent(
+            phase="development",
+            reason="artifact validation failed",
+            recoverable=True,
+            failure_category=FailureCategory.ARTIFACT_VALIDATION,
+        ),
+        policy,
+        routing_timing=warning_timing,
+    )
+    assert retried.phase == "development"
+    assert retried.dev_timebox_active
+    assert retried.dev_timebox_consumed_seconds == 4200.0
+    assert development_deadline_epochs(
+        retried, "development", policy=policy, routing_timing=warning_timing, now_epoch=1000.0
+    ) == (1000.0, 2200.0)
+
+    redirected, _ = reducer_reduce(
+        retried,
+        PipelineEvent.AGENT_RETRY,
+        policy,
+        routing_timing=_timing(5400.0, cycle_elapsed=1234.0),
+    )
+    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.dev_timebox_redirect_reason is not None
