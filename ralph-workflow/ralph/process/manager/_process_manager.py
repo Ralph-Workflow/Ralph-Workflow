@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import os
 import signal
 import subprocess
@@ -16,9 +17,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_argv import sanitize_spawn_command
 from ralph.process._spawn_env import child_env_for_spawn
-from ralph.process._spawn_validation import validate_spawn_arguments
+from ralph.process._spawn_validation import spawn_payload_bytes, validate_spawn_arguments
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -568,6 +570,17 @@ class ProcessManager:
             )
             proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
         except (OSError, ValueError) as exc:
+            if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+                payload_bytes = spawn_payload_bytes(
+                    cmd,
+                    child_env_for_spawn(
+                        effective.env,
+                        allow_activity_relay_controls=effective.allow_activity_relay_controls,
+                        allow_broker_secret=effective.allow_broker_secret,
+                        cwd=effective.cwd,
+                    ),
+                )
+                exc = AgentLaunchError(effective.label or cmd[0], exc, payload_bytes)
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
@@ -665,6 +678,8 @@ class ProcessManager:
                 label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
+            if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+                raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
             raise
 
         pid = proc.pid
@@ -745,6 +760,8 @@ class ProcessManager:
                 label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
+            if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+                raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
             raise
 
         pid = proc.pid

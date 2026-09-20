@@ -96,7 +96,7 @@ from ralph.pipeline.session_bridge import (
     BridgeFactory,
     bridge_env_for,
     build_session_bridge,
-    reset_tool_registry_callback,
+    scoped_reset_tool_registry_callback,
 )
 from ralph.policy.models import AgentsPolicy
 from ralph.prompts.commit import (
@@ -563,13 +563,9 @@ def _generate_commit_message_with_agent(
 
 def _reset_tool_registry_callback(
     bridge: object | None,
+    scope_key: str = "commit",
 ) -> typing.Callable[[], object] | None:
-    callback = reset_tool_registry_callback(bridge)
-    if callback is None:
-        return None
-    return cast(
-        "typing.Callable[[], object]", callback
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return scoped_reset_tool_registry_callback(bridge, scope_key)
 
 
 def _run_commit_agent_attempt_with_recovery(
@@ -1191,6 +1187,8 @@ def _invocation_error_with_output(
         exc.returncode,
         exc.stderr,
         parsed_output=list(raw_output or parsed_output),
+        failure_origin=exc.failure_origin,
+        issuer=exc.issuer,
     )
 
 

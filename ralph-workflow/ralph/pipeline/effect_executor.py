@@ -77,7 +77,7 @@ from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.pipeline.phase_transition import show_phase_start_with_context
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
-from ralph.pipeline.session_bridge import build_session_bridge, reset_tool_registry_callback
+from ralph.pipeline.session_bridge import build_session_bridge, scoped_reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
@@ -600,9 +600,9 @@ def _invoke_agent_with_recovery(
             result = run_with_direct_mcp_recovery(
                 attempt_fn,
                 max_retries=ctx.max_recovery_attempts,
-                reset_tool_registry=cast(
-                    "Callable[[], object] | None",
-                    reset_tool_registry_callback(bridge_ctx.bridge),
+                reset_tool_registry=scoped_reset_tool_registry_callback(
+                    bridge_ctx.bridge,
+                    effective_run_id,
                 ),
                 on_retry_failure=on_retry_failure,
                 retry_resumable_exit=True,

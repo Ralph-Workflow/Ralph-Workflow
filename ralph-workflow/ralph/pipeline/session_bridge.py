@@ -20,6 +20,7 @@ from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.enums import AgentTransport
@@ -275,16 +276,29 @@ def bridge_env_for(bridge: SessionBridgeLike) -> dict[str, str]:
     }
 
 
-def reset_tool_registry_callback(
+def scoped_reset_tool_registry_callback(
     bridge: object | None,
-) -> object | None:
-    """Return a reset callback if the bridge exposes one, else ``None``."""
+    scope_key: str,
+    recorder: Callable[[str], object] | None = None,
+) -> Callable[[], object] | None:
+    """Bind a bridge registry reset to exactly one invocation scope."""
     if bridge is None:
         return None
     reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
     if not callable(reset_tool_registry_obj):
         return None
-    return cast("object", reset_tool_registry_obj)
+
+    def reset() -> object:
+        if recorder is not None:
+            recorder(scope_key)
+        return cast("Callable[[], object]", reset_tool_registry_obj)()
+
+    return reset
+
+
+def reset_tool_registry_callback(bridge: object | None) -> object | None:
+    """Compatibility wrapper for callers without a known invocation scope."""
+    return scoped_reset_tool_registry_callback(bridge, "unscoped")
 
 
 __all__ = [
@@ -296,4 +310,5 @@ __all__ = [
     "bridge_env_for",
     "build_session_bridge",
     "reset_tool_registry_callback",
+    "scoped_reset_tool_registry_callback",
 ]

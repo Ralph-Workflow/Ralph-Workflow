@@ -37,7 +37,7 @@ from collections.abc import Buffer
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 #: Every form ``subprocess.Popen`` accepts for an argv element or a cwd.
 type SpawnArgument = str | bytes | os.PathLike[str] | os.PathLike[bytes]
@@ -104,11 +104,29 @@ def _env_label(name: object) -> str:
     return _as_text(name).replace(_NUL_TEXT, "?")
 
 
+def spawn_payload_bytes(command: Sequence[SpawnArgument], env: Mapping[str, str] | None) -> int:
+    """Return the byte payload passed to execve, including NUL terminators."""
+    values = [os.fsencode(item) for item in command]
+    if env is not None:
+        values.extend(os.fsencode(f"{key}={value}") for key, value in env.items())
+    return sum(len(value) + 1 for value in values)
+
+
+def arg_max_limit(sysconf: Callable[[str], int] = os.sysconf) -> int:
+    """Return a conservative exec payload limit when the platform cannot report one."""
+    try:
+        limit: int = sysconf("SC_ARG_MAX")
+    except (AttributeError, OSError, ValueError):
+        return 1024 * 1024
+    return limit if limit > 0 else 1024 * 1024
+
+
 def validate_spawn_arguments(
     command: Sequence[SpawnArgument],
     *,
     cwd: SpawnArgument | None,
     env: Mapping[str, str] | None,
+    payload_limit: int | None = None,
 ) -> None:
     """Raise when a spawn argument is one the OS exec interface cannot carry.
 
@@ -147,3 +165,7 @@ def validate_spawn_arguments(
             f"cannot spawn {_spawn_target(command)}: {offender} contains an "
             "embedded null byte, which the OS exec interface cannot carry"
         )
+    payload_bytes = spawn_payload_bytes(command, env)
+    limit = arg_max_limit() if payload_limit is None else payload_limit
+    if payload_bytes > limit:
+        raise OSError(7, f"argv+env = {payload_bytes} bytes exceeds limit {limit}")

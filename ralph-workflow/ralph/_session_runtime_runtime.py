@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from loguru import logger
@@ -27,6 +27,7 @@ from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, resolve_model_identity
+from ralph.pipeline.session_bridge import scoped_reset_tool_registry_callback
 
 from ._session_runtime_deps import ManagedAgentSessionDeps
 
@@ -376,7 +377,10 @@ class ManagedAgentSessionRuntime:
             ),
         )
         max_retries = default_direct_mcp_retry_limit(self._config.general.max_same_agent_retries)
-        reset_tool_registry = _reset_tool_registry_callback(self._bridge)
+        reset_tool_registry = _reset_tool_registry_callback(
+            self._bridge,
+            session_id or "managed-session",
+        )
         base_session_id = session_id
 
         def _invoke_with_retry_session(retry_session_id: str | None) -> Iterable[str]:
@@ -402,11 +406,11 @@ def _with_session_id(options: InvokeOptions, session_id: str | None) -> InvokeOp
     return replace(options, session_id=session_id)
 
 
-def _reset_tool_registry_callback(bridge: object) -> Callable[[], object] | None:
-    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
-    if not callable(reset_tool_registry_obj):
-        return None
-    return cast("Callable[[], object]", reset_tool_registry_obj)
+def _reset_tool_registry_callback(
+    bridge: object,
+    scope_key: str,
+) -> Callable[[], object] | None:
+    return scoped_reset_tool_registry_callback(bridge, scope_key)
 
 
 def _transport_tagged_identity(transport: AgentTransport | None) -> MultimodalModelIdentity:

@@ -126,6 +126,8 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
             exc.returncode,
             exc.stderr,
             parsed_output=[*_exception_parsed_output(exc), diagnostic],
+            failure_origin=exc.failure_origin,
+            issuer=exc.issuer,
         )
     return RuntimeError(f"{diagnostic} Original failure: {exc}")
 
@@ -338,6 +340,8 @@ def _invocation_error_with_output(
             exc.returncode,
             exc.stderr,
             parsed_output=merged_lines,
+            failure_origin=exc.failure_origin,
+            issuer=exc.issuer,
         )
     return exc
 

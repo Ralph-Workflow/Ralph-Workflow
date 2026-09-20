@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from ralph.agents.invoke._agent_launch_error import AgentLaunchError
 from ralph.recovery.failure_classifier import (
     POST_TOOL_ACTIVITY_MARKERS,
     POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS,
@@ -54,6 +55,7 @@ def retryable_agent_failure_reason(
         return None
     primary_text = _primary_recovery_error_text(exc)
     checks: tuple[tuple[bool, str], ...] = (
+        (isinstance(exc, AgentLaunchError), "a transient runtime launch failure"),
         (isinstance(exc, inactivity_error_type), "an inactivity timeout"),
         (
             type(exc).__name__ == "OpenCodeResumableExitError",
