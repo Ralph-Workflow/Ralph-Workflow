@@ -16,17 +16,17 @@ Read the diff silently and put reasoning only in the artifact body. The only sta
 
 ## Write the message first
 
-Write the message a senior maintainer would want in permanent history. Lead with why the change exists and its observable outcome. Explain non-obvious design decisions, breaking or operational consequences, and only verification actually recorded here: {{ VERIFICATION_FACTS }}. Detail target: **{{ MESSAGE_BUDGET }}**.
+Write the message a senior maintainer would want in permanent history. A reader should understand the problem, chosen outcome, and material consequences without reopening the diff. Recorded verification: {{ VERIFICATION_FACTS }}. If that says `none recorded`, omit verification entirely; never write “none recorded” in the message. Detail target: **{{ MESSAGE_BUDGET }}**.
 
-Keep a narrow change to one short paragraph. Give a broad change a concise summary followed by a few cohesive paragraphs about behavior, design, migration risk, and verification. Never inventory files or directories, copy the diff, enumerate every edit, or pad the body with generated phrases such as “Changed X.”
+Match depth to conceptual scope, not file count. A trivial typo needs only a subject; a narrow fix needs one short paragraph; a medium change may need two or three focused paragraphs; and a broad, cross-cutting, or breaking change should be long enough to explain the prior limitation, new invariant or behavior, design decisions, tradeoffs, and migration or compatibility impact. Do not shorten it until those ideas are understandable. Group edits by purpose rather than subsystem. Never inventory files or directories, copy the diff, enumerate every edit, repeat facts, or pad with generated phrases such as “Changed X.”
 
 ## Subject
 
-Summarize the primary intent rather than the largest directory or diff mechanics. Write one concise imperative subject as `<kind>(<scope>)?!?: <description>`, choosing `feat|fix|docs|refactor|test|style|perf|build|ci|chore`. Use a scope only for one stable product concept, `!` only for a breaking change, and language that completes “This commit will…”. Keep the value unquoted, lowercase the type and scope, use one space after the colon, and do not generate alternatives or end with punctuation.
+Summarize the user-visible or architectural outcome rather than the largest directory, implementation technique, or work performed. Write one concise imperative subject as `<kind>(<scope>)?!?: <description>`, choosing `feat` for capability, `fix` for corrected behavior, `refactor` for structure without intended behavior change, `perf` for performance, or the matching `docs|test|style|build|ci|chore` category. Use a scope only for one stable product concept and `!` only when consumers must change usage, deployment, or integration. Prefer a concrete verb that completes “This commit will…” over update, change, improve, or handle. Keep the value unquoted, lowercase the type and scope, use one space after the colon, and do not generate alternatives or end with punctuation.
 
 ## Body
 
-Omit the body only for a one-line typo, formatting, or comment change; every other commit gets a body. Otherwise explain the problem or motivation first, then the behavioral or architectural outcome in one `## Body` item. Include migration risk or verification only when useful; do not repeat the subject, narrate the diff, or inventory components. Use `## Body Summary`, `## Body Details`, and
+Omit the body only for a one-line typo, formatting, or comment change; every other commit gets a body. Explain why the old behavior was insufficient, then the new behavior or invariant and why it resolves the problem. Mention real tradeoffs, deployment steps, compatibility impact, or recorded verification only when material. Prefer causal prose over a changelog; do not repeat the subject, narrate the diff, inventory components, claim unrecorded tests, or include empty boilerplate categories. Use `## Body Summary`, `## Body Details`, and
 `## Body Footer` instead only for migration steps, breaking changes, or issue
 references.
 
