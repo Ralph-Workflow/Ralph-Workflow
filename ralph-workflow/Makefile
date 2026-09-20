@@ -2,14 +2,14 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 10 shards. This is the maintained contention-safe profile and
-# finishes the primary suite before the budget-tracked smoke suites start.
-# Nested xdist remains disabled because its coordination overhead exceeds the
-# gain for this shard-saturated profile. Operators may override after measuring
-# their own host:
-#   PYTEST_WORKERS=auto make test # opt into the CPU-capped auto profile
+# Default: auto selects the CPU-capped 12-shard profile. This keeps the
+# primary suite inside the immutable combined verification budget before the
+# budget-tracked smoke suites start. Nested xdist remains disabled because its
+# coordination overhead exceeds the gain for this shard-saturated profile.
+# Operators may override after measuring their own host:
+#   PYTEST_WORKERS=auto make test # CPU-capped auto profile
 #   PYTEST_WORKERS=2 make test    # may exceed the suite budget
-#   PYTEST_WORKERS=10 make test   # maintained contention-safe profile
+#   PYTEST_WORKERS=8 make test    # explicit reduced parallelism
 #
 # Multimodal smoke tests are I/O-bound and use an independently bounded
 # worker pool so their parallelism remains configurable without changing the
@@ -28,20 +28,19 @@ MULTIMODAL_SMOKE_WORKERS ?= 12
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 10
+PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 # In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
 # Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
 # a single pytest invocation). The runner fans out into N shards and
 # then spawns M xdist workers per shard, so the total pytest worker
 # count is N * M. The default ``0`` keeps each shard on plain pytest
-# (no in-shard xdist); the maintained profile uses ten
-# shards * 1 worker = 10 parallel pytest workers. Setting the variable
-# to ``auto`` opts into the legacy CPU-utilisation-maximising policy:
-# M is sized so N * M does not exceed the host's available CPU count.
-# The measured runner profile shows that additional xdist coordination
-# cannot offset the startup and filesystem contention of higher shard
-# counts, so ``auto`` is no longer the default. The combined 60s budget
+# (no in-shard xdist); the auto profile uses twelve
+# shards * 1 worker = 12 parallel pytest workers. Setting the variable
+# to ``auto`` selects the CPU-capped profile: M is sized so N * M does
+# not exceed the host's available CPU count. The measured runner profile
+# shows that additional xdist coordination cannot offset the startup and
+# filesystem contention of higher shard counts. The combined 60s budget
 # remains immutable: changing PYTEST_XDIST_WORKERS_PER_SHARD does NOT
 # raise that budget.
 PYTEST_XDIST_WORKERS_PER_SHARD ?= 0

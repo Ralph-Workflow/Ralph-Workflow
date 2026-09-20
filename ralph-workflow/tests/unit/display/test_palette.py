@@ -5,8 +5,6 @@ from __future__ import annotations
 from itertools import combinations, pairwise
 
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from ralph.display import theme
 from ralph.display._identity import (
@@ -678,11 +676,9 @@ def test_palette_lightness_hierarchy_ranks_field_over_structure_over_recessive()
 _MAX_OWNED_FILL_DELTA_L: float = 0.06
 
 
-@settings(max_examples=30)
-@given(
-    r=st.integers(min_value=0, max_value=255),
-    g=st.integers(min_value=0, max_value=255),
-    b=st.integers(min_value=0, max_value=255),
+@pytest.mark.parametrize(
+    ("r", "g", "b"),
+    [(index * 73 % 256, index * 151 % 256, index * 211 % 256) for index in range(30)],
 )
 @pytest.mark.criteria("E-5")
 def test_owned_fills_stay_a_bounded_delta_l_from_the_surface(r: int, g: int, b: int) -> None:

@@ -65,10 +65,12 @@ COMMIT_MESSAGE_SPEC = MdArtifactSpec(
     },
     optional_frontmatter=frozenset({"subject", "reason"}),
     sections={
-        "Body": SectionRule(required=False, max_items=1),
-        "Body Summary": SectionRule(required=False, max_items=1),
-        "Body Details": SectionRule(required=False, max_items=1),
-        "Body Footer": SectionRule(required=False, max_items=1),
+        # Layout is normalized before this safety/executability parser; do not
+        # reject repairable multi-item prose here.
+        "Body": SectionRule(required=False),
+        "Body Summary": SectionRule(required=False),
+        "Body Details": SectionRule(required=False),
+        "Body Footer": SectionRule(required=False),
         "Files": SectionRule(required=False),
         "Excluded Files": SectionRule(required=False),
     },

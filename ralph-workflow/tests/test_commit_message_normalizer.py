@@ -19,12 +19,23 @@ def test_normalizer_rejects_ambiguous_intent() -> None:
         normalize_commit_message_draft("please commit this", EVIDENCE)
 
 
-def test_normalizer_preserves_explicit_body_claims() -> None:
+def test_normalizer_rejects_unsupported_body_claims() -> None:
+    with pytest.raises(ValueError, match="unsupported body claim"):
+        normalize_commit_message_draft(
+            "fix: preserve evidence\n\n## Body\n- [B-1] Retains the user-visible retry result.", EVIDENCE
+        )
+
+
+def test_normalizer_preserves_grounded_body_claims() -> None:
+    evidence = CommitEvidenceBundle(
+        "diff", ("ralph/app.py",), ("ralph/app",), (), ("ralph/app.py",),
+        behavior_facts=("Preserve retry evidence.",),
+    )
     result = normalize_commit_message_draft(
-        "fix: preserve evidence\n\n## Body\n- [B-1] Retains the user-visible retry result.", EVIDENCE
+        "fix: preserve evidence\n\n## Changes\n* Preserve retry evidence.", evidence
     )
 
-    assert "Retains the user-visible retry result." in result.content
+    assert "Preserve retry evidence." in result.content
 
 
 def test_normalizer_reports_evidence_specific_regeneration_diagnostic() -> None:

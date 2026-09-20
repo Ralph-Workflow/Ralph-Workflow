@@ -53,4 +53,5 @@ def commit_normalization_audit(
         "risk_hints": list(evidence.risk_hints),
         "confidence": result.confidence,
         "transformations": list(result.transformations),
+        "provenance": result.provenance,
     }

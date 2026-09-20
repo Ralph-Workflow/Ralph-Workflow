@@ -23,19 +23,15 @@ class CommitMessageIR:
 
 
 def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> CommitMessageIR:
-    """Build the smallest factual IR from authoritative commit evidence."""
-    return CommitMessageIR(
-        intent=subject,
-        change_areas=evidence.change_areas,
-        rationale=(),
-        behavior_risk=evidence.behavior_facts,
-        verification=evidence.verification_facts,
-        files=evidence.changed_files,
-    )
+    """Build a grounded IR; all non-subject claims come from live evidence."""
+    rationale = tuple(f"Changed {area}." for area in evidence.change_areas)
+    behavior_risk = (*evidence.behavior_facts, *evidence.compatibility_hints, *evidence.risk_hints)
+    verification = evidence.verification_facts
+    return CommitMessageIR(subject, evidence.change_areas, rationale, behavior_risk, verification, evidence.changed_files)
 
 
 def render_commit_message_artifact(ir: CommitMessageIR) -> str:
-    """Render an IR into the canonical commit_message Markdown grammar."""
+    """Render the IR into the canonical commit_message Markdown grammar."""
     lines = ["---", "type: commit", f"subject: {ir.intent}", "---"]
     body_parts = (*ir.rationale, *ir.behavior_risk, *ir.verification)
     if body_parts:
@@ -43,9 +39,7 @@ def render_commit_message_artifact(ir: CommitMessageIR) -> str:
     if ir.files:
         lines.extend(("", "## Files", *(f"- [F-{index}] {path}" for index, path in enumerate(ir.files, 1))))
     if ir.excluded_files:
-        lines.extend(
-            ("", "## Excluded Files", *(f"- [X-{index}] {path} | {reason}" for index, (path, reason) in enumerate(ir.excluded_files, 1)))
-        )
+        lines.extend(("", "## Excluded Files", *(f"- [X-{index}] {path} | {reason}" for index, (path, reason) in enumerate(ir.excluded_files, 1))))
     return "\n".join(lines) + "\n"
 
 

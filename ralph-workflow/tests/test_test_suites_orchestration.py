@@ -78,7 +78,7 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (12, "8"),
+        (12, "12"),
         (16, "12"),
         (32, "12"),
         (64, "12"),
@@ -89,10 +89,10 @@ def test_auto_worker_count_preserves_headroom_and_caps_at_twelve(
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile leaves two cores for the runner and I/O overhead.
+    """Auto profile caps the shard count at the verified 12-worker limit.
 
-    A 12-core host therefore uses eight shards, preserving smoke-suite
-    budget headroom; larger hosts remain bounded by the verified 12-worker cap.
+    A 12-core host therefore uses twelve shards; larger hosts remain bounded
+    by the same verified cap.
 
     The 40-core verification host uses 12 shards so Python/pytest startup,
     collection, and filesystem contention cannot consume the one-second

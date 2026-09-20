@@ -17,9 +17,13 @@ def test_evidence_ir_render_round_trip_preserves_grounded_files(tmp_path: Path) 
     artifact_path = tmp_path / "commit_message.md"
     artifact_path.write_text(artifact, encoding="utf-8")
 
-    assert read_commit_message_payload_from_path(artifact_path) == {
-        "type": "commit", "subject": "fix: preserve evidence", "body": "pytest", "files": ["ralph/app.py"]
-    }
+    payload = read_commit_message_payload_from_path(artifact_path)
+    assert payload is not None
+    assert payload["type"] == "commit"
+    assert payload["subject"] == "fix: preserve evidence"
+    assert payload["files"] == ["ralph/app.py"]
+    assert "Changed ralph." in str(payload["body"])
+    assert "pytest" in str(payload["body"])
 
 
 def test_ir_renderer_preserves_excluded_files() -> None:
