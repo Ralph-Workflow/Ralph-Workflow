@@ -141,11 +141,27 @@ class _NoopHandler:
         return {"content": [{"type": "text", "text": "ok"}]}
 
 
+class _SubmitArtifactHandler:
+    def __init__(self, workspace: FsWorkspace) -> None:
+        self._workspace = workspace
+
+    def __call__(
+        self,
+        host_session: object | None,
+        workspace: object | None,
+        params: dict[str, object],
+    ) -> object:
+        if host_session is None:
+            raise AssertionError("artifact submission requires a session")
+        return handle_submit_md_artifact(host_session, self._workspace, params)
+
+
 def _build_test_workspace(tmp_path: pathlib.Path) -> FsWorkspace:
     return FsWorkspace(tmp_path)
 
 
 def _server_with_budget(budget: SessionWrapupBudget, *, tmp_path: pathlib.Path) -> McpServer:
+    workspace = _build_test_workspace(tmp_path)
     bridge = ToolBridge()
     bridge.register(
         ToolMetadata(
@@ -158,26 +174,39 @@ def _server_with_budget(budget: SessionWrapupBudget, *, tmp_path: pathlib.Path) 
         ),
         _NoopHandler(),
     )
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="ralph_submit_md_artifact",
+                description="Test artifact submission tool",
+                input_schema={"type": "object"},
+            ),
+            required_capability="artifact.submit",
+        ),
+        _SubmitArtifactHandler(workspace),
+    )
     return McpServer(
         session=AgentSession(
             session_id="session-wrapup-test",
             run_id="run-wrapup-test",
             drain="development",
-            capabilities={"WorkspaceRead"},
+            capabilities={"ArtifactSubmit", "WorkspaceRead"},
         ),
-        workspace=_build_test_workspace(tmp_path),
+        workspace=workspace,
         registry=bridge,
         wrapup_provider=budget.notice,
         before_wrapup_warning_provider=budget.before_soft_warning,
     )
 
 
-def _call_read_file(server: McpServer) -> list[dict[str, object]]:
+def _call_tool(
+    server: McpServer, name: str, arguments: dict[str, object]
+) -> list[dict[str, object]]:
     request = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
         msg_id="1",
-        params={"name": "read_file", "arguments": {}},
+        params={"name": name, "arguments": arguments},
     )
     response, _ = server._handle_tools_call(request, ServerState.RUNNING)
     assert response.result is not None
@@ -191,6 +220,10 @@ def _call_read_file(server: McpServer) -> list[dict[str, object]]:
         assert isinstance(block, dict)
         blocks.append(block)
     return blocks
+
+
+def _call_read_file(server: McpServer) -> list[dict[str, object]]:
+    return _call_tool(server, "read_file", {})
 
 
 @pytest.mark.parametrize("status", ("partial", "failed"))
@@ -369,6 +402,46 @@ def test_development_result_accepts_incomplete_status_at_wrapup_warning(
         )
 
     assert result.is_error is False
+    payload: object = json.loads(result.content[0].text)
+    assert isinstance(payload, dict)
+    diagnostics = payload.get("diagnostics")
+    assert isinstance(diagnostics, list)
+    assert all(
+        not isinstance(diagnostic, dict) or diagnostic.get("rule_id") != "DEV014"
+        for diagnostic in diagnostics
+    )
+
+
+def test_partial_submit_carries_wrapup_warning_after_soft_threshold(
+    tmp_path: pathlib.Path,
+) -> None:
+    clock = FakeClock()
+    budget = SessionWrapupBudget(clock, soft_seconds=3000.0, hard_seconds=3300.0)
+    server = _server_with_budget(budget, tmp_path=tmp_path)
+    clock.advance(3000.0)
+
+    content = _call_tool(
+        server,
+        "ralph_submit_md_artifact",
+        {
+            "artifact_type": "development_result",
+            "content": "---\ntype: development_result\nstatus: partial\n---\n"
+            "## Summary\n- [SUM-1] Incomplete.\n",
+        },
+    )
+
+    payload: object = json.loads(str(content[0].get("text")))
+    assert isinstance(payload, dict)
+    assert payload.get("valid") is True
+    assert all(
+        not isinstance(diagnostic, dict) or diagnostic.get("rule_id") != "DEV014"
+        for diagnostic in payload.get("diagnostics", [])
+    )
+    warning = next(
+        str(block.get("text")) for block in content if "50-MINUTE WARNING" in str(block.get("text"))
+    )
+    assert "return to it immediately" in warning
+    assert "partial only as an exceptional last resort" in warning
 
 
 def test_tool_result_carries_wrapup_banner_only_after_soft_threshold(
