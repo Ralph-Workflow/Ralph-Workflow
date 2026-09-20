@@ -25,7 +25,7 @@ class ConflictResolutionConfig(RalphBaseModel):
     max_rounds_per_stop: int = Field(default=3, ge=1)
     max_rebase_conflict_stops: int = Field(default=10, ge=1)
     max_consecutive_resolver_attempts: int = Field(
-        default=8,
+        default=16,
         ge=1,
         description="Resolver attempts per conflict-resolution strategy before escalation.",
     )

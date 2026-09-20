@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.loader import load_config
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline.auto_integrate_conflict_budget import MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 
 
 def test_default_conflict_resolution_configuration_has_fixed_documented_values() -> None:
@@ -23,6 +24,16 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
     assert resolution.max_rebase_conflict_stops == 10
     assert resolution.max_fallback_agents == 2
     assert resolution.total_resolution_cap_seconds is None
+
+
+def test_resolver_attempt_budget_defaults_above_incident_baseline_and_is_configurable() -> None:
+    """The per-strategy budget is higher than the incident shared limit."""
+    default = UnifiedConfig.model_validate({}).conflict_resolution.max_consecutive_resolver_attempts
+    override = UnifiedConfig.model_validate({"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}).conflict_resolution.max_consecutive_resolver_attempts
+
+    assert default == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS == 16
+    assert default > 8
+    assert override == 3
 
 
 @pytest.mark.parametrize(

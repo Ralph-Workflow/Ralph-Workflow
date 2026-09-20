@@ -60,9 +60,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 #: Consecutive unresolved conflicts against the same target that may
-#: each pay for a dev-agent conflict resolution. The ninth and later
+#: each pay for a dev-agent conflict resolution. The seventeenth and later
 #: attempts record an escalation instead of invoking the agent.
-MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 8
+MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 16
 
 _ACTION_CONFLICT = "conflict"
 
@@ -231,7 +231,7 @@ def apply_conflict_budget(
         )
 
     update: dict[str, object] = {
-        "consecutive_conflicts": carried + 1,
+        "consecutive_conflicts": min(attempts, carried + 1),
         "last_conflict_feature_sha": identity.feature_sha,
         "last_conflict_target_sha": identity.target_sha,
         "last_conflict_paths": identity.conflicted_paths,
@@ -242,7 +242,7 @@ def apply_conflict_budget(
     if resolver_suppressed:
         update["last_reason"] = (
             f"conflict resolution budget exhausted for '{target}' after "
-            f"{carried} unresolved attempts; escalating to the next resolution strategy"
+            f"{min(carried, attempts)} unresolved attempts; escalating to the next resolution strategy"
         )
     return record.model_copy(update=update)
 

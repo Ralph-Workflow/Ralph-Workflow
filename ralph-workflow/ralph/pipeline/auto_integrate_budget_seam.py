@@ -138,7 +138,7 @@ def charge_failed_attempt(
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     return skip.model_copy(
         update={
-            "consecutive_conflicts": carried + 1 if resolver_offered else carried,
+            "consecutive_conflicts": min(attempts, carried + 1) if resolver_offered else carried,
             "last_conflict_feature_sha": identity.feature_sha,
             "last_conflict_target_sha": identity.target_sha,
             "last_conflict_paths": identity.conflicted_paths,

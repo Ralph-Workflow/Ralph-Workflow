@@ -42,9 +42,6 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
-from ralph.pipeline.auto_integrate_conflict_budget import (
-    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
-)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -52,6 +49,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+
+
+_TEST_RESOLVER_ATTEMPTS = 2
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
@@ -99,7 +99,7 @@ def _build_config(target: str) -> UnifiedConfig:
             # These legacy regression cases pin the compatibility fallback;
             # configurable deployments are covered separately below.
             "conflict_resolution": {
-                "max_consecutive_resolver_attempts": MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+                "max_consecutive_resolver_attempts": _TEST_RESOLVER_ATTEMPTS,
             },
         }
     )
@@ -128,7 +128,7 @@ def _exhaust_budget(
     carries into the next integration seam.
     """
     state = RebaseState()
-    for _ in range(MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 1):
+    for _ in range(_TEST_RESOLVER_ATTEMPTS + 1):
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
@@ -162,7 +162,7 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
 
     state = RebaseState()
     outcomes: list[RebaseState] = []
-    for _ in range(MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 2):
+    for _ in range(_TEST_RESOLVER_ATTEMPTS + 2):
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
@@ -173,7 +173,7 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
         outcomes.append(result)
         state = result
 
-    assert len(invocations) == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
     final = outcomes[-1]
     assert final.last_action == "conflict"
     assert final.last_reason is not None
@@ -244,7 +244,7 @@ def test_successful_land_resets_the_conflict_budget(tmp_git_repo: Path) -> None:
         RebaseState(
             last_action="conflict",
             last_target=base,
-            consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS - 1,
+            consecutive_conflicts=_TEST_RESOLVER_ATTEMPTS - 1,
         ),
         conflict_resolver=_resolves,
     )
@@ -273,7 +273,7 @@ def test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically(
         RebaseState(
             last_action="conflict",
             last_target=base,
-            consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+            consecutive_conflicts=_TEST_RESOLVER_ATTEMPTS,
         ),
         conflict_resolver=_never_resolves,
     )
@@ -305,7 +305,7 @@ def test_new_feature_commit_gets_a_fresh_resolver_budget(
         return False
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
-    assert len(invocations) == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
     assert spent.last_conflict_feature_sha is not None
     assert spent.last_conflict_target_sha is not None
 
@@ -320,7 +320,7 @@ def test_new_feature_commit_gets_a_fresh_resolver_budget(
         conflict_resolver=_never_resolves,
     )
 
-    assert invocations == [base] * (MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 1)
+    assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 1)
     assert result is not None
     assert result.last_action == "conflict"
     assert result.consecutive_conflicts == 1
@@ -342,7 +342,7 @@ def test_moved_mainline_tip_gets_a_fresh_resolver_budget(
         return False
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
-    assert len(invocations) == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
 
     # A concurrent agent advances the shared mainline; the feature tip
     # is untouched but the conflict is now against a different commit.
@@ -358,7 +358,7 @@ def test_moved_mainline_tip_gets_a_fresh_resolver_budget(
         conflict_resolver=_never_resolves,
     )
 
-    assert invocations == [base] * (MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 1)
+    assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 1)
     assert result is not None
     assert result.last_action == "conflict"
     assert result.consecutive_conflicts == 1
@@ -385,7 +385,7 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
         return False
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
-    assert len(invocations) == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
 
     # An uncommitted edit to a TRACKED file makes the next seam a
     # recorded skip, not a conflict; the count and the identity both
@@ -412,7 +412,7 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
         conflict_resolver=_never_resolves,
     )
 
-    assert invocations == [base] * MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert invocations == [base] * _TEST_RESOLVER_ATTEMPTS
     assert result is not None
     assert result.last_reason is not None
     assert "budget" in result.last_reason
@@ -437,7 +437,7 @@ def test_a_raising_resolver_does_not_charge_the_rebase_conflict_budget(
         raise RuntimeError("simulated resolver crash")
 
     state = RebaseState()
-    for _ in range(MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 2):
+    for _ in range(_TEST_RESOLVER_ATTEMPTS + 2):
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
@@ -450,7 +450,7 @@ def test_a_raising_resolver_does_not_charge_the_rebase_conflict_budget(
         assert result.conflict_strategy_index == 0
         state = result
 
-    assert invocations == [base] * (MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 2)
+    assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 2)
 
 
 def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(
