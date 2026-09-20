@@ -39,6 +39,7 @@ class CommitEvidenceBundle:
     verification_facts: tuple[str, ...] = ()
     behavior_facts: tuple[str, ...] = ()
     diff_summary: tuple[str, ...] = ()
+    fact_provenance: tuple[tuple[str, str, str, str], ...] = ()
 
     @property
     def message_budget(self) -> str:
@@ -120,12 +121,20 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
     )
     compatibility_hints = (("review public API compatibility",) if any(path.startswith(("ralph/mcp/", "api/", "src/")) for path in changed_files) else ())
     risk_hints = (("review commit staging and secret handling",) if any(path.startswith(("ralph/git/", "ralph/pipeline/", ".github/")) for path in changed_files) else ())
+    verification_facts = _verification_facts(repo_root)
+    behavior_facts = _behavior_facts(repo_root)
+    provenance = (
+        *(('behavior', fact, 'development_result', 'high') for fact in behavior_facts),
+        *(('verification', fact, 'parallel_development_summary', 'high') for fact in verification_facts),
+        *(('compatibility', fact, 'changed_paths', 'medium') for fact in compatibility_hints),
+        *(('risk', fact, 'changed_paths', 'medium') for fact in risk_hints),
+    )
     return CommitEvidenceBundle(
         diff=diff, changed_files=changed_files, change_areas=areas,
         verification_hints=verification_hints, public_behavior_paths=public_paths,
         compatibility_hints=compatibility_hints, risk_hints=risk_hints,
-        verification_facts=_verification_facts(repo_root), behavior_facts=_behavior_facts(repo_root),
-        diff_summary=_summarize_diff(diff),
+        verification_facts=verification_facts, behavior_facts=behavior_facts,
+        diff_summary=_summarize_diff(diff), fact_provenance=provenance,
     )
 
 

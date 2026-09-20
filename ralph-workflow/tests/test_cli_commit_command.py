@@ -815,6 +815,7 @@ def test_generate_commit_excludes_untracked_secret_while_staging_safe_work(
             "ralph.cli.commands.commit.read_commit_message_artifact",
             return_value="test: stage safe work",
         ),
+        patch("ralph.cli.commands.commit.commit_receipt_matches_changed_files", return_value=True),
         patch("ralph.cli.commands.commit.create_commit", side_effect=capture_staged_paths),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
     ):
@@ -879,6 +880,7 @@ def test_generate_commit_untracks_recognized_tracked_secret_without_deleting_it(
             "ralph.cli.commands.commit.read_commit_message_artifact",
             return_value="test: remove tracked secret",
         ),
+        patch("ralph.cli.commands.commit.commit_receipt_matches_changed_files", return_value=True),
         patch("ralph.cli.commands.commit.create_commit", side_effect=capture_staged_status),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
     ):

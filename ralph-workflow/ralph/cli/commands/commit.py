@@ -30,11 +30,13 @@ from ralph.git.operations import (
     find_repo_root,
     get_head_sha,
     has_staged_changes,
+    list_changed_paths,
 )
 from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_artifact,
 )
+from ralph.mcp.artifacts.completion_receipts import commit_receipt_matches_changed_files
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.commit_plumbing import (
     CommitAgentResult,
@@ -212,6 +214,16 @@ def _handle_agent_commit_generation(
 
     if apply:
         try:
+            if (repo_root / ".git").exists() and not commit_receipt_matches_changed_files(
+                repo_root,
+                "commit-plumbing",
+                "commit_message",
+                tuple(list_changed_paths(repo_root)),
+            ):
+                display.emit_warning(
+                    "Commit failed: generated commit artifact is stale; regenerate before staging"
+                )
+                return 1
             head_before_stage = get_head_sha(repo_root) if (repo_root / ".git").exists() else ""
             stage_commit_changes_safely(repo_root)
             commit_result: CommitCreationResult

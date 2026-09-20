@@ -28,6 +28,7 @@ import sqlite3
 from pathlib import Path
 from typing import cast
 
+from ralph.checked_accessors import as_str, optional_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.state_db import DB_RELPATH, MISSING, RunStateDB, _Missing
@@ -301,6 +302,46 @@ def artifact_receipt_present(
     )
 
 
+def commit_receipt_matches_changed_files(
+    workspace_root: Path,
+    run_id: str,
+    artifact_type: str,
+    changed_files: tuple[str, ...],
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> bool:
+    """Return whether the latest receipt is bound to exactly ``changed_files``."""
+    audit_json: str | None | _Missing = MISSING
+    try:
+        db = _open_db(workspace_root)
+        try:
+            audit_json = db.get_receipt_normalization_audit(run_id, artifact_type)
+        finally:
+            db.close()
+    except (OSError, RuntimeError, sqlite3.Error):
+        pass
+    if audit_json is MISSING:
+        path = _receipt_path(workspace_root, run_id, artifact_type)
+        if not backend.exists(path):
+            return False
+        try:
+            payload = cast("object", json.loads(backend.read_text(path, encoding="utf-8")))
+            audit = cast("dict[str, object]", payload).get("normalization_audit") if isinstance(payload, dict) else None
+        except (OSError, json.JSONDecodeError):
+            return False
+    elif audit_json is None:
+        audit = None
+    else:
+        try:
+            audit = cast("object", json.loads(as_str(audit_json, field="normalization_audit")))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return False
+    if not isinstance(audit, dict):
+        return False
+    recorded = optional_str_list(audit.get("changed_files"))
+    return recorded is not None and tuple(recorded) == changed_files
+
+
 def delete_artifact_receipt(
     workspace_root: Path,
     run_id: str,
@@ -367,6 +408,7 @@ __all__ = [
     "ReceiptPersistenceError",
     "artifact_receipt_present",
     "clear_run_receipts",
+    "commit_receipt_matches_changed_files",
     "delete_artifact_receipt",
     "write_artifact_receipt",
 ]

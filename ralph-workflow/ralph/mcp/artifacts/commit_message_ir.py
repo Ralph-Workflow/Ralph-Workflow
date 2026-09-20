@@ -20,6 +20,7 @@ class CommitMessageIR:
     verification: tuple[str, ...]
     files: tuple[str, ...]
     excluded_files: tuple[tuple[str, str], ...] = ()
+    fact_provenance: tuple[tuple[str, str, str, str], ...] = ()
 
 
 def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> CommitMessageIR:
@@ -27,7 +28,10 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
     rationale = tuple(f"Changed {area}." for area in evidence.change_areas)
     behavior_risk = (*evidence.behavior_facts, *evidence.compatibility_hints, *evidence.risk_hints)
     verification = evidence.verification_facts
-    return CommitMessageIR(subject, evidence.change_areas, rationale, behavior_risk, verification, evidence.changed_files)
+    return CommitMessageIR(
+        subject, evidence.change_areas, rationale, behavior_risk, verification,
+        evidence.changed_files, fact_provenance=evidence.fact_provenance,
+    )
 
 
 def render_commit_message_artifact(ir: CommitMessageIR) -> str:
