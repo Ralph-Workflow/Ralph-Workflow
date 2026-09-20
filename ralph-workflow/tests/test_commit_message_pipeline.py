@@ -86,11 +86,17 @@ def test_normalization_recovers_plain_prose_and_removes_partial_files() -> None:
 
 @pytest.mark.subprocess_e2e
 def test_receipt_requires_exact_live_file_identity(tmp_path: Path) -> None:
-    audit: dict[str, object] = {"changed_files": ["ralph/app.py"], "confidence": "high"}
+    audit: dict[str, object] = {
+        "changed_files": ["ralph/app.py", "tests/test_app.py"],
+        "confidence": "high",
+    }
     write_artifact_receipt(tmp_path, "commit-plumbing", "commit_message", normalization_audit=audit)
 
     assert commit_receipt_matches_changed_files(
-        tmp_path, "commit-plumbing", "commit_message", ("ralph/app.py",)
+        tmp_path,
+        "commit-plumbing",
+        "commit_message",
+        ("tests/test_app.py", "ralph/app.py"),
     ) is True
     assert commit_receipt_matches_changed_files(
         tmp_path, "commit-plumbing", "commit_message", ("ralph/other.py",)

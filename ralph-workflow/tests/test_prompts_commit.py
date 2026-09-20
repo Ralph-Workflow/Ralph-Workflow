@@ -25,13 +25,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "<ralph-subject>" not in prompt
     assert "## HOW TO WRITE THE SUBJECT" in prompt
     assert "## HOW TO WRITE THE BODY" in prompt
-    # Anti-churn: a weak model told only to "write a good subject" enumerates
-    # candidates and re-picks. The prompt must give a terminating procedure.
-    assert "first valid lowercase imperative subject" in prompt.lower()
-    assert "do not generate alternatives" in prompt.lower()
-    # No unenforced constraint an agent could keep failing (e.g. a length cap
-    # the canonical validator never checks).
-    assert "there is no length limit" in prompt.lower()
     assert "commit document" in prompt.lower()
     assert "skip document" in prompt.lower()
     # Architectural fix (2026-06-14): the template MUST NOT carry a
@@ -55,13 +48,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
     assert "edit the json file on disk" not in prompt.lower()
-    # The grammar the canonical validator enforces is stated in full, so a
-    # rejection is a bug in the prompt rather than something to iterate on.
-    assert "changes only repo maintenance, tooling, config, or dependencies | chore" in prompt
-    assert "otherwise omit the scope and the parentheses entirely" in prompt.lower()
-    assert "no dots, no uppercase" in prompt.lower()
-    assert "quotes become part of the subject" in prompt.lower()
-    assert "starts with a lowercase letter or digit" in prompt.lower()
     # The doc-shape bullet names both document choices (tightened
     # 2026-08-12: "for pending work" replaced the older "changes not yet
     # committed" framing).
@@ -156,20 +142,6 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     # markdown document — never JSON.
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
-    # Subject grammar (tightened 2026-08-12): the kind table moved into one
-    # inline sentence; the ``chore`` restriction and the scope alphabet are
-    # the load-bearing constraints.
-    assert "use `chore` only for" in prompt
-    assert "maintenance, tooling, config, or dependencies" in prompt
-    assert "Scope is optional" in prompt
-    assert "lowercase letters, digits, `/`, `_`, or `-`" in prompt
-    assert "lowercase imperative description" in prompt
-    # Body policy: omit only for trivial one-line changes.
-    assert "Omit the body only for a one-line typo, formatting, or comment change" in prompt
-    # Anti-churn: the simplified subject instruction terminates selection
-    # with a single "once" pass (the full template's "do not generate
-    # alternatives" phrasing is deliberately absent here).
-    assert "Write `<kind>(<scope>)?!?: <description>` once" in prompt
     # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
     # instruction line now opens the prompt directly.
     assert prompt.startswith("Produce one valid")

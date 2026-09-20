@@ -149,6 +149,30 @@ def test_normalizer_accepts_plain_prose_and_is_idempotent() -> None:
     assert second.transformations == ()
 
 
+def test_normalizer_preserves_mixed_list_and_prose_body() -> None:
+    result = normalize_commit_message_draft(
+        "fix: preserve evidence\n\nWhy this matters to operators.\n\n"
+        "## Notes\n- Keeps retry results available.\n"
+        "This continuation explains the operational impact.",
+        _fact_evidence(),
+    )
+
+    assert "Why this matters to operators." in result.content
+    assert "Keeps retry results available." in result.content
+    assert "This continuation explains the operational impact." in result.content
+
+
+def test_normalizer_repairs_quoted_conventional_subject() -> None:
+    result = normalize_commit_message_draft(
+        '---\ntype: commit\nsubject: "FIX: Preserve evidence"\n---\n\n'
+        "## Body\n- [B-1] Keeps the authored explanation.\n",
+        EVIDENCE,
+    )
+
+    assert "subject: fix: preserve evidence" in result.content
+    assert "Keeps the authored explanation." in result.content
+
+
 def test_normalizer_accepts_nonstandard_list_heading() -> None:
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Notes\n- Preserve retry evidence for submit artifacts.",
@@ -188,7 +212,7 @@ def test_normalizer_extracts_key_value_fields() -> None:
     assert "Preserve retry evidence for submit artifacts." in result.content
 
 
-def test_normalizer_does_not_inject_evidence_or_exceed_body_budget() -> None:
+def test_normalizer_does_not_inject_evidence_or_drop_authored_body_items() -> None:
     evidence = CommitEvidenceBundle(
         "diff", ("docs/guide.md",), ("docs",), (), (),
         behavior_facts=("Preserves compatibility.",), verification_facts=("pytest passed",),
@@ -201,7 +225,6 @@ def test_normalizer_does_not_inject_evidence_or_exceed_body_budget() -> None:
 
     assert "Preserves compatibility." not in expanded.content
     assert "pytest passed" not in expanded.content
-    assert any("compressed" in item.action for item in compressed.transformations)
     assert "Changed docs." in compressed.content
     assert "Preserves compatibility." in compressed.content
     assert "pytest passed" in compressed.content

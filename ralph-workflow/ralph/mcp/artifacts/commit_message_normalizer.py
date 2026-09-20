@@ -77,17 +77,8 @@ def normalize_commit_message_draft(
     transformations: list[NormalizationTransformation] = [
         NormalizationTransformation("rendered canonical artifact from live evidence", "live evidence", "high"),
     ]
-    canonical_claims = (*ir.rationale, *ir.behavior_risk, *ir.verification)
-    if len(tuple(_BODY_ITEM.finditer(content))) > evidence.message_budget.max_body_points:
-        transformations.append(NormalizationTransformation(
-            "compressed duplicate or incidental body claims to evidence budget", "draft", "high"
-        ))
-    elif canonical_claims and not all(claim in claims for claim in canonical_claims):
-        transformations.append(NormalizationTransformation(
-            "expanded body with grounded evidence facts", "live evidence", "high"
-        ))
     if "## Files" in content:
-        transformations.append(NormalizationTransformation("refreshed file selection from live changed set", "changed files", "high"))
+        transformations.append(NormalizationTransformation("removed file inventory", "draft", "high"))
     confidence: Confidence = "medium" if any(item.confidence == "medium" for item in transformations) else "high"
     return NormalizationResult(rendered, tuple(transformations), confidence, ("live evidence", "draft" if claims else ""))
 
@@ -112,12 +103,9 @@ def _extract_claims(content: str) -> tuple[str, ...]:
             continue
         if not in_files and (claim := _list_claim(stripped)) and not claim.endswith(".py"):
             candidates.extend(part.strip() for part in claim.split("; ") if part.strip())
-        if ":" in stripped:
-            key, value = stripped.split(":", 1)
-            if key.lower() in {"intent", "rationale", "change", "changes", "verification"} and value.strip():
-                candidates.append(value.strip())
-    if not candidates:
-        candidates.extend(_sentence_claims(_prose_body(content)))
+        if claim := _key_value_claim(stripped):
+            candidates.append(claim)
+    candidates.extend(_sentence_claims(_prose_body(content)))
     unique: list[str] = []
     for candidate in candidates:
         if candidate not in unique:
@@ -133,13 +121,21 @@ def _list_claim(line: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _key_value_claim(line: str) -> str:
+    match = _KEY_VALUE.match(line)
+    if match is None:
+        return ""
+    value = match.group(1)
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _prose_body(content: str) -> str:
     lines: list[str] = []
     in_frontmatter = False
     for line in content.splitlines():
         if line.strip() == "---":
             in_frontmatter = not in_frontmatter
-        elif not in_frontmatter and not line.lower().startswith("subject:") and not _HEADING.match(line) and not _BODY_ITEM.match(line) and not _SUBJECT.match(line) and not re.match(r"^\s*-\s+\[F-\d+\]", line):
+        elif not in_frontmatter and not line.lower().startswith("subject:") and not _HEADING.match(line) and not _BODY_ITEM.match(line) and not _SUBJECT.match(line) and not _KEY_VALUE.match(line) and not re.match(r"^\s*-\s+\[F-\d+\]", line):
             lines.append(line.strip())
     return " ".join(line for line in lines if line)
 
@@ -168,6 +164,7 @@ def _capture_subject(match: re.Match[str]) -> str:
 
 
 def _normalized_subject(subject: str) -> str:
+    subject = subject.strip().strip('"\'').strip()
     prefix, separator, description = subject.partition(":")
     if not separator:
         parts = subject.split(maxsplit=1)
