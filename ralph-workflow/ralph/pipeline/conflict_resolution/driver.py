@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -147,6 +147,7 @@ def run_conflict_resolution_outcome(
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> ResolutionOutcome:
     """Resolve an in-progress merge through fixed-window liveness supervision."""
     active_session = session or _new_resolution_session(config)
@@ -165,6 +166,7 @@ def run_conflict_resolution_outcome(
             clock=clock or time.monotonic,
             stop=None,
             session=active_session,
+            strategy_history=strategy_history,
         )
         return _resolution_outcome(active_session, resolved)
     except Exception as exc:
@@ -190,6 +192,7 @@ def run_rebase_conflict_resolution_outcome(
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> ResolutionOutcome:
     """Resolve one paused rebase stop with typed terminal evidence."""
     active_session = (
@@ -209,6 +212,7 @@ def run_rebase_conflict_resolution_outcome(
             clock=clock or time.monotonic,
             stop=stop,
             session=active_session,
+            strategy_history=strategy_history,
         )
         return _resolution_outcome(active_session, resolved)
     except Exception as exc:
@@ -231,6 +235,7 @@ def run_conflict_resolution_pipeline(
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> bool:
     """Backward-compatible boolean projection of the typed merge outcome."""
     return run_conflict_resolution_outcome(
@@ -245,6 +250,7 @@ def run_conflict_resolution_pipeline(
         invoke=invoke,
         clock=clock,
         session=session,
+        strategy_history=strategy_history,
     ).succeeded
 
 
@@ -262,6 +268,7 @@ def run_rebase_conflict_resolution_pipeline(
     invoke: ResolutionInvoker | None = None,
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> bool:
     """Backward-compatible projection of the out-of-graph ``PHASE_RESOLUTION`` outcome."""
     return run_rebase_conflict_resolution_outcome(
@@ -277,6 +284,7 @@ def run_rebase_conflict_resolution_pipeline(
         invoke=invoke,
         clock=clock,
         session=session,
+        strategy_history=strategy_history,
     ).succeeded
 
 
@@ -365,6 +373,37 @@ def _prepare_conflicted_paths(
     return (), True, ()
 
 
+def _render_round_prompt(
+    root: Path,
+    target: str,
+    conflicted: Sequence[str],
+    round_index: int,
+    round_cap: int,
+    session: ResolutionSession,
+    stop: RebaseStop | None,
+    strategy_history: tuple[str, ...],
+) -> Path | None:
+    """Render one round without breaking legacy spy seams on empty history."""
+    # Keep legacy monkeypatched render seams callable until history exists.
+    if strategy_history:
+        return render_conflict_prompt(
+            root=root, target=target, conflicted_paths=conflicted, round_index=round_index,
+            round_cap=round_cap, surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
+            replaying_commit_sha=stop.sha if stop is not None else None,
+            replaying_commit_subject=stop.subject if stop is not None else None,
+            stop_index=stop.stop_index if stop is not None else None,
+            stop_cap=stop.stop_cap if stop is not None else None, strategy_history=strategy_history,
+        )
+    return render_conflict_prompt(
+        root=root, target=target, conflicted_paths=conflicted, round_index=round_index,
+        round_cap=round_cap, surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
+        replaying_commit_sha=stop.sha if stop is not None else None,
+        replaying_commit_subject=stop.subject if stop is not None else None,
+        stop_index=stop.stop_index if stop is not None else None,
+        stop_cap=stop.stop_cap if stop is not None else None,
+    )
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -379,6 +418,7 @@ def _run_rounds(
     clock: MonotonicClock,
     stop: RebaseStop | None,
     session: ResolutionSession,
+    strategy_history: tuple[str, ...],
 ) -> bool:
     """Execute completed-work routing while one session owns all timing context."""
     limits = config.conflict_resolution
@@ -437,17 +477,8 @@ def _run_rounds(
                 _emit_expired_operator_cap(display, session, conflicted, clock)
                 return False
             _push_round_status(display, root, target, round_index, round_cap, stop)
-            prompt_path = render_conflict_prompt(
-                root=root,
-                target=target,
-                conflicted_paths=conflicted,
-                round_index=round_index,
-                round_cap=round_cap,
-                surviving_marker_paths=(() if round_index == 1 else session.unresolved_paths),
-                replaying_commit_sha=stop.sha if stop is not None else None,
-                replaying_commit_subject=stop.subject if stop is not None else None,
-                stop_index=stop.stop_index if stop is not None else None,
-                stop_cap=stop.stop_cap if stop is not None else None,
+            prompt_path = _render_round_prompt(
+                root, target, conflicted, round_index, round_cap, session, stop, strategy_history
             )
             if prompt_path is None:
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE

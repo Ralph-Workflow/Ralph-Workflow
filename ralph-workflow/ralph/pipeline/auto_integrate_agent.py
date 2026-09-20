@@ -106,6 +106,7 @@ def build_agent_conflict_resolver(
     pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope | None = None,
     display_context: DisplayContext | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver:
     """Build the pipeline-backed conflict resolver for the integration step.
 
@@ -157,14 +158,15 @@ def build_agent_conflict_resolver(
             )
             return False
         try:
+            if strategy_history:
+                return run_conflict_resolution_pipeline(
+                    root=root, target=target, config=config, pipeline_deps=pipeline_deps,
+                    workspace_scope=workspace_scope, policy_bundle=policy_bundle, display=display,
+                    display_context=display_context, strategy_history=strategy_history,
+                )
             return run_conflict_resolution_pipeline(
-                root=root,
-                target=target,
-                config=config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=workspace_scope,
-                policy_bundle=policy_bundle,
-                display=display,
+                root=root, target=target, config=config, pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope, policy_bundle=policy_bundle, display=display,
                 display_context=display_context,
             )
         except Exception as exc:
@@ -189,6 +191,7 @@ def build_agent_rebase_stop_resolver(
     pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope | None = None,
     display_context: DisplayContext | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
     """Build the resolver that resolves ONE stop of a conflicted rebase.
 
@@ -262,6 +265,7 @@ def build_agent_rebase_stop_resolver(
                 pipeline_deps=pipeline_deps,
                 display=display,
                 display_context=display_context,
+                strategy_history=strategy_history,
             )
         except Exception as exc:
             logger.warning(
@@ -287,6 +291,7 @@ def _resolve_within_target_context(
     pipeline_deps: PipelineDeps,
     display: ParallelDisplay,
     display_context: DisplayContext | None,
+    strategy_history: tuple[str, ...],
 ) -> bool:
     """Resolve one stop under the TARGET worktree's config, policy and registry.
 
@@ -311,16 +316,17 @@ def _resolve_within_target_context(
             )
             return False
         try:
+            if strategy_history:
+                return run_rebase_conflict_resolution_pipeline(
+                    root=root, target=target, stop=stop, config=target_config,
+                    pipeline_deps=pipeline_deps, workspace_scope=target_scope,
+                    policy_bundle=target_policy, display=display, display_context=display_context,
+                    strategy_history=strategy_history,
+                )
             return run_rebase_conflict_resolution_pipeline(
-                root=root,
-                target=target,
-                stop=stop,
-                config=target_config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=target_scope,
-                policy_bundle=target_policy,
-                display=display,
-                display_context=display_context,
+                root=root, target=target, stop=stop, config=target_config,
+                pipeline_deps=pipeline_deps, workspace_scope=target_scope,
+                policy_bundle=target_policy, display=display, display_context=display_context,
             )
         except Exception as exc:
             logger.warning(

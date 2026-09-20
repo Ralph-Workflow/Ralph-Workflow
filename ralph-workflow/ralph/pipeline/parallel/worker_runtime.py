@@ -53,6 +53,7 @@ from ralph.pipeline.auto_integrate_agent import (
     emit_integration_warn_line,
 )
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
+from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
@@ -184,6 +185,7 @@ def _worker_integration_resolvers(
     registry: AgentRegistry | None,
     pipeline_deps: PipelineDeps | None,
     display_context: DisplayContext | None,
+    strategy_history: tuple[str, ...] = (),
 ) -> tuple[ConflictResolver | None, RebaseStopResolver | None, ParallelDisplay | None]:
     """Build the worker's conflict resolvers, or decline when it cannot.
 
@@ -226,6 +228,7 @@ def _worker_integration_resolvers(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
+        strategy_history=strategy_history,
     )
     rebase_stop_resolver = build_agent_rebase_stop_resolver(
         policy_bundle=policy_bundle,
@@ -235,6 +238,7 @@ def _worker_integration_resolvers(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
+        strategy_history=strategy_history,
     )
     return conflict_resolver, rebase_stop_resolver, display
 
@@ -323,6 +327,7 @@ def run_worker_auto_integration(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
+            strategy_history=(state.conflict_strategies_tried if state is not None else ()),
         )
         outcome = auto_integrate_on_phase_transition(
             config,
@@ -435,6 +440,8 @@ def run_parallel_worker_from_manifest(
     if startup_outcome is not None:
         state = state.copy_with(rebase=startup_outcome)
     verdict = inspect_integration_resolution(workspace_root, state.rebase)
+    if verdict.dispatch_allowed:
+        state = state.copy_with(rebase=reconcile_stale_unresolved_state(state.rebase))
     try:
         assert_non_resolution_dispatch_allowed(effect.phase, verdict)
     except RuntimeError as exc:
@@ -544,6 +551,8 @@ def run_parallel_worker_from_manifest(
             )
         boundary_rebase = boundary_outcome or state.rebase
         boundary_verdict = inspect_integration_resolution(workspace_root, boundary_rebase)
+        if boundary_verdict.dispatch_allowed:
+            boundary_rebase = reconcile_stale_unresolved_state(boundary_rebase)
         if not boundary_verdict.dispatch_allowed:
             logger.warning(
                 "auto_integrate: worker boundary blocks successful completion: {}",

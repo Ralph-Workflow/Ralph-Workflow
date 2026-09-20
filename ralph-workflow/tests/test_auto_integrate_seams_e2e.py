@@ -85,6 +85,33 @@ def test_startup_seam_returns_injected_integration_outcome(
     assert integration.call_args.kwargs["rebase_stop_resolver"] is stop_resolver
 
 
+def test_startup_seam_forwards_restored_strategy_history(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A resumed state reaches both conflict resolver builders unchanged."""
+    integration = MagicMock(return_value=None)
+    conflict_builder = MagicMock(return_value=object())
+    stop_builder = MagicMock(return_value=object())
+    monkeypatch.setattr(run_loop, "auto_integrate_on_phase_transition", integration)
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", conflict_builder)
+    monkeypatch.setattr(run_loop, "build_agent_rebase_stop_resolver", stop_builder)
+    history = ("rebase_resolver: unresolved shared.txt",)
+    ctx = SimpleNamespace(
+        config=_config(),
+        workspace_scope=WorkspaceScope(Path("/workspace")),
+        pipeline_deps=None,
+        policy_bundle=MagicMock(),
+        registry=MagicMock(),
+        display_context=MagicMock(),
+        active_display=MagicMock(),
+    )
+
+    run_loop._run_startup_integration(ctx, RebaseState(conflict_strategies_tried=history))
+
+    assert conflict_builder.call_args.kwargs["strategy_history"] == history
+    assert stop_builder.call_args.kwargs["strategy_history"] == history
+
+
 def test_phase_transition_seam_returns_injected_outcome(
     monkeypatch: MonkeyPatch,
 ) -> None:

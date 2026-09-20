@@ -34,7 +34,11 @@ Resolve only the conflicted paths listed below; unrelated implementation and rev
 
 {{ conflicted_block }}
 {{ feedback_block }}
-## How to resolve
+{% if strategy_history %}## Earlier integration strategies
+
+These earlier strategies did not resolve this conflict. Use their outcomes to avoid repeating them:
+{{ strategy_history }}
+{% endif %}## How to resolve
 
 1. Open each conflicted file listed above.
 2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}

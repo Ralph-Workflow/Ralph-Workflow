@@ -738,6 +738,7 @@ def _run_startup_integration(
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
+            strategy_history=(state.conflict_strategies_tried if state is not None else ()),
         )
         prior_rebase = state if state is not None and type(state) is RebaseState else RebaseState()
         outcome = auto_integrate_on_phase_transition(
@@ -753,6 +754,7 @@ def _run_startup_integration(
                 pipeline_deps=ctx.pipeline_deps,
                 workspace_scope=ctx.workspace_scope,
                 display_context=ctx.display_context,
+                strategy_history=prior_rebase.conflict_strategies_tried,
             ),
             display=ctx.active_display,
         )
@@ -793,8 +795,12 @@ def _save_recovered_rebase_checkpoint(
     failed save must never abort the run.
     """
     try:
+        from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
+
+        reconciled = reconcile_stale_unresolved_state(state.rebase)
+        checkpoint_state = state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
         _runner_module.save_checkpoint_or_log(
-            state,
+            checkpoint_state,
             message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
             path=_runner_module._checkpoint_path(ctx.workspace_scope),
         )
@@ -1216,8 +1222,11 @@ def _apply_startup_rebase_outcomes(
     recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
+        verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+        if verdict.dispatch_allowed and state.rebase.integration_unresolved:
+            state = state.copy_with(rebase=reconcile_stale_unresolved_state(state.rebase))
         _save_recovered_rebase_checkpoint(state, ctx)
-        if recovery_retained_record(recovered_rebase):
+        if recovery_retained_record(state.rebase):
             # Recovery could not reconcile the interrupted integration
             # and left its durable record on disk for the next startup.
             # That record is still the only description of the
@@ -1383,7 +1392,7 @@ def _run_integration_conflict_resolution(
     # was standing right there to fix. Decide WHICH resolver is needed
     # before building one, so the wrong one cannot be the fallback.
     if _paused_rebase_at(ctx.workspace_scope.root):
-        return _resolve_paused_rebase(ctx, target)
+        return _resolve_paused_rebase_with_history(ctx, target, rebase)
     try:
         resolver = build_agent_conflict_resolver(
             policy_bundle=ctx.policy_bundle,
@@ -1393,6 +1402,7 @@ def _run_integration_conflict_resolution(
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
+            strategy_history=(rebase.conflict_strategies_tried if rebase is not None else ()),
         )
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
@@ -1493,7 +1503,22 @@ def _rebase_markers_on_disk(root: Path) -> bool:
         return False
 
 
-def _resolve_paused_rebase(ctx: _LoopContext, target: str) -> bool:
+def _resolve_paused_rebase_with_history(
+    ctx: _LoopContext,
+    target: str,
+    rebase: RebaseState | None,
+) -> bool:
+    """Keep the historical two-argument resolver seam intact for empty state."""
+    if rebase is None:
+        return _resolve_paused_rebase(ctx, target)
+    return _resolve_paused_rebase(ctx, target, rebase)
+
+
+def _resolve_paused_rebase(
+    ctx: _LoopContext,
+    target: str,
+    rebase: RebaseState | None = None,
+) -> bool:
     """Drive a paused rebase to completion through the stop resolver.
 
     The rebase counterpart of :func:`_complete_in_progress_merge`, and it
@@ -1514,6 +1539,7 @@ def _resolve_paused_rebase(ctx: _LoopContext, target: str) -> bool:
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
+            strategy_history=(rebase.conflict_strategies_tried if rebase is not None else ()),
         )
         resolved, reason = _resolve_rebase_with_config(
             ctx.workspace_scope.root,
@@ -1681,6 +1707,10 @@ def _block_unresolved_integration(
             _save_recovered_rebase_checkpoint(state, ctx)
         post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
         if post_recovery.dispatch_allowed:
+            reconciled = reconcile_stale_unresolved_state(state.rebase)
+            if reconciled != state.rebase:
+                state = state.copy_with(rebase=reconciled)
+                _save_recovered_rebase_checkpoint(state, ctx)
             return None
         verdict = post_recovery
 
@@ -1779,13 +1809,19 @@ def _run_inner_loop_after_startup(
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
     state = initialize_legacy_cycle_on_resume(state, ctx.policy_bundle.pipeline)
-    while (
-        state.phase != ctx.policy_bundle.pipeline.terminal_phase
-        and not (
+    while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
+        if (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
             and state.rebase.resolution_exhausted
-        )
-    ):
+        ):
+            trail = "; ".join(state.rebase.conflict_strategies_tried)
+            state = state.copy_with(last_error=f"resolution strategy ladder exhausted: {trail}")
+            emit_activity_line(
+                ctx.active_display,
+                None,
+                status_text("Pipeline failed", state.last_error or trail, "red"),
+            )
+            return state, prev_phase, 1
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:

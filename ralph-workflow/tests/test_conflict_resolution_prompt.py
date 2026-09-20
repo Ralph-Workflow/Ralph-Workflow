@@ -22,6 +22,7 @@ def _render(
     round_index: int = 1,
     surviving: tuple[str, ...] = (),
     conflicted: tuple[str, ...] = _CONFLICTED,
+    strategy_history: tuple[str, ...] = (),
 ) -> str:
     prompt_path = render_conflict_prompt(
         root=tmp_path,
@@ -30,6 +31,7 @@ def _render(
         round_index=round_index,
         round_cap=3,
         surviving_marker_paths=surviving,
+        strategy_history=strategy_history,
     )
     assert prompt_path is not None
     return prompt_path.read_text(encoding="utf-8")
@@ -181,6 +183,21 @@ def test_later_round_names_the_surviving_files(tmp_path: Path) -> None:
     rendered = _render(tmp_path, round_index=2, surviving=("src/alpha.py",))
     assert "Why this round exists" in rendered
     assert "src/alpha.py" in rendered
+
+
+def test_prompt_carries_durable_strategy_history(tmp_path: Path) -> None:
+    """A resumed resolver receives the persisted outcomes it must not repeat."""
+    rendered = _render(
+        tmp_path,
+        strategy_history=(
+            "rebase_resolver: unresolved shared.txt",
+            "refresh_retry: target moved",
+        ),
+    )
+
+    assert "Earlier integration strategies" in rendered
+    assert "rebase_resolver: unresolved shared.txt" in rendered
+    assert "refresh_retry: target moved" in rendered
 
 
 def test_prompt_carries_no_project_payload(tmp_path: Path) -> None:

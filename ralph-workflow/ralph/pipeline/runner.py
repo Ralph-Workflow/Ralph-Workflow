@@ -85,6 +85,7 @@ from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
     build_agent_rebase_stop_resolver,
 )
+from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -948,8 +949,47 @@ def _integrate_inline_effect(
         # PipelineState-shaped result: thread the integration outcome into the
         # persisted checkpoint so the catch-up survives a crash right after the
         # inline effect. The reducer/phase is left untouched.
-        return inline_result.copy_with(rebase=outcome)
+        return inline_result.copy_with(
+            rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome)
+        )
     return inline_result
+
+
+def _reconcile_rebase_if_live_resolved(
+    workspace_scope: WorkspaceScope,
+    rebase: RebaseState,
+) -> RebaseState:
+    """Discard stale durable conflict evidence only after a clean inspection."""
+    if not isinstance(cast("object", rebase), RebaseState):
+        return rebase
+    return (
+        reconcile_stale_unresolved_state(rebase)
+        if inspect_integration_resolution(workspace_scope.root, rebase).dispatch_allowed
+        else rebase
+    )
+
+
+def _prepare_pipeline_step_dispatch(
+    state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    recovery_controller: RecoveryController | None,
+    pipeline_deps: PipelineDeps | None,
+) -> tuple[PipelineState, Effect]:
+    """Reconcile clean durable state before selecting ordinary work."""
+    rebase = _reconcile_rebase_if_live_resolved(workspace_scope, state.rebase)
+    if rebase is not state.rebase:
+        state = state.copy_with(rebase=rebase)
+    _assert_integration_dispatch_invariant(state, workspace_scope, config)
+    return state, call_determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope,
+        config,
+        recovery=recovery_controller,
+        pipeline_deps=pipeline_deps,
+    )
 
 
 def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) -> PhaseFailureEvent:
@@ -1042,6 +1082,7 @@ def _maybe_auto_integrate(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
+        strategy_history=state.rebase.conflict_strategies_tried,
     )
     try:
         with cycle_deadline_suspended():
@@ -1058,6 +1099,7 @@ def _maybe_auto_integrate(
                     pipeline_deps=pipeline_deps,
                     workspace_scope=workspace_scope,
                     display_context=display_context,
+                    strategy_history=state.rebase.conflict_strategies_tried,
                 ),
                 display=display,
             )
@@ -1139,6 +1181,7 @@ def _build_seam_conflict_resolver(
     pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope | None = None,
     display_context: DisplayContext | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver | None:
     """Pipeline-backed resolver when policy + registry are available, else None.
 
@@ -1161,6 +1204,7 @@ def _build_seam_conflict_resolver(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
+        strategy_history=strategy_history,
     )
 
 
@@ -1173,6 +1217,7 @@ def _build_seam_rebase_stop_resolver(
     pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope | None = None,
     display_context: DisplayContext | None = None,
+    strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver | None:
     """Rebase-stop resolver when policy + registry are available, else None.
 
@@ -1192,6 +1237,7 @@ def _build_seam_rebase_stop_resolver(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
+        strategy_history=strategy_history,
     )
 
 
@@ -1288,7 +1334,7 @@ def _integrate_after_fan_out(
             policy_bundle.pipeline if policy_bundle is not None else None,
         )
         return failed_state.copy_with(rebase=outcome)
-    return state.copy_with(rebase=outcome)
+    return state.copy_with(rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome))
 
 
 def _finalize_agent_invocation(
@@ -1563,14 +1609,14 @@ def _run_pipeline_step(
         # This common dispatch funnel checks immediately before effect
         # selection/prompt materialization so no ordinary phase can observe a
         # partial integration result.
-        _assert_integration_dispatch_invariant(state, workspace_scope, config)
-        effect = call_determine_effect_from_policy(
+        # determine_effect_from_policy is reached through the shared preparation funnel.
+        state, effect = _prepare_pipeline_step_dispatch(
             state,
-            policy_bundle,
             workspace_scope,
             config,
-            recovery=recovery_controller,
-            pipeline_deps=pipeline_deps,
+            policy_bundle,
+            recovery_controller,
+            pipeline_deps,
         )
         inline_result = handle_inline_effect(
             effect=effect,
@@ -1759,7 +1805,11 @@ def _run_pipeline_step(
         # consistent) and BEFORE _save_checkpoint_or_log (so the
         # outcome survives a crash right after the phase).
         if _auto_integrate_outcome is not None:
-            next_state = next_state.copy_with(rebase=_auto_integrate_outcome)
+            next_state = next_state.copy_with(
+                rebase=_reconcile_rebase_if_live_resolved(
+                    workspace_scope, _auto_integrate_outcome
+                )
+            )
         skipped_phases = record_phase_transition_metadata(
             display,
             state,

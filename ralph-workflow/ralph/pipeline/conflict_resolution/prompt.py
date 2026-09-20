@@ -86,6 +86,7 @@ def render_conflict_prompt(
     replaying_commit_subject: str | None = None,
     stop_index: int | None = None,
     stop_cap: int | None = None,
+    strategy_history: Sequence[str] = (),
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path | None:
     """Render and materialize the prompt for one resolution round.
@@ -105,6 +106,7 @@ def render_conflict_prompt(
         replaying_commit_subject: Subject line of that commit.
         stop_index: 1-based index of the rebase stop being resolved.
         stop_cap: Total rebase stops allowed.
+        strategy_history: Durable outcomes from earlier integration strategies.
         backend: File backend seam, injected for tests.
 
     The rebase-mode variables add the ONE fact a merge conflict does not
@@ -128,6 +130,7 @@ def render_conflict_prompt(
         "replaying_commit_subject": replaying_commit_subject or "",
         "stop_index": str(stop_index) if stop_index is not None else "",
         "stop_cap": str(stop_cap) if stop_cap is not None else "",
+        "strategy_history": "\n".join(strategy_history),
         "LAST_RETRY_ERROR": read_validation_retry_hint(root, _RESOLUTION_DRAIN),
         **_session_preamble_variables(),
     }

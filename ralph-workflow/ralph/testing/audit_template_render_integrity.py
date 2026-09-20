@@ -138,6 +138,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "replaying_commit_sha": ("0123456789abcdef",),
     "shipped_skills_mode": ("planning", "development"),
     "show_plan_edit_guidance": ("true",),
+    "strategy_history": ("rebase_resolver: unresolved shared.txt",),
 }
 #: Closed vocabulary for non-capability branch inputs. Adding a conditional
 #: variable without declaring realistic values here fails the audit matrix.
