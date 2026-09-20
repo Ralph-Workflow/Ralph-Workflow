@@ -243,6 +243,13 @@ def render_run_time_report(
             + _format_count(state.metrics.total_fallbacks)
             + ".\n"
             + (
+                "- [SG-2] VALIDATION FAILURE: run ended with an unresolved artifact validation failure "
+                "(last_failure_category=artifact_validation); the failing artifact must be repaired and "
+                "resubmitted.\n"
+                if outcome != "completed" and state.last_failure_category == "artifact_validation"
+                else ""
+            )
+            + (
                 (
                     "\n## Development Timebox\n"
                     + (

@@ -136,6 +136,56 @@ def test_run_time_report_regression_preserves_negative_extreme_signal_counts() -
     assert "Agent calls: -~1e2000" in report
 
 
+def test_run_time_report_emits_sg2_for_unresolved_artifact_validation_failure() -> None:
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development",
+            last_failure_category="artifact_validation",
+        ),
+        outcome="failed",
+        elapsed_seconds=1,
+    )
+
+    expected = (
+        "- [SG-2] VALIDATION FAILURE: run ended with an unresolved artifact validation failure "
+        "(last_failure_category=artifact_validation); the failing artifact must be repaired and "
+        "resubmitted."
+    )
+    assert expected in report
+    assert len(report) <= 1_600
+    __import__("ralph.mcp.artifacts.markdown.specs")
+    _, diagnostics = parse_and_validate(report, get_spec("run_time_report"))
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+
+
+def test_run_time_report_suppresses_sg2_for_completed_outcome() -> None:
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development",
+            last_failure_category="artifact_validation",
+        ),
+        outcome="completed",
+        elapsed_seconds=1,
+    )
+
+    assert "[SG-2]" not in report
+    assert "VALIDATION FAILURE" not in report
+
+
+def test_run_time_report_suppresses_sg2_for_non_artifact_failure_category() -> None:
+    report = render_run_time_report(
+        state=PipelineState(
+            phase="development",
+            last_failure_category="agent_unavailable",
+        ),
+        outcome="failed",
+        elapsed_seconds=1,
+    )
+
+    assert "[SG-2]" not in report
+    assert "VALIDATION FAILURE" not in report
+
+
 def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
     """The report shows cycle timebox diagnostics when budget was consumed.
 

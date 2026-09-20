@@ -63,6 +63,8 @@ from ralph.mcp.server._session_wrapup import (
     request_completion_admission,
     session_warning_fired,
 )
+from ralph.mcp.tools._validation_retry_hints import validation_retry_hint_file
+from ralph.recovery.retry_prompt import VALIDATION_FAILURE_BANNER
 
 from .capability_denied_error import CapabilityDeniedError
 from .coordination_session_like import CoordinationSessionLike
@@ -399,6 +401,21 @@ def handle_declare_complete(
         )
         return ToolResult(
             content=[ToolContent.text_content(error_message)],
+            is_error=True,
+        )
+    retry_hint_path = (
+        validation_retry_hint_file(session, workspace) if workspace is not None else None
+    )
+    if retry_hint_path is not None and retry_hint_path.exists():
+        retry_hint = retry_hint_path.read_text(encoding="utf-8")
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"{VALIDATION_FAILURE_BANNER}\n"
+                    f"{retry_hint}\n"
+                    "The completion gate will re-validate the submitted artifact."
+                )
+            ],
             is_error=True,
         )
     message = (

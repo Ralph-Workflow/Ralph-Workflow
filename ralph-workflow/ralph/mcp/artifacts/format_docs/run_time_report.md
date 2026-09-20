@@ -9,18 +9,20 @@ The report has frontmatter `type: run_time_report`, `outcome:`,
 `Timing`, `Phases`, `Slowest Steps`, `Signals`, and the optional
 `Memory Findings` and `Cycle Timebox` sections.
 Each section has stable-ID list items. Its fixed shape makes runs comparable
-without reading logs.
+without reading logs. A non-completed run whose
+`last_failure_category` is `artifact_validation` adds the `SG-2` validation
+failure signal; completed runs and other failure categories do not include it.
 
 ```markdown
 ---
 type: run_time_report
-outcome: completed
+outcome: failed
 elapsed_seconds: 12.500
 final_phase: development
 ---
 
 ## Summary
-- [SUM-1] completed; total wall-clock time was 12.500s.
+- [SUM-1] failed; total wall-clock time was 12.500s.
 
 ## Timing
 - [T-1] Total wall-clock time: 12.500s.
@@ -42,6 +44,7 @@ final_phase: development
 
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.
+- [SG-2] VALIDATION FAILURE: run ended with an unresolved artifact validation failure (last_failure_category=artifact_validation); the failing artifact must be repaired and resubmitted.
 ```
 
 The reporting budget is 1,600 characters. Per-phase values use the maximum

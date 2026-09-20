@@ -1,12 +1,12 @@
 ---
 type: run_time_report
-outcome: completed
+outcome: failed
 elapsed_seconds: 12.500
 final_phase: development
 ---
 
 ## Summary
-- [SUM-1] completed; total wall-clock time was 12.500s.
+- [SUM-1] failed; total wall-clock time was 12.500s.
 
 ## Timing
 - [T-1] Total wall-clock time: 12.500s.
@@ -28,3 +28,4 @@ final_phase: development
 
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.
+- [SG-2] VALIDATION FAILURE: run ended with an unresolved artifact validation failure (last_failure_category=artifact_validation); the failing artifact must be repaired and resubmitted.
