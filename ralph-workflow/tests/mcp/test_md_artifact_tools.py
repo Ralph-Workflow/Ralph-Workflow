@@ -7,6 +7,7 @@ import json
 import pytest
 
 from ralph.config.mcp_models import McpConfig
+from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
 from ralph.mcp.tools.md_artifact import (
@@ -106,6 +107,11 @@ def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -
     assert isinstance(submitted_payload["message"], str)
     assert submitted_payload["message"].startswith("VALIDATION FAILURE")
     assert "before submitting again" in submitted_payload["message"].lower()
+    assert "corrective_action" in verified_payload
+    assert "retained draft" in str(verified_payload["corrective_action"]).lower()
+    assert "repair" in str(verified_payload["corrective_action"]).lower()
+    assert "corrective_action" in submitted_payload
+    assert submitted_payload["corrective_action"] == verified_payload["corrective_action"]
     diagnostics = must_dict_list(verified_payload["diagnostics"])
     assert {diagnostic["rule_id"] for diagnostic in diagnostics} >= {"SPEC008"}
 
@@ -156,6 +162,9 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
     assert isinstance(payload["message"], str)
     assert payload["message"].startswith("VALIDATION FAILURE")
     assert "before submitting again" in payload["message"].lower()
+    assert "corrective_action" in payload
+    assert "retained draft" in str(payload["corrective_action"]).lower()
+    assert "repair" in str(payload["corrective_action"]).lower()
     diagnostics = must_dict_list(payload["diagnostics"])
     assert diagnostics
     hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
@@ -166,6 +175,59 @@ def test_md_artifact_regression_validation_failure_persists_retry_context(
     assert "section" in hint.lower()
     assert "ralph_edit_md_artifact" in hint
     assert "Do not restart" in hint
+
+
+def test_commit_message_validation_failure_requires_rewriting_the_message(tmp_path) -> None:
+    session = MockSession()
+    workspace = MockWorkspace(tmp_path)
+    result = handle_verify_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": "commit_message", "content": "---\ntype: commit\n---\n"},
+    )
+
+    assert result.is_error is True
+    payload = _payload(result)
+    assert payload["status"] == "validation_failed"
+    assert payload["severity"] == "error"
+    assert payload["diagnostics"]
+    assert "corrective_action" in payload
+    action = str(payload["corrective_action"]).lower()
+    assert "rewrite the commit message" in action
+    assert "do not change code" in action
+
+
+def test_development_result_missing_work_requires_completion_verification_and_evidence(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = MockSession(drain="development")
+    workspace = MockWorkspace(tmp_path)
+    monkeypatch.setattr(
+        "ralph.mcp.tools.md_artifact.development_result_session_diagnostics",
+        lambda *_args: [Diagnostic(1, "Plan Items Proven", "DEV015", "missing=['S-2']")],
+    )
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {
+            "artifact_type": "development_result",
+            "content": "---\ntype: development_result\nstatus: completed\n---\n"
+            "## Summary\n- [SUM-1] Completed the requested work.\n"
+            "## Files Changed\n- [F-1] ralph/example.py\n",
+        },
+        deps=ArtifactHandlerDeps(backend=MemoryBackend()),
+    )
+
+    assert result.is_error is True
+    payload = _payload(result)
+    assert payload["status"] == "validation_failed"
+    assert payload["severity"] == "error"
+    assert payload["diagnostics"]
+    assert "corrective_action" in payload
+    action = str(payload["corrective_action"]).lower()
+    assert "complete the underlying work" in action
+    assert "verification" in action
+    assert "proof" in action or "evidence" in action
 
 
 def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(

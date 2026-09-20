@@ -1,16 +1,16 @@
-"""Tests: missing-artifact retry contract — hint written on failure, consumed on retry.
+"""Tests: missing-artifact retry contract — hint written on failure, retained until success.
 
 Covers the contract:
 1. When a phase handler cannot find its required artifact, it writes a retry
    hint to .agent/tmp/last_retry_error_{phase}.txt
-2. When materialize_prompt is called for the same phase, it reads the hint,
-   surfaces it as LAST_RETRY_ERROR, and deletes the file so it doesn't leak
+2. When materialize_prompt is called for the same phase, it reads the hint and
+   surfaces it as LAST_RETRY_ERROR without deleting the active context
 3. Parameterized over phases with declared artifact contracts in the default policy
 4. The development phase writes a "missing input" hint when the plan is absent
    (plan is a planning-phase output, not a development submission), and a
    "missing output" hint when development_result is absent.
 5. End-to-end retry flow: missing artifact → hint written → prompt includes
-   LAST_RETRY_ERROR → second attempt with valid artifact → phase advances.
+   LAST_RETRY_ERROR → second attempt with valid artifact → phase advances and clears it.
 """
 
 from __future__ import annotations
@@ -422,14 +422,14 @@ def test_development_missing_dev_result_uses_pipeline_owned_required_policy(
     assert workspace.exists(retry_hint_path("development"))
 
 
-def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
+def test_read_and_clear_retry_hint_returns_content_without_deleting_file() -> None:
     workspace = MemoryWorkspace()
     workspace.write(retry_hint_path("review"), "hint content here")
 
     result = read_and_clear_retry_hint(workspace, "review")
 
     assert result == "hint content here"
-    assert not workspace.exists(retry_hint_path("review")), "Hint file must be deleted after read"
+    assert workspace.exists(retry_hint_path("review")), "Hint file must persist until a gate accepts the artifact"
 
 
 def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
@@ -494,11 +494,11 @@ def test_planning_analysis_regression_materializes_exact_validator_retry_context
 
     rendered = workspace.read(prompt_path)
     assert rendered.startswith(diagnostic)
-    assert not workspace.exists(retry_hint_path("planning_analysis"))
+    assert workspace.exists(retry_hint_path("planning_analysis"))
 
 
 def test_policy_remediation_regression_materializes_retry_context(tmp_path: Path) -> None:
-    """S-4: out-of-graph policy remediation consumes its phase retry hint."""
+    """S-4: out-of-graph policy remediation retains its phase retry hint."""
     from ralph.project_policy import remediation
     from ralph.project_policy.models import PolicyFinding
 
@@ -515,13 +515,13 @@ def test_policy_remediation_regression_materializes_retry_context(tmp_path: Path
     rendered = remediation._render_prompt([finding], workspace=workspace)
 
     assert diagnostic in rendered
-    assert not workspace.exists(retry_hint_path("policy_remediation"))
+    assert workspace.exists(retry_hint_path("policy_remediation"))
 
 
 def test_policy_remediation_analysis_regression_materializes_retry_context(
     tmp_path: Path,
 ) -> None:
-    """S-4: out-of-graph policy analysis consumes its phase retry hint."""
+    """S-4: out-of-graph policy analysis retains its phase retry hint."""
     from ralph.project_policy import analysis as policy_analysis
 
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -531,7 +531,7 @@ def test_policy_remediation_analysis_regression_materializes_retry_context(
     rendered = policy_analysis._render_prompt(workspace)
 
     assert diagnostic in rendered
-    assert not workspace.exists(retry_hint_path("policy_remediation_analysis"))
+    assert workspace.exists(retry_hint_path("policy_remediation_analysis"))
 
 
 def test_materialize_development_analysis_prompt_includes_last_retry_error(
@@ -558,10 +558,10 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
 
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT FAILED" in rendered
-    assert not workspace.exists(retry_hint_path("development_analysis"))
+    assert workspace.exists(retry_hint_path("development_analysis"))
 
 
-def test_worker_generic_prompt_consumes_only_worker_validation_retry_hint(
+def test_worker_generic_prompt_retains_only_worker_validation_retry_hint(
     tmp_path: Path,
 ) -> None:
     """Rejected worker analysis is recoverable from its next template-based prompt."""
@@ -608,7 +608,7 @@ def test_worker_generic_prompt_consumes_only_worker_validation_retry_hint(
     assert f"line {diagnostic['line']}" in rendered
     assert diagnostic["section"] in rendered
     assert "ralph_edit_md_artifact" in rendered
-    assert not workspace.exists(worker_hint)
+    assert workspace.exists(worker_hint)
     assert workspace.exists(worker_draft)
     assert workspace.read(coordinator_hint) == "COORDINATOR RETRY CONTEXT"
 
@@ -646,7 +646,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     rendered = workspace.read(prompt_path)
     assert rendered.startswith("VALIDATION FAILURE")
     assert "proof entries are incomplete or invalid" in rendered
-    assert not workspace.exists(retry_hint_path("development"))
+    assert workspace.exists(retry_hint_path("development"))
 
     workspace.write(
         ".agent/artifacts/development_result.md",
@@ -655,6 +655,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     ctx2 = _make_ctx(workspace, policy)
     events2 = _execution_handler_for("development")(_invoke_effect("development"), ctx2)
     assert events2 == [ExecutionResultEvent(phase="development", status="completed")]
+    assert not workspace.exists(retry_hint_path("development"))
 
 
 @pytest.mark.parametrize(
@@ -671,8 +672,8 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
 
     Drives:
     1. First attempt: handler returns PhaseFailureEvent + writes hint file
-    2. Prompt materialization: reads hint, exposes as LAST_RETRY_ERROR, deletes file
-    3. Second attempt: handler succeeds with valid artifact present
+    2. Prompt materialization: reads hint and exposes it as LAST_RETRY_ERROR without deleting it
+    3. Second attempt: handler succeeds with valid artifact present and clears the hint
     """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -711,8 +712,8 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     assert "PREVIOUS ATTEMPT FAILED" in rendered, (
         f"Phase {phase}: rendered prompt must include LAST_RETRY_ERROR from hint file"
     )
-    assert not workspace.exists(retry_hint_path(phase)), (
-        f"Phase {phase}: hint file must be deleted after materialize reads it"
+    assert workspace.exists(retry_hint_path(phase)), (
+        f"Phase {phase}: hint file must persist after materialize reads it"
     )
 
     # Step 3: second attempt with valid artifact now present → must advance
@@ -726,4 +727,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     ]
     assert success_events, (
         f"Phase {phase}: second attempt must succeed when valid artifact is present"
+    )
+    assert not workspace.exists(retry_hint_path(phase)), (
+        f"Phase {phase}: successful artifact gate must clear its retry hint"
     )

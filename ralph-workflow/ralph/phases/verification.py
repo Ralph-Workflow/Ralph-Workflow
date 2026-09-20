@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, NoReturn
 from loguru import logger
 
 from ralph.phases.artifacts import legacy_json_rejection_detail
-from ralph.phases.required_artifacts import build_required_artifacts
+from ralph.phases.required_artifacts import build_required_artifacts, clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 
@@ -114,6 +114,11 @@ def _handle_verification_invoke(
     gate_passed, failure_reason = _gate_result_for_kind(v, ctx, phase_name, phase_def)
 
     if gate_passed:
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase_name,
+            pipeline_policy=ctx.pipeline_policy,
+        )
         return [PipelineEvent.AGENT_SUCCESS]
 
     return _emit_verification_failure(phase_name, failure_reason, v.on_failure_route)

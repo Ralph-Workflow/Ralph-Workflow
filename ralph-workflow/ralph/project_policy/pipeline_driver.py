@@ -36,10 +36,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.project_policy import analysis, remediation, validators
 from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 from ralph.project_policy.pipeline_graph import (
     DEFAULT_ANALYSIS_CAP,
+    PHASE_ANALYSIS,
     PHASE_REMEDIATION,
     TERMINAL_DONE,
     analysis_budget_spent,
@@ -265,6 +267,8 @@ def _finish(
     # the very next preflight into a full re-validation. The
     # deterministic re-validation above stays the gate that decides
     # READY; only the write moves.
+    clear_validation_retry_hint(workspace, PHASE_REMEDIATION)
+    clear_validation_retry_hint(workspace, PHASE_ANALYSIS)
     emit("project-policy-readiness: ready (validator clean, analysis approved)")
     return ReadinessResult(
         status=ReadinessStatus.READY,

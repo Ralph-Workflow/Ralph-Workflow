@@ -88,7 +88,7 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     assert f"line {diagnostic['line']}" in rendered
     assert "ralph_edit_md_artifact" in rendered
     assert rendered.rstrip().endswith(build_validation_retry_footer())
-    assert not workspace.exists(".agent/tmp/last_retry_error_planning.txt")
+    assert workspace.exists(".agent/tmp/last_retry_error_planning.txt")
     assert workspace.exists(".agent/artifacts/.plan.draft.md")
 
 
@@ -137,7 +137,7 @@ def test_worker_planning_validator_context_enters_only_worker_prompt(tmp_path: P
     assert diagnostic["rule_id"] in rendered
     assert f"line {diagnostic['line']}" in rendered
     assert "ralph_edit_md_artifact" in rendered
-    assert not workspace.exists(worker_hint)
+    assert workspace.exists(worker_hint)
     assert workspace.exists(worker_draft)
     assert workspace.read(coordinator_hint) == "COORDINATOR RETRY CONTEXT"
 

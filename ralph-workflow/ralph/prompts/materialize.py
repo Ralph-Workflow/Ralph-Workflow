@@ -253,7 +253,7 @@ def read_and_clear_retry_hint(
     worker_namespace: Path | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> str:
-    """Read the retry hint file for a phase and delete it after reading."""
+    """Read the retry hint file for a phase without consuming active context."""
     drain = _retry_hint_drain(phase, pipeline_policy)
     path = (
         str(worker_namespace / "tmp" / f"last_retry_error_{drain}.txt")
@@ -269,11 +269,7 @@ def read_and_clear_retry_hint(
     if not workspace.exists(source_path):
         return ""
     try:
-        hint = workspace.read(source_path)
-        workspace.remove(source_path)
-        if legacy_path != source_path and workspace.exists(legacy_path):
-            workspace.remove(legacy_path)
-        return hint
+        return workspace.read(source_path)
     except Exception:
         return ""
 

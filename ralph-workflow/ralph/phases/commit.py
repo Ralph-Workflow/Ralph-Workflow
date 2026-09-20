@@ -31,7 +31,11 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
-from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
+from ralph.phases.required_artifacts import (
+    build_retry_hint,
+    clear_validation_retry_hint,
+    retry_hint_path,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 
@@ -104,6 +108,11 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     phase_name = effect.phase
 
     if _has_no_diff(ctx):
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase_name,
+            pipeline_policy=ctx.pipeline_policy,
+        )
         logger.info("{}: no diff to commit — skipping", phase_name)
         return [PipelineEvent.COMMIT_SKIPPED]
 
@@ -145,8 +154,18 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     # Without this guard, a skip artifact would be passed to the runner
     # and committed verbatim as a "SKIP: ..." git commit subject.
     if message.strip().lower().startswith("skip:"):
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase_name,
+            pipeline_policy=ctx.pipeline_policy,
+        )
         logger.info("{}: commit agent requested skip — skipping", phase_name)
         return [PipelineEvent.COMMIT_SKIPPED]
 
+    clear_validation_retry_hint(
+        ctx.workspace,
+        phase_name,
+        pipeline_policy=ctx.pipeline_policy,
+    )
     logger.info("{}: deferring commit execution to runner", phase_name)
     return []

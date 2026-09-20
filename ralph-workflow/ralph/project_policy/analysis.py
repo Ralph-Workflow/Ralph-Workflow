@@ -149,14 +149,12 @@ def _render_prompt(workspace: Workspace) -> str:
 
 
 def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
-    """Consume one phase retry hint for the next policy-analysis prompt."""
+    """Read policy-analysis retry context without consuming it."""
     path = retry_hint_path(phase)
     if not workspace.exists(path):
         return ""
     try:
-        hint = workspace.read(path)
-        workspace.remove(path)
-        return hint
+        return workspace.read(path)
     except Exception:
         return ""
 

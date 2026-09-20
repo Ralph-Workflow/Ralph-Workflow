@@ -27,9 +27,10 @@ from ralph.phases.artifacts import decision_vocabulary_for_drain
 from ralph.phases.commit import handle_commit_phase
 from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
 from ralph.phases.execution import handle_execution_phase
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PhaseFailureEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     LoopCounterConfig,
@@ -40,6 +41,7 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
+from ralph.workspace.memory import MemoryWorkspace
 
 
 @lru_cache(maxsize=1)
@@ -121,8 +123,30 @@ status: completed
 
 
 # =============================================================================
-# Decision vocabulary full coverage
+# Generic analysis phase
 # =============================================================================
+
+
+def test_generic_analysis_accepted_loopback_decision_clears_retry_hint() -> None:
+    workspace = MemoryWorkspace()
+    policy = _default_policy_bundle()
+    phase = "development_analysis"
+    hint_path = retry_hint_path(phase)
+    workspace.write(hint_path, "ATTEMPT 1\nSPEC008: repair required")
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.md",
+        _development_analysis_markdown("request_changes"),
+    )
+    ctx = MagicMock()
+    ctx.workspace = workspace
+    ctx.pipeline_policy = policy.pipeline
+    ctx.artifacts_policy = policy.artifacts
+    effect = InvokeAgentEffect(agent_name="reviewer", phase=phase, prompt_file="analysis.txt")
+
+    assert handle_generic_analysis_phase(effect, ctx) == [
+        AnalysisDecisionEvent(phase=phase, decision="request_changes")
+    ]
+    assert not workspace.exists(hint_path)
 
 
 class TestDecisionVocabularyFullCoverage:

@@ -33,7 +33,11 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
-from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
+from ralph.phases.required_artifacts import (
+    build_retry_hint,
+    clear_validation_retry_hint,
+    retry_hint_path,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PipelineEvent
 
@@ -191,10 +195,19 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         if head is not None:
             _write_review_baseline(ctx, head)
 
+        try:
+            phase_name = effect.phase
+        except AttributeError:
+            phase_name = "review"
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase_name,
+            pipeline_policy=ctx.pipeline_policy,
+        )
+
         issues = content.get("issues", [])
         if isinstance(issues, list) and issues:
             return [PipelineEvent.REVIEW_ISSUES_FOUND]
-
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

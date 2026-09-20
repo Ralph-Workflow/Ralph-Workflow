@@ -81,7 +81,7 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
-from ralph.phases.required_artifacts import retry_hint_path
+from ralph.phases.required_artifacts import clear_validation_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
@@ -348,6 +348,12 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
                 )
             else:
                 events = outcome
+                if events == [PipelineEvent.AGENT_SUCCESS]:
+                    clear_validation_retry_hint(
+                        ctx.workspace,
+                        phase_name,
+                        pipeline_policy=ctx.pipeline_policy,
+                    )
     return events
 
 

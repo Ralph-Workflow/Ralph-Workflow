@@ -87,7 +87,7 @@ def _read_and_clear_retry_hint(
     worker_namespace: Path | None,
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
-    """Read the phase retry-hint file and delete it after reading."""
+    """Read the phase retry hint without consuming active validation context."""
     phase_def = pipeline_policy.phases.get(phase) if pipeline_policy is not None else None
     drain = phase_def.drain if phase_def is not None else phase
     hint_file = (
@@ -104,10 +104,6 @@ def _read_and_clear_retry_hint(
     if not source_file.is_file():
         return ""
     try:
-        hint = source_file.read_text(encoding="utf-8")
-        source_file.unlink()
-        if legacy_hint_file != source_file and legacy_hint_file.is_file():
-            legacy_hint_file.unlink()
-        return hint
+        return source_file.read_text(encoding="utf-8")
     except OSError:
         return ""

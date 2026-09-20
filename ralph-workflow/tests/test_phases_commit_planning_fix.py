@@ -20,6 +20,7 @@ from ralph.phases.execution import (
     _clear_stale_plan_draft_if_needed,
     handle_execution_phase,
 )
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.pipeline.effects import (
     CommitEffect,
     Effect,
@@ -267,6 +268,22 @@ def test_development_commit_emits_skip_when_no_diff(
     assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
 
 
+def test_development_commit_no_diff_clears_retry_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(monkeypatch, has_uncommitted_changes=False)
+    hint_path = retry_hint_path("development_commit")
+    ctx.workspace.write(hint_path, "ATTEMPT 1\nCOMMIT001: repair required")
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit",
+        prompt_file="dev-plan.txt",
+    )
+
+    assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
+    assert not ctx.workspace.exists(hint_path)
+
+
 def test_development_commit_defers_when_diff_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -338,6 +355,26 @@ def test_review_commit_emits_skip_when_no_diff(
     )
 
     assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
+
+
+def test_review_commit_skip_artifact_clears_retry_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message="---\ntype: skip\nreason: no user-visible changes\n---\n",
+    )
+    hint_path = retry_hint_path("review_commit")
+    ctx.workspace.write(hint_path, "ATTEMPT 1\nCOMMIT001: repair required")
+    effect = InvokeAgentEffect(
+        agent_name="review",
+        phase="review_commit",
+        prompt_file="review-plan.txt",
+    )
+
+    assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
+    assert not ctx.workspace.exists(hint_path)
 
 
 def test_review_commit_defers_when_diff_exists(

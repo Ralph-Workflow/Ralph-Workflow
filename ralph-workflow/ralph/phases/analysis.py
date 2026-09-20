@@ -33,6 +33,7 @@ from ralph.phases.artifacts import (
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
     build_retry_hint,
+    clear_validation_retry_hint,
     resolve_required_artifact,
     retry_hint_path,
 )
@@ -214,6 +215,11 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             ]
 
         logger.info("Analysis phase '{}' decision: {}", phase_name, status)
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase_name,
+            pipeline_policy=ctx.pipeline_policy,
+        )
         return [AnalysisDecisionEvent(phase=phase_name, decision=status)]
 
     return []

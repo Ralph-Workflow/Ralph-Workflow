@@ -47,12 +47,18 @@ from ralph.phases.required_artifacts import (
     build_proof_failure_hint,
     build_required_artifacts,
     build_retry_hint,
+    clear_validation_retry_hint,
     resolve_phase_required_artifact,
     resolve_required_artifact,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
+from ralph.pipeline.events import (
+    Event,
+    ExecutionResultEvent,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -165,6 +171,32 @@ def handle_execution_phase(
 
     if events is None:
         events = [PipelineEvent.AGENT_SUCCESS]
+    return _clear_retry_hint_after_accepted_artifact(
+        events,
+        ctx,
+        phase,
+        ra,
+        worker_retry_hint_path,
+    )
+
+
+def _clear_retry_hint_after_accepted_artifact(
+    events: list[Event],
+    ctx: PhaseContext,
+    phase: str,
+    required_artifact: RequiredArtifact | None,
+    worker_retry_hint_path: str | None,
+) -> list[Event]:
+    """Clear retained context only after the current phase accepts its artifact."""
+    if required_artifact is not None and not any(
+        isinstance(event, PhaseFailureEvent) for event in events
+    ):
+        clear_validation_retry_hint(
+            ctx.workspace,
+            phase,
+            pipeline_policy=ctx.pipeline_policy,
+            hint_path_override=worker_retry_hint_path,
+        )
     return events
 
 

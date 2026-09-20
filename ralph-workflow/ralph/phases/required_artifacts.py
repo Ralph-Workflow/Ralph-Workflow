@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.artifacts.markdown import Diagnostic
     from ralph.policy.models import ArtifactsPolicy
+    from ralph.workspace.protocol import Workspace
 
 # Normalizers keyed by artifact_type — used by build_required_artifacts()
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
@@ -146,6 +147,25 @@ def read_validation_retry_hint(
         return hint_path.read_text(encoding="utf-8") if hint_path.is_file() else ""
     except OSError:
         return ""
+
+
+def clear_validation_retry_hint(
+    workspace: Workspace,
+    phase: str,
+    *,
+    pipeline_policy: PipelinePolicy | None = None,
+    hint_path_override: str | None = None,
+) -> None:
+    """Clear a phase's retained validation context after its gate accepts the artifact."""
+    hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=pipeline_policy)
+    legacy_path = retry_hint_path(phase)
+    try:
+        if workspace.exists(hint_path):
+            workspace.remove(hint_path)
+        if legacy_path != hint_path and workspace.exists(legacy_path):
+            workspace.remove(legacy_path)
+    except Exception:
+        return
 
 
 _VALIDATION_RETRY_BODY_CAP = 4_096

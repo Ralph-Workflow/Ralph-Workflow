@@ -67,6 +67,7 @@ from ralph.mcp.tools.text_edits import (
     parse_text_edits,
     sha256_text,
 )
+from ralph.phases.required_artifacts import validation_corrective_action
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
@@ -87,7 +88,6 @@ REPAIR_HINT: str = (
     f"validates, so no separate `{FINALIZE_MD_ARTIFACT_TOOL}` call is needed. Read the draft "
     f"back with `{GET_MD_DRAFT_TOOL}` when you need to see its current text."
 )
-
 
 def handle_verify_md_artifact(
     session: CoordinationSessionLike,
@@ -511,7 +511,8 @@ def _edit_result(
         payload["message"] = "VALIDATION RECOVERED"
     invalid = not bool(payload["valid"])
     if invalid and status != "preview":
-        _add_validation_failure_envelope(payload)
+        diagnostics = analysis[0] if analysis is not None else []
+        _add_validation_failure_envelope(payload, artifact_type, diagnostics)
     return ToolResult(
         content=[ToolContent.json_content(payload)],
         is_error=invalid and status != "preview",
@@ -631,17 +632,20 @@ def _validation_result(
         "overridden": [_override_payload(item) for item in (overridden or [])],
     }
     if invalid:
-        _add_validation_failure_envelope(payload)
+        _add_validation_failure_envelope(payload, artifact_type, diagnostics)
     return ToolResult(
         content=[ToolContent.json_content(_with_hint(payload))],
         is_error=invalid,
     )
 
 
-def _add_validation_failure_envelope(payload: dict[str, object]) -> None:
+def _add_validation_failure_envelope(
+    payload: dict[str, object], artifact_type: str, diagnostics: list[Diagnostic]
+) -> None:
     """Mark an invalid result as a canonical repair action."""
     payload["status"] = "validation_failed"
     payload["severity"] = "error"
+    payload["corrective_action"] = validation_corrective_action(artifact_type, diagnostics)
     payload["message"] = build_validation_retry_footer()
 
 
@@ -834,7 +838,6 @@ def _ledger_handle_diagnostics(
         if parse_media_uri(handle) is None
         or not _active_run_ledger_has_handle(workspace_root, run_id, secret, handle)
     ]
-
 
 def _active_run_ledger_has_handle(
     workspace_root: Path,

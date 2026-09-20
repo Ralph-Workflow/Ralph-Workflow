@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.phases.review import handle_review
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -81,6 +82,35 @@ status: issues_found
         assert result == [PipelineEvent.REVIEW_ISSUES_FOUND]
         ctx.workspace.read.assert_any_call(".agent/artifacts/issues.md")
         assert ctx.workspace.read.call_count == 1
+
+    def test_accepted_issues_artifact_clears_retry_hint(self) -> None:
+        effect = InvokeAgentEffect(agent_name="reviewer", phase="review", prompt_file="review.txt")
+        ctx = self._make_context()
+        hint_path = retry_hint_path("review")
+        ctx.workspace.exists.side_effect = lambda path: path in {
+            ".agent/artifacts/issues.md",
+            hint_path,
+        }
+        ctx.workspace.read.return_value = """---
+type: issues
+status: issues_found
+---
+
+## Summary
+- [SUM-1] Review found a defect.
+
+## Issues
+- [I-1] src/app.py | high | Add the missing guard.
+
+## What Came Up Short
+- [W-1] The implementation omitted a required guard.
+
+## How To Fix
+- [FIX-1] Add the guard and cover the failure path.
+"""
+
+        assert handle_review(effect, ctx) == [PipelineEvent.REVIEW_ISSUES_FOUND]
+        ctx.workspace.remove.assert_called_once_with(hint_path)
 
     def test_review_regression_stray_json_fails_closed(self) -> None:
         """Regression for PROMPT.md's Markdown-only tooling requirement.
