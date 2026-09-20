@@ -119,3 +119,35 @@ def test_exec_timeout_parsing_clamps_invalid_and_oversized_values() -> None:
         parse_exec_params({"command": "echo", "timeout_ms": EXEC_MAX_TIMEOUT_MS + 1}).timeout_ms
         == EXEC_MAX_TIMEOUT_MS
     )
+
+
+def test_unsafe_exec_regression_timeout_parsing_clamps_invalid_and_oversized_values(
+    tmp_path: Path,
+) -> None:
+    forwarded_timeouts: list[float | None] = []
+
+    def run(
+        _argv: list[str], _cwd: Path, timeout: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        forwarded_timeouts.append(timeout)
+        return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
+
+    session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+    workspace = MockWorkspaceRoot(tmp_path)
+    cases = (
+        (0, EXEC_DEFAULT_TIMEOUT_MS),
+        (-1, EXEC_DEFAULT_TIMEOUT_MS),
+        ("bad", EXEC_DEFAULT_TIMEOUT_MS),
+        (EXEC_MAX_TIMEOUT_MS + 1, EXEC_MAX_TIMEOUT_MS),
+    )
+
+    for timeout_ms, expected_timeout_ms in cases:
+        result = handle_unsafe_exec(
+            session,
+            workspace,
+            {"command": "echo okay", "timeout_ms": timeout_ms},
+            deps=ExecRunDeps(runner=run),
+        )
+
+        assert result.is_error is False
+        assert forwarded_timeouts[-1] == expected_timeout_ms / 1000
