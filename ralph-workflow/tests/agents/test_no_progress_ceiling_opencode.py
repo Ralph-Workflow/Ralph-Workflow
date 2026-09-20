@@ -85,6 +85,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only(
         _blocking_stdout(),
         descendant_count=1,
         descendant_oldest_seconds=5.0,
+        on_terminate=_reader_release.set,
     )
 
     # Real OpenCodeExecutionStrategy with no registered children.
