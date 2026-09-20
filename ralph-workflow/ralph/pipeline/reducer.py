@@ -56,6 +56,7 @@ from ralph.pipeline.cycle_timing import (
     apply_cycle_timebox,
     apply_development_timebox,
     conclude_cycle_on_route_out_of_cycle,
+    conclude_development_timebox_on_route_out_of_development,
     start_cycle_for_bypassed_start_source,
 )
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
@@ -1407,8 +1408,7 @@ def _handle_complete(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline completion — routes to the policy-declared terminal success phase."""
     terminal = _terminal_success_route(policy)
-    new_state = progress.advance_phase(state, terminal, policy=policy)
-    return new_state, []
+    return _advance_phase(state, terminal, policy, routing_timing=routing_timing)
 
 
 def _handle_failed(
@@ -1512,7 +1512,13 @@ def _concluded_if_leaving_cycle(
     stop, since starting one requires an inactive cycle.
     """
     state, target_phase = resolved
-    return conclude_cycle_on_route_out_of_cycle(state, target_phase, policy=policy), target_phase
+    state = conclude_cycle_on_route_out_of_cycle(state, target_phase, policy=policy)
+    return (
+        conclude_development_timebox_on_route_out_of_development(
+            state, target_phase, policy=policy
+        ),
+        target_phase,
+    )
 
 
 def _with_bypassed_cycle_timing(

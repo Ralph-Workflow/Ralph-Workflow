@@ -54,6 +54,45 @@ def test_defaults_start_at_development_and_preserve_retry_elapsed() -> None:
     assert retry.target_phase == "development"
 
 
+def test_phase_wide_timer_warns_then_redirects_across_validation_retries() -> None:
+    policy = _policy()
+    clock = FakeClock()
+    state = apply_development_timebox(
+        PipelineState(phase="planning_analysis"),
+        "development",
+        policy=policy,
+        routing_timing=_timing(0.0),
+    ).state.model_copy(
+        update={"phase": "development", "phase_chains": {"development": AgentChainState(agents=["claude"])}},
+    )
+
+    clock.advance(4200.0)
+    warning_timing = _timing(clock.monotonic())
+    assert development_deadline_epochs(
+        state, "development", policy=policy, routing_timing=warning_timing, now_epoch=1000.0
+    ) == (1000.0, 2200.0)
+    retried, _ = reducer_reduce(
+        state,
+        PhaseFailureEvent(
+            phase="development",
+            reason="artifact validation failed",
+            recoverable=True,
+            failure_category=FailureCategory.ARTIFACT_VALIDATION,
+        ),
+        policy,
+        routing_timing=warning_timing,
+    )
+    assert retried.phase == "development"
+    assert retried.dev_timebox_active
+
+    clock.advance(1200.0)
+    redirected = redirect_expired_cycle_in_place(retried, policy, _timing(clock.monotonic()))
+    assert redirected is not None
+    next_state, _ = redirected
+    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.dev_timebox_active is False
+
+
 def test_same_phase_retry_redirects_at_development_deadline() -> None:
     policy = _policy()
     state = PipelineState(
@@ -123,6 +162,40 @@ def test_custom_development_limit_does_not_change_cycle_elapsed() -> None:
     assert decision.redirected
     assert decision.state.cycle_timebox_consumed_seconds == 1234.0
     assert after == before
+
+
+def test_leaving_development_resets_timer_only_for_a_later_entry() -> None:
+    policy = _policy()
+    state = PipelineState(
+        phase="development", dev_timebox_active=True, dev_timebox_consumed_seconds=4200.0
+    )
+    final_commit, _ = reducer_reduce(
+        state,
+        PipelineEvent.AGENT_SUCCESS,
+        policy,
+        routing_timing=_timing(4200.0),
+    )
+    assert final_commit.phase == "development_commit_cleanup"
+    assert final_commit.dev_timebox_active is False
+    assert final_commit.dev_timebox_consumed_seconds == 4200.0
+
+    completed, _ = reducer_reduce(
+        state,
+        PipelineEvent.COMPLETE,
+        policy,
+        routing_timing=_timing(4200.0),
+    )
+    assert completed.phase == policy.terminal_phase
+    assert completed.dev_timebox_active is False
+
+    restarted = apply_development_timebox(
+        completed.model_copy(update={"phase": "planning_analysis"}),
+        "development",
+        policy=policy,
+        routing_timing=_timing(0.0),
+    ).state
+    assert restarted.dev_timebox_active
+    assert restarted.dev_timebox_consumed_seconds == 0.0
 
 
 def test_validation_retry_preserves_original_development_timebox_deadlines() -> None:

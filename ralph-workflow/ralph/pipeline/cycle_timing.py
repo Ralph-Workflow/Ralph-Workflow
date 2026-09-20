@@ -290,6 +290,24 @@ def development_deadline_epochs(
     )
 
 
+def conclude_development_timebox_on_route_out_of_development(
+    state: PipelineState,
+    next_phase: str,
+    *,
+    policy: PipelinePolicy,
+) -> PipelineState:
+    """Stop the phase-wide timer once routing leaves development.
+
+    The development timer spans retries that remain in ``guarded_entry`` only.
+    Every other target ends that uninterrupted phase, including custom fallback
+    routes that bypass the ordinary final-commit entry.
+    """
+    dt = policy.development_timebox
+    if dt is None or not state.dev_timebox_active or next_phase == dt.guarded_entry:
+        return state
+    return state.copy_with(dev_timebox_active=False)
+
+
 def initialize_legacy_development_timebox_on_resume(
     state: PipelineState, policy: PipelinePolicy
 ) -> PipelineState:

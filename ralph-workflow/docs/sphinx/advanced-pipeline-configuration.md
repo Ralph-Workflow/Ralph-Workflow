@@ -458,12 +458,17 @@ one limit does not reset, extend, or otherwise change the other timer.
 | `guarded_entry` | `development` | Development entry guarded by the hard stop. |
 | `end_entry` / `finalization_target` | `development_final_commit_cleanup` | Entry that ends timing and redirect target. |
 
-Validation failures, retries, and development-analysis loopbacks do not reset
-or pause this timer. Once the configured hard stop is reached, the next
+Validation failures and same-phase retries do not reset or pause this timer.
+The timer ends whenever routing leaves development, including the normal route
+to final-commit cleanup; only a later `planning_analysis` → `development`
+entry starts a fresh timer. Once the configured hard stop is reached, the next
 attempt (including a same-phase retry) follows the existing finalization route.
 The runtime publishes its warning and deadline as `RALPH_DEV_WARN_EPOCH` and
 `RALPH_DEV_DEADLINE_EPOCH`; these names remain distinct from cycle epochs.
-Unknown `[development_timebox]` keys are rejected rather than ignored.
+After `RALPH_DEV_WARN_EPOCH`, MCP requires a deliberate second
+`declare_complete()` call for the same session and run identity. There is no
+separate 60-minute per-invocation development timer. Unknown
+`[development_timebox]` keys are rejected rather than ignored.
 
 #### Relationship to other limits
 
@@ -471,10 +476,10 @@ The cycle timebox is independent of the development timebox and the
 analysis-loop iteration cap. The cycle timebox bounds the *full*
 plan-to-final-commit cycle — across development, intermediate commit,
 development analysis, and every loopback — while the development timebox
-bounds the uninterrupted development phase across retries. Its default
-70-minute warning and 90-minute hard stop are published to MCP as phase-wide
-epochs, so validation failures cannot reset them. Neither limit substitutes
-for the other; both are enforced independently.
+bounds one uninterrupted development phase across validation failures and
+same-phase retries. Its default 70-minute warning and 90-minute hard stop are
+published to MCP as phase-wide epochs, so validation failures cannot reset
+them. Neither limit substitutes for the other; both are enforced independently.
 
 #### Timer reset and checkpoint behavior
 
