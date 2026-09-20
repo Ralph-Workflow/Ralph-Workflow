@@ -28,7 +28,7 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
         intent=subject,
         change_areas=evidence.change_areas,
         rationale=(),
-        behavior_risk=(),
+        behavior_risk=(*evidence.compatibility_hints, *evidence.risk_hints),
         verification=evidence.verification_hints,
         files=evidence.changed_files,
     )
@@ -42,6 +42,10 @@ def render_commit_message_artifact(ir: CommitMessageIR) -> str:
         lines.extend(("", "## Body", f"- [B-1] {'; '.join(body_parts)}"))
     if ir.files:
         lines.extend(("", "## Files", *(f"- [F-{index}] {path}" for index, path in enumerate(ir.files, 1))))
+    if ir.excluded_files:
+        lines.extend(
+            ("", "## Excluded Files", *(f"- [X-{index}] {path} | {reason}" for index, (path, reason) in enumerate(ir.excluded_files, 1)))
+        )
     return "\n".join(lines) + "\n"
 
 

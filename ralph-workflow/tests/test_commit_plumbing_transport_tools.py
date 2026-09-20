@@ -66,3 +66,5 @@ def test_commit_prompt_qualifies_every_state_changing_tool(
     assert f"{tool_prefix}declare_complete" in prompt
     assert f"{tool_prefix}write_file" in prompt
     assert f'`{tool_prefix}declare_complete(summary="commit_message")`' in prompt
+    guidance_heading = "## Write the message first" if transport is AgentTransport.OPENCODE else "## WRITE THE MESSAGE FIRST"
+    assert prompt.index(guidance_heading) < prompt.index("## Document shape")

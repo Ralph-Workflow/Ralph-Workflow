@@ -12,13 +12,11 @@ if TYPE_CHECKING:
 
 
 def normalize_commit_content(artifact_type: str, content: str, workspace_root: Path) -> str:
-    """Normalize a Git-backed commit draft while preserving ambiguous content."""
+    """Normalize repairable Git-backed drafts; retain ambiguous drafts for diagnostics."""
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return content
     try:
-        return normalize_commit_message_draft(
-            content, build_commit_evidence_bundle(workspace_root)
-        ).content
+        return normalize_commit_message_draft(content, build_commit_evidence_bundle(workspace_root)).content
     except ValueError:
         return content
 
@@ -26,16 +24,21 @@ def normalize_commit_content(artifact_type: str, content: str, workspace_root: P
 def commit_normalization_audit(
     artifact_type: str, content: str, workspace_root: Path
 ) -> dict[str, object] | None:
-    """Return receipt audit data for normalized Git-backed commit content."""
+    """Return receipt audit data or a precise regeneration diagnostic."""
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return None
     evidence = build_commit_evidence_bundle(workspace_root)
-    result = normalize_commit_message_draft(content, evidence)
+    try:
+        result = normalize_commit_message_draft(content, evidence)
+    except ValueError as exc:
+        return {"status": "regeneration_required", "diagnostic": str(exc)}
     return {
         "content": result.content,
         "changed_files": list(evidence.changed_files),
         "change_areas": list(evidence.change_areas),
         "verification_hints": list(evidence.verification_hints),
+        "compatibility_hints": list(evidence.compatibility_hints),
+        "risk_hints": list(evidence.risk_hints),
         "confidence": result.confidence,
         "transformations": list(result.transformations),
     }

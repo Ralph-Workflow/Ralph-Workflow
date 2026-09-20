@@ -19,6 +19,19 @@ def test_normalizer_rejects_ambiguous_intent() -> None:
         normalize_commit_message_draft("please commit this", EVIDENCE)
 
 
+def test_normalizer_preserves_explicit_body_claims() -> None:
+    result = normalize_commit_message_draft(
+        "fix: preserve evidence\n\n## Body\n- [B-1] Retains the user-visible retry result.", EVIDENCE
+    )
+
+    assert "Retains the user-visible retry result." in result.content
+
+
+def test_normalizer_reports_evidence_specific_regeneration_diagnostic() -> None:
+    with pytest.raises(ValueError, match="commit evidence regeneration required"):
+        normalize_commit_message_draft("please commit this", EVIDENCE)
+
+
 def test_normalizer_is_idempotent() -> None:
     first = normalize_commit_message_draft("fix: preserve evidence", EVIDENCE)
     second = normalize_commit_message_draft(first.content, EVIDENCE)

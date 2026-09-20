@@ -24,6 +24,8 @@ class CommitEvidenceBundle:
     change_areas: tuple[str, ...]
     verification_hints: tuple[str, ...]
     public_behavior_paths: tuple[str, ...]
+    compatibility_hints: tuple[str, ...] = ()
+    risk_hints: tuple[str, ...] = ()
 
     @property
     def message_budget(self) -> str:
@@ -42,16 +44,32 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
     changed_files = tuple(sorted(set(list_changed_paths(repo_root))))
     areas = tuple(sorted({path.split("/", 1)[0] for path in changed_files if path}))
     public_paths = tuple(
-        path
-        for path in changed_files
-        if path.startswith(("ralph/", "src/", "app/", "lib/", "api/"))
+        path for path in changed_files if path.startswith(("ralph/", "src/", "app/", "lib/", "api/"))
+    )
+    verification_hints = tuple(
+        hint
+        for hint, present in (
+            ("run focused tests for changed tests", any(path.startswith("tests/") for path in changed_files)),
+            ("run the verification gate", bool(public_paths)),
+        )
+        if present
+    )
+    compatibility_hints = (
+        ("review public API compatibility",) if any(path.startswith(("ralph/mcp/", "api/", "src/")) for path in changed_files) else ()
+    )
+    risk_hints = (
+        ("review commit staging and secret handling",)
+        if any(path.startswith(("ralph/git/", "ralph/pipeline/", ".github/")) for path in changed_files)
+        else ()
     )
     return CommitEvidenceBundle(
         diff=commit_generation_diff(repo_root),
         changed_files=changed_files,
         change_areas=areas,
-        verification_hints=(),
+        verification_hints=verification_hints,
         public_behavior_paths=public_paths,
+        compatibility_hints=compatibility_hints,
+        risk_hints=risk_hints,
     )
 
 
