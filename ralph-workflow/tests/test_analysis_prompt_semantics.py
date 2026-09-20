@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import cache
+
 import pytest
 
 from ralph.mcp.protocol.capability_mapping import SessionDrain
@@ -10,7 +12,15 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 
+@cache
 def _render_verifier(template_name: str) -> str:
+    # ``functools.cache`` memoizes the deterministic rendered output of
+    # the static packaged template set so the three parameterized tests
+    # in this module share one Jinja-environment compilation. Without
+    # the cache, each parameterization re-pays the full compilation
+    # cost and the per-test wall-clock trips the 1 s SIGALRM budget
+    # (``ralph/verify_timeout.py:DEFAULT_TEST_TIMEOUT_SECONDS``) when
+    # the rest of the suite is running in parallel.
     context = TemplateContext.default()
     session = SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS)
     return render_template(

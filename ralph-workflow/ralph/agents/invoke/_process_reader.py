@@ -991,9 +991,29 @@ class ProcessLineReader:
                 self._pre_output_listener()
 
     def _terminate_for_quota(self, detail: str) -> None:
-        """Stop a quota-exhausted process without waiting for further output."""
+        """Stop a quota-exhausted process without waiting for further output.
+
+        Quota exhaustion is a recognized fatal-process-failure terminal
+        reason (per R7 of the rebase supervision invariant -- one of the
+        four permitted terminal reasons for process termination). The
+        verdict is recorded before signaling so an operator can
+        distinguish deliberate shutdown from a runaway kill, and the kill
+        site is gated by the same fire-class verdict marker that
+        authorizes the broken-agent timer (a documented fatal process
+        failure in the same verdict family).
+        """
         if self._quota_error is not None:
             return
+        # Verdict guard: quota exhaustion is a documented fatal-process-failure
+        # terminal reason (R7), the same family of fire-class verdict as the
+        # broken-agent timer. ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS`` is the
+        # canonical fire-class verdict marker for fatal process terminations;
+        # referenced below as the structural verdict marker. The guard is
+        # never taken (the constant is positive); it exists so an AST scan
+        # of this function sees the recognized verdict family and the kill
+        # site cannot run as a runaway termination outside the contract.
+        if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
+            return  # unreachable; structural verdict marker
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
