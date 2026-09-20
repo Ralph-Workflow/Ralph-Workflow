@@ -88,7 +88,7 @@ def test_startup_seam_returns_injected_integration_outcome(
 def test_startup_seam_forwards_restored_strategy_history(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A resumed state reaches both conflict resolver builders unchanged."""
+    """Only the durable history-aware rung reaches both resolver builders."""
     integration = MagicMock(return_value=None)
     conflict_builder = MagicMock(return_value=object())
     stop_builder = MagicMock(return_value=object())
@@ -106,7 +106,10 @@ def test_startup_seam_forwards_restored_strategy_history(
         active_display=MagicMock(),
     )
 
-    run_loop._run_startup_integration(ctx, RebaseState(conflict_strategies_tried=history))
+    run_loop._run_startup_integration(
+        ctx,
+        RebaseState(conflict_strategy_index=3, conflict_strategies_tried=history),
+    )
 
     assert conflict_builder.call_args.kwargs["strategy_history"] == history
     assert stop_builder.call_args.kwargs["strategy_history"] == history

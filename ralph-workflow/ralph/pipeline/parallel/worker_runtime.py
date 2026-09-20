@@ -73,7 +73,10 @@ from ralph.pipeline.prompt_prep import (
     cycle_deadline_suspended,
     session_capabilities_for_agent_phase,
 )
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import (
+    HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
+    RebaseState,
+)
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import load_policy_for_workspace_scope
 from ralph.prompts.debug_dump import worker_multimodal_sidecar_path, worker_prompt_dump_path
@@ -327,7 +330,11 @@ def run_worker_auto_integration(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
-            strategy_history=(state.conflict_strategies_tried if state is not None else ()),
+            strategy_history=(
+                state.conflict_strategies_tried
+                if state is not None and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
         )
         outcome = auto_integrate_on_phase_transition(
             config,

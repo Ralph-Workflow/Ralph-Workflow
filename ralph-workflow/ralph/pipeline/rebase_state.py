@@ -7,6 +7,7 @@ from pydantic import ConfigDict
 from ralph.pydantic_compat import RalphBaseModel
 
 _FROZEN = ConfigDict(frozen=True)
+HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
 
 
 class RebaseState(RalphBaseModel):
@@ -123,6 +124,11 @@ class RebaseState(RalphBaseModel):
     last_conflict_paths: tuple[str, ...] = ()
     last_conflict_stage_oids: tuple[str, ...] = ()
     last_conflict_scope: str = ""
+
+    # The ladder rung that spent ``consecutive_conflicts``.  A new rung gets
+    # its own configured resolver budget even when it addresses the same
+    # durable conflict identity; defaulting preserves legacy checkpoints.
+    last_conflict_strategy_index: int = 0
 
     # ``recovery_record_retained`` marks a startup crash-recovery outcome
     # that deliberately LEFT the durable ``IntegrationRecord`` on disk for

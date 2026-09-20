@@ -157,7 +157,10 @@ from ralph.pipeline.prompt_prep import (
     publish_cycle_deadline_env,
     withdraw_cycle_deadline_env,
 )
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import (
+    HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
+    RebaseState,
+)
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import CommitState, PipelineState
@@ -1087,7 +1090,11 @@ def _maybe_auto_integrate(
         pipeline_deps=pipeline_deps,
         workspace_scope=workspace_scope,
         display_context=display_context,
-        strategy_history=state.rebase.conflict_strategies_tried,
+        strategy_history=(
+            state.rebase.conflict_strategies_tried
+            if state.rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+            else ()
+        ),
     )
     try:
         with cycle_deadline_suspended():
@@ -1104,7 +1111,11 @@ def _maybe_auto_integrate(
                     pipeline_deps=pipeline_deps,
                     workspace_scope=workspace_scope,
                     display_context=display_context,
-                    strategy_history=state.rebase.conflict_strategies_tried,
+                    strategy_history=(
+                        state.rebase.conflict_strategies_tried
+                        if state.rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                        else ()
+                    ),
                 ),
                 display=display,
             )

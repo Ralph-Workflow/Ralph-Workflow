@@ -57,7 +57,10 @@ from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
     emit_final_summary,
 )
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import (
+    HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
+    RebaseState,
+)
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
@@ -742,7 +745,11 @@ def _run_startup_integration(
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
-            strategy_history=(state.conflict_strategies_tried if state is not None else ()),
+            strategy_history=(
+                state.conflict_strategies_tried
+                if state is not None and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
         )
         prior_rebase = state if state is not None and type(state) is RebaseState else RebaseState()
         outcome = auto_integrate_on_phase_transition(
@@ -1409,7 +1416,11 @@ def _run_integration_conflict_resolution(
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
-            strategy_history=(rebase.conflict_strategies_tried if rebase is not None else ()),
+            strategy_history=(
+                rebase.conflict_strategies_tried
+                if rebase is not None and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
         )
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
@@ -1546,7 +1557,11 @@ def _resolve_paused_rebase(
             pipeline_deps=ctx.pipeline_deps,
             workspace_scope=ctx.workspace_scope,
             display_context=ctx.display_context,
-            strategy_history=(rebase.conflict_strategies_tried if rebase is not None else ()),
+            strategy_history=(
+                rebase.conflict_strategies_tried
+                if rebase is not None and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
         )
         resolved, reason = _resolve_rebase_with_config(
             ctx.workspace_scope.root,

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
@@ -441,6 +443,14 @@ class TestPhaseFailureEvent:
             f"rebase_resolver: development: {reason}",
         )
         assert first.rebase.resolution_exhausted is False
+        assert (
+            resolver_allowed(
+                first.rebase,
+                "main",
+                attempts=1,
+            )
+            is True
+        )
 
         current = first
         for _ in range(3):
@@ -462,6 +472,29 @@ class TestPhaseFailureEvent:
             "merge_instead",
             "resolver_with_history",
         ]
+
+    def test_strategy_advance_grants_the_next_rung_its_own_budget_after_restart(self) -> None:
+        """Persisted progress does not let one rung suppress the next one."""
+        state = PipelineState(
+            phase="development",
+            rebase=RebaseState(
+                last_action="conflict",
+                last_target="main",
+                consecutive_conflicts=1,
+                last_conflict_strategy_index=0,
+            ),
+        )
+        reason = "integration conflict requires resolution: unresolved shared.txt"
+
+        advanced, _ = _reduce(
+            state,
+            PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+            _basic_pipeline_policy(),
+        )
+        restored = RebaseState.model_validate(advanced.rebase.model_dump(mode="json"))
+
+        assert restored.conflict_strategy_index == 1
+        assert resolver_allowed(restored, "main", attempts=1) is True
 
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
         """When chain exhausts, the original PhaseFailureEvent reason is preserved."""

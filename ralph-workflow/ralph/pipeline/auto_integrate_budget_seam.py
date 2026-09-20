@@ -143,5 +143,6 @@ def charge_failed_attempt(
             "last_conflict_target_sha": identity.target_sha,
             "last_conflict_paths": identity.conflicted_paths,
             "last_conflict_stage_oids": identity.stage_oids,
+            "last_conflict_strategy_index": prior.conflict_strategy_index,
         }
     )

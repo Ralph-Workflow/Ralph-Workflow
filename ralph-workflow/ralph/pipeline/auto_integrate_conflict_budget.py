@@ -156,6 +156,8 @@ def prior_conflict_count(
         return 0
     if not identity.matches(state):
         return 0
+    if state.last_conflict_strategy_index != state.conflict_strategy_index:
+        return 0
     return max(0, state.consecutive_conflicts)
 
 
@@ -212,6 +214,7 @@ def apply_conflict_budget(
                 "last_conflict_paths": (),
                 "last_conflict_stage_oids": (),
                 "last_conflict_scope": "",
+                "last_conflict_strategy_index": 0,
             }
         )
     if record.last_action != _ACTION_CONFLICT:
@@ -223,6 +226,7 @@ def apply_conflict_budget(
                 "last_conflict_paths": prior.last_conflict_paths,
                 "last_conflict_stage_oids": prior.last_conflict_stage_oids,
                 "last_conflict_scope": prior.last_conflict_scope,
+                "last_conflict_strategy_index": prior.last_conflict_strategy_index,
             }
         )
 
@@ -233,6 +237,7 @@ def apply_conflict_budget(
         "last_conflict_paths": identity.conflicted_paths,
         "last_conflict_stage_oids": identity.stage_oids,
         "last_conflict_scope": identity.scope,
+        "last_conflict_strategy_index": prior.conflict_strategy_index,
     }
     if resolver_suppressed:
         update["last_reason"] = (
