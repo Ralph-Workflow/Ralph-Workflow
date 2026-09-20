@@ -96,6 +96,25 @@ def test_normalizer_accepts_nonstandard_list_heading() -> None:
     assert "Preserve retry evidence for submit artifacts." in result.content
 
 
+def test_normalizer_regression_extracts_grounded_numbered_list_claim() -> None:
+    """DA-004/S-5: numbered candidates follow the same evidence reconciliation path."""
+    result = normalize_commit_message_draft(
+        "fix: preserve evidence\n\n## Notes\n1. Preserve retry evidence for submit artifacts.",
+        _fact_evidence(),
+    )
+
+    assert "Preserve retry evidence for submit artifacts." in result.content
+
+
+def test_normalizer_regression_rejects_unsupported_numbered_list_claim() -> None:
+    """DA-004/S-5: numbered syntax must not bypass unsupported-claim rejection."""
+    with pytest.raises(ValueError, match="unsupported body claim"):
+        normalize_commit_message_draft(
+            "fix: preserve evidence\n\n## Notes\n1. Invent nonexistent behavior.",
+            _fact_evidence(),
+        )
+
+
 def test_normalizer_extracts_key_value_fields() -> None:
     result = normalize_commit_message_draft(
         "fix: preserve evidence\nintent: Preserve retry evidence for submit artifacts.",

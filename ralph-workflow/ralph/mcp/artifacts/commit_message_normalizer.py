@@ -105,12 +105,11 @@ def _extract_claims(content: str) -> tuple[str, ...]:
 
 
 def _list_claim(line: str) -> str:
-    if not line.startswith(("- ", "* ")):
+    match = _BODY_ITEM.match(line)
+    if match is None:
         return ""
-    value = line[2:]
-    if value.startswith("[") and "] " in value:
-        value = value.split("] ", 1)[1]
-    return value.strip()
+    value = match.group(1)
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _prose_body(content: str) -> str:

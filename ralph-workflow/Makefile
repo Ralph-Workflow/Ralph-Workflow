@@ -14,7 +14,7 @@
 # Multimodal smoke tests are I/O-bound and use an independently bounded
 # worker pool so their parallelism remains configurable without changing the
 # primary suite policy.
-MULTIMODAL_SMOKE_WORKERS ?= 4
+MULTIMODAL_SMOKE_WORKERS ?= 8
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
@@ -195,7 +195,7 @@ test-install-make-smoke:
 # file the regular profile deliberately skips.
 #
 # The smoke tests are I/O-bound (each spawns a stub subprocess). One xdist
-# worker per harness row eliminates a second serial wave and keeps the combined
+# worker per harness row avoids a second serial wave and keeps the combined
 # verification budget below 60 seconds after the default suite completes.
 #
 # wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
