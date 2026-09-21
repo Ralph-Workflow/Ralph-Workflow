@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
+from ralph.agents.invoke import AgentInvocationError, InvokeOptions
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.config.models import AgentConfig as _AgentConfig
 from ralph.display.context import make_display_context
@@ -451,6 +452,121 @@ def test_runner_timeout_regression_development_retry_uses_phase_remaining_budget
     options = captured["options"]
     assert options is not None
     assert options.max_session_seconds == 1200.0
+
+
+def test_agent_process_restart_uses_only_the_remaining_development_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = _make_config_full(agent_max_session_seconds=5700.0)
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+        last_agent_session_id="stale-session",
+    )
+    clock = [100.0]
+    ceilings: list[float | None] = []
+
+    monkeypatch.setattr(effect_executor_module.time, "monotonic", lambda: clock[0])
+
+    def invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config, prompt_file
+        ceilings.append(options.max_session_seconds if options is not None else None)
+        if len(ceilings) == 1:
+            clock[0] += 300.0
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                stderr="Session not found: stale-session",
+            )
+        return []
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER_PROMPT.md"),
+        registry_factory=_registry_factory,
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md"),
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=state,
+        policy_bundle=policy_bundle,
+        invoke_agent=invoke,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result is PipelineEvent.AGENT_SUCCESS
+    assert ceilings == [1200.0, 900.0]
+
+
+def test_agent_process_is_not_restarted_after_development_budget_expires(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = _make_config_full(agent_max_session_seconds=5700.0)
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+        last_agent_session_id="stale-session",
+    )
+    clock = [100.0]
+    invocation_count = 0
+
+    monkeypatch.setattr(effect_executor_module.time, "monotonic", lambda: clock[0])
+
+    def invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        nonlocal invocation_count
+        del config, prompt_file, options
+        invocation_count += 1
+        clock[0] += 1200.0
+        raise AgentInvocationError(
+            "opencode",
+            1,
+            stderr="Session not found: stale-session",
+        )
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER_PROMPT.md"),
+        registry_factory=_registry_factory,
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md"),
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=state,
+        policy_bundle=policy_bundle,
+        invoke_agent=invoke,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result is PipelineEvent.AGENT_FAILURE
+    assert invocation_count == 1
 
 
 def test_non_development_invocation_keeps_generic_session_ceiling(

@@ -38,6 +38,7 @@ class _AgentInvocationCtx:
     waiting_listener: Callable[[object], None]
     agent_config: AgentConfig
     display: ParallelDisplay | None
+    invocation_started_monotonic: float
     invocation_options: InvokeOptions | None = None
     worker_namespace: Path | None = None
     worker_artifact_dir: Path | None = None

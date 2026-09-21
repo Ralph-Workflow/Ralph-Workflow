@@ -165,6 +165,10 @@ class _AttemptResult:
     next_session_id: str | None
 
 
+def _event_from_attempt_result(result: _AttemptResult) -> PipelineEvent:
+    return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
+
+
 def execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
@@ -265,6 +269,7 @@ def execute_agent_effect(
             "Callable[[str | None], None] | None", opts.get("set_session_id_cb")
         ),
     )
+    invocation_started = time.monotonic()
     ctx = _AgentInvocationCtx(
         effect=effect,
         config=config,
@@ -280,6 +285,7 @@ def execute_agent_effect(
         waiting_listener=waiting_listener,
         agent_config=agent_config,
         display=display,
+        invocation_started_monotonic=invocation_started,
         invocation_options=cast("InvokeOptions | None", opts.get("invocation_options")),
         worker_namespace=cast(
             "Path | None", opts.get("worker_namespace")
@@ -291,7 +297,6 @@ def execute_agent_effect(
             "bool", opts.get("parallel_worker", False)
         ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
-    invocation_started = time.monotonic()
     invocation_outcome = "crashed"
     try:
         result = _invoke_agent_with_recovery(
@@ -436,6 +441,7 @@ class _AttemptState:
     # recovery plan for an AGY incomplete exit is produced, so the SAME
     # invocation never issues a second automatic completion reprompt.
     completion_reprompt_used: bool = False
+    attempts_started: int = 0
 
 
 def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
@@ -446,6 +452,40 @@ def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
     if isinstance(raw_value, str):
         return raw_value
     return None
+
+
+def _prepare_recovery_attempt(
+    ctx: _AgentInvocationCtx,
+    bridge_ctx: _AgentBridgeCtx,
+    pipeline_deps: PipelineDeps,
+    state: _AttemptState,
+    session_id: str | None,
+    run_id: str,
+    required_artifact: RequiredArtifact | None,
+    *,
+    extra_env: dict[str, str] | None,
+) -> InvokeOptions | None:
+    elapsed = (
+        max(0.0, time.monotonic() - ctx.invocation_started_monotonic)
+        if state.attempts_started > 0
+        else 0.0
+    )
+    options = _build_attempt_invoke_options(
+        ctx,
+        bridge_ctx,
+        pipeline_deps,
+        session_id,
+        run_id,
+        required_artifact,
+        required_artifact_resolved=True,
+        extra_env=extra_env,
+        elapsed_recovery_seconds=elapsed,
+    )
+    if options.max_session_seconds == 0.0:
+        _set_last_captured_retry_intent(cleared_agent_retry_intent())
+        return None
+    state.attempts_started += 1
+    return options
 
 
 def _invoke_agent_with_recovery(
@@ -503,22 +543,23 @@ def _invoke_agent_with_recovery(
             last_agent_session_id=_safe_last_agent_session_id(ctx.state),
         )
         progress_guard = RetryProgressGuard()
-
         def attempt_fn(
             retry_session_id: str | None,
             capture_session_id: Callable[[str], None],
         ) -> _AttemptResult:
             session_id = retry_session_id or state.resume_session_id
-            options = _build_attempt_invoke_options(
+            options = _prepare_recovery_attempt(
                 ctx,
                 bridge_ctx,
                 pipeline_deps,
+                state,
                 session_id,
                 effective_run_id,
                 resolved_required_artifact,
-                required_artifact_resolved=True,
                 extra_env=extra_env,
             )
+            if options is None:
+                return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
             try:
                 _check_bridge_health(ctx, bridge_ctx, pipeline_deps)
                 if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
@@ -597,17 +638,18 @@ def _invoke_agent_with_recovery(
                 raise
 
         try:
-            result = run_with_direct_mcp_recovery(
-                attempt_fn,
-                max_retries=ctx.max_recovery_attempts,
-                reset_tool_registry=scoped_reset_tool_registry_callback(
-                    bridge_ctx.bridge,
-                    effective_run_id,
-                ),
-                on_retry_failure=on_retry_failure,
-                retry_resumable_exit=True,
+            return _event_from_attempt_result(
+                run_with_direct_mcp_recovery(
+                    attempt_fn,
+                    max_retries=ctx.max_recovery_attempts,
+                    reset_tool_registry=scoped_reset_tool_registry_callback(
+                        bridge_ctx.bridge,
+                        effective_run_id,
+                    ),
+                    on_retry_failure=on_retry_failure,
+                    retry_resumable_exit=True,
+                )
             )
-            return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
         except McpServerError as exc:
             logger.error(
                 "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
@@ -858,6 +900,7 @@ def _build_attempt_invoke_options(
     required_artifact_override: RequiredArtifact | None = None,
     required_artifact_resolved: bool = False,
     extra_env: dict[str, str] | None = None,
+    elapsed_recovery_seconds: float = 0.0,
 ) -> InvokeOptions:
     required_artifact = required_artifact_override
     if (
@@ -939,11 +982,18 @@ def _build_attempt_invoke_options(
             invoke_options,
             idle_timeout_seconds=ctx.config.conflict_resolution.inactivity_timeout_seconds,
         )
-    return _cap_development_invocation_to_phase_deadline(ctx, invoke_options)
+    return _cap_development_invocation_to_phase_deadline(
+        ctx,
+        invoke_options,
+        elapsed_recovery_seconds=elapsed_recovery_seconds,
+    )
 
 
 def _cap_development_invocation_to_phase_deadline(
-    ctx: _AgentInvocationCtx, options: InvokeOptions
+    ctx: _AgentInvocationCtx,
+    options: InvokeOptions,
+    *,
+    elapsed_recovery_seconds: float = 0.0,
 ) -> InvokeOptions:
     """Use the unspent development-phase budget as this invocation's ceiling."""
     if ctx.state is None or ctx.policy_bundle is None:
@@ -956,7 +1006,10 @@ def _cap_development_invocation_to_phase_deadline(
     ):
         return options
     remaining_seconds = max(
-        0.0, timebox.duration_seconds - ctx.state.dev_timebox_consumed_seconds
+        0.0,
+        timebox.duration_seconds
+        - ctx.state.dev_timebox_consumed_seconds
+        - elapsed_recovery_seconds,
     )
     return replace(options, max_session_seconds=remaining_seconds)
 
