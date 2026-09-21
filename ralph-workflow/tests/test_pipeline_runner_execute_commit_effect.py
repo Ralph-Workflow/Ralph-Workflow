@@ -17,7 +17,7 @@ from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.git.commit_result import CommitCreationResult
-from ralph.git.operations import GitOperationError
+from ralph.git.errors import GitOperationError
 from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.commit_executor import execute_commit_effect

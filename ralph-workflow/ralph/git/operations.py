@@ -20,9 +20,9 @@ from git.exc import GitCommandError
 from loguru import logger
 
 from ralph.git.commit_result import CommitCreationResult
+from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,26 +32,6 @@ _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
-
-
-class GitOperationError(Exception):
-    """Raised when a git operation fails.
-
-    Attributes:
-        operation: Name of the operation that failed.
-        message: Error message describing the failure.
-    """
-
-    def __init__(self, operation: str, message: str) -> None:
-        """Initialize git operation error.
-
-        Args:
-            operation: Name of the operation.
-            message: Error message.
-        """
-        self.operation = operation
-        self.message = message
-        super().__init__(f"Git {operation} failed: {message}")
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -590,7 +570,8 @@ def create_commit(
             hook_env = {"GIT_REFLOG_ACTION": "ralph create_commit"}
             hooks_dir = Path(repo.git_dir) / "hooks"
             _run_commit_hooks(Path(repo_root), hooks_dir, message_path, hook_env)
-            message = DEFAULT_FILE_BACKEND.read_text(message_path, encoding="utf-8")
+            # filesystem-read-ok: Git hooks mutate this owned temporary commit-message file in place
+            message = message_path.read_text(encoding="utf-8")
         finally:
             message_path.unlink(  # filesystem-write-ok: transient hook message scratch
                 missing_ok=True

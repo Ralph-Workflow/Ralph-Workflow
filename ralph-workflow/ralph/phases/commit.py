@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING
 from git import InvalidGitRepositoryError
 from loguru import logger
 
-from ralph.git.operations import GitOperationError, has_uncommitted_changes
+from ralph.git.errors import GitOperationError
+from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     COMMIT_MESSAGE_TYPE,

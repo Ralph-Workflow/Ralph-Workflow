@@ -11,9 +11,9 @@ import pytest
 from git import GitCommandError
 
 from ralph.git.commit_result import CommitCreationStatus
+from ralph.git.errors import GitOperationError
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
-    GitOperationError,
     _atomic_append_text,
     _git_status_porcelain_lines,
     _recover_stale_git_lock,

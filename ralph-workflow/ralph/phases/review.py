@@ -21,7 +21,8 @@ from typing import TYPE_CHECKING
 from git import InvalidGitRepositoryError
 from loguru import logger
 
-from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
+from ralph.git.errors import GitOperationError
+from ralph.git.operations import get_head_sha, has_commits_since
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 

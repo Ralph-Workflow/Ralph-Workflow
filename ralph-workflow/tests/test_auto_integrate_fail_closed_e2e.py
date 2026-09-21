@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import MERGE_STATE_UNKNOWN
-from ralph.git.operations import GitOperationError
 from ralph.pipeline import auto_integrate
 from ralph.pipeline import auto_integrate_recovery as recovery
 from ralph.pipeline.rebase_state import RebaseState

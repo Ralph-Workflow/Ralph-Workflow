@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import branch_sha
-from ralph.git.operations import GitOperationError, get_head_sha
+from ralph.git.operations import get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,

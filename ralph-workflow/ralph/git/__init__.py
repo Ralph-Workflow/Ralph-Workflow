@@ -6,6 +6,7 @@ Implementation uses GitPython rather than the retired Rust/libgit2 stack.
 """
 
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+from ralph.git.errors import GitOperationError
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.hooks import (
     HOOK_MARKER,
@@ -17,7 +18,6 @@ from ralph.git.hooks import (
     uninstall_hooks,
 )
 from ralph.git.operations import (
-    GitOperationError,
     append_to_gitignore,
     create_commit,
     find_repo_root,

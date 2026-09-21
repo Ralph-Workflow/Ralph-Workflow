@@ -2956,6 +2956,13 @@ ralph.git.operations
    :members:
    :exclude-members: CommitCreationStatus
 
+ralph.git.errors
+~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.errors
+   :members:
+   :show-inheritance:
+
 ralph.git.commit_result
 ~~~~~~~~~~~~~~~~~~~~~~~
 

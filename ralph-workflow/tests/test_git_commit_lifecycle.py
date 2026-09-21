@@ -8,8 +8,8 @@ from pytest import MonkeyPatch
 
 from ralph.git import operations as operations_module
 from ralph.git.commit_result import CommitCreationStatus
+from ralph.git.errors import GitOperationError
 from ralph.git.git_run_result import GitRunResult
-from ralph.git.operations import GitOperationError
 
 
 @pytest.mark.subprocess_e2e

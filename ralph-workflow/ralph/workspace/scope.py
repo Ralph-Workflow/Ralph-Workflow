@@ -37,7 +37,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-from ralph.git.operations import GitOperationError, find_main_worktree_root, find_repo_root
+from ralph.git.errors import GitOperationError
+from ralph.git.operations import find_main_worktree_root, find_repo_root
 from ralph.pro_support.workspace import resolve_pro_workspace
 
 CONFIG_DIR_NAME = ".agent"

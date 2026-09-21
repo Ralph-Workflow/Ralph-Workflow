@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import branch_sha, conflict_stage_entries, unmerged_paths
-from ralph.git.operations import GitOperationError, get_head_sha
+from ralph.git.operations import get_head_sha
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,

@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
+from ralph.git.errors import GitOperationError
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
-from ralph.git.operations import GitOperationError, find_repo_root
+from ralph.git.operations import find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
 from ralph.git.rebase._empty_replay_error import EmptyReplayError
 from ralph.git.rebase._no_rebase_in_progress_error import NoRebaseInProgressError

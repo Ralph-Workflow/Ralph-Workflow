@@ -32,7 +32,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.commit_result import CommitCreationResult
-from ralph.git.operations import GitOperationError
+from ralph.git.errors import GitOperationError
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import AgentsPolicy

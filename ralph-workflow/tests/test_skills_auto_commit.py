@@ -28,6 +28,7 @@ import pytest
 from git import Actor, Repo
 
 from ralph.git.commit_result import CommitCreationResult
+from ralph.git.errors import GitOperationError
 from ralph.git.operations import create_commit, stage_files
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._auto_commit import (
@@ -322,6 +323,32 @@ def test_auto_commit_fails_closed_on_oserror(
     assert result is None, (
         f"OSError in create_commit must be caught and return None; got: {result!r}"
     )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_auto_commit_fails_closed_when_git_rejects_ignored_skill_paths(
+    tmp_path: Path, fake_create_commit: MagicMock
+) -> None:
+    Repo.init(tmp_path)
+    _track_initial_commit(tmp_path)
+    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.joinpath("SKILL.md").write_text("# brainstorm\n", encoding="utf-8")
+
+    def _reject_ignored_paths(_repo_root: Path | str, _files: list[str]) -> None:
+        raise GitOperationError(
+            "stage_files",
+            "The following paths are ignored by one of your .gitignore files: .opencode/skills",
+        )
+
+    result = commit_skill_updates(
+        tmp_path,
+        fake_create_commit,
+        stage_fn=_reject_ignored_paths,
+    )
+
+    assert result is None
+    fake_create_commit.assert_not_called()
 
 
 @pytest.mark.timeout_seconds(10)
