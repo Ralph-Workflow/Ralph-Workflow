@@ -106,7 +106,7 @@ def _extract_mcp_section(rendered: str) -> str:
     from ``MCP TOOLS (Ralph Workflow Brokered)`` up to the end of the
     ``ARTIFACT SUBMISSION`` block. We stop before unrelated shared
     partials such as ``_no_git_commit.j2`` (which mentions
-    ``unsafe_exec`` / ``raw_exec`` in its read-only VCS whitelist — a
+    ``unsafe_exec`` / ``raw_exec`` outside its high-risk VCS blacklist — a
     different concern from brokered tool advertising).
     """
     start = re.search(r"^MCP TOOLS \(Ralph Workflow Brokered\)", rendered, re.MULTILINE)

@@ -285,7 +285,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     "'summary'). Shell operators (|, &&, ;, >, <) in a command STRING "
                     "run through a shell; the blacklist (sudo, rm -rf /, external "
                     "curl, hg/svn, state-mutating git) is enforced on every pipeline "
-                    "command (see the command property for the VCS whitelist). For "
+                    "command (see the command property for the VCS blacklist). For "
                     "git reads, prefer git_status/git_diff/git_log/git_show. On "
                     "timeout you get is_error, not retryable — decide WHY first."
                 ),
@@ -303,13 +303,11 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "&&/; work when passed as a string), or an argv-style "
                                 "string array — array items are always literal argv and "
                                 "are never shell-interpreted. VCS policy: hg/svn are "
-                                "NEVER allowed; git is allowed only for a fixed "
-                                "read-only subcommand whitelist (status, diff, log, "
-                                "show, grep, blame, shortlog, describe, rev-parse, "
-                                "rev-list, ls-files, ls-tree, cat-file, whatchanged, "
-                                "name-rev, for-each-ref, show-ref, count-objects, "
-                                "var). State-mutating git (push, stash, checkout, "
-                                "commit, apply, tag, ...) is denied. For "
+                                "NEVER allowed; only known high-risk git operations "
+                                "(push, stash, checkout, commit, reset, apply, tag, "
+                                "...) are denied. Git worktree is allowed. Executed "
+                                "scripts containing a blocked operation run with a "
+                                "warning. For "
                                 "repository-state reads, prefer the dedicated "
                                 "git_status, git_diff, git_log, and git_show MCP "
                                 "tools. ``grep`` is never denied but the result text "
@@ -371,10 +369,9 @@ def git_exec_specs() -> list[ToolSpec]:
                 description=(
                     "DANGEROUS: Execute an unrestricted shell command in the real repository "
                     "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
-                    "VCS policy: hg/svn are NEVER allowed; git is allowed only for a "
-                    "read-only subcommand whitelist (see the command property). "
-                    "State-mutating git (push, stash, checkout, commit, apply, tag, "
-                    "...) is denied. Required param: command. Optional param: "
+                    "VCS policy: hg/svn and known high-risk git operations are denied; "
+                    "git worktree is allowed. Scripts with a blocked operation warn. "
+                    "Required param: command. Optional param: "
                     "timeout_ms. Returns stdout, stderr, exit_code. On timeout you get "
                     "is_error, not retryable — decide WHY first."
                 ),
@@ -385,12 +382,10 @@ def git_exec_specs() -> list[ToolSpec]:
                             "type": "string",
                             "description": (
                                 "Full shell command string. Shell operators (|, &&, ||, ;, &, >, >>, <, <<) "
-                                "work as normal. VCS policy: hg/svn are NEVER allowed; git is allowed "
-                                "only for a fixed read-only subcommand whitelist (status, diff, log, "
-                                "show, grep, blame, shortlog, describe, rev-parse, rev-list, ls-files, "
-                                "ls-tree, cat-file, whatchanged, name-rev, for-each-ref, show-ref, "
-                                "count-objects, var). State-mutating git (push, stash, checkout, commit, "
-                                "apply, tag, ...) is denied. For repository-state reads, prefer the "
+                                "work as normal. VCS policy: hg/svn are NEVER allowed; known high-risk "
+                                "git operations (push, stash, checkout, commit, reset, apply, tag, ...) "
+                                "are denied, while git worktree is allowed. Scripts containing a blocked "
+                                "operation run with a warning. For repository-state reads, prefer the "
                                 "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
                                 '(example values: "make build", "npm test && npm lint").'
                             ),
@@ -410,9 +405,9 @@ def git_exec_specs() -> list[ToolSpec]:
                 description=(
                     "Alias for unsafe_exec. DANGEROUS: Execute an unrestricted shell command. "
                     "All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. VCS policy: "
-                    "hg/svn are NEVER allowed; git is allowed only for a read-only "
-                    "subcommand whitelist (see the command property). State-mutating "
-                    "git (push, stash, checkout, commit, apply, tag, ...) is denied. "
+                    "hg/svn are NEVER allowed; known high-risk git operations (push, "
+                    "stash, checkout, commit, reset, apply, tag, ...) are denied, while "
+                    "git worktree is allowed. Scripts with a blocked operation warn. "
                     "Required param: command. Optional param: timeout_ms. Returns stdout, "
                     "stderr, exit_code. On timeout you get is_error, not retryable — "
                     "decide WHY first."
@@ -424,12 +419,10 @@ def git_exec_specs() -> list[ToolSpec]:
                             "type": "string",
                             "description": (
                                 "Full shell command string. Shell operators (|, &&, ||, ;, &, >, >>, <, <<) "
-                                "work as normal. VCS policy: hg/svn are NEVER allowed; git is allowed "
-                                "only for a fixed read-only subcommand whitelist (status, diff, log, "
-                                "show, grep, blame, shortlog, describe, rev-parse, rev-list, ls-files, "
-                                "ls-tree, cat-file, whatchanged, name-rev, for-each-ref, show-ref, "
-                                "count-objects, var). State-mutating git (push, stash, checkout, commit, "
-                                "apply, tag, ...) is denied. For repository-state reads, prefer the "
+                                "work as normal. VCS policy: hg/svn are NEVER allowed; known high-risk "
+                                "git operations (push, stash, checkout, commit, reset, apply, tag, ...) "
+                                "are denied, while git worktree is allowed. Scripts containing a blocked "
+                                "operation run with a warning. For repository-state reads, prefer the "
                                 "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
                                 '(example values: "make build", "npm test && npm lint").'
                             ),

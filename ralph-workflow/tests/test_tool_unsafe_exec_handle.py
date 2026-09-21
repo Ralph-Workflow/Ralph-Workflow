@@ -224,32 +224,40 @@ class TestUnsafeExecVcsBlacklist:
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_unsafe_exec(session, workspace, {"command": "echo hi\ngit push"})
 
-    def test_blocks_shell_script_that_uses_git(self, tmp_path: Path) -> None:
+    def test_warns_for_shell_script_that_uses_blocked_git_operation(self, tmp_path: Path) -> None:
         script = tmp_path / "deploy.sh"
         script.write_text("#!/bin/sh\necho deploying\ngit push origin main\n")
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
-        with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "bash deploy.sh"})
+        result = handle_unsafe_exec(
+            session, workspace, {"command": "bash deploy.sh"}, _runner(stdout=b"deployed")
+        )
+        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
 
-    def test_blocks_direct_script_execution_with_shebang(self, tmp_path: Path) -> None:
+    def test_warns_for_direct_script_execution_with_blocked_git_operation(
+        self, tmp_path: Path
+    ) -> None:
         script = tmp_path / "release"
         script.write_text("#!/bin/sh\ngit tag v1\n")
         script.chmod(0o755)
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
-        with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "./release"})
+        result = handle_unsafe_exec(
+            session, workspace, {"command": "./release"}, _runner(stdout=b"released")
+        )
+        assert "Warning: script './release' contains version-control commands" in result.content[0].text
 
-    def test_blocks_a_script_hiding_git_behind_an_embedded_nul(self, tmp_path: Path) -> None:
+    def test_warns_for_a_script_hiding_git_behind_an_embedded_nul(self, tmp_path: Path) -> None:
         """``sh`` drops NULs from a script, so the scanner must drop them too:
         ``gi<NUL>t tag`` scans as an unknown word but executes as ``git tag``."""
         script = tmp_path / "deploy.sh"
         script.write_bytes(b"#!/bin/sh\necho deploying\ngi\x00t tag v9\n")
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
-        with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "bash deploy.sh"})
+        result = handle_unsafe_exec(
+            session, workspace, {"command": "bash deploy.sh"}, _runner(stdout=b"deployed")
+        )
+        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
 
     def test_allows_shell_script_without_git(self, tmp_path: Path) -> None:
         script = tmp_path / "build.sh"

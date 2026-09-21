@@ -2,10 +2,9 @@
 
 Executes unrestricted shell commands in the real workspace directory. The
 only policy enforcement left on this surface is the VCS policy:
-``hg`` and ``svn`` are never allowed; ``git`` is allowed only for a
-fixed read-only subcommand whitelist (``status``, ``diff``, ``log``,
-``show``, ``grep``, ...). State-mutating VCS is blocked; read-only git
-via the dedicated ``git_*`` MCP read tools is preferred.
+``hg`` and ``svn`` are never allowed. Known high-risk ``git`` operations are
+blocked when invoked directly; scripts containing one run with a warning.
+``git worktree`` is allowed.
 
 Execution goes through the SAME bounded process-manager path as ``exec``
 (``run_command``): output is capped (and spilled to a file when oversized rather
@@ -52,13 +51,13 @@ if TYPE_CHECKING:
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 
 
-def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
+def _enforce_vcs_blacklist(command: str, workspace: object) -> str | None:
     """Deny the command when it uses a VCS tool anywhere, however nested.
 
-    ``hg`` / ``svn`` are denied unconditionally. ``git`` is denied unless
-    its subcommand is in ``_GIT_READ_ONLY_SUBCOMMANDS`` and (for ``diff``)
-    the flag guard passes; the shared ``_scan_text_for_vcs_violation``
-    scanner enforces the same policy as ``exec``. The scanner walks the
+    ``hg`` / ``svn`` are denied unconditionally. Known high-risk ``git``
+    operations and write-producing ``diff`` flags are denied by the shared
+    ``_scan_text_for_vcs_violation`` scanner. It enforces the same policy as
+    ``exec`` and walks the
     whole joined text, so a VCS call hidden in a quoted ``sh -c`` string or
     across newline-separated sequences is still caught.
 
@@ -66,9 +65,8 @@ def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
     at runtime is NOT caught (``gi$(echo)t tag``, ``X=; gi${X}t tag``).
     Like the per-segment blacklist in ``exec``, this is defense-in-depth,
     not a sandbox — the trust boundary is the ``ProcessExecUnbounded``
-    capability. Executed shell scripts (``bash deploy.sh``,
-    ``./release``) are additionally content-scanned so a state-mutating
-    git call cannot be laundered through a file.
+    capability. Executed scripts are additionally content-scanned and
+    produce a warning when a blocked operation is found.
     """
     segments = _shell_command_segments(command)
     for segment_command, segment_args in segments:
@@ -76,12 +74,10 @@ def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
         if reason is not None:
             raise CapabilityDeniedError(f"Command '{segment_command}': {reason}")
     script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
-    if script_hit is not None:
-        script, word = script_hit
-        raise CapabilityDeniedError(
-            f"Script '{script}' uses '{word}': version control operations "
-            "are not permitted via unsafe_exec"
-        )
+    if script_hit is None:
+        return None
+    script, _word = script_hit
+    return f"Warning: script '{script}' contains version-control commands"
 
 
 def handle_unsafe_exec(
@@ -106,7 +102,7 @@ def handle_unsafe_exec(
     # in a shell command, so this fails closed at the boundary that decides.
     if "\x00" in command:
         raise InvalidParamsError("'command' must not contain an embedded NUL")
-    _enforce_vcs_blacklist(command, workspace)
+    script_warning = _enforce_vcs_blacklist(command, workspace)
 
     timeout_ms = parse_exec_timeout(params)
 
@@ -134,10 +130,12 @@ def handle_unsafe_exec(
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
-    # Mirror exec: append usage hints so a whitelisted ``git status`` result
+    # Mirror exec: append usage hints so an allowed ``git status`` result
     # mentions the dedicated git_* MCP read tools and a ``grep`` result
     # warns that the MCP explore endpoint is more efficient.
     hints = exec_usage_hints(_shell_command_segments(command))
+    if script_warning is not None:
+        hints.insert(0, script_warning)
     if hints:
         text = f"{text}\n\n" + "\n\n".join(hints)
     return format_or_spill(

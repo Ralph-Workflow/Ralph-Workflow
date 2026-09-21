@@ -35,10 +35,10 @@ agent spawn an arbitrary subprocess. It enforces:
   declare ``ProcessExecBounded``).
 - A static blacklist applied to every shell pipeline segment, including a
   VCS scanner (``_scan_text_for_vcs_violation``) that denies ``hg`` /
-  ``svn`` unconditionally and ``git`` unless the subcommand is in the
-  read-only whitelist (``_GIT_READ_ONLY_SUBCOMMANDS``). The whitelist
-  preserves ``diff`` only when the flag guard rejects output-writing
-  and external-helper flags — see ``_scan_diff_flags_for_writes``.
+  ``svn`` unconditionally and denies ``git`` subcommands in the
+  high-risk-operation blacklist (``_GIT_BLOCKED_SUBCOMMANDS``). ``diff``
+  output-writing and external-helper flags are denied separately — see
+  ``_scan_diff_flags_for_writes``.
 - A bounded per-call timeout (``timeout_ms`` capped at
   ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
   to the default so a direct caller can never produce an unbounded
@@ -69,7 +69,7 @@ from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_
 from ralph.mcp.tools._exec_params import ExecParams
 from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, build_effective_exec_deps
 from ralph.mcp.tools._exec_vcs_scanner import (
-    _GIT_READ_ONLY_SUBCOMMANDS,
+    _GIT_BLOCKED_SUBCOMMANDS,
     _VCS_COMMANDS,
     _scan_text_for_vcs_violation,
     check_version_control,
@@ -589,14 +589,12 @@ def _shell_command_segments(command: str) -> list[tuple[str, list[str]]]:
     return segments
 
 
-def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> None:
+def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> str | None:
     """Enforce the blacklist for an exec invocation, shell-aware.
 
     A compound shell command is checked against every command in the pipeline;
-    a plain command is checked directly. Executed shell scripts (``bash x.sh``,
-    ``./x.sh``) are additionally content-scanned for VCS usage so a git call
-    cannot be laundered through a script file. Raises ``CapabilityDeniedError``
-    on the first blacklisted command.
+    a plain command is checked directly. Executed scripts are content-scanned;
+    blocked operations in their contents produce a warning instead of denial.
     """
     if parsed.shell_command is None:
         segments: list[tuple[str, list[str]]] = [(parsed.command, parsed.args)]
@@ -605,11 +603,10 @@ def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> None:
     for command, args in segments:
         apply_exec_policy(command, args)
     script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
-    if script_hit is not None:
-        script, word = script_hit
-        raise CapabilityDeniedError(
-            f"Script '{script}' uses '{word}': version control operations are not allowed via exec"
-        )
+    if script_hit is None:
+        return None
+    script, _word = script_hit
+    return f"Warning: script '{script}' contains version-control commands"
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
@@ -855,7 +852,7 @@ def handle_exec_command(
     """
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
-    _enforce_exec_policy(parsed, workspace)
+    script_warning = _enforce_exec_policy(parsed, workspace)
     effective_deps = build_effective_exec_deps(session, deps)
     # AC-11: ``format=summary`` requests the bounded JSON envelope with
     # replayable resource handles; the default preserves the legacy
@@ -890,12 +887,14 @@ def handle_exec_command(
     else:
         text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
         hint_segments = [(parsed.command, parsed.args)]
-    # Append usage hints to the result text BEFORE spilling: a whitelisted
+    # Append usage hints to the result text BEFORE spilling: an allowed
     # ``git status`` result should mention the dedicated git_* MCP read tools
     # so the agent learns the preferred surface; a ``grep`` result should
     # warn that the MCP explore endpoint is more efficient. Both hints go
     # inside the same text block so a spill still carries them.
     hints = exec_usage_hints(hint_segments)
+    if script_warning is not None:
+        hints.insert(0, script_warning)
     if hints:
         text = f"{text}\n\n" + "\n\n".join(hints)
     stdout_text = output.stdout.decode("utf-8", errors="replace")
@@ -920,7 +919,7 @@ __all__ = [
     # Re-exported from ``_exec_vcs_scanner`` so tests / specs that pass over
     # the blacklist categories and the unsafe_exec / raw_exec handlers can
     # import the scanner through the same module surface.
-    "_GIT_READ_ONLY_SUBCOMMANDS",
+    "_GIT_BLOCKED_SUBCOMMANDS",
     "_VCS_COMMANDS",
     "ExecParams",
     "ExecRunDeps",

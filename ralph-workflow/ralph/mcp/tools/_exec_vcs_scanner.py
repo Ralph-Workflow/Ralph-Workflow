@@ -1,15 +1,9 @@
-"""Whitelist-aware VCS scanner for the exec / unsafe_exec / raw_exec handlers.
+"""Blacklist-aware VCS scanner for the exec / unsafe_exec / raw_exec handlers.
 
 The exec family used to apply a BLANKET VCS ban: any ``git`` / ``hg`` / ``svn``
 word anywhere in the command text was denied. The relaxed contract keeps
-``hg`` / ``svn`` fully banned and turns ``git`` into a read-only-subcommand
-whitelist (``status``, ``diff``, ``log``, ``show``, ``grep``, ``blame``,
-``shortlog``, ``describe``, ``rev-parse``, ``rev-list``, ``ls-files``,
-``ls-tree``, ``cat-file``, ``whatchanged``, ``name-rev``, ``for-each-ref``,
-``show-ref``, ``count-objects``, ``var``). Anything else under ``git`` is
-denied so an agent cannot mutate repository state out from under the run;
-all writes go through Ralph's commit pipeline, all reads through the
-``git_*`` MCP tools.
+``hg`` / ``svn`` fully banned and denies only known high-risk ``git``
+subcommands. Unknown commands and ``git worktree`` are allowed.
 
 This module is the single source of truth for the policy. It is split out
 of ``ralph.mcp.tools.exec`` so the public handler module stays under the
@@ -19,11 +13,10 @@ Public surface:
 
 - ``check_version_control`` — the per-segment scanner used by the segment-
   aware policy enforcer in ``exec.py``.
-- ``find_vcs_usage_in_scripts`` — the script-content scanner; reuses
-  the same whitelist so ``bash deploy.sh`` running ``git status`` is
-  allowed but ``git push`` is denied.
+- ``find_vcs_usage_in_scripts`` — the script-content scanner used to emit a
+  warning when a script contains a blocked operation.
 - ``exec_usage_hints`` — the human-readable hint strings appended to
-  the exec result text (a ``git_*`` MCP note for whitelisted git, an
+  the exec result text (a ``git_*`` MCP note for allowed git, an
   explore-endpoint warning for ``grep``).
 
 Trust boundary: this scanner is a textual / static check only. It is the
@@ -38,48 +31,48 @@ import re
 from pathlib import Path
 
 # Version control tools: hg / svn are NEVER allowed via exec (the agent has
-# no native read tools for either). git is allowed only for a fixed
-# read-only subcommand whitelist; everything else (push, stash, checkout,
-# commit, apply, tag, ...) is denied so the agent cannot mutate repository
-# state out from under the run. All git writes go through Ralph's commit
-# pipeline, all git reads through the git_* read tools.
+# no native read tools for either). Known high-risk git operations are denied.
 _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
 # Deep VCS match: a standalone ``git``/``hg``/``svn`` word ANYWHERE in the
 # command text is the trigger — including inside quotes, ``$(...)``/backtick
 # substitutions, ``sh -c`` strings, and newline-separated sequences. Word
 # boundaries keep ``github.com`` and ``.gitignore`` out of the net while
 # still catching ``/usr/bin/git`` and ``git@host``. The textual match is
-# fail-closed: a benign mention of the word (``echo git``) trips the
 # scanner; the per-segment policy above decides whether the underlying
-# subcommand is whitelisted.
+# subcommand is blacklisted.
 _VCS_USAGE_PATTERN = re.compile(r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE)
-# Read-only git subcommands permitted via exec / unsafe_exec / raw_exec.
-# The set is intentionally narrow: anything that can mutate the workspace,
-# the index, refs, or remote state is omitted. ``diff`` is whitelisted but
-# gated by ``_scan_diff_flags_for_writes`` so output-writing and
-# external-helper flags are still denied. Bare ``git`` and ``git <flag>``
-# without a whitelisted subcommand fail closed (denied).
-_GIT_READ_ONLY_SUBCOMMANDS: frozenset[str] = frozenset(
+# High-risk git operations denied via exec / unsafe_exec / raw_exec. Unknown
+# and newly-added git subcommands are allowed so this policy cannot reject a
+# command merely because Ralph does not recognize it. ``worktree`` is an
+# intentional exception because Ralph's agent workflow uses worktrees.
+_GIT_BLOCKED_SUBCOMMANDS: frozenset[str] = frozenset(
     {
-        "status",
-        "diff",
-        "log",
-        "show",
-        "grep",
-        "blame",
-        "shortlog",
-        "describe",
-        "rev-parse",
-        "rev-list",
-        "ls-files",
-        "ls-tree",
-        "cat-file",
-        "whatchanged",
-        "name-rev",
-        "for-each-ref",
-        "show-ref",
-        "count-objects",
-        "var",
+        "add",
+        "am",
+        "apply",
+        "bisect",
+        "branch",
+        "checkout",
+        "cherry-pick",
+        "clean",
+        "clone",
+        "commit",
+        "config",
+        "fetch",
+        "init",
+        "merge",
+        "mv",
+        "pull",
+        "push",
+        "rebase",
+        "reflog",
+        "remote",
+        "reset",
+        "restore",
+        "rm",
+        "stash",
+        "switch",
+        "tag",
     }
 )
 # Git global flags that take a SEPARATE value (the next token is the value).
@@ -232,13 +225,10 @@ def _scan_text_for_vcs_violation(text: str) -> str | None:
     matches extract the subcommand from the remainder text via
     ``_extract_git_subcommand_and_args``:
 
-    - a non-whitelisted subcommand → denial naming the subcommand.
-    - a bare ``git`` or only-flags invocation (no determinable subcommand)
-      → denial (fail closed; preserves the prior ``test_exec_blocks_git_command``
-      contract for ``git`` / ``git --version``).
-    - a whitelisted ``diff`` invocation → ``_scan_diff_flags_for_writes``
+    - a blocked subcommand → denial naming the subcommand.
+    - a ``diff`` invocation → ``_scan_diff_flags_for_writes``
       guards output-writing and external-helper flags.
-    - any other whitelisted subcommand → accepted; the loop continues so a
+    - any other subcommand → accepted; the loop continues so a
       single text containing both ``git status`` and ``git push`` still
       denies on the mutating call.
 
@@ -258,20 +248,11 @@ def _scan_text_for_vcs_violation(text: str) -> str | None:
             )
         # ``git``: extract subcommand from the remainder after this match.
         subcommand, args_text = _extract_git_subcommand_and_args(text[match.end() :])
-        if subcommand is None:
+        if subcommand in _GIT_BLOCKED_SUBCOMMANDS:
             return (
-                "git invocation without a whitelisted read-only subcommand is "
-                "not allowed via exec (fail closed). Use the git_status / "
-                "git_diff / git_log / git_show MCP tools, or specify a "
-                "read-only subcommand."
-            )
-        if subcommand not in _GIT_READ_ONLY_SUBCOMMANDS:
-            return (
-                f"git subcommand '{subcommand}' mutates state and is never "
-                "allowed via exec. Read-only git (status, diff, log, show, "
-                "grep, ...) is permitted — use the git_status / git_diff / "
-                "git_log / git_show MCP tools when no shell processing is "
-                "needed. Commits go through the pipeline's commit phase."
+                f"git subcommand '{subcommand}' is a high-risk version-control "
+                "operation and is not allowed via exec. Commits go through "
+                "the pipeline's commit phase."
             )
         if subcommand == "diff":
             bad_flag = _scan_diff_flags_for_writes(args_text)
@@ -287,10 +268,9 @@ def _scan_text_for_vcs_violation(text: str) -> str | None:
 def check_version_control(command: str, args: list[str]) -> str | None:
     """Return a denial reason if the command invokes or references a VCS tool.
 
-    hg / svn are denied unconditionally. ``git`` is denied unless its
-    subcommand is in ``_GIT_READ_ONLY_SUBCOMMANDS`` and (for ``diff``) the
-    flag guard passes; see ``_scan_text_for_vcs_violation`` for the full
-    policy. The textual scan walks the WHOLE joined text so a VCS call
+    hg / svn are denied unconditionally. Known high-risk ``git`` operations
+    and write-producing ``diff`` flags are denied. The textual scan walks the
+    WHOLE joined text so a VCS call
     hidden in a quoted ``sh -c`` string, a ``$(...)`` / backtick
     substitution, or a newline-separated sequence is still caught.
     """
@@ -325,9 +305,9 @@ def find_vcs_usage_in_scripts(
     Best-effort static check: each candidate script token is resolved against
     the workspace root; a readable file that looks like a shell script (a
     known extension or a ``#!`` shebang) has its first
-    ``_SCRIPT_SCAN_LIMIT_BYTES`` scanned by the same whitelist scanner that
-    ``check_version_control`` uses. ``hg`` / ``svn`` and any non-whitelisted
-    ``git`` subcommand trip the scan; a script running only ``git status``
+    ``_SCRIPT_SCAN_LIMIT_BYTES`` scanned by the same blacklist scanner that
+    ``check_version_control`` uses. ``hg`` / ``svn`` and blocked ``git``
+    subcommands trip the scan; a script running only ``git status``
     is allowed. Unreadable or non-file tokens are skipped — the textual
     match on the command line remains the primary net.
     """
@@ -358,7 +338,7 @@ def exec_usage_hints(segments: list[tuple[str, list[str]]]) -> list[str]:
 
     Two hints can be emitted, in order:
 
-    1. ``git``-hint — when any segment ran a whitelisted read-only git
+    1. ``git``-hint — when any segment ran an allowed git
        subcommand, append a note pointing at the dedicated ``git_status`` /
        ``git_diff`` / ``git_log`` / ``git_show`` MCP read tools. They are
        the preferred surface for repository-state reads (typed schemas,
@@ -374,19 +354,19 @@ def exec_usage_hints(segments: list[tuple[str, list[str]]]) -> list[str]:
     blank line onto the standard ``format_exec_result`` text so they surface
     inside the same ToolContent block.
     """
-    saw_whitelisted_git = False
+    saw_allowed_git = False
     saw_grep = False
     for head, args in segments:
         head_key = head.strip().lower()
         head_base = head_key.rsplit("/", 1)[-1]
         if head_base == "git":
             subcommand, _ = _extract_git_subcommand_and_args(" ".join(args))
-            if subcommand is not None and subcommand in _GIT_READ_ONLY_SUBCOMMANDS:
-                saw_whitelisted_git = True
+            if subcommand is not None and subcommand not in _GIT_BLOCKED_SUBCOMMANDS:
+                saw_allowed_git = True
         if head_base in {"grep", "egrep", "fgrep"}:
             saw_grep = True
     hints: list[str] = []
-    if saw_whitelisted_git:
+    if saw_allowed_git:
         hints.append(
             "Note: the dedicated MCP read tools git_status, git_diff, "
             "git_log, and git_show are preferred for repository-state "
@@ -405,7 +385,7 @@ def exec_usage_hints(segments: list[tuple[str, list[str]]]) -> list[str]:
 
 
 __all__ = [
-    "_GIT_READ_ONLY_SUBCOMMANDS",
+    "_GIT_BLOCKED_SUBCOMMANDS",
     "_scan_text_for_vcs_violation",
     "check_version_control",
     "exec_usage_hints",

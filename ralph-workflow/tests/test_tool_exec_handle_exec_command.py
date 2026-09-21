@@ -116,15 +116,30 @@ class TestHandleExecCommand:
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_exec_command(session, workspace, params)
 
-    def test_exec_blocks_shell_script_that_uses_git(self, tmp_path: Path) -> None:
+    def test_exec_warns_when_shell_script_uses_blocked_git_operation(self, tmp_path: Path) -> None:
+        def _runner(
+            command: list[str], cwd: object, timeout_seconds: float | None
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del command, cwd, timeout_seconds
+            return exec_completed_process._CompletedProcessAdapter(
+                stdout=b"deployed", stderr=b"", returncode=0
+            )
+
         script = tmp_path / "deploy.sh"
         script.write_text("#!/bin/sh\necho deploying\ngit push origin main\n")
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "bash deploy.sh"}
 
-        with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_exec_command(session, workspace, params)
+        result = handle_exec_command(
+            session,
+            workspace,
+            params,
+            deps=ExecRunDeps(runner=_runner),
+        )
+
+        assert result.is_error is False
+        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
 
     def test_exec_allows_shell_script_without_git(self, tmp_path: Path) -> None:
         script = tmp_path / "build.sh"

@@ -28,7 +28,7 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
 )
 from ralph.mcp.tools.exec import (
-    _GIT_READ_ONLY_SUBCOMMANDS,
+    _GIT_BLOCKED_SUBCOMMANDS,
     ExecRunDeps,
     apply_exec_policy,
     check_version_control,
@@ -46,12 +46,8 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestGitReadOnlySubcommandsConstant:
-    """Pin the whitelist content so a future refactor cannot silently add or
-    drop a read-only subcommand without a deliberate test edit. The set is
-    the single source of truth shared by the scanner in exec.py."""
-
-    def test_whitelist_includes_canonical_read_only_subcommands(self) -> None:
+class TestGitBlockedSubcommandsConstant:
+    def test_read_only_subcommands_are_not_blocked(self) -> None:
         for subcommand in (
             "status",
             "diff",
@@ -73,11 +69,9 @@ class TestGitReadOnlySubcommandsConstant:
             "count-objects",
             "var",
         ):
-            assert subcommand in _GIT_READ_ONLY_SUBCOMMANDS, (
-                f"expected {subcommand!r} in the read-only whitelist"
-            )
+            assert subcommand not in _GIT_BLOCKED_SUBCOMMANDS
 
-    def test_whitelist_excludes_state_mutating_subcommands(self) -> None:
+    def test_high_risk_subcommands_are_blocked(self) -> None:
         for subcommand in (
             "add",
             "am",
@@ -105,19 +99,16 @@ class TestGitReadOnlySubcommandsConstant:
             "stash",
             "switch",
             "tag",
-            "worktree",
         ):
-            assert subcommand not in _GIT_READ_ONLY_SUBCOMMANDS, (
-                f"state-mutating subcommand {subcommand!r} must never be whitelisted"
-            )
+            assert subcommand in _GIT_BLOCKED_SUBCOMMANDS
+        assert "worktree" not in _GIT_BLOCKED_SUBCOMMANDS
 
     # ─────────────────────────────────────────────────────────────────────────────
     # Low-level scanner: check_version_control
     # ─────────────────────────────────────────────────────────────────────────────
 
     class TestCheckVersionControlAllowed:
-        """The scanner must allow whitelisted read-only git subcommands and
-        leave non-git commands untouched."""
+        """The scanner allows git operations absent from the high-risk blacklist."""
 
         @pytest.mark.parametrize(
             "command,args",
@@ -181,8 +172,7 @@ class TestGitReadOnlySubcommandsConstant:
             assert check_version_control("cat", [".gitignore"]) is None
 
     class TestCheckVersionControlDenied:
-        """The scanner must deny any non-whitelisted git subcommand, bare git,
-        and any hg / svn invocation."""
+        """The scanner denies high-risk git operations and any hg / svn invocation."""
 
         @pytest.mark.parametrize(
             "command,args",
@@ -210,7 +200,6 @@ class TestGitReadOnlySubcommandsConstant:
                 ("git", ["config", "user.name", "x"]),
                 ("git", ["remote", "add", "origin", "url"]),
                 ("git", ["reflog"]),
-                ("git", ["worktree", "add", "wt", "main"]),
                 ("git", ["clean", "-fd"]),
                 ("git", ["rm", "file"]),
                 ("git", ["mv", "a", "b"]),
@@ -222,21 +211,17 @@ class TestGitReadOnlySubcommandsConstant:
             assert reason is not None
             assert "git" in reason.lower()
 
-        def test_bare_git_without_subcommand_is_denied(self) -> None:
-            # ``git`` alone (no subcommand) prints usage and exits; the old
-            # contract denied it (per ``test_exec_blocks_git_command``) and the
-            # new contract keeps that behaviour — fail closed when no subcommand
-            # is determinable.
-            reason = check_version_control("git", [])
-            assert reason is not None
-            assert "git" in reason.lower()
+        def test_bare_git_without_subcommand_is_allowed(self) -> None:
+            assert check_version_control("git", []) is None
 
-        def test_git_version_is_denied(self) -> None:
-            # ``git --version`` is a read-only query but not in the whitelist —
-            # the contract says fail-closed when no whitelisted subcommand is
-            # determinable. ``--version`` is a git-level flag, not a subcommand.
-            reason = check_version_control("git", ["--version"])
-            assert reason is not None
+        def test_git_version_is_allowed(self) -> None:
+            assert check_version_control("git", ["--version"]) is None
+
+        def test_git_worktree_is_allowed(self) -> None:
+            assert check_version_control("git", ["worktree", "add", "wt", "main"]) is None
+
+        def test_unknown_git_subcommand_is_allowed(self) -> None:
+            assert check_version_control("git", ["future-read-command"]) is None
 
         def test_git_c_with_mutating_subcommand_is_denied(self) -> None:
             # The ``-c alias.x=push`` global flag value contains a mutating
@@ -365,15 +350,31 @@ class TestGitReadOnlySubcommandsConstant:
             )
             assert result.is_error is False
 
-        def test_script_with_mutating_git_is_denied(self, tmp_path: Path) -> None:
+        def test_script_with_mutating_git_emits_warning(self, tmp_path: Path) -> None:
             script = tmp_path / "deploy.sh"
             script.write_text("#!/bin/sh\ngit status\ngit push origin main\n")
-            with pytest.raises(CapabilityDeniedError, match="git"):
-                handle_unsafe_exec(
-                    MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
-                    MockWorkspaceRoot(tmp_path),
-                    {"command": "bash deploy.sh"},
-                )
+            result = handle_unsafe_exec(
+                MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+                MockWorkspaceRoot(tmp_path),
+                {"command": "bash deploy.sh"},
+                _runner(stdout=b"deployed"),
+            )
+
+            assert result.is_error is False
+            assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
+
+        def test_framework_launcher_with_git_text_is_not_flagged(self, tmp_path: Path) -> None:
+            script = tmp_path / "rails"
+            script.write_text("#!/usr/bin/env ruby\n# git metadata is optional\n")
+            result = handle_exec_command(
+                MockSession({"ProcessExecBounded"}),
+                MockWorkspaceRoot(tmp_path),
+                {"command": "./rails"},
+                deps=_runner(stdout=b"ok"),
+            )
+
+            assert result.is_error is False
+            assert "Warning:" not in result.content[0].text
 
     class TestCommandSubstitution:
         """The deep textual scan must catch a VCS command hidden inside
@@ -404,11 +405,11 @@ class TestGitReadOnlySubcommandsConstant:
                 )
 
     # ─────────────────────────────────────────────────────────────────────────────
-    # Result-text hints — whitelisted git usage must mention the MCP endpoints
+    # Result-text hints — allowed git usage must mention the MCP endpoints
     # ─────────────────────────────────────────────────────────────────────────────
 
     class TestExecResultHints:
-        """A successful exec that used a whitelisted git subcommand must carry a
+        """A successful exec that used an allowed git subcommand must carry a
         note pointing at the dedicated ``git_*`` MCP read tools in its result
         text so an agent reading the output learns that a dedicated endpoint
         exists."""
