@@ -87,6 +87,14 @@ def test_commit_prompt_rejects_empty_diff() -> None:
         prompt_commit_message("   \n \t ")
 
 
+def test_standalone_commit_prompt_omits_pipeline_context_links() -> None:
+    prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
+
+    assert ".agent/artifacts/development_result.md" not in prompt
+    assert ".agent/artifacts/plan.md" not in prompt
+    assert ".agent/PRODUCT_CRITERIA.md" not in prompt
+
+
 def test_commit_prompt_uses_registry_templates() -> None:
     registry = TemplateRegistry()
     registry.register_template("commit_message", "OVERRIDE {{ DIFF }}\n")

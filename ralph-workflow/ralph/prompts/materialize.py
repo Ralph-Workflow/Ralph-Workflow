@@ -341,6 +341,12 @@ def _render_prompt_for_phase(
             if (workspace_root / ".git").exists()
             else _pending_diff(workspace_root)
         )
+        optional_context_paths = _optional_commit_context_paths(
+            phase=phase,
+            previous_phase=previous_phase,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+        )
         return prompt_commit_message(
             evidence,
             template_registry=tmpl_ctx.registry,
@@ -353,6 +359,7 @@ def _render_prompt_for_phase(
                 name_prefix=phase,
             ),
             workspace_root=workspace_root,
+            optional_context_paths=optional_context_paths,
             allow_empty_diff=True,
         )
     # Commit-cleanup prompt: commit_cleanup role
@@ -1161,6 +1168,48 @@ def _snapshot_partial_execution_result(
         workspace.write(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH, markdown)
     elif workspace.exists(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH):
         workspace.remove(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
+
+
+def _optional_commit_context_paths(
+    *,
+    phase: str,
+    previous_phase: str | None,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> tuple[str, ...]:
+    if previous_phase is None or artifacts_policy is None:
+        return ()
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    if previous_phase_def is None:
+        return ()
+
+    execution_predecessors = (
+        (previous_phase_def,)
+        if previous_phase_def.role == "execution"
+        else tuple(
+            phase_def
+            for phase_def in pipeline_policy.phases.values()
+            if previous_phase_def.role == "commit_cleanup"
+            and previous_phase_def.transitions.on_success == phase
+            and phase_def.role == "execution"
+            and phase_def.transitions.on_success == previous_phase
+        )
+    )
+    for predecessor in execution_predecessors:
+        required_artifact = resolve_required_artifact(
+            artifacts_policy,
+            drain=predecessor.drain,
+        )
+        if (
+            required_artifact is not None
+            and required_artifact.artifact_type == DEVELOPMENT_RESULT_ARTIFACT_TYPE
+        ):
+            return (
+                required_artifact.artifact_path,
+                PLAN_ARTIFACT_PATH,
+                ".agent/PRODUCT_CRITERIA.md",
+            )
+    return ()
 
 
 def _validated_development_result_content(markdown: str) -> dict[str, object] | None:

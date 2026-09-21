@@ -9,6 +9,14 @@ Produce and submit one valid `commit_message` artifact for the pending diff.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
+{% if OPTIONAL_CONTEXT_PATHS %}
+## Optional context
+
+The diff is authoritative. If useful, read any of these supporting artifacts; none is required:
+
+{{ OPTIONAL_CONTEXT_PATHS }}
+{% endif %}
+
 Read the diff, choose a commit or skip document, and submit it with the tool named below. Do not call bash or ask the user for confirmation, including “Would you like me to…”.
 
 ## WRITE THE MESSAGE FIRST

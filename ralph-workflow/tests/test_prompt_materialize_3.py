@@ -127,6 +127,70 @@ def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
     assert "already_committed.py" not in rendered
 
 
+def test_development_commit_prompt_links_optional_development_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    monkeypatch.setattr(
+        materialize_module,
+        "_pending_diff",
+        lambda _workspace_root: "diff --git a/app.py b/app.py\n+hello",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_commit",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="development_commit_cleanup",
+        ),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert ".agent/artifacts/development_result.md" in rendered
+    assert ".agent/artifacts/plan.md" in rendered
+    assert ".agent/PRODUCT_CRITERIA.md" in rendered
+
+
+def test_final_commit_prompt_omits_development_context_links(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    monkeypatch.setattr(
+        materialize_module,
+        "_pending_diff",
+        lambda _workspace_root: "diff --git a/app.py b/app.py\n+hello",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_final_commit",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="development_final_commit_cleanup",
+        ),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert ".agent/artifacts/development_result.md" not in rendered
+    assert ".agent/artifacts/plan.md" not in rendered
+    assert ".agent/PRODUCT_CRITERIA.md" not in rendered
+
+
 def test_pending_diff_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
     diff = materialize_module._pending_diff(tmp_path)
     assert diff == "(no diff available)"

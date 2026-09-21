@@ -44,6 +44,7 @@ def prompt_commit_message(
     submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,),
     payload_config: CommitPromptPayloadConfig | None = None,
     workspace_root: Path | None = None,
+    optional_context_paths: Sequence[str] = (),
     allow_empty_diff: bool = False,
 ) -> str:
     """Return the commit message prompt for the provided diff."""
@@ -74,6 +75,9 @@ def prompt_commit_message(
         "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
         "BEHAVIOR_FACTS": _evidence_facts(evidence, "behavior_facts"),
         "VERIFICATION_FACTS": _evidence_facts(evidence, "verification_facts"),
+        "OPTIONAL_CONTEXT_PATHS": "\n".join(
+            f"- `{path}`" for path in optional_context_paths
+        ),
     }
     variables.update(
         _commit_payload_variables(
