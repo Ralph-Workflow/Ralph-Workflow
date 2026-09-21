@@ -49,6 +49,7 @@ from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
+from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import ProcessTeardown, teardown_subtree
 from ralph.recovery.failure_classifier import (
@@ -706,7 +707,10 @@ def check_process_result(
                     check_options.explicit_completion_seen if check_options is not None else False
                 ),
             ),
-            failure_origin="intentional_termination" if intentional else "agent",
+            failure_origin=(
+                "runtime_launch" if isinstance(handle, AgentLaunchError)
+                else "intentional_termination" if intentional else "agent"
+            ),
             issuer=issuer if intentional else None,
         )
         log_invocation_exit(exc)

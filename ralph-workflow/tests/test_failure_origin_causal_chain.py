@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.agents.completion_signals import CompletionSignals, graded_phase_verdict
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.agents.invoke._completion import check_process_result
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_validation import prepare_spawn_command
 from ralph.runtime_events import current_runtime_event
@@ -21,6 +24,48 @@ def test_runtime_launch_origin_is_not_lost_when_wrapped() -> None:
 
     assert exc.failure_origin == "runtime_launch"
     assert wrapper.__cause__ is exc
+
+
+def test_missing_required_artifact_does_not_replace_runtime_launch_origin() -> None:
+    required_artifact = RequiredArtifact(
+        phase="development",
+        artifact_type="development_result",
+        artifact_path=".agent/artifacts/development_result.md",
+        markdown_path=None,
+        normalizer=None,
+        artifact_required=True,
+    )
+    launch_failure = AgentLaunchError(
+        "claude",
+        OSError(7, "Argument list too long"),
+        123,
+    )
+    missing_signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=False,
+        artifact_types=(),
+        artifact_required=True,
+    )
+    verdict, _provenance, artifact_detail = graded_phase_verdict(
+        missing_signals,
+        required_artifact=required_artifact,
+    )
+
+    with pytest.raises(AgentInvocationError) as raised:
+        check_process_result(
+            launch_failure,
+            "claude",
+            [artifact_detail],
+        )
+
+    assert verdict == "FAILED"
+    assert artifact_detail == (
+        "no receipt for 'development_result'; "
+        ".agent/artifacts/development_result.md absent"
+    )
+    assert raised.value.parsed_output == [artifact_detail]
+    assert raised.value.returncode == launch_failure.returncode
+    assert raised.value.failure_origin == "runtime_launch"
 
 
 def test_watchdog_origin_and_issuer_are_structural() -> None:
