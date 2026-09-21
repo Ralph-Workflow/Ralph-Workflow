@@ -131,6 +131,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "IS_CONTINUATION": ("true",),
     "IS_WORKER": ("true",),
     "LAST_RETRY_ERROR": ("Previous submission failed validation.",),
+    "OPTIONAL_CONTEXT_PATHS": ("- `.agent/artifacts/development_result.md`",),
     "PRIOR_RESULT_STATUS": ("partial",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),
