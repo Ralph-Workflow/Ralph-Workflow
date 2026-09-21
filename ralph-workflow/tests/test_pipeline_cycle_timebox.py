@@ -76,8 +76,7 @@ def test_no_reset_on_intermediate_activity() -> None:
     assert next_state.cycle_timebox_consumed_seconds == 500.0
 
 
-def test_entering_final_commit_path_ends_timing() -> None:
-    """Routing into the final-commit cleanup phase ends cycle timing."""
+def test_entering_final_commit_path_preserves_cycle_timing() -> None:
     policy = _policy()
     state = _state(
         "development_analysis",
@@ -88,8 +87,30 @@ def test_entering_final_commit_path_ends_timing() -> None:
     event = AnalysisDecisionEvent(phase="development_analysis", decision="completed")
     next_state, _ = reduce(state, event, policy, routing_timing=_rt(3000.0))
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
     assert next_state.cycle_timebox_consumed_seconds == 3000.0
+
+
+def test_default_cycle_timer_ends_only_on_entry_to_final_commit() -> None:
+    policy = _policy()
+    cleanup = _state(
+        "development_final_commit_cleanup",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=3000.0,
+    )
+    restored = PipelineState.model_validate_json(cleanup.model_dump_json())
+    assert restored.cycle_timebox_active is True
+    assert restored.cycle_timebox_consumed_seconds == 3000.0
+
+    final_commit, _ = reduce(
+        restored,
+        PipelineEvent.AGENT_SUCCESS,
+        policy,
+        routing_timing=_rt(3000.0),
+    )
+    assert final_commit.phase == "development_final_commit"
+    assert final_commit.cycle_timebox_active is False
+    assert final_commit.cycle_timebox_consumed_seconds == 3000.0
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +144,7 @@ def test_development_reentry_redirected_at_deadline() -> None:
     )
     next_state = _request_changes_to_development(state, 36000.0)
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
 
 
 def test_development_reentry_redirected_after_deadline() -> None:
@@ -134,7 +155,7 @@ def test_development_reentry_redirected_after_deadline() -> None:
     )
     next_state = _request_changes_to_development(state, 36001.0)
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
 
 
 def test_custom_deadline_keeps_redirect_at_new_boundary() -> None:
@@ -150,7 +171,7 @@ def test_custom_deadline_keeps_redirect_at_new_boundary() -> None:
                 start_source="planning_analysis",
                 start_entry="development",
                 guarded_entry="development",
-                end_entry="development_final_commit_cleanup",
+                end_entry="development_final_commit",
                 finalization_target="development_final_commit_cleanup",
             )
         }
@@ -225,7 +246,7 @@ def test_phase_failure_workflow_fallback_enforces_deadline() -> None:
     )
     next_state, _ = reduce(state, event, policy, routing_timing=_rt(36000.0))
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
 
 
 def test_phase_failure_workflow_fallback_permitted_before_deadline() -> None:
@@ -260,7 +281,7 @@ def test_agent_failure_workflow_fallback_enforces_deadline() -> None:
     )
     next_state, _ = reduce(state, PipelineEvent.AGENT_FAILURE, policy, routing_timing=_rt(36000.0))
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
 
 
 # ---------------------------------------------------------------------------
@@ -355,8 +376,12 @@ def _runner_sim_step(
     @dataclass
     class _ClockDeps:
         monotonic: object
+        wall_time: object
 
-    deps = _ClockDeps(monotonic=lambda: fake_clock[0])
+    deps = _ClockDeps(
+        monotonic=lambda: fake_clock[0],
+        wall_time=lambda: fake_clock[0],
+    )
     routing_timing, now, delta, ct_policy = sample_cycle_timing(state, policy, deps, box)
     next_state, _ = reduce(state, event, policy, routing_timing=routing_timing)
     next_state = fold_cycle_elapsed(
@@ -382,7 +407,7 @@ def _custom_policy(duration: float = 100.0):
                 start_source="planning_analysis",
                 start_entry="development",
                 guarded_entry="development",
-                end_entry="development_final_commit_cleanup",
+                end_entry="development_final_commit",
                 finalization_target="development_final_commit_cleanup",
             )
         }
@@ -424,7 +449,7 @@ def test_per_step_fold_accumulates_consumed_time_across_steps() -> None:
         clock,
     )
     assert state.phase == "development_final_commit_cleanup"
-    assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
 def test_consumed_time_survives_checkpoint_roundtrip_and_continues() -> None:
@@ -447,15 +472,14 @@ def test_consumed_time_survives_checkpoint_roundtrip_and_continues() -> None:
     box2: list[float | None] = [None]
     clock2 = [90.0]  # 10s passed during restart
 
-    # First step after resume: delta=0 (no prior sample), total_elapsed=80.
-    # Advance to development_commit_cleanup.
+    # First step after resume charges the 10 seconds elapsed since the durable start.
     next_state = _runner_sim_step(restored, "agent_success", custom, box2, clock2)
-    assert next_state.cycle_timebox_consumed_seconds == 80.0  # delta was 0
+    assert next_state.cycle_timebox_consumed_seconds == 90.0
 
-    # Second step after resume: 20s more, total should be 100.
+    # Second step after resume: 20s more, total should be 110.
     clock2[0] = 110.0
     next_state = _runner_sim_step(next_state, "agent_success", custom, box2, clock2)
-    assert next_state.cycle_timebox_consumed_seconds == 100.0
+    assert next_state.cycle_timebox_consumed_seconds == 110.0
 
     # Continue to 210s total (> 200s deadline) → redirect on next loopback.
     clock2[0] = 210.0
@@ -467,7 +491,7 @@ def test_consumed_time_survives_checkpoint_roundtrip_and_continues() -> None:
         clock2,
     )
     assert next_state.phase == "development_final_commit_cleanup"
-    assert next_state.cycle_timebox_active is False
+    assert next_state.cycle_timebox_active is True
 
 
 def test_new_cycle_starts_after_final_commit() -> None:
@@ -482,7 +506,7 @@ def test_new_cycle_starts_after_final_commit() -> None:
     state = _runner_sim_step(state, "agent_success", custom, box, clock)
     assert state.cycle_timebox_consumed_seconds == 100.0
 
-    # Enter final-commit cleanup → timing cleared.
+    # Enter final-commit cleanup with timing still active.
     clock[0] = 110.0
     state = _runner_sim_step(
         state,
@@ -492,8 +516,12 @@ def test_new_cycle_starts_after_final_commit() -> None:
         clock,
     )
     assert state.phase == "development_final_commit_cleanup"
+    assert state.cycle_timebox_active is True
+    assert state.cycle_timebox_consumed_seconds == 110.0
+
+    state = _runner_sim_step(state, "agent_success", custom, box, clock)
+    assert state.phase == "development_final_commit"
     assert state.cycle_timebox_active is False
-    assert state.cycle_timebox_consumed_seconds == 110.0  # preserved through conclusion + fold
 
     # Simulate post-commit phases cycling back to planning_analysis → development.
     # The final-commit and post-commit phases are not the guarded entry, so
@@ -576,7 +604,12 @@ def test_initialize_legacy_cycle_on_resume_noop_when_already_active() -> None:
     from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 
     policy = _policy()
-    state = _state("development", cycle_timebox_active=True, cycle_timebox_consumed_seconds=500.0)
+    state = _state(
+        "development",
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=500.0,
+        cycle_timebox_started_at_epoch=1000.0,
+    )
     result = initialize_legacy_cycle_on_resume(state, policy)
     assert result.cycle_timebox_active is True
     assert result.cycle_timebox_consumed_seconds == 500.0
@@ -621,20 +654,15 @@ def test_legacy_resume_leaves_pre_cycle_phases_untimed() -> None:
         assert result.cycle_timebox_active is False, phase
 
 
-def test_legacy_resume_leaves_the_finalization_path_untimed() -> None:
-    """The cycle ends on ENTRY to the finalization path, so starting there is a trap.
-
-    A timer started at or after `end_entry` can never be concluded — the
-    conclusion fires on entry, which already happened — so it would run on
-    into the next cycle and redirect that cycle's first development entry.
-    """
+def test_legacy_resume_preserves_cleanup_but_not_final_commit_timing() -> None:
     from ralph.pipeline.cycle_timing import initialize_legacy_cycle_on_resume
 
     policy = _policy()
 
-    for phase in ("development_final_commit_cleanup", "development_final_commit"):
-        result = initialize_legacy_cycle_on_resume(_state(phase), policy)
-        assert result.cycle_timebox_active is False, phase
+    cleanup = initialize_legacy_cycle_on_resume(_state("development_final_commit_cleanup"), policy)
+    final_commit = initialize_legacy_cycle_on_resume(_state("development_final_commit"), policy)
+    assert cleanup.cycle_timebox_active is True
+    assert final_commit.cycle_timebox_active is False
 
 
 def test_pre_cycle_phase_reached_by_a_decision_is_outside_the_cycle() -> None:

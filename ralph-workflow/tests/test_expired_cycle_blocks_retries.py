@@ -55,7 +55,7 @@ def test_a_retry_inside_a_spent_cycle_is_redirected_instead() -> None:
     redirected = _fail(_developing(_SPENT), _SPENT)
 
     assert redirected.phase == "development_final_commit_cleanup"
-    assert redirected.cycle_timebox_active is False
+    assert redirected.cycle_timebox_active is True
     assert redirected.cycle_timebox_redirect_reason is not None
 
 

@@ -15,9 +15,8 @@ DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 36000.0
 # never stored as an independent second duration so a custom deadline keeps the
 # same warning ratio without runtime code changes.
 WARNING_THRESHOLD_RATIO: float = 0.8
-# A deadline redirect concludes the cycle the same way an approving analysis
-# decision does, so post-commit routing sees a finished cycle rather than an
-# unset outcome (which no bundled route matches).
+# A deadline redirect records the eventual cycle outcome while the timer stays
+# active until the configured final-commit entry.
 DEFAULT_FINALIZATION_CYCLE_OUTCOME: Literal["completed", "failed"] = "completed"
 
 

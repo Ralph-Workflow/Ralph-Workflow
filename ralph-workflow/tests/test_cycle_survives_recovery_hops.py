@@ -82,14 +82,7 @@ def test_the_deadline_still_redirects_after_a_commit_failure() -> None:
     assert redirected.cycle_timebox_redirect_reason is not None
 
 
-def test_recovering_a_missing_plan_handoff_concludes_the_cycle(tmp_path: Path) -> None:
-    """Routing back to planning leaves the cycle behind; the timer must stop.
-
-    Left running, the timer charges the re-plan to the finished cycle and — if
-    planning analysis is bypassed — the NEXT cycle is judged on the previous
-    one's spent clock and redirected to its final commit before development
-    ever runs.
-    """
+def test_recovering_a_missing_plan_handoff_preserves_the_cycle(tmp_path: Path) -> None:
     recovered = recover_missing_plan_handoff(
         state=_in_cycle("development", consumed=7300.0),
         pipeline_policy=_pipeline(),
@@ -99,10 +92,10 @@ def test_recovering_a_missing_plan_handoff_concludes_the_cycle(tmp_path: Path) -
     )
 
     assert recovered.phase == _pipeline().entry_phase
-    assert recovered.cycle_timebox_active is False
+    assert recovered.cycle_timebox_active is True
 
 
-def test_the_cycle_after_a_missing_plan_handoff_gets_a_fresh_budget(
+def test_the_cycle_after_a_missing_plan_handoff_keeps_its_budget(
     tmp_path: Path,
 ) -> None:
     """The premise: the freshly planned cycle actually gets to develop."""
@@ -125,7 +118,7 @@ def test_the_cycle_after_a_missing_plan_handoff_gets_a_fresh_budget(
     )
 
     assert advanced.phase == "development"
-    assert advanced.cycle_timebox_consumed_seconds == pytest.approx(0.0)
+    assert advanced.cycle_timebox_consumed_seconds == pytest.approx(7300.0)
 
 
 def test_a_recovery_re_entry_is_still_bound_by_the_deadline() -> None:
@@ -181,7 +174,46 @@ def test_the_runtime_re_entry_applies_that_decision(tmp_path: Path) -> None:
     )
 
     assert updated.phase == "development_final_commit_cleanup"
-    assert updated.cycle_timebox_active is False
+    assert updated.cycle_timebox_active is True
+
+
+@pytest.mark.parametrize(
+    ("target_phase", "dev_active", "cycle_active"),
+    [
+        ("development_commit", False, True),
+        ("development_final_commit", True, False),
+    ],
+)
+def test_recovery_reentry_applies_each_independent_timer_boundary(
+    tmp_path: Path,
+    target_phase: str,
+    dev_active: bool,
+    cycle_active: bool,
+) -> None:
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.workspace.scope import WorkspaceScope
+
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("Do the work\n", encoding="utf-8")
+    state = _in_cycle("failed_terminal").copy_with(
+        previous_phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=4200.0,
+    )
+
+    updated = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(phase=target_phase, drain="development_commit"),
+        state=state,
+        pipeline_policy=_pipeline(),
+        artifacts_policy=load_policy(_DEFAULTS_DIR).artifacts,
+        workspace_scope=WorkspaceScope(tmp_path),
+    )
+
+    assert updated.phase == target_phase
+    assert updated.dev_timebox_active is dev_active
+    assert updated.cycle_timebox_active is cycle_active
 
 
 def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
@@ -210,21 +242,7 @@ def test_a_deadline_redirect_is_announced_on_the_routing_log() -> None:
     assert any("cycle timebox reached" in record for record in records)
 
 
-def test_routing_into_a_terminal_ends_the_cycle_timer() -> None:
-    """A run that ends must leave no cycle running behind it.
-
-    The operator surfaces read the timer off the final state, so a terminal
-    reached with it still armed reports a live budget for a finished run. Every
-    other test of that wording hand-constructs the state; this one drives a
-    route into a terminal.
-
-    Note what this does NOT pin: under the bundled policy the success terminal
-    is already reachable from the finalization entry, so it is inside the
-    conclusion walk's reach and the explicit terminal clause in
-    ``conclude_cycle_on_route_out_of_cycle`` is redundant here. Removing that
-    clause keeps this green. It earns its place only for a custom policy whose
-    terminal is not reachable that way, which the bundled graph cannot express.
-    """
+def test_routing_from_final_commit_to_terminal_does_not_reset_a_stale_timer() -> None:
     spent = PipelineState(
         phase="development_final_commit",
         budget_caps={"iteration": 1},
@@ -242,7 +260,7 @@ def test_routing_into_a_terminal_ends_the_cycle_timer() -> None:
     )
 
     assert ended.phase in _pipeline().terminal_states()
-    assert ended.cycle_timebox_active is False
+    assert ended.cycle_timebox_active is True
 
 
 def test_a_redirected_recovery_hop_prepares_the_phase_it_actually_enters(

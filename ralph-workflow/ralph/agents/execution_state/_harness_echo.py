@@ -11,6 +11,7 @@ _SENTENCE_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[.!?])\s+")
 # A first/last sentence pair requires at least two sentences. Kept at module
 # scope so PLR2004 does not flag the threshold literal.
 _MIN_SENTENCE_PAIR = 2
+_USER_MESSAGE_START = re.compile(r'"type"\s*:\s*"message_start".*"role"\s*:\s*"user"')
 
 
 def _looks_like_chat_template_marker(line: str) -> bool:
@@ -48,4 +49,8 @@ def is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
     )
 
 
-__all__ = ["HARNESS_ECHO_MARKERS", "is_prompt_echo_line"]
+def is_user_prompt_event_line(line: str) -> bool:
+    return _USER_MESSAGE_START.search(line) is not None
+
+
+__all__ = ["HARNESS_ECHO_MARKERS", "is_prompt_echo_line", "is_user_prompt_event_line"]

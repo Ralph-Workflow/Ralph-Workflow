@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import math
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import ConfigDict, Field, model_validator
 
-from ralph.policy.models._cycle_timebox_policy import DEFAULT_FINALIZATION_CYCLE_OUTCOME
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 DEFAULT_DEVELOPMENT_TIMEBOX_SECONDS: float = 5400.0
@@ -26,9 +25,6 @@ class DevelopmentTimeboxPolicy(_FrozenPolicyModel):
     guarded_entry: str
     end_entry: str
     finalization_target: str
-    finalization_cycle_outcome: Literal["completed", "failed"] = (
-        DEFAULT_FINALIZATION_CYCLE_OUTCOME
-    )
 
     @model_validator(mode="after")
     def _durations_are_valid(self) -> Self:

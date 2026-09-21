@@ -61,7 +61,7 @@ def test_a_recoverable_failure_in_a_spent_cycle_is_redirected() -> None:
     redirected = _fail_with_recovery(_developing(_SPENT), _SPENT)
 
     assert redirected.phase == _TARGET
-    assert redirected.cycle_timebox_active is False
+    assert redirected.cycle_timebox_active is True
     assert redirected.cycle_timebox_redirects == 1
 
 

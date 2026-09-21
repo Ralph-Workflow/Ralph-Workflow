@@ -12,8 +12,7 @@ Timer model
 * The timer starts on the configured ``start_source`` -> ``start_entry``
   transition while the cycle is inactive, and is preserved across every loop
   phase until the cycle ends.
-* The timer ends when routing enters ``end_entry`` (the final-commit path) or
-  when an expired guarded entry is redirected to ``finalization_target``.
+* The timer ends only when routing enters its configured ``end_entry``.
 * The deadline is enforced only at the routing boundary: an invocation already
   in progress is never interrupted by this module.
 """
@@ -45,6 +44,7 @@ class _RoutingTiming:
 
     total_elapsed_seconds: float
     development_elapsed_seconds: float | None = None
+    current_epoch: float | None = None
 
 
 #: Public alias so callers import ``RoutingTiming`` while the repo-structure
@@ -98,6 +98,21 @@ def _concluded(
     return state.copy_with(**updates)
 
 
+def _redirected_cycle(
+    state: PipelineState,
+    *,
+    redirect_reason: str,
+    cycle_outcome: str | None,
+) -> PipelineState:
+    updates: dict[str, object] = {
+        "cycle_timebox_redirect_reason": redirect_reason,
+        "cycle_timebox_redirects": state.cycle_timebox_redirects + 1,
+    }
+    if cycle_outcome is not None and state.pending_cycle_outcome is None:
+        updates["pending_cycle_outcome"] = cycle_outcome
+    return state.copy_with(**updates)
+
+
 def cycle_timebox_redirect_reason(
     *,
     limit_seconds: float,
@@ -117,11 +132,12 @@ def cycle_timebox_redirect_reason(
     )
 
 
-def _started(state: PipelineState) -> PipelineState:
+def _started(state: PipelineState, *, current_epoch: float | None) -> PipelineState:
     """Return a copy with a fresh active cycle (zero consumed seconds)."""
     return state.copy_with(
         cycle_timebox_active=True,
         cycle_timebox_consumed_seconds=0.0,
+        cycle_timebox_started_at_epoch=current_epoch,
         cycle_timebox_redirect_reason=None,
     )
 
@@ -146,17 +162,6 @@ def apply_cycle_timebox(
     if ct is None or routing_timing is None:
         return CycleTimeboxDecision(state=state, target_phase=target_phase)
 
-    # Entering the final-commit path ends cycle timing. This also covers the
-    # finalization_target when it equals end_entry (the bundled workflow) and
-    # any normal (non-expired) entry to the final-commit path. Consumed time is
-    # preserved (not zeroed) so operator surfaces can report the elapsed
-    # duration after the cycle concludes.
-    if target_phase in (ct.end_entry, ct.finalization_target) and state.cycle_timebox_active:
-        return CycleTimeboxDecision(
-            state=_concluded(state),
-            target_phase=target_phase,
-        )
-
     # Start the timer ONLY on the declared start_source -> start_entry
     # transition while inactive, so an unrelated route into the same phase
     # cannot start or reset a cycle. In the bundled workflow the transition
@@ -168,7 +173,7 @@ def apply_cycle_timebox(
         and target_phase == ct.start_entry
     ):
         return CycleTimeboxDecision(
-            state=_started(state),
+            state=_started(state, current_epoch=routing_timing.current_epoch),
             target_phase=target_phase,
             timing_started=True,
         )
@@ -185,7 +190,7 @@ def apply_cycle_timebox(
                 target=ct.finalization_target,
             )
             return CycleTimeboxDecision(
-                state=_concluded(
+                state=_redirected_cycle(
                     state,
                     redirect_reason=reason,
                     cycle_outcome=ct.finalization_cycle_outcome,
@@ -224,19 +229,12 @@ def apply_development_timebox(
     dt = policy.development_timebox
     if dt is None or routing_timing is None:
         return CycleTimeboxDecision(state=state, target_phase=target_phase)
-    if target_phase in (dt.end_entry, dt.finalization_target) and state.dev_timebox_active:
-        return CycleTimeboxDecision(
-            state=state.copy_with(dev_timebox_active=False), target_phase=target_phase
-        )
-    if (
-        not state.dev_timebox_active
-        and state.phase == dt.start_source
-        and target_phase == dt.start_entry
-    ):
+    if not state.dev_timebox_active and target_phase == dt.start_entry:
         return CycleTimeboxDecision(
             state=state.copy_with(
                 dev_timebox_active=True,
                 dev_timebox_consumed_seconds=0.0,
+                dev_timebox_started_at_epoch=routing_timing.current_epoch,
                 dev_timebox_redirect_reason=None,
             ),
             target_phase=target_phase,
@@ -246,18 +244,18 @@ def apply_development_timebox(
         elapsed = routing_timing.development_elapsed_seconds
         if elapsed is None:
             return CycleTimeboxDecision(state=state, target_phase=target_phase)
-        if elapsed >= dt.duration_seconds:
+        if elapsed >= dt.warning_seconds:
             reason = development_timebox_redirect_reason(
-                limit_seconds=dt.duration_seconds,
+                limit_seconds=dt.warning_seconds,
                 elapsed_seconds=elapsed,
                 target=dt.finalization_target,
             )
             updates: dict[str, object] = {
-                "dev_timebox_active": False,
                 "dev_timebox_redirect_reason": reason,
             }
-            if state.pending_cycle_outcome is None:
-                updates["pending_cycle_outcome"] = dt.finalization_cycle_outcome
+            commit_phase = policy.phases.get(dt.end_entry)
+            if commit_phase is not None and commit_phase.role == "commit":
+                updates["post_commit_phase_override"] = commit_phase.transitions.on_success
             return CycleTimeboxDecision(
                 state=state.copy_with(**updates),
                 target_phase=dt.finalization_target,
@@ -296,27 +294,38 @@ def conclude_development_timebox_on_route_out_of_development(
     *,
     policy: PipelinePolicy,
 ) -> PipelineState:
-    """Stop the phase-wide timer once routing leaves development.
-
-    The development timer spans retries that remain in ``guarded_entry`` only.
-    Every other target ends that uninterrupted phase, including custom fallback
-    routes that bypass the ordinary final-commit entry.
-    """
+    """Stop the phase timer only on entry to its configured commit boundary."""
     dt = policy.development_timebox
-    if dt is None or not state.dev_timebox_active or next_phase == dt.guarded_entry:
+    if dt is None or not state.dev_timebox_active or next_phase != dt.end_entry:
         return state
     return state.copy_with(dev_timebox_active=False)
 
 
 def initialize_legacy_development_timebox_on_resume(
-    state: PipelineState, policy: PipelinePolicy
+    state: PipelineState,
+    policy: PipelinePolicy,
+    *,
+    current_epoch: float | None = None,
 ) -> PipelineState:
     """Start a fresh development timer for a legacy checkpoint in development."""
     dt = policy.development_timebox
-    if dt is None or state.dev_timebox_active or state.dev_timebox_consumed_seconds > 0:
+    if dt is None:
+        return state
+    if state.dev_timebox_active:
+        if state.dev_timebox_started_at_epoch is None:
+            return state.copy_with(
+                dev_timebox_consumed_seconds=max(
+                    state.dev_timebox_consumed_seconds, dt.warning_seconds
+                )
+            )
+        return state
+    if state.dev_timebox_consumed_seconds > 0:
         return state
     if state.phase == dt.guarded_entry:
-        return state.copy_with(dev_timebox_active=True)
+        return state.copy_with(
+            dev_timebox_active=True,
+            dev_timebox_started_at_epoch=current_epoch,
+        )
     return state
 
 
@@ -326,28 +335,11 @@ def conclude_cycle_on_route_out_of_cycle(
     *,
     policy: PipelinePolicy,
 ) -> PipelineState:
-    """End cycle timing when routing leaves the cycle by any route.
-
-    Entering ``end_entry`` is the ordinary end, but it is not the only way a
-    run reaches its next cycle: a ``result_status_post_commit`` override or an
-    agent-chain ``workflow_fallback`` can route straight past the finalization
-    path and back to planning. The timer would then never stop — and could
-    never restart, since a start requires an inactive cycle — so the next
-    cycle would run on the previous one's clock and be redirected before doing
-    any development.
-
-    Landing on any phase outside the cycle means this cycle is over,
-    whichever route got us there. "Outside" is the same set the legacy-resume
-    initializer uses, so a graph with several phases before the cycle is
-    handled — not just the entry phase and the declared ``start_source``.
-    """
+    """End cycle timing only on entry to its configured final-commit boundary."""
     ct = policy.cycle_timebox
     if ct is None or not state.cycle_timebox_active:
         return state
-    # A terminal ends the run, so it ends the cycle too — otherwise the
-    # operator surfaces, which read the timer off the final state, report a
-    # live budget for a run that is already over.
-    if next_phase not in _outside_cycle_phases(policy, ct) | policy.terminal_states():
+    if next_phase != ct.end_entry:
         return state
     return _concluded(state)
 
@@ -358,6 +350,7 @@ def start_cycle_for_bypassed_start_source(
     skipped_phases: tuple[str, ...],
     *,
     policy: PipelinePolicy,
+    routing_timing: RoutingTiming | None,
 ) -> PipelineState:
     """Start the cycle when the declared start transition was skipped over.
 
@@ -373,12 +366,17 @@ def start_cycle_for_bypassed_start_source(
         return state
     if target_phase != ct.start_entry or ct.start_source not in skipped_phases:
         return state
-    return _started(state)
+    return _started(
+        state,
+        current_epoch=(routing_timing.current_epoch if routing_timing is not None else None),
+    )
 
 
 def initialize_legacy_cycle_on_resume(
     state: PipelineState,
     policy: PipelinePolicy,
+    *,
+    current_epoch: float | None = None,
 ) -> PipelineState:
     """Initialize cycle timing for an older checkpoint resumed mid-cycle.
 
@@ -400,15 +398,27 @@ def initialize_legacy_cycle_on_resume(
     ct = policy.cycle_timebox
     if ct is None:
         return state
-    if state.cycle_timebox_active or state.cycle_timebox_consumed_seconds > 0:
+    if state.cycle_timebox_active:
+        return (
+            state.copy_with(
+                cycle_timebox_consumed_seconds=max(
+                    state.cycle_timebox_consumed_seconds, ct.duration_seconds
+                )
+            )
+            if state.cycle_timebox_started_at_epoch is None
+            else state
+        )
+    if state.cycle_timebox_consumed_seconds > 0:
         return state
     if state.phase in (ct.start_entry, ct.guarded_entry):
-        return _started(state)
-    if state.phase not in policy.phases or state.phase in policy.terminal_states():
+        return _started(state, current_epoch=current_epoch)
+    if (
+        state.phase not in policy.phases
+        or state.phase in policy.terminal_states()
+        or state.phase in _outside_cycle_phases(policy, ct)
+    ):
         return state
-    if state.phase in _outside_cycle_phases(policy, ct):
-        return state
-    return _started(state)
+    return _started(state, current_epoch=current_epoch)
 
 
 def _outside_cycle_phases(policy: PipelinePolicy, ct: CycleTimeboxPolicy) -> set[str]:
@@ -529,4 +539,3 @@ def cycle_deadline_epochs(
         now_epoch + max(0.0, ct.warning_threshold_seconds - elapsed),
         now_epoch + max(0.0, ct.duration_seconds - elapsed),
     )
-

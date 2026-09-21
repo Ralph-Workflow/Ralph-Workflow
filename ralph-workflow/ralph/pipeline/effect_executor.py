@@ -470,6 +470,21 @@ def _prepare_recovery_attempt(
         if state.attempts_started > 0
         else 0.0
     )
+    development_timebox = (
+        ctx.policy_bundle.pipeline.development_timebox
+        if ctx.policy_bundle is not None
+        else None
+    )
+    if (
+        ctx.state is not None
+        and ctx.state.dev_timebox_active
+        and development_timebox is not None
+        and ctx.effect.phase == development_timebox.guarded_entry
+        and ctx.state.dev_timebox_consumed_seconds + elapsed
+        >= development_timebox.warning_seconds
+    ):
+        _set_last_captured_retry_intent(cleared_agent_retry_intent())
+        return None
     options = _build_attempt_invoke_options(
         ctx,
         bridge_ctx,

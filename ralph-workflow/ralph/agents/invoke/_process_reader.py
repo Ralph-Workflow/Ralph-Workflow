@@ -28,6 +28,7 @@ from ralph.agents.execution_state import (
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
     with_prompt_echo_flag,
+    is_user_prompt_event_line,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -890,7 +891,7 @@ class ProcessLineReader:
         try:
             for line in stderr_pipe:
                 self._append_stderr(line)
-                if _is_subscription_limit_message([line]):
+                if not is_user_prompt_event_line(line) and _is_subscription_limit_message([line]):
                     self._terminate_for_quota(line)
                     break
         except (UnicodeDecodeError, ValueError):
@@ -1654,11 +1655,7 @@ def _spawn_process_with_agy_log_offset(
     spawn_options: SpawnOptions,
     ctx: AgentRunCtx,
 ) -> tuple[ManagedProcess, tuple[Path, int] | None]:
-    agy_cli_log = (
-        agy_cli_log_start_offset()
-        if ctx.config.transport == AgentTransport.AGY
-        else None
-    )
+    agy_cli_log = agy_cli_log_start_offset() if ctx.config.transport == AgentTransport.AGY else None
     return get_process_manager().spawn(argv, spawn_options), agy_cli_log
 
 

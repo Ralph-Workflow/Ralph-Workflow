@@ -764,7 +764,8 @@ def _run_startup_integration(
             display_context=ctx.display_context,
             strategy_history=(
                 state.conflict_strategies_tried
-                if state is not None and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                if state is not None
+                and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
                 else ()
             ),
         )
@@ -826,7 +827,9 @@ def _save_recovered_rebase_checkpoint(
         from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 
         reconciled = reconcile_stale_unresolved_state(state.rebase)
-        checkpoint_state = state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
+        checkpoint_state = (
+            state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
+        )
         _runner_module.save_checkpoint_or_log(
             checkpoint_state,
             message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
@@ -924,6 +927,24 @@ def _with_counter_overrides(
     return state.copy_with(budget_caps=updated)
 
 
+def _resume_epoch(pipeline_deps: PipelineDeps | None) -> float:
+    return pipeline_deps.wall_time() if pipeline_deps is not None else time.time()
+
+
+def _initialize_resumed_timeboxes(
+    state: PipelineState, policy: PipelinePolicy, current_epoch: float
+) -> PipelineState:
+    cycle_was_active = state.cycle_timebox_active
+    state = initialize_legacy_cycle_on_resume(state, policy)
+    if not cycle_was_active and state.cycle_timebox_active:
+        state = state.copy_with(cycle_timebox_started_at_epoch=current_epoch)
+    development_was_active = state.dev_timebox_active
+    state = initialize_legacy_development_timebox_on_resume(state, policy)
+    if not development_was_active and state.dev_timebox_active:
+        state = state.copy_with(dev_timebox_started_at_epoch=current_epoch)
+    return state
+
+
 def _resolve_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -952,9 +973,9 @@ def _resolve_initial_state(
         # graph, and a resumed run must never fail to start over timing setup.
         resumed = initial_state
         with suppress(AttributeError, TypeError):
-            resumed = initialize_legacy_cycle_on_resume(initial_state, policy_bundle.pipeline)
-            resumed = initialize_legacy_development_timebox_on_resume(
-                resumed, policy_bundle.pipeline
+            current_epoch = _resume_epoch(pipeline_deps)
+            resumed = _initialize_resumed_timeboxes(
+                initial_state, policy_bundle.pipeline, current_epoch
             )
         return _with_counter_overrides(resumed, counter_overrides)
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
@@ -1435,7 +1456,8 @@ def _run_integration_conflict_resolution(
             display_context=ctx.display_context,
             strategy_history=(
                 rebase.conflict_strategies_tried
-                if rebase is not None and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                if rebase is not None
+                and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
                 else ()
             ),
         )
@@ -1576,7 +1598,8 @@ def _resolve_paused_rebase(
             display_context=ctx.display_context,
             strategy_history=(
                 rebase.conflict_strategies_tried
-                if rebase is not None and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                if rebase is not None
+                and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
                 else ()
             ),
         )
@@ -1815,6 +1838,15 @@ def _iteration_pipeline_deps(
     )
 
 
+def _initialize_loop_timeboxes(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+    pipeline_deps = ctx.pipeline_deps if isinstance(ctx, _LoopContext) else None
+    return _initialize_resumed_timeboxes(
+        state,
+        ctx.policy_bundle.pipeline,
+        _resume_epoch(pipeline_deps),
+    )
+
+
 def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1848,8 +1880,7 @@ def _run_inner_loop_after_startup(
     # Initialize cycle timing for an older checkpoint resumed directly inside
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
-    state = initialize_legacy_cycle_on_resume(state, ctx.policy_bundle.pipeline)
-    state = initialize_legacy_development_timebox_on_resume(state, ctx.policy_bundle.pipeline)
+    state = _initialize_loop_timeboxes(state, ctx)
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         if (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route

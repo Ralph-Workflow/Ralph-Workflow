@@ -164,11 +164,11 @@ class PipelineState(_FrozenPipelineStateModel):
     # Plan-to-final-commit cycle timebox state (serialized, resume-safe).
     # ``cycle_timebox_active`` is True while a cycle timer is running; the
     # runner folds elapsed wall-clock time into ``cycle_timebox_consumed_seconds``
-    # on every step so this value stays current without a process-local
-    # monotonic epoch in the checkpoint payload. Both default so legacy
-    # checkpoints load cleanly.
+    # on every step and persists the wall-clock start epoch so restart downtime
+    # remains charged. Both default so legacy checkpoints load cleanly.
     cycle_timebox_active: bool = False
     cycle_timebox_consumed_seconds: float = 0.0
+    cycle_timebox_started_at_epoch: float | None = None
     # When the cycle concluded via a deadline redirect, the concise operator
     # reason (carrying configured and elapsed seconds) is persisted here so
     # run-report and status surfaces can distinguish a redirect from an
@@ -184,6 +184,7 @@ class PipelineState(_FrozenPipelineStateModel):
     # checkpoints; elapsed time is folded by the runner while active.
     dev_timebox_active: bool = False
     dev_timebox_consumed_seconds: float = 0.0
+    dev_timebox_started_at_epoch: float | None = None
     dev_timebox_redirect_reason: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)

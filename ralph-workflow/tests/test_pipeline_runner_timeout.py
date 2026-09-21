@@ -411,7 +411,7 @@ def test_config_max_session_seconds_flows_to_invoke_options(
     assert getattr(options, "max_session_seconds", None) == custom_session
 
 
-def test_runner_timeout_regression_development_retry_uses_phase_remaining_budget(
+def test_runner_does_not_launch_development_at_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """S-1: a retry receives only the unspent development-phase budget."""
@@ -449,12 +449,10 @@ def test_runner_timeout_regression_development_retry_uses_phase_remaining_budget
         agent_invocation_error=RuntimeError,
     )
 
-    options = captured["options"]
-    assert options is not None
-    assert options.max_session_seconds == 1200.0
+    assert "options" not in captured
 
 
-def test_development_deadline_regression_short_remaining_budget_caps_idle_timeout(
+def test_development_past_warning_does_not_launch_for_remaining_hard_stop_budget(
     tmp_path: Path,
 ) -> None:
     config = _make_config_full(agent_max_session_seconds=5700.0)
@@ -486,13 +484,10 @@ def test_development_deadline_regression_short_remaining_budget_caps_idle_timeou
         agent_invocation_error=RuntimeError,
     )
 
-    options = captured["options"]
-    assert options is not None
-    assert options.max_session_seconds == 100.0
-    assert options.idle_timeout_seconds == 100.0
+    assert "options" not in captured
 
 
-def test_agent_process_restart_uses_only_the_remaining_development_budget(
+def test_agent_process_is_not_restarted_after_development_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config = _make_config_full(agent_max_session_seconds=5700.0)
@@ -546,8 +541,8 @@ def test_agent_process_restart_uses_only_the_remaining_development_budget(
         agent_invocation_error=AgentInvocationError,
     )
 
-    assert result is PipelineEvent.AGENT_SUCCESS
-    assert ceilings == [1200.0, 900.0]
+    assert result is PipelineEvent.AGENT_FAILURE
+    assert ceilings == []
 
 
 def test_agent_process_is_not_restarted_after_development_budget_expires(
@@ -604,7 +599,7 @@ def test_agent_process_is_not_restarted_after_development_budget_expires(
     )
 
     assert result is PipelineEvent.AGENT_FAILURE
-    assert invocation_count == 1
+    assert invocation_count == 0
 
 
 def test_non_development_invocation_keeps_generic_session_ceiling(

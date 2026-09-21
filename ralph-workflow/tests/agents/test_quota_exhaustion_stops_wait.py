@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 class _WouldBlockError(Exception):
     """Raised when a reader attempts another blocking source read."""
 
@@ -148,6 +147,22 @@ def test_process_reader_stops_after_other_agent_quota_line(tmp_path: Path) -> No
     assert isinstance(error, QuotaExhaustedError), error
     assert "rate limit reached" in str(error)
     assert stdout.second_read_attempted is False
+
+
+def test_process_reader_ignores_quota_words_inside_echoed_user_prompt(tmp_path: Path) -> None:
+    stdout = _QuotaLineThenWouldBlock(
+        '{"type":"message_start","message":{"role":"user","content":"quota exhausted"}}\n'
+    )
+    reader = ProcessLineReader(
+        _ProcessHandle(stdout),
+        _process_ctx(tmp_path),
+        FakeClock(start=0.0),
+    )
+
+    error = _reader_error(reader)
+
+    assert not isinstance(error, QuotaExhaustedError), error
+    assert stdout.second_read_attempted is True
 
 
 def test_process_reader_stops_when_quota_is_only_on_stderr(tmp_path: Path) -> None:

@@ -29,6 +29,7 @@ from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     GenericExecutionStrategy,
     with_prompt_echo_flag,
+    is_user_prompt_event_line,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -1533,7 +1534,9 @@ class PtyLineReader:
         )
 
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
-        if _is_subscription_limit_message([queued_line]):
+        if not is_user_prompt_event_line(queued_line) and _is_subscription_limit_message(
+            [queued_line]
+        ):
             if self._raw_overflow is not None:
                 self._raw_overflow.append(queued_line)
             self._terminate_for_quota(queued_line)

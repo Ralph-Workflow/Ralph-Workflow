@@ -105,6 +105,8 @@ from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
     apply_development_timebox,
+    conclude_cycle_on_route_out_of_cycle,
+    conclude_development_timebox_on_route_out_of_development,
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
@@ -949,7 +951,9 @@ def _integrate_inline_effect(
                 _integration_conflict_failure(state, outcome),
                 policy_bundle.pipeline if policy_bundle is not None else None,
             )
-            return failed_state.copy_with(rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome))
+            return failed_state.copy_with(
+                rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome)
+            )
         # ExitSuccessEffect returns an int, so it cannot carry rebase state.
         # Never return its successful value while recovery still owns a record
         # or a resolver left a conflict unresolved.
@@ -1126,7 +1130,8 @@ def _maybe_auto_integrate(
                     display_context=display_context,
                     strategy_history=(
                         state.rebase.conflict_strategies_tried
-                        if state.rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                        if state.rebase.conflict_strategy_index
+                        == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
                         else ()
                     ),
                 ),
@@ -1365,7 +1370,9 @@ def _integrate_after_fan_out(
             _integration_conflict_failure(state, outcome),
             policy_bundle.pipeline if policy_bundle is not None else None,
         )
-        return failed_state.copy_with(rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome))
+        return failed_state.copy_with(
+            rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome)
+        )
     return state.copy_with(rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome))
 
 
@@ -1458,14 +1465,25 @@ def _sample_cycle_timing(
         else time.monotonic
     )
     cycle_now = monotonic_fn()
+    epoch_fn = pipeline_deps.wall_time if pipeline_deps is not None else time.time
+    current_epoch = epoch_fn()
     last_sample = cycle_sample_box[0]
-    cycle_delta = (
-        max(0.0, cycle_now - last_sample)
-        if state.cycle_timebox_active and last_sample is not None
-        else 0.0
-    )
+    if state.cycle_timebox_active is True and state.cycle_timebox_started_at_epoch is not None:
+        total_elapsed = max(
+            state.cycle_timebox_consumed_seconds,
+            current_epoch - state.cycle_timebox_started_at_epoch,
+        )
+        cycle_delta = total_elapsed - state.cycle_timebox_consumed_seconds
+    else:
+        cycle_delta = (
+            max(0.0, cycle_now - last_sample)
+            if state.cycle_timebox_active is True and last_sample is not None
+            else 0.0
+        )
+        total_elapsed = state.cycle_timebox_consumed_seconds + cycle_delta
     routing_timing = RoutingTiming(
-        total_elapsed_seconds=state.cycle_timebox_consumed_seconds + cycle_delta,
+        total_elapsed_seconds=total_elapsed,
+        current_epoch=current_epoch,
     )
     return routing_timing, cycle_now, cycle_delta, ct_policy
 
@@ -1486,16 +1504,27 @@ def _sample_development_timing(
         else time.monotonic
     )
     now = monotonic_fn()
+    epoch_fn = pipeline_deps.wall_time if pipeline_deps is not None else time.time
+    current_epoch = epoch_fn()
     last_sample = sample_box[0]
-    delta = (
-        max(0.0, now - last_sample)
-        if state.dev_timebox_active and last_sample is not None
-        else 0.0
-    )
+    if state.dev_timebox_active is True and state.dev_timebox_started_at_epoch is not None:
+        total_elapsed = max(
+            state.dev_timebox_consumed_seconds,
+            current_epoch - state.dev_timebox_started_at_epoch,
+        )
+        delta = total_elapsed - state.dev_timebox_consumed_seconds
+    else:
+        delta = (
+            max(0.0, now - last_sample)
+            if state.dev_timebox_active is True and last_sample is not None
+            else 0.0
+        )
+        total_elapsed = state.dev_timebox_consumed_seconds + delta
     return (
         RoutingTiming(
-            total_elapsed_seconds=state.dev_timebox_consumed_seconds + delta,
-            development_elapsed_seconds=state.dev_timebox_consumed_seconds + delta,
+            total_elapsed_seconds=total_elapsed,
+            development_elapsed_seconds=total_elapsed,
+            current_epoch=current_epoch,
         ),
         now,
         delta,
@@ -1514,6 +1543,7 @@ def _merge_routing_timings(
     return RoutingTiming(
         total_elapsed_seconds=cycle_timing.total_elapsed_seconds,
         development_elapsed_seconds=development_timing.total_elapsed_seconds,
+        current_epoch=cycle_timing.current_epoch or development_timing.current_epoch,
     )
 
 
@@ -1524,6 +1554,7 @@ def _sample_step_routing_timing(
     cycle_sample_box: list[float | None] | None,
     development_sample_box: list[float | None] | None,
 ) -> tuple[
+    PipelineState,
     RoutingTiming | None,
     RoutingTiming | None,
     RoutingTiming | None,
@@ -1531,18 +1562,66 @@ def _sample_step_routing_timing(
     DevelopmentTimeboxPolicy | None,
 ]:
     """Sample both timers for pre-invocation routing and prompt publication."""
-    cycle_timing, _, _, cycle_policy = _sample_cycle_timing(
+    cycle_timing, cycle_now, cycle_delta, cycle_policy = _sample_cycle_timing(
         state, pipeline_policy, pipeline_deps, cycle_sample_box
     )
-    development_timing, _, _, development_policy = _sample_development_timing(
-        state, pipeline_policy, pipeline_deps, development_sample_box
+    development_timing, development_now, development_delta, development_policy = (
+        _sample_development_timing(state, pipeline_policy, pipeline_deps, development_sample_box)
+    )
+    sampled_state = _fold_sampled_timeboxes(
+        state,
+        state,
+        cycle_delta=cycle_delta,
+        cycle_now=cycle_now,
+        cycle_sample_box=cycle_sample_box,
+        cycle_policy=cycle_policy,
+        development_delta=development_delta,
+        development_now=development_now,
+        development_sample_box=development_sample_box,
+        development_policy=development_policy,
     )
     return (
+        sampled_state,
         cycle_timing,
         development_timing,
         _merge_routing_timings(cycle_timing, development_timing),
         cycle_policy,
         development_policy,
+    )
+
+
+def _prepare_step_timeboxes(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    pipeline_deps: PipelineDeps | None,
+    cycle_sample_box: list[float | None] | None,
+    development_sample_box: list[float | None] | None,
+) -> tuple[
+    PipelineState,
+    RoutingTiming | None,
+    RoutingTiming | None,
+    RoutingTiming | None,
+    CycleTimeboxPolicy | None,
+    DevelopmentTimeboxPolicy | None,
+]:
+    prepared = _sample_step_routing_timing(
+        state,
+        pipeline_policy,
+        pipeline_deps,
+        cycle_sample_box,
+        development_sample_box,
+    )
+    state, cycle_timing, development_timing, effective_timing, cycle_policy, dev_policy = prepared
+    expired = redirect_expired_cycle_in_place(state, pipeline_policy, effective_timing)
+    if expired is not None:
+        state, _ = expired
+    return (
+        state,
+        cycle_timing,
+        development_timing,
+        effective_timing,
+        cycle_policy,
+        dev_policy,
     )
 
 
@@ -1557,9 +1636,7 @@ def _fold_development_elapsed(
     if not timing_enabled or not before.dev_timebox_active or delta_seconds <= 0.0:
         return after
     return after.model_copy(
-        update={
-            "dev_timebox_consumed_seconds": after.dev_timebox_consumed_seconds + delta_seconds
-        }
+        update={"dev_timebox_consumed_seconds": after.dev_timebox_consumed_seconds + delta_seconds}
     )
 
 
@@ -1717,6 +1794,15 @@ def _publish_fan_out_cycle_deadline(
     )
 
 
+def _start_phase_telemetry(
+    state: PipelineState, pipeline_policy: PipelinePolicy
+) -> tuple[str, str | None, PhaseTimer]:
+    phase_def = pipeline_policy.phases.get(state.phase)
+    role = phase_def.role if phase_def is not None and phase_def.role is not None else "execution"
+    drain = phase_def.drain if phase_def is not None else None
+    return role, drain, PhaseTimer.start(state.phase)
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -1742,17 +1828,10 @@ def _run_pipeline_step(
     # (never the raw ``state.phase`` string — privacy invariant). The
     # pessimistic ``_phase_outcome = "crashed"`` default ensures any
     # unmapped path is recorded as ``crashed`` rather than ``success``.
-    phase_def = policy_bundle.pipeline.phases.get(state.phase)
-    _phase_role = (
-        phase_def.role if (phase_def is not None and phase_def.role is not None) else "execution"
-    )
+    _phase_role, _phase_drain, _phase_timer = _start_phase_telemetry(state, policy_bundle.pipeline)
     # AC-04: the drain is the authoritative identity of a dev/fix
     # session; the role alone is too permissive (planning also maps
     # to ``role=execution``).
-    _phase_drain = (
-        phase_def.drain if (phase_def is not None and phase_def.drain is not None) else None
-    )
-    _phase_timer = PhaseTimer.start(state.phase)
     _phase_outcome = "crashed"
 
     def _with_phase_timing(result: PipelineState | int) -> PipelineState | int:
@@ -1766,12 +1845,13 @@ def _run_pipeline_step(
     # routing timing for both prompt materialization (the 80% warning) and
     # the reducer (deadline enforcement).
     (
+        state,
         _routing_timing,
         _development_routing_timing,
         _effective_routing_timing,
         ct_policy,
         dt_policy,
-    ) = _sample_step_routing_timing(
+    ) = _prepare_step_timeboxes(
         state,
         policy_bundle.pipeline,
         pipeline_deps,
@@ -1997,9 +2077,7 @@ def _run_pipeline_step(
         # outcome survives a crash right after the phase).
         if _auto_integrate_outcome is not None:
             next_state = next_state.copy_with(
-                rebase=_reconcile_rebase_if_live_resolved(
-                    workspace_scope, _auto_integrate_outcome
-                )
+                rebase=_reconcile_rebase_if_live_resolved(workspace_scope, _auto_integrate_outcome)
             )
         skipped_phases = record_phase_transition_metadata(
             display,
@@ -2029,13 +2107,32 @@ def _run_pipeline_step(
             phase=state.phase,
             err=exc,
         )
-        recovered_state, _recv_effects = _reduce_runtime_recovery(
+        crash_cycle_timing, crash_cycle_now, crash_cycle_delta, _ = _sample_cycle_timing(
+            state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
+        )
+        crash_dev_timing, crash_dev_now, crash_dev_delta, _ = _sample_development_timing(
+            state, policy_bundle.pipeline, pipeline_deps, _development_sample_box
+        )
+        crash_timing = _merge_routing_timings(crash_cycle_timing, crash_dev_timing)
+        timed_state = _fold_sampled_timeboxes(
             state,
+            state,
+            cycle_delta=crash_cycle_delta,
+            cycle_now=crash_cycle_now,
+            cycle_sample_box=_cycle_sample_box,
+            cycle_policy=ct_policy,
+            development_delta=crash_dev_delta,
+            development_now=crash_dev_now,
+            development_sample_box=_development_sample_box,
+            development_policy=dt_policy,
+        )
+        recovered_state, _recv_effects = _reduce_runtime_recovery(
+            timed_state,
             policy_bundle.pipeline,
             reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
             recovery=recovery_controller,
             exc=exc,
-            routing_timing=_routing_timing,
+            routing_timing=crash_timing,
         )
         for _eff in _recv_effects:
             if isinstance(_eff, ExitFailureEffect):
@@ -2183,6 +2280,7 @@ def _handle_inline_effect(
                 routing_timing=routing_timing
                 or RoutingTiming(
                     total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
+                    current_epoch=time.time(),
                 ),
             )
             development_timeboxed = apply_development_timebox(
@@ -2193,6 +2291,7 @@ def _handle_inline_effect(
                 or RoutingTiming(
                     total_elapsed_seconds=state.cycle_timebox_consumed_seconds,
                     development_elapsed_seconds=state.dev_timebox_consumed_seconds,
+                    current_epoch=time.time(),
                 ),
             )
             target_phase = development_timeboxed.target_phase
@@ -2202,9 +2301,17 @@ def _handle_inline_effect(
                 logger.bind(component="policy.routing").warning(
                     development_timeboxed.redirect_reason
                 )
-            prepared_state = _reset_phase_chain_for_recovery(
-                development_timeboxed.state, target_phase
+            boundary_state = conclude_cycle_on_route_out_of_cycle(
+                development_timeboxed.state,
+                target_phase,
+                policy=pipeline_policy,
             )
+            boundary_state = conclude_development_timebox_on_route_out_of_development(
+                boundary_state,
+                target_phase,
+                policy=pipeline_policy,
+            )
+            prepared_state = _reset_phase_chain_for_recovery(boundary_state, target_phase)
             target_phase_def = pipeline_policy.phases.get(target_phase)
             if target_phase_def is not None and target_phase_def.role == "commit":
                 prepared_state = prepared_state.copy_with(commit=CommitState())

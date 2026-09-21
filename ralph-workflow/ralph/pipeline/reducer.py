@@ -659,13 +659,7 @@ def redirect_expired_cycle_in_place(
         advanced, effects = _advance_phase(
             decision.state, decision.target_phase, policy, routing_timing=routing_timing
         )
-        return (
-            advanced.copy_with(
-                cycle_timebox_active=state.cycle_timebox_active,
-                cycle_timebox_consumed_seconds=state.cycle_timebox_consumed_seconds,
-            ),
-            effects,
-        )
+        return advanced, effects
     if state.dev_timebox_active:
         return None
     decision = apply_cycle_timebox(state, state.phase, policy=policy, routing_timing=routing_timing)
@@ -1271,10 +1265,15 @@ def _handle_commit_success(
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
-        if progress_state.post_commit_phase_override is not None:
+        has_override = progress_state.post_commit_phase_override is not None
+        if has_override:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        if has_override:
+            return _advance_phase(
+                progress_state, next_phase, policy, routing_timing=routing_timing
+            )
         return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
@@ -1309,10 +1308,15 @@ def _handle_commit_skipped(
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=True, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
-        if progress_state.post_commit_phase_override is not None:
+        has_override = progress_state.post_commit_phase_override is not None
+        if has_override:
             progress_state = progress.consume_post_commit_phase_override(progress_state)
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
+        if has_override:
+            return _advance_phase(
+                progress_state, next_phase, policy, routing_timing=routing_timing
+            )
         return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
@@ -1516,14 +1520,7 @@ def _concluded_if_leaving_cycle(
     resolved: tuple[PipelineState, PipelinePhase],
     policy: PipelinePolicy,
 ) -> tuple[PipelineState, PipelinePhase]:
-    """End cycle timing whenever the resolved target lies outside the cycle.
-
-    Applied in the shared resolution seam rather than at individual call
-    sites: every route out of a cycle — a decision, a bypass, a loopback, a
-    plain success transition, a fallback, a post-commit route — funnels
-    through here, and one missed site leaves a timer running that can never
-    stop, since starting one requires an inactive cycle.
-    """
+    """Apply each timer's configured end-entry boundary to the resolved target."""
     state, target_phase = resolved
     state = conclude_cycle_on_route_out_of_cycle(state, target_phase, policy=policy)
     return (
@@ -1575,6 +1572,7 @@ def _with_bypassed_cycle_timing(
             development_timebox.target_phase,
             tuple(skip.phase for skip in bypass.skipped),
             policy=policy,
+            routing_timing=routing_timing,
         ),
         development_timebox.target_phase,
     )

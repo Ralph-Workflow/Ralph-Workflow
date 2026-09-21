@@ -365,15 +365,7 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
     assert "redirecting to development_final_commit_cleanup" in report
 
 
-def test_bypassed_analysis_into_finalization_ends_the_cycle() -> None:
-    """Reaching the final-commit path via a bypass must end the cycle timer.
-
-    The timebox is applied to the pending target, which a bypass can then
-    rewrite to the finalization entry. Missing that rewrite left the timer
-    running, so the NEXT cycle inherited a spent clock and had its first
-    development entry redirected immediately — burning a dev cycle without
-    doing any development.
-    """
+def test_bypassed_analysis_into_finalization_preserves_the_cycle() -> None:
     policy = _policy()
     state = PipelineState(
         phase="development_commit",
@@ -388,7 +380,7 @@ def test_bypassed_analysis_into_finalization_ends_the_cycle() -> None:
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(3600.0))
 
     assert state.phase == "development_final_commit_cleanup"
-    assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
 def test_next_cycle_after_a_bypassed_finalization_reaches_development() -> None:
@@ -442,15 +434,7 @@ def test_bypassed_start_edge_does_not_redirect_the_cycle_it_just_started() -> No
     assert state.cycle_timebox_consumed_seconds == 0.0
 
 
-def test_a_completed_cycle_ends_its_timer_even_when_finalization_is_skipped() -> None:
-    """Completing a cycle ends its clock, however the run got there.
-
-    The timer's only end used to be ENTRY to the finalization path, but a
-    result-status override or an agent-chain fallback can route straight past
-    it into the next cycle. The timer then never restarted (a start requires
-    an inactive cycle), so the next cycle inherited a spent clock and was
-    redirected before doing any development.
-    """
+def test_skipping_final_commit_does_not_reset_the_cycle_timer() -> None:
     base = _policy()
     development = base.phases["development"]
     policy = base.model_copy(
@@ -475,7 +459,7 @@ def test_a_completed_cycle_ends_its_timer_even_when_finalization_is_skipped() ->
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(6000.0))
 
     assert state.phase == "planning"
-    assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
 def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
@@ -529,14 +513,7 @@ def test_the_recovery_failed_route_keeps_the_cycle_timer_armed() -> None:
     assert state.cycle_timebox_active is True
 
 
-def test_a_decision_out_of_the_cycle_ends_the_timer() -> None:
-    """Any route out of the cycle ends its clock, including an analysis decision.
-
-    Wiring the conclusion at individual call sites leaves whichever paths
-    nobody thought of still leaking: a decision that abandons the cycle back
-    to planning kept the timer running, so the next cycle was redirected on
-    the previous one's clock and burned a budget cycle doing nothing.
-    """
+def test_a_decision_that_skips_final_commit_preserves_the_timer() -> None:
     from ralph.policy.models import PhaseDecisionRoute
 
     base = _policy()
@@ -574,11 +551,10 @@ def test_a_decision_out_of_the_cycle_ends_the_timer() -> None:
     )
 
     assert state.phase == "planning"
-    assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
-def test_a_loopback_out_of_the_cycle_ends_the_timer() -> None:
-    """The same holds for a plain transition that leaves the cycle."""
+def test_a_loopback_that_skips_final_commit_preserves_the_timer() -> None:
     base = _policy()
     development = base.phases["development"]
     policy = base.model_copy(
@@ -606,7 +582,7 @@ def test_a_loopback_out_of_the_cycle_ends_the_timer() -> None:
     state, _ = reduce(state, PipelineEvent.PHASE_LOOPBACK, policy, routing_timing=_rt(3000.0))
 
     assert state.phase == "planning"
-    assert state.cycle_timebox_active is False
+    assert state.cycle_timebox_active is True
 
 
 def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -> None:

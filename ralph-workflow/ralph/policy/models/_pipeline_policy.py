@@ -306,15 +306,8 @@ class PipelinePolicy(_FrozenPolicyModel):
         ):
             if target not in ts and target not in self.phases:
                 raise ValueError(
-                    f"development_timebox.{label} references unknown phase or terminal "
-                    f"'{target}'."
+                    f"development_timebox.{label} references unknown phase or terminal '{target}'."
                 )
-        inside = self._phases_inside_cycle(dt)
-        if dt.finalization_target in inside:
-            raise ValueError(
-                f"development_timebox.finalization_target '{dt.finalization_target}' is inside "
-                "the development loop"
-            )
         return self
 
     @model_validator(mode="after")
@@ -385,8 +378,8 @@ class PipelinePolicy(_FrozenPolicyModel):
     def cycle_timebox_ends_outside_the_cycle(self) -> Self:
         """Reject a cycle end that sits inside the cycle it is meant to end.
 
-        Entry to ``end_entry`` or ``finalization_target`` stops the clock. If
-        either names a phase the cycle routes through normally — say the
+        Entry to ``end_entry`` stops the clock. If it names a phase the cycle
+        routes through normally — say the
         intermediate commit cleanup rather than the final one, a one-word
         difference between two real phase names — then the first ordinary
         re-entry disarms the deadline, and it can never re-arm, because
@@ -410,9 +403,7 @@ class PipelinePolicy(_FrozenPolicyModel):
                 )
         return self
 
-    def _phases_inside_cycle(
-        self, ct: CycleTimeboxPolicy | DevelopmentTimeboxPolicy
-    ) -> set[str]:
+    def _phases_inside_cycle(self, ct: CycleTimeboxPolicy | DevelopmentTimeboxPolicy) -> set[str]:
         """Return the phases a cycle routes through on its way round again.
 
         A phase is inside the cycle when it is reachable from the guarded

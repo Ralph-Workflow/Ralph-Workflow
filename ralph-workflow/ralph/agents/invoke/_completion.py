@@ -67,15 +67,16 @@ _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
+
 def _raise_if_quota_exhausted(
     agent_name: str,
     stderr_text: str,
     parsed_output: list[str] | None,
 ) -> None:
-    for source in (stderr_text, *(parsed_output or [])):
-        for line in source.splitlines() or [source]:
-            if _is_subscription_limit_message([line]):
-                raise QuotaExhaustedError(agent_name, line)
+    del parsed_output
+    for line in stderr_text.splitlines() or [stderr_text]:
+        if _is_subscription_limit_message([line]):
+            raise QuotaExhaustedError(agent_name, line)
 
 
 @runtime_checkable
@@ -694,7 +695,9 @@ def check_process_result(
                 stderr=stderr_text,
             )
         stderr = stderr_text if stderr_available else ""
-        issuer_method = cast("Callable[[], str | None] | None", getattr(handle, "termination_issuer", None))
+        issuer_method = cast(
+            "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
+        )
         issuer = issuer_method() if issuer_method is not None else None
         intentional = returncode in {-15, 143} and isinstance(issuer, str)
         exc = AgentInvocationError(
@@ -708,8 +711,11 @@ def check_process_result(
                 ),
             ),
             failure_origin=(
-                "runtime_launch" if isinstance(handle, AgentLaunchError)
-                else "intentional_termination" if intentional else "agent"
+                "runtime_launch"
+                if isinstance(handle, AgentLaunchError)
+                else "intentional_termination"
+                if intentional
+                else "agent"
             ),
             issuer=issuer if intentional else None,
         )

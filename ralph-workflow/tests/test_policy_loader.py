@@ -805,7 +805,7 @@ def test_default_cycle_timebox_values() -> None:
     assert ct.start_source == "planning_analysis"
     assert ct.start_entry == "development"
     assert ct.guarded_entry == "development"
-    assert ct.end_entry == "development_final_commit_cleanup"
+    assert ct.end_entry == "development_final_commit"
     assert ct.finalization_target == "development_final_commit_cleanup"
     assert ct.finalization_cycle_outcome == "completed"
 

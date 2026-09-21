@@ -284,6 +284,7 @@ class PipelineDeps:
     # runner to sample wall-clock time for the cycle timebox. Tests inject
     # a fake clock for deterministic boundary verification.
     monotonic: Callable[[], float] = time.monotonic
+    wall_time: Callable[[], float] = time.time
 
     def __init__(
         self,
@@ -322,6 +323,7 @@ class PipelineDeps:
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        wall_time: Callable[[], float] = time.time,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -438,6 +440,7 @@ class PipelineDeps:
         object.__setattr__(self, "commit_effect_executor", commit_effect_executor)
         object.__setattr__(self, "has_uncommitted_changes", has_uncommitted_changes)
         object.__setattr__(self, "monotonic", monotonic)
+        object.__setattr__(self, "wall_time", wall_time)
 
     @property
     def display_context(self) -> DisplayContext:
