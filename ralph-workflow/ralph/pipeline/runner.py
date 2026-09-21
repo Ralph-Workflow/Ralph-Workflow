@@ -176,6 +176,7 @@ from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
 from ralph.recovery.classifier import FailureContext
+from ralph.skills._auto_commit import commit_skill_updates
 from ralph.telemetry._sentry import record_phase_execution
 from ralph.visual.capture_lifecycle import CaptureLifecycle
 from ralph.visual.capture_set import CaptureSet
@@ -1286,6 +1287,9 @@ def _integrate_on_phase_transition(
         # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
         # transitions; non-seam events are retried at their next real seam.
         return None
+    skill_commit_sha = commit_skill_updates(workspace_scope.root, create_commit)
+    if skill_commit_sha is not None:
+        logger.info("Auto-committed skill updates: {}", skill_commit_sha[:8])
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
         return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
     conflict_resolver = _build_seam_conflict_resolver(

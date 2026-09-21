@@ -226,6 +226,39 @@ def test_phase_transition_event_runs_boundary_integration(
     assert result is outcome
 
 
+def test_phase_transition_commits_skill_updates_before_integration(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        runner_module,
+        "commit_skill_updates",
+        lambda *_args, **_kwargs: calls.append("skill-commit"),
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: calls.append("integrate"),
+    )
+    state = MagicMock()
+    state.phase = "development"
+    state.rebase = RebaseState()
+
+    runner_module._maybe_auto_integrate(
+        effect=object(),
+        event=PipelineEvent.AGENT_SUCCESS,
+        commit_phase_def=None,
+        config=MagicMock(),
+        workspace_scope=WorkspaceScope(Path("/repo")),
+        state=state,
+        display=MagicMock(),
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+    )
+
+    assert calls == ["skill-commit", "integrate"]
+
+
 def test_commit_skipped_still_integrates_via_boundary_hook(
     monkeypatch: MonkeyPatch,
 ) -> None:
