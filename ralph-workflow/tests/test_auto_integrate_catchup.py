@@ -19,13 +19,24 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
+from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
 _TARGET_SHA = "b" * 40
 _FEATURE_SHA = "a" * 40
 
 
-def _config(*, enabled: bool = True, target: str | None = None) -> UnifiedConfig:
-    general: dict[str, object] = {"auto_integrate_enabled": enabled}
+def _config(
+    *,
+    enabled: bool = True,
+    target: str | None = None,
+    remote_enabled: bool = False,
+    remote: str = "origin",
+) -> UnifiedConfig:
+    general: dict[str, object] = {
+        "auto_integrate_enabled": enabled,
+        "auto_integrate_remote_enabled": remote_enabled,
+        "auto_integrate_remote": remote,
+    }
     if target is not None:
         general["auto_integrate_target"] = target
     return UnifiedConfig.model_validate({"general": general})
@@ -153,6 +164,83 @@ class TestAutoIntegrateCatchup:
         # The merge is handed the OBSERVED SHA, not the ref name, so a
         # concurrently-advancing target can never turn this into a
         # non-fast-forward.
+        assert ff_calls == [(tmp_path, _TARGET_SHA)]
+
+    def test_remote_refresh_uses_configured_remote_before_observing_unchanged_target(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        events: list[str] = []
+        ff_calls = _open_all_gates(monkeypatch)
+        refresh_calls: list[tuple[Path, str, float, str]] = []
+
+        def _refresh(
+            root: Path,
+            target: str,
+            *,
+            timeout_seconds: float,
+            remote: str,
+        ) -> str:
+            events.append("refresh")
+            refresh_calls.append((root, target, timeout_seconds, remote))
+            return "refreshed"
+
+        original_observe = catchup.observe_branch_sha
+
+        def _observe(root: Path, name: str) -> tuple[str | None, bool]:
+            if name == "main":
+                events.append("observe-target")
+            return original_observe(root, name)
+
+        monkeypatch.setattr(catchup, "refresh_target_from_remote", _refresh)
+        monkeypatch.setattr(catchup, "observe_branch_sha", _observe)
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _config(remote_enabled=True, remote="upstream"), tmp_path
+        )
+
+        assert outcome == catchup.CATCHUP_FAST_FORWARDED
+        assert events == ["refresh", "observe-target"]
+        assert refresh_calls == [
+            (tmp_path, "main", catchup.FETCH_TIMEOUT_SECONDS, "upstream")
+        ]
+        assert ff_calls == [(tmp_path, _TARGET_SHA)]
+
+    def test_remote_sync_disabled_keeps_local_catchup_without_remote_probe(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        ff_calls = _open_all_gates(monkeypatch)
+        refresh_calls: list[str] = []
+
+        def _unexpected_refresh(*_args: object, **_kwargs: object) -> str:
+            refresh_calls.append("refresh")
+            return "refreshed"
+
+        monkeypatch.setattr(catchup, "refresh_target_from_remote", _unexpected_refresh)
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _config(remote_enabled=False), tmp_path
+        )
+
+        assert outcome == catchup.CATCHUP_FAST_FORWARDED
+        assert refresh_calls == []
+        assert ff_calls == [(tmp_path, _TARGET_SHA)]
+
+    def test_remote_refresh_unreachable_keeps_local_catchup_behavior(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        ff_calls = _open_all_gates(monkeypatch)
+
+        monkeypatch.setattr(
+            catchup,
+            "refresh_target_from_remote",
+            lambda *_args, **_kwargs: REFRESH_UNREACHABLE,
+        )
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _config(remote_enabled=True), tmp_path
+        )
+
+        assert outcome == catchup.CATCHUP_FAST_FORWARDED
         assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
     def test_refused_merge_reports_refused(

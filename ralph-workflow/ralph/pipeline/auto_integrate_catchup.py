@@ -24,11 +24,13 @@ the repository ONLY when every one of these holds:
   definition of clean as the boundary seams).
 
 QUIET-PROBE CONTRACT. The tick fires every 30 seconds for the whole
-run, so its skip paths must be invisible: no display lines, no log
-lines at ANY level, and no :func:`~ralph.git.subprocess_runner.run_git`
-subprocesses -- every ProcessManager spawn writes RUNNING/EXITED
-lifecycle lines to the log, which turned the early run_git-based probes
-into a 30-second drumbeat of log noise. All read-only observation
+run, so its local skip paths must be invisible: no display lines, no
+log lines at ANY level, and no
+:func:`~ralph.git.subprocess_runner.run_git` subprocesses -- every
+ProcessManager spawn writes RUNNING/EXITED lifecycle lines to the log,
+which turned the early run_git-based probes into a 30-second drumbeat of
+log noise. When remote synchronization is enabled, the bounded freshness
+fetch is the one additional read-only subprocess. All local observation
 therefore happens IN-PROCESS via GitPython (the
 :mod:`ralph.git.operations` precedent): branch name, target resolution,
 and both tip SHAs are plain ref-file reads that spawn nothing. The
@@ -65,6 +67,12 @@ from git import Repo
 from loguru import logger
 
 from ralph.git.merge import fast_forward_via_worktree
+from ralph.pipeline.auto_integrate_remote_sync import (
+    FETCH_TIMEOUT_SECONDS,
+    remote_sync_enabled,
+    remote_target_name,
+)
+from ralph.pipeline.auto_integrate_sync import refresh_target_from_remote
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -256,6 +264,13 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
         return CATCHUP_NO_TARGET
     if current == target:
         return CATCHUP_ON_TARGET
+    if remote_sync_enabled(config):
+        refresh_target_from_remote(
+            root,
+            target,
+            timeout_seconds=FETCH_TIMEOUT_SECONDS,
+            remote=remote_target_name(config),
+        )
     return _fast_forward_if_strictly_behind(root, target, current)
 
 
