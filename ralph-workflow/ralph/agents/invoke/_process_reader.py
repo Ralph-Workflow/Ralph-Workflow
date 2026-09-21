@@ -27,8 +27,8 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
-    with_prompt_echo_flag,
     is_user_prompt_event_line,
+    with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -935,7 +935,7 @@ class ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
-                if _is_subscription_limit_message([line]):
+                if not is_user_prompt_event_line(line) and _is_subscription_limit_message([line]):
                     self._terminate_for_quota(line)
                     break
                 # Per-line session id capture mirrors the canonical

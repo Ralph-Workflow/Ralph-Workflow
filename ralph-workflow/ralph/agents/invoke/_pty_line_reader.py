@@ -28,8 +28,8 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
     GenericExecutionStrategy,
-    with_prompt_echo_flag,
     is_user_prompt_event_line,
+    with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
