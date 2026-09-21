@@ -80,15 +80,9 @@ class TestCheckProcessResultClaudeInteractiveSeam:
                 ),
             )
 
-    def test_required_receipt_needs_completion_sentinel(self, tmp_path: Path) -> None:
-        """Interactive Claude applies the receipt-plus-sentinel conjunction.
-
-        A stale canonical artifact from a previous run cannot satisfy the
-        current run's completion gate. The hardened contract requires a
-        current-run receipt plus the explicit completion sentinel. This test
-        writes the legacy receipt file specifically to exercise the supported
-        DB-to-file read fallback.
-        """
+    def test_clean_development_exit_does_not_need_completion_sentinel(
+        self, tmp_path: Path
+    ) -> None:
         run_id = "seam-claude-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
@@ -128,13 +122,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
             ),
         )
 
-        with pytest.raises(OpenCodeResumableExitError):
-            check_process_result(
-                handle,
-                "claude",
-                [],
-                options,
-            )
+        check_process_result(handle, "claude", [], options)
 
         sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
@@ -145,26 +133,26 @@ class TestCheckProcessResultClaudeInteractiveSeam:
             options,
         )
 
-    def test_neither_signal_nor_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
-        """Missing sentinel and required receipt produces a resumable exit."""
+    def test_neither_signal_nor_artifact_accepts_clean_development_exit(
+        self, tmp_path: Path
+    ) -> None:
         strategy = ClaudeInteractiveExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
-        with pytest.raises(OpenCodeResumableExitError):
-            check_process_result(
-                handle,
-                "claude",
-                [],
-                CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
-                        markdown_path=None,
-                        normalizer=None,
-                    ),
-                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+        check_process_result(
+            handle,
+            "claude",
+            [],
+            CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    artifact_path=".agent/artifacts/development_result.md",
+                    markdown_path=None,
+                    normalizer=None,
                 ),
-            )
+                policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+            ),
+        )

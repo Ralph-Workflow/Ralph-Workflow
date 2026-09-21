@@ -165,6 +165,21 @@ def test_process_reader_ignores_quota_words_inside_echoed_user_prompt(tmp_path: 
     assert stdout.second_read_attempted is True
 
 
+def test_process_reader_ignores_reordered_user_prompt_event(tmp_path: Path) -> None:
+    stdout = _QuotaLineThenWouldBlock(
+        '{"role":"user","type":"message_start","content":"RESOURCE_EXHAUSTED"}\n'
+    )
+    reader = ProcessLineReader(
+        _ProcessHandle(stdout),
+        _process_ctx(tmp_path),
+        FakeClock(start=0.0),
+    )
+
+    error = _reader_error(reader)
+
+    assert not isinstance(error, QuotaExhaustedError), error
+
+
 def test_process_reader_stops_when_quota_is_only_on_stderr(tmp_path: Path) -> None:
     """A quota diagnostic on stderr aborts without waiting for stdout."""
     stderr = iter(("RESOURCE_EXHAUSTED (code 429)\n",))

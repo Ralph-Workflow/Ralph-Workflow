@@ -171,9 +171,9 @@ class TestCheckProcessResultCompletionSeam:
         run_id = "seam-opencode-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "development_result.md").write_text(
+        (artifact_dir / "plan.md").write_text(
             "---\n"
-            "type: development_result\n"
+            "type: plan\n"
             "status: completed\n"
             "---\n\n"
             "## Summary\n\n- [SUM-1] done\n\n"
@@ -182,8 +182,8 @@ class TestCheckProcessResultCompletionSeam:
         )
         receipt_dir = tmp_path / ".agent" / "receipts" / run_id
         receipt_dir.mkdir(parents=True)
-        (receipt_dir / "development_result.json").write_text(
-            f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+        (receipt_dir / "plan.json").write_text(
+            f'{{"run_id": "{run_id}", "artifact_type": "plan"}}',
             encoding="utf-8",
         )
 
@@ -214,9 +214,9 @@ class TestCheckProcessResultCompletionSeam:
             workspace_path=tmp_path,
             completion_run_id=run_id,
             required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
+                phase="planning",
+                artifact_type="plan",
+                artifact_path=".agent/artifacts/plan.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -257,9 +257,9 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
+                        phase="planning",
+                        artifact_type="plan",
+                        artifact_path=".agent/artifacts/plan.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -317,9 +317,9 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
+                        phase="planning",
+                        artifact_type="plan",
+                        artifact_path=".agent/artifacts/plan.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -345,9 +345,9 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
+                        phase="planning",
+                        artifact_type="plan",
+                        artifact_path=".agent/artifacts/plan.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -369,9 +369,9 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
+                        phase="planning",
+                        artifact_type="plan",
+                        artifact_path=".agent/artifacts/plan.md",
                         markdown_path=None,
                         normalizer=None,
                         artifact_required=False,
@@ -403,9 +403,9 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
-                        phase="development",
-                        artifact_type="development_result",
-                        artifact_path=".agent/artifacts/development_result.md",
+                        phase="planning",
+                        artifact_type="plan",
+                        artifact_path=".agent/artifacts/plan.md",
                         markdown_path=None,
                         normalizer=None,
                         artifact_required=False,

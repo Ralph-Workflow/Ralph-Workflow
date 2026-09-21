@@ -1633,7 +1633,12 @@ def _fold_development_elapsed(
     timing_enabled: bool,
 ) -> PipelineState:
     """Persist development elapsed time across validation retries and resumes."""
-    if not timing_enabled or not before.dev_timebox_active or delta_seconds <= 0.0:
+    if (
+        not timing_enabled
+        or not before.dev_timebox_active
+        or not after.dev_timebox_active
+        or delta_seconds <= 0.0
+    ):
         return after
     return after.model_copy(
         update={"dev_timebox_consumed_seconds": after.dev_timebox_consumed_seconds + delta_seconds}

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 
-from ralph.agents.execution_state._harness_echo import is_prompt_echo_line
+from ralph.agents.execution_state._harness_echo import (
+    is_prompt_echo_line,
+    is_user_prompt_event_line,
+)
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
 from ralph.agents.invoke import (
     AgentRunCtx,
@@ -134,3 +137,25 @@ def test_process_line_reader_regression_real_output_counts_as_meaningful_after_e
 
     record_line_activity(reader, watchdog, "thinking: planning next step")
     assert watchdog.has_meaningful_output() is True
+
+
+def test_user_prompt_event_detection_covers_supported_json_envelopes_and_key_order() -> None:
+    assert is_user_prompt_event_line(
+        '{"message":{"role":"user","content":"quota exhausted"},"type":"message_start"}'
+    )
+    assert is_user_prompt_event_line(
+        '{"type":"user","message":{"role":"user","content":"quota exhausted"}}'
+    )
+    assert is_user_prompt_event_line(
+        '{"type":"message_end","message":{"role":"user","content":"quota exhausted"}}'
+    )
+    assert not is_user_prompt_event_line(
+        '{"type":"assistant","message":{"role":"assistant","content":"quota exhausted"}}'
+    )
+    assert not is_user_prompt_event_line(
+        '{"type":"error","context":{"type":"user"},"message":"RESOURCE_EXHAUSTED (code 429)"}'
+    )
+    assert not is_user_prompt_event_line(
+        '{"type":"user","message":{"role":"assistant",'
+        '"content":"RESOURCE_EXHAUSTED"}}'
+    )

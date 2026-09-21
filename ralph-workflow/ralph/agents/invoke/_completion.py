@@ -36,9 +36,10 @@ from ralph.agents.invoke._errors import (
     AgentInvocationError,
     OpenCodeResumableExitError,
 )
+from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
-from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
+from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -55,30 +56,14 @@ from ralph.process.teardown import ProcessTeardown, teardown_subtree
 from ralph.recovery.failure_classifier import (
     SESSION_NOT_FOUND_SUBSTRINGS,
     FailureClassifier,
-    _is_subscription_limit_message,
 )
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
-#: Bounded stderr capture prevents a crashing agent from exhausting parent memory.
 _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
-#: Pi's explicit model-turn failure marker.
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
-
-
-def _raise_if_quota_exhausted(
-    agent_name: str,
-    stderr_text: str,
-    parsed_output: list[str] | None,
-) -> None:
-    del parsed_output
-    for line in stderr_text.splitlines() or [stderr_text]:
-        if _is_subscription_limit_message([line]):
-            raise QuotaExhaustedError(agent_name, line)
-
-
 @runtime_checkable
 class _CapturedStderrHandle(Protocol):
     @property
@@ -93,21 +78,10 @@ class _ReadableTextPipe(Protocol):
 
 
 def _truncation_marker(capped_bytes: int) -> str:
-    """Return the canonical truncation marker used when the stderr pipe holds
-    more bytes than the cap."""
     return f"\n[stderr truncated: more than {capped_bytes} bytes]"
 
 
 def _bounded_read(pipe: _ReadableTextPipe) -> str:
-    """Read at most ``_MAX_STDERR_CAPTURE_BYTES`` from ``pipe`` and append a
-    truncation marker if more was available.
-
-    The pipe's ``read(size)`` MUST be passed a positive int — calling
-    ``read()`` or ``read(-1)`` would be unbounded. The probe for "more was
-    available" is a single 1-byte peek AFTER the cap is reached: if it
-    succeeds, the pipe is non-empty and we append the marker; otherwise the
-    cap read was the entire payload.
-    """
     chunk = pipe.read(_MAX_STDERR_CAPTURE_BYTES)
     if len(chunk) >= _MAX_STDERR_CAPTURE_BYTES:
         # Probe one more byte: a successful 1-byte read means the pipe
@@ -157,12 +131,6 @@ def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | 
 
 
 def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
-    """The run identity used to correlate completion receipts and the sentinel.
-
-    Both the submission handler (which writes receipts keyed by the MCP session's
-    run_id) and the gate must agree on this value; it is the completion_run_id
-    when threaded, else the transport session id captured from agent output.
-    """
     return opts.completion_run_id or opts.captured_session_id
 
 
@@ -185,13 +153,9 @@ def _teardown_subtree_if_pid_available(
             teardown_subtree(pid, issuer=issuer)
         else:
             teardown.teardown_subtree(pid, issuer=issuer)
-
-
 def _is_pi_agent(agent_name: str) -> bool:
     normalized = agent_name.casefold()
     return normalized == "pi" or normalized.startswith("pi/")
-
-
 def _message_has_length_stop_reason(message: object) -> bool:
     if not isinstance(message, dict):
         return False
@@ -199,8 +163,6 @@ def _message_has_length_stop_reason(message: object) -> bool:
     return isinstance(stop_reason, str) and (
         stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
     )
-
-
 def _line_has_pi_context_exhaustion(line: str) -> bool:
     try:
         parsed = cast("object", json.loads(line))
@@ -234,13 +196,6 @@ def _has_pi_context_exhaustion_signal(agent_name: str, output: list[str]) -> boo
 
 
 def _message_provider_failure_reason(message: object) -> str | None:
-    """Return the ``errorMessage`` of a message whose turn failed outright.
-
-    ``stopReason == 'error'`` is pi's report that the model turn did not
-    run at all -- an unreachable provider, a rejected model, a transport
-    fault. It is distinct from ``'length'`` (context exhaustion), which
-    :func:`_message_has_length_stop_reason` already covers.
-    """
     if not isinstance(message, dict):
         return None
     message_dict = cast("dict[str, object]", message)
@@ -256,11 +211,6 @@ def _message_provider_failure_reason(message: object) -> str | None:
 
 
 def _exhausted_retry_ladder_reason(obj: dict[str, object]) -> str | None:
-    """Return the final error of an exhausted ``auto_retry_end`` ladder.
-
-    ``success=false`` means pi gave up after ``maxAttempts`` and will
-    exit rc=0 having done no work.
-    """
     if obj.get("type") != "auto_retry_end" or obj.get("success") is not False:
         return None
     final_error = obj.get("finalError")
@@ -270,11 +220,6 @@ def _exhausted_retry_ladder_reason(obj: dict[str, object]) -> str | None:
 
 
 def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
-    """Return the first provider failure across a line's message payloads.
-
-    ``message_end`` / ``turn_end`` carry a single ``message``;
-    ``agent_end`` carries a ``messages`` array.
-    """
     reason = _message_provider_failure_reason(obj.get("message"))
     if reason is not None:
         return reason
@@ -289,11 +234,6 @@ def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
 
 
 def _line_provider_failure_reason(line: str) -> str | None:
-    """Extract a provider-failure reason from one raw pi NDJSON line.
-
-    Checks the exhausted retry ladder first (it carries the most
-    authoritative ``finalError``), then the failed message payloads.
-    """
     try:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
@@ -305,11 +245,6 @@ def _line_provider_failure_reason(line: str) -> str | None:
 
 
 def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | None:
-    """Return why pi's provider failed, or ``None`` if it did not.
-
-    Only consulted for pi agents; other transports report their own
-    failures through their own channels.
-    """
     if not _is_pi_agent(agent_name):
         return None
     for line in output:
@@ -317,6 +252,74 @@ def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | Non
         if reason is not None:
             return reason
     return None
+
+
+def _raise_if_pi_reported_failed_exit(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    output: list[str],
+    teardown: ProcessTeardown | None,
+) -> None:
+    if _has_pi_context_exhaustion_signal(agent_name, output):
+        raise PiContextExhaustedExitError(agent_name)
+    provider_failure = _pi_provider_failure_reason(agent_name, output)
+    if provider_failure is None:
+        return
+    _teardown_subtree_if_pid_available(
+        handle,
+        issuer=f"invoke:completion:{agent_name}",
+        teardown=teardown,
+    )
+    raise PiProviderFailureExitError(agent_name, provider_failure)
+
+
+def _raise_if_transport_reported_error(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    output: list[str],
+) -> None:
+    for line in output:
+        try:
+            event = cast("object", json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and cast("dict[str, object]", event).get("type") == "error":
+            raise AgentInvocationError(agent_name, int(handle.returncode or 0), "", output)
+
+
+def _accepts_implicit_development_exit(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    output: list[str],
+    opts: CompletionCheckOptions,
+    exit_state: AgentExecutionState,
+    teardown: ProcessTeardown | None,
+    *,
+    waited_on_child: bool = False,
+) -> bool:
+    if (
+        waited_on_child
+        or exit_state != AgentExecutionState.RESUMABLE_CONTINUE
+        or not is_implicit_development_exit(opts.required_artifact)
+    ):
+        return False
+    _raise_if_transport_reported_error(handle, agent_name, output)
+    _raise_if_pi_reported_failed_exit(handle, agent_name, output, teardown)
+    return True
+
+
+def _resolved_session_id(opts: CompletionCheckOptions, output: list[str]) -> str | None:
+    session_id = opts.captured_session_id or extract_transport_session_id(output)
+    if session_id is not None or not output:
+        return session_id
+    return next(
+        (
+            candidate
+            for line in output
+            if (candidate := extract_transport_session_id_with_visible_tui(line)) is not None
+        ),
+        None,
+    )
 
 
 @dataclass(frozen=True)
@@ -647,33 +650,17 @@ def check_process_result(
     _clock: Clock | None = None,
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
-    """Check subprocess return code and raise error if non-zero.
-
-    For session-continuing agents, exit 0 without required completion evidence raises
-    OpenCodeResumableExitError so the runner can continue the same session.
-    When the process exits but child agents are still running, this function
-    waits up to policy.descendant_wait_timeout_seconds for the tree to quiesce
-    before re-evaluating completion signals.
-
-    A session that opts out via ``requires_completion_evidence=False`` skips both
-    checks: it holds neither an artifact contract nor the ``artifact.submit``
-    capability behind ``declare_complete``, so a clean exit is terminal.
-
-    Args:
-        handle: Completed managed process.
-        agent_name: Name of the agent.
-        _clock: Injectable Clock for testing; production callers omit this.
-
-    Raises:
-        AgentInvocationError: If process exited with non-zero code.
-        OpenCodeResumableExitError: If the agent session exited without required
-            completion evidence and no child agents are still running.
-    """
+    """Validate one terminal agent process result and its completion evidence."""
     returncode = terminal_returncode(handle)
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
-    _raise_if_quota_exhausted(agent_name, stderr_text, parsed_output)
+    raise_if_quota_exhausted(
+        agent_name,
+        stderr_text,
+        parsed_output,
+        include_output=returncode != 0,
+    )
     if returncode != 0:
         if credentials_failure_needs_broken_exit(
             stderr_text,
@@ -729,6 +716,16 @@ def check_process_result(
 
     opts = check_options
     if opts is not None and not opts.requires_completion_evidence:
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=opts.explicit_completion_seen,
+        )
+        _raise_if_pi_reported_failed_exit(
+            handle,
+            agent_name,
+            bounded_output,
+            process_teardown,
+        )
         # The session had no way to leave completion evidence and no caller
         # waiting to read it: a clean exit is the whole signal.
         return
@@ -763,6 +760,17 @@ def check_process_result(
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )
+        descendants_still_active = False
+
+        if _accepts_implicit_development_exit(
+            handle,
+            agent_name,
+            bounded_output,
+            opts,
+            exit_state,
+            process_teardown,
+        ):
+            return
 
         if (
             exit_state == AgentExecutionState.RESUMABLE_CONTINUE
@@ -789,8 +797,26 @@ def check_process_result(
                 clock=_clock,
                 teardown=process_teardown,
             )
+            descendants_still_active = (
+                opts.execution_strategy.classify_exit(
+                    handle,
+                    signals,
+                    liveness_probe=opts.liveness_probe,
+                )
+                == AgentExecutionState.WAITING_ON_CHILD
+            )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            if _accepts_implicit_development_exit(
+                handle,
+                agent_name,
+                bounded_output,
+                opts,
+                exit_state,
+                process_teardown,
+                waited_on_child=descendants_still_active,
+            ):
+                return
             _raise_if_broken_agent_exit(
                 handle,
                 agent_name,
@@ -799,27 +825,13 @@ def check_process_result(
                 stderr_text=stderr_text,
                 teardown=process_teardown,
             )
-            session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
-            if session_id is None and bounded_output:
-                # PTY fallback recovers ANSI-wrapped session IDs from bounded output.
-                for line in bounded_output:
-                    candidate = extract_transport_session_id_with_visible_tui(line)
-                    if candidate is not None:
-                        session_id = candidate
-                        break
-            if _has_pi_context_exhaustion_signal(agent_name, bounded_output):
-                raise PiContextExhaustedExitError(agent_name)
-            # A dead provider is NOT a resumable session: resuming it
-            # relaunches the same agent against the same dead provider,
-            # which is the infinite-retry loop this guard exists to break.
-            provider_failure = _pi_provider_failure_reason(agent_name, bounded_output)
-            if provider_failure is not None:
-                _teardown_subtree_if_pid_available(
-                    handle,
-                    issuer=f"invoke:completion:{agent_name}",
-                    teardown=process_teardown,
-                )
-                raise PiProviderFailureExitError(agent_name, provider_failure)
+            session_id = _resolved_session_id(opts, bounded_output)
+            _raise_if_pi_reported_failed_exit(
+                handle,
+                agent_name,
+                bounded_output,
+                process_teardown,
+            )
             raise OpenCodeResumableExitError(
                 agent_name,
                 session_id=session_id,
@@ -860,6 +872,15 @@ def check_process_result(
             handle, signals, liveness_probe=opts.liveness_probe
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            if _accepts_implicit_development_exit(
+                handle,
+                agent_name,
+                bounded_output,
+                opts,
+                exit_state,
+                process_teardown,
+            ):
+                return
             _teardown_subtree_if_pid_available(
                 handle,
                 issuer=f"invoke:completion:{agent_name}",
@@ -889,33 +910,6 @@ _SESSION_ID_TOKEN_REGEX = r"[A-Za-z0-9._:\-]{4,}"
 
 
 def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str | None:
-    """Return the rejected session id extracted from a stale-session failure.
-
-    Scans ``exc.stderr`` and ``exc.parsed_output`` for a session id that
-    appears immediately after one of the canonical
-    ``SESSION_NOT_FOUND_SUBSTRINGS`` markers. Recognized shapes (single
-    source of truth -- the marker vocabulary is the same vocabulary the
-    classifier uses to set ``reset_session=True``):
-
-    - ``"Session not found: <id>"``
-    - ``"Session not found for ID: <id>"`` (label-separated variant
-      already exercised in
-      ``tests/test_phases_retry_on_stale_session.py``)
-    - ``"Unknown session: <id>"``
-    - ``"No conversation found with session ID: <id>"``
-    - ``"session does not exist: <id>"``
-
-    The id suffix is required to look id-shaped (the canonical session-id
-    character class shared with :mod:`ralph.agents.invoke._session` --
-    alphanumeric plus ``-`` / ``_`` / ``.`` / ``:``, length >= 4) so a
-    coincidental substring (e.g. the word "session" in a free-form error
-    message) is NOT picked up, but valid transport session ids
-    containing ``.`` or ``:`` ARE surfaced. AC-02.
-
-    Returns the first matching id, or ``None`` when no canonical
-    stale-session marker is present. Single source of truth so the
-    operator WARNING line is consistent across all stale-session exits.
-    """
     # Match "<marker>(<optional label>)<sep><id>" where <marker> is one of
     # the canonical SESSION_NOT_FOUND_SUBSTRINGS (case-insensitive),
     # <optional label> is a bounded label such as " for ID" / " ID" /

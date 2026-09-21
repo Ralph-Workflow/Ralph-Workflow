@@ -58,6 +58,28 @@ def test_defaults_start_at_development_and_preserve_pre_warning_retry_elapsed() 
     assert retry.target_phase == "development"
 
 
+def test_inactive_retained_timer_starts_fresh_after_development_commit() -> None:
+    policy = _policy()
+    retained = PipelineState(
+        phase="development_analysis",
+        dev_timebox_active=False,
+        dev_timebox_consumed_seconds=4199.0,
+        dev_timebox_started_at_epoch=1000.0,
+    )
+
+    decision = apply_development_timebox(
+        retained,
+        "development",
+        policy=policy,
+        routing_timing=RoutingTiming(0.0, 4201.0, current_epoch=5201.0),
+    )
+
+    assert decision.timing_started is True
+    assert decision.redirected is False
+    assert decision.state.dev_timebox_consumed_seconds == 0.0
+    assert decision.state.dev_timebox_started_at_epoch == 5201.0
+
+
 def test_checkpoint_restore_keeps_original_development_start_epoch() -> None:
     from dataclasses import dataclass
 
@@ -410,6 +432,15 @@ def test_development_commit_ends_phase_timer_without_resetting_cycle_timer() -> 
     assert committed.phase == "development_commit"
     assert committed.dev_timebox_active is False
     assert committed.cycle_timebox_active is True
+
+    folded = runner_module._fold_development_elapsed(
+        final_commit,
+        committed,
+        delta_seconds=3.0,
+        timing_enabled=True,
+    )
+    assert folded.dev_timebox_consumed_seconds == 0.0
+    assert folded.dev_timebox_started_at_epoch is None
 
     completed, _ = reducer_reduce(
         state,

@@ -82,6 +82,7 @@ from ralph.agents.invoke._pty_helpers import (
 )
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
+from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
 from ralph.agents.invoke._runtime_resolvers import RUNTIME_RESOLVERS
 from ralph.agents.invoke._session import (
     TURN_BOUNDARY_MARKER,
@@ -906,6 +907,7 @@ __all__ = [
     "policy_from_options",
     "prepare_codex_home_with_upstreams",
     "provider_allowed_mcp_tool_names",
+    "raise_if_quota_exhausted",
     "raise_on_relay_health_error",
     "read_lines_from_process",
     "recovery_action_for_failure_reason",

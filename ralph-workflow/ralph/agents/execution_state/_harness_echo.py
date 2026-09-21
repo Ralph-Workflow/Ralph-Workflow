@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import cast
+
+from ralph.checked_accessors import as_mapping
 
 HARNESS_ECHO_MARKERS: tuple[str, ...] = ("<|user|>", "<|im_start|>", "[INST]")
 _SHELL_PROMPT_PREFIXES: tuple[str, ...] = ("> ", "$ ", "% ", "# ")
@@ -11,7 +14,6 @@ _SENTENCE_BOUNDARY: re.Pattern[str] = re.compile(r"(?<=[.!?])\s+")
 # A first/last sentence pair requires at least two sentences. Kept at module
 # scope so PLR2004 does not flag the threshold literal.
 _MIN_SENTENCE_PAIR = 2
-_USER_MESSAGE_START = re.compile(r'"type"\s*:\s*"message_start".*"role"\s*:\s*"user"')
 
 
 def _looks_like_chat_template_marker(line: str) -> bool:
@@ -49,8 +51,31 @@ def is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
     )
 
 
+def _event_role(event: object) -> str | None:
+    try:
+        mapping = as_mapping(event)
+        direct_role = mapping.get("role")
+        if isinstance(direct_role, str):
+            return direct_role
+        message = as_mapping(mapping.get("message"))
+        nested_role = message.get("role")
+        return nested_role if isinstance(nested_role, str) else None
+    except TypeError:
+        return None
+
+
 def is_user_prompt_event_line(line: str) -> bool:
-    return _USER_MESSAGE_START.search(line) is not None
+    """Return whether a transport event carries the invoking user prompt."""
+    try:
+        raw_event = cast(
+            "object", json.loads(line)
+        )  # cast-policy: seam: json.loads returns Any at a third-party transport boundary
+        event = as_mapping(raw_event)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False
+    return event.get("type") in {"user", "message_start", "message_end"} and _event_role(
+        event
+    ) == "user"
 
 
 __all__ = ["HARNESS_ECHO_MARKERS", "is_prompt_echo_line", "is_user_prompt_event_line"]

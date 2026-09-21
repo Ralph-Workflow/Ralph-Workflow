@@ -11,13 +11,21 @@ MCP-closure rules cannot silently regress.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import BuildCommandOptions, CompletionCheckOptions, check_process_result
+from ralph.agents.invoke import (
+    AgentInvocationError,
+    BuildCommandOptions,
+    CompletionCheckOptions,
+    PiContextExhaustedExitError,
+    PiProviderFailureExitError,
+    check_process_result,
+)
 from ralph.agents.invoke._command_builders import PiCommandBuilder
 from ralph.agents.invoke._runtime_resolvers import (
     RUNTIME_RESOLVERS,
@@ -446,15 +454,13 @@ class TestPiRuntimeResolver:
 
 
 class TestPiCompletionSemantics:
-    def test_pi_transport_treats_clean_exit_as_implicit_completion(self) -> None:
+    def test_pi_transport_enforces_completion_evidence(self) -> None:
         strategy = strategy_for_transport(AgentTransport.PI)
 
         assert strategy.supports_session_continuation() is False
-        assert strategy.supports_completion_enforcement() is False
+        assert strategy.supports_completion_enforcement() is True
 
-    def test_clean_exit_does_not_resume_pi_to_obtain_completion_sentinel(
-        self, tmp_path: Path
-    ) -> None:
+    def test_clean_planning_exit_without_evidence_is_rejected(self, tmp_path: Path) -> None:
         strategy = strategy_for_transport(AgentTransport.PI)
         handle = _FakeHandle(returncode=0)
         required = RequiredArtifact(
@@ -465,21 +471,133 @@ class TestPiCompletionSemantics:
             normalizer=None,
         )
 
+        with pytest.raises(AgentInvocationError):
+            check_process_result(
+                handle,
+                "pi",
+                parsed_output=[
+                    '{"type":"session","id":"pi-session-123","version":3}',
+                    '{"type":"agent_end","messages":[]}',
+                ],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=required,
+                    captured_session_id="pi-session-123",
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )
+
+    @pytest.mark.parametrize(
+        "transport",
+        (
+            AgentTransport.PI,
+            AgentTransport.CURSOR,
+            AgentTransport.AGY,
+            AgentTransport.KIMI,
+            AgentTransport.OPENCODE,
+            AgentTransport.CLAUDE_INTERACTIVE,
+        ),
+    )
+    def test_clean_development_exit_is_implicit_completion(
+        self,
+        tmp_path: Path,
+        transport: AgentTransport,
+    ) -> None:
+        required = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=".agent/artifacts/development_result.md",
+            markdown_path=None,
+            normalizer=None,
+        )
+
         check_process_result(
-            handle,
-            "pi",
-            parsed_output=[
-                '{"type":"session","id":"pi-session-123","version":3}',
-                '{"type":"agent_end","messages":[]}',
-            ],
+            _FakeHandle(returncode=0),
+            transport.value,
+            parsed_output=['{"type":"agent_end","messages":[]}'],
             check_options=CompletionCheckOptions(
-                execution_strategy=strategy,
+                execution_strategy=strategy_for_transport(transport),
                 workspace_path=tmp_path,
                 required_artifact=required,
-                captured_session_id="pi-session-123",
                 policy=TimeoutPolicy(
                     idle_timeout_seconds=None,
                     parent_exit_grace_seconds=0.0,
                 ),
             ),
         )
+
+    @pytest.mark.parametrize(
+        ("stop_reason", "error_message", "error_type"),
+        (
+            ("error", "Connection error.", PiProviderFailureExitError),
+            ("length", None, PiContextExhaustedExitError),
+        ),
+    )
+    def test_pi_development_failure_is_not_implicit_completion(
+        self,
+        tmp_path: Path,
+        stop_reason: str,
+        error_message: str | None,
+        error_type: type[Exception],
+    ) -> None:
+        required = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=".agent/artifacts/development_result.md",
+            markdown_path=None,
+            normalizer=None,
+        )
+        message: dict[str, object] = {"stopReason": stop_reason}
+        if error_message is not None:
+            message["errorMessage"] = error_message
+
+        with pytest.raises(error_type):
+            check_process_result(
+                _FakeHandle(returncode=0),
+                "pi",
+                parsed_output=[json.dumps({"type": "message_end", "message": message})],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy_for_transport(AgentTransport.PI),
+                    workspace_path=tmp_path,
+                    required_artifact=required,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )
+
+    @pytest.mark.parametrize(
+        "transport",
+        (AgentTransport.OPENCODE, AgentTransport.CURSOR),
+    )
+    def test_non_pi_error_event_is_not_implicit_development_completion(
+        self, tmp_path: Path, transport: AgentTransport
+    ) -> None:
+        required = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=".agent/artifacts/development_result.md",
+            markdown_path=None,
+            normalizer=None,
+        )
+
+        with pytest.raises(AgentInvocationError):
+            check_process_result(
+                _FakeHandle(returncode=0),
+                transport.value,
+                parsed_output=['{"type":"error","error":"provider unavailable"}'],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy_for_transport(transport),
+                    workspace_path=tmp_path,
+                    required_artifact=required,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )

@@ -298,7 +298,11 @@ def conclude_development_timebox_on_route_out_of_development(
     dt = policy.development_timebox
     if dt is None or not state.dev_timebox_active or next_phase != dt.end_entry:
         return state
-    return state.copy_with(dev_timebox_active=False)
+    return state.copy_with(
+        dev_timebox_active=False,
+        dev_timebox_consumed_seconds=0.0,
+        dev_timebox_started_at_epoch=None,
+    )
 
 
 def initialize_legacy_development_timebox_on_resume(

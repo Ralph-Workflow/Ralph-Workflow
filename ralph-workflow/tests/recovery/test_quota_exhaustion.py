@@ -8,22 +8,31 @@ same-agent retry, and be surfaced by the completion gate.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import IO
 
 import pytest
 
 from ralph.agents.invoke import AgentInvocationError, check_process_result
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
+from ralph.process.manager import ManagedProcess
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 
-if TYPE_CHECKING:
-    from ralph.process.manager._managed_process import ManagedProcess
 
-
-class _CompletedProcess:
+class _CompletedProcess(ManagedProcess):
     def __init__(self, returncode: int, stderr: str) -> None:
-        self.returncode = returncode
-        self.stderr = stderr
+        self._completed_returncode = returncode
+        self._ralph_bounded_stderr = stderr
+
+    @property
+    def returncode(self) -> int:
+        return self._completed_returncode
+
+    @property
+    def stderr(self) -> IO[bytes] | None:
+        return None
+
+    def termination_issuer(self) -> None:
+        return None
 
 
 @pytest.mark.parametrize(
@@ -102,10 +111,7 @@ def test_non_quota_output_is_not_routed_as_terminal_quota(line: str) -> None:
 def test_completion_gate_reports_quota_before_missing_completion_evidence() -> None:
     with pytest.raises(AgentInvocationError) as excinfo:
         check_process_result(
-            cast(
-                "ManagedProcess",
-                _CompletedProcess(1, "RESOURCE_EXHAUSTED (code 429)"),
-            ),
+            _CompletedProcess(1, "RESOURCE_EXHAUSTED (code 429)"),
             "agy",
             ["RESOURCE_EXHAUSTED (code 429)"],
         )
@@ -122,3 +128,25 @@ def test_completion_gate_reports_quota_before_missing_completion_evidence() -> N
     assert "quota or rate limit is exhausted" in str(excinfo.value)
     assert classified.category == FailureCategory.AGENT
     assert classified.category == FailureCategory.AGENT
+
+
+def test_completion_gate_reports_provider_quota_even_after_clean_process_exit() -> None:
+    with pytest.raises(AgentInvocationError) as excinfo:
+        check_process_result(
+            _CompletedProcess(0, ""),
+            "cursor",
+            ["RetriableError: [resource_exhausted] Error; quota or rate limit is exhausted"],
+        )
+
+    assert "quota or rate limit is exhausted" in str(excinfo.value)
+
+
+def test_completion_gate_ignores_quota_text_inside_echoed_user_event() -> None:
+    with pytest.raises(AgentInvocationError) as excinfo:
+        check_process_result(
+            _CompletedProcess(1, ""),
+            "cursor",
+            ['{"type":"user","message":{"role":"user","content":"quota exhausted"}}'],
+        )
+
+    assert "quota or rate limit is exhausted" not in str(excinfo.value)

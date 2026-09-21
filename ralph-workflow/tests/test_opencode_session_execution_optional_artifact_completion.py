@@ -79,8 +79,9 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_artifact_absent_without_sentinel_is_resumable(self, tmp_path: Path) -> None:
-        """Optional artifact policy does not make a clean exit completion."""
+    def test_optional_development_artifact_absent_accepts_clean_exit(
+        self, tmp_path: Path
+    ) -> None:
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
@@ -93,23 +94,22 @@ class TestOptionalArtifactCompletion:
         handle = _FakeHandle(returncode=0, has_descendants=False)
         probe = FakeLivenessProbe(active=False)
 
-        with pytest.raises(OpenCodeResumableExitError):
-            check_process_result(
-                handle,
-                "opencode",
-                [],
-                CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    liveness_probe=probe,
-                    required_artifact=ra,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        parent_exit_grace_seconds=0.0,
-                        descendant_wait_timeout_seconds=0.0,
-                    ),
+        check_process_result(
+            handle,
+            "opencode",
+            [],
+            CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                required_artifact=ra,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
                 ),
-            )
+            ),
+        )
 
     def test_optional_artifact_malformed_present_does_not_raise(self, tmp_path: Path) -> None:
         """Optional artifact present but malformed must not raise OpenCodeResumableExitError.

@@ -150,7 +150,7 @@ def _make_pi_strategy(
 ) -> BaseExecutionStrategy:
     del _kwargs
 
-    class PiExecutionStrategy(GenericExecutionStrategy):
+    class PiExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
         def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
             return _classify_pi_activity(line) or super().classify_activity_line(line)
 
