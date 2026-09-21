@@ -15,11 +15,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.execution_state import CompletionEnforcingStrategy, strategy_for_transport
+from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import BuildCommandOptions, CompletionCheckOptions, check_process_result
 from ralph.agents.invoke._command_builders import PiCommandBuilder
-from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._runtime_resolvers import (
     RUNTIME_RESOLVERS,
     PiRuntimeResolver,
@@ -446,17 +445,14 @@ class TestPiRuntimeResolver:
         assert "await reader.cancel()" in extension_text
 
 
-class TestPiCompletionEnforcement:
-    """Pi clean exits without required artifacts must stay resumable."""
-
-    def test_pi_transport_uses_completion_enforcing_session_strategy(self) -> None:
+class TestPiCompletionSemantics:
+    def test_pi_transport_treats_clean_exit_as_implicit_completion(self) -> None:
         strategy = strategy_for_transport(AgentTransport.PI)
 
-        assert isinstance(strategy, CompletionEnforcingStrategy)
-        assert strategy.supports_session_continuation() is True
-        assert strategy.supports_completion_enforcement() is True
+        assert strategy.supports_session_continuation() is False
+        assert strategy.supports_completion_enforcement() is False
 
-    def test_missing_required_artifact_raises_resumable_exit_with_pi_session(
+    def test_clean_exit_does_not_resume_pi_to_obtain_completion_sentinel(
         self, tmp_path: Path
     ) -> None:
         strategy = strategy_for_transport(AgentTransport.PI)
@@ -469,25 +465,21 @@ class TestPiCompletionEnforcement:
             normalizer=None,
         )
 
-        with pytest.raises(OpenCodeResumableExitError) as excinfo:
-            check_process_result(
-                handle,
-                "pi",
-                parsed_output=[
-                    '{"type":"session","id":"pi-session-123","version":3}',
-                    '{"type":"agent_end","messages":[]}',
-                ],
-                check_options=CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    required_artifact=required,
-                    captured_session_id="pi-session-123",
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        parent_exit_grace_seconds=0.0,
-                    ),
+        check_process_result(
+            handle,
+            "pi",
+            parsed_output=[
+                '{"type":"session","id":"pi-session-123","version":3}',
+                '{"type":"agent_end","messages":[]}',
+            ],
+            check_options=CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=required,
+                captured_session_id="pi-session-123",
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
                 ),
-            )
-
-        assert excinfo.value.agent_name == "pi"
-        assert excinfo.value.resumable_session_id == "pi-session-123"
+            ),
+        )

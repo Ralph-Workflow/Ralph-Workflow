@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline import runner as runner_module
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_development_timebox,
@@ -107,6 +108,28 @@ def test_same_phase_retry_redirects_at_development_deadline() -> None:
     assert next_state.phase == "development_final_commit_cleanup"
     assert next_state.dev_timebox_active is False
     assert next_state.dev_timebox_redirect_reason is not None
+
+
+def test_development_timebox_regression_deadline_routes_without_cycle_timebox() -> None:
+    policy = _policy().model_copy(update={"cycle_timebox": None})
+    state = PipelineState(
+        phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=5400.0,
+    )
+
+    _, _, routing_timing, _, _ = runner_module._sample_step_routing_timing(
+        state,
+        policy,
+        None,
+        None,
+        [0.0],
+    )
+
+    redirected = redirect_expired_cycle_in_place(state, policy, routing_timing)
+    assert redirected is not None
+    next_state, _ = redirected
+    assert next_state.phase == "development_final_commit_cleanup"
 
 
 def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:

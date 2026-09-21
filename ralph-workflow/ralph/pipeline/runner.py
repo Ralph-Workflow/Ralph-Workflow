@@ -1493,7 +1493,10 @@ def _sample_development_timing(
         else 0.0
     )
     return (
-        RoutingTiming(total_elapsed_seconds=state.dev_timebox_consumed_seconds + delta),
+        RoutingTiming(
+            total_elapsed_seconds=state.dev_timebox_consumed_seconds + delta,
+            development_elapsed_seconds=state.dev_timebox_consumed_seconds + delta,
+        ),
         now,
         delta,
         policy,

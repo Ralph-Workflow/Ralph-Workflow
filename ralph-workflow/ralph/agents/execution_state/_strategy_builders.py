@@ -150,12 +150,9 @@ def _make_pi_strategy(
 ) -> BaseExecutionStrategy:
     del _kwargs
 
-    class PiExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
+    class PiExecutionStrategy(GenericExecutionStrategy):
         def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
             return _classify_pi_activity(line) or super().classify_activity_line(line)
-
-        def supports_session_continuation(self) -> bool:
-            return True
 
     return PiExecutionStrategy(
         label_scope=label_scope, registry=registry, subagent_pid_source=subagent_pid_source

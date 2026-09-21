@@ -141,7 +141,6 @@ class TestCompletionEnforcingStrategy:
     (
         AgentTransport.CLAUDE,
         AgentTransport.CLAUDE_INTERACTIVE,
-        AgentTransport.PI,
         AgentTransport.CURSOR,
         AgentTransport.AGY,
     ),

@@ -454,6 +454,44 @@ def test_runner_timeout_regression_development_retry_uses_phase_remaining_budget
     assert options.max_session_seconds == 1200.0
 
 
+def test_development_deadline_regression_short_remaining_budget_caps_idle_timeout(
+    tmp_path: Path,
+) -> None:
+    config = _make_config_full(agent_max_session_seconds=5700.0)
+    captured: dict[str, object] = {}
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="development",
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=5300.0,
+    )
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER_PROMPT.md"),
+        registry_factory=_registry_factory,
+    )
+
+    effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md"),
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=state,
+        policy_bundle=policy_bundle,
+        invoke_agent=_capture_options_factory(captured),
+        agent_invocation_error=RuntimeError,
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.max_session_seconds == 100.0
+    assert options.idle_timeout_seconds == 100.0
+
+
 def test_agent_process_restart_uses_only_the_remaining_development_budget(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -102,7 +102,6 @@ def _completion_failure_invoke(
         ("agy", AgentTransport.AGY),
         ("claude", AgentTransport.CLAUDE),
         ("cursor", AgentTransport.CURSOR),
-        ("pi", AgentTransport.PI),
         ("claude/interactive", AgentTransport.CLAUDE_INTERACTIVE),
     ],
 )

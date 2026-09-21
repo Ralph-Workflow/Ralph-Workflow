@@ -1011,7 +1011,14 @@ def _cap_development_invocation_to_phase_deadline(
         - ctx.state.dev_timebox_consumed_seconds
         - elapsed_recovery_seconds,
     )
-    return replace(options, max_session_seconds=remaining_seconds)
+    idle_timeout_seconds = options.idle_timeout_seconds
+    if idle_timeout_seconds is not None:
+        idle_timeout_seconds = min(idle_timeout_seconds, remaining_seconds)
+    return replace(
+        options,
+        idle_timeout_seconds=idle_timeout_seconds,
+        max_session_seconds=remaining_seconds,
+    )
 
 
 def required_artifact_for_invocation(
