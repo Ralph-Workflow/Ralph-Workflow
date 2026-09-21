@@ -9,8 +9,10 @@ import pytest
 
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._completion import check_process_result
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.session_bridge import scoped_reset_tool_registry_callback
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_validation import prepare_spawn_command
@@ -53,6 +55,42 @@ def test_seam_1_and_2_scoped_resets_coalesce_and_clear() -> None:
     for invalid_scope in ("unscoped", "", "   ", None):
         with pytest.raises(ValueError, match="invocation scope"):
             scoped_reset_tool_registry_callback(bridge, invalid_scope)
+
+
+def test_failed_scoped_reset_releases_scope_while_another_invocation_completes() -> None:
+    active_invocation_results: list[str] = []
+
+    def complete_active_invocation() -> None:
+        result = run_with_direct_mcp_recovery(
+            lambda _session_id, _capture: "active invocation completed",
+            max_retries=0,
+        )
+        active_invocation_results.append(result)
+
+    class _FailingResetBridge:
+        def __init__(self) -> None:
+            self.reset_calls: list[str] = []
+
+        def reset_tool_registry(self) -> None:
+            self.reset_calls.append("invocation-a")
+            complete_active_invocation()
+            raise RuntimeError("reset failed")
+
+    bridge = _FailingResetBridge()
+    reset_a = scoped_reset_tool_registry_callback(bridge, "invocation-a")
+    assert reset_a is not None
+
+    with pytest.raises(RuntimeError, match="reset failed"):
+        reset_a()
+
+    assert active_invocation_results == ["active invocation completed"]
+
+    next_bridge = _SharedBridge()
+    reset_b = scoped_reset_tool_registry_callback(next_bridge, "invocation-b")
+    assert reset_b is not None
+    reset_b()
+    assert bridge.reset_calls == ["invocation-a"]
+    assert next_bridge.resets == 1
 
 
 def test_scoped_reset_records_only_its_invocation_event() -> None:
@@ -113,6 +151,19 @@ def test_non_e2big_oserror_is_not_reclassified() -> None:
         _process_manager(_non_e2big_factory).spawn(("agent",), SpawnOptions(label="agent"))
 
     assert raised.value.errno == errno.ENOENT
+
+
+def test_errno_e2big_launch_failure_is_retryable_with_runtime_origin() -> None:
+    launch_error = AgentLaunchError(
+        "claude",
+        OSError(errno.E2BIG, "Argument list too long"),
+        payload_bytes=123,
+    )
+
+    reason = retryable_agent_failure_reason(launch_error, AgentInactivityTimeoutError)
+
+    assert launch_error.failure_origin == "runtime_launch"
+    assert reason == "a transient runtime launch failure"
 
 
 def test_seam_4_watchdog_retains_reset_causality() -> None:
