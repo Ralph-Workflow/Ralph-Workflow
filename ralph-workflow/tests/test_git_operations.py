@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from git import GitCommandError
+from git import GitCommandError, Repo
 
 from ralph.git.commit_result import CommitCreationStatus
 from ralph.git.errors import GitOperationError
@@ -31,6 +31,11 @@ from ralph.git.operations import (
     push,
     stage_all,
 )
+from ralph.pipeline.effect_router import determine_effect_from_policy
+from ralph.pipeline.effects import EmptyCommitEffect
+from ralph.pipeline.state import CommitState, PipelineState
+from ralph.policy.loader import load_policy
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _unused_pid() -> int:
@@ -162,6 +167,33 @@ def test_has_uncommitted_changes_dirty_repo(tmp_git_repo: Path) -> None:
 def test_has_uncommitted_changes_untracked_file(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "new_file.txt").write_text("new")
     assert has_uncommitted_changes(tmp_git_repo) is True
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.parametrize(
+    ("ignore_path", "ignored_path"),
+    ((".gitignore", "ignored.log"), (".git/info/exclude", "excluded.log")),
+)
+def test_ignored_only_commit_phase_selects_empty_effect(
+    tmp_git_repo: Path, ignore_path: str, ignored_path: str
+) -> None:
+    (tmp_git_repo / ignore_path).write_text(f"{ignored_path}\n", encoding="utf-8")
+    if ignore_path == ".gitignore":
+        with Repo(tmp_git_repo) as repo:
+            repo.index.add([ignore_path])
+            repo.index.commit("add ignored fixture")
+    (tmp_git_repo / ignored_path).write_text("ignored\n", encoding="utf-8")
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    policy_bundle = load_policy(defaults)
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+
+    selected = determine_effect_from_policy(
+        state,
+        policy_bundle,
+        WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo]),
+    )
+
+    assert isinstance(selected, EmptyCommitEffect)
 
 
 def test_has_uncommitted_changes_prefers_subprocess_git_status(

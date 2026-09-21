@@ -29,16 +29,22 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
 
 
-def test_default_commit_phase_returns_commit_effect_after_message_agent() -> None:
+def test_default_commit_phase_returns_commit_effect_after_message_agent(
+    monkeypatch: MonkeyPatch,
+) -> None:
     """Plan step 3 / AC-02: the real two-stage commit phase reaches CommitEffect."""
     bundle = _load_default_policy_bundle()
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+    monkeypatch.setattr(
+        "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
+    )
 
     effect = determine_effect_from_policy(
         state,
         bundle,
         WorkspaceScope(Path("/workspace")),
         config=UnifiedConfig(),
+        has_uncommitted_changes_fn=lambda _root: True,
     )
 
     assert bundle.pipeline.phases["development_commit"].role == "commit"

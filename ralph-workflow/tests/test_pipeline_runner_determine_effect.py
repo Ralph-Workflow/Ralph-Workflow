@@ -15,6 +15,7 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
+    EmptyCommitEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
     FanOutEffect,
@@ -354,14 +355,116 @@ class TestDetermineEffect:
         assert isinstance(effect, FanOutEffect)
         assert effect.work_units[0].unit_id == "unit-a"
 
-    def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
+    def test_commit_phase_with_requires_commit_uses_commit_effect(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: True,
+        )
+        assert isinstance(effect, CommitEffect)
+
+    def test_empty_commit_phase_selects_no_agent_effect(self, tmp_path: Path) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: False,
+        )
+
+        assert isinstance(effect, EmptyCommitEffect)
+
+    def test_empty_commit_after_agent_invocation_selects_no_agent_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
 
         effect = runner_module.determine_effect_from_policy(
-            state, bundle, WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: False,
         )
-        assert isinstance(effect, CommitEffect)
+
+        assert isinstance(effect, EmptyCommitEffect)
+
+    def test_internal_only_commit_phase_selects_no_agent_effect(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+        artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text("stale", encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths",
+            lambda _root: [".agent/artifacts/commit_message.md", ".env"],
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: True,
+        )
+
+        assert isinstance(effect, EmptyCommitEffect)
+
+    def test_commit_inspection_failure_stops_before_agent_invocation(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+        artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text("stale", encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths",
+            lambda _root: (_ for _ in ()).throw(OSError("status unavailable")),
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: True,
+        )
+
+        assert isinstance(effect, ExitFailureEffect)
+        assert not artifact_path.exists()
+
+    def test_commit_inspection_failure_after_agent_invocation_discards_stale_artifact(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+        artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text("stale", encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths",
+            lambda _root: (_ for _ in ()).throw(OSError("status unavailable")),
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: True,
+        )
+
+        assert isinstance(effect, ExitFailureEffect)
+        assert not artifact_path.exists()
 
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
@@ -470,7 +573,9 @@ class TestDetermineEffect:
         assert effect.agent_name == "claude"
         assert effect.drain == "development"
 
-    def test_commit_phase_policy_chain_wins_over_divergent_config_drain(self) -> None:
+    def test_commit_phase_policy_chain_wins_over_divergent_config_drain(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -498,12 +603,16 @@ class TestDetermineEffect:
             agent_chains={"commit_chain": ["ccs/mm"]},
             agent_drains={"development_commit": "commit_chain"},
         )
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
+        )
 
         effect = runner_module.determine_effect_from_policy(
             state,
             bundle,
             WorkspaceScope("/tmp/worktree"),
             config=config,
+            has_uncommitted_changes_fn=lambda _root: True,
         )
 
         assert isinstance(effect, InvokeAgentEffect)

@@ -1009,7 +1009,7 @@ class TestExecuteCommitEffect:
             tmp_path,
         )
 
-        assert result == PipelineEvent.COMMIT_SKIPPED
+        assert result == PipelineEvent.COMMIT_SUCCESS
         stage_all.assert_not_called()
         create_commit.assert_not_called()
         assert not message_file.exists()

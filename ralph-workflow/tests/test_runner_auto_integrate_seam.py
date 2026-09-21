@@ -19,7 +19,7 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import auto_integrate_agent
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect
+from ralph.pipeline.effects import CommitEffect, EmptyCommitEffect, ExitSuccessEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
@@ -291,6 +291,39 @@ def test_commit_skipped_still_integrates_via_boundary_hook(
     )
 
     hook.assert_called_once()
+    assert result is outcome
+
+
+def test_empty_commit_success_still_integrates_via_boundary_hook(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
+    hook = MagicMock(return_value=outcome)
+    clear_baseline = MagicMock()
+    commit_integration = MagicMock()
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    monkeypatch.setattr(runner_module, "clear_cycle_baseline", clear_baseline)
+    monkeypatch.setattr(runner_module, "auto_integrate_after_commit", commit_integration)
+    state = MagicMock()
+    state.phase = "development_commit"
+    state.rebase = RebaseState()
+    commit_def = _load_default_policy_bundle().pipeline.phases["development_commit"]
+
+    result = runner_module._maybe_auto_integrate(
+        effect=EmptyCommitEffect(),
+        event=PipelineEvent.COMMIT_SUCCESS,
+        commit_phase_def=commit_def,
+        config=MagicMock(),
+        workspace_scope=MagicMock(),
+        state=state,
+        display=MagicMock(),
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+    )
+
+    clear_baseline.assert_called_once()
+    hook.assert_called_once()
+    commit_integration.assert_not_called()
     assert result is outcome
 
 

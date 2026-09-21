@@ -642,11 +642,6 @@ def test_check_workspace_files_shows_distinct_linked_worktree_config_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Plan S-4: diagnose shows each linked-worktree config layer by absolute path."""
-    stream = StringIO()
-    console = Console(
-        file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME, width=240
-    )
-    ctx = make_display_context(console=console, env={})
     main_checkout = tmp_path / "main"
     linked_worktree = tmp_path / "feature"
     main_checkout.mkdir()
@@ -655,6 +650,15 @@ def test_check_workspace_files_shows_distinct_linked_worktree_config_paths(
         linked_worktree,
         local_config_path=main_checkout / ".agent" / "ralph-workflow.toml",
     )
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        force_terminal=False,
+        color_system=None,
+        theme=RALPH_THEME,
+        width=max(240, len(str(scope.worktree_config_path)) + len(str(scope.project_config_path))),
+    )
+    ctx = make_display_context(console=console, env={})
     monkeypatch.setattr(diagnose_module, "resolve_workspace_scope", lambda: scope)
 
     diagnose_module.check_workspace_files(display_context=ctx)

@@ -156,7 +156,7 @@ def execute_commit_effect(
         if not _has_commit_work_fn(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             cleanup_commit_message_artifacts(repo_root)
-            return PipelineEvent.COMMIT_SKIPPED
+            return PipelineEvent.COMMIT_SUCCESS
         try:
             before_paths = tuple(_changed_commit_paths(repo_root))
         except Exception:
@@ -418,18 +418,6 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
 def cleanup_commit_message_artifacts(repo_root: Path) -> None:
     """Remove commit message artifacts left by a prior commit phase."""
     delete_commit_message_artifacts(repo_root)
-
-
-def should_early_skip_commit(workspace_root: Path) -> bool:
-    """Return True iff the worktree is clean and the commit phase should be skipped early.
-
-    Fails open (returns False) when git state cannot be inspected so the pipeline
-    falls back to the late-skip guard in execute_commit_effect().
-    """
-    try:
-        return not has_uncommitted_changes(workspace_root)
-    except Exception:
-        return False
 
 
 def commit_effect(workspace_root: Path) -> CommitEffect:

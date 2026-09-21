@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.operations import has_uncommitted_changes
+from ralph.git.commit_cleanup import is_recognized_secret_path
+from ralph.git.operations import has_uncommitted_changes, list_changed_paths
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -17,6 +18,7 @@ from ralph.mcp.artifacts.plan._validation import (
     is_noop_plan,
     normalize_plan_artifact_content,
 )
+from ralph.phases._agent_internal_paths import is_agent_internal_path
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
@@ -24,7 +26,7 @@ from ralph.phases.artifacts import (
 )
 from ralph.pipeline.effects import (
     CommitEffect,
-    EarlySkipCommitEffect,
+    EmptyCommitEffect,
     ExhaustedAnalysisPhaseAdvanceEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -278,14 +280,13 @@ def _commit_phase_effect(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
+    completed_effect = _empty_commit_effect(
+        workspace_scope.root, has_uncommitted_changes_fn=has_uncommitted_changes_fn
+    )
+    if completed_effect is not None:
+        return completed_effect
     if state.commit.agent_invoked:
         return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
-    if _should_early_skip_commit(
-        workspace_scope.root,
-        has_uncommitted_changes_fn=has_uncommitted_changes_fn,
-    ):
-        delete_commit_message_artifacts(workspace_scope.root)
-        return EarlySkipCommitEffect()
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
@@ -297,15 +298,37 @@ def _commit_phase_effect(
     )
 
 
-def _should_early_skip_commit(
+def _empty_commit_effect(
+    workspace_root: Path,
+    *,
+    has_uncommitted_changes_fn: Callable[[Path], bool],
+) -> EmptyCommitEffect | ExitFailureEffect | None:
+    empty_commit = _is_empty_commit_phase(
+        workspace_root, has_uncommitted_changes_fn=has_uncommitted_changes_fn
+    )
+    if empty_commit is None:
+        delete_commit_message_artifacts(workspace_root)
+        return ExitFailureEffect(reason="Unable to inspect effective commit work")
+    if empty_commit:
+        delete_commit_message_artifacts(workspace_root)
+        return EmptyCommitEffect()
+    return None
+
+
+def _is_empty_commit_phase(
     workspace_root: Path,
     *,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
-) -> bool:
+) -> bool | None:
     try:
-        return not has_uncommitted_changes_fn(workspace_root)
+        if not has_uncommitted_changes_fn(workspace_root):
+            return True
+        return not any(
+            not is_recognized_secret_path(path) and not is_agent_internal_path(path)
+            for path in list_changed_paths(workspace_root)
+        )
     except Exception:
-        return False
+        return None
 
 
 def _agent_name_for_phase_from_policy(

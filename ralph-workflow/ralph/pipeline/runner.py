@@ -114,8 +114,8 @@ from ralph.pipeline.effect_router import (
 )
 from ralph.pipeline.effects import (
     CommitEffect,
-    EarlySkipCommitEffect,
     Effect,
+    EmptyCommitEffect,
     ExhaustedAnalysisPhaseAdvanceEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -387,10 +387,10 @@ def _execute_effect(
         return _execute_commit_effect_from_deps(
             effect, pipeline_deps, workspace_scope, display, verbosity
         )
-    if isinstance(effect, EarlySkipCommitEffect):
-        logger.info("Skipping commit early: worktree is clean")
+    if isinstance(effect, EmptyCommitEffect):
+        logger.info("Completing empty commit without invoking a commit agent")
         _cleanup_commit_message_artifacts(workspace_scope.root)
-        return PipelineEvent.COMMIT_SKIPPED
+        return PipelineEvent.COMMIT_SUCCESS
     if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
         if state is not None and policy_bundle is not None:
             bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
@@ -1061,7 +1061,7 @@ def _maybe_auto_integrate(
     pre-narrow; the helper narrows via ``isinstance`` / ``in`` itself.
     """
     if not (
-        isinstance(effect, CommitEffect)
+        isinstance(effect, (CommitEffect, EmptyCommitEffect))
         and commit_phase_def is not None
         and commit_phase_def.role == "commit"
         and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
@@ -1081,6 +1081,18 @@ def _maybe_auto_integrate(
             display_context=display_context,
         )
     clear_cycle_baseline(workspace_scope.root)
+    if isinstance(effect, EmptyCommitEffect):
+        return _integrate_on_phase_transition(
+            event=PipelineEvent.COMMIT_SKIPPED,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
     # The commit-boundary integration (crash record + full sequence
     # keyed to a NEW commit) fires only on COMMIT_SUCCESS. An
     # early-skipped commit still means a clean tree, so the boundary

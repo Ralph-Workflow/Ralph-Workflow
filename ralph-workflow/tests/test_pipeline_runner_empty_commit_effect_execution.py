@@ -13,7 +13,7 @@ from rich.console import Console
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
-    EarlySkipCommitEffect,
+    EmptyCommitEffect,
 )
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
@@ -124,8 +124,8 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-class TestEarlySkipCommitEffectExecution:
-    def test_execute_returns_commit_skipped(
+class TestEmptyCommitEffectExecution:
+    def test_execute_returns_commit_success_without_spawning_an_agent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(runner_module, "cleanup_commit_message_artifacts", lambda _root: None)
@@ -133,12 +133,12 @@ class TestEarlySkipCommitEffectExecution:
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
         result = runner_module.execute_effect(
-            EarlySkipCommitEffect(),
+            EmptyCommitEffect(),
             config,
             workspace_scope,
         )
 
-        assert result == PipelineEvent.COMMIT_SKIPPED
+        assert result == PipelineEvent.COMMIT_SUCCESS
 
     def test_execute_cleans_up_stale_commit_artifacts(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -153,7 +153,7 @@ class TestEarlySkipCommitEffectExecution:
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
         runner_module.execute_effect(
-            EarlySkipCommitEffect(),
+            EmptyCommitEffect(),
             config,
             workspace_scope,
         )

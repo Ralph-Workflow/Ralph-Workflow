@@ -787,10 +787,10 @@ ralph.pipeline.effects.commit_effect
    :members:
    :show-inheritance:
 
-ralph.pipeline.effects.early_skip_commit_effect
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.pipeline.effects.empty_commit_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.pipeline.effects.early_skip_commit_effect
+.. automodule:: ralph.pipeline.effects.empty_commit_effect
    :members:
    :show-inheritance:
 

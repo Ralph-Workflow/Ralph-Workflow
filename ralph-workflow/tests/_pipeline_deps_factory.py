@@ -241,7 +241,7 @@ def make_test_pipeline_deps(
         catchup_worker_factory=lambda _config, _workspace_root: None,
         startup_rebase_resolver=lambda _config, _workspace_scope: None,
         auto_integrate_resolver=lambda _config, _workspace_scope, _rebase: None,
-        commit_effect_executor=lambda _effect, _workspace_root: PipelineEvent.COMMIT_SKIPPED,
+        commit_effect_executor=lambda _effect, _workspace_root: PipelineEvent.COMMIT_SUCCESS,
         has_uncommitted_changes=lambda _workspace_root: True,
         process_teardown=process_teardown or (lambda: None),
     )
