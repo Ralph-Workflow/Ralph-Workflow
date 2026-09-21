@@ -11,10 +11,6 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
-from ralph.mcp.server._session_wrapup import (
-    request_completion_admission,
-    reset_completion_admissions,
-)
 from ralph.mcp.tools.bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
@@ -87,10 +83,13 @@ def test_epoch_warning_appends_development_timebox_notice(
     assert "DEVELOPMENT-TIMEBOX WARNING" not in _text(_call(server, "read_file"))
 
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
-    assert "DEVELOPMENT-TIMEBOX WARNING" in _text(_call(server, "read_file", "warned"))
+    warning = _text(_call(server, "read_file", "warned"))
+    assert "DEVELOPMENT-TIMEBOX WARNING" in warning
+    assert "literally impossible" in warning
+    assert "exhausted budget never qualify" in warning
 
 
-def test_reset_clears_admission_but_does_not_reset_epoch_warning(
+def test_reset_preserves_epoch_warning_without_completion_confirmation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
@@ -99,19 +98,10 @@ def test_reset_clears_admission_but_does_not_reset_epoch_warning(
     )
     server = _server(tmp_path)
 
-    assert "COMPLETION ADMISSION REQUIRED" in _text(_call(server, "declare_complete", "first"))
+    assert "Task declared complete" in _text(_call(server, "declare_complete", "first"))
     server.reset_session_budget()
-    assert "COMPLETION ADMISSION REQUIRED" in _text(_call(server, "declare_complete", "after-reset"))
+    assert "Task declared complete" in _text(_call(server, "declare_complete", "after-reset"))
     assert "DEVELOPMENT-TIMEBOX WARNING" in _text(_call(server, "read_file", "notice-after-reset"))
-
-
-def test_completion_admissions_are_identity_scoped_and_resettable() -> None:
-    reset_completion_admissions()
-    assert request_completion_admission(("session", "run")) is True
-    assert request_completion_admission(("session", "run")) is False
-    assert request_completion_admission(("other", "run")) is True
-    reset_completion_admissions()
-    assert request_completion_admission(("session", "run")) is True
 
 
 def test_reset_wrapup_notification_preserves_wire_compatibility(tmp_path: Path) -> None:

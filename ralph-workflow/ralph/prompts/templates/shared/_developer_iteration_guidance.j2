@@ -7,12 +7,16 @@ Small, proven increments are the execution method; they are never a reason to
 stop. Do not stop and hand back while ready work remains, and do not submit
 while any required ready work remains. `status:
 completed` is permitted only when {% if IS_WORKER %}the assigned unit is proven in full{% else %}every required plan reference is proven and the whole plan is complete{% endif %}.
-Treat `partial`, `blocked`, or `failed` as a last resort that requires a
-concrete, evidence-backed blocker or a genuinely exhausted run budget — never
-because progress feels slow, some progress was made, the next step looks hard,
-or you are merely uncertain. When forced to stop short, state exactly what
-remains and why so the next invocation can continue without re-deriving the
-context; never describe partial progress as completion.
+Treat `partial`, `blocked`, or `failed` as a last resort. Use `partial` only
+when remaining required work is literally impossible to complete through any
+developer action available in this run. Physical-world action (for example, unplugging a power
+cable), a credential or decision only the operator can provide, or an external
+system change outside your authority can qualify when backed by concrete
+evidence. Difficulty, elapsed time, an exhausted run budget, slow progress, or
+uncertainty never qualifies while an available developer action could advance
+the plan. When forced to stop short, state exactly what remains, the external
+action required, and the evidence that no in-scope developer action can
+complete it; never describe partial progress as completion.
 
 ## Plan fidelity
 

@@ -72,8 +72,6 @@ def test_developer_iteration_guidance_defaults_to_completion() -> None:
     assert guidance.index("Completion is the default outcome") < guidance.index("Plan fidelity")
     assert "`status:\ncompleted`" in guidance
     assert "last resort" in guidance
-    assert "genuinely exhausted" in guidance
-    assert (
-        "never\nbecause progress feels slow" in guidance
-        or "never because progress feels slow" in guidance
-    )
+    assert "exhausted run budget" in guidance
+    assert "literally impossible" in guidance
+    assert "slow progress" in guidance

@@ -99,14 +99,17 @@ focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
 Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
-Before the phase-wide development-timebox warning (`RALPH_DEV_WARN_EPOCH`,
-default 70 minutes), only a fully proved `status: completed` result is accepted;
-keep working on ready unit work instead
-of submitting `partial` or `failed`. At or after the warning, those incomplete
-statuses remain available under the following handoff contract. A `status: partial` or `status: failed` result is free-form below the frontmatter. Use `partial` for a safe worker-local
-continuation and include `## Next Steps` plus `## Continuation`. Use `failed`
-when no safe worker-local continuation exists; report the blocker and evidence
-without promising another iteration. Neither status decides the run outcome.
+A `status: partial` or `status: failed` result is accepted at any point and is
+free-form below the frontmatter, but neither is a shortcut. Use `partial` only
+when the assigned unit cannot be completed by any developer action available
+in this run. Physical-world action, an operator-only credential or decision,
+or an external system change outside your authority can qualify when supported
+by evidence; difficulty, elapsed time, an exhausted budget, or ready work you
+can still perform cannot. Include `## Next Steps` plus `## Continuation` and
+name the external action required. Then call `declare_complete` once with
+`partial_reason=` naming that literal impossibility. Use `failed` when no safe worker-local
+continuation exists; report the blocker and evidence without promising another
+iteration. Neither status decides the run outcome.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
 

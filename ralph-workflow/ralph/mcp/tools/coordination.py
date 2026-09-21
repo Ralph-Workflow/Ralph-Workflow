@@ -59,10 +59,6 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.multimodal import ImageContent
-from ralph.mcp.server._session_wrapup import (
-    request_completion_admission,
-    session_warning_fired,
-)
 from ralph.mcp.tools._validation_retry_hints import validation_retry_hint_file
 from ralph.recovery.retry_prompt import VALIDATION_FAILURE_BANNER
 
@@ -336,7 +332,8 @@ def handle_declare_complete(
         workspace: Workspace surface whose root resolves
             ``.agent/completion_seen_<run_id>.json``.
         params: Mapping with optional ``summary`` (string, defaults to
-            ``"No summary provided"``).
+            ``"No summary provided"``) and ``partial_reason`` (string), which
+            records the impossible external action blocking a partial result.
         now_fn: Optional injected wall-clock provider for the timestamp
             in the response. Defaults to ``_timestamp``.
 
@@ -358,19 +355,8 @@ def handle_declare_complete(
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
-    if session_warning_fired() and request_completion_admission(
-        (session.session_id, session.run_id)
-    ):
-        return ToolResult(
-            content=[
-                ToolContent.text_content(
-                    "⚠️ COMPLETION ADMISSION REQUIRED — You are declaring that every remaining "
-                    "item is complete. Do not confirm while actionable incomplete work remains. "
-                    "Call declare_complete a second time deliberately to confirm."
-                )
-            ],
-            is_error=False,
-        )
+    partial_reason_value = params.get("partial_reason")
+    partial_reason = partial_reason_value if isinstance(partial_reason_value, str) else None
     # RFC-013 P3: thread the broker-owned secret through the live
     # write path so the sentinel payload includes an HMAC binding the
     # run id to the secret. ``session.broker_secret`` is ``None`` when
@@ -421,7 +407,12 @@ def handle_declare_complete(
     message = (
         "Task declared complete: "
         f"session_id={session.session_id}, summary='{_quotable_summary(summary)}', "
-        f"timestamp={now_fn()}\n"
+        + (
+            f"partial_reason='{_quotable_summary(partial_reason)}', "
+            if partial_reason
+            else ""
+        )
+        + f"timestamp={now_fn()}\n"
         "[Completion event emitted to pipeline]"
     )
     return ToolResult(content=[ToolContent.text_content(message)], is_error=False)

@@ -73,15 +73,20 @@ that a step is unnecessary are invalid rationales for `not_applicable`.
   including `done` or `wrong`, is a hard error. The diagnostic names all
   accepted values; correct the frontmatter and resubmit.
 
-## Session warning boundary
+## Partial and failed outcomes
 
-Before the uninterrupted development phase reaches its configured
-70-minute development-timebox warning, only `status: completed` is accepted,
-and its Plan Items Proven entries must exactly cover every required plan
-reference. The pipeline publishes the warning epoch once for the phase, so
-validation retries cannot reset the boundary. At or after the warning,
-`partial` and `failed` remain available under the existing incomplete-work
-rules below.
+`status: partial` and `status: failed` are accepted at any point, but neither is
+a shortcut around work the developer can perform. Use `partial` only when
+verified progress exists and remaining required work cannot be completed by
+any developer action available in the current run. Examples include a
+physical-world action such as unplugging a power cable, an operator-only
+credential or decision, or an external system change outside the developer's
+authority. Difficulty, elapsed time, an exhausted run budget, or ready work
+the developer can still perform does not qualify. After submitting `partial`,
+call `declare_complete` once with `partial_reason` naming that literal
+impossibility and required external action; no second confirmation call is
+required. Use `failed` when no safe actionable continuation exists under
+current evidence or authority.
 
 ## Sections
 

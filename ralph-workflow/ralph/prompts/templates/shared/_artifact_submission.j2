@@ -44,4 +44,7 @@ Complete all five steps.
 
    Optional `summary` param. Example:
    `{{ DECLARE_COMPLETE_TOOL_NAME }}(summary="{{ artifact_type }}")`.
+   For a `development_result` with `status: partial`, call it once with a
+   `partial_reason` naming the literal impossibility and required external
+   action. Example: `{{ DECLARE_COMPLETE_TOOL_NAME }}(summary="development_result", partial_reason="A technician must physically unplug the inaccessible power cable.")`.
 {%- endmacro %}

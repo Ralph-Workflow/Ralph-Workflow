@@ -66,15 +66,21 @@ Copy the IDs from the source artifact — do not invent or renumber them.
 
 ## Core Flow
 
-1. Write the document. Before the phase-wide 70-minute development-timebox
-   warning, only `completed` with every required plan proof is accepted. The
-   published warning epoch survives validation retries. At or after that
-   warning, `partial` and `failed` are available again. For
-   `completed`, every section rule and every plan/analysis proof above is
-   enforced. For `partial`, `## Summary` is required and — under a
+1. Write the document. `completed`, `partial`, and `failed` are accepted at
+   any point. For `completed`, every section rule and every plan/analysis proof
+   above is enforced. `partial` is a discouraged last resort: use it only when
+   remaining required work cannot be completed by any developer action
+   available in this run, such as a physical-world action, an operator-only
+   credential or decision, or an external system change outside your
+   authority. Difficulty, elapsed time, an exhausted run budget, or ready work
+   you can still perform does not qualify. For `partial`, `## Summary` is
+   required and — under a
    cycle-timebox warning — so is `## Incomplete Work`; otherwise lead with what
    you did, what remains (`## Next Steps`) and your
    session ID (`## Continuation`) so the next iteration can resume.
+   After submitting `partial`, call `declare_complete` once with
+   `partial_reason` naming the literal impossibility and required external
+   action. A second confirmation call is not required.
 2. Optionally `ralph_verify_md_artifact`, then
    `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
 

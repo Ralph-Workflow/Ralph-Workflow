@@ -74,7 +74,10 @@ Implement the behavior.
     assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
     assert str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") in rendered
     assert "`.agent/tmp/development_result.md`" not in rendered
-    assert "A `status: partial` or `status: failed` result is free-form" in rendered
+    assert "`status: partial` or `status: failed` result is accepted at any point" in rendered
+    assert "cannot be completed by any developer action available" in rendered
+    assert "Physical-world action" in rendered
+    assert "partial_reason=" in rendered
     assert "`## Next Steps`" in rendered
     assert "`## Continuation`" in rendered
     assert "Do not invent files or verification results." in rendered

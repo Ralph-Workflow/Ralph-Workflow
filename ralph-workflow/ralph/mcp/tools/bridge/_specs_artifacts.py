@@ -188,7 +188,13 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=DECLARE_COMPLETE_TOOL,
                 description="Declare agent completion.",
-                input_schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string"},
+                        "partial_reason": {"type": "string", "minLength": 1},
+                    },
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.coordination",

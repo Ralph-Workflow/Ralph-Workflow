@@ -28,7 +28,6 @@ from ralph.mcp.server._schema_flavor import (
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import (
     development_wrapup_notice,
-    reset_completion_admissions,
     session_warning_scope,
 )
 from ralph.mcp.server._wire_ledger import append_wire_record
@@ -229,16 +228,7 @@ class McpServer:
         self._mcp_activity_sink = mcp_activity_sink
 
     def reset_session_budget(self) -> None:
-        """Clear pending identity-scoped completion admissions for a fresh attempt.
-
-        Called by the orchestrator at the top of every ``_run_attempt`` in
-        ``ralph.pipeline.effect_executor``. Warning timing is phase-wide and
-        comes from the development-timebox epoch, so this method deliberately
-        does not alter any timer. It only clears pending
-        identity-scoped completion confirmations. The reset is also reachable
-        over the wire via ``notifications/reset_wrapup``.
-        """
-        reset_completion_admissions()
+        return None
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState

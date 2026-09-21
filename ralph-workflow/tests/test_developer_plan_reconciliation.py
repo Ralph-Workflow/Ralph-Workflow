@@ -62,7 +62,10 @@ def test_developer_prompts_default_to_completion_over_early_stopping(
     assert "Do not stop and hand back while ready work remains" in prompt
     assert "`status:\ncompleted`" in prompt or "`status: completed`" in prompt
     assert "last resort" in prompt
-    assert "run budget that is\ngenuinely exhausted" in prompt or "genuinely exhausted" in prompt
+    assert "literally impossible to complete through any" in prompt
+    assert "Physical-world action" in prompt
+    assert "Difficulty, elapsed time" in prompt
+    assert "exhausted run budget" in prompt
     # The general persistence directive precedes the detailed disposition rules.
     assert prompt.index("Completion is the default outcome") < prompt.index("Plan fidelity")
 

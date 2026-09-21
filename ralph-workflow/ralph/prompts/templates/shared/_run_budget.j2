@@ -1,4 +1,4 @@
 Use the full run budget to advance the plan; keep each wait bounded rather
-than idling. Only report a truthful partial result once that budget is
-genuinely spent and no other ready plan work remains — not at the first sign
-of difficulty.
+than idling. An exhausted budget does not justify a partial result. Report
+partial only when remaining work requires an action unavailable to the
+developer in this run and no ready in-scope plan work remains.

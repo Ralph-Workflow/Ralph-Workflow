@@ -58,7 +58,7 @@ def _declare(server: McpServer, msg_id: str) -> str:
     return str(content[0]["text"])
 
 
-def test_past_development_warning_requires_two_separate_completion_calls(
+def test_past_development_warning_completes_in_one_call(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
@@ -69,9 +69,7 @@ def test_past_development_warning_requires_two_separate_completion_calls(
     )
     server = _server(tmp_path)
 
-    assert "COMPLETION ADMISSION REQUIRED" in _declare(server, "first")
-    assert writes == []
-    assert "Task declared complete" in _declare(server, "second")
+    assert "Task declared complete" in _declare(server, "first")
     assert writes == ["dev-timebox-run"]
 
 
@@ -104,7 +102,7 @@ def test_missing_or_future_development_warning_completes_immediately(
     assert "Task declared complete" in _declare(_server(tmp_path), warning)
 
 
-def test_dev014_reads_the_same_development_warning_epoch(
+def test_partial_result_is_accepted_before_or_after_development_warning(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     content = {"status": "partial"}
@@ -114,12 +112,12 @@ def test_dev014_reads_the_same_development_warning_epoch(
     workspace = FsWorkspace(tmp_path)
 
     monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
-    assert development_result_session_diagnostics(session, workspace, content)[0].rule_id == "DEV014"
+    assert development_result_session_diagnostics(session, workspace, content) == []
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
     assert development_result_session_diagnostics(session, workspace, content) == []
 
 
-def test_reset_keeps_epoch_warning_active(
+def test_reset_keeps_epoch_warning_active_without_requiring_confirmation(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
@@ -129,6 +127,6 @@ def test_reset_keeps_epoch_warning_active(
     )
     server = _server(tmp_path)
 
-    assert "COMPLETION ADMISSION REQUIRED" in _declare(server, "first")
+    assert "Task declared complete" in _declare(server, "first")
     server.reset_session_budget()
-    assert "COMPLETION ADMISSION REQUIRED" in _declare(server, "after-reset")
+    assert "Task declared complete" in _declare(server, "after-reset")

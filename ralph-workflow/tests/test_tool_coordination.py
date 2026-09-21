@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import threading
 from pathlib import Path
 
 import pytest
 
-from ralph.mcp.server._session_wrapup import reset_completion_admissions, session_warning_scope
+from ralph.mcp.server._session_wrapup import session_warning_scope
 from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -129,7 +128,7 @@ def test_declare_complete_without_broker_secret_omits_hmac(
     assert captured["sentinel_hmac"] is None
 
 
-def test_declare_complete_requires_two_post_warning_calls(
+def test_declare_complete_needs_only_one_post_warning_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     writes: list[str] = []
@@ -139,96 +138,25 @@ def test_declare_complete_requires_two_post_warning_calls(
         writes.append("sentinel")
         return True
 
-    reset_completion_admissions()
     monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
     with session_warning_scope(False):
-        admission = handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
         completion = handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
 
-    assert admission.is_error is False
-    assert "COMPLETION ADMISSION REQUIRED" in admission.content[0].text
-    assert "actionable incomplete work remains" in admission.content[0].text
     assert writes == ["sentinel"]
     assert "Task declared complete" in completion.content[0].text
 
 
-def test_declare_complete_admissions_are_identity_scoped(
+def test_declare_complete_reports_partial_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    reset_completion_admissions()
     monkeypatch.setattr(coordination_module, "_write_completion_sentinel", lambda *args, **kwargs: True)
-    second = MockSession()
-    second.session_id = "session-2"
-    second.run_id = "run-2"
-    with session_warning_scope(False):
-        first_a = handle_declare_complete(MockSession(), MockWorkspace(), {})
-        first_b = handle_declare_complete(second, MockWorkspace(), {})
-        confirm_a = handle_declare_complete(MockSession(), MockWorkspace(), {})
-
-    assert "ADMISSION REQUIRED" in first_a.content[0].text
-    assert "ADMISSION REQUIRED" in first_b.content[0].text
-    assert "Task declared complete" in confirm_a.content[0].text
-
-
-def test_declare_complete_admissions_do_not_cross_identities(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """S-3: each identity confirms only its own post-warning admission."""
-    reset_completion_admissions()
-    writes: list[str] = []
-    monkeypatch.setattr(
-        coordination_module,
-        "_write_completion_sentinel",
-        lambda _workspace, run_id, **_kwargs: writes.append(run_id) or True,
+    result = handle_declare_complete(
+        MockSession(),
+        MockWorkspace(),
+        {"partial_reason": "A technician must physically unplug the inaccessible power cable."},
     )
-    first = MockSession()
-    second = MockSession()
-    second.session_id = "session-2"
-    second.run_id = "run-2"
 
-    with session_warning_scope(False):
-        admission_a = handle_declare_complete(first, MockWorkspace(), {})
-        admission_b = handle_declare_complete(second, MockWorkspace(), {})
-        completion_b = handle_declare_complete(second, MockWorkspace(), {})
-        completion_a = handle_declare_complete(first, MockWorkspace(), {})
-
-    assert "ADMISSION REQUIRED" in admission_a.content[0].text
-    assert "ADMISSION REQUIRED" in admission_b.content[0].text
-    assert "Task declared complete" in completion_b.content[0].text
-    assert "Task declared complete" in completion_a.content[0].text
-    assert writes == ["run-2", "run-1"]
-
-
-def test_concurrent_same_identity_admission_has_one_admission_and_one_completion(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """S-3: the lock makes overlapping same-identity calls atomic."""
-    reset_completion_admissions()
-    writes: list[str] = []
-    monkeypatch.setattr(
-        coordination_module,
-        "_write_completion_sentinel",
-        lambda _workspace, run_id, **_kwargs: writes.append(run_id) or True,
-    )
-    barrier = threading.Barrier(2)
-    results: list[str] = []
-
-    def declare() -> None:
-        barrier.wait(timeout=2.0)
-        with session_warning_scope(False):
-            result = handle_declare_complete(MockSession(), MockWorkspace(), {})
-        results.append(result.content[0].text)
-
-    threads = [threading.Thread(target=declare) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=2.0)
-
-    assert all(not thread.is_alive() for thread in threads)
-    assert sum("ADMISSION REQUIRED" in result for result in results) == 1
-    assert sum("Task declared complete" in result for result in results) == 1
-    assert writes == ["run-1"]
+    assert "partial_reason='A technician must physically unplug" in result.content[0].text
 
 
 def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(

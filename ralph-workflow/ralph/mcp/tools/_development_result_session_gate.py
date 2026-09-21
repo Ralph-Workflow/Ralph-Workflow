@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
-from ralph.mcp.protocol.cycle_deadline_env import development_warning_is_active
 from ralph.mcp.tools.artifact import DEFAULT_ARTIFACT_HANDLER_DEPS, _workspace_root
 from ralph.pipeline.work_units import parse_work_units_from_artifact
 
@@ -28,19 +26,9 @@ def development_result_session_diagnostics(
     workspace: WorkspaceLike,
     content: dict[str, object],
 ) -> list[Diagnostic]:
-    """Enforce status before the development-timebox warning and exact proof coverage."""
-    warned = development_warning_is_active(now_epoch=time.time())
+    """Enforce exact proof coverage for completed development results."""
     if content.get("status") != "completed":
-        if warned:
-            return []
-        return [
-            Diagnostic(
-                1,
-                "Frontmatter",
-                "DEV014",
-                "development_result status must be 'completed' before the development-timebox warning",
-            )
-        ]
+        return []
     required_refs = _required_plan_refs(session, workspace)
     if not required_refs:
         return []
