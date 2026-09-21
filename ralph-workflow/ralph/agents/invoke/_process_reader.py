@@ -27,7 +27,6 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
-    is_user_prompt_event_line,
     with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
@@ -113,6 +112,7 @@ from ralph.timeout_defaults import (
 )
 
 from ._monitor_factory import _make_process_monitor
+from ._quota_detection import is_provider_quota_output_line
 
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
@@ -891,7 +891,7 @@ class ProcessLineReader:
         try:
             for line in stderr_pipe:
                 self._append_stderr(line)
-                if not is_user_prompt_event_line(line) and _is_subscription_limit_message([line]):
+                if is_provider_quota_output_line(line):
                     self._terminate_for_quota(line)
                     break
         except (UnicodeDecodeError, ValueError):
@@ -935,7 +935,7 @@ class ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
-                if not is_user_prompt_event_line(line) and _is_subscription_limit_message([line]):
+                if is_provider_quota_output_line(line):
                     self._terminate_for_quota(line)
                     break
                 # Per-line session id capture mirrors the canonical

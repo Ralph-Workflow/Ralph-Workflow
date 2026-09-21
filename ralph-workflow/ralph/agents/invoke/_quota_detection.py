@@ -24,12 +24,28 @@ def _is_provider_failure_output(line: str) -> bool:
     bare_provider_failure = any(
         normalized.startswith(marker.casefold()) for marker in _SUBSCRIPTION_LIMIT_SUBSTRINGS
     )
+    return _is_explicit_provider_failure_output(line) or bare_provider_failure
+
+
+def _is_explicit_provider_failure_output(line: str) -> bool:
+    normalized = line.strip().casefold()
+    return normalized.startswith(
+        ("api quota", "error:", "retriableerror:", "providererror:", "resource_exhausted")
+    ) or any(marker in normalized for marker in _PROVIDER_FAILURE_OUTPUT_MARKERS)
+
+
+def is_provider_quota_output_line(line: str) -> bool:
+    normalized = line.strip().casefold()
     return (
-        normalized.startswith(
-            ("api quota", "error:", "retriableerror:", "providererror:", "resource_exhausted")
+        not is_user_prompt_event_line(line)
+        and (
+            _is_explicit_provider_failure_output(line)
+            or any(
+                normalized == marker.casefold()
+                for marker in _SUBSCRIPTION_LIMIT_SUBSTRINGS
+            )
         )
-        or bare_provider_failure
-        or any(marker in normalized for marker in _PROVIDER_FAILURE_OUTPUT_MARKERS)
+        and _is_subscription_limit_message([line])
     )
 
 
@@ -41,7 +57,6 @@ def raise_if_quota_exhausted(
     include_output: bool,
 ) -> None:
     """Raise for provider quota evidence, excluding transport-owned user echoes."""
-    del include_output
     output = parsed_output or []
     for line in stderr_text.splitlines() or [stderr_text]:
         if _is_subscription_limit_message([line]):
@@ -51,9 +66,10 @@ def raise_if_quota_exhausted(
             if (
                 not is_user_prompt_event_line(line)
                 and _is_provider_failure_output(line)
+                and (include_output or _is_explicit_provider_failure_output(line))
                 and _is_subscription_limit_message([line])
             ):
                 raise QuotaExhaustedError(agent_name, line)
 
 
-__all__ = ["raise_if_quota_exhausted"]
+__all__ = ["is_provider_quota_output_line", "raise_if_quota_exhausted"]
