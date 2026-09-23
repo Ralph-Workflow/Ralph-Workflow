@@ -175,3 +175,131 @@ def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_
     assert selection.agent == "opencode"
     assert selection.skipped_reasons == (("claude", "unavailable"),)
     assert "0ms remaining" not in selection.skipped_reasons[0][1]
+
+
+# ---------------------------------------------------------------------------
+# Priority-first invariants (plan S-1)
+#
+# These focused regressions assert that ``select_preferred_agent`` is a pure
+# ordered scan starting at index 0, not a cursor advance: the same rows
+# always yield the same selection, the skipped_reasons classify every
+# non-selected agent against the SAME priority order (not a cursor from a
+# prior call), and an out-of-order availability tuple never advances the
+# search origin past index 0.
+# ---------------------------------------------------------------------------
+
+
+def test_select_preferred_agent_is_a_pure_index_zero_scan() -> None:
+    """The selection scans from index 0 regardless of how many times we call.
+
+    A cursor-style implementation would advance past index 0 on the
+    second/third call. The pure scan returns index 0 every time
+    because ``rows[0]`` is the only selectable agent and the scan
+    starts there.
+    """
+    rows = [
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    for _ in range(3):
+        selection = select_preferred_agent(rows)
+        assert selection.index == 0
+        assert selection.agent == "claude"
+
+
+def test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order() -> None:
+    """Every skipped agent is reported in priority order with the right reason."""
+    rows = [
+        agent_availability(
+            agent="claude",
+            available=False,
+            cooldown_ms_remaining=3000,
+            spent=False,
+            cooldown_reason="no_output_at_start",
+        ),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
+        agent_availability(agent="agy", available=False, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="codex", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    selection = select_preferred_agent(rows)
+    assert selection.index == 3
+    assert selection.agent == "codex"
+    assert selection.skipped_reasons == (
+        ("claude", "cooldown (3000ms remaining, reason=no_output_at_start)"),
+        ("opencode", "spent"),
+        ("agy", "unavailable"),
+    )
+
+
+def test_select_preferred_agent_returns_none_when_no_agent_selectable() -> None:
+    """When every row is unavailable, cooldown-locked, or spent, the selection is None."""
+    rows = [
+        agent_availability(
+            agent="claude", available=False, cooldown_ms_remaining=2000, spent=False
+        ),
+        agent_availability(
+            agent="opencode", available=False, cooldown_ms_remaining=5000, spent=False
+        ),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=True),
+    ]
+    selection = select_preferred_agent(rows)
+    assert selection.index is None
+    assert selection.agent is None
+    assert selection.skipped_reasons == (
+        ("claude", "cooldown (2000ms remaining)"),
+        ("opencode", "cooldown (5000ms remaining)"),
+        ("agy", "spent"),
+    )
+
+
+def test_select_preferred_agent_index_zero_with_full_remaining_cooldown() -> None:
+    """An agent at index 0 with a FULL remaining cooldown is not picked."""
+    rows = [
+        agent_availability(
+            agent="claude", available=True, cooldown_ms_remaining=10_000, spent=False
+        ),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    selection = select_preferred_agent(rows)
+    assert selection.index == 1
+    assert selection.agent == "opencode"
+    assert selection.skipped_reasons[0] == ("claude", "cooldown (10000ms remaining)")
+
+
+def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> None:
+    """Consecutive calls with identical rows return the identical selection."""
+    rows = [
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    selections = [select_preferred_agent(rows) for _ in range(5)]
+    for selection in selections:
+        assert selection.index == 0
+        assert selection.agent == "claude"
+        assert selection.skipped_reasons == (
+            ("opencode", "lower_priority"),
+            ("agy", "lower_priority"),
+        )
+
+
+def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> None:
+    """An unavailable agent with cooldown_ms_remaining=0 is reported as 'unavailable'."""
+    rows = [
+        agent_availability(
+            agent="claude", available=False, cooldown_ms_remaining=0, spent=False
+        ),
+        agent_availability(
+            agent="opencode", available=False, cooldown_ms_remaining=0, spent=False
+        ),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+    ]
+    selection = select_preferred_agent(rows)
+    assert selection.index == 2
+    assert selection.agent == "agy"
+    assert selection.skipped_reasons == (
+        ("claude", "unavailable"),
+        ("opencode", "unavailable"),
+    )

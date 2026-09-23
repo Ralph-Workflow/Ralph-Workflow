@@ -568,3 +568,185 @@ class TestAgentUnavailabilityTracker:
         assert entry_after.attempt == 0
         assert entry_after.unavailable_until_ms - int(clock.monotonic() * 1000) == 5_000
 
+
+
+# ---------------------------------------------------------------------------
+# Plan S-3 / S-4 focused regressions
+# ---------------------------------------------------------------------------
+
+
+
+def test_all_default_reasons_saturate_at_five_hours() -> None:
+    """Plan S-3: Every default reason per-agent cooldown saturates at 18_000_000 ms."""
+    clock = FakeClock(start=0.0)
+    tracker = AgentUnavailabilityTracker(clock=clock)
+
+    for reason in UnavailabilityReason:
+        for i in range(50):
+            tracker.mark_unavailable("development", f"agent_{reason.value}", reason)
+            if i < 49:
+                clock.advance(60_000)
+
+        snap = tracker.snapshot()
+        timeout = snap["unavailable_timeouts"][f"agent_{reason.value}"]
+        current_time_ms = int(clock.monotonic() * 1000)
+        remaining = timeout - current_time_ms
+        assert remaining == 18_000_000, (
+            f"reason={reason.value} expected ceiling 18_000_000 ms, got {remaining}"
+        )
+
+
+def test_per_agent_history_isolation_across_phases() -> None:
+    """Plan S-3: An agents failure history is independent across phases."""
+    clock = FakeClock(start=0.0)
+    tracker = AgentUnavailabilityTracker(clock=clock)
+
+    for i in range(5):
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        if i < 4:
+            clock.advance(60_000)
+
+    # After 4 advances, clock is at 240_000 ms. The 5th mark_unavailable
+    # sets entry.unavailable_until_ms = 240_000 + 5_000 * 2^4 = 240_000 + 80_000.
+    entry = tracker.mark_unavailable(
+        "review", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+    assert entry.attempt == 5
+    expected_remaining = 5_000 * (2**5)
+    assert entry.unavailable_until_ms - int(clock.monotonic() * 1000) == expected_remaining
+
+
+def test_saturation_stable_across_many_failures() -> None:
+    """Plan S-3: After saturation, repeated failures do not construct huge integers."""
+    clock = FakeClock(start=0.0)
+    tracker = AgentUnavailabilityTracker(clock=clock)
+
+    for i in range(500):
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        if i < 499:
+            clock.advance(60_000)
+
+    snap = tracker.snapshot()
+    timeout = snap["unavailable_timeouts"]["claude"]
+    current_time_ms = int(clock.monotonic() * 1000)
+    remaining = timeout - current_time_ms
+    assert remaining == 18_000_000
+    assert snap["backoff_attempts"]["claude"] <= 100
+
+
+def test_custom_policy_with_lower_cap_clamps_at_custom_value() -> None:
+    """Plan S-3: Tighter custom policy caps (lower than 5 hours) are honored."""
+    clock = FakeClock(start=0.0)
+    policy = {
+        UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
+            base_backoff_ms=5_000, max_backoff_ms=30_000
+        )
+    }
+    tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
+
+    for i in range(15):
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        if i < 14:
+            clock.advance(60_000)
+
+    snap = tracker.snapshot()
+    timeout = snap["unavailable_timeouts"]["claude"]
+    current_time_ms = int(clock.monotonic() * 1000)
+    remaining = timeout - current_time_ms
+    assert remaining == 30_000
+
+
+def test_custom_policy_with_higher_cap_clamps_at_universal_ceiling() -> None:
+    """Plan S-3: Custom caps larger than 18_000_000 are clamped to the universal ceiling."""
+    clock = FakeClock(start=0.0)
+    policy = {
+        UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
+            base_backoff_ms=1_000, max_backoff_ms=10**12
+        )
+    }
+    tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
+
+    for i in range(100):
+        tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+        )
+        if i < 99:
+            clock.advance(60_000)
+
+    snap = tracker.snapshot()
+    timeout = snap["unavailable_timeouts"]["claude"]
+    current_time_ms = int(clock.monotonic() * 1000)
+    remaining = timeout - current_time_ms
+    assert remaining == 18_000_000
+
+
+def test_base_must_be_positive() -> None:
+    """Plan S-3: ReasonBackoffPolicy rejects non-positive base values."""
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="base_backoff_ms must be positive"):
+        ReasonBackoffPolicy(base_backoff_ms=0, max_backoff_ms=60_000)
+
+
+def test_max_must_be_strictly_greater_than_base() -> None:
+    """Plan S-3: ReasonBackoffPolicy rejects max <= base."""
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="must be strictly greater than base_backoff_ms"):
+        ReasonBackoffPolicy(base_backoff_ms=5000, max_backoff_ms=5000)
+    with _pytest.raises(ValueError, match="must be strictly greater than base_backoff_ms"):
+        ReasonBackoffPolicy(base_backoff_ms=10_000, max_backoff_ms=5000)
+
+
+def test_success_reset_only_clears_successful_agent_history() -> None:
+    """Plan S-4: Successful invocation clears ONLY the successful agents history."""
+    clock = FakeClock(start=0.0)
+    tracker = AgentUnavailabilityTracker(clock=clock)
+
+    for i in range(5):
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
+        if i < 4:
+            clock.advance(60_000)
+    clock.advance(60_000)
+
+    for i in range(3):
+        tracker.mark_unavailable("development", "opencode", UnavailabilityReason.OUT_OF_CREDITS)
+        if i < 2:
+            clock.advance(60_000)
+
+    snap_pre = tracker.snapshot()
+    assert snap_pre["backoff_attempts"]["claude"] == 5
+    assert snap_pre["backoff_attempts"]["opencode"] == 3
+
+    tracker.reset_backoff("development", "claude")
+
+    snap_post = tracker.snapshot()
+    assert "claude" not in snap_post["unavailable_timeouts"]
+    assert "claude" not in snap_post["backoff_attempts"]
+    assert "opencode" in snap_post["unavailable_timeouts"]
+    assert snap_post["backoff_attempts"]["opencode"] == 3
+
+
+def test_success_reset_next_failure_starts_at_base_delay() -> None:
+    """Plan S-4: After success, the next failure for the same agent uses the base delay."""
+    clock = FakeClock(start=0.0)
+    tracker = AgentUnavailabilityTracker(clock=clock)
+
+    for i in range(5):
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
+        if i < 4:
+            clock.advance(60_000)
+
+    tracker.reset_backoff("development", "claude")
+
+    entry = tracker.mark_unavailable(
+        "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+    )
+    assert entry.attempt == 0
+    assert entry.unavailable_until_ms - int(clock.monotonic() * 1000) == 60_000

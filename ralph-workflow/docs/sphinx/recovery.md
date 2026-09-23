@@ -52,13 +52,49 @@ Recovery resumed after offline
 
 Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
 
-Preferred agent selection via `select_preferred_agent` picks the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance), rather than strictly walking forward down the chain. Ralph Workflow re-selects the highest-priority available agent whenever a phase is entered, as well as after a failure or an all-agents-unavailable cooldown wait, so a run that fell over to a lower-priority agent returns to the operator's first choice as soon as its cooldown expires.
+### Priority-first reselection
 
-Unavailable-agent cooldowns double on repeated failures, retaining history across cooldown expiry and phase changes. Every default reason caps at five hours (18,000,000 ms); custom policies may use a lower cap but cannot exceed five hours. A successful invocation clears only that agent's cooldown and backoff history, so its next failure starts at the reason's base delay. Success does not move selection away from the preferred available agent.
+Ralph Workflow re-selects the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance) on every agent invocation, **not** on a round-robin-from-cursor advance. The single source of truth is the `RecoveryController.preferred_agent_index` selection surface, which `select_preferred_agent` implements as a pure ordered scan starting at index 0:
 
-When no agent is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, spent, or lower-priority reason for every skipped agent.
+- The controller's `_handle_retry_progression` calls `preferred_agent_index` after every failure to choose the next agent.
+- The reducer's `_handle_agent_failure` calls `preferred_agent_index` for the agent-failure routing path.
+- The orchestrator's `_current_agent_name` calls `preferred_agent_index` when an `InvokeAgentEffect` is emitted for a known phase.
+- The effect router's `_agent_name_for_phase_from_policy` calls `preferred_agent_index` for the commit-phase and parallel/agent dispatch paths.
+- The run loop's phase-entry and cooldown-resume seams call `preferred_agent_index` to re-evaluate the chain when a phase is entered and after a wait-state cooldown expiry.
 
-That is how longer unattended runs stay moving without being pinned to one provider while always preferring the highest-priority agent when available.
+This guarantees that after a higher-priority agent's cooldown expires, the next invocation returns to that agent — regardless of the persisted `current_index` carried over from the prior selection. `current_index` records which agent just failed (and its spent allowance); it is **not** a search origin.
+
+When the chain selection changes (the chosen index differs from the persisted `current_index`), the run loop resets `retries` to 0, clears `last_agent_session_id`, and resets the agent retry intent — a fresh dispatch of the higher-priority agent starts with no leftover retry state from the prior path.
+
+When no agent in the chain is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, spent, or lower-priority reason for every skipped agent.
+
+### Exponential cooldown growth
+
+Unavailable-agent cooldowns double on repeated failures, retaining history across cooldown expiry and phase changes. The exponential growth is bounded:
+
+- Each call to `AgentUnavailabilityTracker.mark_unavailable` doubles the reason-specific base delay (`base_backoff_ms`) using the agent's prior attempt counter.
+- The computed delay is clamped at the smaller of the per-reason `max_backoff_ms` and the **universal 5-hour ceiling** (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000 ms`).
+- The recorded attempt counter is also clamped at the saturation threshold so repeated failures cannot construct arbitrarily large integers — the counter and the cooldown both stabilize at the cap.
+- Per-agent failure history is independent: claude failing in `development` does not affect claude's first failure in `review`. The base delay for the reason applies on the first failure in any phase.
+
+### Custom policy caps
+
+Operators can supply a tighter custom policy via `RecoveryControllerOptions.unavailability_backoff_policy`. Custom caps **smaller** than 18,000,000 ms are honored. Custom caps **larger** than 18,000,000 ms are clamped to the universal ceiling so no operator override can grow a cooldown past 5 hours.
+
+### Success reset
+
+A successful invocation clears only that agent's cooldown and backoff history. The runner calls `RecoveryController.reset_backoff(phase, agent_name)` from the successful `InvokeAgentEffect` completion seam; the next failure for that agent starts at the reason's base delay, not the prior accumulated cooldown. Other agents' histories are unaffected by the reset, so a successful claude run does not erase opencode or agy's accumulated cooldown.
+
+### Lock-in regression coverage
+
+- `tests/recovery/test_agent_selection.py` — `select_preferred_agent` is a pure index-0 scan; `skipped_reasons` enumerate every non-selected agent in priority order; multiple consecutive calls with identical rows return identical selections.
+- `tests/recovery/test_priority_agent_selection.py` — `RecoveryController.preferred_agent_index` returns the highest-priority available agent across consecutive invocations, across cooldown expiry, across successful preferred-agent runs, and across persisted `current_index` values that point past index 0.
+- `tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py` — `_reselect_preferred_agent` on phase entry ignores the persisted `current_index` and resets retries / session id / retry intent when the selection changes.
+- `tests/pipeline/test_run_loop_resume_prefers_available_agent.py` — the resume seam after a cooldown wait picks the highest-priority newly-available agent regardless of the persisted `current_index`.
+- `tests/recovery/test_unavailability_tracker.py` — every default reason saturates at 18,000,000 ms; the attempt counter is bounded; custom caps are honored (lower) or clamped (higher); `reset_backoff` is per-agent.
+- `tests/recovery/test_unavailability_reason.py` — the universal 5-hour ceiling and the exponential progression for the default reason policies.
+- `tests/recovery/test_agent_cooldown_enforcement.py` — the cap is universally enforced even when the supplied policy specifies a higher cap.
+- `tests/recovery/test_out_of_credits_fast_fallover.py` — exponential growth and saturation for OUT_OF_CREDITS across many failures.
 
 For in-session retries, after a configurable number of consecutive qualifying retries (`in_session_retry_escalation_limit`, default 3) for a given phase and agent, the next retry is treated as an agent failure with standard cooldown and fallover to the next eligible agent, preventing endless retry loops with the same agent. Successful completion of the retried work resets the consecutive failure count.
 

@@ -457,3 +457,292 @@ def test_invocation_boundary_skips_exhausted_agent_returns_to_preferred() -> Non
     # opencode's cooldown has now expired.
     assert chain2.current_index == 0
     assert chain2.agents[chain2.current_index] == "claude"
+
+
+# ---------------------------------------------------------------------------
+# Priority-first invariants (plan S-1)
+#
+# These focused regressions assert that ``preferred_agent_index`` keeps
+# scanning from index 0 across consecutive invocations, that an expired
+# cooldown restores priority, and that the success path keeps the preferred
+# agent selected across the whole selection surface. The cross-invocation
+# invariants guard against a round-robin-from-cursor regression: the chain
+# cursor (a persisted ``current_index``) is informational, NOT a search
+# origin.
+# ---------------------------------------------------------------------------
+
+
+def test_priority_first_selection_consecutive_invocations_always_return_highest_priority() -> None:
+    """Ten consecutive invocations all return the highest-priority available agent.
+
+    This is the strongest single-invocation guard: even when nothing
+    changes between calls, the next call re-consults the chain from
+    index 0 and picks the highest-priority available agent. A
+    cursor-style implementation would advance on every call.
+    """
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=20,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+
+    for _ in range(10):
+        selection = controller.preferred_agent_index(
+            "development", ["claude", "opencode", "agy"]
+        )
+        assert selection.index == 0
+        assert selection.agent == "claude"
+        assert selection.skipped_reasons == (
+            ("opencode", "lower_priority"),
+            ("agy", "lower_priority"),
+        )
+
+
+def test_priority_first_selection_returns_to_highest_priority_after_cooldown_expiry() -> None:
+    """A cooldown on the highest-priority agent temporarily demotes it; expiry restores priority.
+
+    Cross-invocation invariant: the cursor from the last successful
+    selection is NOT a search origin. After claude's cooldown expires,
+    the next call picks claude again even though the persisted
+    current_index points at opencode or agy.
+    """
+    clock = FakeClock(start=0.0)
+    initial_entries = {
+        "claude": UnavailabilityEntry(
+            unavailable_until_ms=4000,
+            reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+            attempt=0,
+            base_backoff_ms=4000,
+            max_backoff_ms=4000,
+        ),
+    }
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=20,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+            unavailability_entries=initial_entries,
+        )
+    )
+
+    # claude is on cooldown -> opencode is the highest-priority available.
+    selection_first = controller.preferred_agent_index(
+        "development", ["claude", "opencode", "agy"]
+    )
+    assert selection_first.agent == "opencode"
+    # The skipped reason includes the unavailability reason string.
+    assert selection_first.skipped_reasons[0][0] == "claude"
+    assert selection_first.skipped_reasons[0][1].startswith("cooldown (")
+    assert "no_output_at_start" in selection_first.skipped_reasons[0][1]
+
+    # Advance past claude's cooldown. claude becomes available again.
+    clock.advance(5.0)
+
+    # Even if the previous selection pointed at opencode, the next call
+    # must return to claude -- priority is the source of truth.
+    selection_second = controller.preferred_agent_index(
+        "development", ["claude", "opencode", "agy"]
+    )
+    assert selection_second.agent == "claude"
+    assert selection_second.index == 0
+
+
+def test_priority_first_selection_keeps_successful_preferred_agent_across_repeated_failures() -> None:
+    """After the preferred (claude) agent succeeds, repeated failures still pick claude.
+
+    Production success path: the runner calls ``reset_backoff`` after
+    AGENT_SUCCESS. The next failure MUST consult the chain from index
+    0 and pick claude -- success does NOT advance the cursor.
+    """
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=20,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _three_agent_state(current_index=1)
+    opts = _no_output_opts()
+    exc = AgentInactivityTimeoutError("opencode", 30.0, opts=opts)
+    ctx = FailureContext(phase="development", agent="opencode")
+
+    # Cycle 1: opencode fails -> claude (preferred) is selected.
+    state_after_first = controller.handle(state, exc, ctx)[0]
+    chain = state_after_first.chain_for_phase(state_after_first.phase)
+    assert chain is not None
+    assert chain.current_index == 0
+
+    # Production success path: runner resets backoff for claude.
+    controller.reset_backoff("development", "claude")
+
+    # Cycle 2: opencode fails again -> claude remains preferred.
+    state_after_second = controller.handle(state_after_first, exc, ctx)[0]
+    chain2 = state_after_second.chain_for_phase(state_after_second.phase)
+    assert chain2 is not None
+    assert chain2.current_index == 0
+    assert chain2.agents[chain2.current_index] == "claude"
+
+    # Cycle 3: opencode fails yet again -> claude STILL preferred.
+    state_after_third = controller.handle(state_after_second, exc, ctx)[0]
+    chain3 = state_after_third.chain_for_phase(state_after_third.phase)
+    assert chain3 is not None
+    assert chain3.current_index == 0
+    assert chain3.agents[chain3.current_index] == "claude"
+
+
+def test_priority_first_selection_persisted_current_index_does_not_introduce_round_robin() -> None:
+    """A persisted current_index that points past index 0 is NOT used as a search origin.
+
+    The cursor is INFORMATIONAL -- it records which agent just failed,
+    but the next selection consults index 0. This guards the round-robin
+    regression where persisted state could make the selection skip the
+    highest-priority agent.
+    """
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _three_agent_state(current_index=2)
+    chain = state.chain_for_phase(state.phase)
+    assert chain is not None
+    selection = controller.preferred_agent_index(
+        state.phase, chain.agents,
+        current_index=chain.current_index,
+    )
+    assert selection.index == 0
+    assert selection.agent == "claude"
+
+
+def test_priority_first_selection_spent_at_cursor_picks_highest_priority_unspent() -> None:
+    """When the cursor's agent is spent, the scan picks the next lowest-index selectable agent.
+
+    This is the priority-first counterpart of "skip the cursor": if
+    the cursor's agent is unavailable-for-selection (spent), the next
+    lowest-index is the correct answer, NOT the cursor's neighbor.
+    """
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    # opencode (index 1) failed; spent allowance; cursor stays at 1.
+    state = _three_agent_state(current_index=1)
+    opts = _no_output_opts()
+    exc = AgentInactivityTimeoutError("opencode", 30.0, opts=opts)
+    ctx = FailureContext(phase="development", agent="opencode")
+
+    # First handle: opencode is now spent, claude (index 0) is preferred.
+    state_after = controller.handle(state, exc, ctx)[0]
+    chain = state_after.chain_for_phase(state_after.phase)
+    assert chain is not None
+    # claude wins -- index 0 is preferred even though cursor was 1.
+    assert chain.current_index == 0
+    assert chain.agents[chain.current_index] == "claude"
+
+
+def test_priority_first_selection_picks_only_one_agent_per_call() -> None:
+    """Selection returns exactly one agent per call -- never multiple, never none when available."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    agents = ["claude", "opencode", "agy", "codex", "cursor/auto"]
+    for _ in range(20):
+        selection = controller.preferred_agent_index("development", agents)
+        assert selection.index is not None
+        assert selection.index == 0
+        assert selection.agent == agents[0]
+        assert len(selection.skipped_reasons) == len(agents) - 1
+
+
+# ---------------------------------------------------------------------------
+# Plan S-4: success reset retains priority for the successful agent
+# ---------------------------------------------------------------------------
+
+
+def test_successful_preferred_agent_remains_highest_priority_after_reset() -> None:
+    """Plan S-4: The successful preferred agent remains preferred after reset."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _three_agent_state(current_index=1)
+    opts = _no_output_opts()
+    exc = AgentInactivityTimeoutError("opencode", 30.0, opts=opts)
+    ctx = FailureContext(phase="development", agent="opencode")
+
+    state_after_first = controller.handle(state, exc, ctx)[0]
+    chain = state_after_first.chain_for_phase(state_after_first.phase)
+    assert chain is not None
+    assert chain.current_index == 0
+
+    controller.reset_backoff("development", "claude")
+
+    snap = controller.snapshot()
+    assert "claude" not in snap["unavailable_timeouts"]
+    assert "claude" not in snap["backoff_attempts"]
+
+    state_after_second = controller.handle(state_after_first, exc, ctx)[0]
+    chain2 = state_after_second.chain_for_phase(state_after_second.phase)
+    assert chain2 is not None
+    assert chain2.current_index == 0
+    assert chain2.agents[chain2.current_index] == "claude"
+
+
+def test_success_reset_isolated_other_agents_unchanged() -> None:
+    """Plan S-4: A successful agent reset does NOT touch other agents cooldowns."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+
+    for i in range(3):
+        controller.unavailability_store.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        if i < 2:
+            clock.advance(60_000)
+
+    clock.advance(60_000)
+
+    for i in range(5):
+        controller.unavailability_store.mark_unavailable(
+            "development", "opencode", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        if i < 4:
+            clock.advance(60_000)
+
+    snap_pre = controller.snapshot()
+    assert snap_pre["backoff_attempts"]["claude"] == 3
+    assert snap_pre["backoff_attempts"]["opencode"] == 5
+
+    controller.reset_backoff("development", "claude")
+
+    snap_post = controller.snapshot()
+    assert "claude" not in snap_post["unavailable_timeouts"]
+    assert "claude" not in snap_post["backoff_attempts"]
+    assert "opencode" in snap_post["unavailable_timeouts"]
+    assert snap_post["backoff_attempts"]["opencode"] == 5

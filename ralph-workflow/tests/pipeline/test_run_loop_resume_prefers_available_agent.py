@@ -735,3 +735,182 @@ def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -
 
     assert run_loop._resolve_orphaned_unmerged_index(ctx, "main") is True
     assert staged == [["a.py"]]
+
+
+# ---------------------------------------------------------------------------
+# Cooldown-wait resume priority-first invariants (plan S-1)
+#
+# These focused regressions assert that after the controller entered the
+# all-agents-unavailable wait branch, the resume path always picks the
+# highest-priority newly available agent regardless of the persisted
+# current_index. The resume seam routes through ``_reselect_preferred_agent``
+# so the same priority-first contract applies.
+# ---------------------------------------------------------------------------
+
+
+def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_available(monkeypatch: Any) -> None:
+    """After waiting, the resume picks the highest-priority agent whose cooldown has expired."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_entries={
+                "claude": _entry(5000),
+                "opencode": _entry(8000),
+                "agy": _entry(12_000),
+            },
+        )
+    )
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+    ctx = run_loop._LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=MagicMock(),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=controller,
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=clock.advance,
+        is_quiet=False,
+        snapshot_registry=None,
+        last_waiting_state_phase=None,
+    )
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=["claude", "opencode", "agy"],
+                current_index=2,
+                retries=0,
+            )
+        },
+    ).copy_with(is_waiting_state=True)
+
+    clock.advance(6.0)
+    selected = run_loop._reselect_preferred_agent(state, ctx, allow_wait=False)
+    chain = selected.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 0
+    assert chain.agents[chain.current_index] == "claude"
+
+
+def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zero(monkeypatch: Any) -> None:
+    """A persisted current_index that points past index 0 is NOT a search origin on resume."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_entries={
+                "claude": _entry(5000),
+                "opencode": _entry(5000),
+                "agy": _entry(5000),
+            },
+        )
+    )
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+    ctx = run_loop._LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=MagicMock(),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=controller,
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=clock.advance,
+        is_quiet=False,
+        snapshot_registry=None,
+        last_waiting_state_phase=None,
+    )
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=["claude", "opencode", "agy"],
+                current_index=2,
+                retries=3,
+            )
+        },
+    ).copy_with(is_waiting_state=True)
+    clock.advance(10.0)
+    selected = run_loop._reselect_preferred_agent(state, ctx, allow_wait=False)
+    chain = selected.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 0
+    assert chain.agents[chain.current_index] == "claude"
+
+
+def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_available(monkeypatch: Any) -> None:
+    """The cursor's neighbor becoming available does NOT block the highest-priority agent."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_entries={
+                "claude": _entry(5000),
+                "opencode": _entry(5000),
+                "agy": _entry(5000),
+            },
+        )
+    )
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+    ctx = run_loop._LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=MagicMock(),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=controller,
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=clock.advance,
+        is_quiet=False,
+        snapshot_registry=None,
+        last_waiting_state_phase=None,
+    )
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=["claude", "opencode", "agy"],
+                current_index=1,
+                retries=0,
+            )
+        },
+    ).copy_with(is_waiting_state=True)
+    clock.advance(10.0)
+    selected = run_loop._reselect_preferred_agent(state, ctx, allow_wait=False)
+    chain = selected.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 0
+    assert chain.agents[chain.current_index] == "claude"
+
+
