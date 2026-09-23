@@ -8,7 +8,7 @@ from ralph.recovery.agent_unavailability_tracker import (
     UnavailabilityEntry,
     UnavailabilityStore,
 )
-from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
 
 
 class TestAgentUnavailabilityTracker:
@@ -21,7 +21,8 @@ class TestAgentUnavailabilityTracker:
             "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
         )
         assert entry.base_backoff_ms == 60_000
-        assert entry.max_backoff_ms == 1_800_000
+        # Default cap is the universal five-hour ceiling (18_000_000 ms).
+        assert entry.max_backoff_ms == 18_000_000
         assert entry.attempt == 0
 
     def test_mark_unavailable_no_output_at_start(self) -> None:
@@ -31,7 +32,8 @@ class TestAgentUnavailabilityTracker:
             "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
         )
         assert entry.base_backoff_ms == 5_000
-        assert entry.max_backoff_ms == 30_000
+        # Default cap is the universal five-hour ceiling (18_000_000 ms).
+        assert entry.max_backoff_ms == 18_000_000
         assert entry.attempt == 0
 
     def test_mark_unavailable_exponential_growth(self) -> None:
@@ -102,9 +104,21 @@ class TestAgentUnavailabilityTracker:
         assert entry.attempt == 0
         assert entry.unavailable_until_ms == 5_000
 
-    def test_mark_unavailable_caps_at_max(self) -> None:
+    def test_mark_unavailable_caps_at_max_with_explicit_policy(self) -> None:
+        """Custom policies with low max cap still cap at the configured value.
+
+        Plan S-3 regression: this proves the cap is enforced as supplied,
+        not only against the (now five-hour) default. Custom policies
+        smaller than the five-hour default MUST continue to clamp at the
+        caller-provided value so operators can keep tighter pacing.
+        """
         clock = FakeClock(start=0.0)
-        tracker = AgentUnavailabilityTracker(clock=clock)
+        policy = {
+            UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
+                base_backoff_ms=5_000, max_backoff_ms=30_000
+            )
+        }
+        tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
         for i in range(10):
             tracker.mark_unavailable(
@@ -119,9 +133,19 @@ class TestAgentUnavailabilityTracker:
         remaining = timeout - current_time_ms
         assert remaining == 30_000
 
-    def test_out_of_credits_30min_cap(self) -> None:
+    def test_out_of_credits_30min_cap_with_explicit_policy(self) -> None:
+        """Custom OUT_OF_CREDITS policy with 30-minute max cap is enforced.
+
+        Plan S-3 regression: custom caps smaller than the default
+        five-hour ceiling MUST continue to clamp at the supplied value.
+        """
         clock = FakeClock(start=0.0)
-        tracker = AgentUnavailabilityTracker(clock=clock)
+        policy = {
+            UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
+                base_backoff_ms=60_000, max_backoff_ms=1_800_000
+            )
+        }
+        tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
         for i in range(10):
             tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
@@ -134,9 +158,19 @@ class TestAgentUnavailabilityTracker:
         remaining = timeout - current_time_ms
         assert remaining == 1_800_000
 
-    def test_stale_child_quiet_5min_cap(self) -> None:
+    def test_stale_child_quiet_5min_cap_with_explicit_policy(self) -> None:
+        """Custom STALE_CHILD_QUIET policy with 5-minute cap is enforced.
+
+        Plan S-3 regression: custom caps smaller than the default
+        five-hour ceiling MUST continue to clamp at the supplied value.
+        """
         clock = FakeClock(start=0.0)
-        tracker = AgentUnavailabilityTracker(clock=clock)
+        policy = {
+            UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
+                base_backoff_ms=15_000, max_backoff_ms=300_000
+            )
+        }
+        tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
         for i in range(10):
             tracker.mark_unavailable(
@@ -355,3 +389,182 @@ class TestAgentUnavailabilityTracker:
         # 'stale' was swept by the opportunistic prune.
         assert "stale" not in snap["unavailable_timeouts"]
         assert "fresh" in snap["unavailable_timeouts"]
+
+
+    # -----------------------------------------------------------------------
+    # Five-hour ceiling regressions (plan S-3)
+    #
+    # The default per-reason cap is the universal 5-hour ceiling
+    # (18_000_000 ms). Repeated failures grow exponentially and saturate
+    # at exactly 18_000_000 ms without constructing arbitrarily large
+    # integers. Per-agent history is independent; success resets only the
+    # affected agent's state.
+    # -----------------------------------------------------------------------
+
+    def test_default_out_of_credits_caps_at_five_hours(self) -> None:
+        """Repeated OUT_OF_CREDITS failures saturate at 18_000_000 ms (5 hours).
+
+        Base 60_000 with cap 18_000_000: 60_000 * 2^attempt. The
+        saturation attempt is the smallest one where 60_000 * 2^attempt
+        >= 18_000_000, i.e. 2^attempt >= 300, so attempt=9 (512).
+        """
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        # Run enough iterations to comfortably overshoot the cap.
+        for i in range(15):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+            )
+            if i < 14:
+                clock.advance(60_000)
+
+        snap = tracker.snapshot()
+        timeout = snap["unavailable_timeouts"]["claude"]
+        current_time_ms = int(clock.monotonic() * 1000)
+        remaining = timeout - current_time_ms
+        assert remaining == 18_000_000
+
+    def test_default_no_output_at_start_caps_at_five_hours(self) -> None:
+        """Repeated NO_OUTPUT_AT_START failures saturate at 18_000_000 ms.
+
+        Base 5_000 with cap 18_000_000: 5_000 * 2^attempt. The
+        saturation attempt is the smallest one where 5_000 * 2^attempt
+        >= 18_000_000, i.e. 2^attempt >= 3600, so attempt=12 (4096).
+        """
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        for i in range(20):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+            )
+            if i < 19:
+                clock.advance(60_000)
+
+        snap = tracker.snapshot()
+        timeout = snap["unavailable_timeouts"]["claude"]
+        current_time_ms = int(clock.monotonic() * 1000)
+        remaining = timeout - current_time_ms
+        assert remaining == 18_000_000
+
+    def test_oversized_custom_policy_caps_at_five_hours(self) -> None:
+        """A custom policy with max > 18_000_000 still saturates at 18_000_000.
+
+        The five-hour ceiling is universally enforced: caller-supplied
+        policies larger than 18_000_000 MUST be clamped to the universal
+        ceiling so no cooldown can grow past 5 hours regardless of
+        operator policy override. This is the AC-03 contract.
+        """
+        clock = FakeClock(start=0.0)
+        policy = {
+            UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
+                base_backoff_ms=1_000, max_backoff_ms=10**12
+            )
+        }
+        tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
+
+        # Drive enough failures to push past the universal ceiling.
+        for i in range(50):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+            )
+            if i < 49:
+                clock.advance(60_000)
+
+        snap = tracker.snapshot()
+        timeout = snap["unavailable_timeouts"]["claude"]
+        current_time_ms = int(clock.monotonic() * 1000)
+        remaining = timeout - current_time_ms
+        assert remaining == 18_000_000
+
+    def test_saturation_does_not_construct_giant_integers(self) -> None:
+        """After saturation, repeated failures do not construct huge integers.
+
+        Plan S-3 contract: "stable saturation on later failures without
+        giant exponent calculation". With a tiny base (1 ms) and the
+        universal ceiling (18_000_000), the saturation attempt is large
+        (2^attempt >= 18_000_000 / 1 = 18_000_000, so attempt ~= 25).
+        Hundreds of further failures must stay at 18_000_000 and not
+        blow up the attempt counter into arbitrarily large integers.
+        """
+        clock = FakeClock(start=0.0)
+        policy = {
+            UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
+                base_backoff_ms=1, max_backoff_ms=18_000_000
+            )
+        }
+        tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
+
+        for i in range(200):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+            )
+            if i < 199:
+                clock.advance(60_000)
+
+        snap = tracker.snapshot()
+        timeout = snap["unavailable_timeouts"]["claude"]
+        current_time_ms = int(clock.monotonic() * 1000)
+        remaining = timeout - current_time_ms
+        assert remaining == 18_000_000
+
+    def test_per_agent_history_is_independent(self) -> None:
+        """Failure history for one agent does not affect another agent's cooldown.
+
+        AC-03 contract: per-agent isolation. Repeatedly failing claude
+        must NOT cause opencode's first failure to use anything other
+        than opencode's reason-specific base cooldown.
+        """
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        for i in range(10):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+            )
+            if i < 9:
+                clock.advance(60_000)
+
+        # opencode's first failure uses the reason base cooldown (5_000 ms).
+        entry_opencode = tracker.mark_unavailable(
+            "development", "opencode", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        assert entry_opencode.attempt == 0
+        assert entry_opencode.unavailable_until_ms - int(clock.monotonic() * 1000) == 5_000
+
+    def test_success_resets_history_to_reason_base_delay(self) -> None:
+        """A successful invocation clears the agent's unavailable state and history.
+
+        AC-04 contract: success clears only that agent's state. The
+        next failure for the SAME agent uses the reason's base delay,
+        not the prior accumulated cooldown.
+        """
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        for i in range(5):
+            tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+            )
+            if i < 4:
+                clock.advance(60_000)
+
+        # Five failures should have driven the attempt counter up.
+        snap_pre = tracker.snapshot()
+        assert snap_pre["backoff_attempts"]["claude"] == 5
+
+        # Simulate a successful run: the runner calls reset_backoff.
+        tracker.reset_backoff("development", "claude")
+
+        snap_post = tracker.snapshot()
+        assert "claude" not in snap_post["unavailable_timeouts"]
+        assert "claude" not in snap_post["backoff_attempts"]
+
+        # Next failure uses the reason base delay (5_000 ms).
+        entry_after = tracker.mark_unavailable(
+            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
+        )
+        assert entry_after.attempt == 0
+        assert entry_after.unavailable_until_ms - int(clock.monotonic() * 1000) == 5_000
+

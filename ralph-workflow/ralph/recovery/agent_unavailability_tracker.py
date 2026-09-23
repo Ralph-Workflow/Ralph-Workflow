@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from ralph.agents.timeout_clock import SystemClock
 from ralph.recovery.unavailability_reason import (
+    _UNIVERSAL_COOLDOWN_CAP_MS,
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     ReasonBackoffPolicy,
     UnavailabilityReason,
@@ -132,6 +133,15 @@ class AgentUnavailabilityTracker:
     ) -> UnavailabilityEntry:
         """Mark an agent unavailable with per-reason exponential backoff.
 
+        The exponential growth is capped at the per-reason ``max_backoff_ms``
+        AND at the universal five-hour ceiling (18_000_000 ms). The
+        universal ceiling is enforced even when a caller-supplied policy
+        supplies a larger cap, so no operator override can grow a
+        cooldown past five hours. The exponent and the recorded attempt
+        counter are saturated at the cap-relevant threshold so repeated
+        failures cannot construct arbitrarily large integers in long
+        failure tails.
+
         Args:
             phase: Pipeline phase.
             agent: Agent name.
@@ -161,11 +171,15 @@ class AgentUnavailabilityTracker:
             cap_ms = DEFAULT_LEGACY_MAX_BACKOFF_MS
 
         base_ms_int: int = int(base_ms)
-        cap_ms_int: int = int(cap_ms)
+        # Enforce the universal five-hour ceiling. The per-reason cap
+        # may still be lower (custom policies), so the effective cap is
+        # the smaller of the two.
+        cap_ms_int: int = min(int(cap_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
 
-        multiplier: int = pow(2, attempt)
-        backoff_ms: int = base_ms_int * multiplier
-        backoff_ms = min(backoff_ms, cap_ms_int)
+        # ceil(log2(cap / base)), using integer arithmetic only.
+        saturated_attempt = ((cap_ms_int - 1) // base_ms_int).bit_length()
+        attempt = min(attempt, saturated_attempt)
+        backoff_ms = min(base_ms_int << attempt, cap_ms_int)
 
         unavailable_until_ms = current_time_ms + backoff_ms
         self._entries[key] = UnavailabilityEntry(
@@ -175,7 +189,10 @@ class AgentUnavailabilityTracker:
             base_backoff_ms=base_ms_int,
             max_backoff_ms=cap_ms_int,
         )
-        self._backoff_attempts[key] = attempt + 1
+        # Saturate the recorded attempt counter at the same threshold so
+        # the per-agent history does not continue growing without bound
+        # after the cap is reached.
+        self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
         return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:

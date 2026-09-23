@@ -54,6 +54,8 @@ Each phase uses an agent chain. If an agent exhausts its retry budget or enters 
 
 Preferred agent selection via `select_preferred_agent` picks the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance), rather than strictly walking forward down the chain. Ralph Workflow re-selects the highest-priority available agent whenever a phase is entered, as well as after a failure or an all-agents-unavailable cooldown wait, so a run that fell over to a lower-priority agent returns to the operator's first choice as soon as its cooldown expires.
 
+Unavailable-agent cooldowns double on repeated failures, retaining history across cooldown expiry and phase changes. Every default reason caps at five hours (18,000,000 ms); custom policies may use a lower cap but cannot exceed five hours. A successful invocation clears only that agent's cooldown and backoff history, so its next failure starts at the reason's base delay. Success does not move selection away from the preferred available agent.
+
 When no agent is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, spent, or lower-priority reason for every skipped agent.
 
 That is how longer unattended runs stay moving without being pinned to one provider while always preferring the highest-priority agent when available.

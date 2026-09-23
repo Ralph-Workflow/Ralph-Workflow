@@ -94,7 +94,7 @@ def test_cursor_auth_cooldown_grows_after_expiry_caps_and_resets() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller(clock)
 
-    expected_cooldowns_ms = (5_000, 10_000, 20_000, 40_000, 60_000, 60_000)
+    expected_cooldowns_ms = [min(5_000 * 2**attempt, 18_000_000) for attempt in range(15)]
     for expected_cooldown_ms in expected_cooldowns_ms:
         _, _, event = controller.handle(
             _state(),

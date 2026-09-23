@@ -206,7 +206,14 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
         assert failure.is_unavailable is False
         assert failure.unavailability_reason is None
 
-    def test_out_of_credits_backoff_grows_exponentially_and_caps_at_thirty_minutes(self) -> None:
+    def test_out_of_credits_backoff_grows_exponentially_and_caps_at_five_hours(self) -> None:
+        """OUT_OF_CREDITS grows exponentially and saturates at 18_000_000 ms.
+
+        Plan S-3 + S-4 contract: the default OUT_OF_CREDITS policy has
+        base 60_000 ms and the universal five-hour cap (18_000_000 ms).
+        Exponential growth: 60_000, 120_000, ..., 15_360_000, then
+        30_720_000 caps to 18_000_000 and stays there.
+        """
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
@@ -217,7 +224,8 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             )
             if i == 0:
                 assert entry.base_backoff_ms == 60_000
-                assert entry.max_backoff_ms == 1_800_000
+                # Default cap is the universal five-hour ceiling.
+                assert entry.max_backoff_ms == 18_000_000
 
             cooldowns.append(entry.unavailable_until_ms - int(clock.monotonic() * 1000))
             clock.advance((entry.unavailable_until_ms - int(clock.monotonic() * 1000)) / 1000.0)
@@ -228,14 +236,14 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             240_000,
             480_000,
             960_000,
-            1_800_000,
-            1_800_000,
-            1_800_000,
-            1_800_000,
-            1_800_000,
+            1_920_000,
+            3_840_000,
+            7_680_000,
+            15_360_000,
+            18_000_000,
         ]
         assert cooldowns == expected_cooldowns
-        assert cooldowns[-1] == 1_800_000
+        assert cooldowns[-1] == 18_000_000
 
     def test_new_limit_substrings_classify_as_out_of_credits(self) -> None:
         classifier = FailureClassifier()

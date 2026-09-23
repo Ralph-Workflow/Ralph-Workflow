@@ -315,7 +315,8 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.OUT_OF_CREDITS,
     )
     assert out_of_credits_entry.base_backoff_ms == 60_000
-    assert out_of_credits_entry.max_backoff_ms == 1_800_000
+    # Default cap is the universal five-hour ceiling (18_000_000 ms).
+    assert out_of_credits_entry.max_backoff_ms == 18_000_000
 
     no_output_entry = tracker.mark_unavailable(
         "development",
@@ -323,7 +324,8 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.NO_OUTPUT_AT_START,
     )
     assert no_output_entry.base_backoff_ms == 5_000
-    assert no_output_entry.max_backoff_ms == 30_000
+    # Default cap is the universal five-hour ceiling (18_000_000 ms).
+    assert no_output_entry.max_backoff_ms == 18_000_000
 
     stale_child_entry = tracker.mark_unavailable(
         "development",
@@ -331,15 +333,18 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.STALE_CHILD_QUIET,
     )
     assert stale_child_entry.base_backoff_ms == 15_000
-    assert stale_child_entry.max_backoff_ms == 300_000
+    # Default cap is the universal five-hour ceiling (18_000_000 ms).
+    assert stale_child_entry.max_backoff_ms == 18_000_000
 
     policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
+    # Every default policy uses the universal five-hour ceiling
+    # (18_000_000 ms) for its max backoff.
     assert policy[UnavailabilityReason.OUT_OF_CREDITS].base_backoff_ms == 60_000
-    assert policy[UnavailabilityReason.OUT_OF_CREDITS].max_backoff_ms == 1_800_000
+    assert policy[UnavailabilityReason.OUT_OF_CREDITS].max_backoff_ms == 18_000_000
     assert policy[UnavailabilityReason.NO_OUTPUT_AT_START].base_backoff_ms == 5_000
-    assert policy[UnavailabilityReason.NO_OUTPUT_AT_START].max_backoff_ms == 30_000
+    assert policy[UnavailabilityReason.NO_OUTPUT_AT_START].max_backoff_ms == 18_000_000
     assert policy[UnavailabilityReason.STALE_CHILD_QUIET].base_backoff_ms == 15_000
-    assert policy[UnavailabilityReason.STALE_CHILD_QUIET].max_backoff_ms == 300_000
+    assert policy[UnavailabilityReason.STALE_CHILD_QUIET].max_backoff_ms == 18_000_000
 
     for reason in (
         UnavailabilityReason.OUT_OF_CREDITS,

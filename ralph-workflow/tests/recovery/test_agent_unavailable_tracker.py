@@ -1095,3 +1095,71 @@ def test_legacy_unavailable_timeouts_seam_still_works() -> None:
 
     assert "all agents unavailable" in new_state.last_error.lower()
     assert new_state.last_retry_delay_ms > 0
+
+
+def test_default_policy_saturates_at_five_hours() -> None:
+    """S-3: credit failures double after expiry until the five-hour ceiling."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=20,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+    for attempt in range(15):
+        controller.handle(
+            state,
+            AgentInvocationError("claude", 1, "out of credits"),
+            FailureContext(phase="development", agent="claude"),
+        )
+        expected = min(60_000 * 2**attempt, 18_000_000)
+        timeout = controller.snapshot()["unavailable_timeouts"]["claude"]
+        assert timeout - int(clock.monotonic() * 1000) == expected
+        clock.advance(expected / 1000)
+
+
+def test_default_success_resets_history() -> None:
+    """Successful invocation clears the unavailable state and attempt history."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=20,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+    exc = AgentInactivityTimeoutError(
+        "claude",
+        1,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START,
+            diagnostic={"cumulative": 0.0},
+        ),
+    )
+    for _ in range(5):
+        controller.handle(
+            state,
+            exc,
+            FailureContext(phase="development", agent="claude"),
+        )
+        clock.advance(60_000)
+    snap_pre = controller.snapshot()
+    assert snap_pre["backoff_attempts"]["claude"] == 5
+    controller.reset_backoff("development", "claude")
+    snap_post = controller.snapshot()
+    assert "claude" not in snap_post["unavailable_timeouts"]
+    assert "claude" not in snap_post["backoff_attempts"]
+    clock.advance(60_000)
+    controller.handle(
+        state,
+        exc,
+        FailureContext(phase="development", agent="claude"),
+    )
+    snap_after = controller.snapshot()
+    current_time_ms = int(clock.monotonic() * 1000)
+    timeout = snap_after["unavailable_timeouts"]["claude"]
+    assert timeout - current_time_ms == 5_000
+    assert snap_after["backoff_attempts"]["claude"] == 1

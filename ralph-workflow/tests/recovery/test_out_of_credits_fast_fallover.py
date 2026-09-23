@@ -93,7 +93,7 @@ def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credit
     assert controller.snapshot()["unavailable_timeouts"]["codex"] == 60_000
 
 
-def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> None:
+def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None:
     clock = FakeClock(start=0.0)
     bus = FailureEventBus()
     controller = RecoveryController(
@@ -112,9 +112,9 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> 
 
     exc = AgentInvocationError("claude", 1, "You've hit your weekly limit")
 
-    expected_cooldowns = [60_000, 120_000, 240_000, 480_000, 960_000, 1_800_000]
+    expected_cooldowns = [min(60_000 * 2**attempt, 18_000_000) for attempt in range(12)]
 
-    for i in range(6):
+    for i in range(len(expected_cooldowns)):
         state, _effects, _failure_evt = controller.handle(
             state,
             exc,
@@ -129,7 +129,7 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_thirty_minute_cap() -> 
         clock.advance(expected_cooldowns[i] / 1000.0)
 
 
-def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> None:
+def test_controller_mark_agent_unavailable_caps_return_value_at_five_hours() -> None:
     """The private ``_mark_agent_unavailable`` helper documents that it
     returns the computed backoff in ms, capped at the reason's
     ``max_backoff_ms``. The store state is correctly capped (the previous
@@ -137,12 +137,12 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> 
     because it returned ``base_backoff_ms * multiplier`` without
     reapplying the cap. A future caller that consumes the return value
     (e.g. for telemetry, for a wait-state that consumes the helper
-    directly, for a side-channel log) would see values above 1_800_000ms
-    even though the store recorded 1_800_000ms -- a contract violation
+    directly, for a side-channel log) would see values above 18_000_000ms
+    even though the store recorded 18_000_000ms -- a contract violation
     that would mislead operators.
 
     This test drives repeated ``OUT_OF_CREDITS`` marks through the cap
-    and asserts the helper never returns above 1_800_000ms. It also
+    and asserts the helper never returns above 18_000_000ms. It also
     asserts the helper's return value matches the cooldown recorded in
     the store so the helper and the store never disagree.
     """
@@ -156,11 +156,10 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> 
             event_bus=bus,
         )
     )
-    out_of_credits_max = 1_800_000
+    out_of_credits_max = 18_000_000
 
-    # 8 successive marks is more than enough to drive base*2^attempt past
-    # the 1_800_000ms cap (60_000 * 2^7 = 7_680_000ms).
-    for _ in range(8):
+    # Twelve marks exercise growth and repeated saturation at five hours.
+    for _ in range(12):
         helper_return = controller._mark_agent_unavailable(
             "development",
             "claude",

@@ -23,4 +23,5 @@ def test_broken_agent_is_classified_as_unavailable_with_short_backoff() -> None:
     assert failure.unavailability_reason == UnavailabilityReason.BROKEN_AGENT
     policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY[UnavailabilityReason.BROKEN_AGENT]
     assert policy.base_backoff_ms == 5_000
-    assert policy.max_backoff_ms == 60_000
+    # Default cap is the universal five-hour ceiling (18_000_000 ms).
+    assert policy.max_backoff_ms == 18_000_000

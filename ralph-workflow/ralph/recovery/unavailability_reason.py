@@ -24,12 +24,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-__all__ = [
-    "DEFAULT_UNAVAILABILITY_BACKOFF_POLICY",
-    "ReasonBackoffPolicy",
-    "UnavailabilityReason",
-]
-
 
 class UnavailabilityReason(StrEnum):
     """Why an agent is temporarily unavailable."""
@@ -45,7 +39,7 @@ class UnavailabilityReason(StrEnum):
     # dead children). Fires when the corroborator reports a live child
     # with no recent progress / heartbeat for the
     # ``no_progress_quiet_strictly_stuck_seconds`` ceiling. Same
-    # backoff policy as STALE_CHILD_QUIET (15 s base, 300 s max).
+    # backoff policy as STALE_CHILD_QUIET (15 s base, five-hour max).
     STRICTLY_STUCK = "strictly_stuck"
 
 
@@ -65,37 +59,54 @@ class ReasonBackoffPolicy:
             raise ValueError(msg)
 
 
+# Five-hour ceiling (18_000_000 ms). Every default unavailable-agent
+# reason uses this cap so that repeated failures cannot grow past the
+# usual reset window for most agents. Operators who need tighter pacing
+# can supply a custom policy via
+# RecoveryControllerOptions.unavailability_backoff_policy -- custom
+# caps smaller than 18_000_000 are honored. Custom caps larger than
+# 18_000_000 are clamped to 18_000_000 by AgentUnavailabilityTracker
+# so the universal ceiling cannot be exceeded by operator override.
+_UNIVERSAL_COOLDOWN_CAP_MS: int = 18_000_000
+
 DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {  # bounded-accumulator-ok: static
     UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
         base_backoff_ms=60_000,
-        max_backoff_ms=1_800_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.AUTH_CONFIG: ReasonBackoffPolicy(
         base_backoff_ms=5_000,
-        max_backoff_ms=60_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.BROKEN_AGENT: ReasonBackoffPolicy(
         base_backoff_ms=5_000,
-        max_backoff_ms=60_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
         base_backoff_ms=5_000,
-        max_backoff_ms=30_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY: ReasonBackoffPolicy(
         base_backoff_ms=10_000,
-        max_backoff_ms=120_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT: ReasonBackoffPolicy(
         base_backoff_ms=10_000,
-        max_backoff_ms=60_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
         base_backoff_ms=15_000,
-        max_backoff_ms=300_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.STRICTLY_STUCK: ReasonBackoffPolicy(
         base_backoff_ms=15_000,
-        max_backoff_ms=300_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
 }
+
+__all__ = [
+    "DEFAULT_UNAVAILABILITY_BACKOFF_POLICY",
+    "_UNIVERSAL_COOLDOWN_CAP_MS",
+    "ReasonBackoffPolicy",
+    "UnavailabilityReason",
+]

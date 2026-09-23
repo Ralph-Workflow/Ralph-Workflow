@@ -112,3 +112,45 @@ def test_run_loop_reselects_preferred_agent_on_phase_entry(
     assert dev_chain.retries == 0
     assert dev_state.last_agent_session_id is None
     assert any("Phase development: Selected agent claude" in log for log in logs)
+
+
+def test_controller_preferred_agent_index_repeated_invocations() -> None:
+    """Plan S-2: priority selection is the source of truth on every invocation.
+
+    Two back-to-back calls to ``preferred_agent_index`` both pick the
+    highest-priority available agent. The selection is stable across
+    invocations -- the cursor from the prior call is not carried forward.
+    """
+    clock = FakeClock(start=200.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_entries={
+                "development:claude": _entry(5000),
+                "development:opencode": _entry(5000),
+                "development:agy": _entry(5000),
+            },
+        )
+    )
+
+    # First invocation: all cooldowns expired; claude (index 0) wins.
+    selection_first = controller.preferred_agent_index(
+        "development", ["claude", "opencode", "agy"]
+    )
+    assert selection_first.index == 0
+    assert selection_first.agent == "claude"
+
+    # Second invocation: claude is still the highest-priority available agent.
+    selection_second = controller.preferred_agent_index(
+        "development", ["claude", "opencode", "agy"]
+    )
+    assert selection_second.index == 0
+    assert selection_second.agent == "claude"
+
+    # Third invocation: same answer again. Priority is not a cursor.
+    selection_third = controller.preferred_agent_index(
+        "development", ["claude", "opencode", "agy"]
+    )
+    assert selection_third.index == 0
+    assert selection_third.agent == "claude"
