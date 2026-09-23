@@ -56,16 +56,16 @@ def redacted_command(command: Sequence[str]) -> str:
 def loguru_event_listener(event: ProcessEvent) -> None:
     record = event.record
     new_status = event.new_status
+    if new_status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) or (
+        new_status in (ProcessStatus.EXITED, ProcessStatus.KILLED) and record.returncode == 0
+    ):
+        return
+
     bound = logger.bind(component="process", pid=record.pid, label=record.label)
-    if new_status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING):
-        bound.debug("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.EXITED:
-        bound.info("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.KILLED:
-        if record.returncode == 0:
-            bound.debug("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-        else:
-            bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
+    if new_status == ProcessStatus.KILLED or (
+        new_status == ProcessStatus.EXITED and record.returncode != 0
+    ):
+        bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.FAILED:
         # A spawn that never produced a child has pid -1 and rc None, so those
         # two fields alone say nothing an operator can act on. The executable and

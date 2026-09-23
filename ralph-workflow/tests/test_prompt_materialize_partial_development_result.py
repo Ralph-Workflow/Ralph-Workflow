@@ -86,6 +86,7 @@ def _patch_partial_pipeline_runtime(
     )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda _root: None)
+    monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _root: True)
     monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
     monkeypatch.setattr(
         runner_module,
@@ -99,9 +100,24 @@ def _patch_partial_pipeline_runtime(
         lambda *_args, **_kwargs: None,
     )
     determine_effect = runner_module.call_determine_effect_from_policy
+    sync_changes_invocations = 0
 
     def bounded_determine_effect(*args: object, **kwargs: object) -> object:
+        nonlocal sync_changes_invocations
+        state = args[0]
+        assert isinstance(state, PipelineState)
+        if state.phase == "sync_changes":
+            sync_changes_invocations += 1
         effect = determine_effect(*args, **kwargs)
+        if state.phase == "sync_changes" and sync_changes_invocations == 1:
+            effect = InvokeAgentEffect(
+                agent_name="fake-agent",
+                phase="sync_changes",
+                prompt_file=".agent/prompts/sync_changes.md",
+                drain="change_record",
+            )
+        if state.phase == "sync_changes" and sync_changes_invocations > 1:
+            effect = CommitEffect(message_file=".agent/artifacts/commit_message.md")
         routed_effects.append(type(effect).__name__)
         if len(routed_effects) >= 30:
             return ExitSuccessEffect()
@@ -396,6 +412,7 @@ status: completed
         ),
         auto_integrate_resolver=None,
         commit_effect_executor=None,
+        has_uncommitted_changes=lambda _root: True,
     )
     phase_chains = {
         phase: AgentChainState(agents=["fake-agent"])

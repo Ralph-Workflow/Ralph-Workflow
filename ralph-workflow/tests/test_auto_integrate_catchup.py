@@ -13,7 +13,9 @@ per-test budget. The real-git proof lives in
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,8 +23,16 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 _TARGET_SHA = "b" * 40
 _FEATURE_SHA = "a" * 40
+
+
+@contextmanager
+def _remote_lease(*_args: object, **_kwargs: object) -> Iterator[object]:
+    yield type("Lease", (), {"fetch_allowed": True, "record_fetch": lambda self: None})()
 
 
 def _config(
@@ -127,6 +137,58 @@ class TestAutoIntegrateCatchup:
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_ON_TARGET
 
+    def test_already_on_target_synchronizes_remote_without_checkout_catchup(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _open_all_gates(monkeypatch, current="main")
+        events: list[str] = []
+        monkeypatch.setattr(
+            catchup,
+            "_synchronize_remote_target",
+            lambda _config, _root, target: events.append(f"sync:{target}") or None,
+        )
+        monkeypatch.setattr(
+            catchup,
+            "_fast_forward_if_strictly_behind",
+            lambda *_args: events.append("checkout-catchup") or catchup.CATCHUP_REFUSED,
+        )
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _config(remote_enabled=True), tmp_path
+        )
+
+        assert outcome == catchup.CATCHUP_ON_TARGET
+        assert events == ["sync:main"]
+
+    def test_catchup_regression_target_owned_remote_advance_reports_and_logs_movement(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _open_all_gates(monkeypatch, current="main")
+        monkeypatch.setattr(
+            catchup,
+            "_synchronize_remote_target",
+            lambda _config, _root, _target: catchup.CATCHUP_FAST_FORWARDED,
+        )
+        messages: list[str] = []
+        monkeypatch.setattr(catchup.logger, "info", messages.append)
+        worker = catchup.AutoIntegrateCatchupWorker(
+            _config(remote_enabled=True),
+            tmp_path,
+            tick=lambda: catchup.attempt_catchup_fast_forward(
+                _config(remote_enabled=True), tmp_path
+            ),
+        )
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _config(remote_enabled=True), tmp_path
+        )
+        worker._tick_once()
+
+        assert outcome == catchup.CATCHUP_FAST_FORWARDED
+        assert messages == [
+            "auto_integrate catch-up: fast-forwarded the checkout onto the target"
+        ]
+
     def test_dirty_worktree(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         ff_calls = _open_all_gates(monkeypatch, clean=False)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
@@ -193,6 +255,7 @@ class TestAutoIntegrateCatchup:
 
         monkeypatch.setattr(catchup, "refresh_target_from_remote", _refresh)
         monkeypatch.setattr(catchup, "observe_branch_sha", _observe)
+        monkeypatch.setattr(catchup, "remote_sync_transaction", _remote_lease)
 
         outcome = catchup.attempt_catchup_fast_forward(
             _config(remote_enabled=True, remote="upstream"), tmp_path
@@ -225,7 +288,7 @@ class TestAutoIntegrateCatchup:
         assert refresh_calls == []
         assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
-    def test_remote_refresh_unreachable_keeps_local_catchup_behavior(
+    def test_remote_refresh_unreachable_refuses_local_catchup(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         ff_calls = _open_all_gates(monkeypatch)
@@ -235,13 +298,14 @@ class TestAutoIntegrateCatchup:
             "refresh_target_from_remote",
             lambda *_args, **_kwargs: REFRESH_UNREACHABLE,
         )
+        monkeypatch.setattr(catchup, "remote_sync_transaction", _remote_lease)
 
         outcome = catchup.attempt_catchup_fast_forward(
             _config(remote_enabled=True), tmp_path
         )
 
-        assert outcome == catchup.CATCHUP_FAST_FORWARDED
-        assert ff_calls == [(tmp_path, _TARGET_SHA)]
+        assert outcome == catchup.CATCHUP_REMOTE_SKIPPED
+        assert ff_calls == []
 
     def test_refused_merge_reports_refused(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

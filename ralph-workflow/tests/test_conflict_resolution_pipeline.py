@@ -13,7 +13,6 @@ launches a process or touches a repository.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,6 +50,11 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["src/alpha.py", "docs/beta.md"]
+_POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
+_CONFIG = UnifiedConfig.model_validate({"general": {}})
+_RESTORE_STATUS_BAR = driver_module._restore_status_bar
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _FakeStatusBar:
@@ -76,15 +80,13 @@ class _FakeDisplay:
         self.warn_lines.append(message)
 
 
-@lru_cache(maxsize=1)
 def _policy_bundle() -> PolicyBundle:
-    """The real default policy, which declares the resolution drain."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    return load_policy(defaults_dir)
+    """Return the preloaded default policy that declares the resolution drain."""
+    return _POLICY_BUNDLE
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate({"general": {}})
+    return _CONFIG
 
 
 def _install_seams(
@@ -96,6 +98,12 @@ def _install_seams(
     """Stub the two git queries the driver's verdict rests on."""
     scans: list[Sequence[str]] = []
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
+    monkeypatch.setattr(
+        driver_module,
+        "render_conflict_prompt",
+        lambda *, root, **_kwargs: root / "PROMPT.md",
+    )
+    monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
 
     def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
         index = min(len(scans), len(surviving_per_round) - 1)
@@ -151,7 +159,6 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
         surviving_per_round=[["src/alpha.py"], []],
     )
     feedback_seen: list[tuple[str, ...]] = []
-    real_render = driver_module.render_conflict_prompt
 
     def _spy_render(
         *,
@@ -166,19 +173,18 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
         stop_index: int | None = None,
         stop_cap: int | None = None,
     ) -> Path | None:
-        feedback_seen.append(tuple(surviving_marker_paths))
-        return real_render(
-            root=root,
-            target=target,
-            conflicted_paths=conflicted_paths,
-            round_index=round_index,
-            round_cap=round_cap,
-            surviving_marker_paths=surviving_marker_paths,
-            replaying_commit_sha=replaying_commit_sha,
-            replaying_commit_subject=replaying_commit_subject,
-            stop_index=stop_index,
-            stop_cap=stop_cap,
+        del (
+            target,
+            conflicted_paths,
+            round_index,
+            round_cap,
+            replaying_commit_sha,
+            replaying_commit_subject,
+            stop_index,
+            stop_cap,
         )
+        feedback_seen.append(tuple(surviving_marker_paths))
+        return root / "PROMPT.md"
 
     monkeypatch.setattr(driver_module, "render_conflict_prompt", _spy_render)
 
@@ -398,6 +404,7 @@ def test_previous_status_bar_model_is_restored_on_exit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    monkeypatch.setattr(driver_module, "_restore_status_bar", _RESTORE_STATUS_BAR)
     display = _FakeDisplay()
     sentinel = object()
     display.status_bar.last_model = sentinel
@@ -418,6 +425,7 @@ def test_status_bar_is_not_left_on_the_resolution_label_without_a_prior_model(
     rule out.
     """
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    monkeypatch.setattr(driver_module, "_restore_status_bar", _RESTORE_STATUS_BAR)
     display = _FakeDisplay()
     assert display.status_bar.last_model is None
 

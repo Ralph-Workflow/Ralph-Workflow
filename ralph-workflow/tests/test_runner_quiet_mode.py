@@ -12,6 +12,7 @@ import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline import effect_router
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -91,6 +92,7 @@ def _install_runner_stubs(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(effect_router, "_is_empty_commit_phase", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
     )

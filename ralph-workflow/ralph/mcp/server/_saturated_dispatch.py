@@ -196,7 +196,10 @@ class _SaturatedDispatch:
             self._inflight = 0
             self._generation += 1
         if executor is not None:
-            executor.shutdown(wait=wait)
+            try:
+                executor.shutdown(wait=wait, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=wait)
 
     def reset(self) -> None:
         """Reset to a fresh executor (test-only seam)."""
@@ -209,7 +212,7 @@ class _SaturatedDispatch:
             self._inflight = 0
             self._generation += 1
         if previous_executor is not None:
-            previous_executor.shutdown(wait=False)
+            previous_executor.shutdown(wait=True)
 
 
 _default_dispatch = _SaturatedDispatch()

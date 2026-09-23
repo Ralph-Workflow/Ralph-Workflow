@@ -163,3 +163,34 @@ def test_concurrent_calls_all_obey_timeout() -> None:
     for exc in raised:
         assert "tavily" in str(exc)
         assert "0.05" in str(exc)
+
+
+def test_shutdown_does_not_wait_for_running_callable_and_cancels_queued_work() -> None:
+    bounded = _import_bounded()
+    release = threading.Event()
+    started = threading.Event()
+    queued_called = threading.Event()
+    executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="test-nonblocking-shutdown"
+    )
+
+    def block() -> None:
+        started.set()
+        release.wait(timeout=1.0)
+
+    bounded.install_default_executor(executor)
+    try:
+        with pytest.raises(bounded.WebSearchError):
+            bounded.with_timeout(block, timeout_seconds=0.0)
+        assert started.is_set()
+        with pytest.raises(bounded.WebSearchError):
+            bounded.with_timeout(queued_called.set, timeout_seconds=0.0)
+
+        bounded.shutdown(wait=False)
+        release.set()
+        executor.shutdown(wait=True)
+
+        assert not queued_called.is_set()
+    finally:
+        release.set()
+        executor.shutdown(wait=True)

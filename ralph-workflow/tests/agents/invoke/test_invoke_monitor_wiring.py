@@ -33,6 +33,8 @@ from ralph.testing.fake_process import (
     ProcessStreams,
 )
 
+_FAKE_AGENT_PID = 10_000_000
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -72,7 +74,7 @@ def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
 
     def factory(_command: object, _options: object) -> FakePopen:
         return FakePopen(
-            1,
+            _FAKE_AGENT_PID,
             state=ProcessState(returncode=0),
             streams=ProcessStreams(stdout=io.StringIO("")),
         )
@@ -115,6 +117,27 @@ def _noop_command(
         "echo",
         "hello from agent",
     ]
+
+
+@pytest.mark.timeout_seconds(1)
+def test_monitor_wiring_fake_never_scans_the_machine_process_tree(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
+    monkeypatch.setattr("ralph.agents.invoke._build_command", _noop_command)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE)
+
+    list(invoke_agent(config, str(prompt_file)))
+
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    assert monitor._host_pid == _FAKE_AGENT_PID
 
 
 @pytest.mark.parametrize(

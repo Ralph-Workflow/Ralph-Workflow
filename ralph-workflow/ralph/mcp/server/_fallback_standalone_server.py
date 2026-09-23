@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
+from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._runtime_constants import DEFAULT_TRANSPORT, SERVER_POLL_INTERVAL_SECONDS
@@ -15,14 +16,26 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.mcp.server._mcp_server import McpServer
+
+    EnvGetter = Callable[[str, str | None], str | None]
 
 
 class _FallbackStandaloneServer:
-    def __init__(self, host: str, port: int, mcp_server: McpServer) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        mcp_server: McpServer,
+        *,
+        env_getter: EnvGetter = os.environ.get,
+    ) -> None:
         self._host = host
         self._port = port
         self._mcp_server = mcp_server
+        self._env_getter = env_getter
         self._httpd: _FallbackHttpServer | None = None
 
     @property
@@ -62,7 +75,7 @@ class _FallbackStandaloneServer:
         # leaving the session class, the dispatch caps, and the auth posture
         # invisible. Each field is queried from the running configuration so
         # the banner cannot drift from the actual behavior.
-        auth_token_set = bool(os.environ.get("MCP_AUTH_TOKEN"))
+        auth_token_set = bool(self._env_getter("MCP_AUTH_TOKEN", None))
         logger.info(
             "ralph-mcp startup: transport={transport} "
             "session_class={session_class} "
@@ -76,12 +89,15 @@ class _FallbackStandaloneServer:
             dispatch_cap=EXEC_MAX_TIMEOUT_MS,
             drain_ceiling=5000,
             kill_escalation=5000,
-            probe_timeout=int(float(os.environ.get("RALPH_MCP_PROBE_TIMEOUT_MS", "5000"))),
+            probe_timeout=int(
+                float(self._env_getter("RALPH_MCP_PROBE_TIMEOUT_MS", "5000") or "5000")
+            ),
             auth=auth_token_set,
         )
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
         finally:
+            shutdown_runtime_executors()
             # Release the listening TCP socket on every exit path
             # (normal return, exception, external shutdown). Without
             # this, embedded/long-lived use leaks the FD; one-shot

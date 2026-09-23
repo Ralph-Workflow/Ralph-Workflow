@@ -70,6 +70,29 @@ def _fake_agy_models_probe() -> Generator[None, None, None]:
         registry._default_agy_models_probe = original_probe
 
 
+def pytest_unconfigure(config: pytest.Config) -> None:
+    del config
+    from ralph.mcp.runtime_executors import shutdown_runtime_executors
+    from ralph.process import reset_process_manager
+
+    reset_process_manager()
+    shutdown_runtime_executors()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_default_process_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Clean the default manager while each test's fake process backend is active."""
+    from ralph.process import reset_process_manager
+
+    reset_process_manager()
+    try:
+        yield
+    finally:
+        reset_process_manager()
+
+
 @pytest.fixture(autouse=True)
 def _fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep default tests off the locally installed `claude` binary.

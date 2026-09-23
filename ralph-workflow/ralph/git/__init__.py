@@ -19,6 +19,7 @@ from ralph.git.hooks import (
 )
 from ralph.git.operations import (
     append_to_gitignore,
+    atomic_append_text,
     create_commit,
     find_repo_root,
     get_head_sha,
@@ -47,6 +48,7 @@ __all__ = [
     "GitOperationError",
     "GitRunResult",
     "append_to_gitignore",
+    "atomic_append_text",
     "create_commit",
     "detect_unauthorized_commit",
     "end_agent_phase",

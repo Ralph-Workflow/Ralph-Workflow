@@ -181,7 +181,8 @@ def execute_commit_effect(
             if callable(opts.get("render_commit_message_fn"))
             else _render_commit_message_via_display,
         )
-        _render_commit_fn(repo_root, get_display_context(display))
+        render_target: object = display if display is not None else get_display_context(display)
+        _render_commit_fn(repo_root, render_target)
     if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
         with suppress(Exception):
             cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")

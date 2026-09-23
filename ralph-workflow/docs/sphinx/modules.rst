@@ -22,6 +22,12 @@ ralph.pipeline.integration_resolution
 .. automodule:: ralph.pipeline.integration_resolution
    :members:
 
+ralph.mcp.runtime_executors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.runtime_executors
+   :members:
+
 ----
 
 Top-Level
@@ -1226,6 +1232,13 @@ ralph.pipeline.auto_integrate_catchup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_catchup
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_catchup_coordination
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_catchup_coordination
    :members:
    :show-inheritance:
 

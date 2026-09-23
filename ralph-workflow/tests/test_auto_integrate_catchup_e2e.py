@@ -17,7 +17,9 @@ tests/test_auto_integrate_race.py:11-15.
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -64,12 +66,14 @@ def _head_sha(repo_root: Path) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _build_config(*, enabled: bool = True) -> UnifiedConfig:
+def _build_config(*, enabled: bool = True, remote_enabled: bool = False) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": enabled,
                 "auto_integrate_target": _TARGET,
+                "auto_integrate_remote_enabled": remote_enabled,
+                "auto_integrate_remote_interval_seconds": 0.0,
             }
         }
     )
@@ -88,6 +92,21 @@ def _repo_with_feature_behind_main(tmp_path: Path) -> tuple[Path, str]:
     return repo, advanced
 
 
+def _repo_with_remote_ahead(tmp_path: Path) -> tuple[Path, Path, str]:
+    repo = tmp_path / "repo"
+    bare = tmp_path / "origin.git"
+    writer = tmp_path / "writer"
+    _init_repo(repo)
+    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
+    assert _run(repo, "remote", "add", "origin", str(bare)).returncode == 0
+    assert _run(tmp_path, "clone", str(bare), str(writer)).returncode == 0
+    assert _run(writer, "config", "user.email", "test@example.com").returncode == 0
+    assert _run(writer, "config", "user.name", "Test User").returncode == 0
+    remote_sha = _commit(writer, "remote.txt", "remote\n", "remote advance")
+    assert _run(writer, "push", "origin", _TARGET).returncode == 0
+    return repo, bare, remote_sha
+
+
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(20)
 def test_behind_and_clean_checkout_lands_on_target_tip(tmp_path: Path) -> None:
@@ -100,6 +119,135 @@ def test_behind_and_clean_checkout_lands_on_target_tip(tmp_path: Path) -> None:
     # And the branch itself moved, not a detached HEAD.
     branch = _run(repo, "symbolic-ref", "--short", "HEAD").stdout.strip()
     assert branch == _FEATURE
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_ahead_advances_local_target_then_checkout(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    bare = tmp_path / "origin.git"
+    writer = tmp_path / "writer"
+    _init_repo(repo)
+    assert _run(repo, "branch", _FEATURE).returncode == 0
+    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
+    assert _run(repo, "remote", "add", "origin", str(bare)).returncode == 0
+    assert _run(tmp_path, "clone", str(bare), str(writer)).returncode == 0
+    assert _run(writer, "config", "user.email", "test@example.com").returncode == 0
+    assert _run(writer, "config", "user.name", "Test User").returncode == 0
+    remote_sha = _commit(writer, "remote.txt", "remote\n", "remote advance")
+    assert _run(writer, "push", "origin", _TARGET).returncode == 0
+    assert _run(repo, "checkout", _FEATURE).returncode == 0
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _build_config(remote_enabled=True), repo
+    )
+
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert _run(repo, "rev-parse", f"refs/heads/{_TARGET}").stdout.strip() == remote_sha
+    assert _head_sha(repo) == remote_sha
+    assert (repo / "remote.txt").read_text(encoding="utf-8") == "remote\n"
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_ahead_advances_target_with_head_on_target(tmp_path: Path) -> None:
+    repo, _bare, remote_sha = _repo_with_remote_ahead(tmp_path)
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _build_config(remote_enabled=True), repo
+    )
+
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert _head_sha(repo) == remote_sha
+    assert (repo / "remote.txt").read_text(encoding="utf-8") == "remote\n"
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_ahead_advances_clean_linked_target_owner_by_strict_ff(tmp_path: Path) -> None:
+    repo, _bare, remote_sha = _repo_with_remote_ahead(tmp_path)
+    feature_owner = tmp_path / "feature-owner"
+    assert _run(repo, "branch", _FEATURE).returncode == 0
+    assert _run(repo, "worktree", "add", str(feature_owner), _FEATURE).returncode == 0
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _build_config(remote_enabled=True), feature_owner
+    )
+
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert _head_sha(repo) == remote_sha
+    assert _head_sha(feature_owner) == remote_sha
+    assert (repo / "remote.txt").read_text(encoding="utf-8") == "remote\n"
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_remote_ahead_leaves_dirty_linked_target_owner_unchanged(tmp_path: Path) -> None:
+    repo, _bare, _remote_sha = _repo_with_remote_ahead(tmp_path)
+    feature_owner = tmp_path / "feature-owner"
+    assert _run(repo, "branch", _FEATURE).returncode == 0
+    assert _run(repo, "worktree", "add", str(feature_owner), _FEATURE).returncode == 0
+    target_before = _head_sha(repo)
+    feature_before = _head_sha(feature_owner)
+    index_before = _run(repo, "write-tree").stdout.strip()
+    (repo / "seed.txt").write_text("dirty\n", encoding="utf-8")
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _build_config(remote_enabled=True), feature_owner
+    )
+
+    assert outcome == catchup.CATCHUP_REFUSED
+    assert _head_sha(repo) == target_before
+    assert _head_sha(feature_owner) == feature_before
+    assert _run(repo, "write-tree").stdout.strip() == index_before
+    assert (repo / "seed.txt").read_text(encoding="utf-8") == "dirty\n"
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_os_lock_excludes_linked_worktree_remote_transaction(tmp_path: Path) -> None:
+    repo, _bare, _remote_sha = _repo_with_remote_ahead(tmp_path)
+    feature_owner = tmp_path / "feature-owner"
+    assert _run(repo, "branch", _FEATURE).returncode == 0
+    assert _run(repo, "worktree", "add", str(feature_owner), _FEATURE).returncode == 0
+    holder_code = """
+import sys
+from pathlib import Path
+from ralph.pipeline.auto_integrate_catchup_coordination import remote_sync_transaction
+with remote_sync_transaction(Path(sys.argv[1]), 'origin', 'main') as lease:
+    print('LOCKED' if lease is not None else 'FAILED', flush=True)
+    sys.stdin.readline()
+"""
+    holder = subprocess.Popen(
+        (sys.executable, "-c", holder_code, str(repo)),
+        cwd=str(repo),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).parents[1]),
+        },
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "LOCKED"
+        target_before = _head_sha(repo)
+        feature_before = _head_sha(feature_owner)
+
+        outcome = catchup.attempt_catchup_fast_forward(
+            _build_config(remote_enabled=True), feature_owner
+        )
+
+        assert outcome == catchup.CATCHUP_REMOTE_SKIPPED
+        assert _head_sha(repo) == target_before
+        assert _head_sha(feature_owner) == feature_before
+        tracking = _run(feature_owner, "show-ref", "--verify", "refs/remotes/origin/main")
+        assert tracking.returncode != 0
+    finally:
+        stdout, stderr = holder.communicate(input="release\n", timeout=5)
+        assert holder.returncode == 0, stdout + stderr
 
 
 def test_checkout_on_target_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:

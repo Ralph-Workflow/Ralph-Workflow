@@ -98,3 +98,18 @@ def test_run_closes_server_on_exception(monkeypatch: pytest.MonkeyPatch) -> None
         fallback.run(ready_event=Event())
 
     assert len(server_stub.close_calls) == 1
+
+
+def test_mcp_server_lifecycle_uses_nonblocking_executor_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server_stub = _CloseCapturingServer(raise_on_serve=True)
+    _patch_http_server_class(monkeypatch, server_stub)
+    fallback = _FallbackStandaloneServer("127.0.0.1", 0, _FakeMcpServer())
+    shutdown_calls: list[None] = []
+    monkeypatch.setattr(srv_mod, "shutdown_runtime_executors", lambda: shutdown_calls.append(None))
+
+    with pytest.raises(RuntimeError, match="serve_forever exploded"):
+        fallback.run(ready_event=Event())
+
+    assert shutdown_calls == [None]

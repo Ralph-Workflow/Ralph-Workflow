@@ -168,6 +168,7 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
+@pytest.mark.timeout_seconds(5)
 class TestExecuteCommitEffect:
     @pytest.fixture(autouse=True)
     def _stub_head_sha(self, monkeypatch: MonkeyPatch) -> None:

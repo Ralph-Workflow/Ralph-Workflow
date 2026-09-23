@@ -331,7 +331,7 @@ def test_raising_listener_does_not_break_lifecycle() -> None:
 
 
 def test_log_events_false_suppresses_loguru_output() -> None:
-    """log_events=False produces no process log lines; True produces them."""
+    """log_events=False suppresses actionable process diagnostics."""
     records: list[str] = []
     sink_id = logger.add(lambda msg: records.append(str(msg)), level="DEBUG", format="{message}")
     try:
@@ -343,7 +343,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 log_events=False,
                 enable_zombie_reaper=False,
             ),
-            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=1),
         )
         handle = pm_silent.spawn([sys.executable, "-c", "pass"])
         handle.wait()
@@ -363,7 +363,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 log_events=True,
                 enable_zombie_reaper=False,
             ),
-            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=1),
         )
         handle2 = pm_loud.spawn([sys.executable, "-c", "pass"])
         handle2.wait()
@@ -372,6 +372,60 @@ def test_log_events_false_suppresses_loguru_output() -> None:
         assert len(process_lines_loud) >= 1, (
             f"Expected process log lines with log_events=True, got none. records={records}"
         )
+    finally:
+        logger.remove(sink_id)
+
+
+@pytest.mark.parametrize(
+    ("status", "returncode", "expected_level"),
+    [
+        (ProcessStatus.SPAWNED, None, None),
+        (ProcessStatus.RUNNING, None, None),
+        (ProcessStatus.EXITED, 0, None),
+        (ProcessStatus.EXITED, 1, "WARNING"),
+        (ProcessStatus.KILLED, 0, None),
+        (ProcessStatus.KILLED, None, "WARNING"),
+        (ProcessStatus.KILLED, 137, "WARNING"),
+        (ProcessStatus.FAILED, None, "ERROR"),
+    ],
+)
+def test_process_lifecycle_events_emit_only_actionable_statuses(
+    status: ProcessStatus,
+    returncode: int | None,
+    expected_level: str | None,
+) -> None:
+    levels: list[str] = []
+
+    def capture_level(message: object) -> None:
+        levels.append(str(message).strip())
+
+    sink_id = logger.add(
+        capture_level,
+        level="DEBUG",
+        format="{level}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=123,
+            pgid=123,
+            command=("python", "-c", "pass"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=status,
+            returncode=returncode,
+            failure_message="spawn failed" if status == ProcessStatus.FAILED else None,
+            label="test",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=status,
+            timestamp=datetime.now(tz=UTC),
+        )
+
+        loguru_event_listener(event)
+
+        assert levels == ([] if expected_level is None else [expected_level])
     finally:
         logger.remove(sink_id)
 
@@ -411,14 +465,7 @@ def test_successful_zombie_reconciliation_logs_below_warning() -> None:
 
 
 def test_regression_killed_rc_zero_any_cause_logs_below_warning() -> None:
-    """how_to_fix: user-reported process-manager WARNING on KILLED rc=0 cleanup.
-
-    A ``ProcessStatus.KILLED`` event with ``returncode == 0`` is successful
-    cleanup noise regardless of ``cause`` (e.g. ``graceful_shutdown``,
-    ``terminated_by_signal``, operator-initiated stop that exited cleanly)
-    and must NOT be logged at WARNING level. Only ``KILLED`` with a
-    non-zero or ``None`` returncode remains a genuine warning.
-    """
+    """KILLED rc=0 is routine cleanup regardless of its lifecycle cause."""
     records: list[str] = []
     sink_id = logger.add(
         lambda msg: records.append(str(msg)),
@@ -447,10 +494,7 @@ def test_regression_killed_rc_zero_any_cause_logs_below_warning() -> None:
 
             loguru_event_listener(event)
 
-        assert records == [], (
-            "KILLED rc=0 must log below WARNING regardless of cause; "
-            f"got WARNING records: {records}"
-        )
+        assert records == []
     finally:
         logger.remove(sink_id)
 

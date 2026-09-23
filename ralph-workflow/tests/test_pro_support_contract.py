@@ -30,6 +30,7 @@ import json
 import re
 import sys
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -480,18 +481,16 @@ def _seed_pro_workspace(
     (marker_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
-def _run_pipeline_with_heartbeat(
+def _make_pipeline_runner_with_heartbeat(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    *,
-    inner_result: tuple[object, str, int | None],
-) -> tuple[int, _RecordingHeartbeat]:
-    """Drive ``run_loop.run()`` with a fake heartbeat and a fixed inner-loop return.
+) -> Callable[[tuple[object, str, int | None]], tuple[int, _RecordingHeartbeat]]:
+    """Build a reusable ``run_loop.run()`` harness with a fake heartbeat.
 
     The fixtures used by ``run_loop.run`` are patched to a
-    deterministic minimal stub so the inner loop returns the
-    supplied ``(state, phase, exit_code)`` and we can observe
-    the heartbeat was started / stopped exactly once.
+    deterministic minimal stub. The returned runner accepts the
+    supplied ``(state, phase, exit_code)`` and records one complete
+    heartbeat lifecycle per invocation.
     """
     run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     runner_module = importlib.import_module("ralph.pipeline.runner")
@@ -604,14 +603,25 @@ def _run_pipeline_with_heartbeat(
         lambda _monitor: (MagicMock(), None),
     )
 
-    monkeypatch.setattr(
-        run_loop_module,
-        "_run_inner_loop",
-        lambda _state, _ctx, _prev: inner_result,
-    )
+    def _run(
+        inner_result: tuple[object, str, int | None],
+    ) -> tuple[int, _RecordingHeartbeat]:
+        nonlocal recording
+        recording = _RecordingHeartbeat()
+        monkeypatch.setattr(
+            run_loop_module,
+            "_run_inner_loop",
+            lambda _state, _ctx, _prev: inner_result,
+        )
+        exit_code = run_loop_module.run(
+            config,
+            initial_state=state_in,
+            display=display,
+            display_context=ctx,
+        )
+        return exit_code, recording
 
-    exit_code = run_loop_module.run(config, initial_state=state_in)
-    return exit_code, recording
+    return _run
 
 
 def test_section_4_pro_mode_clean_run_returns_zero(
@@ -621,9 +631,8 @@ def test_section_4_pro_mode_clean_run_returns_zero(
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="complete")
-    exit_code, recording = _run_pipeline_with_heartbeat(
-        monkeypatch, tmp_path, inner_result=(state, "complete", None)
-    )
+    run_pipeline = _make_pipeline_runner_with_heartbeat(monkeypatch, tmp_path)
+    exit_code, recording = run_pipeline((state, "complete", None))
     assert exit_code == 0
     assert recording.started, "heartbeat should have been started in Pro mode"
     assert recording.stopped, "heartbeat should have been stopped during cleanup"
@@ -636,9 +645,8 @@ def test_section_4_pro_mode_failure_preserves_nonzero_exit_code(
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="planning")
-    exit_code, recording = _run_pipeline_with_heartbeat(
-        monkeypatch, tmp_path, inner_result=(state, "planning", 7)
-    )
+    run_pipeline = _make_pipeline_runner_with_heartbeat(monkeypatch, tmp_path)
+    exit_code, recording = run_pipeline((state, "planning", 7))
     assert exit_code == 7, "contract \u00a74: non-zero step code must propagate"
     assert recording.stopped, "cleanup must still stop the heartbeat on failure"
 
@@ -657,11 +665,10 @@ def test_section_4_pro_mode_no_silent_zero_on_failure_sweep(
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="planning")
+    run_pipeline = _make_pipeline_runner_with_heartbeat(monkeypatch, tmp_path)
     for step_code in (1, 2, 7, 17, 42, 99, 130, 137, 143, 255):
         inner_result = (state, "planning", step_code)
-        exit_code, _ = _run_pipeline_with_heartbeat(
-            monkeypatch, tmp_path, inner_result=inner_result
-        )
+        exit_code, _ = run_pipeline(inner_result)
         assert exit_code == step_code, (
             f"contract \u00a74: step code {step_code} must propagate; got {exit_code}"
         )

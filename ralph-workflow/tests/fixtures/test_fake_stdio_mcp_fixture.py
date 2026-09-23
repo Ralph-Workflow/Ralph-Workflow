@@ -25,7 +25,7 @@ class TestFakeStdioMcp:
         stdout = handle.stdout
         assert stdin is not None
         assert stdout is not None
-        with handle, stdin, stdout:
+        with stdin, stdout:
             initialize_request = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -64,3 +64,5 @@ class TestFakeStdioMcp:
             assert len(tools) == 1
             assert tools[0]["name"] == "fake_tool"
             assert tools[0]["inputSchema"] == {"type": "object", "properties": {}}
+
+        assert handle.wait(timeout=0.5) == 0

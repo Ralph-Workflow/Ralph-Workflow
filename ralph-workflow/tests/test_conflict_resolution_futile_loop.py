@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -21,16 +23,17 @@ from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["a.py", "b.py", "c.py"]
+_POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
+_CONFIG = UnifiedConfig.model_validate({"general": {}})
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _policy_bundle() -> PolicyBundle:
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    return load_policy(defaults_dir)
+    return _POLICY_BUNDLE
 
 
 def _install_seams(
@@ -52,6 +55,7 @@ def _install_seams(
         "render_conflict_prompt",
         lambda *, root, **_kwargs: root / "resolution-prompt.md",
     )
+    monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
 
 
 def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:
@@ -125,7 +129,7 @@ def test_known_dead_surface_is_not_reentered(
     run_conflict_resolution_pipeline(
         root=tmp_path,
         target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
+        config=_CONFIG,
         pipeline_deps=None,
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
@@ -285,7 +289,7 @@ def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
+        config=_CONFIG,
         pipeline_deps=None,
         workspace_scope=None,
         policy_bundle=_policy_bundle(),

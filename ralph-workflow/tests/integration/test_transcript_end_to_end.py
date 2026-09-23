@@ -20,6 +20,7 @@ from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.context import make_display_context
+from ralph.pipeline import effect_router
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -109,6 +110,7 @@ def _install_runner_stubs(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(effect_router, "_is_empty_commit_phase", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run

@@ -852,3 +852,13 @@ def _atomic_append_text(
         with suppress(FileNotFoundError):
             staging.unlink()
         raise
+
+
+def atomic_append_text(
+    path: Path,
+    payload: str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    """Append text through Ralph's atomic sibling-staging publication path."""
+    _atomic_append_text(path, payload, encoding=encoding)

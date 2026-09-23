@@ -152,7 +152,7 @@ class _BoundedSdkCall:
         """Reset to a fresh executor (test-only seam)."""
         with self._lock:
             if self._executor is not None:
-                self._executor.shutdown(wait=False)
+                self._executor.shutdown(wait=True)
             self._executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=self._max_workers,
                 thread_name_prefix="mcp-websearch-sdk",
@@ -161,9 +161,13 @@ class _BoundedSdkCall:
     def shutdown(self, wait: bool = True) -> None:
         """Shut down the underlying executor. Idempotent."""
         with self._lock:
-            if self._executor is not None:
-                self._executor.shutdown(wait=wait)
-                self._executor = None
+            executor = self._executor
+            self._executor = None
+        if executor is not None:
+            try:
+                executor.shutdown(wait=wait, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=wait)
 
 
 _default_call = _BoundedSdkCall()

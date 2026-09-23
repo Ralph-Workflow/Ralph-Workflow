@@ -206,7 +206,7 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
     assert exit_model.exit_trigger == "completed"
 
 
-def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
+def test_execute_commit_effect_records_sha_artifact_outcome(tmp_path: Path) -> None:
     """Commit effect must record the sha as artifact outcome for the phase-close banner."""
 
     recorded: dict[str, str] = {}
@@ -218,11 +218,13 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
         record_artifact_outcome=_capture_outcome,
     )
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-        f.write("---\ntype: commit\nsubject: feat: add canonical phase name\n---\n")
-        msg_path = f.name
+    message_path = tmp_path / "commit-message.md"
+    message_path.write_text(
+        "---\ntype: commit\nsubject: feat: add canonical phase name\n---\n",
+        encoding="utf-8",
+    )
 
-    effect = CommitEffect(message_file=msg_path)
+    effect = CommitEffect(message_file=str(message_path))
 
     def _fake_create_commit(
         repo_root: str, message: str, *, expected_head: str

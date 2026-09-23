@@ -163,6 +163,7 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = "4"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
+
 if not EXCLUSIVE_SUBPROCESS_E2E_FILES:
     raise RuntimeError("EXCLUSIVE_SUBPROCESS_E2E_FILES must not be empty")
 if len(EXCLUSIVE_SUBPROCESS_E2E_FILES) != len(set(EXCLUSIVE_SUBPROCESS_E2E_FILES)):
@@ -312,8 +313,8 @@ def _xdist_workers_per_shard() -> str:
     The default is ``"0"`` (plain pytest per shard), which on the maintained
     32-core CI profile keeps the slowest shard well under the 60-second
     combined budget because the shard-saturated 16-shard fan-out already
-    uses one pytest process per shard and adding xdist workers inside each
-    shard trades parallel IO for pytest-coordination overhead. Operators
+    uses one pytest process per shard and adding in-shard xdist workers
+    trades parallel IO for pytest-coordination overhead. Operators
     on hosts with idle cores beyond the shard cap (e.g. 64-core CI), or
     hosts with very few shards, may opt into the legacy
     CPU-utilisation-maximising policy by setting
@@ -778,13 +779,14 @@ def _reap_process(
     *,
     timeout_seconds: float,
 ) -> tuple[str, str]:
-    process.cleanup_orphans()
     try:
         stdout, stderr = process.communicate(timeout=max(0.0, timeout_seconds))
     except subprocess.TimeoutExpired:
+        process.cleanup_orphans()
         if timeout_seconds <= 0.0:
             return "", ""
         return "", "pytest shard did not exit after termination\n"
+    process.cleanup_orphans()
     return _decode_output(stdout), _decode_output(stderr)
 
 

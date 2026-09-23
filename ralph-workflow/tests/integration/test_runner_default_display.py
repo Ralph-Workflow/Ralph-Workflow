@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.phases.phase_timing_record import PhaseTimingRecord
+from ralph.pipeline import effect_router
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -67,6 +69,17 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        runner_module,
+        "determine_effect_from_policy",
+        lambda state, bundle, scope, *, config=None, recovery=None: (
+            CommitEffect(message_file=str(scope.root / ".agent/artifacts/commit_message.md"))
+            if bundle.pipeline.phases[state.phase].role == "commit"
+            else effect_router.determine_effect_from_policy(
+                state, bundle, scope, config=config, recovery=recovery
+            )
+        ),
+    )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
     monkeypatch.setattr(
         runner_module,
@@ -109,7 +122,7 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     state = PipelineState(
         phase="planning",
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
         phase_timings=[
             PhaseTimingRecord(
                 phase="development",
@@ -121,10 +134,15 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
         ],
     )
 
+    pipeline_deps = replace(
+        make_test_pipeline_deps(make_display_context()),
+        commit_effect_executor=lambda _effect, _root: PipelineEvent.COMMIT_SUCCESS,
+        has_uncommitted_changes=lambda _root: True,
+    )
     exit_code = runner_module.run(
         _config(),
         initial_state=state,
-        pipeline_deps=make_test_pipeline_deps(make_display_context()),
+        pipeline_deps=pipeline_deps,
     )
 
     assert exit_code == 0

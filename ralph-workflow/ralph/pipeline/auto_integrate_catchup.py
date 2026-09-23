@@ -66,13 +66,27 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 from loguru import logger
 
-from ralph.git.merge import fast_forward_via_worktree
+from ralph.git.merge import (
+    WORKTREE_FOUND,
+    WORKTREE_QUERY_FAILED,
+    fast_forward_via_worktree,
+    worktree_lookup,
+)
+from ralph.git.operations import find_main_worktree_root
+from ralph.pipeline.auto_integrate_catchup_coordination import remote_sync_transaction
+from ralph.pipeline.auto_integrate_ff import (
+    fast_forward_target,
+)
 from ralph.pipeline.auto_integrate_remote_sync import (
     FETCH_TIMEOUT_SECONDS,
     remote_sync_enabled,
     remote_target_name,
 )
-from ralph.pipeline.auto_integrate_sync import refresh_target_from_remote
+from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_ORIGIN_AHEAD,
+    REFRESH_UNREACHABLE,
+    refresh_target_from_remote,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -100,6 +114,7 @@ CATCHUP_HEAD_UNREADABLE = "head-unreadable"
 CATCHUP_UP_TO_DATE = "up-to-date"
 CATCHUP_DIVERGED = "diverged"
 CATCHUP_REFUSED = "refused"
+CATCHUP_REMOTE_SKIPPED = "remote-skipped"
 CATCHUP_FAST_FORWARDED = "fast-forwarded"
 
 
@@ -235,8 +250,10 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     Stateless -- every gate is re-derived from config and live git
     state, matching the seam contract that integration decisions are
     never cached across observations. Returns one of the ``CATCHUP_*``
-    outcome tags; the repository is mutated only on
-    :data:`CATCHUP_FAST_FORWARDED`.
+    outcome tags. :data:`CATCHUP_FAST_FORWARDED` means either the
+    checkout caught up to the local target or remote synchronization
+    advanced the target owned by the current checkout;
+    :data:`CATCHUP_ON_TARGET` means no target movement occurred.
 
     Gate order is cheapest-first under the quiet-probe contract: the
     config read and every ref observation are in-process and free, so
@@ -262,16 +279,74 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     target = resolve_integration_target(config, root)
     if target is None:
         return CATCHUP_NO_TARGET
-    if current == target:
-        return CATCHUP_ON_TARGET
+    remote_outcome: str | None = None
     if remote_sync_enabled(config):
-        refresh_target_from_remote(
+        remote_outcome = _synchronize_remote_target(config, root, target)
+        if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
+            return remote_outcome
+    if current == target:
+        return (
+            CATCHUP_FAST_FORWARDED
+            if remote_outcome == CATCHUP_FAST_FORWARDED
+            else CATCHUP_ON_TARGET
+        )
+    return _fast_forward_if_strictly_behind(root, target, current)
+
+
+def _synchronize_remote_target(config: UnifiedConfig, root: Path, target: str) -> str | None:
+    remote = remote_target_name(config)
+    with remote_sync_transaction(root, remote, target) as lease:
+        if lease is None:
+            return CATCHUP_REMOTE_SKIPPED
+        if not lease.fetch_allowed:
+            return None
+        outcome = refresh_target_from_remote(
             root,
             target,
             timeout_seconds=FETCH_TIMEOUT_SECONDS,
-            remote=remote_target_name(config),
+            remote=remote,
         )
-    return _fast_forward_if_strictly_behind(root, target, current)
+        try:
+            lease.record_fetch()
+        except OSError:
+            return CATCHUP_REMOTE_SKIPPED
+        if outcome == REFRESH_UNREACHABLE:
+            return CATCHUP_REMOTE_SKIPPED
+        if outcome != REFRESH_ORIGIN_AHEAD:
+            return None
+        return _advance_target_to_remote(root, remote, target)
+
+
+def _advance_target_to_remote(root: Path, remote: str, target: str) -> str | None:
+    remote_sha = observe_remote_target_sha(root, remote, target)
+    if remote_sha is None:
+        return CATCHUP_REFUSED
+    primary_root = find_main_worktree_root(root)
+    verdict, owner = worktree_lookup(primary_root, target)
+    if verdict == WORKTREE_QUERY_FAILED:
+        return CATCHUP_REFUSED
+    if verdict == WORKTREE_FOUND and owner is not None and not _worktree_is_clean(owner):
+        return CATCHUP_REFUSED
+    advanced, _reason = fast_forward_target(
+        root,
+        target,
+        remote_sha,
+        reclaim_target_worktree=False,
+    )
+    return CATCHUP_FAST_FORWARDED if advanced else CATCHUP_REFUSED
+
+
+def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:
+    """Return the configured remote target SHA when its ref is readable."""
+
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        return repo.commit(f"refs/remotes/{remote}/{target}").hexsha
+    except Exception:
+        return None
+    finally:
+        _close_repo(repo)
 
 
 def _fast_forward_if_strictly_behind(root: Path, target: str, current: str) -> str:
@@ -466,6 +541,7 @@ __all__ = [
     "CATCHUP_NO_TARGET",
     "CATCHUP_ON_TARGET",
     "CATCHUP_REFUSED",
+    "CATCHUP_REMOTE_SKIPPED",
     "CATCHUP_TARGET_UNREADABLE",
     "CATCHUP_UP_TO_DATE",
     "DEFAULT_CATCHUP_INTERVAL_SECONDS",

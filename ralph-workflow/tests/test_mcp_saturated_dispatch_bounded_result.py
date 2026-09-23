@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import ralph.mcp.server._saturated_dispatch as saturated_dispatch
 from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS, MCP_DISPATCH_TIMEOUT_SECONDS
+
+
+class _ShutdownCapturingExecutor(ThreadPoolExecutor):
+    def __init__(self) -> None:
+        super().__init__(max_workers=1, thread_name_prefix="test-shutdown")
+        self.shutdown_calls: list[tuple[bool, bool]] = []
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        self.shutdown_calls.append((wait, cancel_futures))
+        super().shutdown(wait=wait, cancel_futures=cancel_futures)
 
 
 def test_submit_returns_saturation_response_after_injected_deadline() -> None:
@@ -82,3 +93,26 @@ def test_saturated_call_is_never_queued_or_invoked() -> None:
     finally:
         release.set()
         dispatch.shutdown()
+
+
+def test_shutdown_does_not_wait_for_running_callable_and_cancels_pending_work() -> None:
+    release = threading.Event()
+    started = threading.Event()
+    executor = _ShutdownCapturingExecutor()
+    dispatch = saturated_dispatch._SaturatedDispatch(max_workers=1, dispatch_timeout_seconds=0.0)
+    dispatch.install_executor(executor)
+
+    def block() -> None:
+        started.set()
+        release.wait(timeout=1.0)
+
+    try:
+        assert isinstance(dispatch.submit(block), saturated_dispatch.SaturatedResponse)
+        assert started.is_set()
+
+        dispatch.shutdown(wait=False)
+
+        assert executor.shutdown_calls == [(False, True)]
+    finally:
+        release.set()
+        executor.shutdown(wait=True)

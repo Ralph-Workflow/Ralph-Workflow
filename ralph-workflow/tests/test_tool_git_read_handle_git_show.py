@@ -82,8 +82,10 @@ class TestHandleGitShow:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
-        # This should raise ExecutionError since the ref doesn't exist
-        with pytest.raises(ExecutionError):
+        with (
+            patch("ralph.mcp.tools.git_read.run_git_command", side_effect=ExecutionError("bad ref")),
+            pytest.raises(ExecutionError),
+        ):
             handle_git_show(session, workspace, {"ref": "DOES_NOT_EXIST_12345"})
 
     # -- Phase 4: format=summary ----------------------------------------------

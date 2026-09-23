@@ -52,6 +52,10 @@ if TYPE_CHECKING:
 
     from ralph.display.context import DisplayContext
 
+_CONFIG = UnifiedConfig.model_validate(
+    {"general": {"auto_integrate_enabled": True, "auto_integrate_target": "main"}}
+)
+
 
 class _RecordingDisplay:
     """Display that records the operator warn lines pushed through it."""
@@ -65,9 +69,7 @@ class _RecordingDisplay:
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {"general": {"auto_integrate_enabled": True, "auto_integrate_target": "main"}}
-    )
+    return _CONFIG
 
 
 def _retained() -> RebaseState:

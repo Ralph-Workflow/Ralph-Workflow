@@ -16,7 +16,12 @@ import pytest
 
 import ralph.test_suites as test_suites_module
 import tests.conftest as conftest_module
-from tests._test_test_suites_helpers import _FakeShardProcess, _StubSpawner
+from tests._test_test_suites_helpers import (
+    _BackpressuredShardProcess,
+    _FakeClock,
+    _FakeShardProcess,
+    _StubSpawner,
+)
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_auto_integrate_end_to_end.py",
@@ -33,6 +38,33 @@ EXPECTED_FAST_TEST_FILES = (
 EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = (
     "tests/agents/test_terminal_state_restored_on_exit.py",
 )
+
+
+def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    blocked = _BackpressuredShardProcess(stdout=b"pipe drained output\n")
+    done = _FakeShardProcess([0])
+    clock = _FakeClock()
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=5.0,
+        spawner=_StubSpawner([blocked, done]),
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py", "tests/test_bravo.py"),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    assert exit_code == 0
+    assert blocked.reaped
+    assert not blocked.terminated
+    assert "pipe drained output" in capsys.readouterr().out
 
 
 def test_default_routing_allowlist_is_exact_and_immutable() -> None:

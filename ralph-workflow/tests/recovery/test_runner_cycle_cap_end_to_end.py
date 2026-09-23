@@ -304,6 +304,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
         assert record.phase == "development"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_runner_recovery_cycle_count_reaches_cap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
