@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.controller import RecoveryController
 
 
 @lru_cache(maxsize=1)
@@ -57,6 +58,7 @@ def _run_pipeline_step(
     monkeypatch: MonkeyPatch,
     stub_materialize: bool,
     raise_missing_plan_handoff: bool = False,
+    recovery_controller: RecoveryController | None = None,
 ) -> object:
     bundle = _load_default_policy_bundle()
 
@@ -121,6 +123,7 @@ def _run_pipeline_step(
         verbosity=Verbosity.QUIET,
         registry=registry,
         pipeline_subscriber=None,
+        recovery_controller=recovery_controller,
     )
 
 
@@ -497,3 +500,74 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         assert "plan handoff" in (result.last_error or ""), (
             f"last_error must describe the plan handoff failure, got {result.last_error!r}"
         )
+
+
+def test_dispatch_synchronizes_selected_agent_before_reduction(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """An effect's selected agent must also own subsequent state attribution."""
+    from ralph.pipeline.agent_chain_state import AgentChainState
+
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=1, retries=2
+            )
+        },
+        last_agent_session_id="old-session",
+    )
+    result = _run_pipeline_step(
+        state=state,
+        effect=InvokeAgentEffect(
+            agent_name="claude", phase="development", prompt_file="PROMPT.md", drain="development"
+        ),
+        workspace_scope=WorkspaceScope(tmp_path),
+        monkeypatch=monkeypatch,
+        stub_materialize=True,
+    )
+    assert isinstance(result, PipelineState)
+    assert result.current_agent() == "claude"
+    assert result.last_agent_session_id is None
+    chain = result.chain_for_phase("development")
+    assert chain is not None
+    assert chain.retries == 0
+
+
+def test_successful_dispatch_resets_only_selected_agent_cooldown(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+    from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=10.0),
+            unavailability_entries={
+                name: UnavailabilityEntry(
+                    unavailable_until_ms=until,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=3,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=18000000,
+                )
+                for name, until in (("claude", 5000), ("opencode", 20000))
+            },
+        )
+    )
+    before = controller.snapshot()
+    _run_pipeline_step(
+        state=PipelineState(phase="development"),
+        effect=InvokeAgentEffect(
+            agent_name="claude", phase="development", prompt_file="PROMPT.md", drain="development"
+        ),
+        workspace_scope=WorkspaceScope(tmp_path),
+        monkeypatch=monkeypatch,
+        stub_materialize=True,
+        recovery_controller=controller,
+    )
+    after = controller.snapshot()
+    assert after["unavailable_timeouts"] == {"opencode": 20000}
+    assert before["unavailable_timeouts"] == {"claude": 5000, "opencode": 20000}

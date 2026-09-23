@@ -76,6 +76,7 @@ from ralph.pipeline.activity_stream import (
     terminal_width,
     truncate,
 )
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
@@ -1007,7 +1008,7 @@ def _prepare_pipeline_step_dispatch(
     if rebase is not state.rebase:
         state = state.copy_with(rebase=rebase)
     _assert_integration_dispatch_invariant(state, workspace_scope, config)
-    return state, call_determine_effect_from_policy(
+    effect = call_determine_effect_from_policy(
         state,
         policy_bundle,
         workspace_scope,
@@ -1015,6 +1016,19 @@ def _prepare_pipeline_step_dispatch(
         recovery=recovery_controller,
         pipeline_deps=pipeline_deps,
     )
+    if isinstance(effect, InvokeAgentEffect):
+        chain = state.chain_for_phase(effect.phase)
+        if chain is not None and effect.agent_name in chain.agents:
+            index = chain.agents.index(effect.agent_name)
+            if index != chain.current_index:
+                state = state.with_phase_chain(
+                    effect.phase,
+                    AgentChainState(agents=chain.agents, current_index=index, retries=0),
+                ).copy_with(
+                    last_agent_session_id=None,
+                    agent_retry_intent=cleared_agent_retry_intent(),
+                )
+    return state, effect
 
 
 def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) -> PhaseFailureEvent:

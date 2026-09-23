@@ -175,7 +175,7 @@ def test_conflict_failures_call_recovery_controller_handle(
     assert any("launch failed for one" in item for item in handled)
 
 
-def test_next_round_starts_at_an_untried_candidate(
+def test_next_round_keeps_the_successful_highest_priority_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
@@ -203,7 +203,7 @@ def test_next_round_starts_at_an_untried_candidate(
         is True
     )
     assert called[0] == ("one", 1)
-    assert called[1] == ("two", 2)
+    assert called[1] == ("one", 2)
 
 
 def test_invoke_resolution_agent_keeps_chain_retry_budget(
@@ -849,3 +849,105 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
     # layer calls that retryable -- and never charged to the other agent.
     assert session.stop_dead_surfaces == ("two",)
     assert session.dead_tool_surfaces == ()
+
+
+def test_conflict_invocations_skip_cooldown_and_restore_priority(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+    from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_entries={
+                "one": UnavailabilityEntry(
+                    unavailable_until_ms=5000,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=0,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=18000000,
+                )
+            },
+        )
+    )
+    session = ResolutionSession(chain_cursor=1, recovery_controller=controller)
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, []])
+    called: list[str] = []
+
+    def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        clock.advance(6.0)
+        return True
+
+    assert run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=invoke,
+        session=session,
+    )
+    assert called[0] == "two"
+    assert called[1:] and all(agent == "one" for agent in called[1:])
+
+
+def test_conflict_waits_for_earliest_cooldown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+    from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_entries={
+                name: UnavailabilityEntry(
+                    unavailable_until_ms=delay,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=0,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=18000000,
+                )
+                for name, delay in (("one", 9000), ("two", 5000))
+            },
+        )
+    )
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", clock.advance)
+    _install_seams(monkeypatch, surviving_per_round=[[]])
+    called: list[str] = []
+
+    def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return True
+
+    assert run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=invoke,
+        session=ResolutionSession(recovery_controller=controller),
+    )
+    assert called == ["two"]
+    assert clock.monotonic() == 5.0
+    assert (
+        controller.preferred_agent_index("rebase_conflict_resolution", ["one", "two"]).agent
+        == "two"
+    )

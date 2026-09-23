@@ -64,9 +64,11 @@ Ralph Workflow re-selects the highest-priority agent (lowest chain index) that i
 
 This guarantees that after a higher-priority agent's cooldown expires, the next invocation returns to that agent — regardless of the persisted `current_index` carried over from the prior selection. `current_index` records which agent just failed (and its spent allowance); it is **not** a search origin.
 
-When the chain selection changes (the chosen index differs from the persisted `current_index`), the run loop resets `retries` to 0, clears `last_agent_session_id`, and resets the agent retry intent — a fresh dispatch of the higher-priority agent starts with no leftover retry state from the prior path.
+When the chain selection changes (the chosen index differs from the persisted `current_index`), the run loop and dispatch boundary reset `retries` to 0, clears `last_agent_session_id`, and resets the agent retry intent — a fresh dispatch of the higher-priority agent starts with no leftover retry state from the prior path.
 
 When no agent in the chain is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, spent, or lower-priority reason for every skipped agent.
+
+Conflict-resolution rounds reconsider priority before each invocation, excluding candidates already spent in that round and dead tool surfaces. Cooling candidates are skipped; when all remaining candidates are cooling, resolution waits for expiry. Successful resolvers reset their cooldown history without advancing the chain.
 
 ### Exponential cooldown growth
 

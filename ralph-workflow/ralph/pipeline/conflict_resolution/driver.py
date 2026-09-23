@@ -387,16 +387,25 @@ def _render_round_prompt(
     # Keep legacy monkeypatched render seams callable until history exists.
     if strategy_history:
         return render_conflict_prompt(
-            root=root, target=target, conflicted_paths=conflicted, round_index=round_index,
-            round_cap=round_cap, surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
+            root=root,
+            target=target,
+            conflicted_paths=conflicted,
+            round_index=round_index,
+            round_cap=round_cap,
+            surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
             replaying_commit_sha=stop.sha if stop is not None else None,
             replaying_commit_subject=stop.subject if stop is not None else None,
             stop_index=stop.stop_index if stop is not None else None,
-            stop_cap=stop.stop_cap if stop is not None else None, strategy_history=strategy_history,
+            stop_cap=stop.stop_cap if stop is not None else None,
+            strategy_history=strategy_history,
         )
     return render_conflict_prompt(
-        root=root, target=target, conflicted_paths=conflicted, round_index=round_index,
-        round_cap=round_cap, surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
+        root=root,
+        target=target,
+        conflicted_paths=conflicted,
+        round_index=round_index,
+        round_cap=round_cap,
+        surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
         replaying_commit_sha=stop.sha if stop is not None else None,
         replaying_commit_subject=stop.subject if stop is not None else None,
         stop_index=stop.stop_index if stop is not None else None,
@@ -745,33 +754,13 @@ def _run_one_round(
     policy_bundle: PolicyBundle,
     worktree_resolved: Callable[[], bool] | None = None,
 ) -> RoundAttempt:
-    """Spend every live candidate once, starting where the chain left off.
+    """Spend eligible candidates in priority order, respecting bounded retries.
 
-    ``worktree_resolved`` re-reads the checkout after a candidate that ran
-    and came back unsuccessful. A resolver killed for inactivity AFTER
-    repairing every marker still repaired every marker; without the
-    re-scan the round spent the next candidate re-prompting a conflict
-    that no longer existed.
+    A successful candidate does not advance priority. Cooldowns survive
+    rounds and stops; the controller selects again before every invocation.
+    ``worktree_resolved`` rechecks repairs after an unsuccessful attempt.
 
-    ``chain_cursor`` is where the NEXT candidate starts, so walking
-    FORWARD from it and stopping at the end of the tuple could leave the
-    round with nobody to invoke -- either because the cursor had passed
-    the last candidate, or because everything from the cursor on was a
-    dead tool surface while a live candidate sat behind it. Both cases
-    used to end the round with no invocation at all, which the driver
-    then reported as a decline no agent ever made. The traversal is
-    therefore circular: it visits each candidate at most once per round,
-    from the cursor, wrapping past the end. Only a chain with no live
-    candidate left returns without invoking.
-
-    ``terminal_reason`` is cleared before each candidate so the fault
-    filed against an agent is one it actually produced. Without that,
-    the infrastructure reason left by a BROKEN candidate is still set
-    when the NEXT candidate fails ordinarily, and that healthy agent
-    gets recorded as a dead tool surface for the rest of the rebase.
-    The round's reason is therefore the LAST attempt's own; an earlier
-    candidate's infrastructure fault is not lost, it is recorded where
-    it belongs -- in ``dead_tool_surfaces`` and the operator log.
+    Clear terminal evidence before each candidate to preserve attribution.
     """
     total = len(candidates)
     if total == 0:
@@ -790,26 +779,18 @@ def _run_one_round(
         )
         session.stop_dead_surfaces = ()
         skipped = _skipped_candidates(session, candidates)
-    offset = session.chain_cursor % total
-    # Visited positions, not a countdown: the recovery controller owns
-    # the cursor and may move it BACKWARDS, and a countdown then spent
-    # the round's steps revisiting one candidate while another was never
-    # offered the conflict at all.
     visited: set[int] = set()
-    # A candidate is re-invoked only while RecoveryController holds the
-    # cursor on it, which its own retry budget ends. The explicit bound
-    # is here because the alternative to a wrong number is a hung run.
+    # Bound same-agent retries independently of candidate count.
     attempt_cap = max(1, conflict_chain_max_retries(policy_bundle))
     attempts_here = 0
     invoked = False
     agent_ran = False
     while len(visited) < total:
+        selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
+        if selected is None:
+            return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
+        offset = selected
         agent_name = candidates[offset]
-        if agent_name in skipped:
-            visited.add(offset)
-            offset = _next_unvisited(offset, total, visited)
-            session.chain_cursor = offset
-            continue
         emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
@@ -824,7 +805,8 @@ def _run_one_round(
         session.charge_conflict_budget = True
         try:
             if runner(agent_name, prompt_path, round_index):
-                session.chain_cursor = (offset + 1) % total
+                session.chain_cursor = 0
+                _reset_conflict_success(session, agent_name)
                 return RoundAttempt(succeeded=True, invoked=True, agent_ran=True)
         except Exception as exc:
             logger.warning(
@@ -886,10 +868,6 @@ def _run_one_round(
             session.chain_cursor = offset
             continue
         attempts_here += 1
-        # The cursor is compared UNWRAPPED: the controller parks it on
-        # ``failed_index`` to ask for another go at the same candidate,
-        # and only that is a retry. A cursor of ``len(candidates)`` means
-        # the chain ran off the end, which is the next candidate's turn.
         if session.chain_cursor == offset and attempts_here < attempt_cap:
             _sleep_conflict_retry(session, policy_bundle)
             continue
@@ -899,6 +877,43 @@ def _run_one_round(
         session.chain_cursor = offset
         attempts_here = 0
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
+
+
+def _preferred_conflict_candidate(
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    visited: set[int],
+    skipped: frozenset[str],
+) -> int | None:
+    """Select by priority among this round's remaining eligible candidates."""
+    from ralph.recovery.controller import RecoveryController
+
+    eligible = [
+        name
+        for index, name in enumerate(candidates)
+        if index not in visited and name not in skipped
+    ]
+    if not eligible:
+        return None
+    controller = session.recovery_controller
+    if not isinstance(controller, RecoveryController):
+        return candidates.index(eligible[0])
+    while True:
+        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+        if selection.agent is not None:
+            return candidates.index(selection.agent)
+        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+        if delay <= 0:
+            return None
+        _sleep_seconds(delay / 1000.0)
+
+
+def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
+    """Reset only the successful resolver's cooldown history."""
+    from ralph.recovery.controller import RecoveryController
+
+    if isinstance(session.recovery_controller, RecoveryController):
+        session.recovery_controller.reset_backoff(PHASE_RESOLUTION, agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
