@@ -329,7 +329,11 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
                 repo_root,
             )
         if isinstance(effect, EmptyCommitEffect):
-            return PipelineEvent.COMMIT_SUCCESS
+            return (
+                PipelineEvent.AGENT_SUCCESS
+                if effect.phase_role == "commit_cleanup"
+                else PipelineEvent.COMMIT_SUCCESS
+            )
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 
@@ -539,7 +543,11 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
                 repo_root,
             )
         if isinstance(effect, EmptyCommitEffect):
-            return PipelineEvent.COMMIT_SUCCESS
+            return (
+                PipelineEvent.AGENT_SUCCESS
+                if effect.phase_role == "commit_cleanup"
+                else PipelineEvent.COMMIT_SUCCESS
+            )
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 

@@ -22,6 +22,8 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -175,6 +177,66 @@ class TestDetermineEffect:
         state.budget_caps = {"iteration": total_iterations, "reviewer_pass": 1}
         state.current_agent.return_value = current_agent
         return state
+
+    def test_no_diff_finalization_advances_cleanup_and_commit_through_success_lifecycle(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+        monkeypatch.setattr(runner_module, "_cleanup_commit_message_artifacts", MagicMock())
+        state = PipelineState(
+            phase="development_final_commit_cleanup",
+            outer_progress={"iteration": DEVELOPER_ITERATIONS - 1},
+            loop_iterations={
+                "commit_cleanup_iteration": SECOND_ITERATION,
+                "development_analysis_iteration": SECOND_ITERATION,
+            },
+            pending_cycle_outcome="completed",
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=60.0,
+            dev_timebox_active=True,
+            dev_timebox_consumed_seconds=60.0,
+        )
+
+        cleanup_effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            workspace_scope,
+            has_uncommitted_changes_fn=lambda _root: False,
+        )
+
+        assert isinstance(cleanup_effect, EmptyCommitEffect)
+        assert cleanup_effect.phase_role == "commit_cleanup"
+        assert (
+            runner_module.execute_effect(cleanup_effect, MagicMock(), workspace_scope)
+            is PipelineEvent.AGENT_SUCCESS
+        )
+        after_cleanup, _effects = reducer_reduce(
+            state, PipelineEvent.AGENT_SUCCESS, bundle.pipeline
+        )
+        assert after_cleanup.phase == "development_final_commit"
+        assert after_cleanup.cycle_timebox_active is False
+
+        commit_effect = runner_module.determine_effect_from_policy(
+            after_cleanup,
+            bundle,
+            workspace_scope,
+            has_uncommitted_changes_fn=lambda _root: False,
+        )
+
+        assert isinstance(commit_effect, EmptyCommitEffect)
+        assert commit_effect.phase_role == "commit"
+        assert (
+            runner_module.execute_effect(commit_effect, MagicMock(), workspace_scope)
+            is PipelineEvent.COMMIT_SUCCESS
+        )
+        complete, _effects = reducer_reduce(
+            after_cleanup, PipelineEvent.COMMIT_SUCCESS, bundle.pipeline
+        )
+        assert complete.phase == "complete"
+        assert complete.get_outer_progress("iteration") == DEVELOPER_ITERATIONS
+        assert complete.get_loop_iteration("commit_cleanup_iteration") == 0
+        assert complete.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_complete_phase_returns_exit_success(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -385,7 +447,9 @@ class TestDetermineEffect:
 
         assert isinstance(effect, EmptyCommitEffect)
 
-    def test_empty_commit_after_agent_invocation_selects_no_agent_effect(self, tmp_path: Path) -> None:
+    def test_empty_commit_after_agent_invocation_selects_no_agent_effect(
+        self, tmp_path: Path
+    ) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
 
@@ -397,6 +461,21 @@ class TestDetermineEffect:
         )
 
         assert isinstance(effect, EmptyCommitEffect)
+
+    def test_commit_cleanup_inspection_failure_invokes_an_agent(self, tmp_path: Path) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit_cleanup")
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: (_ for _ in ()).throw(
+                OSError("git status unavailable")
+            ),
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
 
     def test_internal_only_commit_phase_selects_no_agent_effect(
         self, monkeypatch: MonkeyPatch, tmp_path: Path

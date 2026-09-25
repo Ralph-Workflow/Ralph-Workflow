@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.effects import Effect
+    from ralph.pipeline.effects.empty_commit_effect import EmptyCommitPhaseRole
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
     from ralph.recovery.controller import RecoveryController
@@ -85,7 +86,7 @@ def determine_effect_from_policy(
     if phase_def.skip_invocation is True:
         return _skip_invocation_effect(state, phase_def, policy_bundle.pipeline)
 
-    if phase_def.role == "commit":
+    if phase_def.role in ("commit", "commit_cleanup"):
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(
             state,
@@ -280,8 +281,25 @@ def _commit_phase_effect(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
+    if phase_def.role == "commit_cleanup":
+        completed_effect = _empty_commit_cleanup_effect(
+            workspace_scope.root,
+            has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+        )
+        if completed_effect is not None:
+            return completed_effect
+        return _parallel_or_agent_effect(
+            state,
+            phase_def,
+            policy_bundle,
+            config,
+            workspace_scope,
+            recovery=recovery,
+        )
     completed_effect = _empty_commit_effect(
-        workspace_scope.root, has_uncommitted_changes_fn=has_uncommitted_changes_fn
+        workspace_scope.root,
+        phase_role="commit",
+        has_uncommitted_changes_fn=has_uncommitted_changes_fn,
     )
     if completed_effect is not None:
         return completed_effect
@@ -298,9 +316,24 @@ def _commit_phase_effect(
     )
 
 
+def _empty_commit_cleanup_effect(
+    workspace_root: Path,
+    *,
+    has_uncommitted_changes_fn: Callable[[Path], bool],
+) -> EmptyCommitEffect | ExitFailureEffect | None:
+    try:
+        has_pending_work = has_uncommitted_changes_fn(workspace_root)
+    except Exception:
+        return None
+    if not has_pending_work:
+        return EmptyCommitEffect(phase_role="commit_cleanup")
+    return None
+
+
 def _empty_commit_effect(
     workspace_root: Path,
     *,
+    phase_role: EmptyCommitPhaseRole = "commit",
     has_uncommitted_changes_fn: Callable[[Path], bool],
 ) -> EmptyCommitEffect | ExitFailureEffect | None:
     empty_commit = _is_empty_commit_phase(
@@ -311,7 +344,7 @@ def _empty_commit_effect(
         return ExitFailureEffect(reason="Unable to inspect effective commit work")
     if empty_commit:
         delete_commit_message_artifacts(workspace_root)
-        return EmptyCommitEffect()
+        return EmptyCommitEffect(phase_role=phase_role)
     return None
 
 
@@ -357,7 +390,11 @@ def _agent_name_for_phase_from_policy(
         return chain_config.agents[0]
 
     phase_chain = state.chain_for_phase(state.phase)
-    agents = phase_chain.agents if phase_chain is not None and phase_chain.agents else chain_config.agents
+    agents = (
+        phase_chain.agents
+        if phase_chain is not None and phase_chain.agents
+        else chain_config.agents
+    )
     selection = recovery.preferred_agent_index(str(state.phase), agents)
     return selection.agent
 

@@ -389,9 +389,7 @@ def _execute_effect(
             effect, pipeline_deps, workspace_scope, display, verbosity
         )
     if isinstance(effect, EmptyCommitEffect):
-        logger.info("Completing empty commit without invoking a commit agent")
-        _cleanup_commit_message_artifacts(workspace_scope.root)
-        return PipelineEvent.COMMIT_SUCCESS
+        return _execute_empty_commit_effect(effect, workspace_scope)
     if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
         if state is not None and policy_bundle is not None:
             bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
@@ -410,6 +408,20 @@ def _execute_effect(
 
     logger.warning("Unknown effect type: {}", type(effect))
     return PipelineEvent.AGENT_FAILURE
+
+
+def _execute_empty_commit_effect(
+    effect: EmptyCommitEffect,
+    workspace_scope: WorkspaceScope,
+) -> PipelineEvent:
+    match effect.phase_role:
+        case "commit_cleanup":
+            logger.info("Completing empty commit cleanup without invoking an agent")
+            return PipelineEvent.AGENT_SUCCESS
+        case "commit":
+            logger.info("Completing empty commit without invoking a commit agent")
+            _cleanup_commit_message_artifacts(workspace_scope.root)
+            return PipelineEvent.COMMIT_SUCCESS
 
 
 def _execute_effect_with_optional_display(

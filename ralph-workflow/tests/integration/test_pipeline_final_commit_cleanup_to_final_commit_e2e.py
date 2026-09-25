@@ -257,7 +257,11 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
                 repo_root,
             )
         if isinstance(effect, EmptyCommitEffect):
-            return PipelineEvent.COMMIT_SUCCESS
+            return (
+                PipelineEvent.AGENT_SUCCESS
+                if effect.phase_role == "commit_cleanup"
+                else PipelineEvent.COMMIT_SUCCESS
+            )
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 
@@ -336,11 +340,8 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
         "paths must clean up via the runtime-artifact allowlist end-to-end."
     )
 
-    assert invoker.count_for("development_final_commit_cleanup") >= 1, (
-        "CommitCleanupAlwaysLoopbackInvoker must have been invoked for "
-        "development_final_commit_cleanup at least once (proves the final-cleanup "
-        "phase was actually entered through the pipeline harness)."
-    )
+    assert invoker.count_for("development_final_commit_cleanup") == 0
+    assert invoker.count_for("development_final_commit") == 0
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert not (repo_root / rel_path).exists(), (
@@ -381,6 +382,11 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
         f"Pipeline must terminate at 'complete', got {getattr(final_state, 'phase', None)!r}. "
         "Entering 'failed_terminal' would mean a PhaseFailureEvent was emitted."
     )
+    observed_phases = [getattr(state, "phase", None) for state in saved_states]
+    assert "development_final_commit_cleanup" in observed_phases
+    assert "development_final_commit" in observed_phases
+    assert "failed_terminal" not in observed_phases
+    assert getattr(final_state, "outer_progress", {}).get("iteration") == 1
 
 
 def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
