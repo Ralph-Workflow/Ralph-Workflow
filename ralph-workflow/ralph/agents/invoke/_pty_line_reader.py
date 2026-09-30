@@ -731,11 +731,9 @@ class PtyLineReader:
             if session_id in self._transcript_session_ids:
                 self._transcript_session_ids.remove(session_id)
             self._transcript_session_ids.appendleft(session_id)
-        # Mirror the subprocess reader's ``_captured_session_id`` cache so
-        # the watchdog-kill -> resume path sees the same id without
-        # re-walking the PTY queue. The id flows into
-        # ``IdleWatchdogKilledError.resumable_session_id`` so the
-        # recovery controller can resume the same agent session.
+        self._capture_discovered_transcript_session_id(session_id)
+
+    def _capture_discovered_transcript_session_id(self, session_id: str) -> None:
         self._captured_session_id = session_id
         watchdog: IdleWatchdog | None = getattr(self, "_watchdog", None)
         if watchdog is not None:
@@ -744,6 +742,28 @@ class PtyLineReader:
     def _transcript_session_id_candidates(self) -> tuple[str, ...]:
         with self._transcript_session_ids_lock:
             return tuple(self._transcript_session_ids)
+
+    @property
+    def captured_session_id(self) -> str | None:
+        """Return the resumable session ID observed by either PTY input path."""
+        return self._captured_session_id
+
+    def discover_captured_session_id(self) -> str | None:
+        """Resolve a late transcript created just before the PTY reader stopped."""
+        if self._captured_session_id is not None:
+            return self._captured_session_id
+        entry = find_claude_transcript_entry(self._transcript_session_id_candidates())
+        if entry is None and self._workspace_path is not None:
+            entry = find_latest_claude_transcript_entry(
+                self._workspace_path,
+                min_mtime=self._started_at_wall_clock,
+                exclude_names=self._pre_existing_transcript_names,
+            )
+        if entry is None:
+            return None
+        _path, session_id = entry
+        self._capture_discovered_transcript_session_id(session_id)
+        return session_id
 
     def _transcript_thread(self) -> None:
         if self._expected_session_id is None and self._workspace_path is None:
@@ -795,6 +815,7 @@ class PtyLineReader:
                         transcript_path = next_path
                         file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
                     transcript_session_id = matched_session_id
+                    self._capture_discovered_transcript_session_id(matched_session_id)
                 assert file_obj is not None
                 line = file_obj.readline()
                 if not line:

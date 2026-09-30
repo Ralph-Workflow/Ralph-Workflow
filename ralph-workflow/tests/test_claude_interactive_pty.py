@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 
@@ -131,7 +132,7 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
     ]
 
 
-def test_invoke_agent_does_not_invent_transcript_session_id_on_fresh_interactive_run(
+def test_invoke_agent_assigns_fresh_interactive_session_id_to_command_and_pty(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -140,12 +141,14 @@ def test_invoke_agent_does_not_invent_transcript_session_id_on_fresh_interactive
     config = builtin_agents()["claude"]
     manager = _FakePtyManager()
     captured_expected_session_ids: list[str | None] = []
+    captured_commands: list[list[str]] = []
 
     def fake_run_pty_and_read_lines(
-        _cmd: object,
+        cmd: list[str],
         _ctx: object,
         extras: object = None,
     ) -> Iterator[str]:
+        captured_commands.append(cmd)
         captured_expected_session_ids.append(getattr(extras, "expected_session_id", None))
         yield "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1\n"
 
@@ -173,7 +176,12 @@ def test_invoke_agent_does_not_invent_transcript_session_id_on_fresh_interactive
         )
     )
 
-    assert captured_expected_session_ids == [None]
+    assert len(captured_expected_session_ids) == 1
+    session_id = captured_expected_session_ids[0]
+    assert session_id is not None
+    assert str(UUID(session_id)) == session_id
+    session_flag_index = captured_commands[0].index("--session-id")
+    assert captured_commands[0][session_flag_index + 1] == session_id
 
 
 def test_invoke_agent_passes_nanocoder_prompt_to_run_command_without_tui_injection(

@@ -169,8 +169,10 @@ def run_pty_and_read_lines(
         lines_iter = pty_reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
-        captured_session_id: str | None = None
+        captured_session_id = expected_session_id
         try:
+            if captured_session_id is not None:
+                yield f"Session ID: {captured_session_id}\n"
             # The two former branches (show_progress: tqdm-wrapped /
             # no-progress: bare iterator) had byte-for-byte identical
             # loop bodies; the only difference was the tqdm wrapper.
@@ -193,7 +195,12 @@ def run_pty_and_read_lines(
                 yield line
 
             if captured_session_id is None:
-                captured_session_id = expected_session_id
+                discovered_session_id = pty_reader.discover_captured_session_id()
+                if discovered_session_id is not None:
+                    captured_session_id = discovered_session_id
+                    yield f"Session ID: {discovered_session_id}\n"
+                else:
+                    captured_session_id = expected_session_id
 
             if not _completion_exit_sent(pty_reader):
                 post_exit = PostExitWatchdog(ctx.policy, clock)
@@ -219,7 +226,11 @@ def run_pty_and_read_lines(
                 InactivityTimeoutOpts(
                     reason=exc.reason,
                     session_resume_safe=session_resume_safe,
-                    resumable_session_id=captured_session_id or expected_session_id,
+                        resumable_session_id=(
+                            captured_session_id
+                            or pty_reader.discover_captured_session_id()
+                            or expected_session_id
+                        ),
                     diagnostic=exc.diagnostic,
                 ),
             ) from exc

@@ -1108,6 +1108,8 @@ def _consume_attempt_output(
         subagent_pid_registry=_subagent_pid_registry,
         subagent_pid_source=_subagent_pid_source,
     )
+    if options.initial_session_id is not None:
+        capture_session_id(options.initial_session_id)
 
     def _run_invocation() -> None:
         output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)

@@ -4691,6 +4691,21 @@ def test_claude_interactive_command_uses_config_session_flag(tmp_path: Path) -> 
     assert "--session-id" not in cmd
 
 
+def test_claude_interactive_fresh_session_uses_generated_session_id(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("Build the feature.\n", encoding="utf-8")
+    config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(initial_session_id="fresh-session-abc"),
+    )
+
+    assert cmd[1:3] == ["--session-id", "fresh-session-abc"]
+    assert "--resume" not in cmd
+
+
 # === consolidated from test_agents_invoke_4.py ===
 def test_claude_interactive_command_honors_custom_session_flag(tmp_path: Path) -> None:
     """A custom session_flag is honored by the interactive builder, not ignored.

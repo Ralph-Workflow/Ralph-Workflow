@@ -125,6 +125,7 @@ def _make_minimal_reader(expected_session_id: str) -> PtyLineReader:
     # automatically; here we wire it manually because we bypassed __init__.
     reader._transcript_session_ids = [expected_session_id]
     reader._transcript_session_ids_lock = threading.Lock()
+    reader._captured_session_id = None
     reader._lines_lock = threading.Lock()
     return reader
 
@@ -271,3 +272,44 @@ def test_transcript_thread_normal_completion_closes_exactly_once(
         f"normal completion MUST close the handle exactly once; "
         f"got close_called={fake_file.close_called}"
     )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_transcript_thread_captures_session_id_from_discovered_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "transcript-discovered-session"
+    opened_signal = threading.Event()
+    fake_file = _RecordingFakeFile(("",), opened_signal=opened_signal)
+    fake_path = _FakeTranscriptPath(fake_file)
+
+    def _return_path(_candidates: object) -> tuple[object, str]:
+        return fake_path, session_id
+
+    monkeypatch.setattr(_pty_module, "find_claude_transcript_entry", _return_path)
+    reader = _make_minimal_reader(expected_session_id=session_id)
+
+    thread = threading.Thread(target=reader._transcript_thread, daemon=True)
+    thread.start()
+    assert opened_signal.wait(timeout=2.0)
+    reader._monitor_stop.set()
+    thread.join(timeout=2.0)
+
+    assert not thread.is_alive()
+    assert reader.captured_session_id == session_id
+
+
+def test_late_transcript_discovery_captures_session_after_reader_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "late-transcript-session"
+    reader = _make_minimal_reader(expected_session_id=session_id)
+    reader._workspace_path = None
+    monkeypatch.setattr(
+        _pty_module,
+        "find_claude_transcript_entry",
+        lambda _candidates: (_FakeTranscriptPath(_RecordingFakeFile(("",))), session_id),
+    )
+
+    assert reader.discover_captured_session_id() == session_id
+    assert reader.captured_session_id == session_id

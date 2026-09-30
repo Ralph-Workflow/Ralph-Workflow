@@ -52,6 +52,11 @@ class _FakePtyManager:
 
 
 class _RaisingPtyLineReader:
+    captured_session_id: str | None = None
+
+    def discover_captured_session_id(self) -> str | None:
+        return self.captured_session_id
+
     def __init__(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 
@@ -69,6 +74,11 @@ class _RaisingPtyLineReader:
 
 
 class _SessionCapturingRaisingPtyLineReader:
+    captured_session_id: str | None = None
+
+    def discover_captured_session_id(self) -> str | None:
+        return self.captured_session_id
+
     def __init__(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 
@@ -517,6 +527,11 @@ def test_pty_line_reader_check_fire_classifies_as_agent_via_chain() -> None:
 
 
 class _NoOutputAtStartRaisingPtyLineReader:
+    captured_session_id: str | None = None
+
+    def discover_captured_session_id(self) -> str | None:
+        return self.captured_session_id
+
     def __init__(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 

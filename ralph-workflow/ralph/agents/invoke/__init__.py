@@ -252,7 +252,7 @@ def _shared_interactive_pty_extras(
     """Build PTY extras for transports that share the interactive runner."""
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return PtyExtras(
-            expected_session_id=opts.session_id,
+            expected_session_id=opts.session_id or opts.initial_session_id,
             stop_sentinel_path=opts.stop_sentinel_path,
             permission_prompt_listener=opts.permission_prompt_listener,
             input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),

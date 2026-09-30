@@ -665,6 +665,8 @@ class ClaudeInteractiveCommandBuilder:
             cmd.append(config.verbose_flag)
         if config.session_flag and options.session_id:
             cmd.extend(_format_session_flag(config.session_flag, options.session_id))
+        elif options.initial_session_id:
+            cmd.extend(["--session-id", options.initial_session_id])
         if options.settings_json is not None:
             cmd.extend(["--settings", options.settings_json])
         if options.master_prompt_file:
