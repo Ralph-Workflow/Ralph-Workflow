@@ -467,9 +467,10 @@ def test_post_preflight_footer_is_neutralized_after_handback(
                 if not _chunk:
                     break
         finally:
-            for fd in (master_fd, slave_fd):
-                with suppress(OSError):
-                    os.close(fd)
+            with suppress(OSError):
+                slave_file.close()
+            with suppress(OSError):
+                os.close(master_fd)
 
     assert rc == 0, "preflight should exit 0 even on the BLOCKED hand-back"
     transcript = b"".join(accumulated).decode("utf-8", errors="replace")

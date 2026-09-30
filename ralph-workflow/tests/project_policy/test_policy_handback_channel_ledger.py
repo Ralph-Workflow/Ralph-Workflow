@@ -109,7 +109,7 @@ def _build_load_result(
     )
 
 
-def _spawn_pty_drained_console() -> tuple[Console, int, int, list[bytes], threading.Event]:
+def _spawn_pty_drained_console() -> tuple[Console, int, list[bytes], threading.Event]:
     """Open a pty-backed console, set the master non-blocking, start a daemon reader.
 
     The daemon reader thread accumulates bytes from the master in a
@@ -151,15 +151,14 @@ def _spawn_pty_drained_console() -> tuple[Console, int, int, list[bytes], thread
             accumulated.append(chunk)
 
     threading.Thread(target=_drain, name="pytest-pty-drain", daemon=True).start()
-    return console, master_fd, slave_fd, accumulated, stop_event
+    return console, master_fd, accumulated, stop_event
 
 
 def _close_pty(
+    console: Console,
     master_fd: int,
-    slave_fd: int,
     stop_event: threading.Event,
 ) -> None:
-    """Stop the daemon reader, drain any pending bytes, then close both fds."""
     stop_event.set()
     try:
         os.set_blocking(master_fd, False)
@@ -171,9 +170,10 @@ def _close_pty(
             if not _chunk:
                 break
     finally:
-        for fd in (master_fd, slave_fd):
-            with suppress(OSError):
-                os.close(fd)
+        with suppress(OSError):
+            console.file.close()
+        with suppress(OSError):
+            os.close(master_fd)
 
 
 def _drain_then_snapshot_threads(preflight_threads: set[int]) -> list[str]:
@@ -276,7 +276,7 @@ def test_post_preflight_channel_ledger_records_six_channels(
 
     # Build a pty-backed console, start the daemon reader, drive the
     # real orchestrator over the shared root.
-    console, master_fd, slave_fd, accumulated, stop_event = _spawn_pty_drained_console()
+    console, master_fd, accumulated, stop_event = _spawn_pty_drained_console()
     display_context = make_display_context(console=console)
     load_result = _build_load_result(tmp_git_repo, policy_bundle=bundle)
 
@@ -331,7 +331,7 @@ def test_post_preflight_channel_ledger_records_six_channels(
     # close signal and exit; on a shared worker process ``threading``
     # schedules the join on the GIL so the wait is bounded by the
     # reader's 50ms select timeout, never the full second.
-    _close_pty(master_fd, slave_fd, stop_event)
+    _close_pty(console, master_fd, stop_event)
     for _ in range(20):
         if not any(t.name == "pytest-pty-drain" for t in threading.enumerate()):
             break
