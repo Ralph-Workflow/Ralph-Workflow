@@ -480,7 +480,7 @@ def _measure_cold_build(
     try:
         start_wall = time.monotonic()
         start_cpu = time.process_time()
-        result = reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=10_000))
+        result = reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
         elapsed_cpu = time.process_time() - start_cpu
         elapsed_wall = time.monotonic() - start_wall
         index_size = store.index_storage_bytes()
@@ -504,21 +504,25 @@ def _measure_changed_refresh(
     parent_dir: Path,
     change_count: int,
     share_label: str,
+    prepare: bool = True,
 ) -> dict[str, float]:
     """Run a changed-files refresh and return the R6.2 refresh metrics."""
     import resource
 
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 
-    index_dir = parent_dir / f"index_refresh_{change_count}_{share_label}"
-    if index_dir.exists():
+    index_dir = parent_dir / (
+        "index_cold_build" if not prepare else f"index_refresh_{change_count}_{share_label}"
+    )
+    if prepare and index_dir.exists():
         import shutil
 
         # filesystem-write-ok: transient scratch directory cleanup before refresh benchmark
         shutil.rmtree(index_dir, ignore_errors=True)
     store = ExploreStore(index_dir)
     try:
-        reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=10_000))
+        if prepare:
+            reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
         # Mutate ``change_count`` files to dirty them.
         files = sorted(workspace.rglob("*.py"))
         for f in files[:change_count]:
@@ -526,30 +530,22 @@ def _measure_changed_refresh(
             f.write_text(f.read_text() + "\n")
         start_wall = time.monotonic()
         time.process_time()  # warm clock for fairness with elapsed_cpu baseline
-        reindex(store, workspace, options=ReindexOptions(mode="changed", timeout_ms=10_000))
+        reindex(store, workspace, options=ReindexOptions(mode="changed", timeout_ms=120_000))
         elapsed_wall = time.monotonic() - start_wall
         peak_rss = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * 1024.0
     finally:
         store.close()
-    ten_file_refresh = 10
-    wall_field = (
-        "refresh_1_file_wall_seconds"
-        if change_count == 1
-        else (
-            "refresh_10_files_wall_seconds"
-            if change_count == ten_file_refresh
-            else "refresh_1_percent_wall_seconds"
-        )
-    )
-    rss_field = (
-        "refresh_1_file_peak_rss_bytes"
-        if change_count == 1
-        else (
-            "refresh_10_files_peak_rss_bytes"
-            if change_count == ten_file_refresh
-            else "refresh_1_percent_peak_rss_bytes"
-        )
-    )
+    kind = share_label if share_label in {"1", "10", "pct"} else "pct"
+    wall_field = {
+        "1": "refresh_1_file_wall_seconds",
+        "10": "refresh_10_files_wall_seconds",
+        "pct": "refresh_1_percent_wall_seconds",
+    }[kind]
+    rss_field = {
+        "1": "refresh_1_file_peak_rss_bytes",
+        "10": "refresh_10_files_peak_rss_bytes",
+        "pct": "refresh_1_percent_peak_rss_bytes",
+    }[kind]
     return {wall_field: elapsed_wall, rss_field: peak_rss}
 
 
@@ -563,8 +559,9 @@ def _measure_query_latency(
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
     from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
 
-    index_dir = parent_dir / "index_query_latency"
-    if index_dir.exists():
+    shared = parent_dir / "index_cold_build"
+    index_dir = shared if (shared / "index.sqlite").is_file() else parent_dir / "index_query_latency"
+    if index_dir != shared and index_dir.exists():
         import shutil
 
         # filesystem-write-ok: transient scratch directory cleanup before latency benchmark
@@ -575,7 +572,8 @@ def _measure_query_latency(
     session.run_id = "latency"
     session.broker_secret = None
     try:
-        reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=10_000))
+        if index_dir != shared:
+            reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
         session.explore_index = build_sqlite_index_handle(store)
         ws = FsWorkspace(workspace)
         # Indexed timings
@@ -609,12 +607,19 @@ def _measure_query_latency(
             )
             live_samples.append(time.perf_counter() - start)
         indexed_p50 = sorted(indexed_samples)[len(indexed_samples) // 2]
-        indexed_p95 = indexed_samples[-1]
-        indexed_p99 = indexed_samples[-1]
+        indexed_p95 = nearest_rank_p95(indexed_samples)
+        indexed_p99 = sorted(indexed_samples)[-1]
         live_p50 = sorted(live_samples)[len(live_samples) // 2]
-        live_p95 = live_samples[-1]
-        live_p99 = live_samples[-1]
+        live_p95 = nearest_rank_p95(live_samples)
+        live_p99 = sorted(live_samples)[-1]
         speed_ratio = (live_p50 / indexed_p50) if indexed_p50 > 0 else 0.0
+        raw_samples: list[float] = []
+        for _ in range(5):
+            start = time.perf_counter()
+            store._conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            raw_samples.append(time.perf_counter() - start)
+        raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
+        agent_added = max(0.0, nearest_rank_p95(indexed_samples) - raw_p50)
     finally:
         store.close()
     return {
@@ -625,6 +630,7 @@ def _measure_query_latency(
         "live_query_p95_seconds": live_p95,
         "live_query_p99_seconds": live_p99,
         "indexed_vs_live_speed_ratio": speed_ratio,
+        "agent_added_latency_p95_seconds": agent_added,
     }
 
 
@@ -641,35 +647,218 @@ def _seed_small_workspace(parent: Path) -> Path:
     return workspace
 
 
+LARGE_SYNTHETIC_FILE_COUNT: Final[int] = 10_000
+
+
 def _seed_large_synthetic(parent: Path) -> Path:
-    """Seed a large-synthetic workspace (scaled to fit the in-budget window)."""
+    """Seed a large synthetic workspace of tens of thousands of files.
+
+    Includes nested directories, one binary file, and one wide line so
+    the workload matches the R6.3 large-synthetic description.
+    """
     workspace = parent / "ws_large"
     workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "src").mkdir(parents=True, exist_ok=True)
-    # 200 files is the in-budget scaled approximation of the tens-of-thousands
-    # of files workload. ``capture_baseline`` documents the scale factor.
-    for i in range(200):
+    for i in range(LARGE_SYNTHETIC_FILE_COUNT):
+        bucket = workspace / "src" / f"b{i // 250}"
+        bucket.mkdir(parents=True, exist_ok=True)
         # filesystem-write-ok: transient scratch workspace synthetic file seeding
-        (workspace / "src" / f"f{i:04d}.py").write_text(
-            f"def fn_{i}():\n    return {i}\n"
-        )
+        (bucket / f"f{i:05d}.py").write_text(f"def fn_{i}():\n    return {i}\n")
+    # filesystem-write-ok: transient binary and deep-path fixtures
+    (workspace / "blob.bin").write_bytes(bytes(range(256)))
+    deep = workspace / "deep" / "a" / "b"
+    deep.mkdir(parents=True, exist_ok=True)
+    (deep / "leaf.py").write_text("def leaf():\n    return 1\n")
     return workspace
+
+
+def _count_proc_fds() -> tuple[float, float]:
+    """Return ``(fd_count, inotify_watch_count)`` for this process."""
+    import os
+
+    fd_dir = Path("/proc/self/fd")
+    fd_count = 0
+    watches = 0
+    for entry in fd_dir.iterdir():
+        fd_count += 1
+        try:
+            target = os.readlink(entry)
+        except OSError:
+            continue
+        if "inotify" in target:
+            watches += 1
+    return float(fd_count), float(watches)
+
+
+def _rebuild_index(workspace: Path, index_dir: Path) -> float:
+    """Time one full reindex, replacing a corrupt index when open fails."""
+    import shutil
+
+    from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+    started = time.monotonic()
+    try:
+        store = ExploreStore(index_dir)
+        try:
+            reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
+        finally:
+            store.close()
+    except Exception:
+        # filesystem-write-ok: drop a corrupt benchmark index before the timed rebuild
+        shutil.rmtree(index_dir, ignore_errors=True)
+        store = ExploreStore(index_dir)
+        try:
+            reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
+        finally:
+            store.close()
+    return time.monotonic() - started
+
+
+def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, float]:
+    """Measure no-op refresh, post-git refresh, resources, and F2/F5/F6 recovery."""
+    import shutil
+
+    from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+    index_dir = parent_dir / "index_cold_build"
+    store = ExploreStore(index_dir)
+    try:
+        start_cpu = time.process_time()
+        start_wall = time.monotonic()
+        reindex(store, workspace, options=ReindexOptions(mode="changed", timeout_ms=120_000))
+        no_op_wall = time.monotonic() - start_wall
+        no_op_cpu = time.process_time() - start_cpu
+        py_files = sorted(workspace.rglob("*.py"))
+        if py_files:
+            # filesystem-write-ok: transient scratch mutation standing in for a git checkout
+            py_files[0].write_text(py_files[0].read_text() + "\n# git-op\n")
+        start_wall = time.monotonic()
+        reindex(store, workspace, options=ReindexOptions(mode="changed", timeout_ms=120_000))
+        post_git = time.monotonic() - start_wall
+        steady_fd, steady_watches = _count_proc_fds()
+    finally:
+        store.close()
+    peak_fd, peak_watches = _count_proc_fds()
+    idle_start = time.process_time()
+    time.sleep(0.02)
+    idle_cpu = time.process_time() - idle_start
+    db = index_dir / "index.sqlite"
+    # F2: delete the committed database and rebuild.
+    for suffix in ("", "-wal", "-shm"):
+        candidate = Path(str(db) + suffix) if suffix else db
+        if candidate.exists():
+            candidate.unlink()
+    recovery_f2 = _rebuild_index(workspace, index_dir)
+    # F5: corrupt the database header, then rebuild.
+    if db.is_file():
+        payload = db.read_bytes()
+        # filesystem-write-ok: corrupt the scratch index so F5 recovery is a real rebuild
+        db.write_bytes(b"\x00\x00\x00" + payload[3:])
+    recovery_f5 = _rebuild_index(workspace, index_dir)
+    # F6: interrupt a build, then time the recovery rebuild.
+    interrupt = ExploreStore(index_dir)
+    try:
+        reindex(interrupt, workspace, options=ReindexOptions(mode="full", timeout_ms=1))
+    except Exception:
+        pass
+    finally:
+        interrupt.close()
+    recovery_f6 = _rebuild_index(workspace, index_dir)
+    # filesystem-write-ok: staging leftovers are scratch-only
+    for staging in index_dir.glob(".staging-*"):
+        shutil.rmtree(staging, ignore_errors=True)
+    return {
+        "no_op_refresh_wall_seconds": no_op_wall,
+        "no_op_refresh_cpu_seconds": no_op_cpu,
+        "post_git_op_refresh_wall_seconds": post_git,
+        "idle_cpu_seconds": idle_cpu,
+        "fd_count_steady": steady_fd,
+        "fd_count_peak": max(steady_fd, peak_fd),
+        "watch_handles_steady": steady_watches,
+        "watch_handles_peak": max(steady_watches, peak_watches),
+        "recovery_f2_seconds": recovery_f2,
+        "recovery_f5_seconds": recovery_f5,
+        "recovery_f6_seconds": recovery_f6,
+    }
+
+
+def _exercise_multi_session(workspace: Path, index_dir: Path, processes: int) -> None:
+    """Run several real processes that query one shared index."""
+    import subprocess
+
+    script = (
+        "from pathlib import Path\n"
+        "from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle\n"
+        "from ralph.mcp.explore.store import ExploreStore\n"
+        "from ralph.mcp.explore._bench_product_baseline import _BaselineSession\n"
+        "from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files\n"
+        "from ralph.workspace.fs import FsWorkspace\n"
+        f"store = ExploreStore(Path({str(index_dir)!r}))\n"
+        "session = _BaselineSession(build_sqlite_index_handle(store))\n"
+        f"handle_grep_files(session, FsWorkspace(Path({str(workspace)!r})), "
+        "{'pattern': 'hello', 'path': '.', 'regex': False, 'case_sensitive': False, 'use_index': 'auto'})\n"
+        "store.close()\n"
+    )
+    running = [
+        subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(processes)
+    ]
+    for proc in running:
+        _stdout, stderr = proc.communicate(timeout=120)
+        if proc.returncode != 0:
+            raise RuntimeError(stderr)
 
 
 def _capture_workload_metrics(
     workspace: Path,
     *,
     parent_dir: Path,
+    session_processes: int = 1,
 ) -> dict[str, float]:
-    """Capture the R6.2 metrics for one workload (workspace)."""
+    """Capture the R6.2 metrics for one workload (workspace).
+
+    The cold build and the later refreshes share one index directory
+    so a tens-of-thousands-file workload is not rebuilt from scratch
+    for every refresh. Recovery timings are real rebuilds after delete,
+    corruption, and an interrupted build.
+    """
+    print(f"capture start {workspace.name}", flush=True)
     metrics = _empty_baseline_metrics()
     metrics.update(_measure_cold_build(workspace, parent_dir=parent_dir))
-    metrics.update(_measure_changed_refresh(workspace, parent_dir=parent_dir, change_count=1, share_label="1"))
-    metrics.update(_measure_changed_refresh(workspace, parent_dir=parent_dir, change_count=10, share_label="10"))
+    print(f"capture cold {workspace.name} {metrics['cold_build_wall_seconds']:.3f}s", flush=True)
+    metrics.update(
+        _measure_changed_refresh(
+            workspace, parent_dir=parent_dir, change_count=1, share_label="1", prepare=False
+        )
+    )
+    metrics.update(
+        _measure_changed_refresh(
+            workspace, parent_dir=parent_dir, change_count=10, share_label="10", prepare=False
+        )
+    )
     total_files = sum(1 for _ in workspace.rglob("*.py"))
     one_percent = max(1, total_files // 100)
-    metrics.update(_measure_changed_refresh(workspace, parent_dir=parent_dir, change_count=one_percent, share_label="pct"))
+    metrics.update(
+        _measure_changed_refresh(
+            workspace,
+            parent_dir=parent_dir,
+            change_count=one_percent,
+            share_label="pct",
+            prepare=False,
+        )
+    )
+    print(f"capture refresh {workspace.name}", flush=True)
     metrics.update(_measure_query_latency(workspace, parent_dir=parent_dir))
+    print(f"capture query {workspace.name}", flush=True)
+    if session_processes > 1:
+        _exercise_multi_session(workspace, parent_dir / "index_cold_build", session_processes)
+        print(f"capture sessions {workspace.name} {session_processes}", flush=True)
+    metrics.update(_measure_operational(workspace, parent_dir=parent_dir))
+    print(f"capture operational {workspace.name}", flush=True)
     return metrics
 
 
@@ -687,16 +876,22 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
         scratch_path = Path(scratch)
         # Workload 1: small (Q1/Q2/Q3 fixture content)
         small_ws = _seed_small_workspace(scratch_path)
-        # Workload 2: ralph-self (the project root, capped to fixtures dir)
+        # Workload 2: the Ralph package tree itself, copied so refresh
+        # mutations cannot touch the working tree.
+        import shutil
+
+        repo_root = Path(__file__).resolve().parents[3]
         ralph_self_ws = scratch_path / "ws_ralph_self"
-        ralph_self_ws.mkdir(parents=True, exist_ok=True)
-        for fixture in REQUIRED_FIXTURES:
-            for rel_path, content in fixture.workspace_files.items():
-                target = ralph_self_ws / rel_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                # filesystem-write-ok: transient scratch workspace fixture seeding
-                target.write_text(content)
-        # Workload 3: large-synthetic (scaled)
+        # filesystem-write-ok: transient copy of the package under benchmark scratch
+        shutil.copytree(
+            repo_root,
+            ralph_self_ws,
+            ignore=shutil.ignore_patterns(
+                ".git", ".venv", "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache", "node_modules"
+            ),
+            dirs_exist_ok=True,
+        )
+        # Workload 3: large-synthetic (tens of thousands of files)
         large_ws = _seed_large_synthetic(scratch_path)
         # Workload 4: multi-session (sequential sessions sharing the small workspace)
         multi_ws = scratch_path / "ws_multi"
@@ -708,10 +903,24 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
                 # filesystem-write-ok: transient scratch workspace fixture seeding
                 target.write_text(content)
 
-        small_metrics = _capture_workload_metrics(small_ws, parent_dir=scratch_path)
-        ralph_self_metrics = _capture_workload_metrics(ralph_self_ws, parent_dir=scratch_path)
-        large_metrics = _capture_workload_metrics(large_ws, parent_dir=scratch_path)
-        multi_metrics = _capture_workload_metrics(multi_ws, parent_dir=scratch_path)
+        small_parent = scratch_path / "m_small"
+        ralph_parent = scratch_path / "m_ralph"
+        large_parent = scratch_path / "m_large"
+        multi_parent = scratch_path / "m_multi"
+        for parent in (small_parent, ralph_parent, large_parent, multi_parent):
+            parent.mkdir(parents=True, exist_ok=True)
+        small_metrics = _capture_workload_metrics(small_ws, parent_dir=small_parent)
+        ralph_self_metrics = _capture_workload_metrics(ralph_self_ws, parent_dir=ralph_parent)
+        large_metrics = _capture_workload_metrics(large_ws, parent_dir=large_parent)
+        multi_metrics = _capture_workload_metrics(
+            multi_ws, parent_dir=multi_parent, session_processes=3
+        )
+        file_counts = {
+            "small": float(sum(1 for p in small_ws.rglob("*") if p.is_file())),
+            "ralph_self": float(sum(1 for p in ralph_self_ws.rglob("*") if p.is_file())),
+            "large_synthetic": float(sum(1 for p in large_ws.rglob("*") if p.is_file())),
+            "multi_session": float(sum(1 for p in multi_ws.rglob("*") if p.is_file())),
+        }
 
     baseline: dict[str, object] = {
         "schema_version": 1,
@@ -720,10 +929,11 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
         "workload_set": list(_R6_3_WORKLOADS),
         "scale_factors": {
             "small": "Q1/Q2/Q3 fixtures (small)",
-            "ralph_self": "Q1/Q2/Q3 fixtures (small - ralph project shape)",
-            "large_synthetic": "200 Python files (scaled from tens-of-thousands)",
-            "multi_session": "Q1/Q2/Q3 fixtures (small - multi-session shape)",
+            "ralph_self": "copy of the ralph-workflow tree",
+            "large_synthetic": f"{LARGE_SYNTHETIC_FILE_COUNT} python files plus binary and deep paths",
+            "multi_session": "3 processes sharing one indexed workspace",
         },
+        "file_counts": file_counts,
         "metrics": {
             "small": small_metrics,
             "ralph_self": ralph_self_metrics,
@@ -734,6 +944,29 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
     # filesystem-write-ok: benchmark report artifact emission
     output_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
     return baseline
+
+
+def measurement_within_target(measured: float, target: float, metric: str) -> bool:
+    """Return whether one measured value satisfies its numeric target.
+
+    Upper-bound resource metrics must be at or under the target. The
+    indexed-versus-live speed ratio must be at or above the target.
+    Other metrics may exceed the target by the documented tolerance:
+    50% for no-op refresh, 25% otherwise.
+    """
+    if metric in {
+        "agent_added_latency_p95_seconds",
+        "idle_cpu_seconds",
+        "fd_count_steady",
+        "fd_count_peak",
+        "watch_handles_steady",
+        "watch_handles_peak",
+    }:
+        return measured <= target + 1e-9
+    if metric == "indexed_vs_live_speed_ratio":
+        return measured + 1e-9 >= target
+    tolerance = 0.50 if "no_op" in metric else 0.25
+    return measured <= target * (1.0 + tolerance) + 1e-9
 
 
 def validate_baseline(baseline_path: Path) -> tuple[str, ...]:

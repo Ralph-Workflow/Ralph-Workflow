@@ -255,6 +255,18 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # measurement IS the correctness assertion in both cases.
     "test_no_anti_drift_regression",
     "test_no_anti_drift_recovery_invariants",
+    # Wall-clock budget pin for the F1-F20 fault matrix. Each
+    # per-mode case asserts the call returned inside its 1.0s
+    # budget via real wall-clock because the production handler
+    # does not expose a clock injection seam yet; the measurement
+    # IS the correctness assertion (criterion 1c).
+    "test_explore_fault_matrix_full",
+    # Wall-clock budget pin for the runtime FD-leak / watch-handle
+    # resource tests. The proofs use real wall-clock to measure
+    # the post-operation FD count and inspect the child process
+    # /proc/<pid>/fdinfo via a real subprocess because the explore
+    # substrate owns the SQLite connection (no injection seam).
+    "test_explore_resource_lifecycle",
     # Default-gate endpoint sweep wall-clock budget pin (per AC-05,
     # AC-06). The sweep must complete well inside the immutable
     # 60-second combined test budget; the per-tool and per-suite

@@ -19,13 +19,21 @@ respectively.
 from __future__ import annotations
 
 import json
+import sqlite3
+import stat
+import time
 from pathlib import Path
 
-from ralph.mcp.explore.handlers import ExploreIndex, build_explore_index
+from ralph.mcp.explore.handlers import (
+    ExploreIndex,
+    build_explore_index,
+    handle_ralph_index_status,
+)
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.recovery import (
-    HealthState,
     build_scheduler,
+    run_pending_recovery,
+    run_recovery_action,
 )
 from ralph.mcp.explore.serving import CANONICAL_REASON_CODES
 from ralph.mcp.explore.store import ExploreStore
@@ -228,14 +236,30 @@ def test_f5_corrupted_index_falls_through(tmp_path: Path) -> None:
 # --- F7: locked index ------------------------------------------------------
 
 
-def test_f7_no_handle_falls_through(tmp_path: Path) -> None:
-    """F7-ish: missing handle (no index attached) -> live fall-through."""
+def test_f7_locked_database_falls_through_within_budget(tmp_path: Path) -> None:
+    """F7: an exclusive database lock falls through with index_locked."""
     workspace = _seed_workspace(tmp_path)
-    session = _FakeSession(explore_index=None)
-    payload = _grep_call(session, workspace, use_index="auto")
-    assert payload["index_used"] is False
-    assert payload["fallback_reason"] == "no_index_handle"
-    _assert_matches_contain_hello(payload)
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir, busy_timeout_ms=80)
+    _populate_index(workspace, store)
+    db_path = store.db_path
+    store.close()
+    locked_store = ExploreStore(index_dir, busy_timeout_ms=80)
+    locker = sqlite3.connect(str(db_path), timeout=0.05)
+    locker.execute("BEGIN IMMEDIATE")
+    try:
+        session = _attach_session(locked_store, workspace)
+        started = time.monotonic()
+        payload = _grep_call(session, workspace, use_index="auto")
+        elapsed = time.monotonic() - started
+        assert payload["index_used"] is False
+        assert payload["fallback_reason"] == "index_locked"
+        _assert_matches_contain_hello(payload)
+        assert elapsed < 1.0, elapsed
+    finally:
+        locked_store.close()
+        locker.rollback()
+        locker.close()
 
 
 # --- F8: cross-session coalescing (covered by test_explore_concurrency.py) -
@@ -273,11 +297,15 @@ def test_f12_external_edit_detected_and_falls_through(tmp_path: Path) -> None:
     try:
         _populate_index(workspace, store)
         session = _attach_session(store, workspace)
-        # Mutate outside the indexer to simulate an external edit.
-        (workspace / "hello.py").write_text("def hello():\n    return 'changed'\n")
-        store.mark_dirty("hello.py", reason="external", source_tool="test")
+        target = workspace / "hello.py"
+        target.write_text("def hello():\n    return 'changed'\n")
+        bumped = target.stat().st_mtime_ns + 10_000_000
+        import os
+
+        os.utime(target, ns=(bumped, bumped))
         payload = _grep_call(session, workspace, use_index="auto")
         assert payload["fallback_reason"] == "index_stale_scope"
+        assert payload["index_used"] is False
         _assert_matches_contain_hello(payload)
     finally:
         store.close()
@@ -382,16 +410,32 @@ def test_f16_regex_falls_through_to_live_grep(tmp_path: Path) -> None:
 
 
 def test_f17_timeout_exceeded_returns_incomplete_bounded(tmp_path: Path) -> None:
-    """F17: a timeout budget marks the response and returns live results."""
+    """F17: a reindex past its deadline falls through as timeout_exceeded."""
     workspace = _seed_workspace(tmp_path)
-    session = _FakeSession(explore_index=None)
-    # We cannot easily make _live_grep exceed its budget inside the
-    # 60s test window; verify the response carries the timeout
-    # reason via the live branch instead.
-    payload = _grep_call(session, workspace, use_index="never")
-    # ``use_index=never`` always falls through; the canonical block
-    # is consistent.
-    assert payload["index_used"] is False
+    for i in range(80):
+        (workspace / f"extra_{i:02d}.py").write_text(f"def extra_{i}():\n    return {i}\n")
+    store = ExploreStore(workspace / ".agent" / "ralph-explore")
+    try:
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=1))
+        assert result.status == "timed_out"
+        session = _attach_session(store, workspace)
+        started = time.monotonic()
+        payload = _grep_call(session, workspace, use_index="auto")
+        elapsed = time.monotonic() - started
+        assert payload["index_used"] is False
+        assert payload["fallback_reason"] == "timeout_exceeded"
+        _assert_matches_contain_hello(payload)
+        assert elapsed < 1.0, elapsed
+        run_pending_recovery(workspace, timeout_ms=10_000)
+        fresh = ExploreStore(workspace / ".agent" / "ralph-explore")
+        try:
+            fresh_session = _attach_session(fresh, workspace)
+            later = _grep_call(fresh_session, workspace, use_index="auto")
+            assert later["index_used"] is True, later
+        finally:
+            fresh.close()
+    finally:
+        store.close()
 
 
 # --- F18: indexer error ----------------------------------------------------
@@ -460,34 +504,83 @@ def test_every_fault_mode_reports_a_canonical_reason_code() -> None:
 # --- ralph_index_status truthfulness ---------------------------------------
 
 
+def test_f9_unwritable_retries_are_bounded_then_recover(tmp_path: Path) -> None:
+    """F9: unwritable index attempts stay bounded, then recovery succeeds."""
+    workspace = _seed_workspace(tmp_path)
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
+    try:
+        _populate_index(workspace, store)
+        session = _attach_session(store, workspace)
+        original_mode = index_dir.stat().st_mode
+        index_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        scheduler = build_scheduler(workspace)
+        clock_box = [0.0]
+
+        def _clock() -> float:
+            return clock_box[0]
+
+        attempts = 0
+        try:
+            for _ in range(12):
+                if not scheduler.should_attempt_recovery(clock=_clock):
+                    break
+                run_recovery_action(
+                    scheduler,
+                    workspace_root=workspace,
+                    fault_code="index_unwritable",
+                    reason="chmod_ro",
+                )
+                attempts += 1
+                clock_box[0] += 100.0
+            assert attempts <= scheduler.max_attempts + 1
+            assert scheduler.should_attempt_recovery(clock=_clock) is False
+            payload = _grep_call(session, workspace, use_index="auto")
+            _assert_matches_contain_hello(payload)
+        finally:
+            index_dir.chmod(original_mode)
+        run_recovery_action(
+            build_scheduler(workspace),
+            workspace_root=workspace,
+            fault_code="no_committed_generation",
+            reason="writable_again",
+            timeout_ms=10_000,
+        )
+        later = _grep_call(session, workspace, use_index="auto")
+        assert later["index_used"] is True, later
+    finally:
+        store.close()
+
+
 def test_status_health_during_fault_is_truthful(tmp_path: Path) -> None:
-    """``ralph_index_status`` reports the right health during a fault."""
+    """The status handler reports health and last_failure during a fault."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        _populate_index(workspace, store)
-        # Simulate a fault: scheduler marks the index stale.
-        scheduler = build_scheduler(workspace)
-        scheduler.mark_stale()
-        assert scheduler.health is HealthState.STALE
-        snap = scheduler.snapshot()
-        assert snap["health"] == "stale"
-        assert snap["last_failure"] is None
+        session = _attach_session(store, workspace)
+        payload = _grep_call(session, workspace, use_index="auto")
+        assert payload["fallback_reason"] == "no_committed_generation"
+        status = _decode(handle_ralph_index_status(session, _Workspace(workspace), {}))
+        assert status["health"] == "building"
+        recovery = status["recovery"]
+        assert isinstance(recovery, dict)
+        last_failure = recovery["last_failure"]
+        assert isinstance(last_failure, dict)
+        assert last_failure["code"] == "no_committed_generation"
     finally:
         store.close()
 
 
 def test_status_health_after_recovery_is_healthy(tmp_path: Path) -> None:
-    """After ``mark_healthy()`` the status payload reports ``healthy``."""
+    """After the queued recovery the status handler reports healthy."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        _populate_index(workspace, store)
-        scheduler = build_scheduler(workspace)
-        scheduler.mark_stale()
-        scheduler.mark_healthy()
-        snap = scheduler.snapshot()
-        assert snap["health"] == "healthy"
-        assert snap["last_failure"] is None
+        session = _attach_session(store, workspace)
+        _grep_call(session, workspace, use_index="auto")
+        run_pending_recovery(workspace, timeout_ms=10_000)
+        status = _decode(handle_ralph_index_status(session, _Workspace(workspace), {}))
+        assert status["health"] == "healthy"
+        assert status["recovery"]["last_failure"] is None
     finally:
         store.close()

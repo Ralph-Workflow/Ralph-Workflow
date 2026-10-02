@@ -160,6 +160,9 @@ TESTS_ALLOWLIST: set[str] = {
     "test_explore_crash_safety.py",
     # exercises real concurrent processes sharing one explore index (S-5)
     "test_explore_concurrency.py",
+    # exercises runtime inotify watch proof via real subprocess
+    # (R5 watch-handle contract)
+    "test_explore_resource_lifecycle.py",
 }
 
 _MCP_FIXTURE_FILES = {

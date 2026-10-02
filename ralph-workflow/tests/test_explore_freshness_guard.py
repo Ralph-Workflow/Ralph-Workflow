@@ -196,30 +196,38 @@ def test_grep_files_falls_through_when_stale(tmp_path: Path) -> None:
         store.close()
 
 
-def test_grep_files_use_index_always_falls_through_when_stale(tmp_path: Path) -> None:
-    """``use_index='always'`` serves live results when stale (fail-closed)."""
+def test_grep_files_use_index_always_returns_structured_error_when_stale(tmp_path: Path) -> None:
+    """``use_index='always'`` against a stale index returns a structured error.
+
+    Acceptance criterion 2: ``use_index='always'`` failures return a
+    structured reason-coded error, never an empty success. The error
+    message must contain the canonical reason code
+    ``index_stale_scope`` so the caller can recover programmatically.
+    """
+    import pytest
+
+    from ralph.mcp.tools.coordination import InvalidParamsError
+
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         session = _attach_session(store, workspace)
         store.mark_dirty("hello.py", reason="test_extern", source_tool="test")
-        result = handle_grep_files(
-            session,
-            _Workspace(workspace),
-            {
-                "pattern": "hello",
-                "path": ".",
-                "regex": False,
-                "case_sensitive": False,
-                "use_index": "always",
-            },
-        )
-        payload = _decode(result)
-        # The handler must serve live results rather than return empty.
-        # ``use_index='always'`` fail-closes with the reason code.
-        assert payload["index_used"] is False
-        assert payload["fallback_reason"] == "index_stale_scope"
-        assert any("hello" in (m.get("text") or "") for m in payload["matches"])
+        with pytest.raises(InvalidParamsError) as excinfo:
+            handle_grep_files(
+                session,
+                _Workspace(workspace),
+                {
+                    "pattern": "hello",
+                    "path": ".",
+                    "regex": False,
+                    "case_sensitive": False,
+                    "use_index": "always",
+                },
+            )
+        # The error message must carry the canonical reason code.
+        assert "index_stale_scope" in str(excinfo.value)
+        assert "reason_code" in str(excinfo.value)
     finally:
         store.close()

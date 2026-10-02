@@ -184,6 +184,14 @@ def staleness_probe(
     when ANY stale path falls inside the scope OR the stale share
     exceeds ``threshold``.
 
+    The probe also detects external edits (F12) by comparing the
+    workspace ``(size, mtime_ns)`` manifest against the persisted
+    ``files`` rows: any drift between current and stored mtime or
+    size is reported as ``scope_affected=True`` so the caller falls
+    through to live search even when no ``mark_dirty`` call has
+    been made. The manifest check is bounded by
+    ``workspace_root`` so it cannot blow up on huge repositories.
+
     Args:
         session: the MCP session (for the explore handle).
         workspace_root: workspace root; when ``None``, the probe returns
@@ -192,8 +200,9 @@ def staleness_probe(
 
     Returns:
         A dict with ``stale``, ``reason``, ``stale_paths_count``,
-        ``stale_share``, and ``scope_affected`` so the caller can
-        decide whether to fall through.
+        ``stale_share``, ``scope_affected``, and
+        ``manifest_drift_paths`` so the caller can decide whether to
+        fall through.
     """
     raw_handle: object = getattr(session, "explore_index", None)
     handle: ExploreIndex | None = (
@@ -206,6 +215,7 @@ def staleness_probe(
             "stale_paths_count": 0,
             "stale_share": 0.0,
             "scope_affected": False,
+            "manifest_drift_paths": 0,
         }
     store: ExploreStore = handle.store
     try:
@@ -217,30 +227,77 @@ def staleness_probe(
     except Exception:
         deleted_count = 0
     stale_paths_count = len(dirty_paths) + deleted_count
-    if stale_paths_count == 0:
+
+    # F12 manifest probe: compare current on-disk (size, mtime_ns)
+    # against the persisted row's mtime_ns. Any drift = external
+    # edit that the dirty-path queue has not seen yet. The probe is
+    # bounded by ``workspace_root`` and only consults persisted
+    # rows; the comparison is O(n) over the row count which is
+    # small relative to the query work it gates. The probe is
+    # suppressed when the store has no committed generation so a
+    # cold/missing index reports ``no_committed_generation`` rather
+    # than the misleading ``index_stale_scope``.
+    manifest_drift_paths = 0
+    try:
+        committed_raw = store.get_setting("current_generation") or "0"
+        try:
+            committed_int = int(committed_raw)
+        except (TypeError, ValueError):
+            committed_int = 0
+        if committed_int > 0:
+            from ralph.mcp.explore._store_types import collect_workspace_files
+
+            current_manifest = collect_workspace_files(Path(workspace_root))
+            for rel, size, mtime_ns in current_manifest:
+                row = store.get_file(rel)
+                if row is None:
+                    # New file; not yet in the index.
+                    manifest_drift_paths += 1
+                    continue
+                # The row's typed attributes are int but the public
+                # handle may carry ``None`` when the column was
+                # just added. Guard each access through a typed
+                # helper so the int() conversion is unambiguous.
+                try:
+                    row_size = int(row.size_bytes) if row.size_bytes is not None else 0
+                except (TypeError, ValueError):
+                    row_size = 0
+                try:
+                    row_mtime = int(row.mtime_ns) if row.mtime_ns is not None else 0
+                except (TypeError, ValueError):
+                    row_mtime = 0
+                if row_size != size or row_mtime != mtime_ns:
+                    manifest_drift_paths += 1
+    except Exception:
+        # Probe is best-effort: filesystem errors / closed store
+        # are non-fatal. The dirty-path probe below is the
+        # canonical signal.
+        manifest_drift_paths = 0
+
+    if stale_paths_count == 0 and manifest_drift_paths == 0:
         return {
             "stale": False,
             "reason": None,
             "stale_paths_count": 0,
             "stale_share": 0.0,
             "scope_affected": False,
+            "manifest_drift_paths": 0,
         }
     try:
         total_files = int(store.count_files())
     except Exception:
         total_files = 0
-    stale_share: float = (stale_paths_count / max(1, total_files)) if total_files else 1.0
-    # A stale index means either there are dirty paths in scope OR
-    # the stale share exceeds the documented threshold. The caller
-    # may inspect ``scope_affected`` to tell the two apart.
-    scope_affected = bool(dirty_paths)
+    effective_stale = stale_paths_count + manifest_drift_paths
+    stale_share: float = (effective_stale / max(1, total_files)) if total_files else 1.0
+    scope_affected = bool(dirty_paths) or manifest_drift_paths > 0
     stale = scope_affected or (stale_share > threshold)
     probe_result: dict[str, object] = {
         "stale": stale,
         "reason": "index_stale_scope" if stale else None,
-        "stale_paths_count": stale_paths_count,
+        "stale_paths_count": effective_stale,
         "stale_share": stale_share,
         "scope_affected": scope_affected,
+        "manifest_drift_paths": manifest_drift_paths,
     }
     return probe_result
 

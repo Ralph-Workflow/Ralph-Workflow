@@ -112,6 +112,39 @@ def _freshness_for_grep(
     }
 
 
+def _queue_recovery(workspace_root: Path | None, reason: str | None) -> None:
+    """Queue background recovery for a detected index fault.
+
+    Ineligible patterns and a missing session handle are not index
+    damage, so they do not schedule a rebuild. A locked database
+    means another writer already owns recovery (F7).
+    """
+    if workspace_root is None or reason is None:
+        return
+    if reason in {"pattern_not_fts_eligible", "no_index_handle", "index_locked"}:
+        return
+    from ralph.mcp.explore.recovery import enqueue_recovery
+
+    enqueue_recovery(workspace_root, reason, message=reason)
+
+
+def _cold_query_reason(store: ExploreStore) -> str:
+    """Distinguish a never-built index from one whose last job timed out."""
+    try:
+        latest = store.latest_job()
+    except (sqlite3.ProgrammingError, sqlite3.DatabaseError, AttributeError, TypeError):
+        return "no_committed_generation"
+    if latest is None:
+        return "no_committed_generation"
+    try:
+        status = str(latest["status"])
+    except (KeyError, IndexError, TypeError):
+        return "no_committed_generation"
+    if status == "timed_out":
+        return "timeout_exceeded"
+    return "no_committed_generation"
+
+
 def _chunk_text_for_id(store: ExploreStore, chunk_id: str) -> str:
     """Return the full chunk text for ``chunk_id`` (or "" if missing).
 
@@ -670,26 +703,25 @@ def handle_grep_files(
         except (sqlite3.ProgrammingError, sqlite3.DatabaseError):
             store = None
             cold_index = False
-    if cold_index:
-        if use_index == "always":
-            raise InvalidParamsError(
-                "use_index='always' requires an indexed workspace; the "
-                "explore index has no committed generation (run "
-                "ralph_reindex first)."
-            )
-        eligible = False
-        fallback_reason = "no_committed_generation"
-
-    # S-3: pre-query freshness guard. When the index is stale past the
-    # documented threshold (or any dirty path falls inside the query
-    # scope), we fall through to live grep with reason
-    # ``index_stale_scope``. ``use_index='always'`` is fail-closed: we
-    # still serve live results and report the reason so the caller can
-    # see why.
     workspace_raw: object = getattr(workspace, "root", None)
     workspace_root: Path | None = (
         workspace_raw if isinstance(workspace_raw, Path) else None
     )
+    if cold_index and store is not None:
+        fallback_reason = _cold_query_reason(store)
+        if use_index == "always":
+            _queue_recovery(workspace_root, fallback_reason)
+            raise InvalidParamsError(
+                "use_index='always' cannot serve this query: "
+                f"reason_code={fallback_reason}"
+            )
+        eligible = False
+
+    # S-3: pre-query freshness guard. When the index is stale past the
+    # documented threshold (or any stale path falls inside the query
+    # scope), auto mode falls through to live grep with reason
+    # ``index_stale_scope``. ``use_index='always'`` fails closed with
+    # that same reason code.
     probe = staleness_probe(
         session,
         workspace_root=workspace_root,
@@ -702,16 +734,75 @@ def handle_grep_files(
         # AC-02 indexed-grep filter parity: push path/include/exclude
         # into the FTS query so the indexed branch never leaks
         # out-of-scope matches.
-        indexed_match_rows = _indexed_matches(
-            store,
-            pattern,
-            whole_word=whole_word,
-            case_sensitive=case_sensitive,
-            limit=limit,
-            path_prefix=normalized or None,
-            include_globs=include,
-            exclude_globs=exclude,
-        )
+        try:
+            # F7: fail fast when another connection holds the reserved lock.
+            previous_busy = int(getattr(store, "_busy_timeout_ms", 50))
+            store._conn.execute("PRAGMA busy_timeout=50")
+            try:
+                store._conn.execute("BEGIN IMMEDIATE")
+                store._conn.execute("ROLLBACK")
+            finally:
+                store._conn.execute(f"PRAGMA busy_timeout={previous_busy}")
+            indexed_match_rows = _indexed_matches(
+                store,
+                pattern,
+                whole_word=whole_word,
+                case_sensitive=case_sensitive,
+                limit=limit,
+                path_prefix=normalized or None,
+                include_globs=include,
+                exclude_globs=exclude,
+            )
+        except sqlite3.OperationalError as exc:
+            low = str(exc).lower()
+            fallback_reason = (
+                "index_locked" if ("locked" in low or "busy" in low) else "indexer_error"
+            )
+            if use_index == "always":
+                _queue_recovery(workspace_root, fallback_reason)
+                raise InvalidParamsError(
+                    "use_index='always' cannot serve this query: "
+                    f"reason_code={fallback_reason}"
+                ) from exc
+            live_matches, skipped, truncated = _live_grep(
+                workspace,
+                pattern=pattern,
+                path=path,
+                normalized=normalized,
+                is_regex=is_regex,
+                case_sensitive=case_sensitive,
+                whole_word=whole_word,
+                include=include,
+                exclude=exclude,
+                context_before=context_before,
+                context_after=context_after,
+                limit=limit,
+                max_file_bytes=max_file_bytes,
+            )
+            _queue_recovery(workspace_root, fallback_reason)
+            locked_result: dict[str, object] = {
+                "pattern": pattern,
+                "base": path,
+                "matches": live_matches,
+                "truncated": truncated,
+                "skipped_files": skipped,
+                "ranked_by": rank_by,
+                "dedupe_by_symbol": dedupe_by_symbol,
+                "graph_context": (
+                    []
+                    if include_graph_context
+                    else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+                ),
+            }
+            locked_result.update(
+                _freshness_for_grep(
+                    session, index_used=False, fallback_reason=fallback_reason
+                )
+            )
+            return ToolResult(
+                content=[ToolContent.text_content(_tool_json(locked_result))],
+                is_error=False,
+            )
         index_used = True
         # Snippet cap.
         if max_snippet_lines and max_snippet_lines > 0:
@@ -799,53 +890,21 @@ def handle_grep_files(
             if not return_evidence_ids:
                 row.pop("evidence_id", None)
     elif use_index == "always" and not eligible:
-        # The pattern is non-FTS-eligible OR the freshness guard
-        # fired. ``use_index='always'`` is fail-closed: we still
-        # serve live results and report the reason so the caller
-        # can see why. R1: never return an empty success.
-        if fallback_reason == "index_stale_scope":
-            # Freshness guard fell through. Route to live grep by
-            # handling the call in-place so we never return empty.
-            live_matches, skipped, truncated = _live_grep(
-                workspace,
-                pattern=pattern,
-                path=path,
-                normalized=normalized,
-                is_regex=is_regex,
-                case_sensitive=case_sensitive,
-                whole_word=whole_word,
-                include=include,
-                exclude=exclude,
-                context_before=context_before,
-                context_after=context_after,
-                limit=limit,
-                max_file_bytes=max_file_bytes,
+        # ``use_index='always'`` is fail-closed: when the index
+        # cannot serve the query, we return a structured error
+        # carrying the canonical reason code. The caller asked for
+        # the index; we never silently substitute live results.
+        # Acceptance criterion 2: ``use_index='always'`` failures
+        # return a structured reason-coded error, never an empty
+        # success.
+        if fallback_reason is None:
+            fallback_reason = (
+                "pattern_not_fts_eligible" if not eligible else "no_index_handle"
             )
-            result = {
-                "pattern": pattern,
-                "base": path,
-                "matches": live_matches,
-                "truncated": truncated,
-                "skipped_files": skipped,
-                "ranked_by": rank_by,
-                "dedupe_by_symbol": dedupe_by_symbol,
-                "graph_context": (
-                    [] if include_graph_context else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-                ),
-            }
-            if return_evidence_ids:
-                result["evidence_ids"] = []
-            result.update(
-                _freshness_for_grep(session, index_used=False, fallback_reason=fallback_reason)
-            )
-            return ToolResult(
-                content=[ToolContent.text_content(_tool_json(result))],
-                is_error=False,
-            )
+        _queue_recovery(workspace_root, fallback_reason)
         raise InvalidParamsError(
-            "use_index='always' requires an FTS-eligible pattern; "
-            "the requested pattern contains regex metacharacters or "
-            "is not representable in FTS5 without changing semantics."
+            f"use_index='always' cannot serve this query: "
+            f"reason_code={fallback_reason}"
         )
     elif use_index == "always" and store is None:
         raise InvalidParamsError(
@@ -856,9 +915,7 @@ def handle_grep_files(
         # use_index == 'never' OR store missing OR non-eligible pattern.
         if use_index == "auto" and fallback_reason is None:
             fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
-        # ``use_index='always'`` with the freshness guard set must still
-        # serve live results, not error. The live-grep branch handles
-        # the call below.
+        _queue_recovery(workspace_root, fallback_reason)
         # Fall back to live grep.
         live_matches, skipped, truncated = _live_grep(
             workspace,
