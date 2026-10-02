@@ -371,9 +371,62 @@ ralph/mcp/
 │   ├── lifecycle.py      # Before/after dev-fix session refresh hooks
 │   ├── pipeline.py       # Manifest/hash/generation lifecycle, idempotent reindex
 │   ├── ranking.py        # Deterministic score components for search_files and grep_files
+│   ├── recovery.py       # Per-workspace recovery scheduler (S-4): bounded backoff, cross-process lock, health states
+│   ├── serving.py        # Canonical serving metadata shared by every index-capable tool (S-2): index_used, fallback_reason, index_staleness
 │   ├── store.py          # SQLite + FTS5 schema, manifest, evidence, tombstones, dirty_paths, jobs, settings
 │   ├── structure.py      # Python AST and Markdown heading/link extractors
 │   └── deferred_phases.py
+
+### Indexed exploration serving contract (R1)
+
+Every index-capable tool response (`grep_files`, `search_files`,
+`read_file`, `read_multiple_files`, `list_directory`,
+`directory_tree`, `ralph_graph`, `ralph_index_status`,
+`ralph_reindex`) carries the same three machine-readable fields
+produced by `ralph.mcp.explore.serving.serving_metadata`:
+
+* `index_used` — whether the index served the call (`True` / `False`).
+* `fallback_reason` — canonical reason code from the fault matrix
+  (see `docs/agents/explore-index-fault-matrix.md`), or `None` when
+  the index served the call.
+* `index_staleness` — `{stale_paths_count, last_refresh_age, recovery_willfallback}`.
+
+`use_index="always"` failures return a structured error carrying
+the same reason code; the handler never returns an empty success
+on an explicitly-indexed call.
+
+### Recovery semantics (R2)
+
+`ralph.mcp.explore.recovery.RecoveryScheduler` drives every
+applicable F1-F20 failure mode with bounded exponential backoff
+and a cross-process advisory file lock under
+`.agent/ralph-explore/.recovery.lock`. Health states:
+`healthy | building | stale | degraded | unhealthy`. The status
+handler surfaces `health`, `recovery_attempts`, `last_failure`,
+and `next_recovery_at` so the agent can audit the index state
+without guessing.
+
+### Staleness threshold (R4)
+
+`DEFAULT_STALENESS_THRESHOLD = 0.05` (5% stale share). The probe
+fires when EITHER any dirty path is in scope OR the stale share
+exceeds the threshold. The freshness guard falls through to live
+search with reason `index_stale_scope`; `use_index="always"`
+fail-closes with the reason code rather than erroring.
+
+### Performance (R6)
+
+`docs/performance/explore-index-baseline.json` carries the S-8
+baseline (every R6.2 metric on every R6.3 workload, captured
+BEFORE any behaviour change). `docs/performance/explore-index-baseline.md`
+states the targets derived from that baseline. The S-9 gate is
+`tests/test_explore_perf_regression_gate.py` (in-budget schema +
+scaled synthetic checks) plus the subprocess_e2e full-measurement
+layer (registered alongside S-5 in
+`REQUIRED_AUTO_INTEGRATE_E2E_FILES`). The S-10 before/after
+report is `docs/performance/explore-index-report.md` with
+explicit `improved | regression | within-tolerance` disposition
+per metric per workload.
 ├── protocol/            # Shared protocol plumbing (both server and client)
 │   ├── __init__.py
 │   ├── capability_mapping.py

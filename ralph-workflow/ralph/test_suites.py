@@ -121,6 +121,12 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
     "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
+    # wt-11: crash-safety and concurrency proofs for the indexed
+    # exploration substrate (S-5). subprocess_e2e so the cross-process
+    # boundary and atomic promotion are exercised; in-budget on the
+    # 60s combined verify budget.
+    "tests/test_explore_crash_safety.py",
+    "tests/test_explore_concurrency.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

@@ -14,6 +14,7 @@ from ralph.mcp.explore.dirty_paths import (
     ExploreIndexLike,
     resolve_explore_index,
 )
+from ralph.mcp.explore.serving import serving_metadata
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -102,6 +103,14 @@ def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | 
 
 
 def _freshness_for_read(session: object) -> dict[str, object]:
+    """Return the freshness metadata block for read responses.
+
+    When the explore index is attached, the block carries the
+    canonical serving metadata (``index_used``, ``fallback_reason``,
+    ``index_staleness``) plus the legacy generation / staleness
+    counters. When no handle is attached the block is empty so the
+    legacy shape is preserved.
+    """
     handle = resolve_explore_index(session)
     if handle is None:
         return {}
@@ -113,13 +122,19 @@ def _freshness_for_read(session: object) -> dict[str, object]:
         generation_int = int(generation_raw)
     except (TypeError, ValueError):
         generation_int = 0
-    dirty = store.peek_dirty_paths()
+    try:
+        dirty = list(store.peek_dirty_paths())
+    except Exception:
+        dirty = []
+    meta = serving_metadata(
+        session, index_used=True, fallback_reason=None
+    )
     return {
-        "index_used": True,
+        **meta,
         "index_generation": generation_int,
         "is_stale": bool(dirty),
         "dirty_paths_count": len(dirty),
-        "stale_paths_count": 0,
+        "stale_paths_count": len(dirty),
     }
 
 
@@ -900,6 +915,12 @@ def handle_read_multiple_files(
     }
     if return_metadata:
         payload.update(_freshness_for_read(session))
+        payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
+    else:
+        # Always carry the canonical serving block so the top-level
+        # ``read_multiple_files`` response reports which path served
+        # it. Per-item selectors already carry their own status.
+        payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
     # Legacy ``paths`` mode preserves the prior behavior: a per-file
     # error does not flip ``is_error`` on the top-level result.
     is_error = False if legacy_paths_mode else has_fatal_error
@@ -1314,6 +1335,7 @@ def handle_list_directory(
         "index_used": True,
         "is_stale": is_stale,
     }
+    payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
     return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
 
@@ -1652,6 +1674,7 @@ def handle_directory_tree(
         "index_used": True,
         "is_stale": is_stale,
     }
+    payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
     return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
 
@@ -1847,6 +1870,21 @@ def handle_search_files(
     }
     if score_reasons:
         output["score_reasons"] = score_reasons
+    # Canonical serving metadata so callers can tell which path served
+    # the call. ``search_files`` always returns live-glob results; the
+    # index participates only in role/contains_symbol/changed_only
+    # filtering, so the truthful ``index_used`` reflects whether the
+    # caller asked for indexed filtering.
+    has_indexed_filter = (
+        role != "any" or contains_symbol is not None or changed_only
+    )
+    output.update(
+        serving_metadata(
+            session,
+            index_used=bool(has_indexed_filter),
+            fallback_reason=("no_index_handle" if has_indexed_filter and not _search_handle else None),
+        )
+    )
     if return_evidence_ids:
         # AC-02: emit only persisted evidence IDs that read_file can
         # resolve. Pull the file's stored content hash and insert

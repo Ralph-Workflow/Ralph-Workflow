@@ -235,6 +235,25 @@ def handle_ralph_reindex(
     handle.last_refresh_kind = "full" if mode == "full" else "changed"
     payload = _build_reindex_payload(result)
     payload["cancelled"] = result.status == "cancelled"
+    # Canonical serving metadata: ``ralph_reindex`` runs the reindex
+    # writer itself, so the response carries ``index_used=True`` when
+    # the reindex succeeded and ``fallback_reason`` only when the
+    # status is unhealthy.
+    from ralph.mcp.explore.serving import serving_metadata
+
+    payload.update(
+        serving_metadata(
+            session,
+            index_used=result.status not in {"failed", "cancelled"},
+            fallback_reason=(
+                None
+                if result.status not in {"failed", "cancelled"}
+                else "interrupted_build"
+                if result.status == "cancelled"
+                else "indexer_error"
+            ),
+        )
+    )
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,

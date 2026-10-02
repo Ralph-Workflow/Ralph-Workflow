@@ -156,6 +156,10 @@ TESTS_ALLOWLIST: set[str] = {
     # regression test pins the AC-12 ownership guard (PID 1 and already-reaped
     # children must never reach the signal path).
     "test_teardown_ownership_guard.py",
+    # exercises real SIGKILL mid-build crash recovery across processes (S-5)
+    "test_explore_crash_safety.py",
+    # exercises real concurrent processes sharing one explore index (S-5)
+    "test_explore_concurrency.py",
 }
 
 _MCP_FIXTURE_FILES = {

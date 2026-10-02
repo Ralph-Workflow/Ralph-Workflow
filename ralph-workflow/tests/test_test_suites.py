@@ -29,6 +29,8 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
     "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
+    "tests/test_explore_crash_safety.py",
+    "tests/test_explore_concurrency.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

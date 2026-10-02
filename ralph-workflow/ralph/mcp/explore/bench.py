@@ -44,12 +44,18 @@ from ralph.mcp.explore._bench_fixtures import (
     REQUIRED_FIXTURES,
 )
 from ralph.mcp.explore._bench_product_baseline import (
+    capture_baseline,
     gate_product_baseline,
     load_product_baseline_limits,
     main,
     measure_representative_flows,
     nearest_rank_p95,
+    run_capture_baseline,
     run_product_baseline,
+    run_validate_baseline,
+    run_validate_report,
+    validate_baseline,
+    validate_report,
 )
 from ralph.mcp.explore._bench_types import (
     BenchmarkCounters,
@@ -477,6 +483,7 @@ __all__ = [
     "BenchmarkResult",
     "ScriptedCall",
     "SystemClock",
+    "capture_baseline",
     "derive_visible_catalog",
     "gate_product_baseline",
     "load_product_baseline_limits",
@@ -484,6 +491,11 @@ __all__ = [
     "measure_representative_flows",
     "nearest_rank_p95",
     "run_benchmark",
+    "run_capture_baseline",
     "run_product_baseline",
+    "run_validate_baseline",
+    "run_validate_report",
     "tool_catalog_tokens",
+    "validate_baseline",
+    "validate_report",
 ]

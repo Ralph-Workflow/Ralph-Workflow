@@ -86,6 +86,22 @@ def handle_ralph_index_status(
     payload = _build_status_payload(handle, workspace_root, cold_index_required)
     payload["enabled"] = True
     payload["workspace_awareness"] = awareness_for_workspace(workspace_root).snapshot()
+    # Canonical serving metadata: ``ralph_index_status`` is the
+    # metadata endpoint itself, so ``index_used`` reports whether the
+    # attached store served the snapshot and ``fallback_reason`` is
+    # ``None`` when the handle is healthy.
+    from ralph.mcp.explore.serving import serving_metadata
+
+    payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
+    # S-6: surface the recovery scheduler state so callers can see
+    # health / last failure / attempts / next recovery time. The
+    # scheduler is lazily created per workspace and the snapshot is
+    # bounded.
+    from ralph.mcp.explore.recovery import build_scheduler
+
+    scheduler = build_scheduler(workspace_root)
+    payload["recovery"] = scheduler.snapshot()
+    payload["health"] = scheduler.health.value
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,

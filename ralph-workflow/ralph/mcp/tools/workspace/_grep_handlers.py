@@ -6,6 +6,7 @@ import re
 import sqlite3
 import time
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
@@ -16,6 +17,7 @@ from ralph.mcp.explore.ranking import (
     score_grep_match,
     sort_ranked,
 )
+from ralph.mcp.explore.serving import serving_metadata, staleness_probe
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -52,32 +54,47 @@ def _freshness_for_grep(
 ) -> dict[str, object]:
     """Return the freshness metadata block for a grep response.
 
-    Returns an empty dict when the index is disabled so the legacy
-    shape is preserved.
+    Returns the canonical serving-metadata block so the response
+    carries ``index_used``, ``fallback_reason``, and
+    ``index_staleness`` regardless of whether the index is enabled.
+    The legacy keys (``index_generation``, ``is_stale``,
+    ``dirty_paths_count``, ``stale_paths_count``) are preserved
+    alongside the canonical ones so existing callers and tests
+    keep working.
     """
+    meta = serving_metadata(
+        session, index_used=index_used, fallback_reason=fallback_reason
+    )
     handle = resolve_explore_index(session)
     if handle is None:
-        # No handle at all: legacy shape, but we still report
-        # ``index_used=false`` so callers can detect the fall-back.
         return {
-            "index_used": index_used,
+            **meta,
             "index_generation": 0,
             "is_stale": False,
             "dirty_paths_count": 0,
             "stale_paths_count": 0,
-            "fallback_reason": fallback_reason,
         }
     store: ExploreStore | None = getattr(handle, "store", None)
     if store is None:
         return {
-            "index_used": index_used,
+            **meta,
             "index_generation": 0,
             "is_stale": False,
             "dirty_paths_count": 0,
             "stale_paths_count": 0,
-            "fallback_reason": fallback_reason,
         }
-    generation_raw = store.get_setting("current_generation") or "0"
+    try:
+        generation_raw = store.get_setting("current_generation") or "0"
+    except (sqlite3.ProgrammingError, sqlite3.DatabaseError, AttributeError):
+        # F5/F18: store is closed / corrupted. Return zeroed metadata
+        # so the response is still meaningful for the live path.
+        return {
+            **meta,
+            "index_generation": 0,
+            "is_stale": False,
+            "dirty_paths_count": 0,
+            "stale_paths_count": 0,
+        }
     try:
         generation_int = int(generation_raw)
     except (TypeError, ValueError):
@@ -87,12 +104,11 @@ def _freshness_for_grep(
     except Exception:
         dirty = []
     return {
-        "index_used": index_used,
+        **meta,
         "index_generation": generation_int,
         "is_stale": bool(dirty),
         "dirty_paths_count": len(dirty),
         "stale_paths_count": len(dirty),
-        "fallback_reason": fallback_reason,
     }
 
 
@@ -614,7 +630,10 @@ def handle_grep_files(
 
     handle = resolve_explore_index(session)
     if handle is not None:
-        store_value: ExploreStore | None = getattr(handle, "store", None)
+        try:
+            store_value: ExploreStore | None = getattr(handle, "store", None)
+        except (sqlite3.ProgrammingError, sqlite3.DatabaseError):
+            store_value = None
     else:
         store_value = None
     store: ExploreStore | None = store_value
@@ -644,7 +663,13 @@ def handle_grep_files(
     # matches. The committed-generation check overrides the
     # pattern-eligibility reason because the absence of an index
     # is the more fundamental block.
-    cold_index = store is not None and _indexed_committed_generation(store) <= 0
+    cold_index = False
+    if store is not None:
+        try:
+            cold_index = _indexed_committed_generation(store) <= 0
+        except (sqlite3.ProgrammingError, sqlite3.DatabaseError):
+            store = None
+            cold_index = False
     if cold_index:
         if use_index == "always":
             raise InvalidParamsError(
@@ -654,6 +679,24 @@ def handle_grep_files(
             )
         eligible = False
         fallback_reason = "no_committed_generation"
+
+    # S-3: pre-query freshness guard. When the index is stale past the
+    # documented threshold (or any dirty path falls inside the query
+    # scope), we fall through to live grep with reason
+    # ``index_stale_scope``. ``use_index='always'`` is fail-closed: we
+    # still serve live results and report the reason so the caller can
+    # see why.
+    workspace_raw: object = getattr(workspace, "root", None)
+    workspace_root: Path | None = (
+        workspace_raw if isinstance(workspace_raw, Path) else None
+    )
+    probe = staleness_probe(
+        session,
+        workspace_root=workspace_root,
+    )
+    if probe["stale"]:
+        eligible = False
+        fallback_reason = "index_stale_scope"
 
     if use_index != "never" and store is not None and eligible:
         # AC-02 indexed-grep filter parity: push path/include/exclude
@@ -717,7 +760,9 @@ def handle_grep_files(
                         store=store,
                         chunk_id=str(row.get("chunk_id", "")) or None,
                         graph_target=(
-                            str(params.get("graph_target")) if params.get("graph_target") else None
+                            str(params.get("graph_target"))
+                            if params.get("graph_target")
+                            else None
                         ),
                     )
                 )
@@ -754,6 +799,49 @@ def handle_grep_files(
             if not return_evidence_ids:
                 row.pop("evidence_id", None)
     elif use_index == "always" and not eligible:
+        # The pattern is non-FTS-eligible OR the freshness guard
+        # fired. ``use_index='always'`` is fail-closed: we still
+        # serve live results and report the reason so the caller
+        # can see why. R1: never return an empty success.
+        if fallback_reason == "index_stale_scope":
+            # Freshness guard fell through. Route to live grep by
+            # handling the call in-place so we never return empty.
+            live_matches, skipped, truncated = _live_grep(
+                workspace,
+                pattern=pattern,
+                path=path,
+                normalized=normalized,
+                is_regex=is_regex,
+                case_sensitive=case_sensitive,
+                whole_word=whole_word,
+                include=include,
+                exclude=exclude,
+                context_before=context_before,
+                context_after=context_after,
+                limit=limit,
+                max_file_bytes=max_file_bytes,
+            )
+            result = {
+                "pattern": pattern,
+                "base": path,
+                "matches": live_matches,
+                "truncated": truncated,
+                "skipped_files": skipped,
+                "ranked_by": rank_by,
+                "dedupe_by_symbol": dedupe_by_symbol,
+                "graph_context": (
+                    [] if include_graph_context else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+                ),
+            }
+            if return_evidence_ids:
+                result["evidence_ids"] = []
+            result.update(
+                _freshness_for_grep(session, index_used=False, fallback_reason=fallback_reason)
+            )
+            return ToolResult(
+                content=[ToolContent.text_content(_tool_json(result))],
+                is_error=False,
+            )
         raise InvalidParamsError(
             "use_index='always' requires an FTS-eligible pattern; "
             "the requested pattern contains regex metacharacters or "
@@ -768,6 +856,9 @@ def handle_grep_files(
         # use_index == 'never' OR store missing OR non-eligible pattern.
         if use_index == "auto" and fallback_reason is None:
             fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
+        # ``use_index='always'`` with the freshness guard set must still
+        # serve live results, not error. The live-grep branch handles
+        # the call below.
         # Fall back to live grep.
         live_matches, skipped, truncated = _live_grep(
             workspace,

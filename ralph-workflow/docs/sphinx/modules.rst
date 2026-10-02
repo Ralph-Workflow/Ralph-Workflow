@@ -2945,6 +2945,20 @@ ralph.mcp.explore.store
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.recovery
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.recovery
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.serving
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.serving
+   :members:
+   :show-inheritance:
+
 Git
 ---
 
