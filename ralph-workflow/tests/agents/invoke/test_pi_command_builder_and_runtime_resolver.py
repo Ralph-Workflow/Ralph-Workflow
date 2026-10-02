@@ -571,6 +571,54 @@ class TestPiCompletionSemantics:
                 ),
             )
 
+    def test_pi_nonzero_exit_preserves_provider_failure_type(self, tmp_path: Path) -> None:
+        with pytest.raises(PiProviderFailureExitError):
+            check_process_result(
+                _FakeHandle(returncode=1),
+                "pi/minimax/MiniMax-M3",
+                parsed_output=[
+                    json.dumps(
+                        {
+                            "type": "auto_retry_end",
+                            "success": False,
+                            "finalError": "server cluster is currently under high load (529)",
+                        }
+                    )
+                ],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy_for_transport(AgentTransport.PI),
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(idle_timeout_seconds=None),
+                ),
+            )
+
+    def test_intentionally_terminated_pi_exit_preserves_termination_origin(
+        self, tmp_path: Path
+    ) -> None:
+        handle = _FakeHandle(returncode=143, termination_issuer="operator_cancellation")
+
+        with pytest.raises(AgentInvocationError) as exc_info:
+            check_process_result(
+                handle,
+                "pi/minimax/MiniMax-M3",
+                parsed_output=[
+                    json.dumps(
+                        {
+                            "type": "auto_retry_end",
+                            "success": False,
+                            "finalError": "server cluster is currently under high load (529)",
+                        }
+                    )
+                ],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy_for_transport(AgentTransport.PI),
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(idle_timeout_seconds=None),
+                ),
+            )
+
+        assert exc_info.value.failure_origin == "intentional_termination"
+
     @pytest.mark.parametrize(
         "transport",
         (AgentTransport.OPENCODE, AgentTransport.CURSOR),

@@ -8,9 +8,19 @@ class _FakeHandle:
     stdout = None
     stderr = None
 
-    def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        returncode: int = 0,
+        has_descendants: bool = False,
+        termination_issuer: str | None = None,
+    ) -> None:
         self.returncode = returncode
         self._has_descendants = has_descendants
+        self._termination_issuer = termination_issuer
+
+    def termination_issuer(self) -> str | None:
+        return self._termination_issuer
 
     def has_live_descendants(self) -> bool:
         return self._has_descendants

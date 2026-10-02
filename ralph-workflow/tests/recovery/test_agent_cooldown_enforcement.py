@@ -12,7 +12,12 @@ from pathlib import Path
 
 from loguru import logger
 
-from ralph.agents.invoke import BrokenAgentExitError
+from ralph.agents.invoke import (
+    AgentInvocationError,
+    BrokenAgentExitError,
+    PiContextExhaustedExitError,
+    PiProviderFailureExitError,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import effect_router
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -202,6 +207,135 @@ def test_non_auth_user_config_failure_does_not_cool_agent() -> None:
     assert event.category == str(FailureCategory.USER_CONFIG)
     assert event.counted_against_budget is False
     assert controller.unavailability_store.is_available("development", "cursor/auto") is True
+
+
+def test_terminal_provider_failures_cool_before_fallback_selection() -> None:
+    cases = (
+        (
+            PiProviderFailureExitError(
+                "pi/minimax/MiniMax-M3",
+                "server cluster is currently under high load (529)",
+            ),
+            UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            60_000,
+        ),
+        (
+            PiProviderFailureExitError(
+                "pi/minimax/MiniMax-M3",
+                "HTTP 429: too many requests",
+            ),
+            UnavailabilityReason.OUT_OF_CREDITS,
+            60_000,
+        ),
+        (
+            PiContextExhaustedExitError("pi/minimax/MiniMax-M3"),
+            UnavailabilityReason.CONTEXT_EXHAUSTED,
+            5_000,
+        ),
+        (
+            AgentInvocationError(
+                "fallback",
+                1,
+                'overloaded_error: server cluster is currently under high load (529)',
+            ),
+            UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            60_000,
+        ),
+        (
+            AgentInvocationError("fallback", 1, "HTTP 429: too many requests"),
+            UnavailabilityReason.OUT_OF_CREDITS,
+            60_000,
+        ),
+        (
+            AgentInvocationError(
+                "fallback",
+                1,
+                "invalid params, context window exceeds limit (2013)",
+            ),
+            UnavailabilityReason.CONTEXT_EXHAUSTED,
+            5_000,
+        ),
+        (
+            AgentInvocationError("fallback", 1),
+            UnavailabilityReason.PROCESS_EXITED,
+            5_000,
+        ),
+        (
+            AgentInvocationError("fallback", 1, "unexpected EOF"),
+            UnavailabilityReason.PROCESS_EXITED,
+            5_000,
+        ),
+    )
+    for failure, expected_reason, expected_cooldown_ms in cases:
+        _assert_terminal_failure_cools(failure, expected_reason, expected_cooldown_ms)
+
+
+def _assert_terminal_failure_cools(
+    failure: Exception,
+    expected_reason: UnavailabilityReason,
+    expected_cooldown_ms: int,
+) -> None:
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
+    failed_agent = getattr(failure, "agent_name", "fallback")
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=[failed_agent, "healthy-fallback"],
+                current_index=0,
+                retries=0,
+            )
+        },
+        last_connectivity_state="online",
+    )
+
+    _, _, event = controller.handle(
+        state,
+        failure,
+        FailureContext(phase="development", agent=failed_agent),
+    )
+
+    assert event.category == str(FailureCategory.AGENT)
+    assert event.unavailability_reason == str(expected_reason)
+    assert _cooldown_remaining_ms(controller, clock, "development", failed_agent) == (
+        expected_cooldown_ms
+    )
+    selection = controller.preferred_agent_index(
+        "development",
+        [failed_agent, "healthy-fallback"],
+    )
+    assert selection.agent == "healthy-fallback"
+
+
+def test_non_agent_provider_text_does_not_cool_agent() -> None:
+    failures = (
+        OSError("HTTP 503 from artifact storage"),
+        OSError("HTTP 429 from artifact storage"),
+        AgentInvocationError(
+            "fallback",
+            1,
+            "HTTP 503 from orchestrator",
+            failure_origin="runtime_launch",
+        ),
+        AgentInvocationError("fallback", 1, "HTTP 429", failure_origin="mcp_operation"),
+        AgentInvocationError(
+            "fallback", 143, "HTTP 429", failure_origin="intentional_termination"
+        ),
+        AgentInvocationError(
+            "fallback", 1, "HTTP 429", failure_origin="watchdog_observation"
+        ),
+    )
+    for failure in failures:
+        classified = FailureClassifier().classify(
+            failure,
+            phase="development",
+            agent="fallback",
+            connectivity_state="online",
+        )
+
+        assert classified.is_unavailable is False
+        assert classified.unavailability_reason is None
 
 
 def test_fresh_phase_selection_uses_available_fallback_instead_of_chain_head() -> None:

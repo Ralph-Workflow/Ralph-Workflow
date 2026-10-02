@@ -199,6 +199,9 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     # Cohere / general providers
     "rate limit exceeded",
     "too many requests",
+    "http 429",
+    "status 429",
+    "(429)",
     # Cross-provider generic credit/quota/limit signals
     "credits exhausted",
     "no credits remaining",
@@ -216,6 +219,29 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "daily limit exceeded",
     "weekly limit exceeded",
     "monthly limit exceeded",
+)
+
+_PROVIDER_OVERLOAD_SUBSTRINGS: tuple[str, ...] = (
+    "overloaded_error",
+    "server cluster is currently under high load",
+    "service overloaded",
+    "server overloaded",
+    "model is overloaded",
+    "http 529",
+    "status 529",
+    "(529)",
+    "http 503",
+    "status 503",
+)
+
+_CONTEXT_EXHAUSTED_SUBSTRINGS: tuple[str, ...] = (
+    "context window exceeds limit",
+    "context window exceeded",
+    "context length exceeded",
+    "maximum context length",
+    "stopreason=length",
+    "stopreason='length'",
+    "stopreason\":\"length",
 )
 
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
@@ -480,6 +506,84 @@ def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) ->
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
 
 
+def _provider_unavailability_reason(
+    exc: BaseException | None,
+    detail_parts: tuple[str, ...] | list[str],
+) -> UnavailabilityReason | None:
+    type_name = type(exc).__name__ if exc is not None else ""
+    if type_name == "PiContextExhaustedExitError" or contains_casefolded_marker(
+        detail_parts, _CONTEXT_EXHAUSTED_SUBSTRINGS
+    ):
+        return UnavailabilityReason.CONTEXT_EXHAUSTED
+    if type_name == "PiProviderFailureExitError" or contains_casefolded_marker(
+        detail_parts, _PROVIDER_OVERLOAD_SUBSTRINGS
+    ):
+        return UnavailabilityReason.PROVIDER_UNAVAILABLE
+    return None
+
+
+def _terminal_process_unavailability_reason(
+    exc: BaseException | None,
+    detail_parts: tuple[str, ...] | list[str],
+    connectivity_state: str | None,
+) -> UnavailabilityReason | None:
+    result: UnavailabilityReason | None = None
+    if exc is None:
+        return result
+    type_name = type(exc).__name__
+    supported_type = type_name in {
+        "AgentInvocationError",
+        "PiContextExhaustedExitError",
+        "PiProviderFailureExitError",
+    }
+    failure_origin = cast("object", getattr(exc, "failure_origin", "agent"))
+    agent_origin: bool = supported_type and failure_origin == "agent"
+    if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
+        return None
+    if agent_origin and _is_subscription_limit_message(detail_parts):
+        result = (
+            UnavailabilityReason.OUT_OF_CREDITS
+            if (connectivity_state or "").casefold() == "online"
+            else None
+        )
+    elif agent_origin:
+        result = _provider_unavailability_reason(exc, detail_parts)
+        offline_no_output = (
+            (connectivity_state or "").casefold() != "online"
+            and contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
+        )
+        returncode = cast("object", getattr(exc, "returncode", 0))
+        process_failed = (
+            type_name == "AgentInvocationError"
+            and isinstance(returncode, int)
+            and returncode != 0
+            and not offline_no_output
+        )
+        if result is None and process_failed:
+            result = UnavailabilityReason.PROCESS_EXITED
+    return result
+
+
+def _apply_terminal_unavailability_category(
+    category: FailureCategory,
+    counts: bool,
+    provider_unavailability: UnavailabilityReason | None,
+    reset_tool_registry: bool,
+) -> tuple[FailureCategory, bool, UnavailabilityReason | None]:
+    if reset_tool_registry and category not in {
+        FailureCategory.AGENT,
+        FailureCategory.ENVIRONMENTAL,
+    }:
+        return FailureCategory.AGENT, True, None
+    if (
+        provider_unavailability is None
+        or category not in {FailureCategory.AGENT, FailureCategory.AMBIGUOUS}
+        or reset_tool_registry
+    ):
+        return category, counts, None
+    return FailureCategory.AGENT, True, provider_unavailability
+
+
 def _is_auth_config_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True when the agent requires user authentication configuration."""
     return contains_casefolded_marker(detail_parts, _AUTH_CONFIG_SUBSTRINGS)
@@ -680,6 +784,9 @@ class FailureClassifier:
             detail_parts,
             connectivity_state=connectivity_state,
         )
+        provider_unavailability = _terminal_process_unavailability_reason(
+            exc_obj, detail_parts, connectivity_state
+        )
 
         watchdog_reason = None
         if exc_obj is not None and type(exc_obj).__name__ == "AgentInactivityTimeoutError":
@@ -696,18 +803,12 @@ class FailureClassifier:
         # prevents the programming-time bridge-construction error from being
         # classified here.
         reset_tool_registry = self._is_tool_availability_failure(exc_obj, detail_parts)
-        # Tool-availability failures are agent-side (the agent's tool
-        # registry lost an alias) even when the message-based classifier
-        # returns AMBIGUOUS. Upgrade the category to AGENT so the
-        # failure counts against the agent budget and the recovery
-        # controller can route it through its bounded retry path.
-        if reset_tool_registry and category not in {
-            FailureCategory.AGENT,
-            FailureCategory.ENVIRONMENTAL,
-        }:
-            category = FailureCategory.AGENT
-            counts = True
-
+        category, counts, provider_unavailability = _apply_terminal_unavailability_category(
+            category,
+            counts,
+            provider_unavailability,
+            reset_tool_registry,
+        )
         # Walk the full ``__cause__`` / ``__context__`` chain to find the
         # typed ``IdleWatchdogKilledError`` and read the ``child_alive``
         # and ``resumable_session_id`` fields. The watchdog fires into
@@ -799,7 +900,7 @@ class FailureClassifier:
             exc_obj is not None and type(exc_obj).__name__ == "QuotaExhaustedError"
         )
         broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
-        base_unavailable = broken_agent or (
+        base_unavailable = provider_unavailability is not None or broken_agent or (
             category == FailureCategory.AGENT
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
@@ -848,6 +949,8 @@ class FailureClassifier:
         unavailability_reason: UnavailabilityReason | None = None
         if auth_config_failure:
             unavailability_reason = UnavailabilityReason.AUTH_CONFIG
+        elif provider_unavailability is not None:
+            unavailability_reason = provider_unavailability
         elif broken_agent:
             unavailability_reason = UnavailabilityReason.BROKEN_AGENT
         elif is_unavailable:
@@ -975,6 +1078,7 @@ class FailureClassifier:
             return FailureCategory.AGENT, type_name != "QuotaExhaustedError", False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
+                exc,
                 raw_message,
                 detail_parts,
                 connectivity_state=connectivity_state,
@@ -1019,20 +1123,30 @@ class FailureClassifier:
 
     def _classify_agent_invocation_error(
         self,
+        exc: BaseException,
         raw_message: str,
         detail_parts: list[str],
         *,
         connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
+        failure_origin = cast("object", getattr(exc, "failure_origin", "agent"))
         reset_session = contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS)
-        if reset_session:
-            return FailureCategory.AGENT, True, True
-        if _is_permanent_account_failure(detail_parts):
-            return FailureCategory.USER_CONFIG, False, False
-        if _is_subscription_limit_message(detail_parts):
-            return FailureCategory.AGENT, True, False
-        if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
-            return FailureCategory.AGENT, True, False
+        checks = (
+            (failure_origin != "agent", (FailureCategory.AMBIGUOUS, False, False)),
+            (reset_session, (FailureCategory.AGENT, True, True)),
+            (
+                _is_permanent_account_failure(detail_parts),
+                (FailureCategory.USER_CONFIG, False, False),
+            ),
+            (_is_subscription_limit_message(detail_parts), (FailureCategory.AGENT, True, False)),
+            (
+                _is_suspicious_timeout_without_output(detail_parts, connectivity_state),
+                (FailureCategory.AGENT, True, False),
+            ),
+        )
+        for predicate, result in checks:
+            if predicate:
+                return result
         # Scan the full detail surface (message + stderr + parsed_output) with
         # the shared marker vocabulary, the same surface and vocabulary the
         # pipeline retryable reasoner uses. Checking only ``raw_message`` here

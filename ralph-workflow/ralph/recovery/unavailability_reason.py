@@ -29,6 +29,9 @@ class UnavailabilityReason(StrEnum):
     """Why an agent is temporarily unavailable."""
 
     OUT_OF_CREDITS = "out_of_credits"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    CONTEXT_EXHAUSTED = "context_exhausted"
+    PROCESS_EXITED = "process_exited"
     AUTH_CONFIG = "auth_config"
     BROKEN_AGENT = "broken_agent"
     NO_OUTPUT_AT_START = "no_output_at_start"
@@ -72,6 +75,18 @@ _UNIVERSAL_COOLDOWN_CAP_MS: int = 18_000_000
 DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {  # bounded-accumulator-ok: static
     UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
         base_backoff_ms=60_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.PROVIDER_UNAVAILABLE: ReasonBackoffPolicy(
+        base_backoff_ms=60_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.CONTEXT_EXHAUSTED: ReasonBackoffPolicy(
+        base_backoff_ms=5_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.PROCESS_EXITED: ReasonBackoffPolicy(
+        base_backoff_ms=5_000,
         max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.AUTH_CONFIG: ReasonBackoffPolicy(

@@ -225,6 +225,36 @@ def test_watchdog_kill_emits_stall_line(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
 
+def test_provider_cooldown_emits_recovery_line_without_watchdog_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _capture_emitted(monkeypatch)
+    controller, clock = _build_controller_with_bus()
+
+    unsubscribe = _subscribe_recovery_display(
+        controller,
+        display=MagicMock(),
+        interval_seconds=10.0,
+        now=clock.monotonic,
+    )
+    try:
+        controller.event_bus.publish(
+            _make_failure_event(
+                reason="server cluster is currently under high load (529)",
+                retry_delay_ms=60_000,
+                chain_capacity_remaining=2,
+                unavailability_reason="provider_unavailable",
+            )
+        )
+    finally:
+        unsubscribe()
+
+    lines = [line for line in captured if "RECOVERING" in line]
+    assert len(lines) == 1
+    assert "provider_unavailable" in lines[0]
+    assert "60000ms" in lines[0]
+
+
 def test_terminal_failure_surfaces_root_cause(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-02: a terminal classified failure (``chain_capacity_remaining==0``)
     surfaces the root-cause category/reason in the user-facing line, NOT

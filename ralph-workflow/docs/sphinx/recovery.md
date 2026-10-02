@@ -52,6 +52,8 @@ Recovery resumed after offline
 
 Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
 
+Provider failures enter cooldown before selection continues. Rate or quota limits and provider overloads start at 60 seconds; context exhaustion and otherwise unexplained non-zero agent exits start at 5 seconds. Pi's structured retry-exhaustion and context-length events keep their specific reason even when the Pi process exits non-zero. The activity transcript emits a `RECOVERING` line with the reason, cooldown, and fallback decision, so the terminal does not remain on a stale provider-error line while recovery proceeds.
+
 ### Priority-first reselection
 
 Ralph Workflow re-selects the highest-priority agent (lowest chain index) that is currently available (not in backoff/cooldown and has remaining retry allowance) on every agent invocation, **not** on a round-robin-from-cursor advance. The single source of truth is the `RecoveryController.preferred_agent_index` selection surface, which `select_preferred_agent` implements as a pure ordered scan starting at index 0:
@@ -95,8 +97,9 @@ A successful invocation clears only that agent's cooldown and backoff history. T
 - `tests/pipeline/test_run_loop_resume_prefers_available_agent.py` — the resume seam after a cooldown wait picks the highest-priority newly-available agent regardless of the persisted `current_index`.
 - `tests/recovery/test_unavailability_tracker.py` — every default reason saturates at 18,000,000 ms; the attempt counter is bounded; custom caps are honored (lower) or clamped (higher); `reset_backoff` is per-agent.
 - `tests/recovery/test_unavailability_reason.py` — the universal 5-hour ceiling and the exponential progression for the default reason policies.
-- `tests/recovery/test_agent_cooldown_enforcement.py` — the cap is universally enforced even when the supplied policy specifies a higher cap.
+- `tests/recovery/test_agent_cooldown_enforcement.py` — the cap is universally enforced even when the supplied policy specifies a higher cap; overload, rate-limit, context-exhaustion, and bare non-zero-exit failures cool the failed agent before fallback selection.
 - `tests/recovery/test_out_of_credits_fast_fallover.py` — exponential growth and saturation for OUT_OF_CREDITS across many failures.
+- `tests/pipeline/test_run_loop_recovery_surface.py` — recoverable provider cooldowns remain operator-visible even without a watchdog reason.
 
 For in-session retries, after a configurable number of consecutive qualifying retries (`in_session_retry_escalation_limit`, default 3) for a given phase and agent, the next retry is treated as an agent failure with standard cooldown and fallover to the next eligible agent, preventing endless retry loops with the same agent. Successful completion of the retried work resets the consecutive failure count.
 
@@ -110,6 +113,14 @@ max_cycles = 3
 ```
 
 This prevents a persistently failing workflow from retrying forever without making progress.
+
+### Documentation review note
+
+- **What changed:** Retry documentation now covers provider overload, context exhaustion, non-zero exits, and the operator-visible recovery line.
+- **Why here:** This page owns retry, cooldown, and fallover behavior.
+- **What stayed elsewhere:** Provider-specific command and configuration guidance remains on the agent and configuration pages.
+- **Duplication:** The reason-specific delays are stated once in the recovery flow rather than repeated across troubleshooting pages.
+- **Clearer route:** Operators can now distinguish active recovery from a frozen run directly from this reference.
 
 ## Checkpoints
 

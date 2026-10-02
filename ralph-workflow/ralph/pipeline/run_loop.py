@@ -2300,6 +2300,14 @@ def _subscribe_recovery_display(
                     value = f"agent stalled: {evt.watchdog_reason}; resuming"
                     style = "yellow"
                     tag = "watchdog_recoverable"
+                elif evt.unavailability_reason is not None:
+                    label = "RECOVERING"
+                    value = (
+                        f"agent unavailable: {evt.unavailability_reason}; "
+                        f"cooldown {evt.retry_delay_ms}ms; selecting fallback"
+                    )
+                    style = "yellow"
+                    tag = "unavailable_recoverable"
                 else:
                     return
                 _maybe_emit(

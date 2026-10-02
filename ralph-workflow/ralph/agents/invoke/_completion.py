@@ -64,6 +64,8 @@ _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
+
+
 @runtime_checkable
 class _CapturedStderrHandle(Protocol):
     @property
@@ -73,7 +75,6 @@ class _CapturedStderrHandle(Protocol):
 @runtime_checkable
 class _ReadableTextPipe(Protocol):
     """Minimal typed boundary for a captured text stderr pipe."""
-
     def read(self, size: int = -1, /) -> str: ...
 
 
@@ -588,10 +589,6 @@ def _raise_if_broken_agent_exit(
             returncode=returncode,
             stderr=stderr_text,
         )
-    # A substantial transcript that merely mentions credentials (e.g. an
-    # echoed retry prompt, a test file about credential handling, or the
-    # master prompt itself) is NOT provider silence. Fall through to the
-    # resumable/artifact-failure path below.
     if (
         bounded_output
         and opts.has_meaningful_output is False
@@ -662,6 +659,19 @@ def check_process_result(
         include_output=returncode != 0,
     )
     if returncode != 0:
+        issuer_method = cast(
+            "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
+        )
+        issuer = issuer_method() if issuer_method is not None else None
+        intentional = returncode in {-15, 143} and isinstance(issuer, str)
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=bool(
+                check_options and check_options.explicit_completion_seen
+            ),
+        )
+        if not intentional:
+            _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
         if credentials_failure_needs_broken_exit(
             stderr_text,
             check_options.elapsed_seconds if check_options is not None else None,
@@ -682,21 +692,11 @@ def check_process_result(
                 stderr=stderr_text,
             )
         stderr = stderr_text if stderr_available else ""
-        issuer_method = cast(
-            "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
-        )
-        issuer = issuer_method() if issuer_method is not None else None
-        intentional = returncode in {-15, 143} and isinstance(issuer, str)
         exc = AgentInvocationError(
             agent_name,
             returncode,
             stderr,
-            _bounded_output_lines(
-                parsed_output or [],
-                explicit_completion_seen=(
-                    check_options.explicit_completion_seen if check_options is not None else False
-                ),
-            ),
+            bounded_output,
             failure_origin=(
                 "runtime_launch"
                 if isinstance(handle, AgentLaunchError)

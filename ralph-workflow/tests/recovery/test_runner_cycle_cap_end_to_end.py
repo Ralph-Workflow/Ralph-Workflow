@@ -131,7 +131,11 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     def _fake_execute(*args: object, **kwargs: object) -> None:
         nonlocal invocation_count
         invocation_count += 1
-        raise AgentInvocationError("claude", 1, "agent idle timeout")
+        raise AgentInvocationError(
+            "claude",
+            0,
+            "agent idle timeout",
+        )
 
     _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
@@ -206,7 +210,11 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
     def _fake_execute(*args: object, **kwargs: object) -> None:
-        raise AgentInvocationError("claude", 1, "agent idle timeout")
+        raise AgentInvocationError(
+            "claude",
+            0,
+            "agent idle timeout",
+        )
 
     _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute)
 
@@ -269,7 +277,11 @@ def test_runner_fallover_history_reflects_agent_transitions(
         saved_states.append(state)
 
     def _fake_execute(*args: object, **kwargs: object) -> None:
-        raise AgentInvocationError("claude", 1, "agent idle timeout")
+        raise AgentInvocationError(
+            "claude",
+            0,
+            "agent idle timeout",
+        )
 
     _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
@@ -329,7 +341,11 @@ def test_runner_recovery_cycle_count_reaches_cap(
         saved_states.append(state)
 
     def _fake_execute(*args: object, **kwargs: object) -> None:
-        raise AgentInvocationError("claude", 1, "agent idle timeout")
+        raise AgentInvocationError(
+            "claude",
+            0,
+            "agent idle timeout",
+        )
 
     _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
