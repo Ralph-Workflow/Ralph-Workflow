@@ -7,7 +7,6 @@ repository file-size limit. Public names are re-exported from
 
 from __future__ import annotations
 
-import argparse
 import json
 import subprocess
 import sys
@@ -35,7 +34,9 @@ from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
 
 __all__ = (
+    "_R6_3_WORKLOADS",
     "capture_baseline",
+    "main",
     "run_capture_baseline",
     "run_validate_baseline",
     "run_validate_report",
@@ -653,7 +654,7 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
             "ralph_self": "Actual ralph-workflow working tree (real files)",
             "large_synthetic": (
                 f"{FULL_LARGE_SYNTHETIC_FILE_COUNT} synthetic Python files "
-                "(tens-of-thousands-of-files R6.3 shape)"
+                "(full R6.3 shape)"
             ),
             "multi_session": "3 processes sharing one indexed workspace",
         },
@@ -877,123 +878,19 @@ _WORKLOAD_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-class _BenchArgs(argparse.Namespace):
-    workloads: str
-    out: str | None
-    capture_baseline: str | None
-    validate_baseline: str | None
-    validate_report: str | None
-    list_workloads: bool
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     sanitize_process_environment()
-    """Module-level CLI for ``python -m ralph.mcp.explore._bench_r6_metrics``.
+    """Thin re-export of the CLI's ``main`` so legacy spawn-env checks pass.
 
-    S-8 (wt-11) wires the missing CLI surface so the verify command
-
-        python -m ralph.mcp.explore._bench_r6_metrics \\
-            --workloads small,ralph_self,large_synthetic,multi_session \\
-            --out docs/performance/explore-index-baseline-pre.json
-
-    captures the pre-change baseline. ``--workloads`` filters by
-    R6.3 workload name (default: all four) and ``--out`` writes
-    the canonical baseline JSON. ``--validate-baseline`` and
-    ``--validate-report`` keep the post-capture validators
-    available from this same module.
+    The CLI implementation lives in
+    :mod:`ralph.mcp.explore._bench_r6_cli` so the metrics hub stays
+    under the 1000-line audit cap. ``python -m
+    ralph.mcp.explore._bench_r6_metrics`` still reaches the same
+    function through the ``__main__`` block above, so the entry
+    point is single-sourced.
     """
-    parser = argparse.ArgumentParser(
-        prog="python -m ralph.mcp.explore._bench_r6_metrics",
-        description=(
-            "Capture and validate the indexed-explore R6.2 baseline "
-            "and before/after report (wt-11 S-8/S-9/S-10)."
-        ),
-    )
-    parser.add_argument(
-        "--workloads",
-        metavar="LIST",
-        default=",".join(_R6_3_WORKLOADS),
-        help=(
-            "Comma-separated list of R6.3 workload names to capture. "
-            f"Default: {','.join(_R6_3_WORKLOADS)}"
-        ),
-    )
-    parser.add_argument(
-        "--out",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Capture the baseline into PATH. Falls back to "
-            "--capture-baseline when --capture-baseline is also given."
-        ),
-    )
-    parser.add_argument(
-        "--capture-baseline",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Capture the baseline into PATH (alias for --out)."
-        ),
-    )
-    parser.add_argument(
-        "--validate-baseline",
-        metavar="PATH",
-        default=None,
-        help="Validate the canonical R6.2 baseline at PATH.",
-    )
-    parser.add_argument(
-        "--validate-report",
-        metavar="PATH",
-        default=None,
-        help="Validate the S-10 before/after report at PATH.",
-    )
-    parser.add_argument(
-        "--list-workloads",
-        action="store_true",
-        help="Print the R6.3 workload names and exit.",
-    )
-    args = _BenchArgs(
-        workloads=",".join(_R6_3_WORKLOADS),
-        out=None,
-        capture_baseline=None,
-        validate_baseline=None,
-        validate_report=None,
-        list_workloads=False,
-    )
-    parser.parse_args(list(argv) if argv is not None else None, namespace=args)
-    if args.list_workloads:
-        for name in _R6_3_WORKLOADS:
-            print(name)
-        return 0
-    if args.validate_report is not None:
-        return run_validate_report(args.validate_report)
-    if args.validate_baseline is not None:
-        return run_validate_baseline(args.validate_baseline)
-    out_path = args.out or args.capture_baseline
-    if out_path is None:
-        parser.error(
-            "one of --out PATH, --capture-baseline PATH, "
-            "--validate-baseline PATH, --validate-report PATH is required"
-        )
-    # Validate workload names so a typo cannot silently truncate
-    # the captured set.
-    requested = [
-        _WORKLOAD_ALIASES.get(w.strip(), w.strip())
-        for w in args.workloads.split(",")
-        if w.strip()
-    ]
-    unknown = tuple(w for w in requested if w not in _R6_3_WORKLOADS)
-    if unknown:
-        parser.error(
-            f"unknown workload name(s) {list(unknown)!r}; "
-            f"valid names: {list(_R6_3_WORKLOADS)}"
-        )
-    print(
-        f"capture workloads={requested!r} out={out_path!r}",
-        file=sys.stderr,
-        flush=True,
-    )
-    return run_capture_baseline(out_path)
+    from ralph.mcp.explore._bench_r6_cli import main as _cli_main
+    return _cli_main(argv)
 
 
 if __name__ == "__main__":

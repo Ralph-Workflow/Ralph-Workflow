@@ -11,24 +11,32 @@ The benchmark harness lives at
 
 * `python -m ralph.mcp.explore.bench --capture-baseline <path>` — S-8
 * `python -m ralph.mcp.explore.bench --validate-baseline <path>` — S-8/S-9
-* `python -m ralph.mcp.explore.bench --validate-report <path>` — S-10
+* `python -m ralph.mcp.explore.bench --validate-report <path> --baseline <baseline.json> --targets <targets.json>` — S-10
+  (the `--baseline` and `--targets` companions are mandatory so the
+  CLI mechanically cross-checks every report row against the two
+  JSON files; either alone fails closed)
+
+The same CLIs are exposed under the lower-level
+`python -m ralph.mcp.explore._bench_r6_metrics` module for
+operators who want the harness without the product-baseline surface.
 
 ## Reference workloads (R6.3)
 
-The capture runs four workloads. The first two are in-budget
-executable fixtures; the latter two are scaled in-budget clones
-that the S-10 before/after comparison grounds in the same harness
-regardless of host. The full tens-of-thousands-of-files workload
-requires the dedicated `subprocess_e2e` performance gate to run
-on dedicated hardware; the scaled clone keeps the same code path
-without bloating the 60-second combined test budget.
+The capture runs four workloads at their real R6.3 shapes. The
+`small` and `multi_session` workloads are Q1/Q2/Q3 fixture content;
+the `ralph_self` workload is a copy of the real `ralph-workflow`
+working tree (excluding caches and build artifacts); the
+`large_synthetic` workload is the full 10 000-file synthetic
+corpus. Every metric on every workload is measured end-to-end by
+the bench harness, and the per-cell numeric targets in
+`explore-index-targets.json` are derived from these measurements.
 
 | Workload           | Composition                                              |
 |--------------------|----------------------------------------------------------|
 | `small`            | Q1/Q2/Q3 fixture content (`_bench_fixtures.py`).         |
-| `ralph_self`       | Same fixture shape (the ralph project corpus).           |
-| `large_synthetic`  | 200 Python files (scaled from tens-of-thousands).        |
-| `multi_session`    | Small fixture (multi-session scaled).                     |
+| `ralph_self`       | Real ralph-workflow working tree (real files).           |
+| `large_synthetic`  | 10010 Python files (full R6.3 shape).                     |
+| `multi_session`    | 3 processes sharing the small indexed workspace.         |
 
 ## Targets (R6.4)
 
@@ -89,12 +97,17 @@ zero cold-build target still rejects any real build.
 
 ## Scaling notes (recorded per R6.3)
 
-The scaled `large_synthetic` and `multi_session` workloads use a
-reduced corpus so the capture runs inside the absolute 60-second
-combined test budget (`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`).
-The tens-of-thousands file shape is covered by the seeder check in
-`test_explore_perf_regression_gate.py`. The subprocess_e2e gate
-re-measures the scaled harness, which is the shape recorded in this
-baseline. The in-budget scaled values are committed alongside this
-document so the S-10 before/after comparison is grounded in the same
-harness regardless of host.
+All four R6.3 workloads are captured at their real shapes. The
+`large_synthetic` workload is the full 10 000-file synthetic
+corpus (not a scaled-down clone); the `ralph_self` workload is a
+copy of the real `ralph-workflow` working tree (excluding caches
+and build artifacts). The in-budget regression gate
+(`test_explore_perf_regression_gate.py`) compares every committed
+value against its numeric target at check time, so a stale or
+scaled-down capture cannot pass the gate. The R6.4
+`indexed_vs_live_speed_ratio >= 1.0` invariant is enforced for the
+`small` and `multi_session` workloads; the ralph_self workload's
+honest measurement falls below 1.0 because the indexed path's
+per-chunk line extraction dominates the FTS5 lookup for
+high-cardinality patterns, and that gap is tracked as a regression
+row in `explore-index-report.md` so the finding stays visible.

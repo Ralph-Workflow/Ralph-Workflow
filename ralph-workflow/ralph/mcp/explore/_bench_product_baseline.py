@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -364,7 +365,28 @@ def _build_main_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "S-10: validate the before/after report at PATH contains the "
-            "canonical metric table with explicit disposition values."
+            "canonical metric table with explicit disposition values. "
+            "When supplied, --baseline and --targets MUST also be given "
+            "so the report rows are mechanically cross-checked against "
+            "the committed baseline and targets JSON files."
+        ),
+    )
+    parser.add_argument(
+        "--baseline",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Companion baseline JSON for --validate-report. The report's "
+            "Baseline cells must equal the JSON values."
+        ),
+    )
+    parser.add_argument(
+        "--targets",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Companion targets JSON for --validate-report. The report's "
+            "Target cells must equal the JSON values."
         ),
     )
     return parser
@@ -387,8 +409,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     if isinstance(validate_baseline_arg, str) and validate_baseline_arg:
         return run_validate_baseline(validate_baseline_arg)
     validate_report_arg: object = args.validate_report
+    baseline_arg: object = getattr(args, "baseline", None)
+    targets_arg: object = getattr(args, "targets", None)
     if isinstance(validate_report_arg, str) and validate_report_arg:
-        return run_validate_report(validate_report_arg)
+        baseline_set = isinstance(baseline_arg, str) and bool(baseline_arg)
+        targets_set = isinstance(targets_arg, str) and bool(targets_arg)
+        if baseline_set != targets_set:
+            print(
+                "FAIL: --baseline and --targets must be supplied together",
+                file=sys.stderr,
+            )
+            return 1
+        return run_validate_report(
+            validate_report_arg,
+            baseline_path=baseline_arg if isinstance(baseline_arg, str) else None,
+            targets_path=targets_arg if isinstance(targets_arg, str) else None,
+        )
     limits_arg: object = args.product_baseline
     if not isinstance(limits_arg, str) or not limits_arg:
         parser.error(
