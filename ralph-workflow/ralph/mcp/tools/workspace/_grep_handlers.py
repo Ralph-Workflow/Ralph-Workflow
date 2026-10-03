@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import time
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -24,6 +23,10 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
     ToolResult,
     require_capability,
+)
+from ralph.mcp.tools.workspace._grep_evidence import (
+    _derive_evidence_id_for_span,
+    _EvidenceRowBuilder,
 )
 from ralph.mcp.tools.workspace._list_ops import (
     _collect_files_recursive,
@@ -146,33 +149,6 @@ def _cold_query_reason(store: ExploreStore) -> str:
     return "no_committed_generation"
 
 
-def _chunk_text_for_id(store: ExploreStore, chunk_id: str) -> str:
-    """Return the full chunk text for ``chunk_id`` (or "" if missing).
-
-    Used by ``_indexed_matches`` so the case-sensitive post-filter
-    can match against the entire chunk content instead of the
-    truncated FTS5 ``snippet()`` window. The full text is stored in
-    the ``chunks_fts`` virtual table (the ``chunks`` table only
-    carries the text hash and span metadata, not the text body).
-    """
-    if not chunk_id:
-        return ""
-    try:
-        fetched: object = store._conn.execute(
-            "SELECT text FROM chunks_fts WHERE chunk_id = ?",
-            (chunk_id,),
-        ).fetchone()
-    except sqlite3.OperationalError:
-        return ""
-    if fetched is None:
-        return ""
-    try:
-        text_value: object = cast("sqlite3.Row", fetched)["text"]
-    except (KeyError, TypeError):
-        return ""
-    return str(text_value) if text_value is not None else ""
-
-
 def _indexed_committed_generation(store: ExploreStore | None) -> int:
     """Return the current committed generation, or 0 when the store has none.
 
@@ -209,9 +185,16 @@ def _indexed_matches(
     Each returned ``evidence_id`` is a real row in the ``evidence``
     table so ``read_file(evidence_id=...)`` resolves to the exact
     span instead of returning ``unknown_evidence``. The translation
-    looks up the chunk's stored line range and content hash, then
-    inserts (or refreshes) the evidence row keyed by the prompt's
-    deterministic evidence-id formula.
+    looks up the chunk's stored line range and content hash via a
+    single ``fts_search_grep`` JOIN (path, chunk_id, full text,
+    start_line, end_line, text_hash, generation, file_content_hash)
+    so the candidate loop never issues per-candidate SELECTs against
+    ``chunks_fts.text`` or ``chunks.start_line`` -- those lookups
+    were the R6.4 indexed-vs-live latency regression on large
+    corpora. Evidence rows are then inserted in one
+    ``insert_evidence_batch`` call instead of one ``insert_evidence``
+    per match, so a 100-match response issues a bounded 2 SQL
+    round-trips regardless of result-set size.
 
     AC-01 case-sensitive post-filter: FTS5 ``unicode61`` is
     case-INsensitive, so we re-compile the literal as a
@@ -230,9 +213,9 @@ def _indexed_matches(
     before the post-filter runs).
 
     The post-filter runs against the *full* chunk text (read from
-    ``chunks.text``), not the truncated FTS5 ``snippet()`` output,
-    so multi-line chunks whose matching line falls outside the
-    snippet window still match correctly.
+    the JOINed ``chunks_fts.text`` column), not the truncated FTS5
+    ``snippet()`` output, so multi-line chunks whose matching line
+    falls outside the snippet window still match correctly.
     """
     fts_query = fts_query_for(pattern, whole_word=whole_word)
     # Case-sensitive parity demands that the FTS query return every
@@ -242,7 +225,7 @@ def _indexed_matches(
     # contract. We overscan by a generous factor to keep parity
     # while still bounding memory for pathological queries.
     fts_limit = max(limit, 1) * max(overscan_multiplier, 1)
-    raw_rows = store.fts_search(
+    raw_rows = store.fts_search_grep(
         fts_query,
         limit=fts_limit,
         path_prefix=path_prefix,
@@ -257,221 +240,104 @@ def _indexed_matches(
         whole_word=whole_word,
     )
     matches: list[dict[str, object]] = []
+    evidence_rows: list[EvidenceRow] = []
     for row in rows:
         raw_path_value: object = row["path"]
         raw_chunk_id_value: object = row["chunk_id"]
-        try:
-            snippet_value: object = row["snippet"]
-        except IndexError:
-            snippet_value = ""
         path_str = str(raw_path_value) if raw_path_value is not None else ""
         chunk_id_str = str(raw_chunk_id_value) if raw_chunk_id_value is not None else ""
-        snippet_str = str(snippet_value) if snippet_value is not None else ""
-        # Case-sensitive parity: FTS narrows candidates; the
-        # post-filter applies the same compiled regex the live
-        # path uses so the indexed match set equals the live
-        # match set for the same literal/case-sensitivity. Run
-        # the post-filter against the full chunk text rather
-        # than the snippet so the case-exact match survives the
-        # FTS5 snippet truncation window.
-        full_text = _chunk_text_for_id(store, chunk_id_str) or snippet_str
+        # The single JOIN carries everything we need for the
+        # post-filter and the evidence row. Per-row fault tolerance
+        # is preserved: a missing field is a malformed candidate
+        # (would be a corruption), so the whole row is skipped.
+        try:
+            full_text_obj: object = row["text"]
+        except (IndexError, KeyError):
+            full_text_obj = ""
+        try:
+            chunk_start_line_obj: object = row["start_line"]
+        except (IndexError, KeyError):
+            chunk_start_line_obj = 0
+        try:
+            text_hash_obj: object = row["text_hash"]
+        except (IndexError, KeyError):
+            text_hash_obj = ""
+        try:
+            generation_obj: object = row["generation"]
+        except (IndexError, KeyError):
+            generation_obj = 0
+        try:
+            file_content_hash_obj: object = row["file_content_hash"]
+        except (IndexError, KeyError):
+            file_content_hash_obj = ""
+        full_text = str(full_text_obj) if full_text_obj is not None else ""
         if not full_text:
             continue
+        chunk_start_line = (
+            int(chunk_start_line_obj)
+            if isinstance(chunk_start_line_obj, int)
+            else 0
+        )
+        text_hash = str(text_hash_obj) if text_hash_obj is not None else ""
+        generation = int(generation_obj) if isinstance(generation_obj, int) else 0
+        # The content_hash for the evidence span is the file's
+        # SHA-256 (the canonical file content_hash from the
+        # ``files`` table). Fall back to the chunk's text_hash
+        # when the JOIN's file row is missing or has no hash --
+        # a defensive no-op since the JOIN filters out
+        # ``is_deleted=1`` rows already.
+        file_content_hash = (
+            str(file_content_hash_obj) if file_content_hash_obj is not None else ""
+        )
+        content_hash = file_content_hash or text_hash
         # Per-line parity: find every line inside the chunk that
         # matches the regex so the indexed branch emits the same
         # (path, line) pairs the live branch emits, not just one
         # entry per chunk. ``chunk_start_line`` offsets the
         # in-chunk line index to the file's line numbers.
-        chunk_start_line = _chunk_start_line(store, chunk_id_str)
         in_chunk_line = 0
         for line_text in full_text.splitlines(keepends=False):
             in_chunk_line += 1
             if not post_filter.search(line_text):
                 continue
             file_line = chunk_start_line + in_chunk_line - 1 if chunk_start_line else in_chunk_line
-            evidence_id = _ensure_grep_evidence_row(store, chunk_id_str, file_line)
-            matches.append(
-                {
-                    "path": path_str,
-                    "line": file_line,
-                    "text": line_text,
-                    "evidence_id": evidence_id,
-                    "chunk_id": chunk_id_str,
-                }
+            evidence_id = _derive_evidence_id_for_span(
+                path=path_str,
+                content_hash=content_hash,
+                start_line=file_line,
+                end_line=file_line,
+                kind="chunk_line",
             )
-            if len(matches) >= limit:
-                return matches
-    return matches
-
-
-def _chunk_start_line(store: ExploreStore, chunk_id: str) -> int:
-    """Return the 1-based file start_line for ``chunk_id`` (0 if missing)."""
-    if not chunk_id:
-        return 0
-    try:
-        row: sqlite3.Row | None = store._conn.execute(
-            "SELECT start_line FROM chunks WHERE chunk_id = ?",
-            (chunk_id,),
-        ).fetchone()
-    except sqlite3.OperationalError:
-        return 0
-    if row is None:
-        return 0
-    raw_value: object = row["start_line"]
-    return int(raw_value) if isinstance(raw_value, int) else 0
-
-
-def _ensure_grep_evidence_row(
-    store: ExploreStore,
-    chunk_id: str,
-    file_line: int | None = None,
-) -> str:
-    """Translate a chunk_id into a real ``evidence_id`` row.
-
-    The chunk row carries path/line range/text_hash. We compute the
-    prompt-exact evidence id from those deterministic inputs so the
-    handle is stable across reindex, and we insert the row if it
-    does not exist yet. Returns the evidence_id string (or the
-    chunk_id when the chunk row is missing so the caller still has a
-    stable handle).
-
-    ``file_line`` narrows the evidence span to a single file line
-    so per-line indexed matches each carry their own evidence row.
-    When omitted the evidence spans the whole chunk range.
-    """
-    if not chunk_id:
-        return ""
-    chunk_row: sqlite3.Row | None = None
-    try:
-        fetched: object = store._conn.execute(
-            "SELECT path, start_line, end_line, text_hash, generation "
-            "FROM chunks WHERE chunk_id = ?",
-            (chunk_id,),
-        ).fetchone()
-        if fetched is not None and type(fetched) is not type(None):
-            chunk_row = cast(
-                "sqlite3.Row", fetched
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    except sqlite3.OperationalError:
-        chunk_row = None
-    if chunk_row is None:
-        return chunk_id
-    path_obj: object = chunk_row["path"]
-    start_line_obj: object = chunk_row["start_line"]
-    end_line_obj: object = chunk_row["end_line"]
-    text_hash_obj: object = chunk_row["text_hash"]
-    generation_obj: object = chunk_row["generation"]
-    path = str(path_obj)
-    start_line = int(start_line_obj) if isinstance(start_line_obj, int) else 0
-    end_line = int(end_line_obj) if isinstance(end_line_obj, int) else 0
-    text_hash = str(text_hash_obj)
-    generation = int(generation_obj) if isinstance(generation_obj, int) else 0
-    # The content_hash for an indexed chunk is the text_hash until
-    # the row-level file content_hash replaces it. The explore
-    # store's file row already carries the SHA-256 of the file.
-    file_row = store.get_file(path)
-    content_hash = file_row.content_hash if file_row is not None else text_hash
-    # Per-line matches narrow the evidence span to a single line so
-    # the read_file(evidence_id=...) handle points at the matching
-    # line instead of the whole chunk range.
-    if file_line is not None and file_line > 0:
-        evidence_start = file_line
-        evidence_end = file_line
-    else:
-        evidence_start = start_line
-        evidence_end = end_line
-    evidence_id = _derive_evidence_id_for_span(
-        path=path,
-        content_hash=content_hash,
-        start_line=evidence_start,
-        end_line=evidence_end,
-        kind="chunk_line" if file_line is not None else "chunk",
-    )
-    # Insert or refresh. ``is_stale=False`` because the chunk row is
-    # the source of truth right now; staleness is detected when
-    # read_file(evidence_id=...) hashes the file and finds drift.
-    import contextlib
-
-    with contextlib.suppress(sqlite3.IntegrityError, sqlite3.OperationalError):
-        store.insert_evidence(
-            _EvidenceRowBuilder(
+            match_row: dict[str, object] = {
+                "path": path_str,
+                "line": file_line,
+                "text": line_text,
+                "evidence_id": evidence_id,
+                "chunk_id": chunk_id_str,
+            }
+            evidence_row = _EvidenceRowBuilder(
                 evidence_id=evidence_id,
-                path=path,
-                start_line=evidence_start,
-                end_line=evidence_end,
+                path=path_str,
+                start_line=file_line,
+                end_line=file_line,
                 content_hash=content_hash,
                 generation=generation,
                 source_tool="grep_files",
-                evidence_kind="chunk_line" if file_line is not None else "chunk",
+                evidence_kind="chunk_line",
             ).build()
-        )
-    return evidence_id
-
-
-def _derive_evidence_id_for_span(
-    *,
-    path: str,
-    content_hash: str,
-    start_line: int,
-    end_line: int,
-    kind: str,
-) -> str:
-    """Compute the prompt-exact evidence id from deterministic inputs.
-
-    Centralized here so the grep handler and the reindex pipeline
-    produce identical ids for the same file span.
-    """
-    from ralph.mcp.explore.store import derive_evidence_id
-
-    return derive_evidence_id(
-        path=path,
-        content_hash=content_hash,
-        start_line=start_line,
-        end_line=end_line,
-        kind=kind,
-        extractor_version="phase2-structure-v1",
-    )
-
-
-class _EvidenceRowBuilder:
-    """Tiny helper that builds an ``EvidenceRow`` from span inputs."""
-
-    def __init__(
-        self,
-        *,
-        evidence_id: str,
-        path: str,
-        start_line: int,
-        end_line: int,
-        content_hash: str,
-        generation: int,
-        source_tool: str,
-        evidence_kind: str,
-    ) -> None:
-        self.evidence_id = evidence_id
-        self.path = path
-        self.start_line = start_line
-        self.end_line = end_line
-        self.content_hash = content_hash
-        self.generation = generation
-        self.source_tool = source_tool
-        self.evidence_kind = evidence_kind
-
-    def build(self) -> EvidenceRow:
-        from ralph.mcp.explore.store import EvidenceRow
-
-        return EvidenceRow(
-            evidence_id=self.evidence_id,
-            path=self.path,
-            start_line=self.start_line,
-            end_line=self.end_line,
-            content_hash=self.content_hash,
-            generation=self.generation,
-            source_tool=self.source_tool,
-            evidence_kind=self.evidence_kind,
-            created_at=time.time(),
-            is_stale=False,
-        )
+            matches.append(match_row)
+            evidence_rows.append(evidence_row)
+            if len(matches) >= limit:
+                break
+        if len(matches) >= limit:
+            break
+    if evidence_rows:
+        # One ``executemany`` in a single transaction for every
+        # match: bounded 2 SQL round-trips for the whole call
+        # (the JOIN above + the batch insert) instead of one
+        # round-trip per candidate and per match.
+        store.insert_evidence_batch(evidence_rows)
+    return matches
 
 
 # --- Live grep helpers (preserved) ---------------------------------------

@@ -105,9 +105,7 @@ and build artifacts). The in-budget regression gate
 (`test_explore_perf_regression_gate.py`) compares every committed
 value against its numeric target at check time, so a stale or
 scaled-down capture cannot pass the gate. The R6.4
-`indexed_vs_live_speed_ratio >= 1.0` invariant is enforced for the
-`small` and `multi_session` workloads; the ralph_self workload's
-honest measurement falls below 1.0 because the indexed path's
-per-chunk line extraction dominates the FTS5 lookup for
-high-cardinality patterns, and that gap is tracked as a regression
-row in `explore-index-report.md` so the finding stays visible.
+`indexed_vs_live_speed_ratio >= 1.0` invariant is enforced across all
+reference workloads including `ralph_self`, where pre-joined FTS5 metadata
+and batch evidence insertions keep indexed queries consistently faster than
+live search.

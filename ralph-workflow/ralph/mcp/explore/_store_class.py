@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -19,24 +18,16 @@ from typing import cast
 
 from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
 from ralph.mcp.explore._store_class_init import _InitializeMethods
+from ralph.mcp.explore._store_class_retention import _RetentionMethods
 from ralph.mcp.explore._store_types import (
-    _SCHEMA_MIGRATIONS,
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_INDEX_DB,
-    JOB_HISTORY_CAP,
-    JOB_HISTORY_RETENTION_SECONDS,
-    SCHEMA_VERSION,
-    TOMBSTONE_CAP,
-    TOMBSTONE_RETENTION_SECONDS,
     ChunkRow,
     EdgeRow,
     EvidenceRow,
     FileRow,
     SpanRow,
     SymbolRow,
-    _column_exists,
-    _is_add_column,
-    _parse_add_column,
     _row_int_opt,
     _row_str,
     _row_to_edge,
@@ -51,7 +42,7 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
-class ExploreStore(_ContentCacheMethods, _InitializeMethods):
+class ExploreStore(_ContentCacheMethods, _InitializeMethods, _RetentionMethods):
     """Owns the SQLite connection and DDL for the index.
 
     Construct with an explicit index directory. WAL mode + busy
@@ -422,6 +413,75 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                 filtered.append(row)
         return filtered
 
+    def fts_search_grep(
+        self,
+        query: str,
+        *,
+        limit: int = 100,
+        path_prefix: str | None = None,
+        include_globs: Sequence[str] | None = None,
+        exclude_globs: Sequence[str] | None = None,
+    ) -> list[sqlite3.Row]:
+        """Run an FTS5 MATCH and return rows pre-joined for grep post-processing.
+
+        Returns one row per FTS5 hit with the full chunk ``text``,
+        the chunk's ``start_line``/``end_line``/``text_hash``/
+        ``generation``, and the parent file's ``content_hash``. The
+        single JOIN removes the per-candidate ``chunks_fts.text``
+        and ``chunks.start_line`` lookups the grep handler used to
+        do inside the candidate loop -- a 3-queries-per-candidate
+        cost that dominated indexed-grep latency on large
+        ``chunks_fts`` corpora (R6.4 indexed-vs-live speed ratio).
+
+        AC-02 indexed-grep filter parity: ``path_prefix``,
+        ``include_globs``, ``exclude_globs`` apply the same
+        semantics as :meth:`fts_search`. The path filter is
+        evaluated against the FTS row's ``path`` so the index can
+        never return out-of-scope matches.
+        """
+        from ralph.mcp.explore.path_filter import (
+            compile_path_filter,
+        )
+
+        path_filter = compile_path_filter(
+            path_prefix=path_prefix,
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+        )
+        cur = self._conn.execute(
+            """
+            SELECT
+                fts.path AS path,
+                fts.chunk_id AS chunk_id,
+                fts.text AS text,
+                c.start_line AS start_line,
+                c.end_line AS end_line,
+                c.text_hash AS text_hash,
+                c.generation AS generation,
+                f.content_hash AS file_content_hash
+            FROM chunks_fts AS fts
+            JOIN chunks AS c ON c.chunk_id = fts.chunk_id
+            JOIN files AS f ON f.path = fts.path
+            WHERE fts.chunks_fts MATCH ?
+              AND f.is_deleted = 0
+            ORDER BY bm25(chunks_fts)
+            LIMIT ?
+            """,
+            (query, limit),
+        )
+        raw_results = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if path_filter is None:
+            return raw_results
+        filtered: list[sqlite3.Row] = []
+        for row in raw_results:
+            path_obj: object = row["path"]
+            path_str = str(path_obj) if path_obj is not None else ""
+            if path_filter(path_str):
+                filtered.append(row)
+        return filtered
+
     # --- Evidence -----------------------------------------------------
 
     def insert_evidence(self, row: EvidenceRow) -> None:
@@ -460,6 +520,62 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                     row.chunk_id,
                     row.span_id,
                 ),
+            )
+
+    def insert_evidence_batch(self, rows: Sequence[EvidenceRow]) -> None:
+        """Insert or refresh many evidence rows in a single transaction.
+
+        The grep handler emits one evidence row per indexed match
+        (R1/R2 per-line evidence span). Calling
+        :meth:`insert_evidence` per row paid an N-round-trip cost
+        on large result sets -- a fresh ``BEGIN IMMEDIATE`` and
+        ``COMMIT`` for every match dominated indexed-grep latency
+        on the ralph_self workload. This batches every row into
+        one ``executemany`` under a single transaction so a
+        100-match response makes one SQL round-trip instead of
+        100.
+        """
+        if not rows:
+            return
+        payload: list[tuple[object, ...]] = [
+            (
+                row.evidence_id,
+                row.path,
+                row.start_line,
+                row.end_line,
+                row.content_hash,
+                row.generation,
+                row.source_tool,
+                row.evidence_kind,
+                row.created_at,
+                1 if row.is_stale else 0,
+                row.chunk_id,
+                row.span_id,
+            )
+            for row in rows
+        ]
+        with self._transaction() as cur:
+            cur.executemany(
+                """
+                INSERT INTO evidence (
+                    evidence_id, path, start_line, end_line, content_hash,
+                    generation, source_tool, evidence_kind, created_at, is_stale,
+                    chunk_id, span_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(evidence_id) DO UPDATE SET
+                    path=excluded.path,
+                    start_line=excluded.start_line,
+                    end_line=excluded.end_line,
+                    content_hash=excluded.content_hash,
+                    generation=excluded.generation,
+                    source_tool=excluded.source_tool,
+                    evidence_kind=excluded.evidence_kind,
+                    created_at=excluded.created_at,
+                    is_stale=excluded.is_stale,
+                    chunk_id=excluded.chunk_id,
+                    span_id=excluded.span_id
+                """,
+                payload,
             )
 
     def get_evidence(self, evidence_id: str) -> EvidenceRow | None:
@@ -776,209 +892,3 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                 (key, value),
             )
 
-    # --- Job history (bounded) ----------------------------------------
-
-    def record_job(
-        self,
-        *,
-        job_id: str,
-        generation: int,
-        status: str,
-        started_at: float,
-        finished_at: float | None,
-        files_seen: int,
-        files_changed: int,
-        files_failed: int,
-        error_summary: str | None,
-        now: float | None = None,
-    ) -> None:
-        now_seconds = time.time() if now is None else now
-        with self._transaction() as cur:
-            cur.execute(
-                """
-                INSERT INTO jobs (
-                    job_id, generation, status, started_at, finished_at,
-                    files_seen, files_changed, files_failed, error_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    generation,
-                    status,
-                    started_at,
-                    finished_at,
-                    files_seen,
-                    files_changed,
-                    files_failed,
-                    error_summary,
-                ),
-            )
-            # Batch cap pruning: deleting on every insert after the cap turns
-            # a bounded history into repeated full-table scans. Keep at most a
-            # ten-record slack, then prune back to the canonical cap.
-            count_row: sqlite3.Row | None = cur.execute("SELECT COUNT(*) FROM jobs").fetchone()
-            job_count = _row_int_opt(count_row, 0) if count_row is not None else 0
-            if job_count > JOB_HISTORY_CAP + 10:
-                cur.execute(
-                    """
-                    DELETE FROM jobs WHERE job_id IN (
-                        SELECT job_id FROM jobs
-                        ORDER BY started_at DESC
-                        LIMIT -1 OFFSET ?
-                    )
-                    """,
-                    (JOB_HISTORY_CAP,),
-                )
-            cur.execute(
-                "DELETE FROM jobs WHERE started_at < ?",
-                (now_seconds - JOB_HISTORY_RETENTION_SECONDS,),
-            )
-
-    # Content-cache methods are provided by the
-    # :class:`_ContentCacheMethods` mixin imported above. They
-    # are documented in ``_store_class_content_cache.py``.
-
-    def latest_job(self) -> sqlite3.Row | None:
-        cur = self._conn.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT 1")
-        row: sqlite3.Row | None = cur.fetchone()
-        return row
-
-    # --- Evidence tombstones (bounded) -------------------------------
-
-    def record_tombstone(
-        self,
-        *,
-        evidence_id: str,
-        path: str,
-        start_line: int,
-        end_line: int,
-        content_hash: str,
-        generation: int,
-        stale_reason: str,
-        stale_at: float,
-        replacement_evidence_id: str | None,
-        now: float | None = None,
-    ) -> None:
-        now_seconds = time.time() if now is None else now
-        with self._transaction() as cur:
-            # AC-05: tombstone identity is derived deterministically
-            # from (path, content_hash, kind), so a delete-then-restore
-            # cycle of the same bytes can produce the same evidence_id
-            # on the next delete. The lifecycle must remain idempotent
-            # to avoid ``IntegrityError`` on the primary-key collision.
-            # An ON CONFLICT refreshes ``stale_at``/``stale_reason``/
-            # ``replacement_evidence_id`` on the existing row so the
-            # row count does not balloon and the most recent deletion
-            # wins for lookup, while bounded retention still applies.
-            cur.execute(
-                """
-                INSERT INTO evidence_tombstones (
-                    evidence_id, path, start_line, end_line, content_hash,
-                    generation, stale_reason, stale_at, replacement_evidence_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(evidence_id) DO UPDATE SET
-                    stale_at=excluded.stale_at,
-                    stale_reason=excluded.stale_reason,
-                    replacement_evidence_id=excluded.replacement_evidence_id,
-                    generation=excluded.generation
-                """,
-                (
-                    evidence_id,
-                    path,
-                    start_line,
-                    end_line,
-                    content_hash,
-                    generation,
-                    stale_reason,
-                    stale_at,
-                    replacement_evidence_id,
-                ),
-            )
-            cur.execute(
-                """
-                DELETE FROM evidence_tombstones WHERE evidence_id IN (
-                    SELECT evidence_id FROM evidence_tombstones
-                    ORDER BY stale_at DESC
-                    LIMIT -1 OFFSET ?
-                )
-                """,
-                (TOMBSTONE_CAP,),
-            )
-            cur.execute(
-                "DELETE FROM evidence_tombstones WHERE stale_at < ?",
-                (now_seconds - TOMBSTONE_RETENTION_SECONDS,),
-            )
-
-    def get_tombstone(self, evidence_id: str) -> sqlite3.Row | None:
-        cur = self._conn.execute(
-            """
-            SELECT * FROM evidence_tombstones WHERE evidence_id = ?
-            """,
-            (evidence_id,),
-        )
-        row: sqlite3.Row | None = cur.fetchone()
-        return row
-
-    # --- Storage size -------------------------------------------------
-
-    def index_storage_bytes(self) -> int:
-        total = 0
-        if self._db_path.exists():
-            total += self._db_path.stat().st_size
-        wal = self._db_path.with_suffix(".sqlite-wal")
-        if wal.exists():
-            total += wal.stat().st_size
-        shm = self._db_path.with_suffix(".sqlite-shm")
-        if shm.exists():
-            total += shm.stat().st_size
-        return total
-
-    # --- Schema migration (AC-01) ------------------------------------
-
-    def _migrate_schema(self) -> None:
-        """Bring an existing SQLite file up to ``SCHEMA_VERSION``.
-
-        Reads ``settings.schema_version``; if the value is missing or
-        older than :data:`SCHEMA_VERSION`, the additive migration
-        statements in :data:`_SCHEMA_MIGRATIONS` are executed. Each
-        migration is itself idempotent (``ALTER TABLE ... ADD COLUMN``
-        guarded by a schema introspection) so a re-open of a fully
-        migrated database is a no-op. The recorded version is then
-        pinned to ``SCHEMA_VERSION`` so the next open is also a no-op.
-        """
-        cur = self._conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
-        row_obj: sqlite3.Row | None = cur.fetchone()
-        on_disk: str = ""
-        if row_obj is not None:
-            cell_obj: object = row_obj["value"]
-            on_disk = cell_obj if isinstance(cell_obj, str) else ""
-        if on_disk == SCHEMA_VERSION:
-            return
-        known_migration_versions = {m[0] for m in _SCHEMA_MIGRATIONS}
-        if on_disk and on_disk not in known_migration_versions:
-            # Future / newer-than-known schema: refuse rather than
-            # silently serve incompatible rows.
-            raise RuntimeError(
-                f"explore schema version {on_disk!r} is newer than "
-                f"supported {SCHEMA_VERSION!r}; rebuild required"
-            )
-        for version, migration_sql in _SCHEMA_MIGRATIONS:
-            if on_disk and on_disk >= version:
-                continue
-            with self._transaction() as cur:
-                # Idempotency guard: ``ALTER TABLE ... ADD COLUMN`` is
-                # not idempotent on SQLite and ``CREATE ... IF NOT
-                # EXISTS`` already handles itself. We only run an
-                # ADD COLUMN when the column is genuinely missing.
-                if _is_add_column(migration_sql):
-                    table, column = _parse_add_column(migration_sql)
-                    if _column_exists(cur, table, column):
-                        continue
-                cur.execute(migration_sql)
-        with self._transaction() as cur:
-            cur.execute(
-                "INSERT INTO settings (key, value) VALUES "
-                "('schema_version', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (SCHEMA_VERSION,),
-            )

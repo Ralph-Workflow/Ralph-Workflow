@@ -157,16 +157,7 @@ def test_in_budget_baseline_within_numeric_targets() -> None:
     ``watch_handles_*``) use their documented 0 / 1.0 thresholds.
 
     The R6.4 invariant ``indexed_vs_live_speed_ratio >= 1.0`` is
-    enforced here for the standard small / multi_session workloads
-    that historically keep the invariant, but is deliberately
-    NOT enforced for the ralph_self workload: the real
-    ralph-workflow tree exposes a known high-cardinality
-    grep-path pattern (``hello``) where the indexed path's
-    per-chunk line extraction dominates the FTS5 lookup, so
-    ``indexed_vs_live_speed_ratio < 1.0`` is the honest
-    measurement. The invariant for that workload is tracked in
-    the S-10 report's Disposition column rather than as an
-    in-budget assertion, so the regression stays visible.
+    enforced here across all workloads, including ralph_self.
     """
     baseline = json.loads(BASELINE_PATH.read_text())
     targets = _load_targets()
@@ -174,13 +165,6 @@ def test_in_budget_baseline_within_numeric_targets() -> None:
         for metric in _R6_2_METRICS:
             measured = float(baseline["metrics"][workload][metric])
             target = targets[workload][metric]
-            # Skip the R6.4 invariant check for ralph_self: the
-            # real tree's high-cardinality ``hello`` pattern
-            # exposes the per-chunk extraction cost, and the
-            # disposition column in the S-10 report already
-            # surfaces the gap.
-            if metric == "indexed_vs_live_speed_ratio" and workload == "ralph_self":
-                continue
             assert measurement_within_target(measured, target, metric), (
                 f"{workload}.{metric}: measured {measured} outside target {target}"
             )

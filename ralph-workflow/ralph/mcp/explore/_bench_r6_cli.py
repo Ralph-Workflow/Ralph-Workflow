@@ -177,7 +177,7 @@ def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
         file=sys.stderr,
         flush=True,
     )
-    return run_capture_baseline(out_path)
+    return run_capture_baseline(out_path, workloads=requested)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

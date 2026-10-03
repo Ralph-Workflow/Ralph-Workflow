@@ -19,6 +19,9 @@ from ralph.mcp.explore._store_types import (
     _DDL,
     _SCHEMA_MIGRATIONS,
     SCHEMA_VERSION,
+    _column_exists,
+    _is_add_column,
+    _parse_add_column,
 )
 
 
@@ -38,7 +41,6 @@ class _InitializeMethods:
     _conn: sqlite3.Connection
     _busy_timeout_ms: int
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
-    _migrate_schema: Callable[[], None]
 
     # Ponytail: bounded retry budget for the DDL transaction;
     # 3 attempts with 0.25s -> 0.5s -> 1.0s backoff (2.25s ceiling)
@@ -76,13 +78,80 @@ class _InitializeMethods:
         # foreign_keys) must be set OUTSIDE of an explicit transaction
         # because SQLite rejects ``PRAGMA synchronous`` (and friends)
         # inside a transaction.
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        if self._schema_version_matches():
+        # Under concurrent construction against a fresh index directory,
+        # sibling processes can contend on the write lock during
+        # PRAGMA journal_mode=WAL or schema inspection before DDL
+        # completes. Setting busy_timeout first and wrapping the
+        # initialization in bounded retry prevents spurious failures.
+        attempts = 0
+        backoff = self._INIT_LOCK_BACKOFF_SECONDS
+        while True:
+            try:
+                self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+                self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.execute("PRAGMA synchronous=NORMAL")
+                self._conn.execute("PRAGMA foreign_keys=ON")
+                if self._schema_version_matches():
+                    return
+                self._initialize_with_bounded_retry()
+                return
+            except sqlite3.OperationalError as exc:
+                msg = str(exc).lower()
+                if "locked" not in msg and "busy" not in msg:
+                    raise
+                attempts += 1
+                if attempts >= self._INIT_LOCK_ATTEMPTS:
+                    raise
+                time.sleep(backoff)  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
+                backoff *= 2
+
+    def _migrate_schema(self) -> None:
+        """Bring an existing SQLite file up to ``SCHEMA_VERSION``.
+
+        Reads ``settings.schema_version``; if the value is missing or
+        older than :data:`SCHEMA_VERSION`, the additive migration
+        statements in :data:`_SCHEMA_MIGRATIONS` are executed. Each
+        migration is itself idempotent (``ALTER TABLE ... ADD COLUMN``
+        guarded by a schema introspection) so a re-open of a fully
+        migrated database is a no-op. The recorded version is then
+        pinned to ``SCHEMA_VERSION`` so the next open is also a no-op.
+        """
+        cur = self._conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
+        row_obj: sqlite3.Row | None = cur.fetchone()
+        on_disk: str = ""
+        if row_obj is not None:
+            cell_obj: object = row_obj["value"]
+            on_disk = cell_obj if isinstance(cell_obj, str) else ""
+        if on_disk == SCHEMA_VERSION:
             return
-        self._initialize_with_bounded_retry()
+        known_migration_versions = {m[0] for m in _SCHEMA_MIGRATIONS}
+        if on_disk and on_disk not in known_migration_versions:
+            # Future / newer-than-known schema: refuse rather than
+            # silently serve incompatible rows.
+            raise RuntimeError(
+                f"explore schema version {on_disk!r} is newer than "
+                f"supported {SCHEMA_VERSION!r}; rebuild required"
+            )
+        for version, migration_sql in _SCHEMA_MIGRATIONS:
+            if on_disk and on_disk >= version:
+                continue
+            with self._transaction() as cur:
+                # Idempotency guard: ``ALTER TABLE ... ADD COLUMN`` is
+                # not idempotent on SQLite and ``CREATE ... IF NOT
+                # EXISTS`` already handles itself. We only run an
+                # ADD COLUMN when the column is genuinely missing.
+                if _is_add_column(migration_sql):
+                    table, column = _parse_add_column(migration_sql)
+                    if _column_exists(cur, table, column):
+                        continue
+                cur.execute(migration_sql)
+        with self._transaction() as cur:
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES "
+                "('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (SCHEMA_VERSION,),
+            )
 
     def _schema_version_matches(self) -> bool:
         """Return True when ``settings.schema_version`` is at ``SCHEMA_VERSION``.
@@ -142,6 +211,8 @@ class _InitializeMethods:
         backoff = self._INIT_LOCK_BACKOFF_SECONDS
         while True:
             try:
+                if self._schema_version_matches():
+                    return
                 with self._transaction() as cur:
                     for stmt in _DDL:
                         cur.execute(stmt)

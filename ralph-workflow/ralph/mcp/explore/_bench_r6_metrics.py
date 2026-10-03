@@ -117,19 +117,7 @@ def measure_cold_build(
     if index_dir.exists():
         # filesystem-write-ok: transient scratch directory cleanup
         shutil.rmtree(index_dir, ignore_errors=True)
-    # Step 1: warm-up reindex in its own subprocess. The wall/CPU
-    # is discarded; the lifetime RSS peak is preserved in the
-    # measured subprocess via the second step (the measured
-    # subprocess has a *fresh* process lifetime, so its peak RSS
-    # is its own cold build, not contaminated by the warm-up).
-    run_build_subprocess(
-        workspace=workspace,
-        index_dir=warmup_dir,
-        measured_mode="full",
-        change_count=0,
-        do_warmup=False,
-    )
-    # Step 2: warm-up + cold build in one subprocess. The
+    # Warm-up + cold build in one subprocess. The
     # warm-up pass is discarded; the cold build's wall/CPU/RSS
     # is reported.
     combined_script_lines = [
@@ -582,7 +570,11 @@ def _capture_workload_metrics(
     return metrics
 
 
-def capture_baseline(output_path: Path) -> dict[str, object]:
+def capture_baseline(
+    output_path: Path,
+    *,
+    workloads: Sequence[str] | None = None,
+) -> dict[str, object]:
     """Capture every R6.2 metric on every R6.3 workload into ``output_path``.
 
     The capture measures the real R6.3 workloads:
@@ -596,53 +588,84 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
     - ``multi_session``: 3 sequential sessions sharing the small
       workspace.
 
-    The whole capture finishes inside the absolute 60-second
-    combined test budget on the standard development host: ralph_self
-    cold-builds in ~22 s on this checkout and the 10k-file synthetic
-    corpus cold-builds in ~6 s. ``make verify`` invokes the capture
-    once per gate and asserts every ``R6.2`` x ``R6.3`` cell has a
-    positive numeric sample.
+    When ``workloads`` is provided, only the requested subset of
+    workloads is captured and merged into any existing baseline JSON
+    at ``output_path``; otherwise all four workloads are captured.
     """
+    target_workloads = set(workloads) if workloads is not None else set(_R6_3_WORKLOADS)
+    existing: dict[str, object] = {}
+    if output_path.is_file():
+        try:
+            raw_loaded: object = json.loads(output_path.read_text())
+            if isinstance(raw_loaded, dict):
+                raw_dict: dict[object, object] = raw_loaded
+                existing = {str(k): v for k, v in raw_dict.items()}
+        except Exception:
+            pass
+
+    existing_metrics: dict[str, object] = {}
+    raw_m = existing.get("metrics")
+    if isinstance(raw_m, dict):
+        existing_metrics = {str(k): v for k, v in raw_m.items()}
+
+    existing_workloads: dict[str, object] = {}
+    raw_w = existing.get("workloads")
+    if isinstance(raw_w, dict):
+        existing_workloads = {str(k): v for k, v in raw_w.items()}
+
+    existing_counts: dict[str, float] = {}
+    raw_c = existing.get("file_counts")
+    if isinstance(raw_c, dict):
+        for k, v in raw_c.items():
+            if isinstance(v, (int, float)):
+                existing_counts[str(k)] = float(v)
+
     with tempfile.TemporaryDirectory(prefix="ralph-baseline-") as scratch:
         scratch_path = Path(scratch)
-        # Workload 1: small (Q1/Q2/Q3 fixture content)
-        small_ws = _seed_small_workspace(scratch_path)
-        # Workload 2: ralph_self (the actual ``ralph-workflow``
-        # working tree). A scratch copy keeps the capture's refresh
-        # mutations from touching the working copy.
-        ralph_self_ws = _seed_ralph_self_workspace(scratch_path / "ralph_self")
-        # Workload 3: large_synthetic at the full R6.3 shape
-        # (10 000 synthetic Python files plus a binary and a deep
-        # path).
-        large_ws = _seed_large_synthetic(scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)
-        # Workload 4: multi-session (sequential sessions sharing the small workspace)
-        multi_ws = scratch_path / "ws_multi"
-        multi_ws.mkdir(parents=True, exist_ok=True)
-        for fixture in REQUIRED_FIXTURES:
-            for rel_path, content in fixture.workspace_files.items():
-                target = multi_ws / rel_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                # filesystem-write-ok: transient scratch workspace fixture seeding
-                target.write_text(content)
+        if "small" in target_workloads:
+            small_ws = _seed_small_workspace(scratch_path)
+            small_parent = scratch_path / "m_small"
+            small_parent.mkdir(parents=True, exist_ok=True)
+            small_metrics = _capture_workload_metrics(small_ws, parent_dir=small_parent)
+            existing_metrics["small"] = small_metrics
+            existing_workloads["small"] = {"metrics": small_metrics}
+            existing_counts["small"] = float(sum(1 for p in small_ws.rglob("*") if p.is_file()))
 
-        small_parent = scratch_path / "m_small"
-        ralph_parent = scratch_path / "m_ralph"
-        large_parent = scratch_path / "m_large"
-        multi_parent = scratch_path / "m_multi"
-        for parent in (small_parent, ralph_parent, large_parent, multi_parent):
-            parent.mkdir(parents=True, exist_ok=True)
-        small_metrics = _capture_workload_metrics(small_ws, parent_dir=small_parent)
-        ralph_self_metrics = _capture_workload_metrics(ralph_self_ws, parent_dir=ralph_parent)
-        large_metrics = _capture_workload_metrics(large_ws, parent_dir=large_parent)
-        multi_metrics = _capture_workload_metrics(
-            multi_ws, parent_dir=multi_parent, session_processes=3
-        )
-        file_counts = {
-            "small": float(sum(1 for p in small_ws.rglob("*") if p.is_file())),
-            "ralph_self": float(sum(1 for p in ralph_self_ws.rglob("*") if p.is_file())),
-            "large_synthetic": float(sum(1 for p in large_ws.rglob("*") if p.is_file())),
-            "multi_session": float(sum(1 for p in multi_ws.rglob("*") if p.is_file())),
-        }
+        if "ralph_self" in target_workloads:
+            ralph_self_ws = _seed_ralph_self_workspace(scratch_path / "ralph_self")
+            ralph_parent = scratch_path / "m_ralph"
+            ralph_parent.mkdir(parents=True, exist_ok=True)
+            ralph_self_metrics = _capture_workload_metrics(ralph_self_ws, parent_dir=ralph_parent)
+            existing_metrics["ralph_self"] = ralph_self_metrics
+            existing_workloads["ralph_self"] = {"metrics": ralph_self_metrics}
+            existing_counts["ralph_self"] = float(sum(1 for p in ralph_self_ws.rglob("*") if p.is_file()))
+
+        if "large_synthetic" in target_workloads:
+            large_ws = _seed_large_synthetic(scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)
+            large_parent = scratch_path / "m_large"
+            large_parent.mkdir(parents=True, exist_ok=True)
+            large_metrics = _capture_workload_metrics(large_ws, parent_dir=large_parent)
+            existing_metrics["large_synthetic"] = large_metrics
+            existing_workloads["large_synthetic"] = {"metrics": large_metrics}
+            existing_counts["large_synthetic"] = float(sum(1 for p in large_ws.rglob("*") if p.is_file()))
+
+        if "multi_session" in target_workloads:
+            multi_ws = scratch_path / "ws_multi"
+            multi_ws.mkdir(parents=True, exist_ok=True)
+            for fixture in REQUIRED_FIXTURES:
+                for rel_path, content in fixture.workspace_files.items():
+                    target = multi_ws / rel_path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    # filesystem-write-ok: transient scratch workspace fixture seeding
+                    target.write_text(content)
+            multi_parent = scratch_path / "m_multi"
+            multi_parent.mkdir(parents=True, exist_ok=True)
+            multi_metrics = _capture_workload_metrics(
+                multi_ws, parent_dir=multi_parent, session_processes=3
+            )
+            existing_metrics["multi_session"] = multi_metrics
+            existing_workloads["multi_session"] = {"metrics": multi_metrics}
+            existing_counts["multi_session"] = float(sum(1 for p in multi_ws.rglob("*") if p.is_file()))
 
     baseline: dict[str, object] = {
         "schema_version": 1,
@@ -658,19 +681,9 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
             ),
             "multi_session": "3 processes sharing one indexed workspace",
         },
-        "file_counts": file_counts,
-        "metrics": {
-            "small": small_metrics,
-            "ralph_self": ralph_self_metrics,
-            "large_synthetic": large_metrics,
-            "multi_session": multi_metrics,
-        },
-        "workloads": {
-            "small": {"metrics": small_metrics},
-            "ralph_self": {"metrics": ralph_self_metrics},
-            "large_synthetic": {"metrics": large_metrics},
-            "multi_session": {"metrics": multi_metrics},
-        },
+        "file_counts": existing_counts,
+        "metrics": existing_metrics,
+        "workloads": existing_workloads,
     }
     # filesystem-write-ok: benchmark report artifact emission
     output_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
@@ -854,9 +867,9 @@ def measurement_within_target(measured: float, target: float, metric: str) -> bo
     return measured <= ceiling + 1e-9
 
 
-def run_capture_baseline(output_path: str) -> int:
+def run_capture_baseline(output_path: str, *, workloads: Sequence[str] | None = None) -> int:
     """CLI entry: capture the S-8 baseline JSON."""
-    baseline = capture_baseline(Path(output_path))
+    baseline = capture_baseline(Path(output_path), workloads=workloads)
     metrics_obj: object = baseline.get("metrics")
     metrics_count = len(metrics_obj) if isinstance(metrics_obj, Sized) else 0
     payload: dict[str, object] = {
