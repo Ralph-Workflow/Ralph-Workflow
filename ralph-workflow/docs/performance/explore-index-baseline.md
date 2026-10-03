@@ -65,8 +65,12 @@ MB for an unmeasured RSS sample, 10 ms for agent-added latency and
 idle CPU). Watch handles stay an exact zero. Indexed query percentiles
 allow an extra 2 ms of host noise. Live query percentiles allow an extra
 50 ms because the default verify profile measures them beside other test
-shards. Positive wall-clock and CPU targets also allow 10 ms of scheduler
-noise. Cold-build wall time has no floor, so a
+shards. Positive wall-clock and CPU targets also allow 50 ms of scheduler
+noise (the cold-build subprocess shares CPU with sibling xdist workers
+under the default 4-worker REQUIRED_AUTO_INTEGRATE_E2E shard; empirical
+parallel-shard noise runs ~30-50 ms above the isolated value, so the
+slack matches the live-query latency slack above). Cold-build wall time
+has no floor, so a
 zero cold-build target still rejects any real build.
 
 ## Notes on absolute invariants (no regression allowed)
