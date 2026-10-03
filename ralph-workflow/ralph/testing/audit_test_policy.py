@@ -261,6 +261,7 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # does not expose a clock injection seam yet; the measurement
     # IS the correctness assertion (criterion 1c).
     "test_explore_fault_matrix_full",
+    "test_explore_fault_matrix",
     # Wall-clock budget pin for the runtime FD-leak / watch-handle
     # resource tests. The proofs use real wall-clock to measure
     # the post-operation FD count and inspect the child process

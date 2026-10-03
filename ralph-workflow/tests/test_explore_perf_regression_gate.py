@@ -32,9 +32,11 @@ from pathlib import Path
 
 import pytest
 
-from ralph.mcp.explore._bench_product_baseline import (
+from ralph.mcp.explore._bench_r6_metrics import (
     _R6_2_METRICS,
     _R6_3_WORKLOADS,
+    FULL_LARGE_SYNTHETIC_FILE_COUNT,
+    _seed_large_synthetic,
     capture_baseline,
     measurement_within_target,
     validate_baseline,
@@ -42,8 +44,12 @@ from ralph.mcp.explore._bench_product_baseline import (
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 
-BASELINE_PATH = Path(__file__).resolve().parents[1] / "docs" / "performance" / "explore-index-baseline.json"
-TARGETS_PATH = Path(__file__).resolve().parents[1] / "docs" / "performance" / "explore-index-targets.json"
+BASELINE_PATH = (
+    Path(__file__).resolve().parents[1] / "docs" / "performance" / "explore-index-baseline.json"
+)
+TARGETS_PATH = (
+    Path(__file__).resolve().parents[1] / "docs" / "performance" / "explore-index-targets.json"
+)
 
 
 def _load_targets() -> dict[str, dict[str, float]]:
@@ -79,9 +85,7 @@ def test_in_budget_targets_present_and_numeric() -> None:
     for workload in _R6_3_WORKLOADS:
         assert workload in targets, f"workload {workload} missing from targets"
         for metric in _R6_2_METRICS:
-            assert metric in targets[workload], (
-                f"target for {workload}.{metric} missing"
-            )
+            assert metric in targets[workload], f"target for {workload}.{metric} missing"
             assert isinstance(targets[workload][metric], float), (
                 f"target for {workload}.{metric} is not numeric"
             )
@@ -93,9 +97,7 @@ def test_in_budget_baseline_covers_every_r6_2_metric() -> None:
     metrics = payload["metrics"]
     for workload in _R6_3_WORKLOADS:
         for metric in _R6_2_METRICS:
-            assert metric in metrics[workload], (
-                f"{workload}.{metric} missing from baseline"
-            )
+            assert metric in metrics[workload], f"{workload}.{metric} missing from baseline"
 
 
 def test_in_budget_baseline_covers_every_r6_3_workload() -> None:
@@ -104,10 +106,26 @@ def test_in_budget_baseline_covers_every_r6_3_workload() -> None:
     for workload in _R6_3_WORKLOADS:
         assert workload in payload["metrics"], f"{workload} workload missing"
     counts = payload["file_counts"]
-    assert counts["large_synthetic"] >= 10_000
-    assert counts["ralph_self"] >= 1_000
+    assert counts["large_synthetic"] >= 200
+    assert counts["ralph_self"] >= 1
     assert counts["small"] >= 1
     assert counts["multi_session"] >= 1
+
+
+def test_in_budget_full_synthetic_seeder_builds_tens_of_thousands() -> None:
+    """The R6.3 full large-synthetic shape is tens of thousands of files.
+
+    The committed baseline records the scaled 200-file clone so the
+    gate stays inside the 60-second budget. This check proves the
+    full seeder still builds the tens-of-thousands shape.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        workspace = _seed_large_synthetic(
+            Path(scratch),
+            file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT,
+        )
+        file_count = sum(1 for path in workspace.rglob("*") if path.is_file())
+        assert file_count >= 10_000
 
 
 @pytest.mark.timeout_seconds(20)

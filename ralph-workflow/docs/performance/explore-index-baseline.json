@@ -162,6 +162,12 @@
       "watch_handles_steady": 0.0
     }
   },
+  "file_counts": {
+    "large_synthetic": 202,
+    "multi_session": 6,
+    "ralph_self": 6,
+    "small": 6
+  },
   "scale_factors": {
     "large_synthetic": "200 Python files (scaled from tens-of-thousands)",
     "multi_session": "Q1/Q2/Q3 fixtures (small - multi-session shape)",

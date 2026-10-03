@@ -19,13 +19,20 @@ def explore_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=RALPH_INDEX_STATUS_TOOL,
                 description=(
-                    "Report Ralph's indexed exploration index health and freshness. "
-                    "No required params. Returns: enabled, index_exists, generation, "
-                    "indexed_at, files_indexed, files_stale, last_job, capabilities, "
-                    "graph_backend, dirty_paths_count, cold_index_required, "
-                    "last_refresh_kind, is_stale, stale_paths_count, "
-                    "index_storage_bytes, managed_ignore_rule_present. "
-                    "Side-effect free when no handle is attached. "
+                    "Report Ralph's indexed exploration index health, freshness, and "
+                    "recovery state. No required params. Returns: enabled, "
+                    "index_exists, generation, indexed_at, files_indexed, files_stale, "
+                    "last_job, capabilities, graph_backend, dirty_paths_count, "
+                    "cold_index_required, last_refresh_kind, is_stale, "
+                    "stale_paths_count, index_storage_bytes, "
+                    "managed_ignore_rule_present. Health states: healthy, building, "
+                    "stale, degraded, unhealthy. fallback_reason (e.g. "
+                    "index_stale_scope above the 5% staleness threshold) lives on "
+                    "every index-capable response. Search tools fall through to live "
+                    "grep/find when the index cannot serve, and recovery runs "
+                    "automatically. Indexing does not grow OS watch handles with "
+                    "repo size. Performance targets live in "
+                    "docs/performance/explore-index-baseline.md. Side-effect free. "
                     "Example: {} returns the live index status."
                 ),
                 input_schema={

@@ -137,7 +137,8 @@ def _cold_query_reason(store: ExploreStore) -> str:
     if latest is None:
         return "no_committed_generation"
     try:
-        status = str(latest["status"])
+        status_cell: object = latest["status"]
+        status = str(status_cell)
     except (KeyError, IndexError, TypeError):
         return "no_committed_generation"
     if status == "timed_out":
@@ -736,7 +737,7 @@ def handle_grep_files(
         # out-of-scope matches.
         try:
             # F7: fail fast when another connection holds the reserved lock.
-            previous_busy = int(getattr(store, "_busy_timeout_ms", 50))
+            previous_busy = store._busy_timeout_ms
             store._conn.execute("PRAGMA busy_timeout=50")
             try:
                 store._conn.execute("BEGIN IMMEDIATE")

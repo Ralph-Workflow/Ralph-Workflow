@@ -44,14 +44,16 @@ from ralph.mcp.explore._bench_fixtures import (
     REQUIRED_FIXTURES,
 )
 from ralph.mcp.explore._bench_product_baseline import (
-    capture_baseline,
     gate_product_baseline,
     load_product_baseline_limits,
     main,
     measure_representative_flows,
     nearest_rank_p95,
-    run_capture_baseline,
     run_product_baseline,
+)
+from ralph.mcp.explore._bench_r6_metrics import (
+    capture_baseline,
+    run_capture_baseline,
     run_validate_baseline,
     run_validate_report,
     validate_baseline,

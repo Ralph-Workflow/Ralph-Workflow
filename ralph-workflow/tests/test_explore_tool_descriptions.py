@@ -62,6 +62,54 @@ def test_ralph_index_status_description_includes_required_checklist_fields() -> 
     assert "returns" in lowered
 
 
+def test_ralph_index_status_description_documents_fallback_contract() -> None:
+    """AC-11: the status tool description must state the auto-mode fallback,
+    the canonical reason-code vocabulary (e.g. ``index_stale_scope``), the
+    five health states, the 5%% staleness threshold, automatic recovery, the
+    OS watch-handle resource guarantee, and the performance targets.
+
+    The description must stay within the 900-character budget enforced by
+    :func:`test_changed_explore_tool_schemas_are_compact_and_complete`, so
+    this test references the fault-matrix and baseline docs rather than
+    inlining their full content.
+    """
+    spec = _explore_specs_by_name()[RALPH_INDEX_STATUS_TOOL]
+    description = str(spec.metadata.definition.description)
+    lowered = description.lower()
+    # Auto-mode fallback contract.
+    assert "fall through" in lowered or "fallback" in lowered, (
+        "status description must explain the auto-mode fall-through contract"
+    )
+    # Canonical reason-code vocabulary — at least ``index_stale_scope`` is named.
+    assert "index_stale_scope" in description, (
+        "status description must surface a canonical reason code so the "
+        "fallback vocabulary is discoverable from the tool surface"
+    )
+    # Five documented health states (R2 status-truthfulness).
+    for state in ("healthy", "building", "stale", "degraded", "unhealthy"):
+        assert state in lowered, (
+            f"status description must list the {state!r} health state"
+        )
+    # 5% staleness threshold (R4 / DEFAULT_STALENESS_THRESHOLD).
+    assert "5%" in description, (
+        "status description must name the 5% staleness threshold"
+    )
+    # Automatic recovery (R2 "Recovery is automatic").
+    assert "automatic" in lowered, (
+        "status description must state recovery is automatic"
+    )
+    # OS watch-handle resource guarantee (R5).
+    assert "watch" in lowered, (
+        "status description must surface the OS watch-handle guarantee"
+    )
+    # Performance targets (R6 / baseline + targets docs).
+    assert "performance" in lowered and "target" in lowered, (
+        "status description must point at the performance targets"
+    )
+    # And stay within the shared 900-character budget for the description.
+    assert len(description) <= _TOOL_DESCRIPTION_BUDGET
+
+
 def test_ralph_reindex_description_includes_required_checklist_fields() -> None:
     """The reindex tool must mention constraints, fallback, and output shape."""
     spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
