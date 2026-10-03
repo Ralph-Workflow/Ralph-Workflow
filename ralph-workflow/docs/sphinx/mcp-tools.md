@@ -369,6 +369,12 @@ default 5000; out-of-range or malformed values are rejected), `path_scope`
 callers cannot extend the budget arbitrarily. `mode='full'` rebuilds into a
 temp generation and atomically swaps metadata only after success.
 
+Cold index detection automatically schedules a bounded background rebuild
+with cross-process single-flight locking, persisting batch checkpoints in the
+staging directory so that interrupted or timed-out builds resume rather than
+restarting from scratch. Readers detect committed generation swaps on disk
+and reopen their handles lazily.
+
 ### Indexed arguments on existing tools
 
 The shipped indexed exploration adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`. `span_id`, `symbol`, `contains_symbol`, `return_evidence_ids`, `ranked`, `role`, and `changed_only` are backed by the live spans/symbols/edges tables and never return `disabled:phase2` for shipped capabilities:
@@ -412,7 +418,7 @@ The freshness/staleness block also reports `stale_paths_count`, `last_refresh_ag
 
 * **Health states.** `ralph_index_status` reports one of `healthy | building | stale | degraded | unhealthy`. `healthy` means the index is committed and within the staleness threshold; `building` means a reindex is in progress; `stale` means the index is committed with at least one hard failure recorded; `degraded` means the index is readable but a writer-side fault prevents updates (e.g. F10 read-only mount); `unhealthy` means repeated indexer errors after the bounded retry budget exhausted.
 * **Fallback behavior.** Every index-capable tool falls through to the live path in `auto` mode whenever the index cannot serve the query. `use_index="always"` fails closed with a structured error carrying the canonical reason code so the caller can decide whether to recover, switch modes, or surface the degradation to the user. The fallback is silent in `auto` (the response still carries the reason code for audit) and explicit in `always`.
-* **Recovery.** The recovery scheduler drives every F1–F20 fault mode in `ralph/mcp/explore/recovery.py`. Recovery is bounded by exponential backoff with a finite attempt cap; after the cap, the scheduler marks the index `unhealthy` and continues serving from the live path. The status handler reports `recovery_attempts`, `next_recovery_at`, and the most recent failure code so callers can predict when the next attempt will fire. No failure mode in the fault matrix requires the agent or user to delete files, run a command, or restart the session.
+* **Recovery.** The recovery scheduler drives every F1–F20 fault mode in `ralph/mcp/explore/recovery.py`. Recovery is bounded by exponential backoff with a finite attempt cap; after the cap, the scheduler marks the index `unhealthy` and continues serving from the live path. Cold builds run in the background with checkpoint resume so timed-out builds make forward progress, and reader handles automatically reopen when a new generation is committed. The status handler reports `recovery_attempts`, `next_recovery_at`, and the most recent failure code so callers can predict when the next attempt will fire. No failure mode in the fault matrix requires the agent or user to delete files, run a command, or restart the session.
 
 ### Resource guarantees
 
@@ -421,7 +427,7 @@ The freshness/staleness block also reports `stale_paths_count`, `last_refresh_ag
 
 ### Performance targets
 
-Performance is measured against committed baselines in `docs/performance/explore-index-baseline.json` and bounded by targets in `docs/performance/explore-index-targets.json`. The regression gate is wired into `tests/test_explore_perf_regression_gate.py` and `tests/test_explore_bench_gates.py`; it fails the build when a metric drifts past the documented tolerance. The before/after report (`docs/performance/explore-index-report.md`) covers every R6.2 metric × R6.3 workload pair.
+Performance is measured against committed baselines in `docs/performance/explore-index-baseline.json` and bounded by targets in `docs/performance/explore-index-targets.json`. The regression gate is wired into `tests/test_explore_perf_regression_gate.py` and `tests/test_explore_bench_gates.py`; it fails the build when a metric drifts past the documented tolerance. The before/after report (`docs/performance/explore-index-report.md`) covers every R6.2 metric × R6.3 workload pair. Cold-build throughput is optimized via batched transactions (per 50 files) and zero redundant full-text payload caching (`content_cache_payload` dropped in favor of authoritative FTS5 text), delivering >=10x cold-build wall-clock improvement and >=3x index footprint reduction.
 
 ### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
 

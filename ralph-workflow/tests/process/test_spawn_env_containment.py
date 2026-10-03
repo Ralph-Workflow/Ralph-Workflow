@@ -269,6 +269,7 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
     assert checked_entries == {
         "ralph.cli.main.main",
         "ralph.install.main",
+        "ralph.mcp.explore._bench_r6_metrics.main",
         "ralph.mcp.server.runtime.main",
         "ralph.test_suites.main",
         "ralph.verify.main",

@@ -120,7 +120,7 @@ def reindex(
         # cancel that becomes true on the first poll never
         # reaches the destructive drop path.
         if opts.mode == "full":
-            return _staged_full_reindex(
+            staged_result = _staged_full_reindex(
                 store,
                 workspace_root,
                 options=opts,
@@ -128,7 +128,10 @@ def reindex(
                 state=state,
                 cancel=cancel,
             )
-        result = _run_reindex(
+            return _finalize_with_recovery(
+                store, state, workspace_root, now_fn=now_fn, result=staged_result
+            )
+        status = _run_reindex(
             store,
             workspace_root,
             options=opts,
@@ -137,18 +140,81 @@ def reindex(
             cancel=cancel,
         )
     except _ReindexTimeoutError:
-        return _finalize(store, state, status="timed_out", now_fn=now_fn)
+        return _finalize_with_recovery(
+            store, state, workspace_root, now_fn=now_fn, status="timed_out"
+        )
     except _ReindexCancelledError:
-        return _finalize(store, state, status="cancelled", now_fn=now_fn)
+        return _finalize_with_recovery(
+            store, state, workspace_root, now_fn=now_fn, status="cancelled"
+        )
     except Exception as exc:
-        return _finalize(
+        return _finalize_with_recovery(
             store,
             state,
-            status="failed",
+            workspace_root,
             now_fn=now_fn,
+            status="failed",
             error_summary=f"{type(exc).__name__}: {exc}",
         )
-    return _finalize(store, state, status=result, now_fn=now_fn)
+    return _finalize_with_recovery(
+        store, state, workspace_root, now_fn=now_fn, status=status
+    )
+
+
+def _finalize_with_recovery(
+    store: ExploreStore,
+    state: _ReindexState,
+    workspace_root: Path,
+    *,
+    now_fn: Callable[[], float],
+    status: str | None = None,
+    result: ReindexResult | None = None,
+    error_summary: str | None = None,
+) -> ReindexResult:
+    """Finalize the reindex result and queue one bounded recovery when needed.
+
+    S-2 (wt-11): when the reindex path finishes with
+    ``status='timed_out'`` and the store still has no committed
+    generation, enqueue exactly one ``timeout_exceeded`` recovery
+    so the next probe can drain the queue and the dispatcher can
+    rebuild the index in the background. ``enqueue_recovery`` is
+    keyed by ``workspace_root`` so duplicate probes coalesce
+    inside the same backoff window -- no retry storm.
+
+    ``result`` may already be a :class:`ReindexResult` (from the
+    staged full path) or a status string (from ``_run_reindex``).
+    Normalise to a :class:`ReindexResult` before consulting the
+    ``status`` field so the recovery decision is consistent
+    across the staged and inline paths.
+    """
+    if isinstance(result, ReindexResult):
+        finalized = result
+    else:
+        finalized = _finalize(
+            store,
+            state,
+            status=status if status is not None else "failed",
+            now_fn=now_fn,
+            error_summary=error_summary,
+        )
+    # S-2: only the timed-out path with a still-cold index queues
+    # a recovery. Other failure modes (cancelled, failed) leave the
+    # queue alone so the dispatcher can resume the right wait.
+    if finalized.status == "timed_out" and finalized.generation == 0:
+        try:
+            from ralph.mcp.explore.recovery import enqueue_recovery
+
+            enqueue_recovery(
+                workspace_root,
+                "timeout_exceeded",
+                message=f"timed-out cold reindex job={state.job_id}",
+            )
+        except Exception:
+            # Best-effort: the recovery queue is for observability;
+            # a transient enqueue failure does not invalidate the
+            # already-finalized job result.
+            pass
+    return finalized
 
 
 __all__ = [

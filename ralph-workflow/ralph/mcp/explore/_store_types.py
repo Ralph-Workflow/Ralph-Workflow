@@ -34,8 +34,6 @@ from typing import Final, Protocol, cast
 from ralph.mcp.explore._store_types_payload import (
     ContentCacheChunk,
     ContentCachePayload,
-    deserialize_content_cache_payload,
-    serialize_content_cache_payload,
 )
 
 # --- Constants -------------------------------------------------------------
@@ -211,10 +209,8 @@ _DDL: tuple[str, ...] = (
     )
     """,
     # AC-05: content_cache is required by the minimum storage contract.
-    # It deduplicates extraction payloads by content hash so a moved
-    # or copied file can reuse an already-extracted record. The
-    # payload lives in a separate ``content_cache_payload`` table so
-    # the metadata row stays compact and the payload can be large.
+    # It deduplicates extraction metadata by content hash so a moved
+    # or copied file can reuse an already-extracted record.
     """
     CREATE TABLE IF NOT EXISTS content_cache (
         content_hash TEXT PRIMARY KEY,
@@ -223,14 +219,6 @@ _DDL: tuple[str, ...] = (
         extracted_at REAL NOT NULL,
         extraction_status TEXT NOT NULL,
         error_summary TEXT
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS content_cache_payload (
-        content_hash TEXT PRIMARY KEY,
-        payload BLOB,
-        FOREIGN KEY (content_hash) REFERENCES content_cache(content_hash)
-            ON DELETE CASCADE
     )
     """,
     """
@@ -414,9 +402,8 @@ class ContentCacheRow:
     so a moved or copied file can reuse an already-extracted record.
     Path-specific rows (chunks/FTS/evidence/spans/symbols/edges)
     are rebuilt by the reindex pipeline because their identity
-    depends on the normalized path. The payload itself lives in
-    the ``content_cache_payload`` BLOB table; this row carries
-    only the bookkeeping so metadata reads stay cheap.
+    depends on the normalized path. This row carries the bookkeeping
+    so metadata reads stay cheap.
     """
 
     content_hash: str
@@ -434,8 +421,6 @@ class ContentCacheRow:
 __all__ = [
     "ContentCacheChunk",
     "ContentCachePayload",
-    "deserialize_content_cache_payload",
-    "serialize_content_cache_payload",
 ]
 
 
@@ -868,13 +853,11 @@ __all__ = [
     "collect_workspace_files",
     "derive_chunk_id",
     "derive_evidence_id",
-    "deserialize_content_cache_payload",
     "hash_workspace_file",
     "iter_indexable_files",
     "normalize_index_path",
     "real_clock_seconds",
     "row_str",
-    "serialize_content_cache_payload",
     "sha256_bytes",
     "sha256_text",
 ]

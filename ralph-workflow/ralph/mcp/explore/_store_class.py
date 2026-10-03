@@ -70,6 +70,12 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.index_dir / DEFAULT_INDEX_DB
         self._busy_timeout_ms = busy_timeout_ms
+        self._db_inode: int | None = None
+        self._in_transaction: bool = False
+        try:
+            self._db_inode = self._db_path.stat().st_ino
+        except OSError:
+            self._db_inode = None
         # AC-02/AC-05: open with ``check_same_thread=False`` so
         # concurrent reindex claims (public ``ralph_reindex`` and
         # lifecycle hooks) can each hold their own connection
@@ -98,7 +104,16 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:
-        """Run a short transaction with explicit BEGIN/COMMIT."""
+        """Run a transaction with explicit BEGIN/COMMIT (reentrant)."""
+        if self._in_transaction:
+            cur = self._conn.cursor()
+            try:
+                yield cur
+            finally:
+                cur.close()
+            return
+
+        self._in_transaction = True
         cur = self._conn.cursor()
         try:
             cur.execute("BEGIN IMMEDIATE")
@@ -109,7 +124,10 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                 cur.execute("ROLLBACK")
             raise
         finally:
+            self._in_transaction = False
             cur.close()
+
+    transaction = _transaction
 
     # --- Lifecycle ---------------------------------------------------
 
@@ -145,6 +163,42 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
         self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        # S-3 (wt-11): record the current on-disk inode so the
+        # next ``maybe_reopen_after_swap`` call can detect a
+        # cross-process atomic-rename swap. The inode is the
+        # cheapest stable identity: the OLD inode is preserved
+        # while any fd holds it, but the on-disk path resolves
+        # to the NEW inode after the swap.
+        try:
+            self._db_inode = self._db_path.stat().st_ino
+        except OSError:
+            self._db_inode = None
+
+    def maybe_reopen_after_swap(self) -> bool:
+        """Reopen the connection if the on-disk database was swapped.
+
+        S-3 (wt-11): the live connection points to the inode
+        that was current when ``__init__`` ran. A cross-process
+        atomic-rename swap (the staged full rebuild path)
+        unlinks the OLD inode from the directory but keeps it
+        alive via the open fd, so the OLD inode still serves
+        the OLD generation. ``stat()`` on the db path
+        resolves to the NEW inode, so a single ``stat`` lets
+        the next caller reopen against the fresh data.
+
+        Returns True iff a reopen actually fired. The check
+        is bounded and fail-open: any OSError returns False
+        and leaves the existing connection in place so a
+        transient stat failure cannot poison the handle.
+        """
+        try:
+            current_inode = self._db_path.stat().st_ino
+        except OSError:
+            return False
+        if current_inode == self._db_inode:
+            return False
+        self.reopen()
+        return True
 
     # --- File-row access ----------------------------------------------
 
@@ -673,6 +727,12 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
     # --- Settings -----------------------------------------------------
 
     def get_setting(self, key: str) -> str | None:
+        # S-3 (wt-11): detect a cross-process atomic-rename swap
+        # and reopen the connection before reading. The check is
+        # a single ``stat()`` and only fires a reopen when the
+        # inode actually changed; the steady-state cost is one
+        # syscall per read.
+        self.maybe_reopen_after_swap()
         cur = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:

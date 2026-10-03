@@ -5,9 +5,9 @@ Extracted from :mod:`ralph.mcp.explore._store_class` so the
 per-file line ceiling.
 
 The methods live on a mixin class so the SQLite + cache logic
-remains cohesive (the cache owns dedicated ``content_cache``
-and ``content_cache_payload`` tables) while the main store
-class only imports a small ``_ContentCacheMethods`` alias.
+remains cohesive (the cache owns a dedicated ``content_cache``
+table) while the main store class only imports a small
+``_ContentCacheMethods`` alias.
 """
 
 from __future__ import annotations
@@ -76,49 +76,16 @@ class _ContentCacheMethods:
             return None
         return _row_to_content_cache(row)
 
-    def read_content_cache_payload(
-        self,
-        *,
-        content_hash: str,
-    ) -> bytes | None:
-        """Return the cached payload BLOB for ``content_hash`` or ``None``.
-
-        The BLOB is opaque to the store; callers pass it to
-        :func:`deserialize_content_cache_payload` to recover the
-        typed cache record (chunks/FTS payload structure). A
-        missing payload alongside an existing metadata row is
-        still returned as ``None`` so the caller can decide
-        whether to repopulate.
-        """
-        cur = self._conn.execute(
-            "SELECT payload FROM content_cache_payload WHERE content_hash = ?",
-            (content_hash,),
-        )
-        row: sqlite3.Row | None = cur.fetchone()
-        if row is None:
-            return None
-        value = cast(
-            "bytes | memoryview | None", row["payload"]
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        if value is None:
-            return None
-        if isinstance(value, bytes):
-            return value
-        return bytes(value)
-
     def insert_content_cache(
         self,
         *,
         row: ContentCacheRow,
-        payload: bytes,
     ) -> None:
-        """Insert or refresh the cache metadata + payload for ``content_hash``.
+        """Insert or refresh the cache metadata for ``content_hash``.
 
         Idempotent: a second insert with the same ``content_hash``
         refreshes ``extracted_at`` and ``extractor_version`` while
-        retaining the prior ``extraction_status``. The payload
-        table uses ``ON CONFLICT(content_hash) DO UPDATE`` so the
-        BLOB stays in sync with the metadata.
+        retaining the prior ``extraction_status``.
         """
         with self._transaction() as cur:
             cur.execute(
@@ -143,24 +110,12 @@ class _ContentCacheMethods:
                     row.error_summary,
                 ),
             )
-            cur.execute(
-                """
-                INSERT INTO content_cache_payload (content_hash, payload)
-                VALUES (?, ?)
-                ON CONFLICT(content_hash) DO UPDATE SET payload=excluded.payload
-                """,
-                (row.content_hash, payload),
-            )
 
     def delete_content_cache(self, *, content_hash: str) -> None:
-        """Remove a single cache entry (metadata + payload) by hash."""
+        """Remove a single cache entry by hash."""
         with self._transaction() as cur:
             cur.execute(
                 "DELETE FROM content_cache WHERE content_hash = ?",
-                (content_hash,),
-            )
-            cur.execute(
-                "DELETE FROM content_cache_payload WHERE content_hash = ?",
                 (content_hash,),
             )
 

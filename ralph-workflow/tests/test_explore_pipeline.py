@@ -32,11 +32,8 @@ from ralph.mcp.explore.pipeline import (
     reindex,
 )
 from ralph.mcp.explore.store import (
-    ContentCachePayload,
     ContentCacheRow,
     ExploreStore,
-    deserialize_content_cache_payload,
-    sha256_text,
 )
 
 
@@ -1552,41 +1549,6 @@ def test_move_with_identical_content_uses_cache_and_pivots_path(
         store.close()
 
 
-def test_cache_payload_round_trips_through_reindex(tmp_path: Path) -> None:
-    """AC-05: the persisted cache payload deserializes into a
-    ``ContentCachePayload`` whose ``chunks`` carry the same
-    ``text_hash`` values the live ``chunks`` table uses. This
-    proves the cache and the live tables share a deterministic
-    chunk-hash contract, so a cache hit produces rows with the
-    same observable ``text_hash``.
-    """
-    from ralph.mcp.explore.store import serialize_content_cache_payload
-
-    workspace = _seed_workspace(tmp_path)
-    store = _build_store(tmp_path)
-    try:
-        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
-        # Read every cached payload and verify text_hash round-trip.
-        for cache_row in store.iter_content_cache():
-            blob = store.read_content_cache_payload(content_hash=cache_row.content_hash)
-            assert blob is not None
-            payload = deserialize_content_cache_payload(blob)
-            assert isinstance(payload, ContentCachePayload)
-            assert payload.extractor_version == cache_row.extractor_version
-            for chunk in payload.chunks:
-                # text_hash must equal sha256(text) for every chunk.
-                assert chunk.text_hash == sha256_text(chunk.text)
-        # And the round-trip is encoding-stable.
-        sample = next(iter(store.iter_content_cache()))
-        blob1 = store.read_content_cache_payload(content_hash=sample.content_hash)
-        assert blob1 is not None
-        # Re-encode payload and compare; serializer is deterministic.
-        payload = deserialize_content_cache_payload(blob1)
-        assert isinstance(payload, ContentCachePayload)
-        blob2 = serialize_content_cache_payload(payload)
-        assert blob1 == blob2
-    finally:
-        store.close()
 
 
 def test_cache_lookup_rejects_stale_extractor_version(tmp_path: Path) -> None:

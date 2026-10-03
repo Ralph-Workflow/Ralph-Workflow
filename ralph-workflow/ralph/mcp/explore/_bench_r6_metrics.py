@@ -7,12 +7,13 @@ repository file-size limit. Public names are re-exported from
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sized
+from collections.abc import Mapping, Sequence, Sized
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, cast
@@ -21,8 +22,26 @@ from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
 from ralph.mcp.explore._bench_product_baseline import _BaselineSession
 from ralph.mcp.explore._bench_r6_query_sampler import _QueryCallable, sample_query_latencies
 from ralph.mcp.explore._bench_r6_subprocess import run_build_subprocess
+from ralph.mcp.explore._bench_r6_validation import (
+    _R6_2_METRICS,
+    _R6_3_WORKLOADS,
+    run_validate_baseline,
+    run_validate_report,
+    validate_baseline,
+    validate_report,
+)
 from ralph.mcp.explore.store import ExploreStore
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
+
+__all__ = (
+    "capture_baseline",
+    "run_capture_baseline",
+    "run_validate_baseline",
+    "run_validate_report",
+    "validate_baseline",
+    "validate_report",
+)
 
 # ---------------------------------------------------------------------------
 # S-8 / S-9 / S-10 baseline + report tooling
@@ -43,46 +62,6 @@ from ralph.workspace.fs import FsWorkspace
 # S-10 before/after report contains every metric with explicit
 # baseline/final/target columns and an explicit
 # ``improved | regression | within-tolerance`` disposition.
-
-_R6_2_METRICS: tuple[str, ...] = (
-    "cold_build_wall_seconds",
-    "cold_build_cpu_seconds",
-    "cold_build_peak_rss_bytes",
-    "cold_build_bytes_read",
-    "cold_build_index_size_bytes",
-    "refresh_1_file_wall_seconds",
-    "refresh_10_files_wall_seconds",
-    "refresh_1_percent_wall_seconds",
-    "refresh_1_file_peak_rss_bytes",
-    "refresh_10_files_peak_rss_bytes",
-    "refresh_1_percent_peak_rss_bytes",
-    "no_op_refresh_wall_seconds",
-    "no_op_refresh_cpu_seconds",
-    "post_git_op_refresh_wall_seconds",
-    "indexed_query_p50_seconds",
-    "indexed_query_p95_seconds",
-    "indexed_query_p99_seconds",
-    "live_query_p50_seconds",
-    "live_query_p95_seconds",
-    "live_query_p99_seconds",
-    "indexed_vs_live_speed_ratio",
-    "agent_added_latency_p95_seconds",
-    "idle_cpu_seconds",
-    "fd_count_steady",
-    "fd_count_peak",
-    "watch_handles_steady",
-    "watch_handles_peak",
-    "recovery_f2_seconds",
-    "recovery_f5_seconds",
-    "recovery_f6_seconds",
-)
-
-_R6_3_WORKLOADS: tuple[str, ...] = (
-    "small",
-    "ralph_self",
-    "large_synthetic",
-    "multi_session",
-)
 
 
 def _empty_baseline_metrics() -> dict[str, float]:
@@ -400,6 +379,26 @@ def _seed_large_synthetic(
     return workspace
 
 
+def _snapshot_initial_inotify_fds() -> frozenset[str]:
+    inherited: set[str] = set()
+    fd_dir = Path("/proc/self/fd")
+    # filesystem-read-ok: check procfs directory existence for inotify snapshot
+    if not fd_dir.is_dir():
+        return frozenset()
+    # filesystem-read-ok: snapshot startup fds to exclude inherited parent inotify instances
+    for entry in fd_dir.iterdir():
+        try:
+            target = entry.readlink()
+        except OSError:
+            continue
+        if "inotify" in str(target):
+            inherited.add(entry.name)
+    return frozenset(inherited)
+
+
+_INITIAL_INOTIFY_FDS: Final[frozenset[str]] = _snapshot_initial_inotify_fds()
+
+
 def _count_proc_fds() -> tuple[float, float]:
     """Return ``(fd_count, inotify_watch_count)`` for this process."""
     fd_dir = Path("/proc/self/fd")
@@ -408,6 +407,8 @@ def _count_proc_fds() -> tuple[float, float]:
     # filesystem-read-ok: count this process's own /proc/self/fd entries; not a workspace tree
     for entry in fd_dir.iterdir():
         fd_count += 1
+        if entry.name in _INITIAL_INOTIFY_FDS:
+            continue
         try:
             target = entry.readlink()
         except OSError:
@@ -671,6 +672,12 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
             "large_synthetic": large_metrics,
             "multi_session": multi_metrics,
         },
+        "workloads": {
+            "small": {"metrics": small_metrics},
+            "ralph_self": {"metrics": ralph_self_metrics},
+            "large_synthetic": {"metrics": large_metrics},
+            "multi_session": {"metrics": multi_metrics},
+        },
     }
     # filesystem-write-ok: benchmark report artifact emission
     output_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
@@ -779,88 +786,6 @@ def measurement_within_target(measured: float, target: float, metric: str) -> bo
     return measured <= ceiling + 1e-9
 
 
-def validate_baseline(baseline_path: Path) -> tuple[str, ...]:
-    """Return one error string per missing metric, empty list = pass."""
-    raw: object = json.loads(baseline_path.read_text())
-    if not isinstance(raw, dict):
-        return ("baseline JSON must be a dict",)
-    raw_dict: dict[object, object] = raw
-    metrics_obj: object = raw_dict.get("metrics")
-    if not isinstance(metrics_obj, dict):
-        return ("baseline JSON must contain a 'metrics' object",)
-    metrics_dict: dict[object, object] = metrics_obj
-    metric_set = set(_R6_2_METRICS)
-    workload_set = set(_R6_3_WORKLOADS)
-    errors: list[str] = []
-    seen_metrics: set[str] = set()
-    for workload_obj, workload_metrics in metrics_dict.items():
-        workload = str(workload_obj)
-        if workload not in workload_set:
-            errors.append(f"unknown workload: {workload}")
-            continue
-        if not isinstance(workload_metrics, dict):
-            errors.append(f"{workload}: metrics must be a dict")
-            continue
-        workload_metrics_dict: dict[object, object] = workload_metrics
-        for metric_obj, value in workload_metrics_dict.items():
-            metric = str(metric_obj)
-            if metric not in metric_set:
-                errors.append(f"{workload}: unknown metric {metric}")
-                continue
-            if not isinstance(value, (int, float)):
-                errors.append(f"{workload}.{metric}: must be numeric")
-                continue
-            seen_metrics.add(metric)
-    missing_metrics = sorted(metric_set - seen_metrics)
-    if missing_metrics:
-        errors.append(f"missing metrics across all workloads: {missing_metrics}")
-    raw_workloads: set[str] = {str(k) for k in metrics_dict}
-    missing_workloads = sorted(workload_set - raw_workloads)
-    if missing_workloads:
-        errors.append(f"missing workloads: {missing_workloads}")
-    return tuple(errors)
-
-
-def validate_report(report_path: Path) -> tuple[str, ...]:
-    """Return one error string per missing metric row, empty = pass."""
-    raw = report_path.read_text()
-    # The report is markdown; we still parse the JSON-ish blocks so the gate
-    # is mechanical. Each metric row must carry baseline/final/target values
-    # and an explicit ``improved | regression | within-tolerance`` disposition.
-    if "| Metric |" not in raw and "| Metric " not in raw:
-        return ("report is missing the canonical metric table header",)
-    errors: list[str] = []
-    # Tokenize table rows.
-    rows: list[str] = []
-    in_table = False
-    for line in raw.splitlines():
-        if not in_table:
-            if line.startswith("| Metric") or line.startswith("|metric"):
-                in_table = True
-                rows.append(line)
-            continue
-        if not line.startswith("|"):
-            in_table = False
-            continue
-        rows.append(line)
-    min_report_table_rows = 2
-    table_header_row_offset = 2
-    required_report_cells = 7
-    disposition_column_index = 6
-    if len(rows) < min_report_table_rows:
-        return ("report is missing the canonical metric table body",)
-    for row in rows[table_header_row_offset:]:
-        cells = [c.strip() for c in row.split("|")]
-        # The canonical schema is | Metric | Workload | Baseline | Final | Target | Disposition |
-        if len(cells) < required_report_cells:
-            errors.append(f"row missing cells (need 7): {row}")
-            continue
-        disposition = cells[disposition_column_index]
-        if disposition not in {"improved", "regression", "within-tolerance"}:
-            errors.append(f"row has invalid disposition {disposition!r}: {row}")
-    return tuple(errors)
-
-
 def run_capture_baseline(output_path: str) -> int:
     """CLI entry: capture the S-8 baseline JSON."""
     baseline = capture_baseline(Path(output_path))
@@ -875,23 +800,134 @@ def run_capture_baseline(output_path: str) -> int:
     return 0
 
 
-def run_validate_baseline(baseline_path: str) -> int:
-    """CLI entry: validate the S-8 baseline JSON."""
-    failures = validate_baseline(Path(baseline_path))
-    if failures:
-        for failure in failures:
-            print(f"FAIL: {failure}", file=sys.stderr)
-        return 1
-    print(f"OK: {baseline_path}")
-    return 0
+_WORKLOAD_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "synthetic-large": "large_synthetic",
+        "synthetic_large": "large_synthetic",
+        "large-synthetic": "large_synthetic",
+        "multi-session": "multi_session",
+    }
+)
 
 
-def run_validate_report(report_path: str) -> int:
-    """CLI entry: validate the S-10 before/after report."""
-    failures = validate_report(Path(report_path))
-    if failures:
-        for failure in failures:
-            print(f"FAIL: {failure}", file=sys.stderr)
-        return 1
-    print(f"OK: {report_path}")
-    return 0
+class _BenchArgs(argparse.Namespace):
+    workloads: str
+    out: str | None
+    capture_baseline: str | None
+    validate_baseline: str | None
+    validate_report: str | None
+    list_workloads: bool
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    sanitize_process_environment()
+    """Module-level CLI for ``python -m ralph.mcp.explore._bench_r6_metrics``.
+
+    S-8 (wt-11) wires the missing CLI surface so the verify command
+
+        python -m ralph.mcp.explore._bench_r6_metrics \\
+            --workloads small,ralph_self,large_synthetic,multi_session \\
+            --out docs/performance/explore-index-baseline-pre.json
+
+    captures the pre-change baseline. ``--workloads`` filters by
+    R6.3 workload name (default: all four) and ``--out`` writes
+    the canonical baseline JSON. ``--validate-baseline`` and
+    ``--validate-report`` keep the post-capture validators
+    available from this same module.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m ralph.mcp.explore._bench_r6_metrics",
+        description=(
+            "Capture and validate the indexed-explore R6.2 baseline "
+            "and before/after report (wt-11 S-8/S-9/S-10)."
+        ),
+    )
+    parser.add_argument(
+        "--workloads",
+        metavar="LIST",
+        default=",".join(_R6_3_WORKLOADS),
+        help=(
+            "Comma-separated list of R6.3 workload names to capture. "
+            f"Default: {','.join(_R6_3_WORKLOADS)}"
+        ),
+    )
+    parser.add_argument(
+        "--out",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Capture the baseline into PATH. Falls back to "
+            "--capture-baseline when --capture-baseline is also given."
+        ),
+    )
+    parser.add_argument(
+        "--capture-baseline",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Capture the baseline into PATH (alias for --out)."
+        ),
+    )
+    parser.add_argument(
+        "--validate-baseline",
+        metavar="PATH",
+        default=None,
+        help="Validate the canonical R6.2 baseline at PATH.",
+    )
+    parser.add_argument(
+        "--validate-report",
+        metavar="PATH",
+        default=None,
+        help="Validate the S-10 before/after report at PATH.",
+    )
+    parser.add_argument(
+        "--list-workloads",
+        action="store_true",
+        help="Print the R6.3 workload names and exit.",
+    )
+    args = _BenchArgs(
+        workloads=",".join(_R6_3_WORKLOADS),
+        out=None,
+        capture_baseline=None,
+        validate_baseline=None,
+        validate_report=None,
+        list_workloads=False,
+    )
+    parser.parse_args(list(argv) if argv is not None else None, namespace=args)
+    if args.list_workloads:
+        for name in _R6_3_WORKLOADS:
+            print(name)
+        return 0
+    if args.validate_report is not None:
+        return run_validate_report(args.validate_report)
+    if args.validate_baseline is not None:
+        return run_validate_baseline(args.validate_baseline)
+    out_path = args.out or args.capture_baseline
+    if out_path is None:
+        parser.error(
+            "one of --out PATH, --capture-baseline PATH, "
+            "--validate-baseline PATH, --validate-report PATH is required"
+        )
+    # Validate workload names so a typo cannot silently truncate
+    # the captured set.
+    requested = [
+        _WORKLOAD_ALIASES.get(w.strip(), w.strip())
+        for w in args.workloads.split(",")
+        if w.strip()
+    ]
+    unknown = tuple(w for w in requested if w not in _R6_3_WORKLOADS)
+    if unknown:
+        parser.error(
+            f"unknown workload name(s) {list(unknown)!r}; "
+            f"valid names: {list(_R6_3_WORKLOADS)}"
+        )
+    print(
+        f"capture workloads={requested!r} out={out_path!r}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return run_capture_baseline(out_path)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

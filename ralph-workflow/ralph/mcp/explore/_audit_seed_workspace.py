@@ -104,8 +104,9 @@ _SEED_WORKSPACE: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.KEEP,
         rationale=(
             "Phase 1 ships the new tool with a bounded changed/full "
-            "refresh; the schema is compact and stable so no rework is "
-            "required in this slice."
+            "refresh with checkpoint resume and batched transactions, "
+            "dropping redundant content_cache payload BLOBs; the schema is "
+            "compact and stable so no rework is required in this slice."
         ),
         counters=_counters(
             transcript_tokens=128,

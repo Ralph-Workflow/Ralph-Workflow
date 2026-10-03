@@ -130,6 +130,11 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # wt-11 S-9: the scaled full-measurement regression gate is
     # subprocess_e2e and must stay on the default make-test profile.
     "tests/test_explore_perf_regression_gate.py",
+    # wt-11 S-1: cold-start lifecycle regression (E1/E2/E3) is
+    # subprocess_e2e (the stale-handle test must cross a process
+    # boundary to be honest) and must stay on the default
+    # make-test profile so the regression cannot rot silently.
+    "tests/test_explore_cold_start_lifecycle.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

@@ -68,6 +68,19 @@ must not introduce new codes without updating this table.
 
 * **Recovery is automatic.** No failure mode requires the agent or
   user to delete files, run a command, or restart the session.
+* **Background cold build.** When any index-capable tool detects that no
+  committed generation exists, a single-writer background build is
+  scheduled under an advisory file lock (`.agent/ralph-explore/.lock`).
+  The status handler reports `health: "building"` while the background
+  reindex runs.
+* **Checkpoint resume.** Staged builds write in batches of 50 files
+  inside database transactions and persist intermediate progress so
+  an interrupted, killed, or timed-out build resumes from its
+  checkpoint rather than restarting from scratch.
+* **Reader generation refresh.** Active session handles detect when an
+  external process or background builder commits a new generation
+  (on-disk database file swap or `current_generation` bump) and reopen
+  the SQLite connection lazily and fail-open on the next query.
 * **No retry storms.** Recovery attempts use exponential backoff with
   a bounded attempt count; after repeated failures the index is
   marked unhealthy and searches keep serving from live search.
@@ -76,6 +89,9 @@ must not introduce new codes without updating this table.
   indexes. The recovery scheduler writes to a temp DB and atomically
   promotes the result; readers always see a complete generation or
   none.
+* **Throughput and footprint.** Transaction batching across 50 files
+  and eliminating redundant BLOB copies of chunk text yield >=10x
+  cold build wall-clock speedup and >=3x index size reduction.
 * **Truthful status.** `ralph_index_status` reports the current
   health (one of `healthy | building | stale | degraded | unhealthy`),
   the last failure reason, the recovery attempt counter, and the

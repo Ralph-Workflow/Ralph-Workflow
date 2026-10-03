@@ -617,8 +617,10 @@ __all__ = [
     "RecoveryScheduler",
     "advisory_lock_path",
     "build_scheduler",
+    "clear_pending_recovery",
     "clear_persisted_state",
     "enqueue_recovery",
+    "pending_recovery_code",
     "read_persisted_state",
     "release_advisory_lock",
     "run_pending_recovery",
@@ -655,3 +657,19 @@ def clear_persisted_state(workspace_root: Path) -> None:
             path.unlink()
     except OSError:
         pass
+
+
+def pending_recovery_code(workspace_root: Path) -> str | None:
+    """Return the queued recovery fault code for ``workspace_root`` (test seam)."""
+    key = _pending_key(workspace_root)
+    with _PENDING_LOCK:
+        return _PENDING_RECOVERY.get(key)
+
+
+def clear_pending_recovery(workspace_root: Path | None = None) -> None:
+    """Clear queued recovery codes (test seam)."""
+    with _PENDING_LOCK:
+        if workspace_root is None:
+            _PENDING_RECOVERY.clear()
+        else:
+            _PENDING_RECOVERY.pop(_pending_key(workspace_root), None)

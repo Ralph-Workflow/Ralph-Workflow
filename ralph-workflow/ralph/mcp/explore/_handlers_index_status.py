@@ -99,6 +99,25 @@ def handle_ralph_index_status(
     # bounded.
     from ralph.mcp.explore.recovery import build_scheduler
 
+    # S-2 (wt-11): when the probe observes ``cold_index_required`` on
+    # an attached handle, enqueue exactly one bounded recovery so
+    # ``run_pending_recovery`` will drain the queue on the next probe
+    # and the dispatcher will rebuild the index in the background.
+    # The probe itself stays side-effect free at the store level --
+    # only the recovery queue is touched. No retry storm: a second
+    # probe inside the same backoff window coalesces on the existing
+    # queue entry (``enqueue_recovery`` is keyed by workspace).
+    if cold_index_required:
+        from ralph.mcp.explore.recovery import enqueue_recovery
+
+        enqueue_recovery(
+            workspace_root,
+            "no_committed_generation",
+            message="cold_index_required observed by ralph_index_status",
+        )
+    # Re-fetch the scheduler AFTER enqueue_recovery so the
+    # snapshot reflects the BUILDING state set by the
+    # ``no_committed_generation`` branch in ``enqueue_recovery``.
     scheduler = build_scheduler(workspace_root)
     payload["recovery"] = scheduler.snapshot()
     payload["health"] = scheduler.health.value

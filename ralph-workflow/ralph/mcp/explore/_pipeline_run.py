@@ -15,6 +15,7 @@ import os
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Final
 
 from ralph.mcp.explore import pipeline as _pipeline_module
 from ralph.mcp.explore._pipeline_state import (
@@ -28,8 +29,6 @@ from ralph.mcp.explore._pipeline_state import (
 from ralph.mcp.explore.store import (
     DEFAULT_CHUNK_LINES,
     ChunkRow,
-    ContentCacheChunk,
-    ContentCachePayload,
     ContentCacheRow,
     EvidenceRow,
     ExploreStore,
@@ -38,8 +37,6 @@ from ralph.mcp.explore.store import (
     collect_workspace_files,
     derive_chunk_id,
     derive_evidence_id,
-    deserialize_content_cache_payload,
-    serialize_content_cache_payload,
     sha256_text,
 )
 from ralph.mcp.explore.structure import (
@@ -48,6 +45,8 @@ from ralph.mcp.explore.structure import (
 )
 
 logger = logging.getLogger(__name__)
+
+_BATCH_SIZE: Final[int] = 50
 
 
 def _run_reindex(
@@ -91,126 +90,130 @@ def _run_reindex(
 
     seen_paths: set[str] = set()
 
-    for relative_path, (size_bytes, mtime_ns) in sorted(next_manifest.items()):
-        _ensure_deadline(state, now_fn)
-        _check_cancel()
-        seen_paths.add(relative_path)
-        # Ponytail: size+mtime prefilter first. The content hash is
-        # authoritative, but skipping the read+hash for unchanged
-        # files keeps warm no-op refresh work-proportional to the
-        # manifest, not to the workspace bytes.
-        previous = store.get_file(relative_path)
-        if (
-            previous is not None
-            and not previous.is_deleted
-            and previous.size_bytes == size_bytes
-            and previous.mtime_ns == mtime_ns
-            and not _dirty_paths_contain(store, relative_path)
-        ):
-            _update_manifest(
-                store,
-                relative_path,
-                content_hash=previous.content_hash,
-                size_bytes=size_bytes,
-                mtime_ns=mtime_ns,
-                last_seen_generation=target_generation,
-            )
-            continue
+    manifest_items = sorted(next_manifest.items())
+    for batch_start in range(0, len(manifest_items), _BATCH_SIZE):
+        batch = manifest_items[batch_start : batch_start + _BATCH_SIZE]
+        with store.transaction():
+            for relative_path, (size_bytes, mtime_ns) in batch:
+                _ensure_deadline(state, now_fn)
+                _check_cancel()
+                seen_paths.add(relative_path)
+                # Ponytail: size+mtime prefilter first. The content hash is
+                # authoritative, but skipping the read+hash for unchanged
+                # files keeps warm no-op refresh work-proportional to the
+                # manifest, not to the workspace bytes.
+                previous = store.get_file(relative_path)
+                if (
+                    previous is not None
+                    and not previous.is_deleted
+                    and previous.size_bytes == size_bytes
+                    and previous.mtime_ns == mtime_ns
+                    and not _dirty_paths_contain(store, relative_path)
+                ):
+                    _update_manifest(
+                        store,
+                        relative_path,
+                        content_hash=previous.content_hash,
+                        size_bytes=size_bytes,
+                        mtime_ns=mtime_ns,
+                        last_seen_generation=target_generation,
+                    )
+                    continue
 
-        try:
-            content_hash, actual_size, actual_mtime = _pipeline_module.hash_workspace_file(
-                workspace_root, relative_path
-            )
-        except (FileNotFoundError, ValueError):
-            state.failed_paths.append(relative_path)
-            continue
-        except OSError as exc:
-            state.failed_paths.append(relative_path)
-            state.error_summary = f"hash_failed: {exc}"
-            continue
+                try:
+                    content_hash, actual_size, actual_mtime = _pipeline_module.hash_workspace_file(
+                        workspace_root, relative_path
+                    )
+                except (FileNotFoundError, ValueError):
+                    state.failed_paths.append(relative_path)
+                    continue
+                except OSError as exc:
+                    state.failed_paths.append(relative_path)
+                    state.error_summary = f"hash_failed: {exc}"
+                    continue
 
-        if (
-            previous is not None
-            and previous.content_hash == content_hash
-            and not previous.is_deleted
-        ):
-            # No-op reuse; the manifest rows stay.
-            _update_manifest(
-                store,
-                relative_path,
-                content_hash=content_hash,
-                size_bytes=actual_size,
-                mtime_ns=actual_mtime,
-                last_seen_generation=target_generation,
-            )
-            continue
+                if (
+                    previous is not None
+                    and previous.content_hash == content_hash
+                    and not previous.is_deleted
+                ):
+                    # No-op reuse; the manifest rows stay.
+                    _update_manifest(
+                        store,
+                        relative_path,
+                        content_hash=content_hash,
+                        size_bytes=actual_size,
+                        mtime_ns=actual_mtime,
+                        last_seen_generation=target_generation,
+                    )
+                    continue
 
-        # Either new file or content changed. Phase 1 supports diff
-        # content with same path (the deletion happens before the
-        # insert in upsert_chunks_for_file).
-        try:
-            _re_extract_path(
-                store,
-                workspace_root=workspace_root,
-                relative_path=relative_path,
-                content_hash=content_hash,
-                size_bytes=actual_size,
-                mtime_ns=actual_mtime,
-                generation=target_generation,
-                structure_extractor=options.structure_extractor,
-            )
-        except PythonExtractionError as exc:
-            # PA-001 / AC-02: the typed structure-extraction failure
-            # is translated to the same per-path failure path as
-            # any other FileReadError. Prior lexical/structure
-            # rows are preserved (the preflight refused to write),
-            # the path stays dirty, and the loop continues.
-            state.failed_paths.append(relative_path)
-            state.error_summary = f"extract_failed:python_syntax: {exc}"
-            continue
-        except FileReadError as exc:
-            state.failed_paths.append(relative_path)
-            state.error_summary = f"extract_failed: {exc}"
-            # AC-15: write both the manifest row AND the files row
-            # for F15 hard files (binary, invalid-encoding,
-            # oversize, unreadable, etc.) so the staleness probe
-            # recognises the path as a known hard file (not a new
-            # unindexed file) and does not spuriously fall through
-            # on the next query. The files row is upserted with
-            # ``is_deleted=0`` and the current content hash so the
-            # FTS5 search cannot serve matches from the file while
-            # the next rebuild still has the same bytes.
-            _update_manifest(
-                store,
-                relative_path,
-                content_hash=content_hash,
-                size_bytes=actual_size,
-                mtime_ns=actual_mtime,
-                last_seen_generation=target_generation,
-            )
-            store.upsert_file(
-                FileRow(
-                    path=relative_path,
+                # Either new file or content changed. Phase 1 supports diff
+                # content with same path (the deletion happens before the
+                # insert in upsert_chunks_for_file).
+                try:
+                    _re_extract_path(
+                        store,
+                        workspace_root=workspace_root,
+                        relative_path=relative_path,
+                        content_hash=content_hash,
+                        size_bytes=actual_size,
+                        mtime_ns=actual_mtime,
+                        generation=target_generation,
+                        structure_extractor=options.structure_extractor,
+                    )
+                except PythonExtractionError as exc:
+                    # PA-001 / AC-02: the typed structure-extraction failure
+                    # is translated to the same per-path failure path as
+                    # any other FileReadError. Prior lexical/structure
+                    # rows are preserved (the preflight refused to write),
+                    # the path stays dirty, and the loop continues.
+                    state.failed_paths.append(relative_path)
+                    state.error_summary = f"extract_failed:python_syntax: {exc}"
+                    continue
+                except FileReadError as exc:
+                    state.failed_paths.append(relative_path)
+                    state.error_summary = f"extract_failed: {exc}"
+                    # AC-15: write both the manifest row AND the files row
+                    # for F15 hard files (binary, invalid-encoding,
+                    # oversize, unreadable, etc.) so the staleness probe
+                    # recognises the path as a known hard file (not a new
+                    # unindexed file) and does not spuriously fall through
+                    # on the next query. The files row is upserted with
+                    # ``is_deleted=0`` and the current content hash so the
+                    # FTS5 search cannot serve matches from the file while
+                    # the next rebuild still has the same bytes.
+                    _update_manifest(
+                        store,
+                        relative_path,
+                        content_hash=content_hash,
+                        size_bytes=actual_size,
+                        mtime_ns=actual_mtime,
+                        last_seen_generation=target_generation,
+                    )
+                    store.upsert_file(
+                        FileRow(
+                            path=relative_path,
+                            content_hash=content_hash,
+                            size_bytes=actual_size,
+                            mtime_ns=actual_mtime,
+                            language=None,
+                            indexed_generation=target_generation,
+                            indexed_at=time.time(),
+                            is_deleted=False,
+                        )
+                    )
+                    continue
+                state.parse_count += 1
+                state.changed_paths.append(relative_path)
+                _update_manifest(
+                    store,
+                    relative_path,
                     content_hash=content_hash,
                     size_bytes=actual_size,
                     mtime_ns=actual_mtime,
-                    language=None,
-                    indexed_generation=target_generation,
-                    indexed_at=time.time(),
-                    is_deleted=False,
+                    last_seen_generation=target_generation,
                 )
-            )
-            continue
-        state.parse_count += 1
-        state.changed_paths.append(relative_path)
-        _update_manifest(
-            store,
-            relative_path,
-            content_hash=content_hash,
-            size_bytes=actual_size,
-            mtime_ns=actual_mtime,
-            last_seen_generation=target_generation,
-        )
 
     # Mark deleted paths. AC-05/AC-06: a removed file must drop its
     # chunks, FTS rows, evidence, spans, symbols, and edges so graph
@@ -221,53 +224,57 @@ def _run_reindex(
     # per-path rows. The file row is recorded as is_deleted=1 for
     # diagnostics; a subsequent reindex that finds the file again
     # will replace the rows and clear the is_deleted flag.
-    for existing in list(store.iter_files()):
-        _ensure_deadline(state, now_fn)
-        _check_cancel()
-        if existing.path not in seen_paths and existing.path not in path_scope:
-            # File is no longer on disk.
-            store.record_tombstone(
-                evidence_id=derive_evidence_id(
-                    path=existing.path,
-                    content_hash=existing.content_hash,
-                    start_line=0,
-                    end_line=0,
-                    kind="path_tombstone",
-                    extractor_version=EXTRACTOR_VERSION,
-                ),
-                path=existing.path,
-                start_line=0,
-                end_line=0,
-                content_hash=existing.content_hash,
-                generation=existing.indexed_generation,
-                stale_reason="file_deleted",
-                stale_at=now_fn(),
-                replacement_evidence_id=None,
-            )
-            store.delete_chunks_for_path(existing.path)
-            # delete_file_rows removes files/chunks/chunks_fts/evidence
-            # for the path; we still need to drop structure rows
-            # (spans, symbols, edges) and re-mark the file row as
-            # is_deleted for diagnostics.
-            store.replace_structure_rows(
-                path=existing.path,
-                spans=(),
-                symbols=(),
-                edges=(),
-            )
-            store.delete_file_rows(existing.path)
-            store.upsert_file(
-                FileRow(
-                    path=existing.path,
-                    content_hash=existing.content_hash,
-                    size_bytes=existing.size_bytes,
-                    mtime_ns=existing.mtime_ns,
-                    language=existing.language,
-                    indexed_generation=target_generation,
-                    indexed_at=now_fn(),
-                    is_deleted=True,
-                )
-            )
+    existing_files = list(store.iter_files())
+    for batch_start in range(0, len(existing_files), _BATCH_SIZE):
+        batch_existing = existing_files[batch_start : batch_start + _BATCH_SIZE]
+        with store.transaction():
+            for existing in batch_existing:
+                _ensure_deadline(state, now_fn)
+                _check_cancel()
+                if existing.path not in seen_paths and existing.path not in path_scope:
+                    # File is no longer on disk.
+                    store.record_tombstone(
+                        evidence_id=derive_evidence_id(
+                            path=existing.path,
+                            content_hash=existing.content_hash,
+                            start_line=0,
+                            end_line=0,
+                            kind="path_tombstone",
+                            extractor_version=EXTRACTOR_VERSION,
+                        ),
+                        path=existing.path,
+                        start_line=0,
+                        end_line=0,
+                        content_hash=existing.content_hash,
+                        generation=existing.indexed_generation,
+                        stale_reason="file_deleted",
+                        stale_at=now_fn(),
+                        replacement_evidence_id=None,
+                    )
+                    store.delete_chunks_for_path(existing.path)
+                    # delete_file_rows removes files/chunks/chunks_fts/evidence
+                    # for the path; we still need to drop structure rows
+                    # (spans, symbols, edges) and re-mark the file row as
+                    # is_deleted for diagnostics.
+                    store.replace_structure_rows(
+                        path=existing.path,
+                        spans=(),
+                        symbols=(),
+                        edges=(),
+                    )
+                    store.delete_file_rows(existing.path)
+                    store.upsert_file(
+                        FileRow(
+                            path=existing.path,
+                            content_hash=existing.content_hash,
+                            size_bytes=existing.size_bytes,
+                            mtime_ns=existing.mtime_ns,
+                            language=existing.language,
+                            indexed_generation=target_generation,
+                            indexed_at=now_fn(),
+                            is_deleted=True,
+                        )
+                    )
 
     store.set_setting("current_generation", str(target_generation))
     # AC-05/AC-06: persist the schema/extractor versions so a future
@@ -421,17 +428,6 @@ def _re_extract_path(
     if not is_relative:
         raise FileReadError(f"path escapes workspace: {relative_path!r}")
 
-    # --- Content-cache lookup. AC-05: a cache hit skips the
-    # ``chunk_text`` build because the cached payload already
-    # carries every (start_line, end_line, text_hash) tuple.
-    # File text is still read so ``extract_structure`` and any
-    # structure rows can be re-derived for the new path
-    # (path-derived ids and qualified_name depend on the path,
-    # even when the file contents are identical). Saving only the
-    # ``chunk_text`` + ``sha256_text`` work keeps the cache
-    # path-neutral while still preserving structure correctness.
-    cached_payload: ContentCachePayload | None = _maybe_load_cached_payload(store, content_hash)
-
     # --- Preflight phase: read + decode + build lexical + structure.
     # These calls happen BEFORE any destructive write so a failure
     # (malformed Python, OS read error, OOM) preserves every
@@ -453,19 +449,10 @@ def _re_extract_path(
         raise FileReadError(
             f"invalid utf-8 encoding: {relative_path!r} at byte {exc.start}"
         ) from exc
-    prepared_chunks: list[tuple[int, int, str]]
-    extracted_at: float
-    if cached_payload is not None:
-        # Cache hit: reuse the chunk coordinates but rebuild the
-        # chunk rows with path-derived ids; this also keeps the
-        # ``chunks_fts`` text fresh for the new path.
-        prepared_chunks = [
-            (chunk.start_line, chunk.end_line, chunk.text) for chunk in cached_payload.chunks
-        ]
-        extracted_at = time.time()
-    else:
-        prepared_chunks = list(chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES))
-        extracted_at = time.time()
+    prepared_chunks: list[tuple[int, int, str]] = list(
+        chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
+    )
+    extracted_at: float = time.time()
     # ``extract_structure`` raises ``PythonSyntaxError`` for
     # malformed Python; the typed exception propagates so the
     # caller fails-closed without losing prior rows. Structure is
@@ -579,97 +566,20 @@ def _re_extract_path(
             edges=prepared_extraction.edges,
         )
 
-    # AC-05: repopulate the content cache when we performed fresh
-    # lexical work. Cache hits do not need to rewrite the cache
-    # because the row was already written by the prior extraction
-    # that populated it. The repopulation step is best-effort: if
-    # the cache write raises, we log and continue because the
-    # chunk/evidence rows are already persisted.
-    if cached_payload is None:
-        try:
-            _write_cached_payload(
-                store,
+    # AC-05: update content cache metadata for the fresh extraction.
+    try:
+        store.insert_content_cache(
+            row=ContentCacheRow(
                 content_hash=content_hash,
                 language=_detect_language(relative_path),
-                prepared_chunks=prepared_chunks,
+                extractor_version=EXTRACTOR_VERSION,
                 extracted_at=extracted_at,
-            )
-        except Exception:  # bounded: cache writes never block reindex
-            logger.warning("content_cache write failed for %s", relative_path)
-
-
-def _maybe_load_cached_payload(
-    store: ExploreStore,
-    content_hash: str,
-) -> ContentCachePayload | None:
-    """Return a deserialized cache payload or ``None`` on miss/invalid.
-
-    AC-05: a cache hit only counts when ``EXTRACTOR_VERSION`` is
-    current. Stale-version hits return ``None`` so the pipeline
-    re-extracts instead of trusting an obsolete schema. Malformed
-    payloads are dropped and treated as cache misses so a corrupt
-    row cannot poison subsequent reindexes.
-    """
-    row: ContentCacheRow | None = store.lookup_content_cache(
-        content_hash=content_hash,
-        extractor_version=EXTRACTOR_VERSION,
-    )
-    if row is None:
-        return None
-    blob = store.read_content_cache_payload(content_hash=content_hash)
-    if blob is None:
-        return None
-    try:
-        return deserialize_content_cache_payload(blob)
-    except ValueError:
-        return None
-
-
-def _write_cached_payload(
-    store: ExploreStore,
-    *,
-    content_hash: str,
-    language: str | None,
-    prepared_chunks: list[tuple[int, int, str]],
-    extracted_at: float,
-) -> None:
-    """Insert or refresh the content cache for ``content_hash``.
-
-    Builds a fresh :class:`ContentCachePayload` from the freshly
-    chunked text and serializes it into a deterministic JSON BLOB.
-    The chunk ``text_hash`` is the same ``sha256_text`` the
-    pipeline computes for the ``chunks`` table, so the cache row
-    is interchangeable with the live ``chunks`` rows without an
-    extra hash recompute.
-    """
-    cache_chunks: list[ContentCacheChunk] = []
-    for start_line, end_line, body in prepared_chunks:
-        cache_chunks.append(
-            ContentCacheChunk(
-                start_line=start_line,
-                end_line=end_line,
-                text_hash=sha256_text(body),
-                text=body,
-                role="body",
+                extraction_status="ok",
+                error_summary=None,
             )
         )
-    payload = ContentCachePayload(
-        content_hash=content_hash,
-        extractor_version=EXTRACTOR_VERSION,
-        chunks=tuple(cache_chunks),
-    )
-    blob = serialize_content_cache_payload(payload)
-    store.insert_content_cache(
-        row=ContentCacheRow(
-            content_hash=content_hash,
-            language=language,
-            extractor_version=EXTRACTOR_VERSION,
-            extracted_at=extracted_at,
-            extraction_status="ok",
-            error_summary=None,
-        ),
-        payload=blob,
-    )
+    except Exception:  # bounded: cache writes never block reindex
+        logger.warning("content_cache write failed for %s", relative_path)
 
 
 def _detect_language(path: str) -> str | None:
