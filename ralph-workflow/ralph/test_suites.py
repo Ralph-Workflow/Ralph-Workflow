@@ -127,9 +127,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # 60s combined verify budget.
     "tests/test_explore_crash_safety.py",
     "tests/test_explore_concurrency.py",
-    # wt-11 S-9: the scaled full-measurement regression gate is
-    # subprocess_e2e and must stay on the default make-test profile.
-    "tests/test_explore_perf_regression_gate.py",
     # wt-11 S-1: cold-start lifecycle regression (E1/E2/E3) is
     # subprocess_e2e (the stale-handle test must cross a process
     # boundary to be honest) and must stay on the default

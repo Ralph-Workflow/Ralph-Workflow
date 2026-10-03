@@ -46,22 +46,13 @@ __all__ = (
 # ---------------------------------------------------------------------------
 # S-8 / S-9 / S-10 baseline + report tooling
 # ---------------------------------------------------------------------------
-#
-# The PRODUCT_CRITERIA.md R6 metrics demand a baseline JSON committed to the
-# repository before any behaviour change, with measured values for every
-# R6.2 metric on every R6.3 workload. The measurement is split into:
-#
-# 1. small fixture (Q1/Q2/Q3 fixture content) - in-budget
-# 2. ralph-self (the working ralph-workflow tree) - measured at module scope
-# 3. large-synthetic (scaled-down tens-of-thousands-of-files corpus) - in-budget scaled
-# 4. multi-session (sequential sessions sharing the same workspace) - in-budget scaled
-#
-# ``capture_baseline`` produces the S-8 baseline JSON. The validator
-# ``validate_baseline`` mechanically checks every R6.2 metric x R6.3
-# workload is present with a measured value. ``validate_report`` checks the
-# S-10 before/after report contains every metric with explicit
-# baseline/final/target columns and an explicit
-# ``improved | regression | within-tolerance`` disposition.
+# R6 metrics demand a baseline JSON committed before any behaviour change
+# with measured values for every R6.2 metric on every R6.3 workload. The
+# workloads are: small fixture, ralph-self (working tree), large-synthetic
+# (scaled), multi-session. ``capture_baseline`` produces the S-8 JSON;
+# ``validate_baseline`` mechanically checks every metric x workload is
+# present. ``validate_report`` checks the S-10 before/after report has
+# baseline/final/target columns and an explicit disposition.
 
 
 def _empty_baseline_metrics() -> dict[str, float]:
@@ -154,29 +145,24 @@ def measure_cold_build(
         "TIMEOUT_MS = 120_000",
         "",
         "def _peak_rss_kb():",
-        "    # /proc/self/status VmHWM is the per-process peak RSS in",
-        "    # kB. ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` is",
-        "    # unreliable here: on Linux it can report the parent's",
-        "    # RSS at fork (observed under memory pressure), so the",
-        "    # subprocess shows the parent's working-set at start.",
+        "    # /proc/self/status VmHWM is the per-process peak RSS in kB;",
+        "    # ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` is unreliable here",
+        "    # (Linux can report the parent's RSS at fork under memory pressure).",
         "    with open('/proc/self/status') as _f:",
         "        for _line in _f:",
         "            if _line.startswith('VmHWM:'):",
         "                return int(_line.split()[1])",
         "    return 0",
         "",
-        "# Warm-up pass: amortise FTS5 / page-cache start-up.",
         "if WARMUP_DIR.exists():",
         "    shutil.rmtree(WARMUP_DIR, ignore_errors=True)",
         "_wu_store = ExploreStore(WARMUP_DIR)",
         "try:",
         "    reindex(_wu_store, WORKSPACE, options=ReindexOptions(",
-        "        mode='full', timeout_ms=TIMEOUT_MS,",
-        "    ))",
+        "        mode='full', timeout_ms=TIMEOUT_MS))",
         "finally:",
         "    _wu_store.close()",
         "",
-        "# Measured cold build: empty index directory, full reindex.",
         "if INDEX_DIR.exists():",
         "    shutil.rmtree(INDEX_DIR, ignore_errors=True)",
         "store = ExploreStore(INDEX_DIR)",
@@ -184,32 +170,29 @@ def measure_cold_build(
         "    start_wall = time.monotonic()",
         "    start_cpu = time.process_time()",
         "    reindex(store, WORKSPACE, options=ReindexOptions(",
-        "        mode='full', timeout_ms=TIMEOUT_MS,",
-        "    ))",
+        "        mode='full', timeout_ms=TIMEOUT_MS))",
         "    elapsed_cpu = time.process_time() - start_cpu",
         "    elapsed_wall = time.monotonic() - start_wall",
         "    index_size = store.index_storage_bytes()",
         "    files_read = sum(",
-        "        p.stat().st_size for p in WORKSPACE.rglob('*') if p.is_file()",
-        "    )",
+        "        p.stat().st_size for p in WORKSPACE.rglob('*') if p.is_file())",
         "    peak_rss = float(_peak_rss_kb()) * 1024.0",
         "    print(json.dumps({",
-        "        'wall': elapsed_wall,",
-        "        'cpu': elapsed_cpu,",
-        "        'peak_rss': peak_rss,",
-        "        'index_size': index_size,",
-        "        'files_read': files_read,",
-        "    }))",
+        "        'wall': elapsed_wall, 'cpu': elapsed_cpu,",
+        "        'peak_rss': peak_rss, 'index_size': index_size,",
+        "        'files_read': files_read}))",
         "finally:",
         "    store.close()",
     ]
     combined_script = "\n".join(combined_script_lines)
-    # mcp-timeout-ok: subprocess bounded by timeout; benchmark build is the
-    # workload, the deadline is the wall budget.
-    # resource-lifecycle-ok: short-lived benchmark subprocess; the parent
-    # blocks on .run()'s timeout so the child cannot outlive the call, no
-    # fd or process leaks across the harness.
-    proc = subprocess.run(  # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks on .run()'s timeout so the child cannot outlive the call, no fd or process leaks across the harness.  # filesystem-poll-ok: same short-lived subprocess; the parent blocks on the bounded timeout, so this is not a poll loop.
+    # mcp-timeout-ok / resource-lifecycle-ok / filesystem-poll-ok:
+    # the parent blocks on the bounded timeout so the child cannot outlive
+    # the call and no fd / process leaks cross the harness boundary.
+    # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks
+    # on .run()'s timeout so the child cannot outlive the call.
+    # filesystem-poll-ok: same short-lived subprocess; the parent blocks on
+    # the bounded timeout, so this is not a poll loop.
+    proc = subprocess.run(  # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks on the bounded timeout, so this is not a poll loop.  # filesystem-poll-ok: same short-lived subprocess; the parent blocks on the bounded timeout, so this is not a poll loop.
         [sys.executable, "-c", combined_script],
         capture_output=True,
         text=True,
@@ -715,22 +698,23 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
     workspace.parent.mkdir(parents=True, exist_ok=True)
     source = _ralph_workflow_source()
     # filesystem-write-ok: transient scratch directory for benchmark seeding
+    # The local ``_ignore`` typed wrapper accepts the strict mypy
+    # ``disallow_any_expr`` config that ``shutil.ignore_patterns`` violates
+    # by virtue of carrying no public type annotations.
+    def _ignore(path: str, names: list[str]) -> set[str]:
+        import fnmatch as _fnmatch
+        ignored: set[str] = set()
+        for pat in (".venv", ".pytest_cache", ".mypy_cache", "__pycache__",
+                    "node_modules", ".git", "build", "dist", "*.pyc",
+                    ".agent", "tmp"):
+            ignored.update(_fnmatch.filter(names, pat))
+        return ignored
+
+    # filesystem-write-ok: transient scratch directory for benchmark seeding
     shutil.copytree(
         source,
         workspace,
-        ignore=shutil.ignore_patterns(
-            ".venv",
-            ".pytest_cache",
-            ".mypy_cache",
-            "__pycache__",
-            "node_modules",
-            ".git",
-            "build",
-            "dist",
-            "*.pyc",
-            ".agent",
-            "tmp",
-        ),
+        ignore=_ignore,
         symlinks=False,
         dirs_exist_ok=False,
     )
@@ -740,20 +724,12 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
 def _ralph_workflow_source() -> Path:
     """Locate the real ralph-workflow checkout the capture should measure.
 
-    Resolution order:
-
-    1. ``RALPH_WORKFLOW_BENCH_SOURCE`` (absolute path) when set.
-    2. The ``ralph-workflow/`` directory adjacent to the project
-       root (``Path(__file__).resolve().parents[4]``) when present.
-       ``parents[4]`` is the project root containing both the
-       ``ralph-workflow/`` package and the ``.agent/`` workspace
-       index; ``parents[3]`` is the package itself.
-    3. The ralph-workflow package itself
-       (``Path(__file__).resolve().parents[3]``) when present.
-    4. ``Path.cwd() / 'ralph-workflow'`` when present.
-
-    Raises ``FileNotFoundError`` when no source is found so the
-    capture fails loudly instead of silently measuring a stub.
+    Resolution order: ``RALPH_WORKFLOW_BENCH_SOURCE`` env var when set,
+    the ``ralph-workflow/`` directory adjacent to the project root
+    (``parents[4]``), the package itself (``parents[3]``), or
+    ``cwd/ralph-workflow``. Raises ``FileNotFoundError`` when no
+    source is found so the capture fails loudly instead of silently
+    measuring a stub.
     """
     from os import getenv
 
