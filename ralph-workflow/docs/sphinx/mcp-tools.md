@@ -404,6 +404,25 @@ Every successful `write_file`, `edit_file`, `append_file`, `move_file`, `copy_fi
 
 Every indexed response includes `index_used`, `index_generation`, `is_stale`, `stale_paths_count`, `dirty_paths_count`, `fallback_reason`. When `index_used=false`, the response came from live behavior; the caller can decide whether to retry.
 
+`fallback_reason` carries one of the canonical reason codes defined in `docs/agents/explore-index-fault-matrix.md` (`no_committed_generation`, `version_mismatch`, `index_corrupt`, `interrupted_build`, `index_locked`, `index_unwritable`, `index_read_only`, `index_stale_scope`, `ignore_rule_changed`, `hard_file_skipped`, `pattern_not_fts_eligible`, `timeout_exceeded`, `indexer_error`, `resource_pressure`, `workspace_moved`, `no_index_handle`). Each reason code identifies exactly one failure mode so the caller can route recovery (or refuse to retry) deterministically. The reason code is `None` when `index_used=true`; any other value is a closed set the server validates at the response boundary.
+
+The freshness/staleness block also reports `stale_paths_count`, `last_refresh_age` (seconds since the most recent committed generation), and `recovery_willfallback` (the soft signal the freshness guard will fall through on the next query in this scope). The default staleness threshold (5% of the indexed file count) is documented in `ralph/mcp/explore/serving.py:DEFAULT_STALENESS_THRESHOLD` and in the fault matrix; raising it requires updating both the constant and the docs together.
+
+### Health, fallback, and recovery semantics
+
+* **Health states.** `ralph_index_status` reports one of `healthy | building | stale | degraded | unhealthy`. `healthy` means the index is committed and within the staleness threshold; `building` means a reindex is in progress; `stale` means the index is committed with at least one hard failure recorded; `degraded` means the index is readable but a writer-side fault prevents updates (e.g. F10 read-only mount); `unhealthy` means repeated indexer errors after the bounded retry budget exhausted.
+* **Fallback behavior.** Every index-capable tool falls through to the live path in `auto` mode whenever the index cannot serve the query. `use_index="always"` fails closed with a structured error carrying the canonical reason code so the caller can decide whether to recover, switch modes, or surface the degradation to the user. The fallback is silent in `auto` (the response still carries the reason code for audit) and explicit in `always`.
+* **Recovery.** The recovery scheduler drives every F1–F20 fault mode in `ralph/mcp/explore/recovery.py`. Recovery is bounded by exponential backoff with a finite attempt cap; after the cap, the scheduler marks the index `unhealthy` and continues serving from the live path. The status handler reports `recovery_attempts`, `next_recovery_at`, and the most recent failure code so callers can predict when the next attempt will fire. No failure mode in the fault matrix requires the agent or user to delete files, run a command, or restart the session.
+
+### Resource guarantees
+
+* The explore index never holds long-lived OS watch handles (inotify watches or instances) that grow with repository size; the freshness probe is bounded by `workspace_root` and never fans out a watcher. Steady-state open file descriptors are bounded by the SQLite connection count, and the recovery scheduler releases every handle on failure paths (verified in `tests/test_explore_resource_lifecycle.py` and `tests/test_explore_crash_safety.py`).
+* Disk usage is bounded: job history caps at 100 jobs / 14 days, evidence tombstones at 10k / 30 days, and old generations + temporary files are cleaned after every successful or failed build. The index directory is disposable (deleting it forces a cold rebuild) and is git-ignored via the parent `.agent/` rule seeded by `ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS`.
+
+### Performance targets
+
+Performance is measured against committed baselines in `docs/performance/explore-index-baseline.json` and bounded by targets in `docs/performance/explore-index-targets.json`. The regression gate is wired into `tests/test_explore_perf_regression_gate.py` and `tests/test_explore_bench_gates.py`; it fails the build when a metric drifts past the documented tolerance. The before/after report (`docs/performance/explore-index-report.md`) covers every R6.2 metric × R6.3 workload pair.
+
 ### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
 
 * Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/`. The bootstrap seeder appends both the parent `.agent/` rule and the explicit `.agent/ralph-explore/` child rule so the disposable cache coverage is reported transparently in `.gitignore`.

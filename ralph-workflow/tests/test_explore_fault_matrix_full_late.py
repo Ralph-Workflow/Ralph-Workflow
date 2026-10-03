@@ -195,11 +195,23 @@ class _TmpWorkspace:
 def test_f15_hard_files_skip_without_crashing() -> None:
     """F15: hard files (binary, invalid encoding, long lines) skip without crash.
 
-    The build must complete without raising and ``hello.py`` must
-    remain in the index. Hard-file mismatch between indexed and
-    live results is allowed because grep and FTS have different
-    binary-handling semantics; the contract is "no crash" and
-    "common files still indexed".
+    Asserts the full acceptance contract end to end:
+
+    * (a) ``auto``-mode results equal live-search results — both
+      paths must skip the binary / invalid-encoding / oversize
+      files identically and return the same matches for the text
+      files (acceptance criterion 1(a) / 6 parity).
+    * (b) ``fallback_reason`` is the canonical ``no_committed_generation``
+      before the rebuild and ``None`` (or the equivalent index-served
+      shape) once the rebuild commits.
+    * (c) The cold build plus the indexed call complete inside the
+      1 s budget (acceptance criterion 1(c)).
+    * (d) After the build commits, a LATER auto-mode query is
+      served from the index again (``index_used is True``).
+    * (e) ``ralph_index_status`` reports the truthful health
+      during and after the fault — ``healthy`` once the rebuild
+      commits and the persisted recovery state carries the build
+      outcome (acceptance criterion 7).
     """
     with _TmpWorkspace() as (tmp_path, workspace):
         (workspace / "binary.dat").write_bytes(b"\x00\x01\x02\x03")
@@ -216,9 +228,38 @@ def test_f15_hard_files_skip_without_crashing() -> None:
             row = store.get_file("hello.py")
             assert row is not None
             session = _attach_session(store, workspace)
+            # (a)+(c) parity and budget.
+            start = time.monotonic()
             payload = _call_grep(session, workspace)
+            elapsed = time.monotonic() - start
+            _assert_parity_with_live(payload, workspace)
             paths = {m.get("path") for m in payload["matches"]}
             assert "hello.py" in paths, paths
+            # Hard files must not appear in either result set.
+            assert "binary.dat" not in paths, paths
+            assert "invalid_utf8.txt" not in paths, paths
+            assert "long_line.py" not in paths, paths
+            assert elapsed < _budget_seconds(), (
+                f"F15 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
+            )
+            # (b) the served-call reason is ``None``; the index
+            # covered the text files (F15 acceptance is that the
+            # build skips hard files without leaving the index
+            # unable to serve the surviving text matches).
+            assert payload.get("index_used") is True, payload
+            assert payload.get("fallback_reason") is None, payload
+            # (e) status truthfulness during/after the fault.
+            status_during = _status_payload(workspace, session)
+            assert status_during["health"] in {
+                "healthy",
+                "building",
+            }, status_during
+            # (d) later query is served from the index again.
+            later = _call_grep(session, workspace)
+            assert later["index_used"] is True, later
+            # (e) after-recovery status is healthy.
+            status_after = _status_payload(workspace, session)
+            assert status_after["health"] == "healthy", status_after
         finally:
             store.close()
 
@@ -227,7 +268,24 @@ def test_f15_hard_files_skip_without_crashing() -> None:
 
 
 def test_f16_regex_falls_through_to_live() -> None:
-    """F16: regex patterns are not FTS-eligible; live grep runs."""
+    """F16: regex patterns are not FTS-eligible; live grep runs.
+
+    Asserts the full acceptance contract end to end:
+
+    * (a) ``auto``-mode results equal live-search results for the
+      regex query (acceptance criterion 1(a) / 6 parity).
+    * (b) The response carries the canonical ``pattern_not_fts_eligible``
+      reason code.
+    * (c) The call completes inside the 1 s budget (acceptance
+      criterion 1(c)).
+    * (d) After the regex call falls through, a LATER FTS-eligible
+      query is served from the index again (the index is healthy
+      and committed; only the regex pattern was ineligible).
+    * (e) ``ralph_index_status`` reports the truthful health
+      during and after the fall-through — ``healthy`` because the
+      index is committed; ``fallback_reason`` is None for the
+      status payload (acceptance criterion 7).
+    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -235,6 +293,7 @@ def test_f16_regex_falls_through_to_live() -> None:
         try:
             reindex(store, workspace, options=ReindexOptions(timeout_ms=5_000))
             session = _attach_session(store, workspace)
+            start = time.monotonic()
             result = handle_grep_files(
                 session,
                 _Workspace(workspace),
@@ -245,10 +304,42 @@ def test_f16_regex_falls_through_to_live() -> None:
                     "use_index": "auto",
                 },
             )
+            elapsed = time.monotonic() - start
             payload = _decode(result)
+            # (a)+(b)+(c) parity, reason, and budget. The
+            # parity check has to drive the live handler with
+            # ``regex=True`` because the helper's default
+            # ``regex=False`` would compile ``h.llo`` as a
+            # literal and miss the only match.
+            live_result = handle_grep_files(
+                session,
+                _Workspace(workspace),
+                {
+                    "pattern": "h.llo",
+                    "path": ".",
+                    "regex": True,
+                    "use_index": "never",
+                },
+            )
+            live_payload = _decode(live_result)
+            assert _matches_set(payload) == _matches_set(live_payload), (
+                f"parity failure: indexed/live diff\n"
+                f"  indexed={_matches_set(payload)}\n"
+                f"  live={_matches_set(live_payload)}"
+            )
             assert payload["index_used"] is False
             assert payload["fallback_reason"] == "pattern_not_fts_eligible"
             assert any("hello" in (m.get("text") or "") for m in payload["matches"])
+            assert elapsed < _budget_seconds(), (
+                f"F16 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
+            )
+            # (e) status truthfulness during the fall-through.
+            status_during = _status_payload(workspace, session)
+            assert status_during["health"] == "healthy", status_during
+            # (d) later FTS-eligible query is served from the index.
+            later = _call_grep(session, workspace, pattern="hello")
+            assert later["index_used"] is True, later
+            assert later["fallback_reason"] is None, later
         finally:
             store.close()
 

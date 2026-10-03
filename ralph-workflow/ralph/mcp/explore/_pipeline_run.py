@@ -171,6 +171,35 @@ def _run_reindex(
         except FileReadError as exc:
             state.failed_paths.append(relative_path)
             state.error_summary = f"extract_failed: {exc}"
+            # AC-15: write both the manifest row AND the files row
+            # for F15 hard files (binary, invalid-encoding,
+            # oversize, unreadable, etc.) so the staleness probe
+            # recognises the path as a known hard file (not a new
+            # unindexed file) and does not spuriously fall through
+            # on the next query. The files row is upserted with
+            # ``is_deleted=0`` and the current content hash so the
+            # FTS5 search cannot serve matches from the file while
+            # the next rebuild still has the same bytes.
+            _update_manifest(
+                store,
+                relative_path,
+                content_hash=content_hash,
+                size_bytes=actual_size,
+                mtime_ns=actual_mtime,
+                last_seen_generation=target_generation,
+            )
+            store.upsert_file(
+                FileRow(
+                    path=relative_path,
+                    content_hash=content_hash,
+                    size_bytes=actual_size,
+                    mtime_ns=actual_mtime,
+                    language=None,
+                    indexed_generation=target_generation,
+                    indexed_at=time.time(),
+                    is_deleted=False,
+                )
+            )
             continue
         state.parse_count += 1
         state.changed_paths.append(relative_path)
@@ -409,7 +438,21 @@ def _re_extract_path(
     # prior row in the live store. The caller treats a raised
     # exception as a per-path failure recorded in failed_files;
     # the path stays dirty and is retried on the next pass.
-    text: str = full.read_text(encoding="utf-8", errors="replace")
+    #
+    # AC-15: invalid-encoding files (F15 hard files) must be
+    # skipped by the indexed path so the indexed and live paths
+    # agree on which files to scan. We do a strict UTF-8 decode
+    # first; only fall back to ``errors="replace"`` when the
+    # strict decode succeeds (i.e. when there is no invalid byte
+    # to replace). Files with invalid UTF-8 raise
+    # ``FileReadError`` and are recorded as a per-path failure.
+    raw_bytes = full.read_bytes()
+    try:
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise FileReadError(
+            f"invalid utf-8 encoding: {relative_path!r} at byte {exc.start}"
+        ) from exc
     prepared_chunks: list[tuple[int, int, str]]
     extracted_at: float
     if cached_payload is not None:

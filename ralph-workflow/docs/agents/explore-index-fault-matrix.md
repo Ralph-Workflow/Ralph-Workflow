@@ -81,6 +81,91 @@ must not introduce new codes without updating this table.
   the last failure reason, the recovery attempt counter, and the
   next recovery time.
 
+## Coverage map
+
+The acceptance contract for each failure mode F1–F20 has five axes:
+
+* (a) parity — `auto`-mode results equal live-search results;
+* (b) reason — the response reports the canonical `fallback_reason`
+  from the table above;
+* (c) budget — the call returns inside the 1 s per-call budget;
+* (d) recovery — after the fault, the index recovers automatically
+  and a LATER query is served from the index again;
+* (e) status — `ralph_index_status` reports the truthful health
+  state, last failure, and recovery state during and after the
+  fault.
+
+The legacy suite (`test_explore_fault_matrix.py`) carries the
+per-mode minimum contract as a regression anchor; the comprehensive
+suite (`test_explore_fault_matrix_full.py` + the late slice
+`test_explore_fault_matrix_full_late.py`) carries the full
+four/five-part contract. F6 and F8 use dedicated `subprocess_e2e`
+suites for the kill-during-build and multi-session proofs.
+
+A `✅` means the existing test covers that axis. Rows that were
+missing an axis (the S-4 repair log closed them) carry the same
+`✅` once the missing assertion is in place; see the S-4 repair
+log below for the closure history.
+
+| # | Primary test(s) | (a) parity | (b) reason | (c) budget | (d) recovery | (e) status |
+|---|---|---|---|---|---|---|
+| F1 | `test_f1_missing_index_parity_reason_budget_recovery_status` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f1_no_committed_generation_falls_through` (`test_explore_fault_matrix.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F2 | `test_f2_deleted_index_parity_reason_budget_recovery_status` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f2_deleted_index_mid_run_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F3 | `test_f3_cold_partial_build_parity_reason_budget_recovery_status` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f3_cold_build_running_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F4 | `test_f4_version_mismatch_wipes_and_rebuilds` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f4_version_mismatch_wipes_index` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F5 | `test_f5_corrupted_index_quarantines_and_rebuilds` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f5_corrupted_index_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F6 | `test_repeated_random_kill_during_build_self_recovers` (`test_explore_crash_safety.py`); `test_fresh_session_after_kill_recovers_without_manual_cleanup`; `test_kill_during_atomic_promote_does_not_serve_partial_generation` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F7 | `test_f7_locked_index_falls_through_to_live` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f7_locked_database_falls_through_within_budget` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F8 | `test_multiple_sessions_share_one_workspace` (`test_explore_concurrency.py`); `test_concurrent_reindex_is_single_flight`; `test_concurrent_search_and_reindex_correct_for_all`; `test_concurrent_construction_no_database_is_locked` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F9 | `test_f9_unwritable_index_backs_off_and_self_recovers` (`test_explore_fault_matrix_full.py`); `test_f9_unwritable_retries_are_bounded_then_recover` (`test_explore_fault_matrix.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F10 | `test_f10_read_only_index_serves_then_recovers_when_writable` (`test_explore_fault_matrix_full.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F11 | `test_f11_stale_threshold_falls_through_and_recovers` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f11_stale_threshold_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F12 | `test_f12_external_edit_detected_without_dirty_marking` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f12_external_edit_detected_and_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F13 | `test_f13_mass_dirty_paths_falls_through_and_recovers` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f13_mass_dirty_paths_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F14 | `test_f14_ignore_rule_change_rechecks_affected_paths` (`test_explore_fault_matrix_full.py`); legacy anchor `test_f14_ignore_rule_change_triggers_reindex_recovery` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F15 | `test_f15_hard_files_skipped_without_crashing` (`test_explore_fault_matrix.py`); `test_f15_hard_files_skip_without_crashing` (`test_explore_fault_matrix_full_late.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F16 | `test_f16_regex_falls_through_to_live_grep` (`test_explore_fault_matrix.py`); `test_f16_regex_falls_through_to_live` (`test_explore_fault_matrix_full_late.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F17 | `test_f17_timeout_exceeded_returns_incomplete_bounded` (`test_explore_fault_matrix.py`); `test_f17_timeout_returns_bounded_partial` (`test_explore_fault_matrix_full_late.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F18 | `test_f18_indexer_error_does_not_raise` (`test_explore_fault_matrix.py`); `test_f18_indexer_exception_falls_through` (`test_explore_fault_matrix_full_late.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F19 | `test_f19_resource_pressure_keeps_searches_working` (`test_explore_fault_matrix.py`); `test_f19_resource_pressure_keeps_searches_working` (`test_explore_fault_matrix_full_late.py`) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| F20 | `test_f20_workspace_moved_falls_through_and_recovers` (`test_explore_fault_matrix_full_late.py`); legacy anchor `test_f20_workspace_moved_falls_through` | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+In addition:
+
+* `test_every_fault_mode_reports_a_canonical_reason_code`
+  (`test_explore_fault_matrix.py`) is the cross-mode reason-code
+  coverage anchor; it asserts every reason code referenced by
+  every fault mode is in `CANONICAL_REASON_CODES`.
+* `test_status_payload_truthful_for_every_fault_mode`
+  (`test_explore_fault_matrix_full_late.py`) is the parametric
+  per-fault (e) status-truthfulness anchor; for every fault code
+  (`index_corrupt`, `interrupted_build`, `version_mismatch`,
+  `index_unwritable`, `index_locked`, `indexer_error`,
+  `workspace_moved`) it asserts the scheduler records the
+  failure, the persisted state file mirrors the scheduler, and
+  the persisted health/last-failure fields are correct.
+* `test_status_health_during_fault_is_truthful`
+  (`test_explore_fault_matrix.py`) and
+  `test_status_health_after_recovery_is_healthy`
+  (`test_explore_fault_matrix.py`) lock the (e) axis end-to-end:
+  during a fault the status handler reports the matching
+  `health` and `last_failure.code`; after the queued recovery
+  the handler reports `healthy` with `last_failure is None`.
+
+The coverage map is the mechanical proof of acceptance criterion
+1 (failure-mode coverage); every row traces to a test file and
+test name. The late slice test functions
+(`test_f15_hard_files_skip_without_crashing` and
+`test_f16_regex_falls_through_to_live`) carry the full
+four/five-part acceptance contract — parity (a), reason code (b),
+budget (c), later-query recovery (d), and `ralph_index_status`
+truthfulness (e). The legacy per-mode minimum contract lives in
+the `test_explore_fault_matrix.py` rows for F15/F16; the
+comprehensive suite's F15/F16 status remains clean because the
+comprehensive suite never carried an F15/F16 row (those failure
+modes live only in the late slice to keep the suite under the
+repo-structure audit's 1000-line cap).
+
 ## Cross-references
 
 * `docs/agents/architecture.md` — overall MCP architecture.
