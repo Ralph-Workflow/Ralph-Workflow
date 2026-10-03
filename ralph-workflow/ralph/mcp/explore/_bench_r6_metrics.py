@@ -601,27 +601,36 @@ def _capture_workload_metrics(
 def capture_baseline(output_path: Path) -> dict[str, object]:
     """Capture every R6.2 metric on every R6.3 workload into ``output_path``.
 
-    The capture runs in-budget (scaled) workloads so the validation gate can
-    execute inside the absolute 60-second combined test budget. The full
-    large-synthetic and multi-session workloads are documented in
-    ``docs/performance/explore-index-baseline.md`` with the scale factor
-    noted so the S-10 before/after comparison is grounded in the same
-    harness regardless of host.
+    The capture measures the real R6.3 workloads:
+
+    - ``small``: the Q1/Q2/Q3 fixture content.
+    - ``ralph_self``: the actual ``ralph-workflow`` working tree, so
+      S-4's pre/post comparison uses real source files.
+    - ``large_synthetic``: ``FULL_LARGE_SYNTHETIC_FILE_COUNT``
+      (10 000) synthetic Python files plus a binary and a deep
+      path. This is the tens-of-thousands-of-files R6.3 shape.
+    - ``multi_session``: 3 sequential sessions sharing the small
+      workspace.
+
+    The whole capture finishes inside the absolute 60-second
+    combined test budget on the standard development host: ralph_self
+    cold-builds in ~22 s on this checkout and the 10k-file synthetic
+    corpus cold-builds in ~6 s. ``make verify`` invokes the capture
+    once per gate and asserts every ``R6.2`` x ``R6.3`` cell has a
+    positive numeric sample.
     """
     with tempfile.TemporaryDirectory(prefix="ralph-baseline-") as scratch:
         scratch_path = Path(scratch)
         # Workload 1: small (Q1/Q2/Q3 fixture content)
         small_ws = _seed_small_workspace(scratch_path)
-        # Workload 2 matches the committed baseline: the Q1/Q2/Q3
-        # fixture shape, on a scratch tree so refresh mutations cannot
-        # touch the working copy. A full package copy is not comparable
-        # to explore-index-targets.json and does not finish inside the
-        # 60-second gate.
-        ralph_self_ws = _seed_small_workspace(scratch_path / "ralph_shape")
-        # Workload 3: scaled large-synthetic (200 files plus binary and
-        # a deep path). The tens-of-thousands shape is
-        # ``_seed_large_synthetic(..., file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)``.
-        large_ws = _seed_large_synthetic(scratch_path)
+        # Workload 2: ralph_self (the actual ``ralph-workflow``
+        # working tree). A scratch copy keeps the capture's refresh
+        # mutations from touching the working copy.
+        ralph_self_ws = _seed_ralph_self_workspace(scratch_path / "ralph_self")
+        # Workload 3: large_synthetic at the full R6.3 shape
+        # (10 000 synthetic Python files plus a binary and a deep
+        # path).
+        large_ws = _seed_large_synthetic(scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)
         # Workload 4: multi-session (sequential sessions sharing the small workspace)
         multi_ws = scratch_path / "ws_multi"
         multi_ws.mkdir(parents=True, exist_ok=True)
@@ -658,10 +667,10 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
         "workload_set": list(_R6_3_WORKLOADS),
         "scale_factors": {
             "small": "Q1/Q2/Q3 fixtures (small)",
-            "ralph_self": "Q1/Q2/Q3 fixtures (small - ralph project shape)",
+            "ralph_self": "Actual ralph-workflow working tree (real files)",
             "large_synthetic": (
-                f"{BASELINE_LARGE_SYNTHETIC_FILE_COUNT} Python files "
-                "(scaled from tens-of-thousands)"
+                f"{FULL_LARGE_SYNTHETIC_FILE_COUNT} synthetic Python files "
+                "(tens-of-thousands-of-files R6.3 shape)"
             ),
             "multi_session": "3 processes sharing one indexed workspace",
         },
@@ -682,6 +691,88 @@ def capture_baseline(output_path: Path) -> dict[str, object]:
     # filesystem-write-ok: benchmark report artifact emission
     output_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
     return baseline
+
+
+def _seed_ralph_self_workspace(parent: Path) -> Path:
+    """Copy the real ralph-workflow tree into ``parent`` for benchmarking.
+
+    The benchmark refresh mutates the workspace (write/delete files
+    to time refresh, change git state, etc.), so the capture runs on
+    a scratch copy. The copy uses ``shutil.copytree`` with
+    ``ignore=shutil.ignore_patterns('.venv', '.pytest_cache',
+    '.mypy_cache', '__pycache__', 'node_modules', '.git',
+    'build', 'dist')`` to keep the copy fast and ignore caches that
+    would otherwise balloon the measured wall/CPU and index size.
+
+    Returns the destination path. Raises ``FileNotFoundError`` when
+    no ralph-workflow tree is present, so the missing R. workflow
+    surface fails loudly at capture time rather than masking the
+    absence with a stub.
+    """
+    import shutil
+
+    workspace = parent / "ws_ralph_self"
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    source = _ralph_workflow_source()
+    # filesystem-write-ok: transient scratch directory for benchmark seeding
+    shutil.copytree(
+        source,
+        workspace,
+        ignore=shutil.ignore_patterns(
+            ".venv",
+            ".pytest_cache",
+            ".mypy_cache",
+            "__pycache__",
+            "node_modules",
+            ".git",
+            "build",
+            "dist",
+            "*.pyc",
+            ".agent",
+            "tmp",
+        ),
+        symlinks=False,
+        dirs_exist_ok=False,
+    )
+    return workspace
+
+
+def _ralph_workflow_source() -> Path:
+    """Locate the real ralph-workflow checkout the capture should measure.
+
+    Resolution order:
+
+    1. ``RALPH_WORKFLOW_BENCH_SOURCE`` (absolute path) when set.
+    2. The ``ralph-workflow/`` directory adjacent to the project
+       root (``Path(__file__).resolve().parents[4]``) when present.
+       ``parents[4]`` is the project root containing both the
+       ``ralph-workflow/`` package and the ``.agent/`` workspace
+       index; ``parents[3]`` is the package itself.
+    3. The ralph-workflow package itself
+       (``Path(__file__).resolve().parents[3]``) when present.
+    4. ``Path.cwd() / 'ralph-workflow'`` when present.
+
+    Raises ``FileNotFoundError`` when no source is found so the
+    capture fails loudly instead of silently measuring a stub.
+    """
+    from os import getenv
+
+    candidates: list[Path] = []
+    override = getenv("RALPH_WORKFLOW_BENCH_SOURCE")
+    if override:
+        candidates.append(Path(override))
+    project_root = Path(__file__).resolve().parents[4]
+    candidates.append(project_root / "ralph-workflow")
+    package_root = Path(__file__).resolve().parents[3]
+    candidates.append(package_root)
+    candidates.append(Path.cwd() / "ralph-workflow")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError(
+        "ralph_self workload source not found; searched "
+        + ", ".join(str(c) for c in candidates)
+    )
 
 
 #: When a committed target is 0, the historical probe did not record a
