@@ -272,3 +272,101 @@ def test_concurrent_search_and_reindex_correct_for_all(tmp_path: Path) -> None:
         assert row[0] == 20
     finally:
         conn.close()
+
+
+# S-4 regression test: ``ExploreStore.__init__`` must not raise
+# ``database is locked`` when several sessions open the same fresh
+# index directory at the same time. The historical bug was that
+# every constructor took a ``BEGIN IMMEDIATE`` write transaction to
+# apply the DDL + migration, so concurrent sessions serialized on
+# the SQLite write lock just to open the index. Under loaded
+# suite CPU contention one of the processes exceeded the 5 s
+# default busy timeout, surfacing as a flaky
+# ``sqlite3.OperationalError: database is locked`` in the search
+# subprocess.
+#
+# The fix: the constructor checks ``settings.schema_version`` via a
+# plain read query first; only when the schema is missing/older
+# does it take the write transaction, and even then it retries
+# transient ``database is locked`` errors with a bounded backoff.
+# The reproduction below uses ``busy_timeout_ms=1`` to force the
+# pre-fix contention to fail deterministically (instead of waiting
+# 5 s for busy_timeout to expire); the post-fix code's bounded
+# retry + read-first fast path succeed in all processes.
+
+CONSTRUCT_SCRIPT = """
+import json
+import sys
+from pathlib import Path
+
+INDEX_DIR = Path(__INDEX_DIR__)
+from ralph.mcp.explore.store import ExploreStore
+
+store = ExploreStore(INDEX_DIR, busy_timeout_ms=1)
+try:
+    cur = store._conn.execute(
+        "SELECT value FROM settings WHERE key = 'schema_version'"
+    )
+    row = cur.fetchone()
+    version = row[0] if row is not None else None
+    print(json.dumps({"status": "ok", "schema_version": version}))
+    sys.exit(0)
+except Exception as exc:
+    print(json.dumps({"status": "error", "error": f"{type(exc).__name__}: {exc}"}))
+    sys.exit(1)
+finally:
+    store.close()
+"""
+
+
+def test_concurrent_construction_no_database_is_locked(tmp_path: Path) -> None:
+    """Several sessions can construct ExploreStore against a fresh shared dir.
+
+    Spawns N=6 concurrent subprocesses that each construct an
+    ExploreStore against the same fresh index directory with
+    ``busy_timeout_ms=1``. Pre-fix this deterministically
+    reproduced the ``database is locked`` flake because every
+    constructor took the SQLite write lock to apply the DDL;
+    post-fix the read-first fast path plus bounded DDL retry let
+    every subprocess open the index without raising. Every
+    subprocess must exit 0; the final database has a current
+    ``settings.schema_version`` row.
+    """
+    index_dir = tmp_path / "shared_index"
+    n = 6
+    procs: list[subprocess.Popen[bytes]] = []
+    for _ in range(n):
+        script = CONSTRUCT_SCRIPT.replace("__INDEX_DIR__", repr(str(index_dir)))
+        procs.append(
+            subprocess.Popen(
+                [sys.executable, "-c", script],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        )
+    results: list[dict[str, object]] = []
+    for p in procs:
+        p.wait(timeout=30)
+        out = p.stdout.read().decode("utf-8", errors="replace").strip()
+        err = p.stderr.read().decode("utf-8", errors="replace").strip()
+        assert p.returncode == 0, (
+            f"subprocess failed (rc={p.returncode}): {err}\nstdout={out}"
+        )
+        last_line = out.splitlines()[-1] if out else "{}"
+        results.append(json.loads(last_line))
+    for payload in results:
+        assert payload.get("status") == "ok", payload
+        assert payload.get("schema_version"), payload
+    # The final database has the committed schema version.
+    db = index_dir / "index.sqlite"
+    assert db.is_file()
+    conn = sqlite3.connect(str(db))
+    try:
+        cur = conn.execute(
+            "SELECT value FROM settings WHERE key = 'schema_version'"
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row[0] == "explore-v1", row
+    finally:
+        conn.close()

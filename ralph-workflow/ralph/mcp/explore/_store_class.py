@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
+from ralph.mcp.explore._store_class_init import _InitializeMethods
 from ralph.mcp.explore._store_types import (
-    _DDL,
     _SCHEMA_MIGRATIONS,
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_INDEX_DB,
@@ -51,7 +51,7 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
-class ExploreStore(_ContentCacheMethods):
+class ExploreStore(_ContentCacheMethods, _InitializeMethods):
     """Owns the SQLite connection and DDL for the index.
 
     Construct with an explicit index directory. WAL mode + busy
@@ -90,29 +90,11 @@ class ExploreStore(_ContentCacheMethods):
         self._conn.row_factory = sqlite3.Row
         self._initialize()
 
-    def _initialize(self) -> None:
-        """Apply DDL + pragmas. Idempotent across reloads.
-
-        AC-01: the on-disk ``settings.schema_version`` is compared to
-        :data:`SCHEMA_VERSION`; a missing row or an older version
-        triggers ``ALTER TABLE`` migrations to bring the database up
-        to the current schema, or in the worst case a safe cold
-        rebuild when an additive migration is not possible. The
-        versions are pinned in ``_SCHEMA_MIGRATIONS`` so a future
-        upgrade only needs to append one entry.
-        """
-        # Ponytail: pragmas (journal_mode, synchronous, busy_timeout,
-        # foreign_keys) must be set OUTSIDE of an explicit transaction
-        # because SQLite rejects ``PRAGMA synchronous`` (and friends)
-        # inside a transaction.
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        with self._transaction() as cur:
-            for stmt in _DDL:
-                cur.execute(stmt)
-        self._migrate_schema()
+    # ``_initialize`` and the S-4 concurrency helpers
+    # (``_schema_version_matches``, ``_initialize_with_bounded_retry``,
+    # ``_INIT_LOCK_ATTEMPTS``, ``_INIT_LOCK_BACKOFF_SECONDS``) live
+    # in :mod:`ralph.mcp.explore._store_class_init` and are mixed
+    # in via ``_InitializeMethods``.
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:

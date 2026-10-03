@@ -41,6 +41,19 @@ ALLOWLIST: list[tuple[str, str]] = [
         "diagnostics/host_pressure.py",
         "runs read-only sysctl -n kern.maxfiles with check=False and a 2s timeout; no shell, no user input",
     ),
+    (
+        "mcp/explore/_bench_r6_metrics.py",
+        "R6 benchmark harness spawns a fresh ``python -c`` subprocess to "
+        "measure per-build peak RSS via /proc/self/status VmHWM; the parent "
+        "blocks on .run()'s timeout so the child cannot outlive the call and "
+        "no fd or process leaks across the harness",
+    ),
+    (
+        "mcp/explore/_bench_r6_subprocess.py",
+        "Subprocess helper split out from _bench_r6_metrics for the file-size "
+        "ceiling; same single-purpose subprocess.run pattern as the parent "
+        "(bounded timeout, parent blocks on .run() so no leaks)",
+    ),
 ]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.
