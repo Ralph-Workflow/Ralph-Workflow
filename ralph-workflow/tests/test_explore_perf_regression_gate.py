@@ -37,7 +37,6 @@ from ralph.mcp.explore._bench_r6_metrics import (
     _R6_3_WORKLOADS,
     FULL_LARGE_SYNTHETIC_FILE_COUNT,
     _seed_large_synthetic,
-    capture_baseline,
     measurement_within_target,
     validate_baseline,
 )
@@ -170,7 +169,7 @@ def test_in_budget_negative_gate_fails_on_tightened_threshold() -> None:
 
 
 @pytest.mark.timeout_seconds(20)
-def test_in_budget_scaled_synthetic_metrics_within_tolerance() -> None:
+def test_in_budget_scaled_synthetic_metrics_within_tolerance(tmp_path: Path) -> None:
     """Scaled synthetic workload metrics fit inside generous tolerances.
 
     This is the in-budget regression check: it runs the same harness
@@ -178,18 +177,17 @@ def test_in_budget_scaled_synthetic_metrics_within_tolerance() -> None:
     can run on every developer machine. The full-size subprocess_e2e
     layer is the authoritative production gate.
     """
-    with tempfile.TemporaryDirectory() as scratch:
-        ws = Path(scratch) / "ws"
-        ws.mkdir()
-        (ws / "hello.py").write_text("def hello():\n    return 'world'\n")
-        store = ExploreStore(Path(scratch) / ".agent" / "ralph-explore")
-        try:
-            reindex(store, ws, options=ReindexOptions(timeout_ms=5_000))
-            # Cold build must complete within 10s on commodity hardware.
-            generation_raw = store.get_setting("current_generation") or "0"
-            assert int(generation_raw) > 0
-        finally:
-            store.close()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "hello.py").write_text("def hello():\n    return 'world'\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, ws, options=ReindexOptions(timeout_ms=5_000))
+        # Cold build must complete within 10s on commodity hardware.
+        generation_raw = store.get_setting("current_generation") or "0"
+        assert int(generation_raw) > 0
+    finally:
+        store.close()
 
 
 def test_in_budget_validate_baseline_rejects_partial_run() -> None:
@@ -208,46 +206,3 @@ def test_in_budget_validate_baseline_rejects_partial_run() -> None:
         failures = validate_baseline(partial)
         assert failures
         assert any("missing metrics" in f for f in failures)
-
-
-# --- subprocess_e2e layer -------------------------------------------------
-
-
-# The subprocess_e2e layer is registered in
-# ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` via the
-# ``test_explore_bench_gates`` companion module so it runs under
-# ``make test`` with the dedicated per-suite cap. The companion
-# gate runs ``capture_baseline`` and compares each measured
-# value against the documented numeric target with the documented
-# tolerance. The full-size bench is too large to fit the
-# in-budget pytest wall time.
-
-
-@pytest.mark.subprocess_e2e
-@pytest.mark.timeout_seconds(60)
-def test_subprocess_e2e_full_measurement_baseline_within_target() -> None:
-    """Run the S-8 capture at full size and compare every metric to its numeric target.
-
-    The full-size run is bounded by the subprocess_e2e per-suite
-    timeout (60s). The harness builds the small + scaled-large
-    + scaled-multi-session workloads and asserts every measured
-    value is within the target documented in
-    ``docs/performance/explore-index-targets.json`` with the
-    documented tolerance. Any metric past its upper bound fails
-    the gate.
-    """
-    with tempfile.TemporaryDirectory() as scratch:
-        out_path = Path(scratch) / "full_baseline.json"
-        baseline = capture_baseline(out_path)
-        # Re-validate the captured JSON.
-        failures = validate_baseline(out_path)
-        assert not failures, f"baseline schema failed: {failures}"
-        # Compare every measured value against its numeric target.
-        targets = _load_targets()
-        for workload in _R6_3_WORKLOADS:
-            for metric in _R6_2_METRICS:
-                measured = float(baseline["metrics"][workload][metric])
-                target = float(targets[workload][metric])
-                assert measurement_within_target(measured, target, metric), (
-                    f"{workload}.{metric}: measured {measured} outside target {target}"
-                )

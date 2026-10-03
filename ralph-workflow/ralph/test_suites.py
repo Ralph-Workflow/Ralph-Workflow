@@ -132,6 +132,12 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # boundary to be honest) and must stay on the default
     # make-test profile so the regression cannot rot silently.
     "tests/test_explore_cold_start_lifecycle.py",
+    # wt-11 S-5: in-budget perf regression gate validates the
+    # committed baseline JSON against the documented numeric
+    # targets and the schema validator; the slow full-capture
+    # layer lives in a dedicated subprocess_e2e test so this
+    # file stays inside the 60s combined verify budget.
+    "tests/test_explore_perf_regression_gate.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

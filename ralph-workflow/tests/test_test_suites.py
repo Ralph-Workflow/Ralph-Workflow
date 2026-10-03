@@ -32,6 +32,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_explore_crash_safety.py",
     "tests/test_explore_concurrency.py",
     "tests/test_explore_cold_start_lifecycle.py",
+    "tests/test_explore_perf_regression_gate.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",
