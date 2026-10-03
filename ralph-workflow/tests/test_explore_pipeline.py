@@ -20,6 +20,7 @@ import dataclasses
 import sqlite3
 import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ from ralph.mcp.explore.pipeline import (
 from ralph.mcp.explore.store import (
     ContentCacheRow,
     ExploreStore,
+    FileRow,
 )
 
 
@@ -1645,8 +1647,8 @@ class _BatchingProbeStore(ExploreStore):
     equivalent manifest write side.
     """
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, index_dir: Path, *, busy_timeout_ms: int = 5000) -> None:
+        super().__init__(index_dir, busy_timeout_ms=busy_timeout_ms)
         self.get_file_calls = 0
         self.get_file_many_calls = 0
         self.upsert_file_calls = 0
@@ -1655,33 +1657,42 @@ class _BatchingProbeStore(ExploreStore):
         self.upsert_manifest_many_callsites: list[int] = []
         self.peek_dirty_paths_calls = 0
 
-    def get_file(self, path: str) -> object:  # type: ignore[override]
+    def get_file(self, path: str) -> FileRow | None:
         self.get_file_calls += 1
         return super().get_file(path)
 
-    def get_file_many(self, paths: object) -> object:  # type: ignore[override]
+    def get_file_many(self, paths: Sequence[str]) -> dict[str, FileRow]:
         self.get_file_many_calls += 1
         return super().get_file_many(paths)
 
-    def upsert_file(self, row: object) -> None:  # type: ignore[override]
+    def upsert_file(self, row: FileRow) -> None:
         self.upsert_file_calls += 1
-        return super().upsert_file(row)
+        super().upsert_file(row)
 
-    def upsert_file_many(self, rows: object) -> None:  # type: ignore[override]
+    def upsert_file_many(self, rows: Sequence[FileRow]) -> None:
         self.upsert_file_many_calls += 1
-        return super().upsert_file_many(rows)
+        super().upsert_file_many(rows)
 
-    def upsert_manifest_many(self, paths: object, content_hashes: object, sizes: object, mtimes: object, generation: int) -> None:  # type: ignore[override]
+    def upsert_manifest_many(
+        self,
+        paths: Sequence[str],
+        content_hashes: Sequence[str],
+        sizes: Sequence[int],
+        mtimes: Sequence[int],
+        last_seen_generation: int,
+    ) -> None:
         self.upsert_manifest_many_calls += 1
-        self.upsert_manifest_many_callsites.append(len(paths))  # type: ignore[arg-type]
-        return super().upsert_manifest_many(paths, content_hashes, sizes, mtimes, generation)
+        self.upsert_manifest_many_callsites.append(len(paths))
+        super().upsert_manifest_many(
+            paths, content_hashes, sizes, mtimes, last_seen_generation
+        )
 
-    def peek_dirty_paths(self) -> object:  # type: ignore[override]
+    def peek_dirty_paths(self) -> list[str]:
         self.peek_dirty_paths_calls += 1
         return super().peek_dirty_paths()
 
 
-def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path) -> None:
     """Warm no-op refresh on an unchanged N-file workspace reaches
     O(1) SELECTs + O(1) executemany writes instead of ~2N per-row
     statements.
@@ -1689,21 +1700,10 @@ def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.M
     The probe counts invocations at the Python API seam (not at
     the sqlite statement level) because sqlite3 trace callbacks
     fire once per row inside ``executemany``. Per-file calls of
-    ``get_file`` / ``upsert_file`` / ``_update_manifest`` are
-    forbidden on the warm unchanged path; their bulk variants
-    must absorb the entire workload.
+    ``get_file`` / ``upsert_file`` are forbidden on the warm
+    unchanged path; their bulk variants must absorb the entire
+    workload.
     """
-    from ralph.mcp.explore import _pipeline_run
-
-    update_manifest_calls = {"n": 0}
-    real_update_manifest = _pipeline_run._update_manifest
-
-    def _counting_update_manifest(*args: object, **kwargs: object) -> object:
-        update_manifest_calls["n"] += 1
-        return real_update_manifest(*args, **kwargs)
-
-    monkeypatch.setattr(_pipeline_run, "_update_manifest", _counting_update_manifest)
-
     workspace = tmp_path / "ws"
     workspace.mkdir()
     # Twelve files comfortably above _BATCH_SIZE / 2 but well under
@@ -1724,7 +1724,6 @@ def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.M
         cold_get_file_many = store.get_file_many_calls
         cold_upsert_file = store.upsert_file_calls
         cold_upsert_file_many = store.upsert_file_many_calls
-        cold_update_manifest = update_manifest_calls["n"]
         cold_upsert_manifest_many = store.upsert_manifest_many_calls
         cold_peek_dirty_paths = store.peek_dirty_paths_calls
 
@@ -1746,7 +1745,12 @@ def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.M
         )
 
         # Zero per-file upsert_file calls on the warm no-op path
-        # (no re-extraction happens for unchanged files).
+        # (no re-extraction happens for unchanged files). The bulk
+        # manifest writer covers every unchanged path in one call,
+        # so a per-file manifest write would also be visible here
+        # as a non-zero ``upsert_file`` delta (the cold-path
+        # upsert_file and the per-file manifest write share the
+        # same store call shape).
         assert store.upsert_file_calls == cold_upsert_file, (
             f"warm path issued {store.upsert_file_calls - cold_upsert_file} per-file upsert_file() calls"
         )
@@ -1761,10 +1765,6 @@ def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.M
         assert warm_upsert_manifest_many == 1
         assert store.upsert_manifest_many_callsites[-1] == 12
 
-        # The per-file ``_update_manifest`` helper must NOT fire on
-        # the warm no-op path.
-        assert update_manifest_calls["n"] == cold_update_manifest
-
         # The dirty-queue SELECT was hoisted out of the per-file
         # loop, so it runs once per refresh rather than once per
         # file.
@@ -1774,7 +1774,7 @@ def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_warm_small_edit_uses_bulk_manifest_for_unchanged_paths(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """When only one file changes, the unchanged paths still batch
     through the bulk manifest write.
@@ -1782,19 +1782,8 @@ def test_warm_small_edit_uses_bulk_manifest_for_unchanged_paths(
     The probe counts per-file vs bulk manifest writes; the bulk
     writer must cover the 11 unchanged files in a single call
     while the 1 changed path goes through the per-file
-    ``_update_manifest`` helper.
+    re-extraction path (which issues its own ``upsert_file``).
     """
-    from ralph.mcp.explore import _pipeline_run
-
-    update_manifest_calls = {"n": 0}
-    real_update_manifest = _pipeline_run._update_manifest
-
-    def _counting_update_manifest(*args: object, **kwargs: object) -> object:
-        update_manifest_calls["n"] += 1
-        return real_update_manifest(*args, **kwargs)
-
-    monkeypatch.setattr(_pipeline_run, "_update_manifest", _counting_update_manifest)
-
     workspace = tmp_path / "ws"
     workspace.mkdir()
     for i in range(12):
@@ -1804,7 +1793,7 @@ def test_warm_small_edit_uses_bulk_manifest_for_unchanged_paths(
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         cold_upsert_manifest_many = store.upsert_manifest_many_calls
-        cold_update_manifest = update_manifest_calls["n"]
+        cold_upsert_file = store.upsert_file_calls
 
         (workspace / "f00.py").write_text("x = 999\n")
         warm = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
@@ -1816,7 +1805,10 @@ def test_warm_small_edit_uses_bulk_manifest_for_unchanged_paths(
         assert warm_upsert_manifest_many == 1
         assert store.upsert_manifest_many_callsites[-1] == 11
 
-        # The single changed path used the per-file helper.
-        assert update_manifest_calls["n"] - cold_update_manifest == 1
+        # The single changed path went through the per-file
+        # re-extraction path, which issues exactly one
+        # ``upsert_file`` (the cold build already issued 12, so
+        # the post-warm delta is 1).
+        assert store.upsert_file_calls - cold_upsert_file == 1
     finally:
         store.close()

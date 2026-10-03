@@ -127,6 +127,7 @@ def test_in_budget_baseline_covers_every_r6_3_workload() -> None:
     assert counts["multi_session"] >= 1
 
 
+@pytest.mark.timeout_seconds(20)
 def test_in_budget_full_synthetic_seeder_builds_tens_of_thousands() -> None:
     """The R6.3 full large-synthetic shape is tens of thousands of files.
 

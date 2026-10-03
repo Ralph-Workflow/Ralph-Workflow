@@ -728,7 +728,7 @@ def derive_evidence_id(
 # Ponytail: small helper to enumerate indexable files in a workspace.
 # Phase 1 keeps this minimal: skip hidden dirs, common VCS dirs, and
 # anything under .agent/ (the index lives there, never inside itself).
-_SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
+SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
     {
         ".git",
         ".hg",
@@ -767,9 +767,9 @@ def iter_indexable_files(workspace_root: Path) -> Iterator[os.DirEntry[str]]:
     while stack:
         current = stack.pop()
         try:
+            # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
             with os.scandir(current) as it:
-                    # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
-                    entries = list(it)
+                entries = list(it)
         except OSError:
             continue
         subdirs: list[Path] = []
@@ -779,7 +779,7 @@ def iter_indexable_files(workspace_root: Path) -> Iterator[os.DirEntry[str]]:
             except OSError:
                 continue
             if is_dir:
-                if entry.name in _SKIP_DIR_NAMES:
+                if entry.name in SKIP_DIR_NAMES:
                     continue
                 subdirs.append(Path(entry.path))
                 continue

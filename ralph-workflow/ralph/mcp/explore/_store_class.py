@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
+from ralph.mcp.explore._store_class_file_rows import _FileRowMethods
 from ralph.mcp.explore._store_class_init import _InitializeMethods
 from ralph.mcp.explore._store_class_retention import _RetentionMethods
 from ralph.mcp.explore._store_types import (
@@ -25,14 +26,12 @@ from ralph.mcp.explore._store_types import (
     ChunkRow,
     EdgeRow,
     EvidenceRow,
-    FileRow,
     SpanRow,
     SymbolRow,
     _row_int_opt,
     _row_str,
     _row_to_edge,
     _row_to_evidence,
-    _row_to_file,
     _row_to_span,
     _row_to_symbol,
     normalize_index_path,
@@ -42,7 +41,12 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
-class ExploreStore(_ContentCacheMethods, _InitializeMethods, _RetentionMethods):
+class ExploreStore(
+    _ContentCacheMethods,
+    _FileRowMethods,
+    _InitializeMethods,
+    _RetentionMethods,
+):
     """Owns the SQLite connection and DDL for the index.
 
     Construct with an explicit index directory. WAL mode + busy
@@ -191,229 +195,6 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods, _RetentionMethods):
         self.reopen()
         return True
 
-    # --- File-row access ----------------------------------------------
-
-    def upsert_file(self, row: FileRow) -> None:
-        """Insert or replace a file row."""
-        with self._transaction() as cur:
-            cur.execute(
-                """
-                INSERT INTO files (
-                    path, content_hash, size_bytes, mtime_ns, language,
-                    indexed_generation, indexed_at, is_deleted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(path) DO UPDATE SET
-                    content_hash=excluded.content_hash,
-                    size_bytes=excluded.size_bytes,
-                    mtime_ns=excluded.mtime_ns,
-                    language=excluded.language,
-                    indexed_generation=excluded.indexed_generation,
-                    indexed_at=excluded.indexed_at,
-                    is_deleted=excluded.is_deleted
-                """,
-                (
-                    row.path,
-                    row.content_hash,
-                    row.size_bytes,
-                    row.mtime_ns,
-                    row.language,
-                    row.indexed_generation,
-                    row.indexed_at,
-                    1 if row.is_deleted else 0,
-                ),
-            )
-
-    def get_file(self, path: str) -> FileRow | None:
-        cur = self._conn.execute("SELECT * FROM files WHERE path = ?", (path,))
-        row: sqlite3.Row | None = cur.fetchone()
-        if row is None:
-            return None
-        return _row_to_file(row)
-
-    def get_file_many(self, paths: Sequence[str]) -> dict[str, FileRow]:
-        """Bulk variant of :meth:`get_file`.
-
-        Returns ``{path: FileRow}`` for every persisted ``files``
-        entry whose ``path`` is in ``paths``. Missing paths are
-        simply absent from the result. The whole lookup is one
-        ``SELECT`` with an ``IN (?, ?, ...)`` predicate so the warm
-        no-op reindex can fetch the previous (size, mtime) for a
-        whole batch without issuing one statement per path.
-
-        An empty ``paths`` input performs no SQL and returns
-        ``{}``; callers can pass a full batch without a guard.
-        """
-        if not paths:
-            return {}
-        placeholders = ",".join("?" for _ in paths)
-        cur = self._conn.execute(
-            f"SELECT * FROM files WHERE path IN ({placeholders})",
-            tuple(paths),
-        )
-        all_rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        result: dict[str, FileRow] = {}
-        for row in all_rows:
-            file_row = _row_to_file(row)
-            result[file_row.path] = file_row
-        return result
-
-    def upsert_file_many(self, rows: Sequence[FileRow]) -> None:
-        """Bulk variant of :meth:`upsert_file`.
-
-        Persists every row in ``rows`` via a single
-        ``executemany`` so the warm no-op reindex can refresh the
-        ``files`` table for an entire batch without one statement
-        per path. Empty input is a no-op (no transaction, no SQL).
-        """
-        if not rows:
-            return
-        params = [
-            (
-                    row.path,
-                    row.content_hash,
-                    row.size_bytes,
-                    row.mtime_ns,
-                    row.language,
-                    row.indexed_generation,
-                    row.indexed_at,
-                    1 if row.is_deleted else 0,
-                )
-            for row in rows
-        ]
-        with self._transaction() as cur:
-            cur.executemany(
-                """
-                INSERT INTO files (
-                    path, content_hash, size_bytes, mtime_ns, language,
-                    indexed_generation, indexed_at, is_deleted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(path) DO UPDATE SET
-                    content_hash=excluded.content_hash,
-                    size_bytes=excluded.size_bytes,
-                    mtime_ns=excluded.mtime_ns,
-                    language=excluded.language,
-                    indexed_generation=excluded.indexed_generation,
-                    indexed_at=excluded.indexed_at,
-                    is_deleted=excluded.is_deleted
-                """,
-                params,
-            )
-
-    def upsert_manifest_many(
-        self,
-        paths: Sequence[str],
-        content_hashes: Sequence[str],
-        sizes: Sequence[int],
-        mtimes: Sequence[int],
-        last_seen_generation: int,
-    ) -> None:
-        """Bulk upsert of ``manifest`` rows for the warm no-op path.
-
-        Every argument must be the same length; ``paths[i]`` is
-        written with ``content_hashes[i]``, ``sizes[i]``,
-        ``mtimes[i]``. The whole upsert is one ``executemany`` so
-        the reindex pipeline can refresh the ``last_seen_generation``
-        for the entire unchanged workspace in one statement. Empty
-        input is a no-op (no transaction, no SQL).
-        """
-        if not paths:
-            return
-        if not (len(paths) == len(content_hashes) == len(sizes) == len(mtimes)):
-            raise ValueError(
-                "upsert_manifest_many: all sequence arguments must be the same length"
-            )
-        params = [
-            (
-                paths[i],
-                content_hashes[i],
-                sizes[i],
-                mtimes[i],
-                None,
-                last_seen_generation,
-            )
-            for i in range(len(paths))
-        ]
-        with self._transaction() as cur:
-            cur.executemany(
-                """
-                INSERT INTO manifest (
-                    path, content_hash, size_bytes, mtime_ns,
-                    inode_or_file_id, last_seen_generation
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(path) DO UPDATE SET
-                    content_hash=excluded.content_hash,
-                    size_bytes=excluded.size_bytes,
-                    mtime_ns=excluded.mtime_ns,
-                    last_seen_generation=excluded.last_seen_generation
-                """,
-                params,
-            )
-
-    def iter_files(self) -> Iterator[FileRow]:
-        cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
-        all_rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        for row in all_rows:
-            yield _row_to_file(row)
-
-    def count_files(self) -> int:
-        """Return the live file row count.
-
-        Bounded: a single ``COUNT(*)`` aggregate, no row
-        materialization. Callers that need per-row data use
-        :meth:`iter_files`. The method exists so the index
-        status and git_status compact paths can compute
-        freshness with O(1) work instead of pulling the entire
-        ``files`` table into memory.
-        """
-        cur = self._conn.execute("SELECT COUNT(*) FROM files WHERE is_deleted = 0")
-        row: sqlite3.Row | None = cur.fetchone()
-        return _row_int_opt(row, 0) if row is not None else 0
-
-    def count_deleted_files(self) -> int:
-        """Return the count of file rows marked ``is_deleted=1``.
-
-        Bounded: a single ``COUNT(*)`` aggregate. ``iter_files``
-        filters out deleted rows, so this method is the only
-        bounded way for callers to observe the deleted-row
-        stale signal without materializing the entire table.
-        """
-        cur = self._conn.execute("SELECT COUNT(*) FROM files WHERE is_deleted = 1")
-        row: sqlite3.Row | None = cur.fetchone()
-        return _row_int_opt(row, 0) if row is not None else 0
-
-    def has_deleted_files(self) -> bool:
-        """Bounded existence check for any deleted file row.
-
-        Equivalent to ``count_deleted_files() > 0`` but uses
-        ``EXISTS`` so SQLite short-circuits on the first match.
-        Callers that only need a boolean freshness signal
-        (e.g., compact ``git_status``) should prefer this
-        method over a count query.
-        """
-        cur = self._conn.execute("SELECT EXISTS(SELECT 1 FROM files WHERE is_deleted = 1)")
-        row: sqlite3.Row | None = cur.fetchone()
-        if row is None:
-            return False
-        return _row_int_opt(row, 0) > 0
-
-    def delete_file_rows(self, path: str) -> None:
-        """Remove file/chunk/evidence rows for ``path`` in current generation."""
-        with self._transaction() as cur:
-            cur.execute(
-                """
-                DELETE FROM chunks_fts WHERE rowid IN (
-                    SELECT fts_rowid FROM chunks WHERE path = ? AND fts_rowid IS NOT NULL
-                )
-                """,
-                (path,),
-            )
-            cur.execute("DELETE FROM files WHERE path = ?", (path,))
-            cur.execute("DELETE FROM chunks WHERE path = ?", (path,))
-            cur.execute("DELETE FROM evidence WHERE path = ?", (path,))
 
     # --- Chunk + FTS5 -------------------------------------------------
 
