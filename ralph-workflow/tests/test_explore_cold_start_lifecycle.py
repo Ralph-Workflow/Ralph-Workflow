@@ -28,6 +28,7 @@ in-budget on the combined 60s make-verify wall clock.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -246,62 +247,17 @@ def test_e2_short_budget_cold_build_leaves_gen_zero_no_retry_storm(
 # ---------------------------------------------------------------------------
 
 
-_VERIFY_OBSERVES_NEW_GEN_SCRIPT = """
+_BUILD_AND_COMMIT_SCRIPT = """
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
-WORKSPACE = Path(\"__WORKSPACE__\")
-INDEX_DIR = WORKSPACE / \".agent\" / \"ralph-explore\"
-
-from ralph.mcp.explore.handlers import build_explore_index
-from ralph.mcp.explore.store import ExploreStore
-
-
-def report(payload):
-    sys.stdout.write(\"RESULT:\" + json.dumps(payload) + \"\\n\")
-    sys.stdout.flush()
-
-
-# Open the handle -- generation should be 0 on a fresh worktree.
-handle = build_explore_index(WORKSPACE)
-report({\"opened_generation\": handle.generation})
-report({\"opened_storage_bytes\": handle.store.index_storage_bytes()})
-
-# Wait for sibling process to commit a fresh generation.
-for _ in range(50):
-    time.sleep(0.05)
-    persisted = handle.store.get_setting(\"current_generation\") or \"0\"
-    if int(persisted) >= 1:
-        break
-
-# Two observable surfaces must reflect the swap.
-def report_outcome(label, payload):
-    payload[\"label\"] = label
-    report(payload)
-
-
-# Reading via the existing handle.
-persisted_via_handle = handle.store.get_setting(\"current_generation\") or \"0\"
-report_outcome(\"persisted_via_handle\", {\"value\": int(persisted_via_handle)})
-
-# Reading via a brand-new ExploreStore on the same dir.
-fresh = ExploreStore(INDEX_DIR)
-try:
-    persisted_via_fresh = fresh.get_setting(\"current_generation\") or \"0\"
-    report_outcome(\"persisted_via_fresh\", {\"value\": int(persisted_via_fresh)})
-finally:
-    fresh.close()
-"""
-
-
-_BUILD_AND_COMMIT_SCRIPT = """
-import json
-import sys
-import time
-from pathlib import Path
+# Prefer THIS checkout's ralph over any inherited PYTHONPATH entries
+# (a stale pinned dev generation on PYTHONPATH would run mismatched
+# schema code against the parent's freshly-created index directory).
+sys.path.insert(0, os.environ["RALPH_TEST_REPO_ROOT"])
 
 WORKSPACE = Path(\"__WORKSPACE__\")
 INDEX_DIR = WORKSPACE / \".agent\" / \"ralph-explore\"
@@ -373,6 +329,8 @@ def test_e3_handle_observes_cross_process_generation_swap(tmp_path: Path) -> Non
     # still be open when the sibling process commits the new gen.
 
     # Phase 2: run a sibling process that builds and commits generation 1.
+    spawn_env = os.environ.copy()
+    spawn_env["RALPH_TEST_REPO_ROOT"] = str(Path(__file__).resolve().parents[1])
     proc = get_process_manager().spawn(
         [sys.executable, str(build_path)],
         SpawnOptions(
@@ -380,6 +338,7 @@ def test_e3_handle_observes_cross_process_generation_swap(tmp_path: Path) -> Non
             stderr=subprocess.PIPE,
             text=True,
             label="cold-start-lifecycle-build",
+            env=spawn_env,
         ),
     )
     stdout, stderr = proc.communicate(timeout=30)

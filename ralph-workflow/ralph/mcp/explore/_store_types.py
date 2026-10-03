@@ -47,7 +47,7 @@ DEFAULT_FTS_TOKENIZE: Final[str] = "unicode61"
 # signals a breaking change in the persisted rows; the store compares
 # it on open and triggers a safe cold rebuild when the on-disk
 # version is missing or older. Tests pin this constant.
-SCHEMA_VERSION: Final[str] = "explore-v1"
+SCHEMA_VERSION: Final[str] = "explore-v2"
 
 # Bounded caps for retention. The audit_register/evidence_tombstones
 # caps are documented in the architecture finding.
@@ -74,6 +74,21 @@ DEFAULT_MAX_CHUNK_BYTES: Final[int] = 16 * 1024
 # forward. Migrations run in tuple order during :meth:`ExploreStore._initialize`
 # before the recorded ``settings.schema_version`` is pinned.
 _SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    (
+        "explore-v2",
+        "CREATE INDEX IF NOT EXISTS idx_edges_path ON edges(path)",
+    ),
+    (
+        # explore-v1 -> explore-v2: chunks_fts rows are linked to the
+        # ``chunks`` table by storing the FTS rowid in ``chunks.fts_rowid``;
+        # FTS deletes become rowid-keyed (O(log n)) instead of full
+        # scanning the UNINDEXED chunk_id/path columns (O(n) per delete,
+        # O(n^2) per rebuild — the 699s cold-build root cause). Old
+        # indexes are wiped by the schema-version mismatch path, so
+        # this entry is add-only for fresh databases.
+        "explore-v2",
+        "ALTER TABLE chunks ADD COLUMN fts_rowid INTEGER",
+    ),
     (
         # adds durable evidence->chunk and evidence->span links so
         # the persisted evidence row resolves to the exact chunk
@@ -726,7 +741,9 @@ _SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
         ".pytest_cache",
         "node_modules",
         "target",
+        ".hypothesis",
         "build",
+        "_build",
         "dist",
     }
 )

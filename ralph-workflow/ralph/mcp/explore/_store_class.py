@@ -291,9 +291,16 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
     def delete_file_rows(self, path: str) -> None:
         """Remove file/chunk/evidence rows for ``path`` in current generation."""
         with self._transaction() as cur:
+            cur.execute(
+                """
+                DELETE FROM chunks_fts WHERE rowid IN (
+                    SELECT fts_rowid FROM chunks WHERE path = ? AND fts_rowid IS NOT NULL
+                )
+                """,
+                (path,),
+            )
             cur.execute("DELETE FROM files WHERE path = ?", (path,))
             cur.execute("DELETE FROM chunks WHERE path = ?", (path,))
-            cur.execute("DELETE FROM chunks_fts WHERE path = ?", (path,))
             cur.execute("DELETE FROM evidence WHERE path = ?", (path,))
 
     # --- Chunk + FTS5 -------------------------------------------------
@@ -325,9 +332,14 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                     chunk.generation,
                 ),
             )
-            # FTS5 external-content table: replace the row by chunk_id.
+            # FTS5 external-content table: delete the prior FTS row by
+            # its stored rowid (O(log n)); the UNINDEXED columns cannot
+            # serve a WHERE chunk_id lookup without a full FTS scan.
             cur.execute(
-                "DELETE FROM chunks_fts WHERE chunk_id = ?",
+                """DELETE FROM chunks_fts WHERE rowid = (
+                    SELECT fts_rowid FROM chunks
+                    WHERE chunk_id = ? AND fts_rowid IS NOT NULL
+                )""",
                 (chunk.chunk_id,),
             )
             cur.execute(
@@ -339,12 +351,24 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods):
                 """,
                 (text, chunk.path, chunk.chunk_id),
             )
+            fts_rowid = int(cur.lastrowid) if cur.lastrowid is not None else None
+            cur.execute(
+                "UPDATE chunks SET fts_rowid = ? WHERE chunk_id = ?",
+                (fts_rowid, chunk.chunk_id),
+            )
 
     def delete_chunks_for_path(self, path: str) -> None:
         """Delete all chunks and FTS rows for ``path``."""
         with self._transaction() as cur:
+            cur.execute(
+                """
+                DELETE FROM chunks_fts WHERE rowid IN (
+                    SELECT fts_rowid FROM chunks WHERE path = ? AND fts_rowid IS NOT NULL
+                )
+                """,
+                (path,),
+            )
             cur.execute("DELETE FROM chunks WHERE path = ?", (path,))
-            cur.execute("DELETE FROM chunks_fts WHERE path = ?", (path,))
 
     def fts_search(
         self,

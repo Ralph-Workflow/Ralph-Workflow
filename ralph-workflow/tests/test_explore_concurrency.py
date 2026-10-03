@@ -367,6 +367,6 @@ def test_concurrent_construction_no_database_is_locked(tmp_path: Path) -> None:
         )
         row = cur.fetchone()
         assert row is not None
-        assert row[0] == "explore-v1", row
+        assert row[0] == "explore-v2", row
     finally:
         conn.close()

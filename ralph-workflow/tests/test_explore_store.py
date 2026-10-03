@@ -374,7 +374,7 @@ def test_schema_version_pinned_after_init(tmp_path: Path) -> None:
     index_dir = tmp_path / ".agent" / "ralph-explore"
     store = ExploreStore(index_dir)
     try:
-        assert store.get_setting("schema_version") == "explore-v1"
+        assert store.get_setting("schema_version") == "explore-v2"
     finally:
         store.close()
 
