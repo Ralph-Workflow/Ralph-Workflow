@@ -230,6 +230,127 @@ class ExploreStore(_ContentCacheMethods, _InitializeMethods, _RetentionMethods):
             return None
         return _row_to_file(row)
 
+    def get_file_many(self, paths: Sequence[str]) -> dict[str, FileRow]:
+        """Bulk variant of :meth:`get_file`.
+
+        Returns ``{path: FileRow}`` for every persisted ``files``
+        entry whose ``path`` is in ``paths``. Missing paths are
+        simply absent from the result. The whole lookup is one
+        ``SELECT`` with an ``IN (?, ?, ...)`` predicate so the warm
+        no-op reindex can fetch the previous (size, mtime) for a
+        whole batch without issuing one statement per path.
+
+        An empty ``paths`` input performs no SQL and returns
+        ``{}``; callers can pass a full batch without a guard.
+        """
+        if not paths:
+            return {}
+        placeholders = ",".join("?" for _ in paths)
+        cur = self._conn.execute(
+            f"SELECT * FROM files WHERE path IN ({placeholders})",
+            tuple(paths),
+        )
+        all_rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        result: dict[str, FileRow] = {}
+        for row in all_rows:
+            file_row = _row_to_file(row)
+            result[file_row.path] = file_row
+        return result
+
+    def upsert_file_many(self, rows: Sequence[FileRow]) -> None:
+        """Bulk variant of :meth:`upsert_file`.
+
+        Persists every row in ``rows`` via a single
+        ``executemany`` so the warm no-op reindex can refresh the
+        ``files`` table for an entire batch without one statement
+        per path. Empty input is a no-op (no transaction, no SQL).
+        """
+        if not rows:
+            return
+        params = [
+            (
+                    row.path,
+                    row.content_hash,
+                    row.size_bytes,
+                    row.mtime_ns,
+                    row.language,
+                    row.indexed_generation,
+                    row.indexed_at,
+                    1 if row.is_deleted else 0,
+                )
+            for row in rows
+        ]
+        with self._transaction() as cur:
+            cur.executemany(
+                """
+                INSERT INTO files (
+                    path, content_hash, size_bytes, mtime_ns, language,
+                    indexed_generation, indexed_at, is_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path) DO UPDATE SET
+                    content_hash=excluded.content_hash,
+                    size_bytes=excluded.size_bytes,
+                    mtime_ns=excluded.mtime_ns,
+                    language=excluded.language,
+                    indexed_generation=excluded.indexed_generation,
+                    indexed_at=excluded.indexed_at,
+                    is_deleted=excluded.is_deleted
+                """,
+                params,
+            )
+
+    def upsert_manifest_many(
+        self,
+        paths: Sequence[str],
+        content_hashes: Sequence[str],
+        sizes: Sequence[int],
+        mtimes: Sequence[int],
+        last_seen_generation: int,
+    ) -> None:
+        """Bulk upsert of ``manifest`` rows for the warm no-op path.
+
+        Every argument must be the same length; ``paths[i]`` is
+        written with ``content_hashes[i]``, ``sizes[i]``,
+        ``mtimes[i]``. The whole upsert is one ``executemany`` so
+        the reindex pipeline can refresh the ``last_seen_generation``
+        for the entire unchanged workspace in one statement. Empty
+        input is a no-op (no transaction, no SQL).
+        """
+        if not paths:
+            return
+        if not (len(paths) == len(content_hashes) == len(sizes) == len(mtimes)):
+            raise ValueError(
+                "upsert_manifest_many: all sequence arguments must be the same length"
+            )
+        params = [
+            (
+                paths[i],
+                content_hashes[i],
+                sizes[i],
+                mtimes[i],
+                None,
+                last_seen_generation,
+            )
+            for i in range(len(paths))
+        ]
+        with self._transaction() as cur:
+            cur.executemany(
+                """
+                INSERT INTO manifest (
+                    path, content_hash, size_bytes, mtime_ns,
+                    inode_or_file_id, last_seen_generation
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path) DO UPDATE SET
+                    content_hash=excluded.content_hash,
+                    size_bytes=excluded.size_bytes,
+                    mtime_ns=excluded.mtime_ns,
+                    last_seen_generation=excluded.last_seen_generation
+                """,
+                params,
+            )
+
     def iter_files(self) -> Iterator[FileRow]:
         cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
         all_rows = cast(

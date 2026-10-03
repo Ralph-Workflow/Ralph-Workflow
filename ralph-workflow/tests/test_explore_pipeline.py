@@ -1632,3 +1632,191 @@ def test_content_cache_row_dataclass_is_frozen() -> None:
     )
     with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
         type(row).__setattr__(row, "content_hash", "deadbeef" * 8)
+
+
+class _BatchingProbeStore(ExploreStore):
+    """Counts per-file vs bulk API calls on the warm no-op path.
+
+    The per-file / bulk split is the only stable seam that proves
+    batching: sqlite3 trace callbacks fire once per row inside
+    ``executemany`` so they cannot distinguish batching from a
+    loop. We wrap the public methods so the test can assert
+    ``get_file_many`` is called and ``get_file`` is not, plus the
+    equivalent manifest write side.
+    """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.get_file_calls = 0
+        self.get_file_many_calls = 0
+        self.upsert_file_calls = 0
+        self.upsert_file_many_calls = 0
+        self.upsert_manifest_many_calls = 0
+        self.upsert_manifest_many_callsites: list[int] = []
+        self.peek_dirty_paths_calls = 0
+
+    def get_file(self, path: str) -> object:  # type: ignore[override]
+        self.get_file_calls += 1
+        return super().get_file(path)
+
+    def get_file_many(self, paths: object) -> object:  # type: ignore[override]
+        self.get_file_many_calls += 1
+        return super().get_file_many(paths)
+
+    def upsert_file(self, row: object) -> None:  # type: ignore[override]
+        self.upsert_file_calls += 1
+        return super().upsert_file(row)
+
+    def upsert_file_many(self, rows: object) -> None:  # type: ignore[override]
+        self.upsert_file_many_calls += 1
+        return super().upsert_file_many(rows)
+
+    def upsert_manifest_many(self, paths: object, content_hashes: object, sizes: object, mtimes: object, generation: int) -> None:  # type: ignore[override]
+        self.upsert_manifest_many_calls += 1
+        self.upsert_manifest_many_callsites.append(len(paths))  # type: ignore[arg-type]
+        return super().upsert_manifest_many(paths, content_hashes, sizes, mtimes, generation)
+
+    def peek_dirty_paths(self) -> object:  # type: ignore[override]
+        self.peek_dirty_paths_calls += 1
+        return super().peek_dirty_paths()
+
+
+def test_warm_no_op_refresh_uses_bulk_apis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Warm no-op refresh on an unchanged N-file workspace reaches
+    O(1) SELECTs + O(1) executemany writes instead of ~2N per-row
+    statements.
+
+    The probe counts invocations at the Python API seam (not at
+    the sqlite statement level) because sqlite3 trace callbacks
+    fire once per row inside ``executemany``. Per-file calls of
+    ``get_file`` / ``upsert_file`` / ``_update_manifest`` are
+    forbidden on the warm unchanged path; their bulk variants
+    must absorb the entire workload.
+    """
+    from ralph.mcp.explore import _pipeline_run
+
+    update_manifest_calls = {"n": 0}
+    real_update_manifest = _pipeline_run._update_manifest
+
+    def _counting_update_manifest(*args: object, **kwargs: object) -> object:
+        update_manifest_calls["n"] += 1
+        return real_update_manifest(*args, **kwargs)
+
+    monkeypatch.setattr(_pipeline_run, "_update_manifest", _counting_update_manifest)
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    # Twelve files comfortably above _BATCH_SIZE / 2 but well under
+    # _BATCH_SIZE so the entire workspace fits in one batch and the
+    # assertions are unambiguous.
+    for i in range(12):
+        (workspace / f"f{i:02d}.py").write_text(f"x = {i}\n")
+
+    store = _BatchingProbeStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        # Cold build populates the index.
+        cold = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        assert cold.status == "ok", (
+            f"cold reindex failed: status={cold.status} "
+            f"failed_files={cold.failed_files} error_summary={cold.error_summary}"
+        )
+        cold_get_file = store.get_file_calls
+        cold_get_file_many = store.get_file_many_calls
+        cold_upsert_file = store.upsert_file_calls
+        cold_upsert_file_many = store.upsert_file_many_calls
+        cold_update_manifest = update_manifest_calls["n"]
+        cold_upsert_manifest_many = store.upsert_manifest_many_calls
+        cold_peek_dirty_paths = store.peek_dirty_paths_calls
+
+        # Warm no-op refresh: nothing has changed.
+        warm = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        assert warm.status == "skipped_no_changes"
+
+        # Zero per-file reads on the warm path (the bulk reader
+        # replaced the per-file ``get_file`` call).
+        assert store.get_file_calls == cold_get_file, (
+            f"warm path issued {store.get_file_calls - cold_get_file} per-file get_file() calls"
+        )
+
+        # At most a small number of bulk reads. With 12 files and
+        # _BATCH_SIZE=50 the entire workspace fits in one batch, so
+        # the bulk reader fires exactly once on the warm path.
+        assert store.get_file_many_calls - cold_get_file_many <= 1, (
+            f"warm path issued {store.get_file_many_calls - cold_get_file_many} bulk reads"
+        )
+
+        # Zero per-file upsert_file calls on the warm no-op path
+        # (no re-extraction happens for unchanged files).
+        assert store.upsert_file_calls == cold_upsert_file, (
+            f"warm path issued {store.upsert_file_calls - cold_upsert_file} per-file upsert_file() calls"
+        )
+
+        # Zero per-file upsert_manifest_many calls (the bulk
+        # writer covers every unchanged path).
+        assert store.upsert_file_many_calls == cold_upsert_file_many
+
+        # Exactly one bulk manifest write per warm refresh, holding
+        # every workspace file (not per file).
+        warm_upsert_manifest_many = store.upsert_manifest_many_calls - cold_upsert_manifest_many
+        assert warm_upsert_manifest_many == 1
+        assert store.upsert_manifest_many_callsites[-1] == 12
+
+        # The per-file ``_update_manifest`` helper must NOT fire on
+        # the warm no-op path.
+        assert update_manifest_calls["n"] == cold_update_manifest
+
+        # The dirty-queue SELECT was hoisted out of the per-file
+        # loop, so it runs once per refresh rather than once per
+        # file.
+        assert store.peek_dirty_paths_calls - cold_peek_dirty_paths == 1
+    finally:
+        store.close()
+
+
+def test_warm_small_edit_uses_bulk_manifest_for_unchanged_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When only one file changes, the unchanged paths still batch
+    through the bulk manifest write.
+
+    The probe counts per-file vs bulk manifest writes; the bulk
+    writer must cover the 11 unchanged files in a single call
+    while the 1 changed path goes through the per-file
+    ``_update_manifest`` helper.
+    """
+    from ralph.mcp.explore import _pipeline_run
+
+    update_manifest_calls = {"n": 0}
+    real_update_manifest = _pipeline_run._update_manifest
+
+    def _counting_update_manifest(*args: object, **kwargs: object) -> object:
+        update_manifest_calls["n"] += 1
+        return real_update_manifest(*args, **kwargs)
+
+    monkeypatch.setattr(_pipeline_run, "_update_manifest", _counting_update_manifest)
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    for i in range(12):
+        (workspace / f"f{i:02d}.py").write_text(f"x = {i}\n")
+
+    store = _BatchingProbeStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        cold_upsert_manifest_many = store.upsert_manifest_many_calls
+        cold_update_manifest = update_manifest_calls["n"]
+
+        (workspace / "f00.py").write_text("x = 999\n")
+        warm = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        assert warm.status == "ok"
+        assert warm.parse_count == 1
+
+        # 11 unchanged paths went through the bulk writer in one call.
+        warm_upsert_manifest_many = store.upsert_manifest_many_calls - cold_upsert_manifest_many
+        assert warm_upsert_manifest_many == 1
+        assert store.upsert_manifest_many_callsites[-1] == 11
+
+        # The single changed path used the per-file helper.
+        assert update_manifest_calls["n"] - cold_update_manifest == 1
+    finally:
+        store.close()

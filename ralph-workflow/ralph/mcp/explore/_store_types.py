@@ -749,31 +749,64 @@ _SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
 )
 
 
-def iter_indexable_files(workspace_root: Path) -> Iterator[Path]:
-    """Yield indexable file paths under ``workspace_root``.
+def iter_indexable_files(workspace_root: Path) -> Iterator[os.DirEntry[str]]:
+    """Yield indexable :class:`os.DirEntry` entries under ``workspace_root``.
 
-    Skips common VCS / cache / build directories. Always returns
-    paths relative to ``workspace_root`` so the caller can normalize
-    them with :func:`normalize_index_path`.
+    Skips common VCS / cache / build directories. Yields
+    :class:`os.DirEntry` so the caller can call
+    :meth:`DirEntry.stat` (a no-extra-syscall helper backed by the
+    directory's readdir buffer) instead of issuing a fresh
+    ``Path.stat()`` per file.
+
+    Non-regular entries (sockets, FIFOs, etc.) are skipped, matching
+    the prior ``os.walk`` behaviour. The skip-dir set prunes subtrees
+    in-place, mirroring the prior ``os.walk`` pruning contract.
     """
     root = Path(workspace_root).resolve()
-    # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
-        for name in filenames:
-            yield Path(dirpath) / name
+    stack: list[Path] = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                    # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
+                    entries = list(it)
+        except OSError:
+            continue
+        subdirs: list[Path] = []
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if is_dir:
+                if entry.name in _SKIP_DIR_NAMES:
+                    continue
+                subdirs.append(Path(entry.path))
+                continue
+            try:
+                is_file = entry.is_file(follow_symlinks=False)
+            except OSError:
+                continue
+            if is_file:
+                yield entry
+        stack.extend(reversed(subdirs))
 
 
 def collect_workspace_files(workspace_root: Path) -> list[tuple[str, int, int]]:
-    """Return ``[(relative_path, size_bytes, mtime_ns), ...]`` for indexable files."""
+    """Return ``[(relative_path, size_bytes, mtime_ns), ...]`` for indexable files.
+
+    Each row's (size, mtime_ns) comes from a single ``DirEntry.stat``
+    call (no extra ``Path.stat()`` syscall). The output order and
+    shape match the prior ``os.walk`` implementation.
+    """
     root = Path(workspace_root).resolve()
     rows: list[tuple[str, int, int]] = []
-    for candidate in iter_indexable_files(root):
+    for entry in iter_indexable_files(root):
         try:
-            stat_result = candidate.stat()
+            stat_result = entry.stat(follow_symlinks=False)
         except FileNotFoundError:
             continue
-        relative = candidate.relative_to(root).as_posix()
+        relative = Path(entry.path).relative_to(root).as_posix()
         rows.append((relative, stat_result.st_size, stat_result.st_mtime_ns))
     return sorted(rows)
 

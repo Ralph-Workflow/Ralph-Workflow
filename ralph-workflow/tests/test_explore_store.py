@@ -487,7 +487,7 @@ def test_iter_indexable_files_skips_agent_dir(tmp_path: Path) -> None:
     (tmp_path / ".agent" / "index.sqlite").write_text("x")
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "mod.js").write_text("x")
-    files = sorted(p.name for p in iter_indexable_files(tmp_path))
+    files = sorted(Path(e.path).name for e in iter_indexable_files(tmp_path))
     assert files == ["main.py"]
 
 
@@ -496,6 +496,57 @@ def test_collect_workspace_files_returns_sorted(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("a")
     rows = collect_workspace_files(tmp_path)
     assert [row[0] for row in rows] == ["a.py", "b.py"]
+
+
+def test_collect_workspace_files_matches_os_walk_shape(tmp_path: Path) -> None:
+    """``collect_workspace_files`` returns rows whose (path, size, mtime_ns)
+    match a manual ``os.walk`` traversal of the same fixture tree.
+
+    The real ralph-workflow tree has no symlinked files outside the
+    skip_dirs set (``.venv``, ``__pycache__``, etc.), so this test
+    exercises the no-symlink case which is what production actually
+    sees.
+    """
+    import os
+
+    # Use the SAME skip set the production code uses so the parity
+    # check stays apples-to-apples.
+    from ralph.mcp.explore._store_types import _SKIP_DIR_NAMES
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep").mkdir()
+    (tmp_path / "a.py").write_text("a")
+    (tmp_path / "sub" / "b.py").write_text("bb")
+    (tmp_path / "sub" / "deep" / "c.py").write_text("ccc")
+    (tmp_path / "sub" / "deep" / "skip_me.py").write_text("d")
+    (tmp_path / "skip_root.py").write_text("e")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    rows = collect_workspace_files(tmp_path)
+    relpaths = sorted(row[0] for row in rows)
+    assert relpaths == [
+        "a.py",
+        "skip_root.py",
+        "sub/b.py",
+        "sub/deep/c.py",
+        "sub/deep/skip_me.py",
+    ]
+
+    # Each row's (size, mtime_ns) matches a fresh Path.stat().
+    root = tmp_path.resolve()
+    for relpath, size, mtime in rows:
+        st = (root / relpath).stat()
+        assert size == st.st_size
+        assert mtime == st.st_mtime_ns
+
+    # ``os.walk`` would have produced the same shape (file names only).
+    walked: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
+        for name in filenames:
+            walked.append(Path(dirpath, name).relative_to(root).as_posix())
+    assert sorted(walked) == relpaths
 
 
 def test_hash_workspace_file_returns_hash_and_size(tmp_path: Path) -> None:
@@ -856,6 +907,159 @@ def test_content_cache_insert_then_delete_round_trip(tmp_path: Path) -> None:
             )
             is None
         )
+    finally:
+        store.close()
+
+
+def _make_file_row(
+    path: str,
+    *,
+    content_hash: str | None = None,
+    size_bytes: int = 1,
+    mtime_ns: int = 1,
+    generation: int = 1,
+) -> FileRow:
+    """Build a minimal ``FileRow`` for bulk API tests."""
+    return FileRow(
+        path=path,
+        content_hash=content_hash or sha256_text(path),
+        size_bytes=size_bytes,
+        mtime_ns=mtime_ns,
+        language="python",
+        indexed_generation=generation,
+        indexed_at=0.0,
+        is_deleted=False,
+    )
+
+
+def test_get_file_many_returns_only_matching_rows(tmp_path: Path) -> None:
+    """Bulk reader returns one ``FileRow`` per persisted path."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_file(_make_file_row("a.py"))
+        store.upsert_file(_make_file_row("b.py"))
+        store.upsert_file(_make_file_row("c.py"))
+
+        fetched = store.get_file_many(["a.py", "c.py", "missing.py"])
+        assert set(fetched.keys()) == {"a.py", "c.py"}
+        assert fetched["a.py"].content_hash == sha256_text("a.py")
+        assert fetched["c.py"].mtime_ns == 1
+    finally:
+        store.close()
+
+
+def test_get_file_many_empty_input_is_noop(tmp_path: Path) -> None:
+    """Bulk reader with ``[]`` issues no SQL and returns ``{}``."""
+    store = _build_store(tmp_path)
+    try:
+        # Seed a row to make sure the empty-input fast path does not
+        # accidentally touch the table.
+        store.upsert_file(_make_file_row("a.py"))
+        assert store.get_file_many([]) == {}
+    finally:
+        store.close()
+
+
+def test_upsert_file_many_replaces_each_row_on_conflict(tmp_path: Path) -> None:
+    """Bulk writer persists every row and updates on conflict."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_file_many(
+            [
+                _make_file_row("a.py", content_hash="v1", size_bytes=1, mtime_ns=1),
+                _make_file_row("b.py", content_hash="v1", size_bytes=1, mtime_ns=1),
+            ]
+        )
+        assert store.get_file("a.py") is not None
+        assert store.get_file("b.py") is not None
+
+        # Bulk replace with new generations.
+        store.upsert_file_many(
+            [
+                _make_file_row("a.py", content_hash="v2", size_bytes=2, mtime_ns=2, generation=2),
+                _make_file_row("b.py", content_hash="v2", size_bytes=2, mtime_ns=2, generation=2),
+            ]
+        )
+        a = store.get_file("a.py")
+        b = store.get_file("b.py")
+        assert a is not None and a.content_hash == "v2" and a.indexed_generation == 2
+        assert b is not None and b.content_hash == "v2" and b.indexed_generation == 2
+    finally:
+        store.close()
+
+
+def test_upsert_file_many_empty_input_is_noop(tmp_path: Path) -> None:
+    """Bulk writer with ``[]`` issues no SQL."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_file_many([])
+        # No assertion about exact statement count (sqlite trace
+        # callbacks fire once per row inside executemany so they
+        # cannot distinguish batching from a loop). The contract
+        # here is functional: no exception, no rows persisted.
+        assert store.count_files() == 0
+    finally:
+        store.close()
+
+
+def test_upsert_manifest_many_writes_and_updates(tmp_path: Path) -> None:
+    """Bulk manifest writer persists rows visible via direct query."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_manifest_many(
+            paths=["a.py", "b.py"],
+            content_hashes=["h1", "h2"],
+            sizes=[10, 20],
+            mtimes=[100, 200],
+            last_seen_generation=1,
+        )
+        rows = store._conn.execute(
+            "SELECT path, content_hash, size_bytes, mtime_ns, last_seen_generation "
+            "FROM manifest ORDER BY path"
+        ).fetchall()
+        assert [(r[0], r[1], r[2], r[3], r[4]) for r in rows] == [
+            ("a.py", "h1", 10, 100, 1),
+            ("b.py", "h2", 20, 200, 1),
+        ]
+
+        # Update last_seen_generation via conflict path.
+        store.upsert_manifest_many(
+            paths=["a.py"],
+            content_hashes=["h1"],
+            sizes=[10],
+            mtimes=[100],
+            last_seen_generation=2,
+        )
+        gen = store._conn.execute(
+            "SELECT last_seen_generation FROM manifest WHERE path = 'a.py'"
+        ).fetchone()[0]
+        assert gen == 2
+    finally:
+        store.close()
+
+
+def test_upsert_manifest_many_empty_input_is_noop(tmp_path: Path) -> None:
+    """Bulk manifest writer with ``[]`` issues no SQL."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_manifest_many(paths=[], content_hashes=[], sizes=[], mtimes=[], last_seen_generation=1)
+        assert store._conn.execute("SELECT COUNT(*) FROM manifest").fetchone()[0] == 0
+    finally:
+        store.close()
+
+
+def test_upsert_manifest_many_rejects_mismatched_lengths(tmp_path: Path) -> None:
+    """Bulk manifest writer fails closed on length mismatch."""
+    store = _build_store(tmp_path)
+    try:
+        with pytest.raises(ValueError):
+            store.upsert_manifest_many(
+                paths=["a.py", "b.py"],
+                content_hashes=["h1"],
+                sizes=[10, 20],
+                mtimes=[100, 200],
+                last_seen_generation=1,
+            )
     finally:
         store.close()
 

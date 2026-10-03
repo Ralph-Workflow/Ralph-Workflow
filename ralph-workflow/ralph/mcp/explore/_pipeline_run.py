@@ -90,9 +90,33 @@ def _run_reindex(
 
     seen_paths: set[str] = set()
 
+    # Reuse the dirty list already pulled above. The previous
+    # implementation re-issued ``peek_dirty_paths`` per file (a
+    # SELECT per path on top of the per-file ``get_file``
+    # SELECT). The set is bounded by the dirty queue length, not
+    # the workspace size.
+    dirty_set: frozenset[str] = frozenset(dirty_paths)
+
     manifest_items = sorted(next_manifest.items())
     for batch_start in range(0, len(manifest_items), _BATCH_SIZE):
         batch = manifest_items[batch_start : batch_start + _BATCH_SIZE]
+        # One bulk SELECT replaces the per-file ``get_file`` call so
+        # an unchanged workspace only issues one ``files`` lookup
+        # per batch instead of N. The bulk reader skips missing
+        # paths (new files), so the in-memory prefilter below is
+        # sufficient.
+        batch_paths = [relative_path for relative_path, _ in batch]
+        previous_by_path = store.get_file_many(batch_paths)
+
+        # Accumulate the no-op manifest rows for this batch so the
+        # write side stays at O(1) statements per refresh instead
+        # of O(N). Per-file extraction below still touches
+        # ``upsert_file`` exactly once per changed path.
+        no_op_paths: list[str] = []
+        no_op_hashes: list[str] = []
+        no_op_sizes: list[int] = []
+        no_op_mtimes: list[int] = []
+
         with store.transaction():
             for relative_path, (size_bytes, mtime_ns) in batch:
                 _ensure_deadline(state, now_fn)
@@ -102,22 +126,18 @@ def _run_reindex(
                 # authoritative, but skipping the read+hash for unchanged
                 # files keeps warm no-op refresh work-proportional to the
                 # manifest, not to the workspace bytes.
-                previous = store.get_file(relative_path)
+                previous = previous_by_path.get(relative_path)
                 if (
                     previous is not None
                     and not previous.is_deleted
                     and previous.size_bytes == size_bytes
                     and previous.mtime_ns == mtime_ns
-                    and not _dirty_paths_contain(store, relative_path)
+                    and relative_path not in dirty_set
                 ):
-                    _update_manifest(
-                        store,
-                        relative_path,
-                        content_hash=previous.content_hash,
-                        size_bytes=size_bytes,
-                        mtime_ns=mtime_ns,
-                        last_seen_generation=target_generation,
-                    )
+                    no_op_paths.append(relative_path)
+                    no_op_hashes.append(previous.content_hash)
+                    no_op_sizes.append(size_bytes)
+                    no_op_mtimes.append(mtime_ns)
                     continue
 
                 try:
@@ -213,6 +233,18 @@ def _run_reindex(
                     size_bytes=actual_size,
                     mtime_ns=actual_mtime,
                     last_seen_generation=target_generation,
+                )
+
+            # One bulk write for the entire no-op manifest batch.
+            # Bypasses per-file INSERTs so the warm unchanged path
+            # is O(1) SQLite statements per refresh.
+            if no_op_paths:
+                store.upsert_manifest_many(
+                    no_op_paths,
+                    no_op_hashes,
+                    no_op_sizes,
+                    no_op_mtimes,
+                    target_generation,
                 )
 
     # Mark deleted paths. AC-05/AC-06: a removed file must drop its
@@ -336,17 +368,6 @@ def _current_generation(store: ExploreStore) -> int:
     if raw is None or not raw.isdigit():
         return 0
     return int(raw)
-
-
-def _dirty_paths_contain(store: ExploreStore, path: str) -> bool:
-    """Return True when ``path`` is in the persisted dirty queue.
-
-    Used by the reindex prefilter so a workspace mutation marked
-    dirty by ``mark_path`` forces a re-hash even when the manifest
-    size+mtime match the prior run.
-    """
-    normalized = path.replace(os.sep, "/")
-    return any(existing == normalized for existing in store.peek_dirty_paths())
 
 
 def _update_manifest(
