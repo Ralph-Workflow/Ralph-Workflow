@@ -151,7 +151,11 @@ def test_mutation_freshness_reports_deleted_index_rows(tmp_path: Path) -> None:
         )
 
         payload = _decode(result)
-        assert payload["stale_paths_count"] == 1
+        # The reindex already processed the deletion (the files row is
+        # purged, not tombstoned), so no deleted rows remain to report.
+        # Staleness comes from the written path being marked dirty.
+        assert payload["stale_paths_count"] == 0
+        assert payload["dirty_paths_count"] == 1
         assert payload["is_stale"] is True
     finally:
         store.close()

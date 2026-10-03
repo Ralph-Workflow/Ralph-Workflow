@@ -46,6 +46,7 @@ from ralph.mcp.explore.pipeline import (
 )
 from ralph.mcp.explore.recovery import (
     HealthState,
+    _drain_pending_recoveries_once,
     build_scheduler,
     clear_pending_recovery,
     pending_recovery_code,
@@ -172,6 +173,43 @@ def test_e1_cold_detection_triggers_background_build(tmp_path: Path) -> None:
         f"expected health == 'building' after cold detection, got {payload['health']!r}"
     )
     # Cleanup so the next test sees a clean queue.
+    clear_pending_recovery(workspace)
+
+
+# ---------------------------------------------------------------------------
+# S-2: the background drain must actually rebuild a cold index
+# ---------------------------------------------------------------------------
+
+
+def test_s2_drain_rebuilds_cold_index(tmp_path: Path) -> None:
+    """The production drain path must turn a cold queue into a committed gen.
+
+    ``enqueue_recovery`` (called by every index-capable handler on
+    cold detection) queues the fault; the background drain thread
+    runs ``_drain_pending_recoveries_once`` which must call
+    ``run_pending_recovery`` and commit generation 1. Without the
+    S-2 drain the queue fills and the index stays at generation 0.
+    """
+    from ralph.mcp.explore.recovery import enqueue_recovery
+
+    workspace = _seed_workspace(tmp_path)
+    handle = _fresh_handle(tmp_path, workspace=workspace)
+    assert handle.generation == 0
+    enqueue_recovery(
+        workspace,
+        "no_committed_generation",
+        message="cold start",
+    )
+    assert pending_recovery_code(workspace) == "no_committed_generation"
+    attempted = _drain_pending_recoveries_once()
+    assert attempted == 1
+    assert pending_recovery_code(workspace) is None, "drain must empty the queue"
+    # The handle reopens after the cross-process-style swap (S-3) so
+    # it observes the newly committed generation.
+    committed = handle.store.get_setting("current_generation") or "0"
+    assert int(committed) >= 1, (
+        f"drain rebuilt but no generation committed (got {committed!r})"
+    )
     clear_pending_recovery(workspace)
 
 

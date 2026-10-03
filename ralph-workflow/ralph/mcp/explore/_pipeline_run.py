@@ -221,9 +221,8 @@ def _run_reindex(
     # files that no longer exist in the workspace. We tombstone the
     # path-level evidence before deletion (same contract as the
     # change-replacement path) and then physically delete the
-    # per-path rows. The file row is recorded as is_deleted=1 for
-    # diagnostics; a subsequent reindex that finds the file again
-    # will replace the rows and clear the is_deleted flag.
+    # per-path rows. Deletion history lives in the evidence tombstone;
+    # the file row is removed outright (see below).
     existing_files = list(store.iter_files())
     for batch_start in range(0, len(existing_files), _BATCH_SIZE):
         batch_existing = existing_files[batch_start : batch_start + _BATCH_SIZE]
@@ -248,14 +247,22 @@ def _run_reindex(
                         content_hash=existing.content_hash,
                         generation=existing.indexed_generation,
                         stale_reason="file_deleted",
-                        stale_at=now_fn(),
+                        # record_tombstone prunes by wall clock
+                        # (time.time()) internally; now_fn is a
+                        # monotonic clock, so passing it here would
+                        # make every tombstone look 30+ days old and
+                        # get purged instantly.
+                        stale_at=time.time(),
                         replacement_evidence_id=None,
                     )
                     store.delete_chunks_for_path(existing.path)
                     # delete_file_rows removes files/chunks/chunks_fts/evidence
                     # for the path; we still need to drop structure rows
-                    # (spans, symbols, edges) and re-mark the file row as
-                    # is_deleted for diagnostics.
+                    # (spans, symbols, edges). The deletion history lives in
+                    # the evidence tombstone above -- a files-row tombstone
+                    # would be counted by count_deleted_files() forever and
+                    # permanently wedge the staleness probe, so the row is
+                    # removed outright.
                     store.replace_structure_rows(
                         path=existing.path,
                         spans=(),
@@ -263,18 +270,11 @@ def _run_reindex(
                         edges=(),
                     )
                     store.delete_file_rows(existing.path)
-                    store.upsert_file(
-                        FileRow(
-                            path=existing.path,
-                            content_hash=existing.content_hash,
-                            size_bytes=existing.size_bytes,
-                            mtime_ns=existing.mtime_ns,
-                            language=existing.language,
-                            indexed_generation=target_generation,
-                            indexed_at=now_fn(),
-                            is_deleted=True,
-                        )
-                    )
+    # wt-11: purge tombstone rows (is_deleted=1) left by older reindexes.
+    # They wedge the staleness probe the same way and are pure diagnostics;
+    # the evidence table carries the deletion history.
+    with store.transaction():
+        store._conn.execute("DELETE FROM files WHERE is_deleted = 1")
 
     store.set_setting("current_generation", str(target_generation))
     # AC-05/AC-06: persist the schema/extractor versions so a future

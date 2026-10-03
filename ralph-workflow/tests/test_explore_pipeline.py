@@ -180,9 +180,20 @@ def test_delete_path_marks_file_deleted(tmp_path: Path) -> None:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         (workspace / "b.py").unlink()
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
-        row = store.get_file("b.py")
-        assert row is not None
-        assert row.is_deleted is True
+        # The files row is removed outright: a permanent is_deleted=1
+        # tombstone row is counted by count_deleted_files() forever and
+        # wedges the staleness probe into permanent index_stale_scope.
+        # Deletion history lives in the evidence tombstone instead.
+        assert store.get_file("b.py") is None
+        assert store.count_deleted_files() == 0
+        tombstones = store._conn.execute(
+            """
+            SELECT stale_reason FROM evidence_tombstones
+            WHERE path = ? AND stale_reason = 'file_deleted'
+            """,
+            ("b.py",),
+        ).fetchall()
+        assert len(tombstones) == 1
     finally:
         store.close()
 
@@ -1055,8 +1066,9 @@ def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
         (workspace / "restore.py").unlink()
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         deleted_row = store.get_file("restore.py")
-        assert deleted_row is not None
-        assert deleted_row.is_deleted is True
+        # Removed outright; deletion history lives in the evidence
+        # tombstone (see test_delete_path_marks_file_deleted).
+        assert deleted_row is None
         # Restore the file with byte-identical content.
         (workspace / "restore.py").write_text("def original():\n    return 1\n")
         # The bug was: the second reindex would short-circuit on equal
@@ -1230,9 +1242,10 @@ def test_move_path_reindexes_with_normalized_paths(tmp_path: Path) -> None:
         (workspace / "a.py").rename(workspace / "sub" / "helper.py")
         result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
-        # Source path is marked deleted.
+        # Source path is removed outright (deletion history lives in
+        # the evidence tombstone).
         old_row = store.get_file("a.py")
-        assert old_row is not None and old_row.is_deleted is True
+        assert old_row is None
         # Destination path is a fresh, non-deleted file.
         new_row = store.get_file("sub/helper.py")
         assert new_row is not None and new_row.is_deleted is False
@@ -1295,9 +1308,10 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         (workspace / "a.py").unlink()
         result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
-        # Old path marked deleted; new path live.
+        # Old path removed outright (evidence tombstone carries
+        # the deletion history).
         old_row = store.get_file("a.py")
-        assert old_row is not None and old_row.is_deleted is True
+        assert old_row is None
         new_row = store.get_file("moved.py")
         assert new_row is not None and new_row.is_deleted is False
         # Idempotent: a second reindex with no further edits is a no-op.
@@ -1535,9 +1549,9 @@ def test_move_with_identical_content_uses_cache_and_pivots_path(
         (workspace / "moved.py").write_bytes(original_bytes)
         result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
-        # Old path marked deleted; new path live with symbols.
+        # Old path removed outright; new path live with symbols.
         old_row = store.get_file("a.py")
-        assert old_row is not None and old_row.is_deleted is True
+        assert old_row is None
         new_row = store.get_file("moved.py")
         assert new_row is not None and new_row.is_deleted is False
         symbols = list(store.iter_symbols("moved.py"))

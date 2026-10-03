@@ -57,6 +57,19 @@ def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
 
 
+@pytest.fixture(autouse=True)
+def _disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests deterministic against the background recovery drain.
+
+    ``enqueue_recovery`` starts a daemon drain thread in production;
+    tests assert the pending queue synchronously and drain it via
+    ``run_pending_recovery`` themselves, so the thread is stubbed out.
+    """
+    from ralph.mcp.explore import recovery
+
+    monkeypatch.setattr(recovery, "_ensure_drain_thread", lambda: None)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     """Keep default tests independent of the locally installed AGY binary."""

@@ -555,6 +555,47 @@ def _pending_key(workspace_root: Path) -> str:
     return str(Path(workspace_root).resolve())
 
 
+def _committed_generation_healthy(workspace_root: Path) -> bool:
+    """Return True when a healthy committed generation already exists.
+
+    Side-effect free disk probe: a ``no_committed_generation`` fault
+    queued in one process can outlive the rebuild another process
+    completed. Draining such a stale entry must heal the scheduler
+    (mark healthy, clear the persisted state) instead of rebuilding
+    a healthy index.
+    """
+    from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT, ExploreStore
+
+    index_dir = Path(workspace_root) / DEFAULT_INDEX_ROOT
+    if not (index_dir / "index.sqlite").is_file():
+        return False
+    try:
+        store = ExploreStore(index_dir)
+    except Exception:
+        return False
+    try:
+        raw: object = store.get_setting("current_generation")
+        latest = store.latest_job()
+    except Exception:
+        return False
+    finally:
+        with contextlib.suppress(Exception):
+            store.close()
+    try:
+        generation = int(str(raw or "0"))
+    except (TypeError, ValueError):
+        return False
+    if generation <= 0:
+        return False
+    if latest is None:
+        return True
+    keys = tuple(latest.keys())  # sqlite3.Row: explicit keys() view
+    if "status" not in keys:
+        return False
+    raw_status: object = latest["status"]
+    return str(raw_status) == "ok"
+
+
 def enqueue_recovery(
     workspace_root: Path,
     code: str,
@@ -565,8 +606,9 @@ def enqueue_recovery(
 
     Query handlers call this on fall-through so status is truthful
     before the response returns. The rebuild itself runs when
-    :func:`run_pending_recovery` drains the queue (the MCP server
-    drains it, and tests drain it to prove a later query is indexed).
+    :func:`run_pending_recovery` drains the queue (a background
+    daemon thread started by this call drains it, and tests drain
+    it synchronously to prove a later query is indexed).
     ``index_locked`` is intentionally absent: another writer already
     owns the rebuild (F7).
     """
@@ -587,6 +629,58 @@ def enqueue_recovery(
             oldest = next(iter(_PENDING_RECOVERY))
             _PENDING_RECOVERY.pop(oldest, None)
         _PENDING_RECOVERY[key] = code
+    _DRAIN_WAKEUP.set()
+    _ensure_drain_thread()
+
+
+# Background drain: one daemon thread per process wakes on the
+# enqueue event and drains the pending-recovery queue. It is the
+# S-2 production drain path -- without it the queue fills and no
+# rebuild ever runs (E1 root cause).
+_DRAIN_WAKEUP = threading.Event()
+_DRAIN_THREAD: list[threading.Thread | None] = [None]  # bounded-accumulator-ok: single-element thread cell
+_DRAIN_TIMEOUT_MS = 15_000
+
+
+def _drain_pending_recoveries_once() -> int:
+    """Drain every queued recovery once; return the number attempted."""
+    with _PENDING_LOCK:
+        keys = list(_PENDING_RECOVERY)
+    for key in keys:
+        run_pending_recovery(Path(key), timeout_ms=_DRAIN_TIMEOUT_MS)
+    return len(keys)
+
+
+def _drain_thread_main() -> None:
+    while _DRAIN_WAKEUP.wait():  # mcp-timeout-ok: daemon drain thread parks on the enqueue event forever by design
+        _DRAIN_WAKEUP.clear()
+        try:
+            _drain_pending_recoveries_once()
+        except Exception:
+            # Fail-open: the drain thread must never die; the next
+            # enqueue re-wakes it and backoff bounds the retries.
+            continue
+
+
+def _ensure_drain_thread() -> None:
+    """Start the single background drain thread lazily (idempotent)."""
+    current = _DRAIN_THREAD[0]
+    if current is not None and current.is_alive():
+        return
+    with _DRAIN_LOCK:
+        current = _DRAIN_THREAD[0]
+        if current is not None and current.is_alive():
+            return
+        thread = threading.Thread(
+            target=_drain_thread_main,
+            name="ralph-explore-recovery-drain",
+            daemon=True,
+        )
+        _DRAIN_THREAD[0] = thread
+        thread.start()
+
+
+_DRAIN_LOCK = threading.Lock()
 
 
 def run_pending_recovery(
@@ -596,12 +690,33 @@ def run_pending_recovery(
 ) -> dict[str, object]:
     """Run the queued recovery for ``workspace_root``, if any."""
     key = _pending_key(workspace_root)
+    scheduler = build_scheduler(workspace_root)
     with _PENDING_LOCK:
-        code = _PENDING_RECOVERY.pop(key, None)
+        code = _PENDING_RECOVERY.get(key)
     if code is None:
-        return build_scheduler(workspace_root).snapshot()
+        return scheduler.snapshot()
+    # Heal a wedge: a ``no_committed_generation`` fault queued in one
+    # process can outlive the rebuild a sibling process completed.
+    # When a healthy committed generation already exists, the queued
+    # fault is stale -- mark healthy, drop the queue entry and the
+    # persisted scheduler state instead of rebuilding again. Scope-
+    # freshness faults (``index_stale_scope`` etc.) still refresh.
+    if code == "no_committed_generation" and _committed_generation_healthy(workspace_root):
+        with _PENDING_LOCK:
+            _PENDING_RECOVERY.pop(key, None)
+        scheduler.mark_healthy()
+        scheduler.clear_persisted()
+        return scheduler.snapshot()
+    # Single chokepoint for retry-storm prevention: a drain inside
+    # the backoff window re-queues the code and defers the rebuild;
+    # the scheduler (max_attempts + exponential backoff) bounds
+    # total attempts.
+    if not scheduler.should_attempt_recovery():
+        return scheduler.snapshot()
+    with _PENDING_LOCK:
+        _PENDING_RECOVERY.pop(key, None)
     return run_recovery_action(
-        build_scheduler(workspace_root),
+        scheduler,
         workspace_root=workspace_root,
         fault_code=code,
         reason="pending_recovery",
