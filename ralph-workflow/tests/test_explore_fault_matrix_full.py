@@ -33,14 +33,13 @@ from pathlib import Path
 
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
+    build_explore_index,
     handle_ralph_index_status,
 )
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.recovery import (
     HealthState,
     build_scheduler,
-    clear_persisted_state,
-    read_persisted_state,
     run_recovery_action,
 )
 from ralph.mcp.explore.serving import CANONICAL_REASON_CODES
@@ -290,7 +289,23 @@ def test_f3_cold_partial_build_parity_reason_budget_recovery_status() -> None:
 
 
 def test_f4_version_mismatch_wipes_and_rebuilds() -> None:
-    """F4: schema/extractor version mismatch wipes the index and rebuilds."""
+    """F4: schema/extractor version mismatch wipes the index and rebuilds.
+
+    Asserts the four-part acceptance contract end to end:
+
+    * (a) After the schema mismatch is detected, an ``auto``-mode
+      grep falls through to live search and the result set equals
+      a pure live-search call.
+    * (b) The fallback reason is one of the canonical codes used by
+      the version-mismatch / cold-rebuild path (``version_mismatch``
+      while the schema is still mismatched, or
+      ``no_committed_generation`` once the index has been wiped).
+      Either is canonical; both prove the system is honest about
+      what happened.
+    * (c) The fault-condition call completes inside the 1 s budget.
+    * (d) Automatic recovery wipes the old index and rebuilds so a
+      LATER query is served from the index again.
+    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -299,15 +314,49 @@ def test_f4_version_mismatch_wipes_and_rebuilds() -> None:
             reindex(seed_store, workspace, options=ReindexOptions(timeout_ms=5_000))
         finally:
             seed_store.close()
-        # The recovery driver detects a version mismatch by
-        # introspecting the persisted schema/extractor keys; we
-        # force a rebuild via the recovery driver directly.
-        # The (b) reason: when the index has rows but a schema drift
-        # is detected, queries fall through with
-        # ``version_mismatch``. We assert that here.
+        # Force an extractor-version drift so the next reopen
+        # sees a mismatch. The schema_version path rejects
+        # unknown values fail-closed (RuntimeError); the
+        # extractor_version path is the production-detectable
+        # mismatch and exercises the wipe path that the criteria
+        # document for F4.
+        drift_store = ExploreStore(index_dir)
+        try:
+            drift_store.set_setting("extractor_version", "stale-extractor-id")
+        finally:
+            drift_store.close()
+        # Reopen through the public builder — the mismatch wipes
+        # the index, leaving generation 0. The fault-condition
+        # auto-mode call falls through to live search.
+        rebuilt = build_explore_index(workspace)
+        fault_store = rebuilt.store
+        try:
+            assert rebuilt.generation == 0
+            fault_session = _FakeSession(rebuilt)
+            start = time.monotonic()
+            fault_payload = _call_grep(fault_session, workspace)
+            fault_elapsed = time.monotonic() - start
+            # (a) parity
+            _assert_parity_with_live(fault_payload, workspace)
+            # (b) reason code (canonical: version_mismatch or
+            # no_committed_generation — the wipe path emits the
+            # latter because the index has been cleared).
+            assert fault_payload["fallback_reason"] in {
+                "version_mismatch",
+                "no_committed_generation",
+            }, fault_payload
+            assert fault_payload["fallback_reason"] in CANONICAL_REASON_CODES
+            # (c) budget
+            assert fault_elapsed < _budget_seconds(), (
+                f"F4 elapsed {fault_elapsed:.3f}s > 1s"
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                fault_store.close()
+        # (d) automatic recovery: the recovery driver wipes the
+        # stale state and rebuilds so a LATER query is indexed.
         snap = _run_recovery(workspace, "version_mismatch", reason="schema_drift")
         assert snap is not None
-        # After recovery a fresh index is in place; later query is indexed.
         new_store = ExploreStore(index_dir)
         try:
             new_session = _attach_session(new_store, workspace)
@@ -619,7 +668,25 @@ def test_f13_mass_dirty_paths_falls_through_and_recovers() -> None:
 
 
 def test_f14_ignore_rule_change_rechecks_affected_paths() -> None:
-    """F14: a gitignore change re-checks affected paths on next reindex."""
+    """F14: a gitignore change re-checks affected paths on next reindex.
+
+    Asserts the four-part acceptance contract end to end:
+
+    * (a) After the ``.gitignore`` rule excludes ``hello.py``, an
+      ``auto``-mode grep returns the same (empty) result set as a
+      pure live-search call: the new gitignore is honored by both
+      paths.
+    * (b) The fallback reason is one of the canonical codes used by
+      the F14 / F12 path (``index_stale_scope`` when the change is
+      detected via the on-disk manifest drift probe, or
+      ``ignore_rule_changed`` when the production code path is
+      extended to surface the rule-change reason explicitly). Either
+      is canonical; the assertion only requires honesty about what
+      happened.
+    * (c) The call completes inside the 1 s budget.
+    * (d) Automatic recovery rebuilds so a LATER query is served
+      from the index again.
+    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -632,232 +699,35 @@ def test_f14_ignore_rule_change_rechecks_affected_paths() -> None:
             start = time.monotonic()
             payload = _call_grep(session, workspace, pattern="hello")
             elapsed = time.monotonic() - start
-            # The live path honors gitignore; parity holds (no results).
+            # (a) parity
             _assert_parity_with_live(payload, workspace, pattern="hello")
+            # (b) reason code (canonical: index_stale_scope is the
+            # actual emitted code because the .gitignore is detected
+            # as a manifest drift; ignore_rule_changed is reserved
+            # for the future code path that distinguishes rule
+            # changes from external edits).
+            assert payload["fallback_reason"] in {
+                "ignore_rule_changed",
+                "index_stale_scope",
+            }, payload
+            assert payload["fallback_reason"] in CANONICAL_REASON_CODES
+            # (c) budget
             assert elapsed < _budget_seconds(), f"F14 elapsed {elapsed:.3f}s > 1s"
-            # The next reindex honours the new rule and rebuilds.
+            # (d) automatic recovery: the next reindex honours the
+            # new rule and rebuilds.
             _run_recovery(workspace, "no_committed_generation", reason="ignore_rule_change")
         finally:
             store.close()
 
 
-# --- F15: hard files ----------------------------------------------------
-
-
-def test_f15_hard_files_skip_without_crashing() -> None:
-    """F15: hard files (binary, invalid encoding, long lines) skip without crash.
-
-    The build must complete without raising and ``hello.py`` must
-    remain in the index. Hard-file mismatch between indexed and
-    live results is allowed because grep and FTS have different
-    binary-handling semantics; the contract is "no crash" and
-    "common files still indexed".
-    """
-    with _TmpWorkspace() as (tmp_path, workspace):
-        (workspace / "binary.dat").write_bytes(b"\x00\x01\x02\x03")
-        (workspace / "invalid_utf8.txt").write_bytes(b"hello\xc3\x28world")
-        (workspace / "long_line.py").write_text("x = " + "a" * 100_000 + "\n")
-        index_dir = tmp_path / ".agent" / "ralph-explore"
-        index_dir.mkdir(parents=True, exist_ok=True)
-        store = ExploreStore(index_dir)
-        try:
-            start = time.monotonic()
-            reindex(store, workspace, options=ReindexOptions(timeout_ms=10_000))
-            elapsed = time.monotonic() - start
-            assert elapsed < 5.0, f"F15 cold build {elapsed:.3f}s > 5s"
-            # hello.py must be in the index.
-            row = store.get_file("hello.py")
-            assert row is not None
-            session = _attach_session(store, workspace)
-            payload = _call_grep(session, workspace)
-            # hello.py must be served by the index; parity may
-            # differ on the binary file because grep and FTS handle
-            # binary files differently.
-            paths = {m.get("path") for m in payload["matches"]}
-            assert "hello.py" in paths, paths
-        finally:
-            store.close()
-
-
-# --- F16: query not eligible --------------------------------------------
-
-
-def test_f16_regex_falls_through_to_live() -> None:
-    """F16: regex patterns are not FTS-eligible; live grep runs."""
-    with _TmpWorkspace() as (tmp_path, workspace):
-        index_dir = tmp_path / ".agent" / "ralph-explore"
-        index_dir.mkdir(parents=True, exist_ok=True)
-        store = ExploreStore(index_dir)
-        try:
-            reindex(store, workspace, options=ReindexOptions(timeout_ms=5_000))
-            session = _attach_session(store, workspace)
-            result = handle_grep_files(
-                session,
-                _Workspace(workspace),
-                {
-                    "pattern": "h.llo",
-                    "path": ".",
-                    "regex": True,
-                    "use_index": "auto",
-                },
-            )
-            payload = _decode(result)
-            assert payload["index_used"] is False
-            assert payload["fallback_reason"] == "pattern_not_fts_eligible"
-            assert any("hello" in (m.get("text") or "") for m in payload["matches"])
-        finally:
-            store.close()
-
-
-# --- F17: timeout --------------------------------------------------------
-
-
-def test_f17_timeout_returns_bounded_partial() -> None:
-    """F17: an indexing timeout returns live results within the budget."""
-    with _TmpWorkspace() as (tmp_path, workspace):
-        index_dir = tmp_path / ".agent" / "ralph-explore"
-        index_dir.mkdir(parents=True, exist_ok=True)
-        store = ExploreStore(index_dir)
-        try:
-            # Force a budget-exceeded condition by setting timeout to 1ms.
-            start = time.monotonic()
-            with contextlib.suppress(Exception):
-                # Some platforms reject timeout_ms=1; treat as bounded.
-                reindex(store, workspace, options=ReindexOptions(timeout_ms=1))
-            elapsed = time.monotonic() - start
-            # The call must complete within a bounded window even when
-            # the index can't serve.
-            assert elapsed < 2.0, f"F17 elapsed {elapsed:.3f}s > 2s"
-            session = _attach_session(store, workspace)
-            payload = _call_grep(session, workspace)
-            _assert_parity_with_live(payload, workspace)
-        finally:
-            store.close()
-
-
-# --- F18: indexer error --------------------------------------------------
-
-
-def test_f18_indexer_exception_falls_through() -> None:
-    """F18: an indexer exception is caught; the call still succeeds."""
-    with _TmpWorkspace() as (tmp_path, workspace):
-        index_dir = tmp_path / ".agent" / "ralph-explore"
-        index_dir.mkdir(parents=True, exist_ok=True)
-        # Close a store immediately so any later call hits a closed conn.
-        empty_store = ExploreStore(index_dir)
-        empty_store.close()
-        session = _attach_session(empty_store, workspace)
-        start = time.monotonic()
-        payload = _call_grep(session, workspace)
-        elapsed = time.monotonic() - start
-        _assert_parity_with_live(payload, workspace)
-        assert elapsed < _budget_seconds(), f"F18 elapsed {elapsed:.3f}s > 1s"
-        # Recovery driver records the indexer_error and rebuilds.
-        snap = _run_recovery(workspace, "indexer_error", reason="closed_conn")
-        assert "health" in snap
-
-
-# --- F19: resource pressure ---------------------------------------------
-
-
-def test_f19_resource_pressure_keeps_searches_working() -> None:
-    """F19: searches keep working under simulated pressure."""
-    with _TmpWorkspace() as (_tmp_path, workspace):
-        session = _FakeSession(explore_index=None)
-        start = time.monotonic()
-        payload = _call_grep(session, workspace)
-        elapsed = time.monotonic() - start
-        _assert_parity_with_live(payload, workspace)
-        assert elapsed < _budget_seconds(), f"F19 elapsed {elapsed:.3f}s > 1s"
-
-
-# --- F20: workspace moved ------------------------------------------------
-
-
-def test_f20_workspace_moved_falls_through_and_recovers() -> None:
-    """F20: workspace moved → fall through, recovery rebuilds new path.
-
-    The acceptance contract is that the moved workspace, served by
-    a fresh empty index, falls through to live search and the
-    recovery driver rebuilds the index for the new path. The
-    ``fallback_reason`` must be one of the canonical codes
-    documented for F20 (``no_committed_generation`` or
-    ``workspace_moved``).
-    """
-    with _TmpWorkspace() as (tmp_path, workspace):
-        # Build index for original workspace.
-        index_dir = tmp_path / ".agent" / "ralph-explore"
-        index_dir.mkdir(parents=True, exist_ok=True)
-        store = ExploreStore(index_dir)
-        try:
-            reindex(store, workspace, options=ReindexOptions(timeout_ms=5_000))
-        finally:
-            store.close()
-        # Move the workspace to a new path; index is empty for the
-        # new path.
-        moved = tmp_path / "moved_ws"
-        moved.mkdir()
-        (moved / "hello.py").write_text("def hello():\n    return 'world'\n")
-        moved_index_dir = moved / ".agent" / "ralph-explore"
-        moved_index_dir.mkdir(parents=True, exist_ok=True)
-        moved_store = ExploreStore(moved_index_dir)
-        try:
-            session = _attach_session(moved_store, moved)
-            start = time.monotonic()
-            payload = _call_grep(session, moved)
-            elapsed = time.monotonic() - start
-            _assert_parity_with_live(payload, moved)
-            assert payload["fallback_reason"] in {
-                "no_committed_generation",
-                "workspace_moved",
-            }, payload
-            assert elapsed < _budget_seconds(), f"F20 elapsed {elapsed:.3f}s > 1s"
-            # Recovery: wipe + rebuild for the new path.
-            _run_recovery(moved, "workspace_moved", reason="path_change")
-            later_store = ExploreStore(moved_index_dir)
-            try:
-                later_session = _attach_session(later_store, moved)
-                later = _call_grep(later_session, moved)
-                assert later["index_used"] is True, later
-            finally:
-                later_store.close()
-        finally:
-            moved_store.close()
-
-
-# --- parameterized status truthfulness ----------------------------------
-
-
-def test_status_payload_truthful_for_every_fault_mode() -> None:
-    """For every fault, the status handler reports the right health/last_failure.
-
-    The handler uses the persisted recovery state file, so a fault
-    recorded via the scheduler is visible to the next status call.
-    """
-    with _TmpWorkspace() as (_tmp_path, workspace):
-        for fault_code, expected_health in [
-            ("index_corrupt", "stale"),
-            ("interrupted_build", "stale"),
-            ("version_mismatch", "stale"),
-            ("index_unwritable", "stale"),
-            ("index_locked", "stale"),
-            ("indexer_error", "stale"),
-            ("workspace_moved", "stale"),
-        ]:
-            clear_persisted_state(workspace)
-            scheduler = build_scheduler(workspace)
-            scheduler.record_failure(code=fault_code, message=f"F_{fault_code}_test")
-            # The persisted state file now reflects the fault.
-            persisted = read_persisted_state(workspace)
-            assert persisted is not None, f"no persisted state for {fault_code}"
-            assert persisted["last_failure_code"] == fault_code
-            assert persisted["health"] == expected_health
-            # The scheduler's snapshot matches.
-            assert scheduler.snapshot()["last_failure"]["code"] == fault_code
-            assert scheduler.snapshot()["health"] == expected_health
-
-
-# --- helpers --------------------------------------------------------------
+# --- F15-F20 + parameterized status truthfulness live in the late slice ---
+#
+# The F15-F20 fault modes and the ``test_status_payload_truthful_for_every_fault_mode``
+# parametric coverage moved to ``test_explore_fault_matrix_full_late.py`` so this
+# file stays under the repo-structure audit's 1000-line cap. The late slice
+# owns its own copy of the shared helpers; each slice is self-contained so
+# it can be re-pointed at a different explore-substrate version without
+# cross-file import churn.
 
 
 class _TmpWorkspace:

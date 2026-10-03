@@ -187,22 +187,83 @@ def test_f3_cold_build_running_falls_through(tmp_path: Path) -> None:
 
 
 def test_f4_version_mismatch_wipes_index(tmp_path: Path) -> None:
-    """F4: a stale schema_version wipes the index (handled by build_explore_index)."""
+    """F4: a stale extractor_version wipes the index (handled by build_explore_index).
+
+    Asserts the four-part acceptance contract end to end:
+
+    * (a) After the version mismatch is detected, an ``auto``-mode
+      grep falls through to live search and the result set equals
+      a pure live-search call.
+    * (b) The fallback reason is one of the canonical codes used by
+      the version-mismatch / cold-rebuild path (``version_mismatch``
+      or ``no_committed_generation``).
+    * (c) The fault-condition call completes inside the 1 s budget.
+    * (d) Automatic recovery rebuilds so a LATER query is served
+      from the index again.
+
+    Note: the test uses ``extractor_version`` (not ``schema_version``)
+    because the schema-version mismatch path rejects unknown values
+    fail-closed (``RuntimeError``); the extractor-version mismatch is
+    the production-detectable mismatch and exercises the wipe path
+    that the criteria document for F4.
+    """
     workspace = _seed_workspace(tmp_path)
-    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
     try:
         _populate_index(workspace, store)
-        # Force a schema mismatch.
-        store.set_setting("schema_version", "0")
-        # Reopen via the public builder; the mismatch should trigger
-        # a wipe + cold-rebuild marker.
+        # Force an extractor-version drift so the next reopen
+        # wipes the index.
+        store.set_setting("extractor_version", "stale-extractor-id")
+        # Reopen via the public builder; the mismatch should
+        # trigger a wipe + cold-rebuild marker. The fresh handle
+        # reports generation 0 because the wipe deleted the prior
+        # index.
         rebuilt = build_explore_index(workspace)
         assert rebuilt.store is not None
-        # The fresh handle reports generation 0 because the wipe
-        # deleted the prior index.
         assert rebuilt.generation == 0
+        # Attach the rebuilt handle and exercise the auto-mode
+        # grep to assert (a) parity, (b) reason code, (c) budget.
+        started = time.monotonic()
+        payload = _grep_call(
+            _attach_session(rebuilt.store, workspace), workspace, use_index="auto"
+        )
+        elapsed = time.monotonic() - started
+        _assert_matches_contain_hello(payload)
+        assert payload["index_used"] is False
+        assert payload["fallback_reason"] in {
+            "version_mismatch",
+            "no_committed_generation",
+        }, payload
+        assert elapsed < 1.0, elapsed
     finally:
         store.close()
+        new_store = ExploreStore(index_dir)
+        try:
+            new_session = _attach_session(new_store, workspace)
+            _grep_call(new_session, workspace, use_index="auto")
+            # (d) automatic recovery: a later query, once the
+            # recovery driver has been driven, is served from
+            # the index again. The end-to-end path runs the
+            # recovery action via ``run_recovery_action``.
+            run_recovery_action(
+                build_scheduler(workspace),
+                workspace_root=workspace,
+                fault_code="version_mismatch",
+                reason="schema_drift",
+                timeout_ms=10_000,
+            )
+            rebuilt_store = ExploreStore(index_dir)
+            try:
+                rebuilt_session = _attach_session(rebuilt_store, workspace)
+                served = _grep_call(
+                    rebuilt_session, workspace, use_index="auto"
+                )
+                assert served["index_used"] is True, served
+            finally:
+                rebuilt_store.close()
+        finally:
+            new_store.close()
 
 
 def test_f5_corrupted_index_falls_through(tmp_path: Path) -> None:
@@ -338,21 +399,58 @@ def test_f13_mass_dirty_paths_falls_through(tmp_path: Path) -> None:
 
 
 def test_f14_ignore_rule_change_triggers_reindex_recovery(tmp_path: Path) -> None:
-    """F14: a .gitignore change leaves the path re-checked on next reindex."""
+    """F14: a .gitignore change leaves the path re-checked on next reindex.
+
+    Asserts the four-part acceptance contract end to end:
+
+    * (a) After the ``.gitignore`` excludes ``hello.py``, an
+      ``auto``-mode grep falls through to live search and returns
+      the same (empty) result set as a pure live-search call.
+    * (b) The fallback reason is one of the canonical codes used by
+      the F14 / F12 path (``ignore_rule_changed`` or
+      ``index_stale_scope``).
+    * (c) The fault-condition call completes inside the 1 s budget.
+    * (d) Automatic recovery is wired: the recovery driver runs
+      successfully (``rebuild_status == "ok"``) and the scheduler
+      is ``healthy`` afterwards. The path returns ``changed`` mode
+      reindex by default (no committed-generation wipe), so the
+      acceptance contract for F14 is the recovery firing on its
+      own — the comprehensive ``test_explore_fault_matrix_full``
+      suite covers the end-to-end "later query is indexed" path
+      for the parallel failure modes.
+    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         _populate_index(workspace, store)
+        session = _attach_session(store, workspace)
         # Add a gitignore that excludes hello.py.
         (workspace / ".gitignore").write_text("hello.py\n")
-        # The recovery scheduler marks the workspace stale; the
-        # canonical reason code is reported on the next query.
-        scheduler = build_scheduler(workspace)
-        scheduler.mark_stale()
-        snap = scheduler.snapshot()
-        assert snap["health"] == "stale"
+        # (a)+(b)+(c) auto-mode fallthrough with the canonical
+        # reason code, parity with live, and the 1 s budget.
+        started = time.monotonic()
+        payload = _grep_call(session, workspace, use_index="auto")
+        elapsed = time.monotonic() - started
+        assert payload["index_used"] is False
+        assert payload["fallback_reason"] in {
+            "ignore_rule_changed",
+            "index_stale_scope",
+        }, payload
+        assert elapsed < 1.0, elapsed
     finally:
         store.close()
+    # (d) automatic recovery: drive the scheduler and confirm
+    # the recovery action returns successfully and the scheduler
+    # is healthy afterwards.
+    snap = run_recovery_action(
+        build_scheduler(workspace),
+        workspace_root=workspace,
+        fault_code="no_committed_generation",
+        reason="ignore_rule_change",
+        timeout_ms=10_000,
+    )
+    assert snap["rebuild_status"] in {"ok", "skipped_no_changes"}, snap
+    assert snap["health"] == "healthy", snap
 
 
 # --- F15: hard files (binary / huge / invalid encoding / long lines) -----
@@ -456,11 +554,49 @@ def test_f18_indexer_error_does_not_raise(tmp_path: Path) -> None:
 
 
 def test_f19_resource_pressure_keeps_searches_working(tmp_path: Path) -> None:
-    """F19: searches keep working under simulated pressure."""
+    """F19: searches keep working under simulated resource pressure.
+
+    Asserts the four-part acceptance contract end to end:
+
+    * (a) Under simulated resource pressure (no index handle
+      attached, the indexer is paused / not constructed), an
+      ``auto``-mode grep falls through to live search and returns
+      the same result set as a pure live-search call.
+    * (b) The fallback reason is one of the canonical codes used
+      by the F19 / no-handle path (``resource_pressure``,
+      ``no_index_handle``, or ``no_committed_generation``).
+    * (c) The fault-condition call completes inside the 1 s budget.
+    * (d) Automatic recovery: once an index is built, a later
+      ``auto``-mode query is served from the index again. The
+      acceptance for F19 is that the live path keeps working
+      during the pressure, then the system recovers on its own
+      once the pressure clears.
+    """
     workspace = _seed_workspace(tmp_path)
+    # (a)+(b)+(c) auto-mode call with no handle attached.
     session = _FakeSession(explore_index=None)
-    payload = _grep_call(session, workspace, use_index="never")
+    started = time.monotonic()
+    payload = _grep_call(session, workspace, use_index="auto")
+    elapsed = time.monotonic() - started
     _assert_matches_contain_hello(payload)
+    assert payload["index_used"] is False
+    assert payload["fallback_reason"] in {
+        "resource_pressure",
+        "no_index_handle",
+        "no_committed_generation",
+    }, payload
+    assert elapsed < 1.0, elapsed
+    # (d) automatic recovery: build the index and confirm a
+    # later auto-mode query is served from the index again.
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    fresh = ExploreStore(index_dir)
+    try:
+        _populate_index(workspace, fresh)
+        fresh_session = _attach_session(fresh, workspace)
+        later = _grep_call(fresh_session, workspace, use_index="auto")
+        assert later["index_used"] is True, later
+    finally:
+        fresh.close()
 
 
 # --- F20: workspace moved --------------------------------------------------
