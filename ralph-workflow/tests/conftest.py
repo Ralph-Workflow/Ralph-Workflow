@@ -70,6 +70,42 @@ def _disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(recovery, "_ensure_drain_thread", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_explore_recovery_globals() -> Generator[None, None, None]:
+    """Snapshot and restore the process-global recovery queue per test.
+
+    ``recovery._PENDING_RECOVERY`` is a module-level dict shared across
+    every test in the process. Earlier tests enqueue entries (via
+    ``handle_ralph_index_status`` cold-detection and the fault-matrix
+    suites) without clearing them, so a later test that calls
+    ``_drain_pending_recoveries_once`` sees every queued workspace
+    drained together (the S-2 batch failure: expected ``attempted == 1``,
+    observed 25). Snapshot the dict and event state before each test,
+    clear them, then restore on teardown so each test observes an
+    isolated queue. The drain thread itself is already stubbed by
+    ``_disable_explore_recovery_drain_thread`` above, so no background
+    work can race the snapshot/restore.
+    """
+    from ralph.mcp.explore import recovery
+
+    with recovery._PENDING_LOCK:
+        pending_snapshot = recovery._PENDING_RECOVERY.copy()
+    wakeup_was_set = recovery._DRAIN_WAKEUP.is_set()
+    with recovery._PENDING_LOCK:
+        recovery._PENDING_RECOVERY.clear()
+    recovery._DRAIN_WAKEUP.clear()
+    try:
+        yield
+    finally:
+        with recovery._PENDING_LOCK:
+            recovery._PENDING_RECOVERY.clear()
+            recovery._PENDING_RECOVERY.update(pending_snapshot)
+        if wakeup_was_set:
+            recovery._DRAIN_WAKEUP.set()
+        else:
+            recovery._DRAIN_WAKEUP.clear()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     """Keep default tests independent of the locally installed AGY binary."""
