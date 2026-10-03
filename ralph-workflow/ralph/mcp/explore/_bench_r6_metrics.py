@@ -15,10 +15,11 @@ import time
 from collections.abc import Mapping, Sized
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final
+from typing import Final, cast
 
 from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
-from ralph.mcp.explore._bench_product_baseline import _BaselineSession, nearest_rank_p95
+from ralph.mcp.explore._bench_product_baseline import _BaselineSession
+from ralph.mcp.explore._bench_r6_query_sampler import _QueryCallable, sample_query_latencies
 from ralph.mcp.explore._bench_r6_subprocess import run_build_subprocess
 from ralph.mcp.explore.store import ExploreStore
 from ralph.workspace.fs import FsWorkspace
@@ -329,62 +330,27 @@ def _measure_query_latency(
             reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
         session.explore_index = build_sqlite_index_handle(store)
         ws = FsWorkspace(workspace)
-        # Indexed timings
-        indexed_samples: list[float] = []
-        live_samples: list[float] = []
-        for _ in range(5):
-            start = time.perf_counter()
-            handle_grep_files(
-                session,
-                ws,
-                {
-                    "pattern": "hello",
-                    "path": ".",
-                    "regex": False,
-                    "case_sensitive": False,
-                    "use_index": "auto",
-                },
-            )
-            indexed_samples.append(time.perf_counter() - start)
-            start = time.perf_counter()
-            handle_grep_files(
-                session,
-                ws,
-                {
-                    "pattern": "hello",
-                    "path": ".",
-                    "regex": False,
-                    "case_sensitive": False,
-                    "use_index": "never",
-                },
-            )
-            live_samples.append(time.perf_counter() - start)
-        indexed_p50 = sorted(indexed_samples)[len(indexed_samples) // 2]
-        indexed_p95 = nearest_rank_p95(indexed_samples)
-        indexed_p99 = sorted(indexed_samples)[-1]
-        live_p50 = sorted(live_samples)[len(live_samples) // 2]
-        live_p95 = nearest_rank_p95(live_samples)
-        live_p99 = sorted(live_samples)[-1]
-        speed_ratio = (live_p50 / indexed_p50) if indexed_p50 > 0 else 0.0
         raw_samples: list[float] = []
         for _ in range(5):
             start = time.perf_counter()
             store._conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
             raw_samples.append(time.perf_counter() - start)
         raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
-        agent_added = max(0.0, nearest_rank_p95(indexed_samples) - raw_p50)
+        # cast-policy: seam: ``handle_grep_files`` is provably compatible
+        # with ``_QueryCallable`` by Callable contravariance
+        # (its ``CoordinationSessionLike`` / ``Workspace`` parameters
+        # are narrower than the Protocol's ``object`` parameters, and
+        # its ``ToolResult`` return is a subtype of ``object``); the
+        # proof is at the call site of the local handler.
+        return sample_query_latencies(
+            grep_handler=cast("_QueryCallable", handle_grep_files),  # cast-policy: seam: see above
+            session=session,
+            workspace=ws,
+            perf_counter=time.perf_counter,
+            raw_overhead_p50=raw_p50,
+        )
     finally:
         store.close()
-    return {
-        "indexed_query_p50_seconds": indexed_p50,
-        "indexed_query_p95_seconds": indexed_p95,
-        "indexed_query_p99_seconds": indexed_p99,
-        "live_query_p50_seconds": live_p50,
-        "live_query_p95_seconds": live_p95,
-        "live_query_p99_seconds": live_p99,
-        "indexed_vs_live_speed_ratio": speed_ratio,
-        "agent_added_latency_p95_seconds": agent_added,
-    }
 
 
 def _seed_small_workspace(parent: Path) -> Path:
