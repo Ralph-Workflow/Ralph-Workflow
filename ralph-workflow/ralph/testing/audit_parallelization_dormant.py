@@ -1,4 +1,14 @@
-"""Audit that planning keeps delegation optional and non-prescriptive."""
+"""Audit that planning treats subagent delegation and parallel work units as
+the default rather than a reluctant exception.
+
+The audit pins the literals that mark the unconditional posture: a planning
+prompt that names read-only subagent delegation for exploration, research, and
+verification, plus the shared delegation guidance that names context
+isolation. Forbidden literals are the relics of the previous
+``HAS_SUBAGENTS``-gated wording (e.g. ``ralph coordinate``, parallel-worker
+rules) that would re-introduce capability detection or a coordinated-worker
+abstraction Ralph does not implement.
+"""
 
 from __future__ import annotations
 
@@ -41,7 +51,7 @@ class Invariant:
 _INVARIANTS: tuple[Invariant, ...] = (
     Invariant(
         rel_path="prompts/templates/planning.jinja",
-        present=("Use subagents only when independent repository discovery",),
+        present=("Delegate exploration, research, and verification to read-only subagents",),
         absent=("## Same-Workspace Parallel Worker Rules",),
     ),
     Invariant(
@@ -74,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"  {problem}")
         return 1
-    print("All planning-guidance invariants OK: delegation is optional and review is substantive.")
+    print("All planning-guidance invariants OK: delegation and parallel work units are first-class.")
     return 0
 
 

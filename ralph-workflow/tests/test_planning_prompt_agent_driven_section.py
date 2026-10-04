@@ -9,10 +9,10 @@ def _source(name: str) -> str:
     return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
 
 
-def test_planning_prompt_keeps_optional_parallelism_concise() -> None:
+def test_planning_prompt_treats_subagent_delegation_as_default() -> None:
     source = _source("planning.jinja")
-    assert "Use subagents only when independent repository discovery" in source
-    assert "compact linear plan is valid" in source
+    assert "Delegate exploration, research, and verification to read-only subagents" in source
+    assert "genuinely coupled" in source
     assert "Same-Workspace Parallel Worker Rules" not in source
     assert "ralph coordinate" not in source
 

@@ -40,23 +40,25 @@ def test_thinking_partial_uses_evidence_and_the_four_work_phases() -> None:
     assert "discovery step for an honest unknown" in source
 
 
-def test_thinking_partial_adds_partition_step_with_size_heuristic() -> None:
-    """S-3: a fifth Partition step decides linear vs `## Work Units` and forces
+def test_thinking_partial_adds_partition_step_with_coupling_posture() -> None:
+    """S-4: a fifth Partition step decides linear vs `## Work Units` and forces
     shared contract changes to land in one sequential step before any units.
+    A linear plan is the shape for work that is genuinely coupled end to
+    end; pairwise-disjoint Files sets declare units without a size gate.
     """
     source = _source("shared/_planning_thinking.jinja")
-    # Markdown line breaks split phrases like "compact linear plan" across
+    # Markdown line breaks split phrases like "genuinely coupled" across
     # two lines, so normalize whitespace before checking.
     flat = " ".join(source.split())
 
     # New phase appears alongside the original four.
     assert "Partition" in source
-    # Size heuristic: disjoint Files sets + non-trivial change set => units.
-    # Markdown bolding splits the words, so check the heuristics individually.
+    # Coupling posture: disjoint Files sets => units; no size threshold.
+    # Markdown bolding splits the words, so check the posture individually.
     assert "pairwise" in source
     assert "disjoint" in source
     assert "## Work Units" in source
-    assert "compact linear plan is valid" in flat
+    assert "genuinely coupled" in flat
     # Shared contracts must precede the units so units cannot coordinate them.
     assert "shared contract" in flat.lower() or "shared contracts" in flat.lower()
 

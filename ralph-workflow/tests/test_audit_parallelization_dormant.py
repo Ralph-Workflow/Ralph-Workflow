@@ -1,4 +1,4 @@
-"""Tests for the optional-delegation planning guidance audit.
+"""Tests for the first-class-delegation planning guidance audit.
 
 The ``test_audit_returns_zero_when_all_invariants_satisfied`` and
 ``test_audit_module_path`` tests were removed in the wt-05-test-opti pass
@@ -31,7 +31,8 @@ def test_audit_blocks_required_guidance_regression(
         content = real_read(rel_path)
         if rel_path == planning_path:
             return content.replace(
-                "Use subagents only when independent repository discovery", "GUIDANCE_REMOVED"
+                "Delegate exploration, research, and verification to read-only subagents",
+                "GUIDANCE_REMOVED",
             )
         return content
 

@@ -29,8 +29,10 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 {{PRODUCT_CRITERIA}}
 
 Inspect the repository before making claims. Planning is read-only: do not edit
-files or run state-changing commands. Prefer a concise linear plan; use work
-units only for disjoint work and subagents only for independent discovery.
+files or run state-changing commands. Delegate exploration, research, and
+verification to read-only subagents; declare `## Work Units` whenever step
+groups have pairwise disjoint `Files:` lists, and use a linear plan only when
+work is genuinely coupled end to end.
 
 A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
 After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
