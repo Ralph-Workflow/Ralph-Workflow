@@ -1093,6 +1093,8 @@ class TestNoRetryDecisionReimplementation:
             if "test" in rel.parts:
                 continue
             source = _read(path)
+            if "retry" not in source.lower():
+                continue
             # Substring pre-filter: an offender MUST be a function
             # definition line whose name contains BOTH ``retry`` AND
             # one of the decision verbs. Scan the source for any
