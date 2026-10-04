@@ -37,8 +37,6 @@ from ralph.skills._content import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from git import Repo
-
     from ralph.skills._project_paths import ProjectAgentSkillRoot
 
 
