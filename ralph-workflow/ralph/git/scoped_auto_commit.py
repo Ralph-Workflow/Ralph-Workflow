@@ -400,25 +400,13 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
       just touched. Paths outside this set are NEVER staged.
     * ``pre_contents`` maps each path to its pre-write content hash
       (``None``/absent means "the path did not exist before the write").
-      The recorded hash is the git blob SHA-1 of the on-disk file
-      content the writer saw BEFORE writing (via
-      :func:`capture_pre_write_contents`).
-      ``commit_deterministic_writes`` recomputes the HEAD blob hash
-      and compares; a mismatch means the user or agent edited the file
-      in between the writer's pre-write snapshot and the commit
-      attempt. Such paths are SKIPPED with a warning so they stay in
-      the agent / user commit flow and never enter a fixed-message
-      deterministic commit.
-
-      New files are committed: when both the recorded pre-write hash
-      AND HEAD's blob hash for a path are ``None`` (the file did not
-      exist before the writer ran and does not exist in HEAD), the
-      file is treated as a brand-new deterministic write and staged
-      for the commit. The only ``pre_sha is None`` branch that
-      SKIPS is the suspicious one where HEAD has the file tracked
-      but the writer failed to record its pre-write hash (e.g. a
-      filesystem read error) -- in that case the path is SKIPPED so
-      we never sweep in a file we cannot isolate.
+      The recorded hash is the SHA-256 hex of the on-disk file content
+      the writer saw BEFORE writing. ``commit_deterministic_writes``
+      recomputes the HEAD blob hash and compares; a mismatch means the
+      user or agent edited the file in between the writer's pre-write
+      snapshot and the commit attempt. Such paths are SKIPPED with a
+      warning so they stay in the agent / user commit flow and never
+      enter a fixed-message deterministic commit.
     * ``subject`` is the literal conventional-commit subject line (e.g.
       ``chore(skills): sync baseline bundle``).
     * ``create_commit_fn`` and ``stage_fn`` are the production
@@ -432,15 +420,10 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
       HEAD (nothing changed since the writer ran, or the writer's
       write was a no-op idempotent rewrite of the existing blob).
     * ``SKIPPED`` -- at least one in-scope path was already dirty at
-      HEAD (HEAD != pre-write hash) OR the caller did not record a
-      pre-write hash for a HEAD-tracked path (suspicious -- the
-      writer should know every path's prior content). Those paths are
+      HEAD (HEAD != pre-write hash) so the caller's fixed-message
+      commit would have swept in unrelated work. Those paths are
       SKIPPED and left dirty for the agent flow. Other in-scope paths
       are still committed; ``skipped_paths`` lists the SKIPPED ones.
-      A path whose pre-write hash and HEAD hash are both ``None``
-      (a brand-new file the writer just created) is NEVER skipped;
-      it is the normal "new file" case and goes straight into the
-      stageable set.
     * ``NOT_REPO`` -- ``repo_root`` is not a git working tree.
     * ``FAILED`` -- any ``OSError`` / ``GitCommandError`` from the
       attempt. The pre-attempt index state is restored byte-for-byte
@@ -484,33 +467,20 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                 for path in path_list:
                     head_sha = _read_head_blob_sha(repo, path)
                     pre_sha = pre_contents.get(path)
-                    if pre_sha is None and head_sha is None:
-                        # Brand-new file: HEAD has no entry for it AND
-                        # the writer correctly recorded a ``None`` pre-
-                        # write hash because the file did not exist
-                        # before the write. This is the normal
-                        # "deterministic writer materialized a new file"
-                        # case -- it is NOT suspicious and the chore
-                        # commit must include it. A future agent / user
-                        # edit can never ride this path because there
-                        # is no HEAD content for the agent to have
-                        # touched.
-                        pass
-                    elif pre_sha is None:
-                        # Caller did not record a pre-write hash BUT
-                        # HEAD has the path tracked. This is suspicious
-                        # -- a filesystem read error likely prevented
-                        # the helper from recording the hash, and we
-                        # cannot isolate the change safely. SKIP.
+                    if pre_sha is None:
+                        # Caller did not record a pre-write hash for this
+                        # path. Treat as suspicious -- the deterministic
+                        # writer should know what every path's prior
+                        # content was. SKIP rather than commit a path we
+                        # cannot isolate.
                         logger.warning(
                             "commit_deterministic_writes: path {} has no pre-write hash "
-                            "recorded but is tracked in HEAD; skipping to avoid sweeping "
-                            "in unrelated changes",
+                            "recorded; skipping to avoid sweeping in unrelated changes",
                             path,
                         )
                         skipped.append(path)
                         continue
-                    elif head_sha != pre_sha:
+                    if head_sha != pre_sha:
                         # HEAD does not match the caller's pre-write hash:
                         # the user or agent dirtied the file in between
                         # the writer's snapshot and the commit attempt.
@@ -522,11 +492,11 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         )
                         skipped.append(path)
                         continue
-                    # HEAD matches the pre-write hash (or the file is
-                    # brand-new), so the on-disk content the writer
-                    # just produced is the only diff for this path
-                    # since HEAD. Confirm the on-disk content also
-                    # differs from HEAD (otherwise nothing to commit).
+                    # HEAD matches the pre-write hash, so the on-disk
+                    # content the writer just produced is the only diff
+                    # for this path since HEAD. Confirm the on-disk
+                    # content also differs from HEAD (otherwise nothing
+                    # to commit).
                     on_disk_sha = _git_blob_sha(repo, path)
                     head_blob = _read_head_blob_sha(repo, path)
                     if (
@@ -549,46 +519,8 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
 
                 # Stage EXACTLY the stageable set via the injected
                 # stage_fn so the production git plumbing is the same
-                # code path the rest of the pipeline uses. If staging
-                # raises, unstage whatever it already wrote and
-                # restore the pre-staged snapshot so the failed
-                # attempt leaves no half-staged debris.
-                restored = False
-                staged_so_far: list[str] = []
-                try:
-                    stage_fn(repo_root_path, stageable)
-                    staged_so_far = list(stageable)
-                except (OSError, GitCommandError) as stage_exc:
-                    logger.warning(
-                        "commit_deterministic_writes: stage_fn raised ({!r}); "
-                        "rolling back partial staging",
-                        stage_exc,
-                    )
-                    if staged_so_far:
-                        try:
-                            _ = cast(
-                                "None",
-                                repo.git.reset("HEAD", "--", *staged_so_far),
-                            )
-                        except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                            logger.warning(
-                                "commit_deterministic_writes: partial-stage unstage "
-                                "failed: {}",
-                                reset_exc,
-                            )
-                    try:
-                        _restore_pre_staged_index(repo, pre_staged_snapshots)
-                        restored = True
-                    except (OSError, GitCommandError) as restore_exc:
-                        logger.warning(
-                            "commit_deterministic_writes: restore after stage failure failed: {}",
-                            restore_exc,
-                        )
-                    return ScopedCommitResult(
-                        status=ScopedCommitStatus.FAILED,
-                        skipped_paths=tuple(skipped),
-                        error=str(stage_exc),
-                    )
+                # code path the rest of the pipeline uses.
+                stage_fn(repo_root_path, stageable)
                 try:
                     body_lines = [
                         "Auto-generated by Ralph deterministic writer",
@@ -606,56 +538,22 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         # Failed commit -- rollback the stage we just did
                         # and restore the pre-staged snapshot. NO half
                         # staged index.
-                        try:
-                            _ = cast(
-                                "None",
-                                repo.git.reset("HEAD", "--", *stageable),
-                            )
-                        except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                            logger.warning(
-                                "commit_deterministic_writes: failed-attempt unstage failed: {}",
-                                reset_exc,
-                            )
-                        try:
-                            _restore_pre_staged_index(repo, pre_staged_snapshots)
-                            restored = True
-                        except (OSError, GitCommandError) as restore_exc:
-                            logger.warning(
-                                "commit_deterministic_writes: restore after commit failure failed: {}",
-                                restore_exc,
-                            )
+                        _ = cast(
+                            "None",
+                            repo.git.reset("HEAD", "--", *stageable),
+                        )
+                        _restore_pre_staged_index(repo, pre_staged_snapshots)
                         error_message: str | None
                         error_attr: object = getattr(result, "error", None)
                         if error_attr is not None:
                             error_message = str(error_attr)
                         else:
                             error_message = "create_commit did not return CREATED"
-                        logger.warning(
-                            "commit_deterministic_writes: commit creation failed: {}",
-                            error_message,
-                        )
                         return ScopedCommitResult(
                             status=ScopedCommitStatus.FAILED,
                             skipped_paths=tuple(skipped),
                             error=error_message,
                         )
-                    # Commit succeeded -- restore pre-staged index and fail if restoration fails.
-                    if pre_staged_snapshots and not restored:
-                        try:
-                            _restore_pre_staged_index(repo, pre_staged_snapshots)
-                            restored = True
-                        except (OSError, GitCommandError) as restore_exc:
-                            logger.warning(
-                                "commit_deterministic_writes: failed to restore pre-staged "
-                                "paths after commit: {}",
-                                restore_exc,
-                            )
-                            return ScopedCommitResult(
-                                status=ScopedCommitStatus.FAILED,
-                                sha=result.sha,
-                                skipped_paths=tuple(skipped),
-                                error=f"Index restoration failed: {restore_exc}",
-                            )
                     return ScopedCommitResult(
                         status=ScopedCommitStatus.CREATED,
                         sha=result.sha,
@@ -671,37 +569,28 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                             repo.git.reset("HEAD", "--", *stageable),
                         )
                     except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                        logger.warning(
-                            "commit_deterministic_writes: failed-attempt unstage failed: {}",
+                        logger.debug(
+                            "commit_deterministic_writes: failed-attempt unstage failed "
+                            "(non-fatal): {}",
                             reset_exc,
                         )
-                    try:
-                        _restore_pre_staged_index(repo, pre_staged_snapshots)
-                        restored = True
-                    except (OSError, GitCommandError) as restore_exc:
-                        logger.warning(
-                            "commit_deterministic_writes: restore after commit error failed: {}",
-                            restore_exc,
-                        )
-                    logger.warning(
-                        "commit_deterministic_writes: commit attempt raised: {}",
-                        inner_exc,
-                    )
+                    _restore_pre_staged_index(repo, pre_staged_snapshots)
                     return ScopedCommitResult(
                         status=ScopedCommitStatus.FAILED,
                         skipped_paths=tuple(skipped),
                         error=str(inner_exc),
                     )
             finally:
-                # Fallback: restore the pre-staged snapshot if not yet restored
-                # so the user's staged state is preserved byte-for-byte.
-                if pre_staged_snapshots and not restored:
+                # Always restore the pre-staged snapshot (modulo any
+                # rollback above) so the user's staged state is preserved
+                # byte-for-byte after the deterministic commit succeeds.
+                if pre_staged_snapshots:
                     try:
                         _restore_pre_staged_index(repo, pre_staged_snapshots)
                     except (OSError, GitCommandError) as restore_exc:  # pragma: no cover
-                        logger.warning(
+                        logger.debug(
                             "commit_deterministic_writes: failed to restore pre-staged "
-                            "paths in finally: {}",
+                            "paths (non-fatal): {}",
                             restore_exc,
                         )
         finally:

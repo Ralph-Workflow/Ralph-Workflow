@@ -253,7 +253,7 @@ def _commit_preflight_writes(
         elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
             from loguru import logger as _logger  # noqa: PLC0415
 
-            _logger.warning(
+            _logger.debug(
                 "project-policy preflight auto-commit skipped {} path(s) "
                 "already dirty at HEAD; left for the agent flow",
                 len(result.skipped_paths),
@@ -261,14 +261,14 @@ def _commit_preflight_writes(
         elif result.status is ScopedCommitStatus.FAILED:
             from loguru import logger as _logger  # noqa: PLC0415
 
-            _logger.warning(
+            _logger.debug(
                 "project-policy preflight auto-commit failed (non-fatal): {}",
                 str(result.error) if result.error is not None else "<no error detail>",
             )
     except Exception as exc:  # pragma: no cover - defensive
         from loguru import logger as _logger  # noqa: PLC0415
 
-        _logger.warning("project-policy preflight auto-commit failed (non-fatal): {}", exc)
+        _logger.debug("project-policy preflight auto-commit failed (non-fatal): {}", exc)
 
 
 def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[str]:

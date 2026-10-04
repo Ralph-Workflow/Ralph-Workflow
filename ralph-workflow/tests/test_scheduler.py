@@ -11,11 +11,18 @@ settings = _hypothesis.settings
 st = importlib.import_module("hypothesis.strategies")
 
 
-def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:
+def make_unit(
+    unit_id: str,
+    deps: list[str] | None = None,
+    directories: list[str] | None = None,
+    paths: list[str] | None = None,
+) -> WorkUnit:
     return WorkUnit(
         unit_id=unit_id,
         description=f"Unit {unit_id}",
         dependencies=list(deps or []),
+        allowed_directories=list(directories or []),
+        paths=list(paths or []),
     )
 
 
@@ -32,6 +39,40 @@ def test_fully_parallel_no_deps() -> None:
     units = (make_unit("A"), make_unit("B"), make_unit("C"))
     result = schedule_next_wave(set(), units, set(), max_workers=10)
     assert [u.unit_id for u in result] == ["A", "B", "C"]
+
+
+def test_same_directory_disjoint_files_can_run_together() -> None:
+    units = (
+        make_unit("A", paths=["src/a.py"]),
+        make_unit("B", paths=["src/b.py"]),
+    )
+
+    assert [unit.unit_id for unit in schedule_next_wave(set(), units, set(), 2)] == ["A", "B"]
+
+
+def test_overlapping_file_and_directory_run_in_separate_waves() -> None:
+    units = (
+        make_unit("A", directories=["src"]),
+        make_unit("B", paths=["src/a.py"]),
+    )
+
+    first = schedule_next_wave(set(), units, set(), 2)
+
+    assert [unit.unit_id for unit in first] == ["A"]
+    assert schedule_next_wave(set(), units, {"A"}, 2) == []
+    assert [unit.unit_id for unit in schedule_next_wave({"A"}, units, set(), 2)] == ["B"]
+
+
+def test_equal_normalized_files_and_directory_ancestry_serialize() -> None:
+    ownership_pairs = (
+        (make_unit("A", paths=["./src/a.py"]), make_unit("B", paths=["src/a.py"])),
+        (make_unit("A", directories=["src"]), make_unit("B", directories=["src/nested"])),
+        (make_unit("A", paths=["src/a.py"]), make_unit("B", directories=["src"])),
+    )
+    for units in ownership_pairs:
+        assert [unit.unit_id for unit in schedule_next_wave(set(), units, set(), 2)] == ["A"]
+        assert schedule_next_wave(set(), units, {"A"}, 2) == []
+        assert [unit.unit_id for unit in schedule_next_wave({"A"}, units, set(), 2)] == ["B"]
 
 
 def test_full_parallel_respects_cap() -> None:

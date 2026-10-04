@@ -30,6 +30,7 @@ class DeveloperPromptInputs:
     work_unit_id: str = ""
     work_unit_description: str = ""
     work_unit_directories: str = ""
+    work_unit_paths: str = ""
     worker_namespace: str = ""
     is_continuation: bool = False
     # S-5: development timebox publications. ``None`` means "no timebox

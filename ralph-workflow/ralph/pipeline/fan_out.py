@@ -46,11 +46,6 @@ from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.parallel.worker_runtime import build_worker_runtime_paths
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.verification_result import VerificationResult
-from ralph.pipeline.work_units import (
-    WorkUnitsPlan,
-    WorkUnitsValidationError,
-    validate_for_same_workspace,
-)
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.workspace import FsWorkspace
 
@@ -462,6 +457,7 @@ def _persist_parallel_worker_manifests(
             unit_id=unit.unit_id,
             description=unit.description,
             allowed_directories=list(unit.allowed_directories),
+            paths=list(unit.paths),
             step_ids=list(unit.step_ids),
             phase=effect.phase,
             drain=session_drain,
@@ -526,7 +522,19 @@ def _resume_fan_out_state(
         for uid, ws in resumed_state.worker_states.items()
         if ws.status == WorkerStatus.SUCCEEDED
     }
-    resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
+    resume_units = tuple(
+        unit.model_copy(
+            update={
+                "dependencies": [
+                    dependency
+                    for dependency in unit.dependencies
+                    if dependency not in completed_ids
+                ],
+            }
+        )
+        for unit in effect.work_units
+        if unit.unit_id not in completed_ids
+    )
     return resumed_state, resume_units
 
 
@@ -616,24 +624,6 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
         assert root_task is not None
         teardown_fn = _install(loop, root_task, bridge)
-
-        try:
-            validate_for_same_workspace(WorkUnitsPlan(work_units=list(ctx.effect.work_units)))
-        except WorkUnitsValidationError as exc:
-            failure_reason = f"Parallel plan rejected (same-workspace safety check failed): {exc}"
-            logger.error(failure_reason)
-            failure_event = PhaseFailureEvent(
-                phase=current.phase, reason=failure_reason, recoverable=True
-            )
-            recovered, _ = _reduce(
-                current, failure_event, ctx.policy_bundle.pipeline, recovery=None
-            )
-            _notify_subscriber(ctx.pipeline_subscriber, recovered)
-            _save_checkpoint_or_log(
-                recovered,
-                message="Checkpoint save failed after plan rejection in phase={phase}: {err}",
-            )
-            return recovered
 
         session_mcp_plan, session_drain = build_session_mcp_plan_for_phase(
             effect=ctx.effect,

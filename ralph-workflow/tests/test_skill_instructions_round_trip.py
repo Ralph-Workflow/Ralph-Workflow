@@ -55,6 +55,7 @@ def test_plan_skill_documents_the_complete_markdown_workflow() -> None:
         "ralph_discard_md_draft",
     ):
         assert tool in body
-    assert "### [S-n] Title" in body
+    assert "Parallel work is the default" in body
+    assert "not enforce headings" in body
     assert "JSON" not in body
     assert "ralph_edit_md_plan_step" not in body

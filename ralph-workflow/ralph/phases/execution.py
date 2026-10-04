@@ -58,8 +58,7 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
-from ralph.policy.validation import PolicyValidationError
+from ralph.pipeline.work_units import canonical_plan_references
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -248,9 +247,7 @@ def _validate_plan_output(
         )
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
-        artifact_wrapper = load_phase_artifact(
-            ctx.workspace, ra.artifact_path, artifact_type=ra.artifact_type
-        )
+        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
         raw_content = unwrap_phase_artifact_content(
             artifact_wrapper, expected_type=ra.artifact_type
         )
@@ -260,8 +257,6 @@ def _validate_plan_output(
     except (
         PlanArtifactValidationError,
         ValueError,
-        WorkUnitsValidationError,
-        PolicyValidationError,
     ) as exc:
         logger.warning("Invalid plan artifact: {}", exc)
         _write_retry_hint(ctx, phase, str(exc))
@@ -306,8 +301,6 @@ def _validate_plan_input(
         PlanArtifactValidationError,
         PhaseArtifactError,
         ValueError,
-        WorkUnitsValidationError,
-        PolicyValidationError,
     ) as exc:
         logger.warning("Invalid development phase evidence: {}", exc)
         _write_retry_hint(
@@ -543,77 +536,36 @@ def _plan_proof_errors(
         )
     step_refs = _get_canonical_step_refs(ctx)
     submitted_set = frozenset(submitted)
-    if _plan_declares_explicit_work_units(ctx) and not (
-        submitted_set and submitted_set <= step_refs
-    ):
+    if work_unit_ids and not (submitted_set and submitted_set <= step_refs):
         required_refs = work_unit_ids | (step_refs - owned_step_refs)
         return _work_unit_proof_errors(required_refs, submitted)
     if step_refs:
         return _step_proof_errors(step_refs, submitted)
     if work_unit_ids:
         return _work_unit_proof_errors(work_unit_ids, submitted)
-    return []
-
-
-def _plan_declares_explicit_work_units(ctx: PhaseContext) -> bool:
-    """Return whether the source plan contains an explicit Work Units section."""
-    try:
-        if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
-            return False
-        markdown = ctx.workspace.read(PLAN_ARTIFACT_PATH)
-    except Exception:
-        return False
-    return any(
-        line.strip().casefold() in {"## work units", "## parallel plan"}
-        for line in markdown.splitlines()
-    )
+    return _step_proof_errors(frozenset({"plan"}), submitted)
 
 
 def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
-    refs: set[str] = set()
-    try:
-        if ctx.workspace.exists(PLAN_ARTIFACT_PATH):
-            artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
-            content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
-            if not is_noop_plan(content):
-                steps = content.get("steps")
-                if isinstance(steps, list) and steps:
-                    for step in steps:
-                        if not isinstance(step, dict):
-                            return frozenset()
-                        step_id = step.get("id") or step.get("step_id")
-                        if not isinstance(step_id, str):
-                            # Canonical markdown parsing preserves number; derive its stable ID.
-                            number = step.get("number")
-                            if not isinstance(number, int):
-                                return frozenset()
-                            step_id = f"S-{number}"
-                        refs.add(step_id)
-    except Exception:
-        return frozenset()
-    return frozenset(refs)
+    return _get_plan_references(ctx)[0]
 
 
 def _get_canonical_work_unit_refs(
     ctx: PhaseContext,
 ) -> tuple[frozenset[str], frozenset[str]]:
-    """Return canonical unit IDs and the global step IDs those units own."""
+    _, units, owned = _get_plan_references(ctx)
+    return units, owned
+
+
+def _get_plan_references(
+    ctx: PhaseContext,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
     try:
-        if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
-            return frozenset(), frozenset()
-        artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
-        content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
-        if is_noop_plan(content):
-            return frozenset(), frozenset()
-        parsed = parse_work_units_from_artifact(content)
-        if parsed is None or not parsed.work_units:
-            return frozenset(), frozenset()
-        return (
-            frozenset(unit.unit_id for unit in parsed.work_units),
-            frozenset(step_id for unit in parsed.work_units for step_id in unit.step_ids),
-        )
-    except Exception:
-        return frozenset(), frozenset()
+        wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+        content = unwrap_phase_artifact_content(wrapper, expected_type="plan")
+        return canonical_plan_references(content)
+    except (PhaseArtifactError, ValueError):
+        return frozenset(), frozenset(), frozenset()
 
 
 def _get_canonical_analysis_finding_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:

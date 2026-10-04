@@ -11,8 +11,6 @@ Supported public surface:
 - **SameWorkspaceContext**: Configuration for a same-workspace fan-out run,
   including repo root, per-worker namespace root, MCP factory, and optional
   executor command.
-- **validate_for_same_workspace**: Pre-flight validator that rejects overlapping,
-  missing, or reserved edit areas before any worker is launched.
 
 These are the only supported parallel primitives for v1.
 Per-worker branches and post-development branch reconciliation are explicitly
@@ -26,10 +24,8 @@ from ralph.pipeline.parallel.worker_runtime import (
 from ralph.pipeline.parallel.worker_runtime import (
     build_worker_runtime_paths as build_worker_runtime_paths,
 )
-from ralph.pipeline.work_units import validate_for_same_workspace
 
 __all__ = [
     "ParallelExecutionMode",
     "SameWorkspaceContext",
-    "validate_for_same_workspace",
 ]

@@ -1,7 +1,7 @@
 ---
 name: submit-artifact
 description: Use when submitting any Ralph Workflow artifact as a markdown document via ralph_submit_md_artifact, when pre-checking a draft with ralph_verify_md_artifact, or when a submission returned diagnostics with codes like MD001-MD007, SPEC001-SPEC012, or REF001-REF004 and you need the closed markdown grammar
-version: 2.1.0
+version: 2.2.0
 ---
 
 # submit-artifact

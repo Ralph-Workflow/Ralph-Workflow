@@ -1296,16 +1296,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # rationale is documented inline on each marker.
         ("ralph/git/scoped_auto_commit.py", 269),
         ("ralph/git/scoped_auto_commit.py", 376),
-        # wt-012: the explicit-outcome state machine in
-        # ``commit_scoped_updates`` is a separate function from
-        # ``commit_deterministic_writes`` (kept for legacy dirty-discovery
-        # callers); the PLR0912 marker here is for the same reason
-        # the prior wt-025 entry at line 608 was -- the function
-        # scans the live dirty tree, takes staged-state snapshots,
-        # and runs the chore commit, and the branches cannot be
-        # cleanly consolidated without losing the staged-state
-        # restoration guarantee.
-        ("ralph/git/scoped_auto_commit.py", 668),
+        ("ralph/git/scoped_auto_commit.py", 608),
         ("ralph/project_policy/cli_integration.py", 555),
         ("ralph/project_policy/cli_integration.py", 558),
         ("ralph/project_policy/cli_integration.py", 559),
@@ -1319,8 +1310,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/preflight.py", 254),
         ("ralph/project_policy/preflight.py", 262),
         ("ralph/project_policy/preflight.py", 269),
-        ("ralph/skills/_installer.py", 131),
-        ("ralph/skills/_installer.py", 133),
+        ("ralph/skills/_installer.py", 112),
+        ("ralph/skills/_installer.py", 114),
         ("ralph/skills/manager.py", 213),
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),

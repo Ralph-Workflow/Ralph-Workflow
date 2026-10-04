@@ -1,7 +1,7 @@
 ---
 name: submit-development-result-artifact
 description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a completed result was rejected for a missing section or an unproven plan or analysis item
-version: 2.1.0
+version: 2.2.0
 ---
 
 # submit-development-result-artifact

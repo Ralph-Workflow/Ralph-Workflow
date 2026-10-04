@@ -54,8 +54,8 @@ paths the writer just modified. It will NEVER sweep in:
   the policy surfaces already committed) is a NOOP. No commit, no
   error.
 - **Commit failure is visible.** A `FAILED` outcome is logged at
-  `WARNING` level across all deterministic writers and never
-  breaks the pipeline. The
+  the appropriate level (DEBUG by default; WARNING for the
+  run-start user surface) and never breaks the pipeline. The
   failed attempt also rolls back the index: the paths the attempt
   staged are unstaged (`git reset HEAD -- <paths>`) and the full
   pre-staged snapshot is restored, so the index is byte-for-byte

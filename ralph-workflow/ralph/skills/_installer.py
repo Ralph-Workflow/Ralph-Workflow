@@ -68,49 +68,27 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
     """List every repo-relative path the project-scope install could write.
 
     Covers the canonical metadata + every baseline skill's files, plus
-    the per-skill entry under each project sibling root (the symlinks),
-    as well as any existing managed/sibling entries that may be pruned.
+    the per-skill entry under each project sibling root (the symlinks).
     The set is a SUPERSET: not every candidate is actually written on
     every install. The post-install diff against the recorded pre-write
     hashes narrows it down to the truly-written paths.
     """
     canonical = project_skill_root(workspace_root)
     candidates: list[str] = [_rel(canonical, "metadata.json", workspace_root)]
-    skill_names = set(BASELINE_SKILL_NAMES)
-    if canonical.is_dir():
-        try:
-            for entry in canonical.iterdir():
-                if entry.is_dir() or entry.is_symlink():
-                    skill_names.add(entry.name)
-        except OSError:
-            pass
-    for sibling in project_sibling_skill_roots(workspace_root):
-        sibling_root = sibling.resolve(workspace_root)
-        if sibling_root.is_dir():
-            try:
-                for entry in sibling_root.iterdir():
-                    if entry.is_dir() or entry.is_symlink():
-                        skill_names.add(entry.name)
-            except OSError:
-                pass
-    for name in sorted(skill_names):
+    for name in BASELINE_SKILL_NAMES:
         candidates.append(_rel(canonical / name, "SKILL.md", workspace_root))
         candidates.append(_rel(canonical / name, _MANAGED_MARKER, workspace_root))
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
         candidates.extend(
-            _rel(sibling_root, name, workspace_root) for name in sorted(skill_names)
+            _rel(sibling_root, name, workspace_root) for name in BASELINE_SKILL_NAMES
         )
     return candidates
 
 
 def _rel(absolute: Path, leaf: str, workspace_root: Path) -> str:
-    """Build the workspace-relative string for ``absolute / leaf`` without following symlinks."""
-    target = absolute / leaf
-    try:
-        return target.relative_to(workspace_root).as_posix()
-    except ValueError:
-        return (target.parent.resolve() / target.name).relative_to(workspace_root.resolve()).as_posix()
+    """Build the workspace-relative string for ``absolute / leaf``."""
+    return str((absolute / leaf).resolve().relative_to(workspace_root.resolve()))
 
 
 def _diff_written_paths(
@@ -126,16 +104,6 @@ def _diff_written_paths(
       now exists at the candidate location, OR
     * its pre-write hash is a string and the current ``git hash-object``
       at that location differs from the recorded pre-write hash.
-
-    Directory-shaped candidates (the project-scope sibling symlinks
-    that resolve to canonical skill directories) cannot be hashed via
-    ``git hash-object`` -- they are directories, not files. For those
-    candidates we compare pre-write existence against post-write
-    existence: a directory that did not exist pre-install and exists
-    after is a write. This keeps the diff helper consistent with the
-    install's actual effect: the install creates the sibling symlink
-    when it did not exist before, regardless of the canonical entry's
-    contents.
 
     The post-install diff is the byte-exact set of paths the install
     actually changed. The deterministic auto-commit consumes it via
@@ -154,27 +122,6 @@ def _diff_written_paths(
     try:
         written: list[str] = []
         for path in candidate_paths:
-            abs_path = workspace_root / path
-            if not abs_path.exists():
-                # Path was deleted by the install (e.g. pruned
-                # managed-skill removal). Not currently exercised but
-                # captured here for completeness.
-                if pre_contents.get(path) is not None:
-                    written.append(path)
-                continue
-            if abs_path.is_dir() and not abs_path.is_symlink():
-                # A bare directory at this path is not what the
-                # install creates -- skip.
-                continue
-            if abs_path.is_dir():
-                # Directory-shaped candidate (project-scope sibling
-                # symlink that resolves to a canonical skill
-                # directory). Existence-only comparison: the install
-                # creates the symlink iff it did not exist before.
-                pre_sha = pre_contents.get(path)
-                if pre_sha is None:
-                    written.append(path)
-                continue
             try:
                 current_sha = _git_blob_sha(repo, path)
             except (OSError, GitCommandError):
@@ -247,17 +194,7 @@ def _compute_skill_hash(name: str) -> str:
 
 
 def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
-    """Create a symlink without sharing mutable Path method state with tests.
-
-    # deterministic-writer-ok: this is a sibling fan-out symlink
-    # created by ``install_project_baseline_skills``; the producer-
-    # level ``install_project_baseline_skills_with_diff`` wrapper
-    # records the byte-exact diff and routes the chore commit
-    # through
-    # ``ralph.git.scoped_auto_commit.commit_deterministic_writes``
-    # at the install boundary. The audit recognises this file's
-    # writers as routed by the caller.
-    """
+    """Create a symlink without sharing mutable Path method state with tests."""
     path.symlink_to(target, target_is_directory=target_is_directory)
 
 

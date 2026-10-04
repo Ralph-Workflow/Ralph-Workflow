@@ -1,5 +1,4 @@
 """MCP handlers for validated markdown artifact documents."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -12,7 +11,6 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
-from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.artifacts.md_draft_io import (
     delete_md_draft,
     is_md_draft_seeded,
@@ -89,8 +87,6 @@ REPAIR_HINT: str = (
     f"validates, so no separate `{FINALIZE_MD_ARTIFACT_TOOL}` call is needed. Read the draft "
     f"back with `{GET_MD_DRAFT_TOOL}` when you need to see its current text."
 )
-
-
 def handle_verify_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -99,14 +95,14 @@ def handle_verify_md_artifact(
     """Check a markdown artifact without writing it."""
     require_capability(session, _PLAN_READ_CAPABILITY, "Markdown artifact verification")
     artifact_type, content = _params(params)
-    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    parsed_content, diagnostics = _parse_artifact(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, None)
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, None)
     )
-    return _validation_result(artifact_type, diagnostics, overridden)
+    return _validation_result(artifact_type, diagnostics)
 
 
 def handle_submit_md_artifact(
@@ -123,35 +119,30 @@ def handle_submit_md_artifact(
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
+    unstageable = _unstageable_plan_result(artifact_type, content)
+    if unstageable is not None:
+        return unstageable
     _write_draft(session, workspace, artifact_type, content, deps)
-    content, normalization_audit = _normalize_submission(
-        session, workspace, artifact_type, content, deps
-    )
-    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    content, normalization_audit = _normalize_submission(session, workspace, artifact_type, content, deps)
+    parsed_content, diagnostics = _parse_artifact(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
     )
-    result = _validation_result(artifact_type, diagnostics, overridden)
+    result = _validation_result(artifact_type, diagnostics)
     if result.is_error:
         _log_validation_rejection(artifact_type, diagnostics)
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
-    _submit_canonical(
-        session, workspace, artifact_type, parsed_content, content, deps, normalization_audit
-    )
+    _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps, normalization_audit)
     recovered = _clear_validation_retry_hint(session, workspace, deps)
     if recovered:
-        logger.info(
-            "VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type
-        )
+        logger.info("VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type)
     return _submitted_validation_result(
-        artifact_type, content, diagnostics, overridden, validation_recovered=recovered
+        artifact_type, content, diagnostics, validation_recovered=recovered
     )
-
-
 def handle_edit_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -202,6 +193,9 @@ def handle_edit_md_artifact(
             is_error=True,
         )
 
+    unstageable = _unstageable_plan_result(artifact_type, outcome.content)
+    if unstageable is not None:
+        return unstageable
     cap = md_draft_character_cap(get_spec(artifact_type))
     if len(outcome.content) > cap:
         raise InvalidParamsError(
@@ -221,25 +215,20 @@ def handle_edit_md_artifact(
         )
 
     save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
-    content, normalization_audit = _normalize_submission(
-        session, workspace, artifact_type, outcome.content, deps
-    )
-    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    content, normalization_audit = _normalize_submission(session, workspace, artifact_type, outcome.content, deps)
+    parsed_content, diagnostics = _parse_artifact(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
     diagnostics.extend(
-        _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
+        _planning_finding_target_diagnostics(
+            session, workspace, artifact_type, content, deps
+        )
     )
-    # S-9: enforce plan work-unit policy on the edited content the way verify
-    # and direct submit do, otherwise the edit gate accepts unsafe drafts
-    # that verify/submit would reject.
     submitted = not any(item.severity == "error" for item in diagnostics)
     validation_recovered = False
     if submitted:
-        _submit_canonical(
-            session, workspace, artifact_type, parsed_content, content, deps, normalization_audit
-        )
+        _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps, normalization_audit)
         validation_recovered = _clear_validation_retry_hint(session, workspace, deps)
     else:
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
@@ -251,18 +240,14 @@ def handle_edit_md_artifact(
         "applied",
         ambiguous_edits=ambiguous_edits,
         submitted=submitted,
-        analysis=(diagnostics, overridden),
+        analysis=diagnostics,
         validation_recovered=validation_recovered,
     )
     if submitted and validation_recovered:
-        logger.info(
-            "VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type
-        )
+        logger.info("VALIDATION RECOVERED artifact_type={artifact_type}", artifact_type=artifact_type)
     elif not submitted:
         _log_validation_rejection(artifact_type, diagnostics)
     return result
-
-
 def handle_stage_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -296,10 +281,11 @@ def handle_stage_md_artifact(
         draft = existing + content
     else:
         draft = f"{existing}\n{content}"
+    unstageable = _unstageable_plan_result(artifact_type, draft)
+    if unstageable is not None:
+        return unstageable
     _write_draft(session, workspace, artifact_type, draft, deps, label="staged")
     return _draft_status_result(artifact_type, draft)
-
-
 def handle_get_md_draft(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -313,8 +299,6 @@ def handle_get_md_draft(
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     draft = load_md_draft(_resolve_artifact_dir(session, workspace), artifact_type, backend=backend)
     return _draft_status_result(artifact_type, draft or "", exists=draft is not None)
-
-
 def handle_discard_md_draft(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -343,8 +327,6 @@ def handle_discard_md_draft(
         ],
         is_error=False,
     )
-
-
 def handle_finalize_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -370,33 +352,24 @@ def handle_finalize_md_artifact(
             "or submit the complete document directly"
         )
     _write_draft(session, workspace, artifact_type, content, deps)
-    content, normalization_audit = _normalize_submission(
-        session, workspace, artifact_type, content, deps
-    )
-    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    content, normalization_audit = _normalize_submission(session, workspace, artifact_type, content, deps)
+    parsed_content, diagnostics = _parse_artifact(artifact_type, content)
     diagnostics.extend(
         _current_context_diagnostics(session, workspace, artifact_type, parsed_content, deps)
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
     )
-    # S-9: enforce plan work-unit policy on the finalized content the way
-    # verify and direct submit do, otherwise the finalize gate accepts
-    # unsafe drafts that verify/submit would reject.
-    result = _validation_result(artifact_type, diagnostics, overridden)
+    result = _validation_result(artifact_type, diagnostics)
     if result.is_error:
         _log_validation_rejection(artifact_type, diagnostics)
         _persist_validation_retry_hint(session, workspace, artifact_type, diagnostics, deps)
         return result
-    _submit_canonical(
-        session, workspace, artifact_type, parsed_content, content, deps, normalization_audit
-    )
+    _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps, normalization_audit)
     recovered = _clear_validation_retry_hint(session, workspace, deps)
     return _submitted_validation_result(
-        artifact_type, content, diagnostics, overridden, validation_recovered=recovered
+        artifact_type, content, diagnostics, validation_recovered=recovered
     )
-
-
 def _submit_canonical(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -439,18 +412,13 @@ def _submit_canonical(
 
 
 def _normalize_submission(
-    session: CoordinationSessionLike,
-    workspace: WorkspaceLike,
-    artifact_type: str,
-    content: str,
-    deps: ArtifactHandlerDeps | None,
+    session: CoordinationSessionLike, workspace: WorkspaceLike, artifact_type: str,
+    content: str, deps: ArtifactHandlerDeps | None,
 ) -> tuple[str, dict[str, object] | None]:
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     artifact_dir = _resolve_artifact_dir(session, workspace)
     normalized, audit = normalize_commit_submission(
-        artifact_type,
-        content,
-        _workspace_root(workspace),
+        artifact_type, content, _workspace_root(workspace),
         draft_revision=load_md_draft_revision(artifact_dir, artifact_type, backend=backend),
     )
     if normalized != content:
@@ -476,6 +444,19 @@ def _artifact_type_param(params: dict[str, object]) -> str:
     except ValueError as exc:
         raise InvalidParamsError(str(exc)) from exc
     return artifact_type
+
+
+def _unstageable_plan_result(artifact_type: str, content: str) -> ToolResult | None:
+    """Reject text that cannot fit in a UTF-8 draft through the shared sanity gate."""
+    if artifact_type != "plan":
+        return None
+    try:
+        size = len(content.encode("utf-8"))
+    except UnicodeEncodeError:
+        size = md_draft_character_cap(get_spec(artifact_type)) + 1
+    if size <= md_draft_character_cap(get_spec(artifact_type)):
+        return None
+    return _validation_result(artifact_type, _validate_artifact(artifact_type, content))
 
 
 def _write_draft(
@@ -540,7 +521,7 @@ def _edit_result(
     *,
     ambiguous_edits: list[dict[str, int]],
     submitted: bool,
-    analysis: tuple[list[Diagnostic], list[object]] | None = None,
+    analysis: list[Diagnostic] | None = None,
     validation_recovered: bool = False,
 ) -> ToolResult:
     """Return the edit outcome alongside the refreshed draft diagnostics.
@@ -563,7 +544,7 @@ def _edit_result(
         payload["message"] = "VALIDATION RECOVERED"
     invalid = not bool(payload["valid"])
     if invalid and status != "preview":
-        diagnostics = analysis[0] if analysis is not None else []
+        diagnostics = analysis if analysis is not None else []
         _add_validation_failure_envelope(payload, artifact_type, diagnostics)
     return ToolResult(
         content=[ToolContent.json_content(payload)],
@@ -596,7 +577,7 @@ def _draft_status_payload(
     draft: str,
     *,
     exists: bool | None = None,
-    analysis: tuple[list[Diagnostic], list[object]] | None = None,
+    analysis: list[Diagnostic] | None = None,
 ) -> dict[str, object]:
     """Describe the draft-so-far: length, section outline, check-only diagnostics.
 
@@ -606,7 +587,7 @@ def _draft_status_payload(
     passes ``exists`` and gets the full draft back for resumption.
     """
     document, _ = parse_markdown_document(draft)
-    diagnostics, _overridden = analysis or _validate_with_overrides(artifact_type, draft)
+    diagnostics = analysis if analysis is not None else _validate_artifact(artifact_type, draft)
     payload: dict[str, object] = {"artifact_type": artifact_type, "submitted": False}
     if exists is not None:
         payload["exists"] = exists
@@ -648,12 +629,11 @@ def _submitted_validation_result(
     artifact_type: str,
     content: str,
     diagnostics: list[Diagnostic],
-    overridden: list[object] | None = None,
     *,
     validation_recovered: bool = False,
 ) -> ToolResult:
     """Return successful validation plus the exact document summary persisted."""
-    result = _validation_result(artifact_type, diagnostics, overridden)
+    result = _validation_result(artifact_type, diagnostics)
     payload = _with_hint(
         {
             "artifact_type": artifact_type,
@@ -673,7 +653,6 @@ def _submitted_validation_result(
 def _validation_result(
     artifact_type: str,
     diagnostics: list[Diagnostic],
-    overridden: list[object] | None = None,
 ) -> ToolResult:
     invalid = any(item.severity == "error" for item in diagnostics)
     payload: dict[str, object] = {
@@ -704,38 +683,20 @@ def _add_validation_failure_envelope(
 validation_result = _validation_result
 
 
-def _validate_with_overrides(
+def _validate_artifact(
     artifact_type: str, content: str
-) -> tuple[list[Diagnostic], list[object]]:
-    """Return the diagnostics and override list for a draft, plan-aware.
-
-    For plan artifacts, ``analyze_plan_document`` applies the override ledger
-    and exposes the matched-overrides list. For other artifact types, no
-    overrides exist and the standard parse_and_validate diagnostics are
-    returned with an empty override list.
-    """
-    if artifact_type == "plan":
-        _, diagnostics, overridden = analyze_plan_document(content)
-        return diagnostics, list(overridden)
+) -> list[Diagnostic]:
+    """Return draft diagnostics from the shared acceptance boundary."""
     _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
-    return diagnostics, []
+    return diagnostics
 
 
-def _parse_with_overrides(
+def _parse_artifact(
     artifact_type: str, content: str
-) -> tuple[dict[str, object], list[Diagnostic], list[object]]:
-    """Return content, diagnostics, and overrides — plan-aware.
-
-    The content is the canonical mapping when validation passes; an empty
-    dict when the artifact fails validation. Tool callers use the same
-    shape whether they got the content from parse_and_validate (other
-    specs) or analyze_plan_document (plan).
-    """
-    if artifact_type == "plan":
-        parsed_content, diagnostics, overridden = analyze_plan_document(content)
-        return parsed_content, diagnostics, list(overridden)
+) -> tuple[dict[str, object], list[Diagnostic]]:
+    """Use the registered acceptance boundary for every artifact entry point."""
     parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
-    return parsed_content, diagnostics, []
+    return parsed_content, diagnostics
 
 
 def _current_context_diagnostics(
@@ -814,7 +775,7 @@ def _development_result_context_diagnostics(
     session_run_id: str | None,
     deps: ArtifactHandlerDeps | None,
 ) -> list[Diagnostic]:
-    session_diagnostics = development_result_session_diagnostics(session, workspace, content)
+    session_diagnostics = development_result_session_diagnostics(session, workspace, content, deps=deps)
     if session_diagnostics:
         return session_diagnostics
     if content.get("status") != "completed":
@@ -891,7 +852,6 @@ def _ledger_handle_diagnostics(
         or not _active_run_ledger_has_handle(workspace_root, run_id, secret, handle)
     ]
 
-
 def _active_run_ledger_has_handle(
     workspace_root: Path,
     run_id: str,
@@ -961,7 +921,7 @@ def _planning_finding_target_diagnostics(
         for section in decision.sections_named(section_name)
         for item in section.items
     }
-    raw_targets = _parse_with_overrides(artifact_type, content)[0].get("finding_targets", {})
+    raw_targets = _parse_artifact(artifact_type, content)[0].get("finding_targets", {})
     if not isinstance(raw_targets, dict):
         return []
     targets = {

@@ -17,30 +17,13 @@ labeled violation.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import ralph.testing.audit_skill_auto_commit as audit_module
 from ralph.testing.audit_skill_auto_commit import main as audit_main
 
-
-def test_writer_scan_keeps_source_and_path_paired(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sources = {
-        "project_policy/agents_md.py": "workspace.write('AGENTS.md', 'content')",
-        "project_policy/validators.py": "findings.append('write guidance')",
-    }
-
-    def paths(path: Path, pattern: str) -> list[Path]:
-        return [path / name.split("/")[-1] for name in sources if name.startswith(path.name + "/")]
-
-    monkeypatch.setattr(Path, "rglob", paths)
-    monkeypatch.setattr(audit_module, "_read", sources.__getitem__)
-    problems = audit_module._check_production_writer_scan()
-    assert len(problems) == 1
-    assert "project_policy/agents_md.py:1: unmarked deterministic writer site" in problems[0]
+if TYPE_CHECKING:
+    import pytest
 
 
 # NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,
@@ -82,7 +65,6 @@ def test_audit_invariants_cover_helper_module() -> None:
     assert "skills/_auto_commit.py" in invariant_paths
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_helper_subject_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -104,7 +86,6 @@ def test_audit_blocks_regression_when_helper_subject_missing(
     assert "missing required literal" in captured.out
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_skill_root_prefix_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -128,7 +109,6 @@ def test_audit_blocks_regression_when_skill_root_prefix_missing(
     assert agent_paths in captured.out
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_helper_module_deleted(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -148,7 +128,6 @@ def test_audit_blocks_regression_when_helper_module_deleted(
     assert "_auto_commit.py" in captured.out
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_commit_cleanup_skip_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -169,7 +148,6 @@ def test_audit_blocks_regression_when_commit_cleanup_skip_removed(
     assert cleanup_path in captured.out
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -196,12 +174,13 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch.setattr(audit_module, "_read", _read_with_failure_log_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
+    assert rc == 1, (
+        f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
+    )
     assert run_path in captured.out
     assert "missing required literal" in captured.out
 
 
-@pytest.mark.timeout_seconds(15)
 def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -221,148 +200,14 @@ def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
         content = real_read(rel_path)
         if rel_path == runner_path:
             # Pretend the phase-seam sweep resurfaced.
-            return (
-                content
-                + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
-            )
+            return content + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
         return content
 
     monkeypatch.setattr(audit_module, "_read", _read_with_seam_commit_removed)
     rc = audit_main([])
-    capsys.readouterr()
+    captured = capsys.readouterr()
     assert rc == 1, (
         f"Audit must exit 1 when the phase-seam skill commit is reintroduced; got rc={rc}"
     )
-
-
-@pytest.mark.timeout_seconds(15)
-def test_audit_blocks_regression_when_direct_chore_commit_in_production(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """wt-012: an unmarked direct ``create_commit`` call in ralph/ production triggers rc=1.
-
-    The audit's ``_check_no_direct_chore_commit`` walker scans every
-    ralph/ production module for direct ``create_commit(...)`` calls
-    outside the helper modules. A future ad-hoc chore commit would
-    re-introduce the deterministic-writer isolation bug -- the audit
-    pins the invariant that ALL chore-purpose commit creation flows
-    through the shared helper.
-    """
-    real_read = audit_module._read
-    target_path = "config/bootstrap.py"
-
-    def _read_with_ad_hoc_commit(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path == target_path:
-            # Inject a bare ``create_commit(...)`` call WITHOUT the
-            # ``# deterministic-writer-ok:`` marker.
-            return content + "\ncreate_commit(target_root, 'bad')\n"
-        return content
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_ad_hoc_commit)
-    rc = audit_main([])
-    captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when an unmarked direct create_commit call "
-        f"appears in production code; got rc={rc}\noutput: {captured.out}"
-    )
-    assert "direct create_commit call" in captured.out
-    assert target_path in captured.out
-
-
-@pytest.mark.timeout_seconds(15)
-def test_audit_allows_marked_create_commit_in_production(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """wt-012: a ``# deterministic-writer-ok:`` marker permits a direct create_commit call.
-
-    The audit recognises inline ``# deterministic-writer-ok: <reason>``
-    markers on the call line (or its 3-line prelude) and lets the
-    call through. This keeps the agent-initiated ``ralph commit`` CLI
-    surface (which is NOT a deterministic auto-commit) auditable but
-    not flagged.
-    """
-    real_read = audit_module._read
-    target_path = "config/bootstrap.py"
-
-    def _read_with_marked_commit(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path == target_path:
-            # Inject a create_commit call protected by the marker.
-            return content + (
-                "\n# deterministic-writer-ok: agent-initiated commit CLI surface\n"
-                "create_commit(target_root, 'ok')\n"
-            )
-        return content
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_marked_commit)
-    audit_main([])
-    captured = capsys.readouterr()
-    # No direct-commit finding from config/bootstrap.py. Other
-    # violations may surface; we only check the negative on the
-    # marker-protected call.
-    assert "direct create_commit call" not in captured.out or target_path not in [
-        line.split(":")[0].strip()
-        for line in captured.out.splitlines()
-        if "direct create_commit" in line
-    ], (
-        f"Marker-protected create_commit should NOT trigger a "
-        f"direct-commit violation; got: {captured.out}"
-    )
-
-
-@pytest.mark.timeout_seconds(15)
-def test_audit_blocks_regression_when_tracked_writer_loses_routing(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """wt-012: removing the ``commit_deterministic_writes`` routing from a tracked
-    writer AND the inline marker triggers rc=1.
-
-    The audit's ``_check_writer_routing`` enforces that every tracked
-    writer either routes through the shared helper or carries the
-    inline marker. Removing BOTH is a regression.
-    """
-    real_read = audit_module._read
-    target_path = "project_policy/agents_md.py"
-
-    def _read_without_writer_routing(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path == target_path:
-            # Strip both ``commit_deterministic_writes`` and the
-            # ``deterministic-writer-ok`` marker.
-            cleaned = content.replace("deterministic-writer-ok", "[STRIPPED]")
-            return cleaned
-        return content
-
-    monkeypatch.setattr(audit_module, "_read", _read_without_writer_routing)
-    rc = audit_main([])
-    captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when a tracked writer loses its routing "
-        f"AND its marker; got rc={rc}\noutput: {captured.out}"
-    )
-    assert target_path in captured.out
-    assert "tracked writer" in captured.out
-
-
-@pytest.mark.timeout_seconds(15)
-def test_audit_blocks_regression_when_unmarked_writer_site_in_production(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """wt-012: an unmarked tracked write site in production triggers rc=1."""
-    real_read = audit_module._read
-    target_path = "project_policy/agents_md.py"
-
-    def _read_with_unmarked_write(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path == target_path:
-            return content.replace("deterministic-writer-ok", "unmarked")
-        return content
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_unmarked_write)
-    rc = audit_main([])
-    captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when an unmarked write site exists in production; got rc={rc}\noutput: {captured.out}"
-    )
-    assert "unmarked deterministic writer site" in captured.out or "tracked writer" in captured.out
+    assert runner_path in captured.out
+    assert "forbidden literal" in captured.out

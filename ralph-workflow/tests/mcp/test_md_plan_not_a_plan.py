@@ -1,64 +1,50 @@
+"""PLAN001 sanity boundary tests."""
+
 from __future__ import annotations
 
 import pytest
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
-from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
-from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
-from ralph.mcp.artifacts.plan import is_noop_plan
+from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC, analyze_plan_document
+
+
+def _errors(text: str) -> list[str]:
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    return [diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "one two three four five six seven eight nine", "\x00" + "\x01" * 100],
+)
+def test_plan001_rejects_empty_short_or_binary_like_text(text: str) -> None:
+    assert _errors(text) == ["PLAN001"]
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        "",
-        " ",
-        "Fix it.",
-        "## Heading",
-        "---\n",
-        "---\ntype: issues\n---\n",
-        "---\ntype: plan\ntype: plan\n---\n",
-        "TODO",
-        "Working on it",
-        "Could you clarify?",
-        "Traceback (most recent call last):",
-        "## Steps\n### [STEP-1] Fix\nDepends on: S-99\nVerify:",
-        "## Steps\n### [S-1] Fix\nDepends on: S-1",
-        "## Work\n```python\nunfinished(",
-        "Unicode plan: 検証・API — données",
+        "one two three four five six seven eight nine ten",
+        "---\ntype: plan\ntype: plan\nbad metadata\n---\n"
+        "one two three four five six seven eight nine ten",
+        "---\ntype: plan\nnoop: true\n---\nNo changes are needed because the requested behavior already works correctly.",
     ],
 )
-def test_plan_regression_all_text_shapes_are_accepted(text: str) -> None:
-    content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    analyzed, analyzed_diagnostics, overrides = analyze_plan_document(text)
-
-    assert isinstance(content, dict)
-    assert diagnostics == []
-    assert analyzed == content
-    assert analyzed_diagnostics == []
-    assert overrides == []
+def test_sane_or_explicit_noop_text_is_accepted_without_shape_diagnostics(text: str) -> None:
+    assert _errors(text) == []
 
 
-@pytest.mark.parametrize("control", ["\x00", "\x01", "\x08", "\x1b"])
-def test_plan_regression_binary_control_characters_are_rejected(control: str) -> None:
-    content, diagnostics = parse_and_validate("Fix the bug" + control, PLAN_SPEC)
+def test_obvious_refusal_and_placeholder_are_rejected() -> None:
+    assert _errors("I cannot complete this request because policy stops me from planning it today") == [
+        "PLAN001"
+    ]
+    assert _errors("TODO: plan goes here after the next planning pass with all required details") == [
+        "PLAN001"
+    ]
 
+
+def test_analyze_plan_document_preserves_sanity_result() -> None:
+    content, diagnostics, overrides = analyze_plan_document("one two three four five six seven eight nine ten")
     assert content == {}
-    assert len(diagnostics) == 1
-    assert diagnostics[0].severity == "error"
-    assert "binary" in diagnostics[0].message
-
-
-def test_plan_text_whitespace_is_preserved_as_valid_text() -> None:
-    _, diagnostics = parse_and_validate("Fix\tit\nthen verify\r\n", PLAN_SPEC)
-
     assert diagnostics == []
-
-
-def test_plan_regression_empty_work_unit_section_does_not_skip_development() -> None:
-    content, diagnostics = parse_and_validate(
-        "## Work Units\nRefine this during execution.", PLAN_SPEC
-    )
-
-    assert diagnostics == []
-    assert is_noop_plan(content) is False
+    assert overrides == []

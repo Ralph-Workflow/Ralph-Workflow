@@ -1488,13 +1488,6 @@ ralph.pipeline.work_unit
    :members:
    :show-inheritance:
 
-ralph.pipeline.work_units_validation_error
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.work_units_validation_error
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.worker_status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2205,13 +2198,6 @@ ralph.mcp.artifacts.plan
 
 .. automodule:: ralph.mcp.artifacts.plan
    :no-members:
-
-ralph.mcp.artifacts.plan.plan_schema
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.plan.plan_schema
-   :members:
-   :show-inheritance:
 
 ralph.mcp.artifacts.policy_outcomes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

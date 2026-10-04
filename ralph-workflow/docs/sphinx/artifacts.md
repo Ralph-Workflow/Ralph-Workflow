@@ -97,37 +97,18 @@ The bundled defaults enable both checks. Omitting the block in a project-local p
 
 ## Validation
 
-Submitted markdown is parsed and validated by `parse_and_validate` in
-`ralph.mcp.artifacts.markdown` against the `MdArtifactSpec` registered for the
-`artifact_type`. The result is a list of line-anchored diagnostics; both
-`ralph_submit_md_artifact` and `ralph_verify_md_artifact` return the same payload:
+`ralph_submit_md_artifact` and `ralph_verify_md_artifact` use the same
+artifact-specific boundary. Most artifact types have a structural markdown
+contract and return line-anchored diagnostics for invalid content. A `plan` is
+different: it accepts any readable, non-empty, sufficiently substantive,
+size-bounded text that is recognizably a plan. Plan headings, frontmatter,
+step IDs, fields, dependencies, ownership, and unit counts never cause
+rejection. Its extraction is best effort, so submitted prose is retained
+unchanged even if little or no structure can be recovered.
 
-```json
-{
-  "artifact_type": "plan",
-  "valid": false,
-  "diagnostics": [
-    {"line": 12, "section": "Steps", "rule_id": "SPEC006",
-     "message": "section requires list items", "severity": "error"}
-  ]
-}
-```
-
-Each diagnostic carries the source `line`, the `section` it applies to (when known),
-a stable `rule_id`, a `message`, and a `severity`:
-
-- **`error`** — hard failure. Structural rules (`SPEC001`–`SPEC008`: character limit,
-  missing/unknown frontmatter, unknown/duplicate/missing sections, item-count limits,
-  duplicate IDs) and per-type document rules produce errors. Any error rejects the
-  submission: nothing is persisted, and the agent is expected to fix the document and
-  retry the same tool.
-- **`warning`** — the document is accepted as submitted, and its original
-  descriptive values are preserved.
-
-The repair loop for a failed submission is: read the diagnostics (each names the line,
-section, and rule), fix the markdown, and re-run `ralph_verify_md_artifact` or
-`ralph_submit_md_artifact`. The bundled format docs under `.agent/artifact-formats/`
-describe the expected document shape for each type.
+For every artifact type, a failed submission returns diagnostics rather than a
+receipt. The relevant bundled format guide under `.agent/artifact-formats/`
+states that artifact's actual contract.
 
 ## File backend and storage
 
@@ -270,25 +251,20 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 ## Work Units in the plan artifact
 
-A `plan` artifact that declares `## Work Units` partitions its work into
-same-workspace units that an executing agent can dispatch to its own
-sub-agents in parallel. The list-item form is `- [U-N] description`,
-followed by an inline-list `Directories:` field (one value, comma-separated)
-and an optional `Depends on:` field. The unit body lives in the same
-`### [S-n]` step block, so the plan is a single source of truth for both
-the sequential steps and the per-unit slices.
+A `plan` may use `## Work Units` as a recommended convention for
+independent work. A unit can name `Directories:`, exact `Paths:`, and real
+`Depends on:` prerequisites. The executor uses this extracted information
+best-effort: missing or inconsistent structure does not reject the plan.
 
-Plan submission, verification, editing, finalization, and phase loading accept
-plan text without frontmatter, section, step, reference, or work-unit policy
-validation. Only binary control characters are rejected. The original text is
-persisted unchanged, and recognized structured fields are extracted for
-execution and proof tracking when available. Missing structure is planning
-context for the agents to resolve.
+`max_parallel_workers` limits simultaneous workers, so additional ready work
+runs in queued waves. Exact paths remain file-level ownership; conflicting
+files or directory containment serialize, while disjoint files in the same
+directory may proceed together. Assignments to `.agent`, `.git`, and
+`.worktrees` are removed from worker briefs; unknown ownership remains in the
+main session. The brokered write protection remains authoritative.
 
-Worker dispatch still enforces safe execution scopes and scheduler limits.
-Unusable fan-out hints fall back to the executing agent for refinement;
-they do not reject the planning artifact or terminate the pipeline. The recommended
-structured examples live in `.agent/artifact-formats/plan.md` and the bundled
+The exact guidance and worked example live in
+`.agent/artifact-formats/plan.md` and the bundled
 `submit-plan-artifact` skill.
 
 ## Unplanned Work in the development-result artifact

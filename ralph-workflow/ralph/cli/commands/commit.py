@@ -227,9 +227,6 @@ def _handle_agent_commit_generation(
             head_before_stage = get_head_sha(repo_root) if (repo_root / ".git").exists() else ""
             stage_commit_changes_safely(repo_root)
             commit_result: CommitCreationResult
-            # deterministic-writer-ok: this is the agent-initiated `ralph commit`
-            # CLI surface -- NOT a deterministic auto-commit. The deterministic
-            # auto-commit path is ralph.git.scoped_auto_commit.commit_deterministic_writes.
             commit_result = create_commit(
                 repo_root,
                 persisted_message,

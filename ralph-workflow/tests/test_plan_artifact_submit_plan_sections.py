@@ -41,14 +41,7 @@ def _payload(result: ToolResult) -> dict[str, object]:
 
 
 def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) -> None:
-    """Two staging chunks that assemble a real plan must report a valid resume.
-
-    Under the plan-scoped severity policy, a partial plan (head + tail)
-    that still produces a complete plan is valid: warnings are advisory.
-    The first chunk is incomplete and so reports invalid, the second
-    completes the document and reports valid. The resumed draft
-    contains the full plan text and the canonical section list.
-    """
+    """A short opening remains editable until appended prose clears the word floor."""
     workspace = FsWorkspace(tmp_path)
     document = _plan_document()
     split_at = document.index("## Steps")
@@ -67,9 +60,13 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
     resumed = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
 
     assert first.is_error is False
-    assert _payload(first)["valid"] is True
+    # This fixture opening is under ten words; appending prose clears that floor.
+    assert _payload(first)["valid"] is False
     first_diagnostics = _payload(first).get("diagnostics", [])
-    assert first_diagnostics == []
+    assert any(
+        diagnostic.get("rule_id") == "PLAN001" and diagnostic.get("severity") == "error"
+        for diagnostic in first_diagnostics
+    )
     assert second.is_error is False
     assert _payload(second)["valid"] is True
     assert _payload(resumed)["content"] == document
@@ -110,6 +107,9 @@ def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> 
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
+    """A dangling dependency no longer blocks finalization; the new contract
+    is sanity-only, so a draft with a dangling dependency is accepted and
+    replace_all can be used to swap in a corrected plan."""
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -118,7 +118,8 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
         {"artifact_type": "plan", "content": invalid},
     )
 
-    rejected = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
+    finalized_first = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
+    assert finalized_first.is_error is False
     kept = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
     handle_stage_md_artifact(
         _session(),
@@ -127,9 +128,6 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     )
     finalized = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
 
-    assert rejected.is_error is False
-    rejected_payload = _payload(rejected)
-    assert rejected_payload["diagnostics"] == []
     assert _payload(kept)["content"] == invalid
     assert finalized.is_error is False
     assert (tmp_path / ".agent" / "artifacts" / "plan.md").read_text(

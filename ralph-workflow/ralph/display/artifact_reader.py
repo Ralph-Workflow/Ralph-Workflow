@@ -95,7 +95,26 @@ def read_plan_artifact(
         ctx = summary_dict.get("context")
         if isinstance(ctx, str) and ctx.strip():
             summary_text = ctx.strip()
+        else:
+            intent = summary_dict.get("intent_verb")
+            if isinstance(intent, str) and intent.strip():
+                summary_text = intent.strip()
         scope_items = _coerce_str_tuple(summary_dict.get("scope_items"))
+
+    if summary_text is None:
+        seen_open = False
+        seen_close = False
+        for line in markdown.splitlines():
+            stripped = line.strip()
+            if stripped == "---":
+                if not seen_open:
+                    seen_open = True
+                    continue
+                seen_close = True
+                continue
+            if seen_close and stripped and not stripped.startswith("#"):
+                summary_text = stripped
+                break
 
     steps_obj = content.get("steps")
     total_steps = len(steps_obj) if isinstance(steps_obj, list) else 0

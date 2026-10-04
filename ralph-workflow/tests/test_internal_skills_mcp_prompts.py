@@ -8,8 +8,6 @@ import pytest
 
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
-from ralph.mcp.artifacts.markdown._spec import parse_and_validate
-from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.protocol._session_drain import SessionDrain
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
@@ -40,7 +38,7 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
-        assert "version: 2.1.0" in frontmatter.group(1)
+        assert "version: 2.2.0" in frontmatter.group(1)
         assert "ralph_submit_md_artifact" in text
         assert "ralph_submit_artifact" not in text
 
@@ -57,22 +55,20 @@ def test_packaged_artifact_skills_reference_only_registered_ralph_tools() -> Non
     assert unknown == {}
 
 
-def test_plan_skill_native_markdown_example_matches_validator() -> None:
+def test_plan_skill_teaches_sanity_only_contract() -> None:
     text = _read("submit-plan-artifact.md")
-    match = re.search(r"Worked example:\s*```markdown\n(.*?)\n```", text, re.DOTALL)
-    assert match is not None
 
-    normalized, diagnostics = parse_and_validate(match.group(1), PLAN_SPEC)
-
-    assert not [item for item in diagnostics if item.severity == "error"]
-    assert len(normalized["steps"]) >= 2
+    assert "ralph_submit_md_artifact" in text
+    assert "declare_complete" in text
+    assert "readable" in text or "Submission checks only" in text
 
 
-def test_planning_skills_teach_the_mandatory_contract() -> None:
+def test_planning_skills_teach_the_sanity_only_contract() -> None:
     for name in PLANNING_SKILLS:
         text = _read(name)
-        assert "instruction set" in text or "executor-ready" in text
+        assert "ralph_submit_md_artifact" in text or "executor-ready" in text
         assert "advisory findings are errors" not in text
+        assert "advisory diagnostics" not in text
 
     format_doc = load_bundled_format_doc("planning_analysis_decision")
     assert format_doc is not None
@@ -82,13 +78,10 @@ def test_planning_skills_teach_the_mandatory_contract() -> None:
     assert "Critical Files omits" not in format_doc
 
 
-def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
+def test_plan_skill_teaches_parallel_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "parallel plan by default" in text
-    assert "without schema or content validation" in text
-    for phase in ("Orient", "Characterize", "Partition", "Change", "Verify"):
-        assert phase in text
+    assert "Parallel work is the default" in text
     assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 

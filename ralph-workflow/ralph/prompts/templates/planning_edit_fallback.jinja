@@ -6,40 +6,23 @@ PLANNING EDIT MODE
 {% include 'shared/_unattended_mode.j2' %}
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
-
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
-{% if LAST_RETRY_ERROR %}
-PREVIOUS ATTEMPT ERROR:
-{{ LAST_RETRY_ERROR }}
-
-Fix the underlying submission or validation issue before completing this plan revision.
-{% endif %}
-
 Read the current plan, request, and analysis feedback. Use only brokered tools;
-replanning is read-only.
+replanning is read-only. Delegate independent discovery and evidence groups to
+read-only subagents.
 
-Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {% include 'shared/_subagents.j2' %}
 
-REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
+REQUEST ({{PRODUCT_CRITERIA_PATH}}):
 {{PRODUCT_CRITERIA}}
 
-ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
+ANALYSIS FEEDBACK ({{ANALYSIS_FEEDBACK_PATH}}):
 {{ANALYSIS_FEEDBACK}}
 
-{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
-FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
-{% endif %}
-
-Verify each finding against repository evidence. Repair every referenced `PA-###` finding
-in its target step or plan-level text and preserve only
-material that still satisfies the current contract. Delegate independent
-discovery and PA-### evidence groups to read-only subagents and reconcile
-their reproducible findings in this session.
-
-A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
-After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
+Verify each finding against repository evidence. Repair each supported finding.
+When feedback identifies avoidable serialization, split independent work into
+units with real dependencies and integration after fan-in.

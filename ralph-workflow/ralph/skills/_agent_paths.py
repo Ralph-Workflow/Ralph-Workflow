@@ -360,28 +360,3 @@ __all__ = [
     "project_skill_root",
     "sibling_agent_skill_roots",
 ]
-
-
-def _skill_root_prefixes_for_workspace(workspace_root: Path) -> tuple[str, ...]:
-    """Return the FIVE project-scope skill-root prefixes for the given workspace.
-
-    Public-API re-derivation of the FIVE-prefix constant. Walks the
-    public project-skill-root + project-sibling-skill-roots APIs to
-    compute the same five prefixes the private
-    ``_SKILL_ROOT_PREFIXES`` constant holds. Tests that want to
-    enumerate the prefixes without importing a private ``_``-prefixed
-    ralph symbol use this helper.
-
-    Returns:
-        A tuple of the FIVE project-scope skill-root prefixes
-        (``.opencode/skills/`` + the four project siblings), in the
-        order the private constant is defined.
-    """
-    canonical_prefix = str(
-        project_skill_root(workspace_root).relative_to(workspace_root)
-    ) + "/"
-    sibling_prefixes = tuple(
-        str(sibling.resolve(workspace_root).relative_to(workspace_root)) + "/"
-        for sibling in project_sibling_skill_roots(workspace_root)
-    )
-    return (canonical_prefix, *sibling_prefixes)

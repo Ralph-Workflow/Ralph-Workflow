@@ -18,20 +18,6 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 
-@pytest.mark.parametrize(
-    "document", ["Fix the bug.", "## Work\nImplement the fix", "---\nnoop: maybe\n", ""]
-)
-def test_phase_artifacts_regression_plan_text_needs_no_schema(document: str) -> None:
-    """User-reported planning failure: all readable plan text must load."""
-    workspace = MemoryWorkspace()
-    workspace.write(".agent/artifacts/plan.md", document)
-
-    artifact = load_phase_artifact(workspace, ".agent/artifacts/plan.md")
-
-    assert artifact["type"] == "plan"
-    assert isinstance(artifact["content"], dict)
-
-
 def test_load_phase_artifact_raises_phase_artifact_error_when_file_missing(
     tmp_path: Path,
 ) -> None:
