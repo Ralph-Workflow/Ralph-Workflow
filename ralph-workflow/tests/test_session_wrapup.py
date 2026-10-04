@@ -22,15 +22,19 @@ if TYPE_CHECKING:
 
 
 class _ReadHandler:
-    def __call__(self, _session: object, _workspace: object, _params: dict[str, object]) -> ToolResult:
+    def __call__(
+        self, _session: object, _workspace: object, _params: dict[str, object]
+    ) -> ToolResult:
         return ToolResult(content=[ToolContent.text_content("ok")], is_error=False)
 
 
-def _server(tmp_path: Path) -> McpServer:
+def _server(tmp_path: Path, *, worker_namespace: Path | None = None) -> McpServer:
     bridge = ToolBridge()
     bridge.register(
         ToolMetadata(
-            definition=ToolDefinition(name="read_file", description="Read", input_schema={"type": "object"}),
+            definition=ToolDefinition(
+                name="read_file", description="Read", input_schema={"type": "object"}
+            ),
             required_capability="workspace.read",
         ),
         _ReadHandler(),
@@ -50,6 +54,7 @@ def _server(tmp_path: Path) -> McpServer:
             run_id="wrapup-run",
             drain="development",
             capabilities={"ArtifactSubmit", "WorkspaceRead"},
+            worker_namespace=worker_namespace,
         ),
         FsWorkspace(tmp_path),
         bridge,
@@ -122,26 +127,29 @@ def test_reset_wrapup_notification_preserves_wire_compatibility(tmp_path: Path) 
 
 
 def test_development_wrapup_notice_states_remaining_minutes_when_epochs_published(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With DEV_WARN_EPOCH / DEV_DEADLINE_EPOCH published, the notice names
-    the remaining minutes, the submit-before-cut instruction, and the
-    ready-group suggestion.
-    """
+    """S-6: MCP deadline delivery preserves main dispatch and worker scope."""
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
-    from ralph.mcp.server._session_wrapup import development_wrapup_notice
 
     now = time.time()
-    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now + 600.0))
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
     monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
 
-    notice = development_wrapup_notice()
-    flat = " ".join(notice.split())
-
-    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
-    assert "minutes remaining" in flat
-    assert "submit the development result before the cut" in flat
-    assert "independent ready group" in flat
+    for worker_namespace in (None, tmp_path / "worker"):
+        server = _server(tmp_path, worker_namespace=worker_namespace)
+        notice = _text(_call(server, "read_file"))
+        flat = " ".join(notice.split())
+        assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+        assert "minutes remaining" in flat
+        assert "submit the development result before the cut" in flat
+        if worker_namespace is None:
+            assert "independent ready group" in flat
+        else:
+            assert "independent ready group" not in flat
+            assert "only your assigned work unit" in flat
+            assert "Do not spawn sub-agents" in flat
 
 
 def test_development_wrapup_notice_keeps_static_text_without_epochs(

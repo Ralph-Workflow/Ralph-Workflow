@@ -782,7 +782,13 @@ class McpServer:
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_notice(
             payload,
-            development_wrapup_notice if development_warning_is_active(now_epoch=time.time()) else None,
+            (
+                lambda: development_wrapup_notice(
+                    is_worker=self._session.worker_namespace is not None
+                )
+            )
+            if development_warning_is_active(now_epoch=time.time())
+            else None,
         )
         return (
             JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
