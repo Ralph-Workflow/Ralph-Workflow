@@ -33,7 +33,6 @@ from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.plan._validation import (
     PlanArtifactValidationError,
     is_noop_plan,
-    normalize_plan_artifact_content,
 )
 from ralph.phases.artifacts import (
     PhaseArtifactError,
@@ -59,7 +58,8 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.pipeline.work_units import parse_work_units_from_artifact
+from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
+from ralph.policy.validation import PolicyValidationError
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -248,17 +248,20 @@ def _validate_plan_output(
         )
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
-        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
+        artifact_wrapper = load_phase_artifact(
+            ctx.workspace, ra.artifact_path, artifact_type=ra.artifact_type
+        )
         raw_content = unwrap_phase_artifact_content(
             artifact_wrapper, expected_type=ra.artifact_type
         )
         if is_noop_plan(raw_content):
             logger.info("Planning produced a no-op plan — skipping development iteration")
             return [PipelineEvent.AGENT_SUCCESS]
-        normalize_plan_artifact_content(raw_content)
     except (
         PlanArtifactValidationError,
         ValueError,
+        WorkUnitsValidationError,
+        PolicyValidationError,
     ) as exc:
         logger.warning("Invalid plan artifact: {}", exc)
         _write_retry_hint(ctx, phase, str(exc))
@@ -299,11 +302,12 @@ def _validate_plan_input(
         artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(artifact_content):
             return []
-        normalize_plan_artifact_content(artifact_content)
     except (
         PlanArtifactValidationError,
         PhaseArtifactError,
         ValueError,
+        WorkUnitsValidationError,
+        PolicyValidationError,
     ) as exc:
         logger.warning("Invalid development phase evidence: {}", exc)
         _write_retry_hint(
@@ -584,8 +588,7 @@ def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
                             if not isinstance(number, int):
                                 return frozenset()
                             step_id = f"S-{number}"
-                        if step_id.startswith("S-"):
-                            refs.add(step_id)
+                        refs.add(step_id)
     except Exception:
         return frozenset()
     return frozenset(refs)
@@ -605,43 +608,12 @@ def _get_canonical_work_unit_refs(
         parsed = parse_work_units_from_artifact(content)
         if parsed is None or not parsed.work_units:
             return frozenset(), frozenset()
-        unit_ids = frozenset(unit.unit_id for unit in parsed.work_units)
-        owned = frozenset(step_id for unit in parsed.work_units for step_id in unit.step_ids)
-        return unit_ids, owned | _step_refs_nested_under_work_units(ctx, unit_ids)
+        return (
+            frozenset(unit.unit_id for unit in parsed.work_units),
+            frozenset(step_id for unit in parsed.work_units for step_id in unit.step_ids),
+        )
     except Exception:
         return frozenset(), frozenset()
-
-
-def _step_refs_nested_under_work_units(
-    ctx: PhaseContext, unit_ids: frozenset[str]
-) -> frozenset[str]:
-    """Recover IDs nested below unit bullets when extraction lacks ownership metadata."""
-    try:
-        lines = ctx.workspace.read(PLAN_ARTIFACT_PATH).splitlines()
-    except Exception:
-        return frozenset()
-    owned: set[str] = set()
-    current_unit: str | None = None
-    in_units = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.casefold() in {"## work units", "## parallel plan"}:
-            in_units = True
-            current_unit = None
-            continue
-        if stripped.startswith("## "):
-            in_units = False
-            current_unit = None
-            continue
-        if in_units and stripped.startswith("- [") and "]" in stripped:
-            candidate = stripped[3 : stripped.index("]")]
-            current_unit = candidate if candidate in unit_ids else None
-            continue
-        if in_units and current_unit is not None and stripped.startswith("### [S-"):
-            step_id = stripped[5 : stripped.index("]")] if "]" in stripped else ""
-            if step_id:
-                owned.add(step_id)
-    return frozenset(owned)
 
 
 def _get_canonical_analysis_finding_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:

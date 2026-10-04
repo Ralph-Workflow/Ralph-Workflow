@@ -17,10 +17,31 @@ labeled violation.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import ralph.testing.audit_skill_auto_commit as audit_module
 from ralph.testing.audit_skill_auto_commit import main as audit_main
+
+
+def test_writer_scan_keeps_source_and_path_paired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = {
+        "project_policy/agents_md.py": "workspace.write('AGENTS.md', 'content')",
+        "project_policy/validators.py": "findings.append('write guidance')",
+    }
+
+    def paths(path: Path, pattern: str) -> list[Path]:
+        return [path / name.split("/")[-1] for name in sources if name.startswith(path.name + "/")]
+
+    monkeypatch.setattr(Path, "rglob", paths)
+    monkeypatch.setattr(audit_module, "_read", sources.__getitem__)
+    problems = audit_module._check_production_writer_scan()
+    assert len(problems) == 1
+    assert "project_policy/agents_md.py:1: unmarked deterministic writer site" in problems[0]
+
 
 # NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,
 # ``test_audit_main_returns_zero_on_clean_tree``, and
@@ -175,9 +196,7 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch.setattr(audit_module, "_read", _read_with_failure_log_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
-    )
+    assert rc == 1, f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
     assert run_path in captured.out
     assert "missing required literal" in captured.out
 
@@ -202,7 +221,10 @@ def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
         content = real_read(rel_path)
         if rel_path == runner_path:
             # Pretend the phase-seam sweep resurfaced.
-            return content + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
+            return (
+                content
+                + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
+            )
         return content
 
     monkeypatch.setattr(audit_module, "_read", _read_with_seam_commit_removed)

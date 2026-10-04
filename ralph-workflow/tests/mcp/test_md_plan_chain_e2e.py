@@ -26,17 +26,6 @@ Expect: the focused contract tests pass with exit code 0
 """
 
 
-def _prose_plan() -> str:
-    return """---
-type: plan
----
-This is a prose plan with no headings and more than ten words so it clears
-the readability floor. The implementation will touch the spec, the
-validation module, and the tool side. The development phase and the
-analyzer read the raw text without requiring structure.
-"""
-
-
 def _decision(step: str) -> str:
     return f"""---
 type: planning_analysis_decision
@@ -65,31 +54,13 @@ def test_public_verify_accepts_executor_ready_plan() -> None:
     assert payload["counts"] == {"error": 0, "info": 0, "warning": 0}
 
 
-def test_public_verify_accepts_prose_plan() -> None:
-    """A prose plan with no headings is accepted with no error diagnostics."""
-    payload = _verify_payload(_prose_plan())
-
-    assert payload["valid"] is True
-    assert payload["counts"] == {"error": 0, "info": 0, "warning": 0}
-
-
-def test_public_verify_accepts_plan_with_duplicate_step_ids() -> None:
-    """Duplicate step IDs are best-effort, not a structural error."""
-    duplicate = (
-        _plan()
-        + """
-### [S-1] Duplicate step
-Type: file_change
-Files:
-- modify ralph/duplicate.py
-Verify: uv run pytest -q tests/mcp/test_md_plan_chain_e2e.py
-Expect: the focused contract tests pass with exit code 0
-"""
+def test_public_verify_accepts_incomplete_plan_without_diagnostics() -> None:
+    payload = _verify_payload(
+        _plan().replace("Expect: the focused contract tests pass with exit code 0\n", "")
     )
-    payload = _verify_payload(duplicate)
 
     assert payload["valid"] is True
-    assert payload["counts"]["error"] == 0
+    assert payload["diagnostics"] == []
 
 
 def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Path) -> None:
@@ -113,8 +84,7 @@ def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Pat
     )
 
 
-def test_planning_prompts_share_the_compact_contract() -> None:
-    """The four planning variants share their shared partials."""
+def test_all_planning_variants_share_the_compact_contract() -> None:
     context = TemplateContext.default()
     for name in (
         "planning.jinja",
@@ -126,12 +96,14 @@ def test_planning_prompts_share_the_compact_contract() -> None:
         assert "shared/_planning_thinking.j2" in source
         assert "shared/_planning_submission_mechanics.j2" in source
 
+    mechanics = context.partials["shared/_planning_submission_mechanics"]
+    assert "schema or content validation" in mechanics
+    assert "Stable `### [S-n] Title` steps are recommended" in mechanics
 
-def test_planning_edit_variants_apply_substantive_feedback() -> None:
-    """Planning edits repair supported findings and split avoidable serialization."""
+
+def test_planning_revision_variants_repair_every_finding_in_place() -> None:
     context = TemplateContext.default()
     for name in ("planning_edit.jinja", "planning_edit_fallback.jinja"):
         source = context.registry.get_template(name.removesuffix(".jinja"))
-        assert "repository evidence" in source
-        assert "avoidable serialization" in source
-        assert "integration" in source
+        assert "Repair every referenced `PA-###` finding" in source
+        assert "target step or plan-level text" in source

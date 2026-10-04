@@ -120,7 +120,7 @@ status: request_changes
 def _write_noop_plan(workspace: MemoryWorkspace) -> None:
     workspace.write(
         ".agent/artifacts/plan.md",
-        "---\ntype: plan\nnoop: true\n---\nThis explicit no-op plan has enough readable explanatory words for acceptance.\n",
+        "---\ntype: plan\nnoop: true\n---\n",
     )
 
 

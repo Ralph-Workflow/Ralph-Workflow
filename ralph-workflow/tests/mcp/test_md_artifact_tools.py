@@ -363,15 +363,14 @@ def test_markdown_artifact_tools_are_registered() -> None:
         ),
     ],
 )
-def test_plan_verify_accepts_malformed_frontmatter_as_prose(tmp_path, label, content) -> None:
-    """Plan sanity does not judge duplicate or malformed metadata."""
+def test_plan_verify_accepts_irregular_frontmatter(tmp_path, label, content) -> None:
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "plan", "content": content}
 
     verified = handle_verify_md_artifact(session, workspace, params)
 
-    assert verified.is_error is False, f"malformed plan ({label}) is accepted prose"
+    assert verified.is_error is False
     payload = _payload(verified)
     assert payload["valid"] is True
-    assert must_dict_list(payload["diagnostics"]) == []
+    assert payload["diagnostics"] == []

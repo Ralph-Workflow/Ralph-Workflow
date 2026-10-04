@@ -108,12 +108,13 @@ def test_read_plan_artifact_missing_returns_none() -> None:
     assert read_plan_artifact(Path("/workspace"), _text_loader=_text_loader(None)) is None
 
 
-def test_read_plan_artifact_malformed_returns_none() -> None:
+def test_read_plan_artifact_plain_text_returns_empty_projection() -> None:
     result = read_plan_artifact(
         Path("/workspace"),
         _text_loader=_text_loader("not a plan artifact"),
     )
-    assert result is None
+    assert isinstance(result, PlanSummary)
+    assert result.total_steps == 0
 
 
 def test_read_plan_artifact_projects_context_and_scope() -> None:

@@ -270,20 +270,24 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 ## Work Units in the plan artifact
 
-A `plan` may use `## Work Units` as a recommended convention for
-independent work. A unit can name `Directories:`, exact `Paths:`, and real
-`Depends on:` prerequisites. The executor uses this extracted information
-best-effort: missing or inconsistent structure does not reject the plan.
+A `plan` artifact that declares `## Work Units` partitions its work into
+same-workspace units that an executing agent can dispatch to its own
+sub-agents in parallel. The list-item form is `- [U-N] description`,
+followed by an inline-list `Directories:` field (one value, comma-separated)
+and an optional `Depends on:` field. The unit body lives in the same
+`### [S-n]` step block, so the plan is a single source of truth for both
+the sequential steps and the per-unit slices.
 
-`max_parallel_workers` limits simultaneous workers, so additional ready work
-runs in queued waves. Exact paths remain file-level ownership; conflicting
-files or directory containment serialize, while disjoint files in the same
-directory may proceed together. Assignments to `.agent`, `.git`, and
-`.worktrees` are removed from worker briefs; unknown ownership remains in the
-main session. The brokered write protection remains authoritative.
+Plan submission, verification, editing, finalization, and phase loading accept
+plan text without frontmatter, section, step, reference, or work-unit policy
+validation. Only binary control characters are rejected. The original text is
+persisted unchanged, and recognized structured fields are extracted for
+execution and proof tracking when available. Missing structure is planning
+context for the agents to resolve.
 
-The exact guidance and worked example live in
-`.agent/artifact-formats/plan.md` and the bundled
+Worker dispatch still enforces safe execution scopes and scheduler limits.
+Those execution checks do not reject the planning artifact. The recommended
+structured examples live in `.agent/artifact-formats/plan.md` and the bundled
 `submit-plan-artifact` skill.
 
 ## Unplanned Work in the development-result artifact

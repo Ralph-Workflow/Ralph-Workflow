@@ -92,11 +92,11 @@ async def test_nonzero_worker_exit_is_failure_even_when_artifacts_would_exist() 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
 
-class TestTolerantPlanDispatch:
-    """Coordinator accepts plan prose and relies on scoped dispatch for safety."""
+class TestPreflightRejection:
+    """Coordinator-level preflight rejects unsafe plans before any worker launches."""
 
-    async def test_overlapping_edit_areas_are_serialized(self, tmp_path: Path) -> None:
-        """Overlapping ownership is accepted but scheduled in safe waves."""
+    async def test_overlapping_edit_areas_rejected(self, tmp_path: Path) -> None:
+        """Overlapping allowed_directories are rejected; no executor calls occur."""
         run_fan_out = _load_run_fan_out()
         unit_a = WorkUnit(
             unit_id="unit-a",
@@ -123,11 +123,17 @@ class TestTolerantPlanDispatch:
             display=display,
         )
 
-        assert not any(isinstance(e, WorkerFailedEvent) for e in events)
-        assert [unit.unit_id for unit in executor.calls] == ["unit-a", "unit-b"]
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        preflight_event = next(
+            e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+        )
+        assert "parallel preflight rejected plan:" in preflight_event.error
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
 
-    async def test_missing_allowed_directories_does_not_reject_prose(self, tmp_path: Path) -> None:
-        """An ownership-free unit does not turn accepted plan prose into an error."""
+    async def test_missing_allowed_directories_rejected(self, tmp_path: Path) -> None:
+        """Work unit with empty allowed_directories is rejected; no executor calls occur."""
         run_fan_out = _load_run_fan_out()
         unit_no_dirs = WorkUnit(
             unit_id="unit-nodirs",
@@ -148,11 +154,13 @@ class TestTolerantPlanDispatch:
             display=display,
         )
 
-        assert not any(isinstance(e, WorkerFailedEvent) for e in events)
-        assert [unit.unit_id for unit in executor.calls] == ["unit-nodirs"]
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
 
-    async def test_reserved_path_does_not_reject_plan_at_coordinator(self, tmp_path: Path) -> None:
-        """Scope enforcement is retained at the worker workspace boundary."""
+    async def test_reserved_path_rejected(self, tmp_path: Path) -> None:
+        """Work unit declaring .agent as edit area is rejected; no executor calls occur."""
         run_fan_out = _load_run_fan_out()
         unit_reserved = WorkUnit(
             unit_id="unit-reserved",
@@ -173,5 +181,11 @@ class TestTolerantPlanDispatch:
             display=display,
         )
 
-        assert not any(isinstance(e, WorkerFailedEvent) for e in events)
-        assert [unit.unit_id for unit in executor.calls] == ["unit-reserved"]
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        preflight_event = next(
+            e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+        )
+        assert "parallel preflight rejected plan:" in preflight_event.error
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"

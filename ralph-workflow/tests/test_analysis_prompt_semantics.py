@@ -124,15 +124,28 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
     assert source.index("## Criterion Verdicts") < source.index("## Decision artifact")
 
 
-def test_planning_analysis_includes_five_substantive_criteria() -> None:
+def test_planning_analysis_includes_parallel_structure_criterion() -> None:
+    """S-10: planning_analysis.jinja must list a parallel-structure criterion.
+
+    The criterion checks declared units for directory disjointness, complete
+    cross-unit `Depends on:` references, unit count within the cap, and shared
+    contracts sequenced before consumers. Avoidable serialization requires
+    revision; independent steps remain valid without directory-owned units.
+    """
     source = " ".join(TemplateContext.default().registry.get_template("planning_analysis").split())
 
-    for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
-        assert criterion in source
-    assert "Do not grade formatting" in source
+    for field in ("Depends on:", "max_parallel_workers", "max_work_units"):
+        assert field in source
+
+    # Preserve the S-2 framing: criterion-level verdicts, no document-shape grading.
+    assert "do not grade document shape" in source
     assert "## Criterion Verdicts" in source
     assert "## Decision artifact" in source
-    assert "propose a concrete unit split" in source
+    assert "## What Came Up Short" in source
+    assert "request_changes" in source
+    # The new criterion lives inside the criteria-and-verdicts block.
+    assert source.index("max_work_units") > source.index("## Criteria and verdicts")
+    assert source.index("max_work_units") < source.index("## Decision artifact")
 
 
 def test_development_analysis_prescribes_concrete_verification_fanout() -> None:

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effect_router import determine_effect_from_policy
-from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -187,8 +187,12 @@ def test_fanout_regression_routes_five_units_with_nested_step_assignments(
     )
 
     assert isinstance(effect, FanOutEffect)
-    assert [unit.unit_id for unit in effect.work_units] == [
-        "api", "web", "docs", "contract", "integration"
+    assert [(unit.unit_id, unit.step_ids) for unit in effect.work_units] == [
+        ("api", ["S-1"]),
+        ("web", ["S-2"]),
+        ("docs", ["S-3"]),
+        ("contract", ["S-4"]),
+        ("integration", ["S-5"]),
     ]
 
 
@@ -348,4 +352,5 @@ def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> 
         config=_config_with_development_agent(),
     )
 
-    assert isinstance(effect, FanOutEffect)
+    assert isinstance(effect, ExitFailureEffect)
+    assert "parallel preflight rejected plan" in effect.reason

@@ -537,7 +537,7 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-def test_format_doc_describes_the_mandatory_executor_ready_plan_contract() -> None:
+def test_format_doc_describes_text_acceptance_and_recommended_structure() -> None:
     """The concise guide teaches the mandatory step contract and revision path.
 
     ``PLAN001`` is no longer the sole blocking rule -- ``PLAN010``/``PLAN020``/
@@ -553,7 +553,7 @@ def test_format_doc_describes_the_mandatory_executor_ready_plan_contract() -> No
         "### [S-n] Title",
         "Verify",
         "Expect",
-        "unsupported",
+        "without schema or content validation",
         "ralph_edit_md_artifact",
     ):
         assert needle in doc, f"format doc missing {needle!r}"

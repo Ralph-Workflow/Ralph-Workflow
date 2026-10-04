@@ -51,7 +51,7 @@ def test_materialized_planning_prompt_teaches_native_markdown_submission(
     assert "PLANNING MODE" in rendered
     assert "ralph_verify_md_artifact" in rendered
     assert "ralph_submit_md_artifact" in rendered
-    assert "stable `### [S-n] Title` steps" in rendered
+    assert "Stable `### [S-n] Title` steps are recommended" in rendered
     assert "Work types should provide `Files`, a concrete `Verify`, and observable `Expect`" in rendered
     assert 'artifact_type="plan"' in rendered
     assert "### [S-" in rendered

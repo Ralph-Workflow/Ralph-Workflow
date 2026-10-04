@@ -231,9 +231,6 @@ class WorkspaceScope:
         for ad in allowed_directories:
             if not ad:
                 raise ValueError("allowed_directory must be non-empty")
-            relative = Path(ad)
-            if relative.is_absolute() or any(part in {".agent", ".git", ".worktrees"} for part in relative.parts):
-                raise ValueError(f"allowed_directory {ad!r} includes a protected path")
             p = canonical_root / ad
             resolved = p.resolve()
             try:

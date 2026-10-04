@@ -100,7 +100,7 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
 @pytest.mark.parametrize(
     ("draft", "raises"),
     [
-        ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", False),
+        ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", True),
         (
             (
                 "---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, "

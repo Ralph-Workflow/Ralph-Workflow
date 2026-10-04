@@ -8,9 +8,7 @@ unchanged.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-
-from ralph.mcp.artifacts.markdown.specs.plan import _OverrideMatch
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown import Diagnostic
@@ -41,29 +39,7 @@ def diagnostic_payload(diagnostic: Diagnostic) -> dict[str, object]:
     }
 
 
-def override_payload(match: object) -> dict[str, object]:
-    """Serialize an OverrideMatch dataclass for the tool response.
-
-    The tool layer accepts any object the plan validator's analyze entry point
-    produces; we narrow to the OverrideMatch shape via dataclass detection and
-    fall back to a minimal payload for unexpected objects so the tool never
-    raises a serialization error on the hot path.
-    """
-    if isinstance(match, _OverrideMatch):
-        diagnostic_dict: dict[str, object] = (
-            diagnostic_payload(match.diagnostic) if match.diagnostic is not None else {}
-        )
-        return {
-            "rule_id": match.rule_id,
-            "section": match.section,
-            "reason": match.reason,
-            "diagnostic": diagnostic_dict,
-        }
-    return cast("dict[str, object]", match)
-
-
 __all__ = [
     "diagnostic_payload",
-    "override_payload",
     "severity_counts",
 ]

@@ -30,7 +30,7 @@ The terms below help explain how Ralph Workflow does that.
 - **MCP** — **Model Context Protocol**. In day-to-day use, this is the tool layer Ralph Workflow exposes to agents so they can read files, write outputs, submit artifacts, and use other approved capabilities.
 - **Checkpoint** — Ralph Workflow's saved resume state. From the human operator shell: `ralph --inspect-checkpoint` shows what would be resumed; `ralph --no-resume` ignores the saved checkpoint and starts fresh.
 - **Recovery** — Ralph Workflow's built-in ability to keep a run moving through interruptions and failures. Includes retrying transient failures, falling over to the next agent in a chain, pausing safely when connectivity drops, and resuming from checkpointed state.
-- **Work unit** — a recommended, best-effort extracted sub-task inside a larger plan. Independent units can run in parallel; an accepted prose plan remains executable when no unit structure is extracted.
+- **Work unit** — a sub-task inside a larger plan that can be executed independently. When planning finds multiple independent pieces of work, Ralph Workflow can split them into work units and run them in parallel.
 - **Parallel mode** — lets Ralph Workflow execute multiple work units concurrently. See [Advanced Pipeline Configuration → Parallel execution (agent-driven)](advanced-pipeline-configuration.md#parallel-execution-agent-driven).
 - **Transcript** — the live terminal output from a run. Answers three questions: what is Ralph Workflow doing right now, did it make progress, did anything fail or need attention?
 - **Verbosity** — controls how much output Ralph Workflow prints. Use `--quiet`, `--debug`, or `--verbosity <level>`.

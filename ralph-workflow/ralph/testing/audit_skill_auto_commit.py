@@ -545,10 +545,7 @@ def _check_no_direct_chore_commit() -> list[str]:
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            if (
-                not isinstance(func, ast.Name)
-                or func.id != "create_commit"
-            ):
+            if not isinstance(func, ast.Name) or func.id != "create_commit":
                 continue
             # Direct ``create_commit(...)`` call. The only legitimate
             # call sites are inside the helpers listed above. We
@@ -566,9 +563,7 @@ def _check_no_direct_chore_commit() -> list[str]:
             # on the call line or the three lines above it.
             line_idx = max(0, (node.lineno or 1) - 4)
             window = src_lines[line_idx : (node.lineno or 1)]
-            has_marker = any(
-                "deterministic-writer-ok" in line for line in window
-            )
+            has_marker = any("deterministic-writer-ok" in line for line in window)
             if has_marker:
                 continue
             problems.append(
@@ -610,53 +605,50 @@ def _check_production_writer_scan() -> list[str]:
             except SyntaxError:
                 continue
             src_lines = src.splitlines()
-        routes_through_helper = any(
-            h in src
-            for h in (
-                "commit_deterministic_writes",
-                "commit_policy_writes",
-                "commit_skill_writes",
-                "commit_scoped_updates",
+            routes_through_helper = any(
+                h in src
+                for h in (
+                    "commit_deterministic_writes",
+                    "commit_policy_writes",
+                    "commit_skill_writes",
+                    "commit_scoped_updates",
+                )
             )
-        )
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            is_tracked_write = (
-                (
-                    isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "write"
-                    and (
-                        rel.startswith("project_policy/")
-                        or rel.startswith("skills/")
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                is_tracked_write = (
+                    (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "write"
+                        and (rel.startswith("project_policy/") or rel.startswith("skills/"))
+                    )
+                    or (
+                        rel.startswith("skills/")
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"copytree", "symlink_to"}
+                    )
+                    or (
+                        rel.startswith("skills/")
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id in {"_create_symlink", "copytree"}
                     )
                 )
-                or (
-                    rel.startswith("skills/")
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr in {"copytree", "symlink_to"}
-                )
-                or (
-                    rel.startswith("skills/")
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id in {"_create_symlink", "copytree"}
-                )
-            )
 
-            if not is_tracked_write:
-                continue
-            if routes_through_helper:
-                continue
+                if not is_tracked_write:
+                    continue
+                if routes_through_helper:
+                    continue
 
-            line_idx = max(0, (node.lineno or 1) - 4)
-            window = src_lines[line_idx : (node.lineno or 1)]
-            has_marker = any("deterministic-writer-ok" in line for line in window)
-            if not has_marker:
-                problems.append(
-                    f"  {rel}:{node.lineno}: unmarked deterministic writer site; "
-                    "route via commit_deterministic_writes or add an inline "
-                    "# deterministic-writer-ok: <reason> marker"
-                )
+                line_idx = max(0, (node.lineno or 1) - 4)
+                window = src_lines[line_idx : (node.lineno or 1)]
+                has_marker = any("deterministic-writer-ok" in line for line in window)
+                if not has_marker:
+                    problems.append(
+                        f"  {rel}:{node.lineno}: unmarked deterministic writer site; "
+                        "route via commit_deterministic_writes or add an inline "
+                        "# deterministic-writer-ok: <reason> marker"
+                    )
     return problems
 
 
@@ -686,8 +678,7 @@ def _check_writer_routing() -> list[str]:
             content = _read(rel)
         except FileNotFoundError:
             problems.append(
-                f"  {rel}: required writer-audit file missing "
-                "(delete must update audit registry)"
+                f"  {rel}: required writer-audit file missing (delete must update audit registry)"
             )
             continue
         # The writer routes through commit_deterministic_writes if the
@@ -695,9 +686,7 @@ def _check_writer_routing() -> list[str]:
         routes_through_helper = "commit_deterministic_writes" in content
         # Or carries an inline deterministic-writer-ok marker.
         carries_marker = "deterministic-writer-ok" in content
-        if rule_kind == "tracked" and not (
-            routes_through_helper or carries_marker
-        ):
+        if rule_kind == "tracked" and not (routes_through_helper or carries_marker):
             problems.append(
                 f"  {rel}: tracked writer ({writer_literals!r}) MUST either "
                 "route through commit_deterministic_writes or carry an "
