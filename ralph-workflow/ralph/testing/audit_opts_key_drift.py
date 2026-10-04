@@ -92,11 +92,13 @@ class Violation:
 
 @dataclass
 class _Module:
-    """One parsed module: its functions and the names its imports bind."""
+    """One parsed module: its functions, call sites, and import bindings."""
 
     name: str
-    tree: ast.Module
     functions: dict[str, _FuncNode] = field(default_factory=dict)
+    #: Call nodes carrying at least one keyword, collected during indexing so
+    #: the audit pass never re-walks the module tree.
+    keyword_calls: list[ast.Call] = field(default_factory=list)
     #: local name -> (module, attribute) for ``from x import f [as g]``
     from_imports: dict[str, tuple[str, str]] = field(default_factory=dict)
     #: local name -> module for ``import x.y as m`` / ``import x``
@@ -111,12 +113,15 @@ def _module_name(path: Path, package_root: Path) -> str:
 
 
 def _index_module(name: str, tree: ast.Module) -> _Module:
-    module = _Module(name=name, tree=tree)
+    module = _Module(name=name)
     for node in ast.walk(tree):
         if isinstance(node, _FUNC_NODES):
             func = node
             assert isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef)
             module.functions.setdefault(func.name, func)
+        elif isinstance(node, ast.Call):
+            if node.keywords:
+                module.keyword_calls.append(node)
         elif isinstance(node, ast.ImportFrom):
             if node.module is None or node.level:
                 continue
@@ -307,9 +312,7 @@ def audit_index(index: dict[str, _Module]) -> list[Violation]:
 
     violations: list[Violation] = []
     for module in index.values():
-        for node in ast.walk(module.tree):
-            if not isinstance(node, ast.Call) or not node.keywords:
-                continue
+        for node in module.keyword_calls:
             resolved = _resolve_call_target(module, node.func, index)
             if resolved is None:
                 continue

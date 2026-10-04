@@ -73,6 +73,17 @@ class ExploreIndex:
     #: success/failure. The default ``False`` keeps the attribute
     #: optional for test doubles that subclass or duck-type the handle.
     reindex_in_progress: bool = False
+    #: Cache slot for the canonical ``serving_metadata`` staleness
+    #: block. The block is recomputed on every index-capable tool
+    #: call (a single ``fetch`` is not expensive but the per-call
+    #: aggregate across a tight indexed-search loop is); the cache
+    #: avoids 3-4 SQL round-trips when the underlying store state
+    #: has not changed since the previous read. The slot stores a
+    #: ``(signature, block)`` tuple; the cache is invalidated when
+    #: the store-state signature changes. The default ``None``
+    #: keeps the attribute optional for test doubles that subclass
+    #: or duck-type the handle.
+    staleness_block_cache: tuple[tuple[int, int, float | None, int], dict[str, object]] | None = None
 
     @property
     def index_dir(self) -> Path:

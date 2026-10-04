@@ -184,6 +184,7 @@ def validate_report(
     *,
     baseline: Mapping[str, Mapping[str, float]] | None = None,
     targets: Mapping[str, Mapping[str, float]] | None = None,
+    post: Mapping[str, Mapping[str, float]] | None = None,
 ) -> tuple[str, ...]:
     """Return one error string per problem, empty list = pass.
 
@@ -196,6 +197,13 @@ def validate_report(
       reusing ``measurement_within_target`` (regression vs.
       within-tolerance vs. improved).
     - The Final cell must be numeric.
+
+    When ``post`` is also given, an additional pass verifies that
+    every ``(workload, metric)`` recorded in the report matches the
+    post JSON and meets the documented improvement target. The
+    verification is fail-closed: a missing post entry, a numeric
+    mismatch, or an Underperforms (i.e. ``final > 0.6 * baseline``
+    for an upper-bound metric) returns an explicit error.
 
     Cross-check failures return explicit messages; the row schema
     is still verified first so the legacy shape-only path keeps
@@ -211,11 +219,100 @@ def validate_report(
         return (
             "validate_report requires both baseline and targets (or neither)",
         )
-    return _validate_report_with_cross_check(
-        parsed_rows,
-        baseline=baseline,
-        targets=targets,
+    failures = list(
+        _validate_report_with_cross_check(
+            parsed_rows,
+            baseline=baseline,
+            targets=targets,
+        )
     )
+    if post is not None:
+        failures.extend(
+            _validate_post_matches_report(
+                parsed_rows,
+                baseline=baseline,
+                post=post,
+            )
+        )
+    return tuple(failures)
+
+
+def _validate_post_matches_report(
+    parsed_rows: list[list[str]],
+    *,
+    baseline: Mapping[str, Mapping[str, float]],
+    post: Mapping[str, Mapping[str, float]],
+) -> tuple[str, ...]:
+    """Verify every report row's ``Final`` matches the post JSON and the
+    documented improvement target (0.6x baseline for upper-bound
+    metrics; ``>`` baseline for the lower-bound
+    ``indexed_vs_live_speed_ratio``). The check is fail-closed: any
+    missing entry, numeric mismatch, or insufficient improvement
+    becomes an error string.
+    """
+    errors: list[str] = []
+    cell_metric = 1
+    cell_workload = 2
+    cell_final = 4
+    required_cells = cell_final + 1
+    cell_eps = 1e-9
+    improvement_factor = 0.6
+    seen: set[tuple[str, str]] = set()
+    for cells in parsed_rows:
+        if len(cells) < required_cells:
+            continue
+        metric = cells[cell_metric].strip() if len(cells) > cell_metric else ""
+        workload = cells[cell_workload].strip() if len(cells) > cell_workload else ""
+        if not metric and not workload:
+            continue
+        if metric not in _R6_2_METRICS or workload not in _R6_3_WORKLOADS:
+            continue
+        seen.add((workload, metric))
+        final_text = cells[cell_final].strip() if len(cells) > cell_final else ""
+        final_value = _parse_float_cell(final_text)
+        if final_value is None:
+            continue
+        post_value_obj = post.get(workload, {}).get(metric)
+        if not isinstance(post_value_obj, (int, float)):
+            errors.append(
+                f"{workload}.{metric}: post JSON missing numeric value",
+            )
+            continue
+        post_value = float(post_value_obj)
+        if abs(final_value - post_value) > cell_eps:
+            errors.append(
+                f"{workload}.{metric}: Final cell {final_value} "
+                f"!= post JSON {post_value}",
+            )
+        baseline_value_obj = baseline.get(workload, {}).get(metric)
+        if not isinstance(baseline_value_obj, (int, float)):
+            continue
+        baseline_value = float(baseline_value_obj)
+        if metric in _LOWER_BOUND_METRICS:
+            if post_value <= baseline_value:
+                errors.append(
+                    f"{workload}.{metric}: post {post_value} did not improve "
+                    f"over baseline {baseline_value} "
+                    f"(lower-bound metric requires Final > Baseline)",
+                )
+        else:
+            ceiling = baseline_value * improvement_factor
+            if post_value > ceiling + cell_eps:
+                errors.append(
+                    f"{workload}.{metric}: post {post_value} exceeds "
+                    f"0.6x baseline ({ceiling:.6f})",
+                )
+    for workload, post_metrics in post.items():
+        if workload not in _R6_3_WORKLOADS:
+            continue
+        for metric in post_metrics:
+            if metric not in _R6_2_METRICS:
+                continue
+            if (workload, metric) not in seen:
+                errors.append(
+                    f"{workload}.{metric}: post JSON has data but report does not",
+                )
+    return tuple(errors)
 
 
 def _validate_report_shape_only(
@@ -415,6 +512,21 @@ def _load_targets_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
     return MappingProxyType(out)
 
 
+def _load_post_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
+    """Load the post-change JSON; same shape as the baseline.
+
+    The post JSON has the same shape as the baseline JSON produced by
+    ``capture_baseline``: ``{"metrics": {workload: {metric: value}}}``.
+    Validation enforces that every post-recorded metric for each
+    workload either improves on the baseline (smaller for
+    upper-bound metrics, larger for ``indexed_vs_live_speed_ratio``) or
+    stays within the documented ``0.6x`` (or equivalent) target.
+    Failures are returned with a message that names the offending
+    workload + metric so the regression gate can diagnose.
+    """
+    return _load_baseline_metrics(path)
+
+
 def run_validate_baseline(baseline_path: str) -> int:
     """CLI entry: validate the S-8 baseline JSON."""
     failures = validate_baseline(Path(baseline_path))
@@ -430,6 +542,7 @@ def run_validate_report(
     report_path: str,
     baseline_path: str | None = None,
     targets_path: str | None = None,
+    post_path: str | None = None,
 ) -> int:
     """CLI entry: validate the S-10 before/after report.
 
@@ -437,6 +550,14 @@ def run_validate_report(
     CLI mechanically cross-checks every report row against the two
     JSON files. Either companion path without the other fails
     closed so the operator cannot silently bypass the cross-check.
+
+    When ``post_path`` is given, the CLI loads the post-change
+    measurement JSON and verifies that every metric recorded in
+    the report matches the corresponding entry in the post JSON
+    and meets the documented improvement target (e.g. ralph_self
+    indexed_query_p50_seconds <= 0.6x baseline). Failures are
+    printed in order and a non-zero exit code is returned so the
+    regression gate fails closed.
     """
     if (baseline_path is None) != (targets_path is None):
         print(
@@ -453,10 +574,18 @@ def run_validate_report(
         except (OSError, ValueError) as exc:
             print(f"FAIL: {exc}", file=sys.stderr)
             return 1
+    post_metrics: Mapping[str, Mapping[str, float]] | None = None
+    if post_path is not None:
+        try:
+            post_metrics = _load_post_metrics(Path(post_path))
+        except (OSError, ValueError) as exc:
+            print(f"FAIL: post data: {exc}", file=sys.stderr)
+            return 1
     failures = validate_report(
         Path(report_path),
         baseline=baseline_metrics,
         targets=targets_metrics,
+        post=post_metrics,
     )
     if failures:
         for failure in failures:

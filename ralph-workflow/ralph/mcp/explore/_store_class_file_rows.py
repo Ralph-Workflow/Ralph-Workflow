@@ -103,6 +103,59 @@ class _FileRowMethods:
             result[file_row.path] = file_row
         return result
 
+    def bulk_size_mtime_for_paths(
+        self, paths: Sequence[str]
+    ) -> dict[str, tuple[int, int]]:
+        """Bulk-load ``(size_bytes, mtime_ns)`` for ``paths``.
+
+        Returns ``{path: (size_bytes, mtime_ns)}`` for every
+        persisted ``files`` row whose ``path`` is in ``paths`` and
+        ``is_deleted = 0``. Missing or unknown paths are simply
+        absent from the result; the caller treats them as drift.
+
+        The query is one ``SELECT`` with an ``IN (?, ?, ...)``
+        predicate so the F12 staleness probe can compare a whole
+        on-disk ``(size, mtime)`` manifest against the persisted
+        rows in a single round-trip rather than issuing one
+        ``SELECT`` per path. The projection drops every column
+        beyond ``path / size_bytes / mtime_ns`` so SQLite does not
+        pay the row-decode cost for content-hash / language /
+        generation columns the staleness probe never reads.
+
+        Empty ``paths`` performs no SQL and returns ``{}``;
+        callers can pass the full workspace manifest without a
+        guard.
+        """
+        if not paths:
+            return {}
+        placeholders = ",".join("?" for _ in paths)
+        cur = self._conn.execute(
+            f"SELECT path, size_bytes, mtime_ns FROM files "
+            f"WHERE is_deleted = 0 AND path IN ({placeholders})",
+            tuple(paths),
+        )
+        all_rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        result: dict[str, tuple[int, int]] = {}
+        for row in all_rows:
+            try:
+                size_obj = row["size_bytes"]
+                mtime_obj = row["mtime_ns"]
+                path_value = row["path"]
+            except (KeyError, IndexError):
+                continue
+            if not isinstance(path_value, str):
+                continue
+            size = (
+                int(size_obj) if isinstance(size_obj, int) and not isinstance(size_obj, bool) else 0
+            )
+            mtime = (
+                int(mtime_obj) if isinstance(mtime_obj, int) and not isinstance(mtime_obj, bool) else 0
+            )
+            result[path_value] = (size, mtime)
+        return result
+
     def upsert_file_many(self, rows: Sequence[FileRow]) -> None:
         """Bulk variant of :meth:`upsert_file`.
 

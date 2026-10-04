@@ -21,6 +21,7 @@ silently leak into the public surface.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -104,6 +105,12 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     exceeds the documented default of 5% stale share inside a
     query scope; this is a soft signal for callers, not a
     hard gate (the freshness guard in S-3 enforces the gate).
+
+    The block is cached on the handle keyed by a store-state
+    signature ``(dirty_count, deleted_count, finished_at,
+    current_generation)``. When the signature is unchanged
+    since the previous call (typical for a tight indexed-search
+    loop), the cached block is returned without re-querying.
     """
     if handle is None:
         return {
@@ -126,15 +133,39 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
         latest = store.latest_job()
     except Exception:
         latest = None
+    finished_at: float | None = None
     if latest is not None:
         try:
             fin_obj: object = latest["finished_at"]
             if isinstance(fin_obj, (int, float)):
-                finished = float(fin_obj)
-                if finished > 0:
-                    last_refresh_age = max(0.0, time.time() - finished)
+                finished_at = float(fin_obj)
+                if finished_at > 0:
+                    last_refresh_age = max(0.0, time.time() - finished_at)
         except (KeyError, TypeError, ValueError, IndexError):
             last_refresh_age = None
+    # Re-compute ``last_refresh_age`` against the cached signature
+    # so a re-read with the same ``finished_at`` returns the same
+    # value the cache was originally bound to (caller's clock may
+    # have advanced between calls; the signature uses the raw
+    # store value, not the time-relative derived field).
+    cached = getattr(handle, "staleness_block_cache", None)
+    signature = (
+        stale_paths_count,
+        int(finished_at) if finished_at is not None else 0,
+        finished_at,
+        int(store.get_setting("current_generation") or 0),
+    )
+    if cached is not None and cached[0] == signature:
+        # Refresh the wall-clock age on hit so a long-lived loop
+        # does not report a stale ``last_refresh_age``. Update the
+        # cache slot in place so subsequent hits see the same
+        # refreshed value.
+        cached_block = dict(cached[1])
+        if last_refresh_age is not None:
+            cached_block["last_refresh_age"] = last_refresh_age
+        with contextlib.suppress(Exception):
+            handle.staleness_block_cache = (signature, cached_block)
+        return cached_block
     recovery_willfallback = False
     if stale_paths_count > 0:
         try:
@@ -149,6 +180,11 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
         "last_refresh_age": last_refresh_age,
         "recovery_willfallback": recovery_willfallback,
     }
+    with contextlib.suppress(Exception):
+        # Test doubles may not expose the cache slot; the lookup
+        # above is forgiving via ``getattr`` so an absent slot is
+        # also handled by the next call.
+        handle.staleness_block_cache = (signature, result)
     return result
 
 
@@ -248,24 +284,21 @@ def staleness_probe(
             from ralph.mcp.explore._store_types import collect_workspace_files
 
             current_manifest = collect_workspace_files(Path(workspace_root))
+            current_paths = [rel for rel, _size, _mtime in current_manifest]
+            try:
+                persisted = store.bulk_size_mtime_for_paths(current_paths)
+            except Exception:
+                # Probe is best-effort: a closed store / schema drift
+                # must not blow up the freshness guard. The
+                # dirty-path probe below remains the canonical signal.
+                persisted = {}
             for rel, size, mtime_ns in current_manifest:
-                row = store.get_file(rel)
-                if row is None:
+                row_tuple = persisted.get(rel)
+                if row_tuple is None:
                     # New file; not yet in the index.
                     manifest_drift_paths += 1
                     continue
-                # The row's typed attributes are int but the public
-                # handle may carry ``None`` when the column was
-                # just added. Guard each access through a typed
-                # helper so the int() conversion is unambiguous.
-                try:
-                    row_size = int(row.size_bytes) if row.size_bytes is not None else 0
-                except (TypeError, ValueError):
-                    row_size = 0
-                try:
-                    row_mtime = int(row.mtime_ns) if row.mtime_ns is not None else 0
-                except (TypeError, ValueError):
-                    row_mtime = 0
+                row_size, row_mtime = row_tuple
                 if row_size != size or row_mtime != mtime_ns:
                     manifest_drift_paths += 1
     except Exception:

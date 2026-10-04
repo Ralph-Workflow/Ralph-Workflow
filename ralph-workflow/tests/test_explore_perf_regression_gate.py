@@ -422,3 +422,176 @@ def test_cross_check_derives_regression_when_final_exceeds_target() -> None:
         )
         assert failures, "expected the cross-check to fail with a regression"
         assert any("Disposition cell" in f for f in failures)
+
+
+# --- Post-change improvement gate (S-5) ----------------------------------
+#
+# The wt-11 plan requires the post-change measurement JSON to be
+# cross-checked against the baseline so the regression gate
+# enforces the 0.6x improvement target (S-5). The tests below
+# build a synthetic post JSON that:
+#   1. matches the report's Final cell exactly (happy path),
+#   2. meets the 0.6x improvement target for the upper-bound
+#      metrics,
+#   3. improves (rather than just meets) the lower-bound
+#      ``indexed_vs_live_speed_ratio`` metric,
+# and asserts the gate passes.
+# A companion negative test asserts the gate fails when the post
+# value exceeds the 0.6x ceiling for the ralph_self
+# ``indexed_query_p50_seconds`` metric that is the canonical
+# success criterion in PLAN.md S-5.
+
+
+def _build_post_change_metrics(
+    *,
+    baseline_payload: dict[str, dict[str, float]],
+    improvement_factor: float = 0.6,
+) -> dict[str, dict[str, float]]:
+    """Return a post JSON where every upper-bound metric is multiplied
+    by ``improvement_factor`` and the lower-bound speed ratio is
+    divided by the same factor (so it grows). The schema mirrors
+    ``explore-index-baseline.json``.
+    """
+    post: dict[str, dict[str, float]] = {}
+    for workload, metrics in baseline_payload.items():
+        post[workload] = {}
+        for metric, baseline_value in metrics.items():
+            if metric == "indexed_vs_live_speed_ratio":
+                post[workload][metric] = baseline_value / improvement_factor
+            else:
+                post[workload][metric] = baseline_value * improvement_factor
+    return post
+
+
+def test_post_data_passes_when_meeting_improvement_target() -> None:
+    """A post JSON meeting the 0.6x target passes the validator."""
+    from ralph.mcp.explore._bench_r6_validation import validate_report
+
+    baseline_payload = {
+        "small": {"cold_build_wall_seconds": 1.0, "indexed_vs_live_speed_ratio": 1.5},
+        "ralph_self": {"indexed_query_p50_seconds": 0.0281},
+        "large_synthetic": {"cold_build_wall_seconds": 10.0},
+        "multi_session": {"idle_cpu_seconds": 0.0},
+    }
+    targets_payload = {
+        "small": {"cold_build_wall_seconds": 1.0, "indexed_vs_live_speed_ratio": 1.0},
+        "ralph_self": {"indexed_query_p50_seconds": 0.0169},
+        "large_synthetic": {"cold_build_wall_seconds": 10.0},
+        "multi_session": {"idle_cpu_seconds": 0.0},
+    }
+    post_payload = _build_post_change_metrics(baseline_payload=baseline_payload, improvement_factor=0.6)
+    # Build a report whose Final cell equals the post payload and
+    # whose Disposition is ``improved`` for every row (post is strictly
+    # better than baseline, well within target).
+    rows = []
+    for workload, metrics in baseline_payload.items():
+        for metric, baseline_value in metrics.items():
+            post_value = post_payload[workload][metric]
+            target_value = targets_payload[workload][metric]
+            if metric == "indexed_vs_live_speed_ratio" or post_value < baseline_value:
+                disposition = "improved"
+            else:
+                disposition = "within-tolerance"
+            rows.append(
+                f"| {metric} | {workload} | {baseline_value!r} | "
+                f"{post_value!r} | {target_value!r} | {disposition} |"
+            )
+    report = (
+        "# test\n\n| Metric | Workload | Baseline | Final | Target | Disposition |\n"
+        "|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
+    )
+    with tempfile.TemporaryDirectory() as scratch:
+        report_path = Path(scratch) / "report.md"
+        report_path.write_text(report)
+        failures = validate_report(
+            report_path,
+            baseline=baseline_payload,
+            targets=targets_payload,
+            post=post_payload,
+        )
+        assert not failures, f"unexpected failures: {failures}"
+
+
+def test_post_data_fails_on_ralph_self_indexed_query_p50_above_target() -> None:
+    """A post value above the 0.6x ceiling fails the validator."""
+    from ralph.mcp.explore._bench_r6_validation import validate_report
+
+    baseline_payload = {
+        "ralph_self": {"indexed_query_p50_seconds": 0.0281},
+    }
+    targets_payload = {
+        "ralph_self": {"indexed_query_p50_seconds": 0.0169},
+    }
+    # 0.7 * 0.0281 = 0.01967 > 0.01686 (0.6x ceiling). Fails.
+    post_payload = {"ralph_self": {"indexed_query_p50_seconds": 0.0281 * 0.7}}
+    report = (
+        "# test\n\n| Metric | Workload | Baseline | Final | Target | Disposition |\n"
+        "|---|---|---|---|---|---|\n"
+        "| indexed_query_p50_seconds | ralph_self | 0.0281 | "
+        f"{post_payload['ralph_self']['indexed_query_p50_seconds']!r} | 0.0169 | within-tolerance |\n"
+    )
+    with tempfile.TemporaryDirectory() as scratch:
+        report_path = Path(scratch) / "report.md"
+        report_path.write_text(report)
+        failures = validate_report(
+            report_path,
+            baseline=baseline_payload,
+            targets=targets_payload,
+            post=post_payload,
+        )
+        assert failures, "expected the post-data gate to fail"
+        assert any(
+            "exceeds 0.6x baseline" in f or "Final cell" in f for f in failures
+        )
+
+
+def test_post_data_fails_when_speed_ratio_does_not_improve() -> None:
+    """A lower-bound metric that does NOT improve fails the validator."""
+    from ralph.mcp.explore._bench_r6_validation import validate_report
+
+    baseline_payload = {"small": {"indexed_vs_live_speed_ratio": 1.5}}
+    targets_payload = {"small": {"indexed_vs_live_speed_ratio": 1.0}}
+    # Post equals baseline; not strictly better.
+    post_payload = {"small": {"indexed_vs_live_speed_ratio": 1.5}}
+    report = (
+        "# test\n\n| Metric | Workload | Baseline | Final | Target | Disposition |\n"
+        "|---|---|---|---|---|---|\n"
+        "| indexed_vs_live_speed_ratio | small | 1.5 | 1.5 | 1.0 | within-tolerance |\n"
+    )
+    with tempfile.TemporaryDirectory() as scratch:
+        report_path = Path(scratch) / "report.md"
+        report_path.write_text(report)
+        failures = validate_report(
+            report_path,
+            baseline=baseline_payload,
+            targets=targets_payload,
+            post=post_payload,
+        )
+        assert failures, "expected the post-data gate to fail on a non-improved lower-bound metric"
+        assert any("did not improve over baseline" in f for f in failures)
+
+
+def test_post_data_fails_when_final_cell_disagrees_with_post_json() -> None:
+    """A Final cell that disagrees with the post JSON fails."""
+    from ralph.mcp.explore._bench_r6_validation import validate_report
+
+    baseline_payload = {"ralph_self": {"indexed_query_p50_seconds": 0.0281}}
+    targets_payload = {"ralph_self": {"indexed_query_p50_seconds": 0.0169}}
+    # Post JSON says 0.016 but the report's Final cell says 0.020.
+    post_payload = {"ralph_self": {"indexed_query_p50_seconds": 0.016}}
+    report = (
+        "# test\n\n| Metric | Workload | Baseline | Final | Target | Disposition |\n"
+        "|---|---|---|---|---|---|\n"
+        "| indexed_query_p50_seconds | ralph_self | 0.0281 | 0.020 | 0.0169 | improved |\n"
+    )
+    with tempfile.TemporaryDirectory() as scratch:
+        report_path = Path(scratch) / "report.md"
+        report_path.write_text(report)
+        failures = validate_report(
+            report_path,
+            baseline=baseline_payload,
+            targets=targets_payload,
+            post=post_payload,
+        )
+        assert failures, "expected the gate to fail on a Final cell that disagrees with the post JSON"
+        assert any("Final cell" in f and "post JSON" in f for f in failures)

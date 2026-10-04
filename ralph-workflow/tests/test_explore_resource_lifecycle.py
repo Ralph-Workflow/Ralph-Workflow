@@ -192,7 +192,6 @@ def test_no_fd_leak_after_reindex_and_search(tmp_path: Path) -> None:
     )
 
 
-
 def test_no_fd_leak_under_concurrent_searches(tmp_path: Path) -> None:
     """The post-operation FD count after a concurrent-search workload matches the baseline.
 

@@ -61,6 +61,36 @@ def _empty_baseline_metrics() -> dict[str, float]:
     return dict.fromkeys(_R6_2_METRICS, 0.0)
 
 
+def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
+    """Return the per-metric median across ``samples``.
+
+    Empty input returns a zero-initialised dict (matching the
+    ``_empty_baseline_metrics`` shape) so the caller can rely on
+    the canonical schema. Single-sample input returns a copy of
+    the only sample; the median of one observation is itself.
+    """
+    if not samples:
+        return _empty_baseline_metrics()
+    out: dict[str, float] = {}
+    for metric in _R6_2_METRICS:
+        values = [
+            float(sample[metric])
+            for sample in samples
+            if metric in sample and isinstance(sample[metric], (int, float))
+        ]
+        if not values:
+            out[metric] = 0.0
+            continue
+        values.sort()
+        n = len(values)
+        mid = n // 2
+        if n % 2 == 1:
+            out[metric] = values[mid]
+        else:
+            out[metric] = (values[mid - 1] + values[mid]) / 2.0
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Subprocess-based R6.2 build measurement
 # ---------------------------------------------------------------------------
@@ -263,7 +293,6 @@ def _measure_query_latency(
     parent_dir: Path,
 ) -> dict[str, float]:
     """Measure indexed vs live query latency over the small fixture."""
-    from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
     from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
 
@@ -284,7 +313,22 @@ def _measure_query_latency(
     try:
         if index_dir != shared:
             reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
-        session.explore_index = build_sqlite_index_handle(store)
+        # Attach the real ``ExploreIndex`` handle so the freshness
+        # guard, ``_staleness_block`` cache, and serving metadata all
+        # run through the production code path. The prior
+        # ``build_sqlite_index_handle`` returned a narrow duck-type
+        # that did NOT pass ``isinstance(handle, ExploreIndex)`` so
+        # the benchmark measured a different control flow than the
+        # live handler. This closes the production-path fidelity
+        # gap called out in R6 / S-7 of the plan.
+        from ralph.mcp.explore.handlers import ExploreIndex as _ExploreIndex
+
+        session.explore_index = _ExploreIndex(
+            workspace_root=workspace,
+            index_root=index_dir,
+            store=store,
+            generation=int(store.get_setting("current_generation") or 0),
+        )
         ws = FsWorkspace(workspace)
         raw_samples: list[float] = []
         for _ in range(5):
@@ -496,13 +540,13 @@ def _exercise_multi_session(workspace: Path, index_dir: Path, processes: int) ->
 
     script = (
         "from pathlib import Path\n"
-        "from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle\n"
+        "from ralph.mcp.explore.handlers import ExploreIndex\n"
         "from ralph.mcp.explore.store import ExploreStore\n"
         "from ralph.mcp.explore._bench_product_baseline import _BaselineSession\n"
         "from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files\n"
         "from ralph.workspace.fs import FsWorkspace\n"
         f"store = ExploreStore(Path({str(index_dir)!r}))\n"
-        "session = _BaselineSession(build_sqlite_index_handle(store))\n"
+        f"session = _BaselineSession(ExploreIndex(workspace_root=Path({str(workspace)!r}), index_root=Path({str(index_dir)!r}), store=store))\n"
         f"handle_grep_files(session, FsWorkspace(Path({str(workspace)!r})), "
         "{'pattern': 'hello', 'path': '.', 'regex': False, 'case_sensitive': False, 'use_index': 'auto'})\n"
         "store.close()\n"
@@ -579,6 +623,7 @@ def capture_baseline(
     output_path: Path,
     *,
     workloads: Sequence[str] | None = None,
+    repeat: int = 1,
 ) -> dict[str, object]:
     """Capture every R6.2 metric on every R6.3 workload into ``output_path``.
 
@@ -625,13 +670,41 @@ def capture_baseline(
             if isinstance(v, (int, float)):
                 existing_counts[str(k)] = float(v)
 
+    def _capture_with_repeat(
+        workspace: Path,
+        *,
+        parent_dir: Path,
+        session_processes: int = 1,
+    ) -> dict[str, float]:
+        """Capture one workload ``repeat`` times; return per-metric median."""
+        if repeat <= 1:
+            return _capture_workload_metrics(
+                workspace,
+                parent_dir=parent_dir,
+                session_processes=session_processes,
+            )
+        samples: list[dict[str, float]] = []
+        for iteration in range(repeat):
+            print(
+                f"capture iteration {iteration + 1}/{repeat} for {workspace.name}",
+                flush=True,
+            )
+            samples.append(
+                _capture_workload_metrics(
+                    workspace,
+                    parent_dir=parent_dir,
+                    session_processes=session_processes,
+                )
+            )
+        return _median_metrics(samples)
+
     with tempfile.TemporaryDirectory(prefix="ralph-baseline-") as scratch:
         scratch_path = Path(scratch)
         if "small" in target_workloads:
             small_ws = _seed_small_workspace(scratch_path)
             small_parent = scratch_path / "m_small"
             small_parent.mkdir(parents=True, exist_ok=True)
-            small_metrics = _capture_workload_metrics(small_ws, parent_dir=small_parent)
+            small_metrics = _capture_with_repeat(small_ws, parent_dir=small_parent)
             existing_metrics["small"] = small_metrics
             existing_workloads["small"] = {"metrics": small_metrics}
             existing_counts["small"] = float(sum(1 for p in small_ws.rglob("*") if p.is_file()))
@@ -640,7 +713,7 @@ def capture_baseline(
             ralph_self_ws = _seed_ralph_self_workspace(scratch_path / "ralph_self")
             ralph_parent = scratch_path / "m_ralph"
             ralph_parent.mkdir(parents=True, exist_ok=True)
-            ralph_self_metrics = _capture_workload_metrics(ralph_self_ws, parent_dir=ralph_parent)
+            ralph_self_metrics = _capture_with_repeat(ralph_self_ws, parent_dir=ralph_parent)
             existing_metrics["ralph_self"] = ralph_self_metrics
             existing_workloads["ralph_self"] = {"metrics": ralph_self_metrics}
             existing_counts["ralph_self"] = float(sum(1 for p in ralph_self_ws.rglob("*") if p.is_file()))
@@ -649,7 +722,7 @@ def capture_baseline(
             large_ws = _seed_large_synthetic(scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)
             large_parent = scratch_path / "m_large"
             large_parent.mkdir(parents=True, exist_ok=True)
-            large_metrics = _capture_workload_metrics(large_ws, parent_dir=large_parent)
+            large_metrics = _capture_with_repeat(large_ws, parent_dir=large_parent)
             existing_metrics["large_synthetic"] = large_metrics
             existing_workloads["large_synthetic"] = {"metrics": large_metrics}
             existing_counts["large_synthetic"] = float(sum(1 for p in large_ws.rglob("*") if p.is_file()))
@@ -665,7 +738,7 @@ def capture_baseline(
                     target.write_text(content)
             multi_parent = scratch_path / "m_multi"
             multi_parent.mkdir(parents=True, exist_ok=True)
-            multi_metrics = _capture_workload_metrics(
+            multi_metrics = _capture_with_repeat(
                 multi_ws, parent_dir=multi_parent, session_processes=3
             )
             existing_metrics["multi_session"] = multi_metrics
@@ -677,6 +750,7 @@ def capture_baseline(
         "captured_at": time.time(),
         "metric_set": list(_R6_2_METRICS),
         "workload_set": list(_R6_3_WORKLOADS),
+        "repeat": int(repeat),
         "scale_factors": {
             "small": "Q1/Q2/Q3 fixtures (small)",
             "ralph_self": "Actual ralph-workflow working tree (real files)",
@@ -872,15 +946,29 @@ def measurement_within_target(measured: float, target: float, metric: str) -> bo
     return measured <= ceiling + 1e-9
 
 
-def run_capture_baseline(output_path: str, *, workloads: Sequence[str] | None = None) -> int:
-    """CLI entry: capture the S-8 baseline JSON."""
-    baseline = capture_baseline(Path(output_path), workloads=workloads)
+def run_capture_baseline(
+    output_path: str,
+    *,
+    workloads: Sequence[str] | None = None,
+    repeat: int = 1,
+) -> int:
+    """CLI entry: capture the S-8 baseline JSON.
+
+    When ``repeat`` is greater than 1, each workload is captured
+    that many times and the per-metric median is reported as the
+    canonical baseline value (the per-iteration samples are kept
+    under ``samples`` so the regression gate can reason about noise).
+    """
+    baseline = capture_baseline(
+        Path(output_path), workloads=workloads, repeat=repeat
+    )
     metrics_obj: object = baseline.get("metrics")
     metrics_count = len(metrics_obj) if isinstance(metrics_obj, Sized) else 0
     payload: dict[str, object] = {
         "status": "ok",
         "path": output_path,
         "metrics": metrics_count,
+        "repeat": repeat,
     }
     print(json.dumps(payload))
     return 0

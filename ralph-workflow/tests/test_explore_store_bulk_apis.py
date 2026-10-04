@@ -182,3 +182,41 @@ def test_upsert_manifest_many_rejects_mismatched_lengths(tmp_path: Path) -> None
             )
     finally:
         store.close()
+
+
+def test_bulk_size_mtime_for_paths_returns_only_live_rows(tmp_path: Path) -> None:
+    """Bulk projection returns ``(size, mtime)`` tuples for live rows."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_file_many(
+            [
+                _make_file_row("a.py", size_bytes=10, mtime_ns=100),
+                _make_file_row("b.py", size_bytes=20, mtime_ns=200),
+                _make_file_row("c.py", size_bytes=30, mtime_ns=300),
+            ]
+        )
+        # Mark one row deleted; the projection must skip it.
+        store._conn.execute(
+            "UPDATE files SET is_deleted = 1 WHERE path = ?", ("b.py",)
+        )
+        store._conn.commit()
+
+        fetched = store.bulk_size_mtime_for_paths(
+            ["a.py", "b.py", "c.py", "missing.py"]
+        )
+        assert fetched == {
+            "a.py": (10, 100),
+            "c.py": (30, 300),
+        }
+    finally:
+        store.close()
+
+
+def test_bulk_size_mtime_for_paths_empty_input_is_noop(tmp_path: Path) -> None:
+    """Empty input performs no SQL and returns ``{}``."""
+    store = _build_store(tmp_path)
+    try:
+        store.upsert_file(_make_file_row("a.py"))
+        assert store.bulk_size_mtime_for_paths([]) == {}
+    finally:
+        store.close()

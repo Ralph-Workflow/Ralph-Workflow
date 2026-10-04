@@ -26,6 +26,21 @@ from ralph.mcp.explore._bench_r6_metrics import (
 from ralph.process._spawn_env import sanitize_process_environment
 
 
+def _positive_int(raw: str, *, flag: str) -> int:
+    """argparse ``type=`` callback that requires a positive integer.
+
+    ``--repeat 0`` would degenerate into a no-op capture; we fail
+    closed at parse time so a typo cannot run silently.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"{flag} must be a positive integer") from exc
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{flag} must be >= 1")
+    return value
+
+
 class _BenchArgs(argparse.Namespace):
     """Typed argparse namespace for the R6.2 baseline CLI."""
 
@@ -37,6 +52,8 @@ class _BenchArgs(argparse.Namespace):
     baseline: str | None
     targets: str | None
     list_workloads: bool
+    repeat: int
+    post: str | None
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -114,6 +131,28 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the R6.3 workload names and exit.",
     )
+    parser.add_argument(
+        "--repeat",
+        metavar="N",
+        type=lambda raw: _positive_int(raw, flag="--repeat"),
+        default=1,
+        help=(
+            "Capture each workload N times and report the per-metric "
+            "median + min/max so noise can be bounded. Default: 1."
+        ),
+    )
+    parser.add_argument(
+        "--post",
+        metavar="PATH",
+        default=None,
+        help=(
+            "When supplied alongside --validate-report, compare the "
+            "post-change measurements in PATH against the committed "
+            "baseline JSON. Used by the regression gate to enforce "
+            "the 0.6x improvement target for the ralph_self indexed "
+            "query p50."
+        ),
+    )
     return parser
 
 
@@ -126,6 +165,8 @@ _DEFAULT_ARGS: Final[tuple[tuple[str, object], ...]] = (
     ("baseline", None),
     ("targets", None),
     ("list_workloads", False),
+    ("repeat", 1),
+    ("post", None),
 )
 
 
@@ -150,6 +191,7 @@ def _dispatch_validate_report(args: _BenchArgs) -> int:
         args.validate_report,
         baseline_path=args.baseline,
         targets_path=args.targets,
+        post_path=args.post,
     )
 
 
@@ -172,12 +214,16 @@ def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
             "one of --out PATH, --capture-baseline PATH, "
             "--validate-baseline PATH, --validate-report PATH is required"
         )
+    if args.repeat < 1:
+        parser.error("--repeat must be >= 1")
     print(
-        f"capture workloads={requested!r} out={out_path!r}",
+        f"capture workloads={requested!r} out={out_path!r} repeat={args.repeat}",
         file=sys.stderr,
         flush=True,
     )
-    return run_capture_baseline(out_path, workloads=requested)
+    return run_capture_baseline(
+        out_path, workloads=requested, repeat=args.repeat
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -71,7 +71,10 @@ Exit codes:
 from __future__ import annotations
 
 import ast
+import multiprocessing
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,6 +83,26 @@ from ralph.testing._audit_parse_error import AuditParseError
 #: Both the shipped package and its tests are gated: a helper in ``tests/``
 #: carrying the banned shape is a landmine for the next author of that helper.
 DEFAULT_ROOTS: tuple[str, ...] = ("ralph", "tests")
+
+#: Per-file auditing is independent, so whole-tree scans fan out across a small
+#: process pool. Capped so the audit stays a polite citizen when it runs inside
+#: a sharded ``make test`` worker that already shares the machine with eleven
+#: sibling shards.
+_POOL_WORKER_CAP = 8
+
+#: Below this many candidate files the pool startup costs more than the parse
+#: work it would save, so the scan stays in-process.
+_PARALLEL_MIN_FILES = 16
+
+#: Fork children inherit the parent's imported modules, so the pool works no
+#: matter what the embedding process's ``__main__`` looks like (pytest, an
+#: xdist worker, a bare script). The forkserver/spawn methods re-import
+#: ``__main__`` in the child and would fail for non-importable mains.
+_FORK_CONTEXT = (
+    multiprocessing.get_context("fork")
+    if "fork" in multiprocessing.get_all_start_methods()
+    else None
+)
 
 _Scope = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 
@@ -236,6 +259,12 @@ def audit_source(source: str, path: str) -> list[Violation]:
     return violations
 
 
+def _audit_file_payload(payload: tuple[str, str]) -> list[Violation]:
+    """Audit one ``(label, source)`` pair; a pool worker entry point."""
+    label, source = payload
+    return audit_source(source, label)
+
+
 def audit_tree(
     package_root: Path,
     roots: tuple[str, ...] = DEFAULT_ROOTS,
@@ -243,13 +272,15 @@ def audit_tree(
     """Return violations under ``package_root`` and the number of files scanned.
 
     The file count is part of the result so a caller can tell a genuinely
-    clean tree from a misresolved root that scanned nothing.
+    clean tree from a misresolved root that scanned nothing. Files are audited
+    in sorted-path order; the pool preserves that order, so violation output
+    is identical to a serial scan.
 
     Raises:
         FileNotFoundError: when a named root is not a directory. Silently
             skipping it would report a vacuous clean run.
     """
-    violations: list[Violation] = []
+    payloads: list[tuple[str, str]] = []
     scanned = 0
     for root in roots:
         base = package_root / root
@@ -262,8 +293,17 @@ def audit_tree(
                 label = str(path)
             source = path.read_text(encoding="utf-8")
             if "**" in source:
-                violations.extend(audit_source(source, label))
+                payloads.append((label, source))
             scanned += 1
+    workers = min(_POOL_WORKER_CAP, len(payloads), os.cpu_count() or 1)
+    violations: list[Violation] = []
+    if workers == 1 or len(payloads) < _PARALLEL_MIN_FILES:
+        for payload in payloads:
+            violations.extend(_audit_file_payload(payload))
+        return violations, scanned
+    with ProcessPoolExecutor(max_workers=workers, mp_context=_FORK_CONTEXT) as pool:
+        for result in pool.map(_audit_file_payload, payloads):
+            violations.extend(result)
     return violations, scanned
 
 

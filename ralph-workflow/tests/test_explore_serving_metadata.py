@@ -377,3 +377,40 @@ def test_ralph_reindex_carries_serving_metadata(tmp_path: Path) -> None:
         assert "index_staleness" in payload
     finally:
         store.close()
+
+
+def test_serving_metadata_caches_staleness_block_until_state_changes(
+    tmp_path: Path,
+) -> None:
+    """The staleness block cache avoids repeat SQL while state is stable."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _attach_session(store, workspace)
+        # First call populates the cache.
+        serving_metadata(session, index_used=True, fallback_reason=None)
+        cache_slot = session.explore_index.staleness_block_cache
+        assert cache_slot is not None
+        first_signature, first_block = cache_slot
+        first_stale_count = first_block["stale_paths_count"]
+        # Second call with no store mutation must reuse the cache slot.
+        serving_metadata(session, index_used=True, fallback_reason=None)
+        second_slot = session.explore_index.staleness_block_cache
+        assert second_slot is not None
+        assert second_slot[0] == first_signature
+        # The integer staleness count is identical (only the wall-clock
+        # ``last_refresh_age`` may advance between calls).
+        assert second_slot[1]["stale_paths_count"] == first_stale_count
+        assert second_slot[1]["recovery_willfallback"] == first_block["recovery_willfallback"]
+        # Mutate the store and confirm the next call recomputes.
+        session.explore_index.store.mark_dirty(
+            "hello.py", reason="test_cache", source_tool="test"
+        )
+        serving_metadata(session, index_used=True, fallback_reason=None)
+        third_slot = session.explore_index.staleness_block_cache
+        assert third_slot is not None
+        assert third_slot[0] != first_signature
+        assert third_slot[1]["stale_paths_count"] == first_stale_count + 1
+    finally:
+        store.close()
