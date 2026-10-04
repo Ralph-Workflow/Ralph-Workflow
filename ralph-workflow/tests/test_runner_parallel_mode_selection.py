@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -46,8 +46,8 @@ def _legacy_fan_out_policy_bundle() -> PolicyBundle:
     )
 
 
-class TestRunnerBoundaryPreflightRejection:
-    def test_runner_rejects_overlapping_work_units(self) -> None:
+class TestRunnerBoundaryPreflightFallback:
+    def test_runner_delegates_overlapping_work_units_to_agent(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -57,10 +57,10 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module.determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, ExitFailureEffect)
-        assert "parallel preflight rejected plan:" in effect.reason
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
-    def test_runner_rejects_missing_allowed_directories(self) -> None:
+    def test_runner_delegates_missing_allowed_directories_to_agent(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -70,10 +70,10 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module.determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, ExitFailureEffect)
-        assert "parallel preflight rejected plan:" in effect.reason
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
-    def test_runner_rejects_reserved_path_dot_agent(self) -> None:
+    def test_runner_delegates_reserved_path_dot_agent_to_agent(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -83,8 +83,8 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module.determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, ExitFailureEffect)
-        assert "parallel preflight rejected plan:" in effect.reason
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
     def test_runner_constructs_fan_out_effect_when_safe(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
@@ -99,8 +99,7 @@ class TestRunnerBoundaryPreflightRejection:
         assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
-    def test_runner_does_not_fall_back_to_single_worker(self) -> None:
-        """When validation fails, runner must NOT degrade to single InvokeAgentEffect."""
+    def test_runner_falls_back_to_agent_for_shared_scopes(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -110,10 +109,8 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module.determine_effect_from_policy(state, bundle)
-        assert not isinstance(effect, InvokeAgentEffect), (
-            "Rejected parallel plan must not fall back to a single development invocation"
-        )
-        assert isinstance(effect, ExitFailureEffect)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
     def test_runner_single_work_unit_does_not_trigger_validation(self) -> None:
         """Single work unit must bypass fan-out validation and run normal serial path."""
@@ -143,8 +140,7 @@ class TestRunnerBoundaryPreflightRejection:
             "run_post_fanout_verification must default to False so tests never run make verify"
         )
 
-    def test_runner_rejects_fan_out_when_phase_has_no_parallelization_policy(self) -> None:
-        """Fan-out must fail closed when the active phase has no parallelization policy."""
+    def test_runner_uses_agent_when_phase_has_no_parallelization_policy(self) -> None:
         bundle = _load_default_policy_bundle()
         # planning phase has no parallelization declared
         state = PipelineState(
@@ -155,8 +151,8 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module.determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, ExitFailureEffect)
-        assert "does not declare parallelization" in effect.reason
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "planning"
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
         """FanOutEffect must use max_workers from the phase's parallelization."""

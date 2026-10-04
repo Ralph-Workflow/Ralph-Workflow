@@ -146,7 +146,9 @@ def _parallel_or_agent_effect(
                 count=len(work_units),
             )
         else:
-            return _fan_out_effect(state, phase_def, work_units)
+            fan_out = _fan_out_effect(state, phase_def, work_units)
+            if fan_out is not None:
+                return fan_out
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
@@ -162,25 +164,15 @@ def _fan_out_effect(
     state: PipelineState,
     phase_def: PhaseDefinition,
     work_units: tuple[WorkUnit, ...],
-) -> Effect:
+) -> FanOutEffect | None:
     phase_para = phase_def.parallelization
     if phase_para is None:
-        return ExitFailureEffect(
-            reason=(
-                f"Phase {state.phase!r} does not declare parallelization but the plan "
-                f"declares {len(work_units)} work_units; either declare "
-                f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
-            )
-        )
+        return None
     try:
         validate_for_same_workspace(WorkUnitsPlan(work_units=list(work_units)))
     except WorkUnitsValidationError as exc:
-        offending = (
-            ", ".join(u.unit_id for u in work_units if not u.allowed_directories) or "(see details)"
-        )
-        return ExitFailureEffect(
-            reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
-        )
+        logger.debug("Using the executing agent to refine work-unit scopes: {}", exc)
+        return None
     return FanOutEffect(
         work_units=work_units,
         max_workers=phase_para.max_parallel_workers,
@@ -193,9 +185,8 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
     """Best-effort read of work_units from the on-disk plan artifact.
 
     Returns an empty tuple when the plan is absent, a no-op, declares no
-    work_units, or fails to parse. Planning-phase validation already gated
-    validity, so a routing-time failure means corrupted on-disk state — the
-    serial single-agent fallback preserves prior behavior in that case.
+    work_units, or cannot supply executable unit metadata. The executing
+    agent receives the original plan to refine unusable fan-out hints.
     """
     workspace = FsWorkspace(workspace_root)
     try:

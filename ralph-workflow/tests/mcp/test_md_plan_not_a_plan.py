@@ -5,6 +5,7 @@ import pytest
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
+from ralph.mcp.artifacts.plan import is_noop_plan
 
 
 @pytest.mark.parametrize(
@@ -52,3 +53,12 @@ def test_plan_text_whitespace_is_preserved_as_valid_text() -> None:
     _, diagnostics = parse_and_validate("Fix\tit\nthen verify\r\n", PLAN_SPEC)
 
     assert diagnostics == []
+
+
+def test_plan_regression_empty_work_unit_section_does_not_skip_development() -> None:
+    content, diagnostics = parse_and_validate(
+        "## Work Units\nRefine this during execution.", PLAN_SPEC
+    )
+
+    assert diagnostics == []
+    assert is_noop_plan(content) is False

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effect_router import determine_effect_from_policy
-from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -326,14 +326,7 @@ def test_resume_with_recorded_worker_states_still_fans_out(tmp_path: Path) -> No
     assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
 
-def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> None:
-    """The pre-flight overlap rejection only runs on the legacy
-    ``ralph_fan_out`` path. Under the bundled default
-    (``dispatch_mode='agent_subagents'``) the router falls through to
-    ``InvokeAgentEffect`` so the executing agent can validate the
-    work-unit directories itself. This test exercises the legacy
-    path's overlap rejection.
-    """
+def test_overlapping_plan_work_unit_directories_fall_back_to_agent(tmp_path: Path) -> None:
     _write_plan_artifact(
         tmp_path,
         _plan_document(
@@ -352,5 +345,5 @@ def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> 
         config=_config_with_development_agent(),
     )
 
-    assert isinstance(effect, ExitFailureEffect)
-    assert "parallel preflight rejected plan" in effect.reason
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"

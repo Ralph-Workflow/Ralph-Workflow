@@ -17,6 +17,7 @@ def test_exhausted_conflict_ladder_exits_once_before_ordinary_dispatch() -> None
     policy.terminal_phase = "complete"
     policy.recovery.failed_route = "failed_terminal"
     policy.cycle_timebox = None
+    policy.development_timebox = None
     ctx = SimpleNamespace(
         policy_bundle=SimpleNamespace(pipeline=policy),
         active_display=display,

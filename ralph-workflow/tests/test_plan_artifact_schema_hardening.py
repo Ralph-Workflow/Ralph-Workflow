@@ -538,15 +538,6 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
 
 
 def test_format_doc_describes_text_acceptance_and_recommended_structure() -> None:
-    """The concise guide teaches the mandatory step contract and revision path.
-
-    ``PLAN001`` is no longer the sole blocking rule -- ``PLAN010``/``PLAN020``/
-    ``PLAN021``/``PLAN022`` are all mandatory, blocking rules for step
-    structure now (see ``ralph/mcp/artifacts/markdown/specs/plan.py``), so
-    the doc no longer singles out ``PLAN001``. ``Validation Overrides`` is no
-    longer supported at all (see ``PLAN025``), so the doc states that instead
-    of teaching it as a usable escape hatch.
-    """
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (

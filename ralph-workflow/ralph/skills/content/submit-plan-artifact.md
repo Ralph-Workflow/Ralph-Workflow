@@ -53,16 +53,16 @@ Expect: the focused retry tests pass with exit code 0
 
 Use `ralph_verify_md_artifact` before submission when a fast diagnostic preview helps. Use `ralph_stage_md_artifact`, `ralph_get_md_draft`, and `ralph_finalize_md_artifact` for an assembled draft; use `ralph_discard_md_draft` only for a genuine wholesale restart.
 
-`schema_version` and `## Validation Overrides` are unsupported. Repair every diagnostic directly. The only step-less document is exactly `type: plan` plus `noop: true`.
+Frontmatter, step blocks, and metadata are optional. Plan content and formatting do not produce validation diagnostics. Use `noop: true` only to explicitly skip development.
 
 ## Parallel plans (## Work Units)
 
-Parallel plans are the default. Use `## Work Units` or the equally supported `## Parallel Plan` for distinct responsibilities with optional directories and/or explicit `Paths:` files. Step plans also run independent ready steps concurrently; sequential scheduling is a fallback for concrete prerequisites or conflicting edits. Total units must fit `max_work_units`; `max_parallel_workers` limits concurrent workers, with additional ready units queued. Incomplete step details produce repair advice and preserve the plan for refinement. A unit is a stable-ID list item:
+Parallel plans are the default. Use `## Work Units` or the equally supported `## Parallel Plan` for distinct responsibilities with optional directories and/or explicit `Paths:` files. Step plans also run independent ready steps concurrently; sequential scheduling is a fallback for concrete prerequisites or conflicting edits. Total units must fit `max_work_units`; `max_parallel_workers` limits concurrent workers, with additional ready units queued. Refine incomplete step details during analysis and execution. A unit is a stable-ID list item:
 
 - `- [U-N] description` (one per unit, N a positive integer)
 - Optional `Directories: <path>[, <path>...]` or `Paths:` names responsibility areas. Units may share directories or files with distinct responsibilities and a shared-edit coordination strategy. Reserved `.agent`, `.git`, `.worktrees`, empty, and root paths are never allowed. Use as many workers as ready independent work needs within active capacity.
-- `Depends on: U-X[, U-Y...]` — optional inline list of unit IDs the unit must wait for; the validator rejects cycles and unknown IDs.
-- Nest `### [S-n]` steps after the owning unit item, or list steps under `## Work` and let `Files:` paths determine ownership. Step dependencies add cross-unit edges from consumer to producer. Avoid edges in both directions between two units; they form a rejected cycle.
+- `Depends on: U-X[, U-Y...]` — optional inline list of unit IDs the unit must wait for; keep prerequisites resolvable and acyclic when preparing execution.
+- Nest `### [S-n]` steps after the owning unit item, or list steps under `## Work` and let `Files:` paths determine ownership. Step dependencies add cross-unit edges from consumer to producer. Avoid edges in both directions between two units; they prevent the scheduler from finding ready units.
 - A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.
 
 ```markdown

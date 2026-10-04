@@ -54,6 +54,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(planning): accept text plans without schema validation** — frontmatter, step formatting, references, and work-unit metadata no longer block submission or phase loading. Only binary control characters are rejected. Unusable fan-out hints fall back to the executing agent, and an empty Work Units heading does not implicitly skip development.
+
 - **fix(prompts): stop development agents from abandoning oversized tasks** — discovering mid-run that the work far exceeds the plan is a scheduling signal, never an exit: the developer guidance requires re-cutting the remainder into independent slices with concurrent dispatch, names an iteration that delivers zero verified work an execution defect, and adds the sheer size of remaining work to the never-justifies-partial list. Locked by `tests/test_prompts_no_exemption_for_failures.py`.
 
 - **fix(prompts): default to parallel branches around the critical path** — require real prerequisites for serial ordering, isolate shared contracts to their consumers, plan focused proof plus integration verification, and steer developers to continual dispatch with concurrent read-only helpers. Locked by `tests/test_planning_prompt_thinking_first.py` and `tests/test_developer_prompt_subagent_guidance.py`.

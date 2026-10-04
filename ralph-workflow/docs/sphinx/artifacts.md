@@ -286,7 +286,8 @@ execution and proof tracking when available. Missing structure is planning
 context for the agents to resolve.
 
 Worker dispatch still enforces safe execution scopes and scheduler limits.
-Those execution checks do not reject the planning artifact. The recommended
+Unusable fan-out hints fall back to the executing agent for refinement;
+they do not reject the planning artifact or terminate the pipeline. The recommended
 structured examples live in `.agent/artifact-formats/plan.md` and the bundled
 `submit-plan-artifact` skill.
 

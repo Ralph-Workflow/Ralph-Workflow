@@ -68,18 +68,6 @@ _PARALLEL_FIELDS: dict[str, FieldKind] = {
     "paths": "inline_list",
     "directories": "inline_list",
 }
-_EXECUTOR_STEP_TYPES = frozenset(
-    {
-        "file_change",
-        "verify",
-        "file_create",
-        "file_delete",
-        "discovery",
-        "refactor",
-        "config_change",
-    }
-)
-_WORK_STEP_TYPES = _EXECUTOR_STEP_TYPES - {"verify", "discovery"}
 _WORK_UNIT_FIELDS: dict[str, FieldKind] = {
     "depends on": "inline_list",
     "directories": "inline_list",
@@ -540,6 +528,8 @@ def _to_content(document: ParsedDocument) -> Content:
     if document.frontmatter.get("noop") == "true" and (not document.sections):
         return {"noop": True}
     content, _ = _analyze(document)
+    if content.get("work_units") == []:
+        content.pop("work_units")
     return content
 
 
