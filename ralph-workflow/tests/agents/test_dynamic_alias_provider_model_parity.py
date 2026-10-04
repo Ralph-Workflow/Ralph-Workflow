@@ -20,6 +20,14 @@ from ralph.config.models import UnifiedConfig
             "--model gpt-5.3-codex -c 'model_reasoning_effort = \"xhigh\"'",
         ),
         (
+            "codex/gpt-6.1-sol[effort-low]",
+            "--model gpt-6.1-sol -c 'model_reasoning_effort = \"low\"'",
+        ),
+        (
+            "codex/provider/future-model[effort=future-tier]",
+            "--model provider/future-model -c 'model_reasoning_effort = \"future-tier\"'",
+        ),
+        (
             "opencode/provider/model/family:latest",
             "-m provider/model/family:latest",
         ),
@@ -59,7 +67,9 @@ def test_provider_model_aliases_preserve_nested_model_paths(
 @pytest.mark.parametrize(
     "alias",
     [
-        "codex/gpt-5.3-codex[effort=maximum]",
+        "codex/gpt-5.3-codex[effort=]",
+        'codex/model[effort=high"injected]',
+        "codex/model[effort=high][effort=low]",
         "opencode/provider//model",
         "nanocoder/provider//model",
         "pi/provider//model",
@@ -78,10 +88,10 @@ def test_codex_alias_keeps_clean_model_identity() -> None:
     """Codex effort metadata must not be folded into the model identity."""
     registry = AgentRegistry.from_config(UnifiedConfig())
 
-    config = registry.get("codex/gpt-5.3-codex[effort=high]")
+    config = registry.get("codex/gpt-6.1-sol[effort-low]")
 
     assert config is not None
-    assert config.model == "gpt-5.3-codex"
+    assert config.model == "gpt-6.1-sol"
 
 
 class TestCursorAlias:

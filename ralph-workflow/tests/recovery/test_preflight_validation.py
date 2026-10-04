@@ -83,10 +83,18 @@ def test_validate_agent_chains_satisfiable_regression_names_available_agy_models
     assert "low, medium, high" in str(exc_info.value)
 
 
-def test_validate_agent_chains_satisfiable_accepts_pi_transport() -> None:
-    """Pi can run Ralph-managed workflow phases through the non-MCP fallback path."""
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "pi/anthropic/claude-sonnet-4",
+        "codex/gpt-6.1-sol[effort-low]",
+        "codex/gpt-6.1-sol[effort=low]",
+        "codex/provider/future-model[effort=future-tier]",
+    ],
+)
+def test_validate_agent_chains_satisfiable_accepts_dynamic_aliases(agent: str) -> None:
     bundle = _FakeBundle(
-        chains={"planning": _FakeChainConfig(agents=["pi/anthropic/claude-sonnet-4"])},
+        chains={"planning": _FakeChainConfig(agents=[agent])},
         drains={},
         phases={},
     )

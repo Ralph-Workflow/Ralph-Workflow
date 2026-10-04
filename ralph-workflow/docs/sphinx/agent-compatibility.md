@@ -13,7 +13,7 @@ availability remains the CLI provider's responsibility.
 | Alias family | Ralph Workflow emits | Constraint and example |
 | --- | --- | --- |
 | `claude/<model>` and `claude-headless/<model>` | `--model <model>` | A non-empty single model segment is required. Anthropic full model IDs (for example `claude-haiku-4-5-20251001`) and bracketed effort parameters (for example `claude/claude-haiku-4-5[effort=high]`) are accepted and tokenized as a single argv element. |
-| `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
+| `codex/<model>[effort=<level>]` or `codex/<model>[effort-<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Model IDs and effort levels have no release-specific allowlist. Effort tokens contain ASCII letters, digits, hyphens, or underscores; Codex validates availability. Example: `codex/gpt-6.1-sol[effort-low]`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
 | `agy/<published-id>` | `--model <published-id>` | Example: `agy/gemini-3.6-flash-low`. AGY v1.1.8 accepts `--effort` only without an explicit model, so Ralph Workflow rejects any `:<effort>` suffix on an alias before invocation. Use the exact published ID, including any tier-encoded suffix such as `-low` or `-high`, as the model. |

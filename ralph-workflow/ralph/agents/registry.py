@@ -74,6 +74,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents._codex_alias import resolve_codex_alias
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
@@ -114,7 +115,6 @@ _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
-_CODEX_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
 _AGY_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
 # Measured from `agy models` v1.1.8; refresh only from a new AGY measurement.
 _AGY_MODELS = frozenset(
@@ -747,7 +747,7 @@ def _resolve_dynamic_agent(
         return deepcopy(builtin) if builtin is not None else None
 
     if name.startswith("codex/"):
-        resolved = _resolve_dynamic_codex_agent(name, _base("codex"))
+        resolved = resolve_codex_alias(name, _base("codex"))
     elif name.startswith("pi/"):
         model_id = name.removeprefix("pi/")
         if len(segments) < _MIN_PI_SEGMENTS or not _is_valid_pi_model_id(model_id):
@@ -877,9 +877,7 @@ def _resolve_dynamic_simple_prefixed_agent(
             model_flag = f"--model {shlex.quote(model_id)}"
             if effort is not None:
                 model_flag += f" --effort {effort}"
-            return base_config.model_copy(
-                update={"model": model_id, "model_flag": model_flag}
-            )
+            return base_config.model_copy(update={"model": model_id, "model_flag": model_flag})
     return None
 
 
@@ -952,45 +950,6 @@ def _opencode_alias_model_id(name: str) -> str:
     prefix again.
     """
     return name.removeprefix("opencode/")
-
-
-def _resolve_dynamic_codex_agent(name: str, base_config: AgentConfig | None) -> AgentConfig | None:
-    """Resolve a validated Codex model alias against its effective base config."""
-    codex_alias = _parse_codex_alias(name.removeprefix("codex/"))
-    if codex_alias is None or base_config is None:
-        return None
-    model_id, effort = codex_alias
-    model_flag = f"--model {shlex.quote(model_id)}"
-    if effort is not None:
-        effort_override = f'model_reasoning_effort = "{effort}"'
-        model_flag += f" -c {shlex.quote(effort_override)}"
-    return base_config.model_copy(
-        update={"model": model_id, "model_flag": model_flag}
-    )
-
-
-def _parse_codex_alias(alias_value: str) -> tuple[str, str | None] | None:
-    """Parse a safe ``codex/<model>[effort=<level>]`` dynamic alias."""
-    model_id, separator, suffix = alias_value.partition("[")
-    if (
-        not model_id
-        or any(char.isspace() for char in model_id)
-        or not all(segment for segment in model_id.split("/"))
-    ):
-        return None
-    if not separator:
-        return model_id, None
-    effort_prefix = "effort="
-    effort = suffix.removesuffix("]")
-    if (
-        not suffix.endswith("]")
-        or suffix.count("[")
-        or suffix.count("]") != 1
-        or not effort.startswith(effort_prefix)
-        or effort.removeprefix(effort_prefix) not in _CODEX_REASONING_EFFORTS
-    ):
-        return None
-    return model_id, effort.removeprefix(effort_prefix)
 
 
 def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]:
