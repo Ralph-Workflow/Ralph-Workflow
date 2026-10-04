@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
     from ralph.mcp.tools.tool_result import ToolResult
-    from ralph.policy.models._policy_bundle import PolicyBundle
+    from ralph.policy.models import PolicyBundle
 
 _JSON_OBJECT = TypeAdapter(dict[str, object])
 

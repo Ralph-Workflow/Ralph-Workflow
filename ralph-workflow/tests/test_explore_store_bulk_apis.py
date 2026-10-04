@@ -122,52 +122,6 @@ def test_upsert_file_many_empty_input_is_noop(tmp_path: Path) -> None:
         store.close()
 
 
-def test_upsert_manifest_many_writes_and_updates(tmp_path: Path) -> None:
-    """Bulk manifest writer persists rows visible via direct query."""
-    store = _build_store(tmp_path)
-    try:
-        store.upsert_manifest_many(
-            paths=["a.py", "b.py"],
-            content_hashes=["h1", "h2"],
-            sizes=[10, 20],
-            mtimes=[100, 200],
-            last_seen_generation=1,
-        )
-        rows = store._conn.execute(
-            "SELECT path, content_hash, size_bytes, mtime_ns, last_seen_generation "
-            "FROM manifest ORDER BY path"
-        ).fetchall()
-        assert [(r[0], r[1], r[2], r[3], r[4]) for r in rows] == [
-            ("a.py", "h1", 10, 100, 1),
-            ("b.py", "h2", 20, 200, 1),
-        ]
-
-        # Update last_seen_generation via conflict path.
-        store.upsert_manifest_many(
-            paths=["a.py"],
-            content_hashes=["h1"],
-            sizes=[10],
-            mtimes=[100],
-            last_seen_generation=2,
-        )
-        gen = store._conn.execute(
-            "SELECT last_seen_generation FROM manifest WHERE path = 'a.py'"
-        ).fetchone()[0]
-        assert gen == 2
-    finally:
-        store.close()
-
-
-def test_upsert_manifest_many_empty_input_is_noop(tmp_path: Path) -> None:
-    """Bulk manifest writer with ``[]`` issues no SQL."""
-    store = _build_store(tmp_path)
-    try:
-        store.upsert_manifest_many(paths=[], content_hashes=[], sizes=[], mtimes=[], last_seen_generation=1)
-        assert store._conn.execute("SELECT COUNT(*) FROM manifest").fetchone()[0] == 0
-    finally:
-        store.close()
-
-
 def test_upsert_manifest_many_rejects_mismatched_lengths(tmp_path: Path) -> None:
     """Bulk manifest writer fails closed on length mismatch."""
     store = _build_store(tmp_path)
@@ -184,8 +138,14 @@ def test_upsert_manifest_many_rejects_mismatched_lengths(tmp_path: Path) -> None
         store.close()
 
 
-def test_bulk_size_mtime_for_paths_returns_only_live_rows(tmp_path: Path) -> None:
-    """Bulk projection returns ``(size, mtime)`` tuples for live rows."""
+def test_bulk_size_mtime_for_paths_skips_removed_rows(tmp_path: Path) -> None:
+    """Bulk projection returns ``(size, mtime)`` tuples only for rows still present.
+
+    Uses the public ``delete_file_rows`` seam to remove a row; the
+    projection's ``WHERE is_deleted = 0 AND path IN (...)`` filter
+    must skip both removed rows and missing rows, so the observable
+    outcome is identical to the previous is_deleted=1 variant.
+    """
     store = _build_store(tmp_path)
     try:
         store.upsert_file_many(
@@ -195,11 +155,8 @@ def test_bulk_size_mtime_for_paths_returns_only_live_rows(tmp_path: Path) -> Non
                 _make_file_row("c.py", size_bytes=30, mtime_ns=300),
             ]
         )
-        # Mark one row deleted; the projection must skip it.
-        store._conn.execute(
-            "UPDATE files SET is_deleted = 1 WHERE path = ?", ("b.py",)
-        )
-        store._conn.commit()
+        # Remove the row via the public seam; the projection must skip it.
+        store.delete_file_rows("b.py")
 
         fetched = store.bulk_size_mtime_for_paths(
             ["a.py", "b.py", "c.py", "missing.py"]

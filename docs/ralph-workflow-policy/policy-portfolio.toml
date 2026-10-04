@@ -151,6 +151,19 @@ lifecycle = "remove prose-wording assertions; owner-driven docs review on every 
 disposition = "REMOVE"
 
 [[controls]]
+id = "retired-code-style-index-states-python-status"
+protected_outcome = "docs/code-style/index.md remains the family entrypoint"
+fault_sensitivity = "The removed test_index_states_python_status asserted the literal phrase 'python' appears in the index file; that is a category-3 implementation-coupled / lane-2 editorial judgement, not an objective behaviour contract"
+layer = "lane-2 prose-wording elimination"
+owner = "docs owner"
+trigger = "docs/code-style/ index copy change"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "docs-owner review note dated 2026-10-03 against f05524607 confirmed the surviving test_index_exists in ralph-workflow/tests/test_repo_root_tooling_and_code_style_scope_code_style_index.py pins the objective file-existence contract for the family entrypoint"
+lifecycle = "remove prose-wording assertion; rerun test_index_exists on every docs/code-style/index.md touch"
+disposition = "REMOVE"
+
+[[controls]]
 id = "retired-watchdog-text-call-site-count"
 protected_outcome = "watchdog.evaluate(...) is invoked at the canonical 6 call sites in the agent-invoke readers"
 fault_sensitivity = "The removed test_watchdog_evaluate_call_sites_unchanged asserted the literal text 'watchdog.evaluate' appears exactly 6 times across two production source files; that is a category-3 implementation-coupled assertion (text-shape), and a behaviour-preserving refactor (e.g. routing the call through a small helper) would have broken it without changing observable behaviour"
@@ -161,4 +174,43 @@ lane = "human"
 marginal_cost_seconds = 0.0
 evidence = "IdleWatchdog public-surface black-box tests under ralph-workflow/tests/agents/test_idle_watchdog*.py exercise the evaluate() contract end-to-end; the textual call-site count no longer carries independent coverage"
 lifecycle = "remove text-shape assertion; rerun the IdleWatchdog family tests on every change to the public evaluate surface"
+disposition = "REMOVE"
+
+[[controls]]
+id = "retired-default-lane-2-parallel-worktree-phrases"
+protected_outcome = "User-facing docs do not claim worktree-based same-workspace parallel execution v1"
+fault_sensitivity = "The removed test_doc_has_no_forbidden_worktree_phrases in test_parallel_docs_no_worktree_language.py asserted the literal absence of canonical phrases ('git worktree', 'per-worker branch', 'merge-back', etc.) in ralph-workflow/README.md, ralph-workflow/CONTRIBUTING.md, and README.md; that is a lane-2 (editorial) judgement about prose wording, not a falsifiable behaviour contract"
+layer = "lane-2 prose-wording elimination"
+owner = "docs owner"
+trigger = "user-facing docs change"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "docs-owner review note dated 2026-10-03 against fb0abd772 confirmed the surviving ralph-workflow/README.md and ralph-workflow/CONTRIBUTING.md copy do not claim worktree-based parallel support; the parallel-execution design (ralph-workflow/docs/sphinx/architecture/parallel-execution.md and ralph-workflow/docs/sphinx/architecture/process-pool.md) is the canonical authoritative contract"
+lifecycle = "remove prose-wording assertion; owner-driven docs review on every parallel-execution copy change"
+disposition = "REMOVE"
+
+[[controls]]
+id = "retired-vacuous-observe-line-is-no-op"
+protected_outcome = "BaseExecutionStrategy.observe_line routes child-signal lines through the public subagent sink"
+fault_sensitivity = "The removed test_observe_line_is_no_op called observe_line and asserted supports_session_continuation() is False; that assertion is independent of observe_line (supports_session_continuation is a fixed class-level property) so changing observe_line to mutate state or produce output left the oracle true. The test was category-1 vacuous."
+layer = "vacuity elimination"
+owner = "project maintainers"
+trigger = "BaseExecutionStrategy.observe_line public-seam change"
+lane = "default"
+marginal_cost_seconds = 0.0
+evidence = "replacement tests test_observe_line_does_not_invoke_sink_without_signal and test_observe_line_invokes_sink_on_child_signal in ralph-workflow/tests/agents/execution_state/test_base_execution_strategy.py observe the public set_subagent_sink / reset_subagent_sink seam and pin both the no-op path and the child-signal invocation path; companion coverage in test_generic_child_signal.py pins the classifier itself"
+lifecycle = "remove the vacuous oracle; rerun the replacement tests on every change to the public observe_line seam"
+disposition = "REMOVE"
+
+[[controls]]
+id = "retired-private-manifest-sql-assertions"
+protected_outcome = "ExploreStore.upsert_manifest_many round-trips correctly"
+fault_sensitivity = "The removed test_upsert_manifest_many_writes_and_updates and test_upsert_manifest_many_empty_input_is_noop in test_explore_store_bulk_apis.py read store._conn directly and asserted on the literal manifest SQL columns; that is a category-3 implementation-coupled assertion (private storage + literal SQL text) and a behaviour-preserving refactor of the manifest columns would have broken the oracle without changing observable behaviour"
+layer = "implementation-coupled storage elimination"
+owner = "project maintainers"
+trigger = "ExploreStore.upsert_manifest_many public-seam change"
+lane = "default"
+marginal_cost_seconds = 0.0
+evidence = "the reindex pipeline test in ralph-workflow/tests/test_explore_pipeline.py::TestWarmRefreshBatchingExercisesBulkApis pins the observable outcome (call counts and warm no-op detection) end-to-end; test_upsert_manifest_many_rejects_mismatched_lengths pins the public ValueError contract"
+lifecycle = "remove private-storage assertions; rerun the reindex pipeline test on every change to upsert_manifest_many"
 disposition = "REMOVE"
