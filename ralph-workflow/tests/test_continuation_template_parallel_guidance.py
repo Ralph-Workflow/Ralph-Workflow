@@ -58,7 +58,7 @@ def test_continuation_template_never_references_phantom_coordinate_command() -> 
 def test_continuation_template_limits_subagents_to_independent_units() -> None:
     source = _read_continuation_template()
     assert "independent units" in source
-    assert "Disjoint" in source
+    assert "disjoint file ownership" in source
 
 
 def test_continuation_template_keeps_allowed_directories_contract() -> None:
