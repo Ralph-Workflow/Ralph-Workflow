@@ -1,65 +1,22 @@
-{% if HAS_SUBAGENTS|default('') %}
-Choose execution from the plan. Execute compact or coupled steps in the main
-session. When the plan declares independent units and the runtime supports
-sub-agents, dispatch ready units concurrently with disjoint file ownership and
-declared directory limits. Respect dependencies, collect each unit's
-implementation and verification proof, then integrate and run cross-unit and
-full verification in the main session. Never let two agents edit the same file;
-keep integration, final verification, and artifact submission in the main session.
+Choose execution from the plan. Execute compact or coupled steps in the main session. When the plan declares independent units, dispatch ready units concurrently to sub-agents with disjoint file ownership and declared directory limits. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
 
 ### Independent ready group (for linear plans too)
 
-Even when the plan is declared as a single linear thread, an **independent
-ready group** can form: the set of remaining steps with no `Depends on:`
-path between any pair AND pairwise disjoint `Files:` lists (no shared
-template, test file, contract, or fixture). When the remaining budget
-**cannot fit** the remaining steps sequentially, dispatch this ready
-group **concurrently rather than trimming scope**: scope trimming is the
-last resort, not the default. A ready group is a "no coordination needed"
-signal — the steps are independent, so fan-out is free.
+Even when the plan is declared as a single linear thread, an **independent ready group** can form: the set of remaining steps with no `Depends on:` path between any pair AND pairwise disjoint `Files:` lists (no shared template, test file, contract, or fixture). When the remaining budget **cannot fit** the remaining steps sequentially, dispatch this ready group **concurrently rather than trimming scope**: scope trimming is the last resort, not the default. A ready group is a "no coordination needed" signal — the steps are independent, so fan-out is free.
 
-When the plan declares `## Work Units`, the ready group is one unit at a
-time, with the same disjointness rule applied across units (already
-guaranteed by `validate_work_units_against_policy`). When the plan is
-linear, walk the remaining steps in plan order, partition them at the
-first `Depends on:` edge, and treat the leading independent prefix as the
-ready group.
+When the plan declares `## Work Units`, the ready group is one unit at a time, with the same disjointness rule applied across units (already guaranteed by `validate_work_units_against_policy`). When the plan is linear, walk the remaining steps in plan order, partition them at the first `Depends on:` edge, and treat the leading independent prefix as the ready group.
 
 ### Per-unit subagent brief (when units exist)
 
-For every unit dispatched to a sub-agent, the brief MUST carry these
-fields. A brief missing any field is treated as a dispatch the main
-session cannot trust, and the work reverts to this session.
+For every unit dispatched to a sub-agent, the brief MUST carry these fields. A brief missing any field is treated as a dispatch the main session cannot trust, and the work reverts to this session.
 
 1. **Unit ID** and the list of `### [S-n]` steps the unit owns.
-2. **Allowed directories** — verbatim from the unit's `Directories:`
-   field. Anything outside that set is the main session's responsibility.
-3. **Tools** — Ralph Workflow's **brokered MCP tools only**. Native
-   shell, native write tools, and editor commands are prohibited.
-4. **Prohibitions** — no git commands (the worker never commits), no
-   writes outside the unit's allowed directories, no coordination of
-   other units, no integration of the whole plan, no submission of
-   artifacts other than the unit's own development_result via
-   `submit_development_result`.
-5. **Focused verify** — the unit runs the `Verify` command from each
-   assigned step and cites its exit code. The full repository-wide
-   `make verify` runs in the main session after integration.
-6. **Return format** — exact fields the sub-agent must populate on
-   return: `Unit ID`, `steps completed`, `files touched`, `verify
-   command and exit code`, and any leads needing main-session
-   reproduction. The return is a lead the main session spot-checks
-   before relying on it; it is not evidence by itself.
+2. **Allowed directories** — verbatim from the unit's `Directories:` field. Anything outside that set is the main session's responsibility.
+3. **Tools** — Ralph Workflow's **brokered MCP tools only**. Native shell, native write tools, and editor commands are prohibited.
+4. **Prohibitions** — no git commands (the worker never commits), no writes outside the unit's allowed directories, no coordination of other units, no integration of the whole plan, no submission of artifacts other than the unit's own development_result via `submit_development_result`.
+5. **Focused verify** — the unit runs the `Verify` command from each assigned step and cites its exit code. The full repository-wide `make verify` runs in the main session after integration.
+6. **Return format** — exact fields the sub-agent must populate on return: `Unit ID`, `steps completed`, `files touched`, `verify command and exit code`, and any leads needing main-session reproduction. The return is a lead the main session spot-checks before relying on it; it is not evidence by itself.
 
 ### Reference
 
-When units exist, follow the `dispatching-parallel-agents` skill for the
-general dispatch pattern; the brief contract above is the Ralph Workflow-specific
-overlay that skill does not provide.
-{% else %}
-Sub-agents are not available on this runtime (`HAS_SUBAGENTS` not rendered).
-Execute the plan sequentially in plan order, even when the plan declares
-`## Work Units`: walk each unit step-by-step, integrating and running
-verification after every implementation. The independent-ready-group
-dispatch path and the per-unit subagent brief are not rendered on this
-runtime — the work stays in this session.
-{% endif %}
+When units exist, follow the `dispatching-parallel-agents` skill for the general dispatch pattern; the brief contract above is the Ralph Workflow-specific overlay that skill does not provide.

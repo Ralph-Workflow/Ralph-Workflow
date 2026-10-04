@@ -6,9 +6,14 @@ this session can stay focused on the work units and proof requirements. Speed
 and breadth are secondary benefits, not the goal. Sub-agents do not replace
 fresh-context analysis phases; they speed up the work that feeds them.
 
-### When delegation is permitted
+### Delegation posture
 
-Use sub-agents only when one of the following concrete triggers is true:
+Delegate exploration, research, verification, and review to read-only
+sub-agents by default. Fan-out is the default for any task that touches
+multiple independent areas. The brief contract below is unconditional —
+sub-agent support is assumed.
+
+The concrete fan-out signals:
 
 - Independent repository discovery that would otherwise flood this context
   (many files, large directories, broad web research that can be summarized
@@ -18,9 +23,9 @@ Use sub-agents only when one of the following concrete triggers is true:
   polluting the main session with the command's stdout.
 - Ready work units the plan already declared under `## Work Units`.
 
-A vague "this might help" is not a trigger. A single-file read, a quick
-search, or a focused pytest run is not worth the coordination cost — do it
-in this session.
+What stays in this session: a single-file read, one quick focused check, or
+work that is genuinely coupled (a shared contract that must land first, two
+changes to the same file, or a step that depends on another's output).
 
 ### Concrete verification fan-out example
 
@@ -43,12 +48,10 @@ Every subagent lead a verdict depends on — passing or failing — is
 reproduced in this session (re-run the command, or re-read the cited
 `path:line`) before the verdict is written, matching the "Reading
 sub-agent output" rule below.
-
 ### Stance
 
-{% if HAS_SUBAGENTS|default('') %}
-Sub-agents are available on this runtime (`HAS_SUBAGENTS` rendered). Use the
-brief contract below when you dispatch them. Every dispatch must respect:
+Use the brief contract below whenever you dispatch a sub-agent. Every
+dispatch must respect:
 
 - **Read-only by default.** Only the assigned work-unit implementer writes,
   and only inside the unit's allowed directories. Exploration, verification,
@@ -59,12 +62,7 @@ brief contract below when you dispatch them. Every dispatch must respect:
 - **Focused checks in sub-agents.** Sub-agents run the unit's per-step
   `Verify` commands (focused, in-budget) and return the exit code. The full
   gate runs once, in this session, after integration.
-{% else %}
-Sub-agents are not available on this runtime (`HAS_SUBAGENTS` not rendered).
-Continue sequentially in plan order; no sub-agent prompt should be drafted
-or dispatched. The brief contract below is intentionally not rendered.
-{% endif %}
-{% if HAS_SUBAGENTS|default('') %}
+
 ### Brief contract (for dispatched sub-agents)
 
 Every sub-agent brief must carry these five fields. They are the contract the
@@ -87,7 +85,7 @@ the main session cannot trust, and the work reverts to this session.
    files changed (for implementers), and any new questions needing a follow-up
    in this session. The return is a lead the main session spot-checks
    before relying on it; it is not evidence by itself.
-{% endif %}
+
 ### Reading sub-agent output
 
 A sub-agent's return is a lead, never evidence by itself. For each:
@@ -102,5 +100,5 @@ A sub-agent's return is a lead, never evidence by itself. For each:
 
 ### Cost discipline
 
-Sub-agent dispatches consume host resources. Do not fan out for fan-out's
-sake. When in doubt, run the read or check in this session.
+Match the dispatch count to the breadth of independent work. Sequential
+execution is for genuinely coupled work, not the default.

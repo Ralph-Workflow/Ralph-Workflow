@@ -1,11 +1,12 @@
-"""HAS_SUBAGENTS and remaining-budget template variables.
+"""Remaining-budget template variables.
 
-S-5 wires the runtime sub-agent declaration into the prompt variables so the
-shared subagent partial can branch on ``HAS_SUBAGENTS`` and the run-budget
-partial can render the concrete remaining minutes and the force-cut
-sentence. This test exercises the public surface only:
+The run-budget partial renders the concrete remaining minutes and the
+force-cut sentence when the pipeline publishes ``DEV_WARN_EPOCH`` and
+``DEV_DEADLINE_EPOCH``. Without epochs, the partial stays in its
+no-partial-on-exhaustion shape. This test exercises the public surface
+only:
 
-* :func:`ralph.prompts.template_variables.delegation_template_variable`
+* :func:`ralph.prompts.template_variables.timebox_template_variables`
 * :func:`ralph.prompts.materialize.materialize_prompt_for_phase`
 """
 
@@ -14,72 +15,19 @@ from __future__ import annotations
 import math
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
-
-from ralph.agents.delegation_capabilities import (
-    DelegationStance,
-    delegation_for,
-)
-from ralph.config.enums import AgentTransport
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
     materialize_prompt_for_phase,
 )
-from ralph.prompts.template_variables import delegation_template_variable
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-# ---------------------------------------------------------------------------
-# HAS_SUBAGENTS — public delegation_template_variable
-# ---------------------------------------------------------------------------
-
-
-def test_delegation_template_variable_true_for_supported_transport() -> None:
-    """SUPPORTED transports render HAS_SUBAGENTS as the literal "true"."""
-    supported = [
-        transport
-        for transport in AgentTransport
-        if delegation_for(transport).stance == DelegationStance.SUPPORTED
-    ]
-    assert supported, "test fixture: at least one SUPPORTED transport must exist"
-
-    for transport in supported:
-        vars_map = delegation_template_variable(transport)
-        assert vars_map["HAS_SUBAGENTS"] == "true", transport
-
-
-def test_delegation_template_variable_empty_for_explicit_unsupported() -> None:
-    """EXPLICIT_UNSUPPORTED transports render HAS_SUBAGENTS as the empty
-    string (the partial's ``|default('')`` fallback idiom).
-    """
-    explicit_unsupported = [
-        transport
-        for transport in AgentTransport
-        if delegation_for(transport).stance == DelegationStance.EXPLICIT_UNSUPPORTED
-    ]
-    assert explicit_unsupported, "test fixture: at least one EXPLICIT_UNSUPPORTED transport must exist"
-
-    for transport in explicit_unsupported:
-        vars_map = delegation_template_variable(transport)
-        assert vars_map["HAS_SUBAGENTS"] == "", transport
-
-
-def test_delegation_template_variable_empty_for_not_applicable() -> None:
-    """NOT_APPLICABLE transports render HAS_SUBAGENTS as the empty string."""
-    not_applicable = [
-        transport
-        for transport in AgentTransport
-        if delegation_for(transport).stance == DelegationStance.NOT_APPLICABLE
-    ]
-    if not not_applicable:
-        pytest.skip("no NOT_APPLICABLE transports in this build")
-    for transport in not_applicable:
-        vars_map = delegation_template_variable(transport)
-        assert vars_map["HAS_SUBAGENTS"] == "", transport
-
+if TYPE_CHECKING:
+    import pytest
 
 # ---------------------------------------------------------------------------
 # Remaining-budget rendering — materialized development prompt

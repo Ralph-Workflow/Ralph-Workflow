@@ -232,6 +232,12 @@ def handle_edit_md_artifact(
             session, workspace, artifact_type, content, deps
         )
     )
+    # S-9: enforce plan work-unit policy on the edited content the way verify
+    # and direct submit do, otherwise the edit gate accepts unsafe drafts
+    # that verify/submit would reject.
+    diagnostics.extend(
+        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
+    )
     submitted = not any(item.severity == "error" for item in diagnostics)
     validation_recovered = False
     if submitted:
@@ -363,6 +369,12 @@ def handle_finalize_md_artifact(
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
+    )
+    # S-9: enforce plan work-unit policy on the finalized content the way
+    # verify and direct submit do, otherwise the finalize gate accepts
+    # unsafe drafts that verify/submit would reject.
+    diagnostics.extend(
+        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:

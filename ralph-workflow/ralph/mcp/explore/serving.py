@@ -148,10 +148,18 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     # value the cache was originally bound to (caller's clock may
     # have advanced between calls; the signature uses the raw
     # store value, not the time-relative derived field).
-    cached = cast(
-        "tuple[tuple[int, int, float | None, int], dict[str, object]] | None",
-        getattr(handle, "staleness_block_cache", None),
-    )
+    raw_cached: object = getattr(handle, "staleness_block_cache", None)
+    cached: tuple[tuple[int, int, float | None, int], dict[str, object]] | None
+    if raw_cached is None:
+        cached = None
+    else:
+        # ``getattr`` returns ``Any`` because the attribute lookup is generic;
+        # the class declaration in :mod:`ralph.mcp.explore.handlers` pins the
+        # cache type so we can narrow it here.
+        cached = cast(
+            "tuple[tuple[int, int, float | None, int], dict[str, object]]",
+            raw_cached,
+        )
     signature = (
         stale_paths_count,
         int(finished_at) if finished_at is not None else 0,

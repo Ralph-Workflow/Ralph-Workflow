@@ -18,10 +18,7 @@ __all__ = [
 ]
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_rendering_error import TemplateRenderingError
-from ralph.prompts.template_variables import (
-    delegation_template_variable,
-    timebox_template_variables,
-)
+from ralph.prompts.template_variables import timebox_template_variables
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 DEFAULT_DOCS_MCP_PORT = "localhost:6280"
@@ -53,11 +50,6 @@ class PlanningPromptInputs:
     # so the planner plans around the actual limit rather than a hard-coded
     # default. ``None`` falls back to the default 8 in the template.
     max_parallel_workers: int | None = None
-    # S-5: which ``AgentTransport`` the executing session is using. ``None``
-    # means "unknown" and the partial falls through to the empty-string
-    # ``HAS_SUBAGENTS`` (the sequential path). The pipeline always supplies
-    # this in production; tests construct inputs directly and may omit it.
-    transport: object = None
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -103,14 +95,10 @@ def prompt_developer_iteration_xml_with_context(
         "WORKER_NAMESPACE": inputs.worker_namespace,
         "WORKER_FALLBACK_PATH": worker_fallback_path,
     }
-    # S-5: HAS_SUBAGENTS from the executing transport. A missing or
-    # unknown transport falls through to the empty string (the partial's
-    # ``|default('')`` fallback).
-    base_vars.update(delegation_template_variable(inputs.transport))
-    # S-5: remaining-minutes and force-cut sentence. The run-budget
-    # partial uses these to render the concrete countdown when the
-    # pipeline has published the timebox epochs; without epochs the
-    # partial stays in its no-partial-on-exhaustion shape.
+    # remaining-minutes and force-cut sentence. The run-budget partial
+    # uses these to render the concrete countdown when the pipeline has
+    # published the timebox epochs; without epochs the partial stays in
+    # its no-partial-on-exhaustion shape.
     base_vars.update(
         timebox_template_variables(
             warn_epoch=inputs.dev_warn_epoch,
@@ -190,12 +178,6 @@ def prompt_planning_xml_with_context(
         if inputs.max_parallel_workers is not None
         else "",
     }
-    # S-5: HAS_SUBAGENTS from the executing transport. A missing or
-    # unknown transport falls through to the empty string (the partial's
-    # ``|default('')`` fallback). Planning-time analysis template includes
-    # ``_subagents.j2`` so the planner's read-only delegation guidance
-    # also adapts.
-    base_vars.update(delegation_template_variable(inputs.transport))
     base_vars.update(
         _product_criteria_variables(
             inputs.prompt_content,

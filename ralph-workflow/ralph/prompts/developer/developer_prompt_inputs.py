@@ -40,8 +40,3 @@ class DeveloperPromptInputs:
     # remaining minutes and the force-cut sentence.
     dev_warn_epoch: float | None = None
     dev_deadline_epoch: float | None = None
-    # S-5: which ``AgentTransport`` the executing session is using. ``None``
-    # means "unknown" and the partial falls through to the empty-string
-    # ``HAS_SUBAGENTS`` (the sequential path). The pipeline always supplies
-    # this in production; tests construct inputs directly and may omit it.
-    transport: object = None

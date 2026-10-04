@@ -15,7 +15,7 @@ context-manager factory).
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import cast
 
@@ -139,10 +139,16 @@ class _FileRowMethods:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         result: dict[str, tuple[int, int]] = {}
         for row in all_rows:
+            # sqlite3.Row.__getitem__ is typed as ``Any`` by mypy because the
+            # Row object doesn't carry a column type. The SELECT above is a
+            # fixed 3-column projection (``path`` is text, ``size_bytes`` and
+            # ``mtime_ns`` are integers), so we cast the row to a typed mapping
+            # view to keep the read path statically typed.
+            typed_row = cast("Mapping[str, int | str]", row)
             try:
-                size_obj: object = row["size_bytes"]
-                mtime_obj: object = row["mtime_ns"]
-                path_value: object = row["path"]
+                size_obj = typed_row["size_bytes"]
+                mtime_obj = typed_row["mtime_ns"]
+                path_value = typed_row["path"]
             except (KeyError, IndexError):
                 continue
             if not isinstance(path_value, str):

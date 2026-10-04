@@ -6,7 +6,7 @@ import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -306,9 +306,6 @@ def _materialize_prepared_prompt(
             )
         ),
         multimodal_entries=media_entries,
-        transport=cast("object", getattr(agent, "transport", None))
-        if agent is not None
-        else None,
     )
 
 

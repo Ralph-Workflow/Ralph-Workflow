@@ -663,7 +663,8 @@ prompt cannot diverge at the warning boundary.
 
 ## Work Units validation at plan submission
 
-`ralph_submit_md_artifact` and `ralph_verify_md_artifact` validate plan
+`ralph_submit_md_artifact`, `ralph_verify_md_artifact`,
+`ralph_edit_md_artifact`, and `ralph_finalize_md_artifact` all validate plan
 work units ahead of the post-receipt backstop in `ralph/phases/execution.py`.
 A draft that fails a work-unit policy check stays staged for repair but
 is blocked from submission, and the diagnostics are line-anchored to the

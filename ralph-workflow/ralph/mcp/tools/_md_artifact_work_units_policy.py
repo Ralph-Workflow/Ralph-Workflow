@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import ralph.policy.loader as policy_loader
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_markdown_document
 from ralph.mcp.tools.artifact import _workspace_root
 from ralph.pipeline.work_units import (
     WorkUnitsValidationError,
     parse_work_units_from_artifact,
 )
+from ralph.policy.loader import load_policy
 from ralph.policy.validation import (
     PolicyValidationError,
     validate_work_units_against_policy,
@@ -65,7 +65,7 @@ def work_units_policy_check(
         return diagnostics
 
     workspace_root = _workspace_root(workspace)
-    pipeline = _load_policy_pipeline(workspace_root)
+    pipeline = load_policy_pipeline(workspace_root)
     if pipeline is None:
         return diagnostics
 
@@ -97,15 +97,14 @@ def _section_line(content: str, section_name: str) -> int | None:
     return section.line
 
 
-def _load_policy_pipeline(workspace_root: Path) -> PipelinePolicy | None:
+def load_policy_pipeline(workspace_root: Path) -> PipelinePolicy | None:
     """Load the workspace's effective pipeline policy. Fail-open on I/O errors.
 
-    Looks up ``load_policy`` through the public module attribute so callers
-    (and tests) can monkeypatch the public ``ralph.policy.loader.load_policy``
-    instead of importing this private helper.
+    Public hook so tests can replace it via ``monkeypatch.setattr`` without
+    importing the underscored helper module.
     """
     try:
-        bundle = policy_loader.load_policy(workspace_root / ".agent")
+        bundle = load_policy(workspace_root / ".agent")
     except Exception:
         return None
     return bundle.pipeline

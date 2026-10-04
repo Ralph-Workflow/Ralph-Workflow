@@ -72,6 +72,14 @@ def test_developer_iteration_guidance_defaults_to_completion() -> None:
     assert guidance.index("Completion is the default outcome") < guidance.index("Plan fidelity")
     assert "`status:\ncompleted`" in guidance
     assert "last resort" in guidance
-    assert "exhausted run budget" in guidance
-    assert "literally impossible" in guidance
-    assert "slow progress" in guidance
+    # The detailed exemption rule is single-sourced from
+    # shared/_no_exemption_for_failures.j2; this partial just points at it.
+    assert "_no_exemption_for_failures.j2" in guidance
+    assert "exhausted run budget" not in guidance
+    assert "literally impossible" not in guidance
+    assert "slow progress" not in guidance
+
+    canonical = templates["shared/_no_exemption_for_failures"]
+    assert "exhausted run budget" in canonical
+    assert "literally impossible" in canonical
+    assert "slow progress" in canonical
