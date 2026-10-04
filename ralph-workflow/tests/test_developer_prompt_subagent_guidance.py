@@ -1,16 +1,17 @@
 """The new ``## PARALLEL EXECUTION`` section must be present in
 ``developer_iteration.jinja`` and must follow the expected contract.
 
-This test reads the template source directly (rather than rendering it
-through the custom template engine) because the source-text checks are
-exactly what the audit (``audit_parallelization_dormant``) enforces on
-the bundled prompt — a drift in the rendered prompt always means a drift
-in the source text.
+Inspect shared prompt contracts and render role-sensitive guidance so
+main-session orchestration cannot leak into the scoped worker loop.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from jinja2 import Environment
+
+from ralph.prompts.template_context import TemplateContext
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 _DEVELOPER_TEMPLATE = _TEMPLATES_DIR / "developer_iteration.jinja"
@@ -52,6 +53,16 @@ def test_developer_prompt_section_tells_executor_to_dispatch_subagents() -> None
     # sub-agents are first-class and unconditional.
     assert "Sub-agents are not available on this runtime" not in source
     assert "Execute the plan sequentially in plan order" not in source
+    guidance = TemplateContext.default().registry.get_template(
+        "shared/_developer_iteration_guidance"
+    )
+    template = Environment().from_string(guidance)
+    main = " ".join(template.render(IS_WORKER=False).split())
+    worker = " ".join(template.render(IS_WORKER=True).split())
+    assert main.index("dispatch independent ready groups") < main.index("implement only")
+    assert "pick the next ready plan reference, implement it" not in main
+    assert "pick the next ready plan reference, implement it" in worker
+    assert "dispatch independent ready groups" not in worker
 
 
 def test_developer_prompt_limits_parallel_edits_to_disjoint_units() -> None:
@@ -61,10 +72,9 @@ def test_developer_prompt_limits_parallel_edits_to_disjoint_units() -> None:
     assert "Never let two agents edit the same file" in source
 
 
-def test_developer_prompt_executes_tiny_linear_plans_without_delegation_overhead() -> None:
+def test_developer_prompt_keeps_coupled_steps_in_main_session() -> None:
     source = _read_developer_template()
-    assert "compact or coupled steps" in source
-    assert "Execute" in source
+    assert "Execute only coupled steps" in source
     assert "main session" in source
 
 
@@ -133,7 +143,7 @@ def test_developer_prompt_defines_independent_ready_group_for_linear_plans() -> 
     assert "concurrently rather than trimming" in flat
     assert "two or more ready steps" in flat
     assert "all dependencies are satisfied" in flat
-    assert "read each unit's diff" in flat
+    assert "inspect its diff and focused proof" in flat
 
 
 def test_developer_prompt_per_unit_brief_checklist_is_present() -> None:

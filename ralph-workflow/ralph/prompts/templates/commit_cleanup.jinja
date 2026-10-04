@@ -9,6 +9,14 @@ Classify only the pending diff's unsafe or machine-local files and submit cleanu
 
 The diff contains tracked changes plus untracked filenames. Runtime files are pre-emptively untracked before this prompt; if one still appears, classify it as `delete_file`.
 
+Delegate independent groups of pending paths to concurrent read-only
+subagents. Brief each with the assigned paths, classification rules below,
+and brokered read tools only; forbid writes, shell mutation, commits, and
+artifact submission. Each returns candidate actions with exact path and
+diff evidence. Re-read that evidence and apply the allowlist yourself before
+accepting any lead. Reconcile and submit cleanup actions in this session;
+helpers never execute cleanup or expand the pending-diff scope.
+
 ## Decision rules
 
 {{ DELETE_DECISION_RULES }}

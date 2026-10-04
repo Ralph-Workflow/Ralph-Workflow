@@ -14,6 +14,13 @@ Read the diff silently and put reasoning only in the artifact body. The only sta
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
+Delegate independent sections of this diff to concurrent read-only subagents.
+Brief each with its assigned diff lines and intended outcome; use brokered
+read tools only, with no shell, writes, commits, or artifact submission.
+Each returns a compact interpretation with exact diff citations. Re-read
+those citations before relying on the lead, reconcile in this session, and
+submit one message. Helpers must not inspect anything outside this diff.
+
 ## Write the message first
 
 Write the message a senior maintainer would want in permanent history. A reader should understand the problem, chosen outcome, and material consequences without reopening the diff. Recorded verification: {{ VERIFICATION_FACTS }}. If that says `none recorded`, omit verification entirely; never write “none recorded” in the message. Detail target: **{{ MESSAGE_BUDGET }}**.

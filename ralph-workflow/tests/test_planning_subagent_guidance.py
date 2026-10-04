@@ -18,10 +18,9 @@ def test_primary_templates_share_thinking_first_guidance() -> None:
 
 def test_primary_prompt_requires_units_for_disjoint_work() -> None:
     source = _source("planning.jinja")
-    assert "`## Work Units` whenever step groups have pairwise disjoint `Files:`" in " ".join(
-        source.split()
-    )
-    assert "genuinely coupled end to end" in source
+    assert "pairwise disjoint directory ownership" in source
+    assert "independent steps concurrently" in source
+    assert "genuinely coupled" in source
     assert "disjoint" in source
 
 

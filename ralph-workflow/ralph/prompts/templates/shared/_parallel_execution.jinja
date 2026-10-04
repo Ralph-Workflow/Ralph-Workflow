@@ -1,19 +1,29 @@
-Choose execution from the plan. Execute compact or coupled steps in the main session. When the plan declares independent units, dispatch ready units concurrently to sub-agents with disjoint file ownership and declared directory limits. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
+Choose execution from the dependency graph. Execute only coupled steps in the main session. When the plan declares independent units, dispatch ready units concurrently to sub-agents with disjoint file ownership and declared directory limits. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
+
+Drive development as an orchestrator: delegate independent implementation,
+exploration, documentation research, focused verification, and review
+extensively. Keep read-only helpers working while writers implement; keep
+the main session on shared decisions, the critical path, and integration.
+After each result, recompute readiness and dispatch newly unblocked work
+without waiting for unrelated units. A linear plan is not a command to
+execute serially: fan out its independent steps with explicit ownership.
+Use sequential implementation only where a hard prerequisite or shared
+writer ownership requires it, never merely because a change is small.
 
 ### Independent ready group (for linear plans too)
 
 Even when the plan is declared as a single linear thread, an **independent ready group** can form: steps for which all dependencies are satisfied, with no `Depends on:` path between any pair AND pairwise disjoint `Files:` lists (no shared template, test file, contract, or fixture). Dispatch two or more ready steps concurrently by default. Estimate sequential duration against the remaining budget; when it **cannot fit**, dispatch independent work **concurrently rather than trimming scope**. Keep shared-contract changes and dependent work in dependency order.
 
-When the plan declares `## Work Units`, dispatch all ready independent units within the active worker limit. For linear plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. Wait for all dispatched writers, read each unit's diff and focused proof, reconcile shared tests and interfaces, then integrate. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
+When the plan declares `## Work Units`, dispatch all ready independent units within the active worker limit. For step plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. As each result arrives, inspect its diff and focused proof, accept completed outputs, and release dependent work without waiting for unrelated writers. Perform any integration edits only on paths with no active writer. Wait for all writers before final reconciliation of shared tests and interfaces and repository-wide verification. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
 
 ### Per-unit subagent brief (when units exist)
 
-For every unit dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has a clear assignment.
+For every unit or step group dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has clear allowed directories or exact file ownership and cannot write outside scope.
 
-1. **Unit ID** and the list of `### [S-n]` steps the unit owns.
-2. **Allowed directories** — verbatim from the unit's `Directories:` field. Anything outside that set is the main session's responsibility.
+1. **Unit ID** (or task ID for a step group) and the list of `### [S-n]` steps the implementer owns.
+2. **Allowed directories** — verbatim from a declared unit's `Directories:` field. For a step group without a unit, assign exact file paths instead; overlapping parent directories do not grant ownership of other files. Anything outside the assigned scope is the main session's responsibility.
 3. **Tools** — Ralph Workflow's **brokered MCP tools only**. Native shell, native write tools, and editor commands are prohibited.
-4. **Prohibitions** — no git commands (the worker never commits), no status markdown files, no writes outside the unit's allowed directories, no coordination of other units, no integration of the whole plan, no submission of artifacts unless explicitly assigned a worker-local development_result via `submit_development_result`.
+4. **Prohibitions** — no git commands (the worker never commits), no status markdown files, no writes outside the assigned scope, no coordination of other units, no integration of the whole plan, no submission of artifacts unless explicitly assigned a worker-local development_result via `submit_development_result`.
 5. **Focused verify** — the unit runs the `Verify` command from each assigned step and cites its exit code. The full repository-wide `make verify` runs in the main session after integration.
 6. **Return format** — exact fields the sub-agent must populate on return: `Unit ID`, `steps completed`, `disposition`, `files touched`, `verify command and exit code`, and any leads needing main-session reproduction. The return is a lead the main session spot-checks before relying on it; it is not evidence by itself.
 

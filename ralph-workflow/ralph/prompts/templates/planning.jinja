@@ -26,21 +26,23 @@ plan spec.
 {% include 'shared/_subagents.j2' %}
 
 Delegate exploration, research, and verification to read-only subagents.
-A linear plan is for work that is genuinely coupled end to end; declare
-`## Work Units` whenever step groups have pairwise disjoint `Files:`
-lists, regardless of group size.
+Declare `## Work Units` for groups with pairwise disjoint directory ownership
+and files, regardless of group size. A step plan without units still schedules
+independent steps concurrently when directory ownership prevents separate units.
 
 ## Submission guidance — read before submitting
 
 Before calling the submit tool, re-read the **Partition** step in the
 thinking section above. Decide explicitly:
 
-- **Linear plan.** Stay linear when the steps form a single connected
-  thread (one shared template, one test file, one contract touched across
-  steps). Do not force `## Work Units` for the sake of parallelism.
-- **`## Work Units` plan.** Declare units whenever step groups have
-  pairwise disjoint `Files:` lists. Shared contract or interface changes
-  belong in one sequential step BEFORE the first unit.
+- **`## Work Units` plan (default).** Fan out every independent branch,
+  including branches alongside a dependency chain. Pairwise disjoint
+  directory ownership and `Files:` lists define writer ownership. Land shared contracts before
+  their consumers while unrelated units proceed concurrently.
+- **Wholly linear plan.** Use this only for genuinely coupled work, when every step requires output
+  from preceding work. Cite that prerequisite for each dependency; a
+  connected dependency graph, list order, or one shared file does not
+  justify serializing independent branches.
 
 The full Work Units syntax and validator behavior live in
 `.agent/artifact-formats/plan.md` and

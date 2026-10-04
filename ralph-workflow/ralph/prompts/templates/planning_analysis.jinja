@@ -51,11 +51,13 @@ prerequisite has a `Depends on:` edge; and no cycles or inconsistent step
 dependencies. The unit count must not exceed the effective active policy cap
 of {{ WORK_UNITS_MAX_CAP|default('8') }} (bounded by `max_parallel_workers` and
 `max_work_units`). Shared contracts, interfaces, and schemas must be fixed
-before dependent writers start. For a large separable linear plan with
-pairwise disjoint `Files:` groups, record a non-failing advisory under
-`## Criterion Verdicts` with verdict `met`, `Evidence:` describing the
-available decomposition, and `Location:` pointing to the steps. Do not copy
-that advisory to `## What Came Up Short` or change the decision status.
+before dependent writers start, without delaying unrelated branches.
+Check every ordering edge for a concrete prerequisite. Unnecessary serialization
+through invented dependencies or explicit serial scheduling violates the
+parallel-default requirement: record the unmet criterion with reproducible
+step evidence and return `request_changes`. A step plan without Work Units
+is valid when independent steps remain concurrently schedulable, including
+file-disjoint groups whose directories overlap. Do not fail for heading shape.
 Delegate independent command-resolution checks and criterion groups to
 read-only subagents and reconcile their reproducible findings here.
 

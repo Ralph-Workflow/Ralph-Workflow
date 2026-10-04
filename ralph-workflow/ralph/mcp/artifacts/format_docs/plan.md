@@ -42,6 +42,10 @@ Expect: the focused retry tests pass with exit code 0
 
 Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use `## Work Units` for two or more areas with disjoint ownership, keeping shared-contract changes ahead of their consumers. A linear plan fits work that is coupled end to end. Prefer `## Work Units` over the alternative `## Parallel Plan` format.
 
+Plans default to parallel work to reduce elapsed time. A wholly linear plan requires every step to depend on preceding work; a dependency chain may still have independent branches that run concurrently. Explain the output consumed by each dependency, order shared contracts only before their consumers, and give each unit disjoint ownership, request criteria, outputs, and focused proof. Include integration verification after fan-in to check that the combined result satisfies the request.
+
+Disjoint files alone do not permit separate directory-owned units. Independent files in the same directory or at repository root remain independent steps in a step plan; schedule disjoint writers concurrently without inventing dependencies or overlapping unit directories.
+
 ## Work Units plan format
 
 A plan that fan-outs work across N workers uses `## Work Units` alongside the normal `### [S-n]` step list. Each unit is a stable-ID list item with a `Directories:` field that scopes which subdirectory the unit may edit; the executor dispatches units in parallel up to the policy-derived `max_parallel_workers` cap that the planning prompt renders as the unit-count budget.

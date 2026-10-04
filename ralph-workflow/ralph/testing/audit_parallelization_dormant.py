@@ -57,10 +57,13 @@ _INVARIANTS: tuple[Invariant, ...] = (
     Invariant(
         rel_path="prompts/templates/shared/_subagents.j2",
         present=(
-            "DELEGATION GUIDANCE (context isolation first)",
-            "primary reason to use sub-agents is",
+            "DELEGATION GUIDANCE",
+            "shorten elapsed time, preserve accuracy through independent",
+            "context isolation",
+            "Two independent tasks are enough to fan out",
         ),
         absent=(
+            "secondary benefits, not the goal",
             "ralph coordinate",
             "Dispatch every work unit to a sub-agent",
             "MUST run as a sub-agent",

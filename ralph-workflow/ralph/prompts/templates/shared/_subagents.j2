@@ -1,18 +1,19 @@
-## DELEGATION GUIDANCE (context isolation first)
+## DELEGATION GUIDANCE
 
-The primary reason to use sub-agents is **context isolation** — keep
-exploration, search output, and verification logs out of your own context so
-this session can stay focused on the work units and proof requirements. Speed
-and breadth are secondary benefits, not the goal. Sub-agents do not replace
-fresh-context analysis phases; they speed up the work that feeds them.
+Use sub-agents to shorten elapsed time, preserve accuracy through independent
+checks, and maintain **context isolation**. Keep exploration, search output,
+and verification logs out of your own context so this session can focus on
+work units and proof requirements. Sub-agents do not replace fresh-context
+analysis phases; they speed up the work that feeds them.
 
 ### Delegation posture
 
 Delegate exploration, research, verification, and review to read-only
 sub-agents by default. Fan-out is the default for any task that touches
-multiple independent areas. Use the brief contract below for each dispatch.
+multiple independent areas. Two independent tasks are enough to fan out;
+use the brief contract below for each dispatch.
 
-The concrete fan-out signals:
+The concrete fan-out signals below are examples, not minimum thresholds:
 
 - At least three unrelated areas to inspect, four independent criteria to
   verify, or a search spanning more than fifteen files: split the read-only
@@ -33,7 +34,11 @@ changes to the same file, or a step that depends on another's output).
 
 When the change set is large enough that the focused checks collectively
 flood this session, dispatch read-only verification sub-agents, one per
-criterion group, while you continue with implementation. The four concrete
+criterion group, on quiescent scopes with stable inputs while you continue
+implementation in unrelated scopes. Serialize checks that share build
+directories, ports, fixtures, or the host test budget. If a check's inputs
+change, invalidate its result and rerun it after those inputs stabilize.
+The four concrete
 groups are: **build** (compilation, packaging, install), **lint** (style and
 lint gates), **types** (static type checks), and **focused tests** (the
 per-step `Verify` commands, parametrized to a tight scope). Each subagent
@@ -55,8 +60,9 @@ sub-agent output" rule below.
 Use the brief contract below whenever you dispatch a sub-agent. Every
 dispatch must respect:
 
-- **Read-only by default.** Only the assigned work-unit implementer writes,
-  and only inside the unit's allowed directories. Exploration, verification,
+- **Read-only by default.** Only assigned implementers write, inside their unit's allowed directories
+  or their step group's exact assigned files.
+  Exploration, verification,
   and review sub-agents never write.
 - **Single writer per decision.** Two agents must never edit the same file.
   When a verification sub-agent needs to assert a side effect, it returns the
@@ -72,7 +78,8 @@ main session relies on; repair a brief missing any field before dispatch.
 
 1. **Objective.** One sentence naming the outcome the sub-agent owns.
 2. **Scope.** Allowed paths (for read-only helpers) or the unit's
-   `Directories:` set (for unit implementers). Anything outside scope is the
+   `Directories:` set (for unit implementers), or exact files and step IDs
+   (for step-group implementers without declared units). Anything outside scope is the
    main session's responsibility.
 3. **Tools.** The Ralph Workflow brokered MCP tools only. Native shell,
    native write tools, and editor commands are prohibited. State this

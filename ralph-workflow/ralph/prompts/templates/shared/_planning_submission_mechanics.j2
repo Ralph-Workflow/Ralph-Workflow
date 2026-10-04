@@ -14,8 +14,10 @@ under their owning unit. Observe the effective active policy cap of {{ WORK_UNIT
 units. Keep directories disjoint, including
 ancestor/descendant paths; never claim `.`, `.git`, or `.agent`. Declare
 every cross-unit prerequisite on the dependent unit and keep step dependencies
-consistent with that order; reject cycles. Place shared-contract work before
-the fan-out and make consumers depend on its completion. `## Work Units`
+consistent with that order; reject cycles. Make only consumers depend on
+shared-contract completion; unrelated branches start immediately. When
+directory ownership cannot represent independent file groups, use a step
+plan with concurrent ready steps and disjoint writers. `## Work Units`
 and `## Parallel Plan` are mutually exclusive; choose one format.
 
 On revision, retain every step ID and valid `Depends on:`/`Satisfies:` reference.

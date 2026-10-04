@@ -16,11 +16,11 @@ complete unless every required plan item is complete or has a proven
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
-Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
+Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Delegate independent evidence gathering to concurrent read-only subagents; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
 
 ### Verification fan-out
 
-Use parallel or subagent evidence gathering when it improves the decision. Fan out read-only verification across criterion groups, one subagent per group, when the surface is large enough to make sequential inspection costly. The four concrete groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
+Fan out read-only verification across independent criterion groups, one subagent per group. Examples of groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). These examples are not size prerequisites for delegation. Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any `## Criterion Verdicts` entry is written.
 

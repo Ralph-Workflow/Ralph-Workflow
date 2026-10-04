@@ -134,7 +134,7 @@ def test_prompt_puts_role_first_and_limits_subagents_to_read_only_discovery() ->
     assert prompt.index("You are a documentation agent") < prompt.index("*** UNATTENDED MODE")
     assert "read-only subagents" in normalized
     assert "main session" in normalized
-    assert "sequentially" in normalized
+    assert "edit in the main session" in normalized
 
 
 def test_fixture_gate_utilities_dead_constant_is_removed() -> None:
