@@ -10,6 +10,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from ._activity_sink import reset_subagent_sink, set_subagent_sink
 from .lifecycle import McpServerExtras, SessionBridgeLike, shutdown_mcp_server, start_mcp_server
 
 if TYPE_CHECKING:
@@ -19,7 +20,9 @@ __all__ = [
     "McpServerExtras",
     "SessionBridgeLike",
     "factory_impl",
+    "reset_subagent_sink",
     "run_standalone_server",
+    "set_subagent_sink",
     "shutdown_mcp_server",
     "start_mcp_server",
 ]

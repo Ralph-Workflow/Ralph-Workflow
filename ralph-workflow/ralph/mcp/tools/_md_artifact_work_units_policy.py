@@ -17,7 +17,7 @@ from ralph.pipeline.work_units import (
     WorkUnitsValidationError,
     parse_work_units_from_artifact,
 )
-from ralph.policy.loader import load_policy
+from ralph.policy import loader as policy_loader
 from ralph.policy.validation import (
     PolicyValidationError,
     validate_work_units_against_policy,
@@ -104,7 +104,7 @@ def load_policy_pipeline(workspace_root: Path) -> PipelinePolicy | None:
     importing the underscored helper module.
     """
     try:
-        bundle = load_policy(workspace_root / ".agent")
+        bundle = policy_loader.load_policy(workspace_root / ".agent")
     except Exception:
         return None
     return bundle.pipeline

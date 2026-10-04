@@ -9,7 +9,7 @@ from __future__ import annotations
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
-from ralph.mcp.server._activity_sink import (
+from ralph.mcp.server import (
     reset_subagent_sink,
     set_subagent_sink,
 )
@@ -113,8 +113,8 @@ class TestBaseExecutionStrategyDefaults:
         token = set_subagent_sink(_sink)
         try:
             strategy = BaseExecutionStrategy()
-            strategy.observe_line('[child] do something')
-            assert recorded == ['[child] do something'], (
+            strategy.observe_line("[child] do something")
+            assert recorded == ["[child] do something"], (
                 "observe_line on a [child] line MUST invoke the sink"
                 f" exactly once; got {recorded!r}"
             )

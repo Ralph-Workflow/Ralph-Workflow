@@ -215,7 +215,7 @@ they never detect, gate on, warn about, or compensate for its absence.
 The shared `shared/_subagents.j2` partial, the
 `shared/_parallel_execution.jinja` partial, and the
 `shared/_developer_iteration_guidance.j2` review trigger are rendered on
-every transport. Ralph does not render a degraded sequential prompt when
+every transport. Ralph Workflow does not render a degraded sequential prompt when
 the operator's agent lacks the surface; doing so would re-introduce a
 hidden capability flag and a per-runtime fork in the prompt contract.
 
@@ -223,9 +223,9 @@ The per-agent informational notes above (for example, the line-147
 `EXPLICIT_UNSUPPORTED` note for Kimi) remain useful as plain operator
 information for agents that genuinely do not expose a sub-agent
 dispatch surface. They describe the agent's own surface, never a
-Ralph-side gate or fallback. An operator who configures an agent without
+Ralph Workflow-side gate or fallback. An operator who configures an agent without
 a sub-agent dispatch surface has misconfigured their side; the right
-fix is to choose a different agent, not a Ralph prompt knob.
+fix is to choose a different agent, not a Ralph Workflow prompt knob.
 
 The worker prompt (`worker_developer.jinja`) replaces the shared
 partial with an explicit **WORKER DO-NOT-DISPATCH** section: a worker

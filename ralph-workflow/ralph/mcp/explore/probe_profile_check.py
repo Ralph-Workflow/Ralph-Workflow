@@ -74,9 +74,7 @@ _REQUIRED_PROBE_ENTRIES: tuple[str, ...] = (
     "collect_workspace_files",
     "bulk_size_mtime_for_paths",
 )
-_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = (
-    "store.get_file",
-)
+_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = ("store.get_file",)
 #: ``_staleness_block`` has been cached since S-3; on a hit the
 #: cumulative-time contribution of ``peek_dirty_paths`` /
 #: ``count_deleted_files`` / ``latest_job`` is near zero. We assert
@@ -119,6 +117,7 @@ def _build_indexed_workspace(tmp: Path) -> tuple[Path, Path, ExploreIndex]:
             continue
         dest = workspace_copy / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: transient scratch workspace for an isolated profile run
         shutil.copy2(src, dest)
     index_dir = tmp / DEFAULT_INDEX_ROOT
     store = ExploreStore(index_dir=index_dir)
@@ -199,6 +198,13 @@ def _assert_entries_present(
     return [*missing, *forbidden_hits]
 
 
+class _ProfileArgs(argparse.Namespace):
+    """Typed namespace for this module's two CLI options."""
+
+    top: int
+    out: Path | None
+
+
 def _parse_args(argv: Sequence[str] | None) -> tuple[int, Path | None]:
     """Parse CLI args into a typed ``(top, out)`` pair.
 
@@ -220,22 +226,9 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[int, Path | None]:
         default=None,
         help="Write the recorded profile to this path (JSON)",
     )
-    parsed = parser.parse_args(argv)
-    # ``argparse.Namespace`` is untyped in the standard stubs so
-    # every attribute access resolves to ``Any`` and trips
-    # ``disallow_any_expr``. The values are guaranteed to be the
-    # ``int``/``Path`` declared in the ``add_argument`` calls above
-    # (or ``None``), so a narrow, code-scoped ``type: ignore`` is
-    # the correct escape hatch.
-    raw_top: int = int(parsed.top)  # type: ignore[misc]
-    raw_out: object = parsed.out
-    if raw_out is None:
-        out_value: Path | None = None
-    elif isinstance(raw_out, Path):
-        out_value = raw_out
-    else:
-        out_value = Path(str(raw_out))
-    return raw_top, out_value
+    parsed = _ProfileArgs()
+    parser.parse_args(argv, namespace=parsed)
+    return parsed.top, parsed.out
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -256,9 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return staleness_probe(session, workspace_root=workspace)
 
         def _run_metadata() -> object:
-            return serving_metadata(
-                session, index_used=True, fallback_reason=None
-            )
+            return serving_metadata(session, index_used=True, fallback_reason=None)
 
         probe_profiler: cProfile.Profile = _run_profile(_run_probe)
         metadata_profiler: cProfile.Profile = _run_profile(_run_metadata)
@@ -302,10 +293,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = {
             "top": top_n,
             "probe": [{"name": name, "cumtime": cumtime} for name, cumtime in probe_rows],
-            "metadata": [
-                {"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows
-            ],
+            "metadata": [{"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows],
         }
+        # filesystem-write-ok: explicit operator-requested transient profile report
         out_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return 0
 
