@@ -16,8 +16,10 @@ packaging_smoke() {
 dist_homebrew() {
   mkdir -p "$ROOT/Formula"
   echo "Building Homebrew bottle..."
-  python -m installer --print-blob --no-scrollbar "$ROOT"/ralph_python*.whl 2>/dev/null || \
-    echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
+  if ! python -m installer --print-blob --no-scrollbar "$ROOT"/ralph_python*.whl; then
+    echo "ERROR: Homebrew bottle build failed; see ralph-workflow/scripts/packaging_operations.sh:dist_homebrew" >&2
+    return 1
+  fi
 }
 
 formula_check() {

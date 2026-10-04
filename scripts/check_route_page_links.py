@@ -119,15 +119,6 @@ def check_internal(link_file: Path, url: str) -> str | None:
     return None
 
 
-def _build_unverified_ssl_context() -> "ssl.SSLContext | None":  # type: ignore[name-defined]
-    if ssl is None:
-        return None
-    try:
-        return ssl._create_unverified_context()  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001
-        return None
-
-
 def _is_ssl_error(exc: BaseException) -> bool:
     name = type(exc).__name__
     if (
@@ -189,18 +180,18 @@ def check_external(url: str) -> str | None:
                 return f"HTTP {status} on HEAD {url}"
     except urllib.error.HTTPError as exc:
         if exc.code == 405:
-            return _get_with_fallback(url)
+            # 405 is a legitimate method-not-allowed case, NOT a TLS issue;
+            # use the system default SSL context (no unverified fallback).
+            return _check_external_once(url, None)
         return f"HTTP {exc.code} on HEAD {url}"
     except Exception as exc:  # noqa: BLE001
         if _is_ssl_error(exc):
-            return _get_with_fallback(url)
+            # SECURITY: fail closed on TLS errors rather than falling back
+            # to an unverified SSL context. The certificate chain is
+            # authoritative; an unverifiable host is reported.
+            return f"TLS verification failed for {url}: {exc}"
         return f"request failed for {url}: {exc}"
     return None
-
-
-def _get_with_fallback(url: str) -> str | None:
-    fallback_ctx = _build_unverified_ssl_context()
-    return _check_external_once(url, fallback_ctx)
 
 
 def check_file(path: Path) -> list[str]:

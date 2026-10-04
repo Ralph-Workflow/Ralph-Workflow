@@ -63,6 +63,7 @@ _ALLOWED_CONTROL = frozenset(
         "evidence",
         "lifecycle",
         "disposition",
+        "removed-tests",
     }
 )
 _ALLOWED_PROFILE = frozenset(
@@ -72,7 +73,7 @@ _ALLOWED_TIGHTENING = frozenset({"controls"})
 _ALLOWED_EXCEPTION = frozenset(
     {"id", "control", "owner", "reason", "review_trigger", "expires"}
 )
-_REQUIRED_CONTROL = _ALLOWED_CONTROL
+_REQUIRED_CONTROL = _ALLOWED_CONTROL - frozenset({"removed-tests"})
 _RISK_VALUES = {
     "impact": frozenset({"low", "medium", "high", "critical"}),
     "likelihood": frozenset({"low", "medium", "high"}),
