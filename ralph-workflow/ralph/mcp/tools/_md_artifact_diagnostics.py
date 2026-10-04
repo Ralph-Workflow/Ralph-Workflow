@@ -14,6 +14,7 @@ from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_m
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
 from ralph.mcp.artifacts.markdown.specs.plan import _OverrideMatch, analyze_plan_document
+from ralph.mcp.artifacts.plan_item_proof import is_ui_plan_item
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._wire_ledger import params_digest, wire_evidence_for
 from ralph.mcp.tools._development_result_session_gate import development_result_session_diagnostics

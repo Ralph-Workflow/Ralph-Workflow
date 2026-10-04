@@ -82,6 +82,7 @@ from ralph.prompts.payload_refs import (
 )
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_variables import delegation_template_variable
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
@@ -424,6 +425,7 @@ def _render_prompt_for_phase(
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
             product_criteria_path=product_criteria_path,
+            transport=context.transport,
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
@@ -506,6 +508,7 @@ def _render_planning_prompt(
             skills_inline_content=skills_inline_content,
             has_docs_mcp=has_docs_mcp,
             max_parallel_workers=max_parallel_workers,
+            transport=context.transport,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -646,6 +649,7 @@ def _render_template_based_prompt(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
     product_criteria_path: str | Path,
+    transport: object = None,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
     diff_content = ""
@@ -696,6 +700,9 @@ def _render_template_based_prompt(
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
+    # S-5: surface the executing transport so analysis/review/verification
+    # prompts can branch on HAS_SUBAGENTS in the shared delegation partial.
+    variables.update(delegation_template_variable(transport))
     rendered = render_template(
         template,
         _merged_variables(variables, session_caps),

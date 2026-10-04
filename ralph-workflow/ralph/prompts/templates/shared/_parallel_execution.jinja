@@ -1,10 +1,10 @@
+{% if HAS_SUBAGENTS|default('') %}
 Choose execution from the plan. Execute compact or coupled steps in the main
 session. When the plan declares independent units and the runtime supports
 sub-agents, dispatch ready units concurrently with disjoint file ownership and
 declared directory limits. Respect dependencies, collect each unit's
 implementation and verification proof, then integrate and run cross-unit and
-full verification in the main session. If sub-agents are unavailable, execute
-units sequentially in plan order. Never let two agents edit the same file;
+full verification in the main session. Never let two agents edit the same file;
 keep integration, final verification, and artifact submission in the main session.
 
 ### Independent ready group (for linear plans too)
@@ -55,3 +55,11 @@ session cannot trust, and the work reverts to this session.
 When units exist, follow the `dispatching-parallel-agents` skill for the
 general dispatch pattern; the brief contract above is the Ralph Workflow-specific
 overlay that skill does not provide.
+{% else %}
+Sub-agents are not available on this runtime (`HAS_SUBAGENTS` not rendered).
+Execute the plan sequentially in plan order, even when the plan declares
+`## Work Units`: walk each unit step-by-step, integrating and running
+verification after every implementation. The independent-ready-group
+dispatch path and the per-unit subagent brief are not rendered on this
+runtime — the work stays in this session.
+{% endif %}

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
-from ralph.mcp.tools import md_artifact as md_artifact_module
+from ralph.mcp.tools import _md_artifact_work_units_policy as work_units_policy_module
 from ralph.mcp.tools.md_artifact import (
     REPAIR_HINT,
     handle_get_md_draft,
@@ -137,7 +137,7 @@ def test_verify_rejects_reserved_path_unit_directory(
     policy = _minimal_pipeline_policy_with_parallelization(
         parallelization=PhaseParallelization(max_parallel_workers=2)
     )
-    monkeypatch.setattr(md_artifact_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", ".agent")])
@@ -164,7 +164,7 @@ def test_verify_rejects_overlapping_unit_directories(
     policy = _minimal_pipeline_policy_with_parallelization(
         parallelization=PhaseParallelization(max_parallel_workers=2)
     )
-    monkeypatch.setattr(md_artifact_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", "src"), ("u2", "src/sub")])
@@ -198,7 +198,7 @@ def test_verify_rejects_work_units_exceeding_max_work_units_cap(
             max_work_units=3,
         )
     )
-    monkeypatch.setattr(md_artifact_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units(
@@ -226,7 +226,7 @@ def test_verify_passes_clean_work_units_plan(
     policy = _minimal_pipeline_policy_with_parallelization(
         parallelization=PhaseParallelization(max_parallel_workers=2)
     )
-    monkeypatch.setattr(md_artifact_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", "src"), ("u2", "tests")])
@@ -250,7 +250,7 @@ def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
     policy = _minimal_pipeline_policy_with_parallelization(
         parallelization=PhaseParallelization(max_parallel_workers=2)
     )
-    monkeypatch.setattr(md_artifact_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", ".agent")])

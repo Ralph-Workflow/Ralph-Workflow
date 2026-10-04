@@ -48,8 +48,11 @@ def test_developer_prompt_never_references_phantom_coordinate_command() -> None:
 def test_developer_prompt_section_tells_executor_to_dispatch_subagents() -> None:
     source = _read_developer_template()
     assert "dispatch ready units concurrently" in source
-    assert "If sub-agents are unavailable" in source
-    assert "execute\nunits sequentially" in source
+    # The sequential fallback is now rendered by the HAS_SUBAGENTS guard
+    # in the parallel-execution partial, with the literal phrase
+    # "Sub-agents are not available on this runtime".
+    assert "Sub-agents are not available on this runtime" in source
+    assert "Execute the plan sequentially in plan order" in source
 
 
 def test_developer_prompt_limits_parallel_edits_to_disjoint_units() -> None:

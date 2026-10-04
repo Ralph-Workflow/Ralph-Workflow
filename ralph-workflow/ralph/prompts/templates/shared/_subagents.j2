@@ -22,6 +22,28 @@ A vague "this might help" is not a trigger. A single-file read, a quick
 search, or a focused pytest run is not worth the coordination cost — do it
 in this session.
 
+### Concrete verification fan-out example
+
+When the change set is large enough that the focused checks collectively
+flood this session, dispatch read-only verification sub-agents, one per
+criterion group, while you continue with implementation. The four concrete
+groups are: **build** (compilation, packaging, install), **lint** (style and
+lint gates), **types** (static type checks), and **focused tests** (the
+per-step `Verify` commands, parametrized to a tight scope). Each subagent
+returns the same four-field shape per check:
+
+- **Expected** — the observation that would mean the check passed.
+- **Observed** — the literal command output or file:line citation the
+  subagent read.
+- **Evidence** — the exact command plus its exit code, or `path:line` for
+  a static read.
+- **Location** — the file, line, or step ID the evidence attaches to.
+
+Every subagent lead a verdict depends on — passing or failing — is
+reproduced in this session (re-run the command, or re-read the cited
+`path:line`) before the verdict is written, matching the "Reading
+sub-agent output" rule below.
+
 ### Stance
 
 {% if HAS_SUBAGENTS|default('') %}
@@ -42,7 +64,7 @@ Sub-agents are not available on this runtime (`HAS_SUBAGENTS` not rendered).
 Continue sequentially in plan order; no sub-agent prompt should be drafted
 or dispatched. The brief contract below is intentionally not rendered.
 {% endif %}
-
+{% if HAS_SUBAGENTS|default('') %}
 ### Brief contract (for dispatched sub-agents)
 
 Every sub-agent brief must carry these five fields. They are the contract the
@@ -65,7 +87,7 @@ the main session cannot trust, and the work reverts to this session.
    files changed (for implementers), and any new questions needing a follow-up
    in this session. The return is a lead the main session spot-checks
    before relying on it; it is not evidence by itself.
-
+{% endif %}
 ### Reading sub-agent output
 
 A sub-agent's return is a lead, never evidence by itself. For each:

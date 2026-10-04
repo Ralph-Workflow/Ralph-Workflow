@@ -82,7 +82,7 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
 def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
     source = _read_continuation_template()
     assert "compact or coupled steps" in source
-    assert "execute\nunits sequentially in plan order" in source
+    assert "Execute the plan sequentially in plan order" in source
     assert "collect each unit's" in source
     assert "cross-unit and" in source
     assert "full verification" in source

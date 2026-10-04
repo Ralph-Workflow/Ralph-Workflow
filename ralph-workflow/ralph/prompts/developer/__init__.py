@@ -53,6 +53,11 @@ class PlanningPromptInputs:
     # so the planner plans around the actual limit rather than a hard-coded
     # default. ``None`` falls back to the default 8 in the template.
     max_parallel_workers: int | None = None
+    # S-5: which ``AgentTransport`` the executing session is using. ``None``
+    # means "unknown" and the partial falls through to the empty-string
+    # ``HAS_SUBAGENTS`` (the sequential path). The pipeline always supplies
+    # this in production; tests construct inputs directly and may omit it.
+    transport: object = None
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -185,6 +190,12 @@ def prompt_planning_xml_with_context(
         if inputs.max_parallel_workers is not None
         else "",
     }
+    # S-5: HAS_SUBAGENTS from the executing transport. A missing or
+    # unknown transport falls through to the empty string (the partial's
+    # ``|default('')`` fallback). Planning-time analysis template includes
+    # ``_subagents.j2`` so the planner's read-only delegation guidance
+    # also adapts.
+    base_vars.update(delegation_template_variable(inputs.transport))
     base_vars.update(
         _product_criteria_variables(
             inputs.prompt_content,
