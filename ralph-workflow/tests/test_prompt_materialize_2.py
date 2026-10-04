@@ -56,7 +56,7 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     workspace.write(".agent/PLAN.md", "---\ntype: plan\n---\n## Outcome\nRetained prior plan.\n")
     session = _ArtifactSubmitSession()
     session.drain = "planning"
-    invalid = "---\ntype: plan\ntype: plan\n---\n## Steps\n"
+    invalid = "Plan\x00binary"
 
     rejected = handle_submit_md_artifact(
         session, workspace, {"artifact_type": "plan", "content": invalid}
@@ -104,7 +104,7 @@ def test_worker_planning_validator_context_enters_only_worker_prompt(tmp_path: P
     session.drain = "planning"
     session.worker_namespace = worker_namespace
     session.worker_artifact_dir = worker_namespace / "artifacts"
-    invalid = "---\ntype: plan\ntype: plan\n---\n## Steps\n"
+    invalid = "Plan\x00binary"
 
     rejected = handle_submit_md_artifact(
         session, workspace, {"artifact_type": "plan", "content": invalid}
@@ -347,7 +347,8 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert "Verify feedback against the request and repository." in rendered
     assert "Treat feedback as evidence, not a document-shape" in rendered
     assert "Plan in this order" in rendered
-    assert "stable `### [S-n] Title` steps" in rendered
+    assert "Stable `### [S-n] Title` steps are recommended" in rendered
+    assert "without schema or content validation" in rendered
     assert "ralph_edit_md_artifact" in rendered
     assert "Feedback for the planner" not in rendered
     mandate = "`failed` decision label as a pipeline failure"
