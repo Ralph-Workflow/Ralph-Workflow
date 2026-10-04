@@ -1,0 +1,101 @@
+# Quickstart: Add a New Agent in 5 Lines
+
+See also: [Agent Subsystem README](README.md) for the unified entry point.
+
+## Goal
+
+Register a new headless or interactive agent using the opinionated
+5-line `register_my_agent` recipe. The helper picks the right
+execution strategy from the transport and applies the default
+`--resume {}` session template for interactive agents.
+
+## Prerequisites
+
+- A dev snapshot is installed (`make dev` from `ralph-workflow/`; use `make install` for a manual `-build` snapshot).
+- The agent name is unique in your `AgentCatalog` (custom agents cannot
+  reuse the nine built-in parser keys: `claude`, `claude-headless`,
+  `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`, `kimi`).
+
+## Steps
+
+### 1. Register a headless agent
+
+<!-- BLACKBOX_RECIPE_START -->
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-headless-agent",
+    transport=AgentTransport.GENERIC,
+    parser=GenericParser,
+    agent_registry=my_registry,
+)
+```
+<!-- BLACKBOX_RECIPE_END -->
+
+The helper picks `GenericExecutionStrategy` from the transport, so the
+recipe does not pass `strategy=`.
+
+### 2. Register an interactive agent
+
+<!-- BLACKBOX_RECIPE_START -->
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.claude import ClaudeParser
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-interactive-agent",
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    parser=ClaudeParser,
+    agent_registry=my_registry,
+    interactive=True,
+)
+```
+<!-- BLACKBOX_RECIPE_END -->
+
+`interactive=True` auto-applies the `--resume {}` session template. Pass
+`no_default_session_flag=True` to opt out (used by `agy`).
+
+Headless transports that do not fit `GENERIC` need their own measured
+contract. Kimi Code is the current example: its headless surface is
+`kimi -p <prompt> --output-format stream-json` (the current binary rejects
+the stale `--print`/`--afk` flags and forbids `--yolo`/`--auto`/`--plan` in
+prompt mode), its session resume flag is the measured `-S <session-id>`
+(never the legacy `-r`), its `kimi/<model>` alias must carry the full
+configured ID (e.g. `kimi/kimi-code/k3-256k`, not a bare model name), and
+its headless MCP wiring must target the user-global `$KIMI_CODE_HOME/mcp.json`
+because the workspace `.kimi-code/mcp.json` is silently ignored in untrusted
+folders.
+
+Before choosing an interactive transport, check whether the upstream CLI has a
+documented non-interactive `run`, `--print`, or JSON mode. For unattended Ralph
+phases, prefer that contract over pasting prompts into a TUI editor unless the
+transport has a documented exception. Nanocoder is the current exception:
+its JSON/plain automation path can fail after long action sequences, so Ralph
+keeps Nanocoder on the PTY-backed Ink runtime. Parser and smoke tests must
+still prove that model text and tool activity are visible.
+
+## Expected outcome
+
+After either recipe runs, `my_registry.catalog.get(name)` returns an
+`AgentSupport`, `get_parser(name)` returns a parser instance,
+`get_strategy(transport, command=name)` returns a strategy, and
+`build_command(config, "PROMPT.md", options=...)` returns an argv list
+whose first element is the agent's `cmd`.
+
+## Next steps
+
+- 14-kwarg advanced form: [adding-a-new-agent.md](adding-a-new-agent.md)
+- Full transport/runtime support, PTY behavior, parser visibility, MCP wiring,
+  and smoke-test gotchas:
+  [adding-a-new-agent.md#first-decision-registered-agent-or-new-transport](adding-a-new-agent.md#first-decision-registered-agent-or-new-transport)
+- Architecture: [architecture.md](architecture.md)
+- Update + Remove: [adding-a-new-agent.md](adding-a-new-agent.md#update-an-existing-agent),
+  [adding-a-new-agent.md#remove-an-agent](adding-a-new-agent.md#remove-an-agent)

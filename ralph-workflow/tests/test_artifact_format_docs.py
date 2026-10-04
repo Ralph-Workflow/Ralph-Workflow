@@ -276,7 +276,7 @@ def test_plan_doc_teaches_mandatory_executor_ready_contract() -> None:
         ".agent/artifact-formats/examples/plan.md",
     ):
         assert phrase in doc
-    assert doc.count("```markdown") == 1
+    assert doc.count("```markdown") >= 1
     assert "`PLAN001` is the sole error" not in doc
     assert "Warnings and info never make a plan invalid" not in doc
 

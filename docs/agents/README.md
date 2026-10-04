@@ -1,25 +1,39 @@
-# Contributor Policy — `docs/agents/`
+# Agent Subsystem
 
-This directory holds the **contributor-policy** home for the Ralph
-Workflow project. It is referenced by
-[`AGENTS.md`](../../AGENTS.md) and
-[`CONTRIBUTING.md`](../../CONTRIBUTING.md) for the mandatory contracts
-that govern how contributors work in this repository.
+> **Role:** This directory is the **agent-authoring contracts** home for
+> the Ralph Workflow Python package. It is distinct from the repo-root
+> [`docs/agents/`](../../../docs/agents/README.md), which carries
+> contributor policy. Cross-link, do not duplicate.
 
-It is intentionally distinct from
-[`ralph-workflow/docs/agents/`](../../ralph-workflow/docs/agents/README.md),
-which is the **agent-authoring contracts** home for contributors who
-are adding or modifying the agent subsystem inside the Python package.
-Cross-link, do not duplicate.
+The agent subsystem coordinates executing, composing, and registering AI
+agents. It supports interactive PTY agents, headless subprocess agents,
+and registries to manage configurations and execution strategies.
 
-## Pages
+## How do I...?
 
-- `verification.md` — what each `make verify` step proves
-- `testing-guide.md` — black-box testing expectations and the
-  combined test budget
-- `type-ignore-policy.md` — when `# type: ignore` is allowed
-- `workspace-trait.md` — workspace abstraction contract
-- `agent-support-architecture.md` — how this repo supports Ralph
-  Workflow agents
-- `fabrication-guard.md` — fabrication-guard levels and the absolute
-  ban on inflating adoption / credits / stats claims
+- [Add a new agent (5-min)](quickstart-add-a-new-agent.md)
+- [Add a new agent](adding-a-new-agent.md)
+- [Update an existing agent](adding-a-new-agent.md#update-an-existing-agent)
+- [Remove an agent](adding-a-new-agent.md#remove-an-agent)
+- [Architecture](architecture.md)
+
+## Source of Truth
+
+| Public Symbol            | Module                     | Purpose                                              |
+| ------------------------ | -------------------------- | ---------------------------------------------------- |
+| `register_agent_support` | `ralph.agents.registration`| Register custom agent configurations and factories.  |
+| `AgentSupport`           | `ralph.agents.support`     | Settings + factories for a specific agent.           |
+| `AgentCatalog`           | `ralph.agents.catalog`     | Injectable catalog for agent registrations.           |
+| `AgentRegistry`          | `ralph.agents.registry`    | Maps agent names to configurations.                  |
+| `AgentChain`             | `ralph.agents.chain`       | Sequential agent workflows.                          |
+| `invoke_agent`           | `ralph.agents.invoke`      | Invoke a registered agent and parse NDJSON output.   |
+
+## Contracts
+
+- `adding-a-new-agent.md` / `quickstart-add-a-new-agent.md` — register a new agent CLI
+- `architecture.md` — subsystem shape and runtime responsibilities
+- `artifact-submission-contract.md` — required artifact content
+- `memory-lifecycle.md` — bounded-accumulator rules
+- Pro support: see
+  [`docs/sphinx/pro-support.md#engine-internals-pro-contract`](../sphinx/pro-support.md#engine-internals-pro-contract)
+- `watchdog-spec.md` — watchdog design and invariants

@@ -313,9 +313,21 @@ def _resolve_example_type(
 ) -> tuple[str | None, str | None]:
     artifact_like, frontmatter_type = _frontmatter_type(example.markdown)
     fence_type = _declared_fence_type(example.fence_info)
-    declared_type = fence_type or example.declared_artifact_type or default_artifact_type
-    if not artifact_like and declared_type is None:
-        return None, None
+    declared_type = fence_type or example.declared_artifact_type
+    # A fenced block that does NOT start with ``---`` frontmatter is a
+    # section snippet, not a complete artifact. The format doc's
+    # ``default_artifact_type`` MUST NOT silently upgrade such snippets
+    # into full-article validations; doing so would force every example
+    # to carry the full frontmatter just to teach a single section.
+    # Treat the snippet as a snippet: skip validation unless the fence
+    # info or the surrounding macro explicitly opts in via ``artifact=``.
+    if not artifact_like:
+        if declared_type is None:
+            return None, None
+        return _resolve_declared_type(declared_type, registered)
+    # From here on the fence IS artifact-like (opens with ``---``) so the
+    # format doc's declared type applies when nothing narrower was set.
+    declared_type = declared_type or default_artifact_type
     if (
         declared_type is None
         and frontmatter_type is not None

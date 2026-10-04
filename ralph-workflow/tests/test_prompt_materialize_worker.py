@@ -82,7 +82,7 @@ Implement the behavior.
     assert "`## Continuation`" in rendered
     assert "Do not invent files or verification results." in rendered
     normalized = " ".join(rendered.split())
-    assert "the receipt is not phase completion" in normalized
+    assert "The receipt is not phase completion" in normalized
     assert "MANDATORY FINAL ACTION" in rendered
     receipt_index = normalized.index("promote that worker-local fallback")
     completion_index = normalized.index("Only after that receipt exists")

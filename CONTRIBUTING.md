@@ -30,6 +30,17 @@ non-circumvention rules, the immutable 60-second combined test budget,
 and the bypass-detection contract — lives at
 [`docs/ralph-workflow-policy/verification-policy.md`](docs/ralph-workflow-policy/verification-policy.md).
 
+## How to add a new agent
+
+The fastest path is the 5-minute
+[quickstart](docs/agents/quickstart-add-a-new-agent.md) — it shows the
+opinionated 5-line `register_my_agent` recipe for both headless and
+interactive agents and is the recommended entry point.
+
+For the 14-kwarg advanced form, CCS aliases, parser authoring, and the
+full lifecycle (Add, Update, Remove), see the canonical reference:
+[`adding-a-new-agent.md`](docs/agents/adding-a-new-agent.md).
+
 ## Contributor License Agreement
 
 Every pull request must agree to the repository
