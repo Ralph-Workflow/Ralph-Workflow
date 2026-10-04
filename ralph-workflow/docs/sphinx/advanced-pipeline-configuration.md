@@ -691,10 +691,18 @@ or the development wrapup notice, both surfaces use the same minutes
 remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 
 - The developer prompt includes a remaining-minutes warning and a force-cut
-  sentence in `shared/_run_budget.j2` so the agent drives the current task
-  to a verifiable state (a green suite, a passing focused test, or an
-  explicit partial report) before the deadline and does not start new work
-  it cannot finish.
+  sentence in `shared/_run_budget.j2` so the agent reserves time for
+  integration, verification, and submission before the deadline and does
+  not start new work it cannot finish. The warning and force-cut sentences
+  are scheduling signals; the canonical rule on when a partial or failed
+  result is permitted lives in
+  `ralph/prompts/templates/shared/_no_exemption_for_failures.j2` and is
+  not weakened by elapsed time, large remaining scope, or an exhausted
+  run budget. The agent drives the current task to a verifiable state
+  (a green suite, a passing focused test, or the canonical submission)
+  before the deadline and treats any partial/failed claim as governed
+  by the external-blocker rule above, never as a deadline-driven
+  outcome in its own right.
 - The development wrapup notice
   (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
   the same remaining minutes, suggests dispatching an independent ready

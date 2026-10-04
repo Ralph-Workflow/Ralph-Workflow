@@ -510,3 +510,135 @@ def test_rendered_prompts_preserve_outer_constraints(surface: str) -> None:
     # developer surface (main and worker alike).
     assert "Use the full run budget" in rendered, surface
 
+
+# ---------------------------------------------------------------------------
+# Worker-isolation in the recovery procedure.
+#
+# The worker prompt must not direct the worker to dispatch other
+# sub-agents or run the full ``make verify`` gate. The shared guidance
+# partial carries one scope-size recovery section that branches on
+# ``IS_WORKER``: the main-session branch keeps the dispatch + integrate
+# + full-gate checklist, the worker branch shrinks the unit into
+# smaller verified increments and loops within it. These tests pin
+# the rendered worker surfaces so a regression cannot silently
+# reintroduce the contradictory dispatch/full-gate directives.
+# ---------------------------------------------------------------------------
+
+
+_WORKER_SURFACE_NAMES: tuple[str, ...] = (
+    "worker_developer.jinja",
+    "worker_developer.jinja#continuation",
+)
+
+# Phrases that belong only to the main-session recovery checklist.
+# A worker render must NOT carry any of them in the recovery
+# procedure section, or the worker will be instructed to dispatch
+# sub-agents and run the full repository-wide gate.
+_MAIN_ONLY_RECOVERY_PHRASES: tuple[str, ...] = (
+    "Dispatch within the available native capacity",
+    "Give each writer exact paths and proof obligations",
+    "Work the critical path while helpers run",
+    "Continue owned ready work when slots are saturated",
+)
+
+
+def _recovery_section(text: str) -> str:
+    """Return the scope-size recovery procedure section (or empty when absent).
+
+    The shared guidance partial uses the heading
+    ``## Scope-size recovery procedure`` and ends the section before
+    ``## Plan fidelity``. Tests scope their assertions to that
+    section so unrelated worker-only or main-only paragraphs cannot
+    mask a regression.
+    """
+    start = text.find("## Scope-size recovery procedure")
+    if start < 0:
+        return ""
+    end = text.find("## Plan fidelity", start)
+    if end < 0:
+        return text[start:]
+    return text[start:end]
+
+
+@pytest.mark.parametrize("surface", _WORKER_SURFACE_NAMES, ids=_WORKER_SURFACE_NAMES)
+def test_worker_renders_reject_dispatch_directives_in_recovery_procedure(
+    surface: str,
+) -> None:
+    """Worker renders must not carry the main-session dispatch checklist.
+
+    The unconditional checklist told workers to dispatch other
+    sub-agents ("Dispatch within the available native capacity",
+    "Give each writer exact paths", "Work the critical path while
+    helpers run", "Continue owned ready work when slots are
+    saturated") and run the full ``make verify`` gate — instructions
+    that directly contradict the WORKER DO-NOT-DISPATCH and
+    WORKER-SCOPED VERIFICATION contracts in
+    ``shared/_worker_verification.jinja``. Asserting each phrase is
+    absent from the recovery section pinpoints the regression in a
+    single line.
+    """
+    rendered = _render_surface(surface)
+    recovery = _recovery_section(rendered)
+
+    assert recovery, f"{surface}: missing the recovery-procedure section"
+    for phrase in _MAIN_ONLY_RECOVERY_PHRASES:
+        assert phrase not in recovery, (
+            f"{surface}: worker recovery procedure must not include {phrase!r}; "
+            "this directive tells workers to dispatch sub-agents"
+        )
+
+
+@pytest.mark.parametrize("surface", _WORKER_SURFACE_NAMES, ids=_WORKER_SURFACE_NAMES)
+def test_worker_renders_reject_full_make_verify_in_recovery_procedure(
+    surface: str,
+) -> None:
+    """Worker renders must not direct the worker to run ``make verify``.
+
+    The full repository-wide gate runs in the main session, not in
+    any worker. A recovery checklist that tells the worker to "run
+    the full ``make verify`` run" leaks main-session responsibility
+    into worker scope and contradicts WORKER-SCOPED VERIFICATION.
+    """
+    rendered = _render_surface(surface)
+    recovery = _recovery_section(rendered)
+
+    assert recovery, f"{surface}: missing the recovery-procedure section"
+    assert "full `make verify`" not in recovery, (
+        f"{surface}: worker recovery procedure must not require running "
+        "the full `make verify` gate; that runs in the main session"
+    )
+    assert "Integrate and verify." not in recovery, (
+        f"{surface}: worker recovery procedure must not include the "
+        "Integrate and verify step that runs the repository-wide gate"
+    )
+
+
+@pytest.mark.parametrize("surface", _WORKER_SURFACE_NAMES, ids=_WORKER_SURFACE_NAMES)
+def test_worker_renders_carry_worker_safe_recovery_procedure(surface: str) -> None:
+    """Worker renders must keep a recovery procedure scoped to the
+    assigned unit: shrink into verified increments, loop until the
+    unit is fully proven, never dispatch sub-agents, never run the
+    full gate. The wording is single-sourced in
+    ``shared/_developer_iteration_guidance.j2``'s ``IS_WORKER`` branch.
+    """
+    rendered = _render_surface(surface)
+    recovery = _recovery_section(rendered)
+
+    assert recovery, f"{surface}: missing the recovery-procedure section"
+    # Worker-safe recovery language that must remain in the rendered
+    # worker prompt so the worker keeps looping within its assigned
+    # unit instead of returning after the first increment.
+    for phrase in (
+        "Scope-size recovery procedure",
+        "verified increments",
+        "fully proven",
+        "shared/_no_exemption_for_failures.j2",
+    ):
+        assert phrase in recovery, f"{surface}: missing worker-safe phrase {phrase!r}"
+    # The worker-only contracts from the dedicated worker partial
+    # must still be present on every worker surface.
+    assert "WORKER DO-NOT-DISPATCH" in rendered, surface
+    assert "Workers never dispatch sub-agents" in rendered, surface
+    assert "WORKER-SCOPED VERIFICATION" in rendered, surface
+    assert "until the entire assigned unit is verified" in rendered, surface
+
