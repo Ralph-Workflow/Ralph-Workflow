@@ -1,63 +1,45 @@
+"""Read-only inspection of staged plan prose through public tools."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
 
-import pytest
-
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import (
     handle_get_md_draft,
     handle_stage_md_artifact,
-    handle_submit_md_artifact,
     handle_verify_md_artifact,
 )
-from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
 from tests._artifact_format_docs_mock_session import planning_session
-from tests.mcp.test_md_plan_spec import _plan_document
+from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-from pydantic import TypeAdapter
-
-_JSON_OBJECT = TypeAdapter(dict[str, object])
+_PLAN = "Inspect the repository then implement independent changes and verify their combined behavior."
 
 
-def test_get_plan_draft_preserves_dangling_references_without_diagnostics(tmp_path: Path) -> None:
-    workspace = FsWorkspace(tmp_path)
-    session = planning_session()
-    document = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
-    handle_stage_md_artifact(session, workspace, {"artifact_type": "plan", "content": document})
-
-    result = handle_get_md_draft(session, workspace, {"artifact_type": "plan"})
-    payload = _JSON_OBJECT.validate_json(result.content[0].text)
-
+def test_verify_prose_plan_is_valid_without_persisting_it() -> None:
+    workspace = MemoryWorkspace()
+    result = handle_verify_md_artifact(
+        planning_session(), workspace, {"artifact_type": "plan", "content": _PLAN}
+    )
+    payload = json.loads(result.content[0].text)
+    assert not result.is_error
     assert payload["valid"] is True
-    assert payload["content"] == document
     assert payload["diagnostics"] == []
+    assert not workspace.exists(".agent/artifacts/plan.md")
 
 
-@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
-def test_plan_submission_does_not_load_execution_policy(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    section: str,
-) -> None:
-    from ralph.policy import loader
-
-    def unavailable_policy(_config_dir: Path) -> object:
-        raise OSError("policy is unreadable")
-
-    monkeypatch.setattr(loader, "load_policy", unavailable_policy)
-    document = f"## {section}\n- [U-1] Work\n  Directories: .agent\n  Depends on: missing\n"
-    workspace = FsWorkspace(tmp_path)
+def test_staged_draft_is_readable_and_unchanged_across_repeated_inspections() -> None:
+    workspace = MemoryWorkspace()
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
     session = planning_session()
-    params = {"artifact_type": "plan", "content": document}
-
-    for handler in (handle_verify_md_artifact, handle_submit_md_artifact):
-        result = handler(session, workspace, params)
-        payload = _JSON_OBJECT.validate_json(result.content[0].text)
-        assert result.is_error is False
-        assert payload["valid"] is True
-        assert payload["diagnostics"] == []
-
-    assert workspace.read(".agent/artifacts/plan.md") == document
+    handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": _PLAN}, deps=deps
+    )
+    first = handle_get_md_draft(session, workspace, {"artifact_type": "plan"}, deps=deps)
+    second = handle_get_md_draft(session, workspace, {"artifact_type": "plan"}, deps=deps)
+    assert json.loads(first.content[0].text) == json.loads(second.content[0].text)
+    assert json.loads(first.content[0].text)["content"] == _PLAN
+    assert json.loads(first.content[0].text)["valid"] is True
+    assert not backend.exists(workspace.root / ".agent/artifacts/plan.md")

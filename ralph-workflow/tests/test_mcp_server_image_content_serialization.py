@@ -96,6 +96,7 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
 type: plan
 noop: true
 ---
+No changes are needed because all requested behavior already works correctly today.
 """
 
     initialize, state = mcp_server.handle_request(

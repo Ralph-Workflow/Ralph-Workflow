@@ -38,7 +38,7 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
-        assert "version:" in frontmatter.group(1)
+        assert "version: 2.2.0" in frontmatter.group(1)
         assert "ralph_submit_md_artifact" in text
         assert "ralph_submit_artifact" not in text
 
@@ -55,20 +55,20 @@ def test_packaged_artifact_skills_reference_only_registered_ralph_tools() -> Non
     assert unknown == {}
 
 
-def test_plan_skill_native_markdown_example_matches_validator() -> None:
+def test_plan_skill_teaches_sanity_only_contract() -> None:
     text = _read("submit-plan-artifact.md")
-    # Free-form plan artifact format accepts prose-only examples; the skill
-    # no longer carries a fenced worked-example block. The skill still
-    # teaches the executor-ready intent and submission contract, which is
-    # what this test now locks.
-    assert "executor" in text
+
     assert "ralph_submit_md_artifact" in text
+    assert "declare_complete" in text
+    assert "readable" in text or "Submission checks only" in text
 
 
-def test_planning_skills_teach_the_mandatory_contract() -> None:
+def test_planning_skills_teach_the_sanity_only_contract() -> None:
     for name in PLANNING_SKILLS:
         text = _read(name)
+        assert "ralph_submit_md_artifact" in text or "executor-ready" in text
         assert "advisory findings are errors" not in text
+        assert "advisory diagnostics" not in text
 
     format_doc = load_bundled_format_doc("planning_analysis_decision")
     assert format_doc is not None
@@ -78,13 +78,10 @@ def test_planning_skills_teach_the_mandatory_contract() -> None:
     assert "Critical Files omits" not in format_doc
 
 
-def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
+def test_plan_skill_teaches_parallel_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "parallel plan by default" in text
-    assert "without schema or content validation" in text
-    for phase in ("Orient", "Characterize", "Partition", "Change", "Verify"):
-        assert phase in text
+    assert "Parallel work is the default" in text
     assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 

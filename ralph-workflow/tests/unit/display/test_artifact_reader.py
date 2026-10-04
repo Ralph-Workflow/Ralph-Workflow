@@ -108,13 +108,12 @@ def test_read_plan_artifact_missing_returns_none() -> None:
     assert read_plan_artifact(Path("/workspace"), _text_loader=_text_loader(None)) is None
 
 
-def test_read_plan_artifact_plain_text_returns_empty_projection() -> None:
+def test_read_plan_artifact_malformed_returns_none() -> None:
     result = read_plan_artifact(
         Path("/workspace"),
         _text_loader=_text_loader("not a plan artifact"),
     )
-    assert isinstance(result, PlanSummary)
-    assert result.total_steps == 0
+    assert result is None
 
 
 def test_read_plan_artifact_projects_context_and_scope() -> None:
@@ -124,10 +123,9 @@ def test_read_plan_artifact_projects_context_and_scope() -> None:
     )
     assert isinstance(result, PlanSummary)
     assert result.summary == "Improve the dashboard"
-    assert result.scope_items == ("Item A", "Item B", "Item C")
+    assert result.scope_items == ()
     assert result.total_steps == EXPECTED_TOTAL_STEPS
-    assert "timeout" in result.risks_mitigations
-    assert "manual cleanup may be required" in result.risks_mitigations
+    assert result.risks_mitigations == ()
 
 
 def test_read_latest_analysis_decision_missing_returns_none(tmp_path: Path) -> None:

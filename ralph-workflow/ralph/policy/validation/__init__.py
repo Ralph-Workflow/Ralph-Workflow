@@ -14,7 +14,6 @@ from ralph.policy.validation._api import (
     validate_policy_completeness,
     validate_recovery_config,
     validate_required_inputs,
-    validate_work_units_against_policy,
 )
 from ralph.policy.validation._checkpoint_policy_mismatch_error import (
     CheckpointPolicyMismatchError,
@@ -39,5 +38,4 @@ __all__ = [
     "validate_policy_completeness",
     "validate_recovery_config",
     "validate_required_inputs",
-    "validate_work_units_against_policy",
 ]

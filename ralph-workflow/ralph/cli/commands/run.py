@@ -59,6 +59,7 @@ from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.skills._installer import (
     _project_skills_need_install,
+    install_project_baseline_skills,
 )
 from ralph.skills._process_view import SkillsProcessView, has_machine_global_skills
 from ralph.skills._state_store import default_state_path
@@ -676,6 +677,7 @@ def _sync_shipped_skills_on_pipeline_run(
             run_retention_sweep=_run_retention_sweep_for_setup,
             skill_manager_factory=SkillManager,
             project_skills_need_install=_project_skills_need_install,
+            install_project_skills=install_project_baseline_skills,
         ),
     )
 

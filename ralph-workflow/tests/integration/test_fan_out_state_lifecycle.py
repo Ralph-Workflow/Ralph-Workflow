@@ -79,9 +79,6 @@ def _run_fan_out(
 
     monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
     monkeypatch.setattr(fan_out.ckpt, "save", _capture_checkpoint)
-    # Manifest serialization is covered by test_parallel_worker_bootstrap;
-    # this state-transition suite must not spend its one-second budget on it.
-    monkeypatch.setattr(fan_out, "_persist_parallel_worker_manifests", lambda **_kwargs: {})
 
     result = fan_out.execute_fan_out_sync(
         effect=_two_unit_effect(),

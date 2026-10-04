@@ -57,7 +57,7 @@ def test_continuation_template_never_references_phantom_coordinate_command() -> 
 
 def test_continuation_template_limits_subagents_to_independent_units() -> None:
     source = _read_continuation_template()
-    assert "independent units" in source
+    assert "plan declares independent units" in source
     assert "disjoint file ownership" in source
 
 
@@ -67,7 +67,7 @@ def test_continuation_template_keeps_allowed_directories_contract() -> None:
     scope contract.
     """
     source = _read_continuation_template()
-    assert "Directories:" in source
+    assert "declared directory limits" in source
 
 
 def test_continuation_template_new_section_warns_about_fan_out() -> None:
@@ -76,8 +76,7 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
     fan-out is dormant and the dispatch model is sub-agents.
     """
     source = _read_continuation_template()
-    assert "dispatch ready units" in source
-    assert "concurrently" in source
+    assert "dispatch ready units concurrently" in source
 
 
 def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:

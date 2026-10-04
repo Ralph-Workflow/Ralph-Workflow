@@ -1,4 +1,4 @@
-"""Rendered-template regression checks for concise planning guidance."""
+"""Regression checks for planning's parallel-default guidance."""
 
 from __future__ import annotations
 
@@ -9,24 +9,21 @@ def _source(name: str) -> str:
     return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
 
 
-def test_planning_prompt_treats_subagent_delegation_as_default() -> None:
+def test_planning_prompt_delegates_read_only_discovery() -> None:
     source = _source("planning.jinja")
-    assert "Delegate exploration, research, and verification to read-only subagents" in source
-    assert "genuinely coupled" in source
-    assert "Same-Workspace Parallel Worker Rules" not in source
+    assert "Delegate exploration" in source
+    assert "subagents" in source
     assert "ralph coordinate" not in source
 
 
-def test_planning_prompt_keeps_readable_optional_structure() -> None:
+def test_submission_shape_is_optional() -> None:
     source = _source("shared/_planning_submission_mechanics.j2")
-    assert "### [S-n] Title" in source
-    assert "stable and never renumbered" in source
-    assert "Project-specific `Type:` values are accepted" not in source
-    assert "preserved verbatim" in source
+    assert "recommended shape" in source
+    assert "not a submission format rule" in source
+    assert "at\nleast ten words" in source
 
 
-def test_analysis_reviews_substance_not_parallel_document_shape() -> None:
+def test_analysis_reviews_substance() -> None:
     source = _source("planning_analysis.jinja")
-    assert "criterion-level verdicts, not a holistic quality score" in source
-    assert "fresh evidence" in source
-    assert "nine-dimension" not in source
+    assert "coverage, truthfulness, actionability, parallel" in source
+    assert "Do not grade formatting" in source

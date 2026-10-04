@@ -16,7 +16,7 @@ from ralph.pipeline.parallel import ParallelExecutionMode
 def test_parallel_all_equals_v1_surface() -> None:
     """ralph.pipeline.parallel.__all__ must list exactly the v1 public surface."""
 
-    expected = {"ParallelExecutionMode", "SameWorkspaceContext", "validate_for_same_workspace"}
+    expected = {"ParallelExecutionMode", "SameWorkspaceContext"}
     actual = set(parallel.__all__)
     assert actual == expected, (
         f"ralph.pipeline.parallel.__all__ has drifted from the v1 surface.\n"

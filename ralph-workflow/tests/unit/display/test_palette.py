@@ -110,19 +110,11 @@ _DOCUMENTED_256_COLOUR_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
 
 
 @pytest.mark.criteria("C-5")
-@pytest.mark.timeout_seconds(5)
 def test_palette_256_colour_depth_clears_contrast_floor() -> None:
     """C-5: every resolved role clears 4.5:1 after Rich's own 256-colour
     quantisation (reusing Rich's downgrade path, not a hand-rolled cube
     distance), on every role/surface pair except the five measured,
-    documented exceptions in ``_DOCUMENTED_256_COLOUR_EXCEPTIONS``.
-
-    The ``@pytest.mark.timeout_seconds(5)`` marker grants the test
-    additional headroom above the default 1.0s budget because Rich's
-    quantise_hex work over the 5 surfaces x ~25 roles is reliably
-    ~0.5s in isolation but exceeds 1.0s under ``make verify``'s
-    parallel pytest-xdist scheduling.
-    """
+    documented exceptions in ``_DOCUMENTED_256_COLOUR_EXCEPTIONS``."""
     from ralph.display._color_depth import quantise_hex
 
     for surface_hex in ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF"):

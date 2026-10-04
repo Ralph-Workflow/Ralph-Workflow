@@ -104,10 +104,9 @@ _IO_ALLOWLIST: set[str] = {
     "test_analysis_context_partial_analysis_context_suppression",
     "test_analysis_prompt_payload_contract_analysis_template_payload_contract",
     "test_analysis_prompt_payload_contract_retry_hint_guard_in_templates",
-    # Failure-ownership prompt guard reads the shared partial, the developer
-    # iteration guidance partial, the parallel execution partial, and the
-    # source templates because their literal contents are the regression
-    # contract; fixture text would not detect prompt-source drift.
+    # Failure-ownership prompt guard reads the shared partial and five source
+    # templates because their literal contents are the regression contract;
+    # fixture text would not detect prompt-source drift.
     "test_prompts_no_exemption_for_failures",
     # Source-inspection guard that reads production Python source files
     # (prompts/materialize.py, mcp/tools/artifact.py, display/parallel_display.py,
@@ -220,13 +219,6 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # assert the fixture's completeness, not the shipped files'. Reading
     # those two files is the ONLY thing the test needs exempted.
     "test_linting_policy_inventory",
-    # Parallel execution guidance guard. Reads the shipped
-    # ``ralph/prompts/templates/shared/_parallel_execution.jinja`` because
-    # its literal contents are the regression contract: the test detects
-    # drift in the agent-driven dispatch wording. A tmp_path copy would
-    # assert against the fixture, not the shipped partial. Reading that
-    # one file is the ONLY thing the test needs exempted.
-    "test_developer_prompt_subagent_guidance",
 }
 
 # Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.

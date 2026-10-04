@@ -228,8 +228,8 @@ def test_ready_preflight_condenses_placeholder_agents_md_block(
 
     monkeypatch.setattr(
         policy_auto_commit_module,
-        "commit_policy_writes",
-        lambda _repo_root, **_kwargs: None,
+        "commit_policy_updates",
+        lambda _repo_root, _create_commit_fn: None,
     )
 
     rc = cli_integration.run_project_policy_readiness(
@@ -304,8 +304,8 @@ def test_remediation_runs_inside_started_display_with_status_bar(
 
     monkeypatch.setattr(
         policy_auto_commit_module,
-        "commit_policy_writes",
-        lambda _root, **_kwargs: None,
+        "commit_policy_updates",
+        lambda _root, _fn: None,
     )
 
     rc = cli_integration.run_project_policy_readiness(
@@ -357,8 +357,8 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
 
     monkeypatch.setattr(
         policy_auto_commit_module,
-        "commit_policy_writes",
-        lambda _root, **_kwargs: None,
+        "commit_policy_updates",
+        lambda _root, _fn: None,
     )
 
     rc = cli_integration.run_project_policy_readiness(

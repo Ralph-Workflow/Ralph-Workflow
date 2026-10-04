@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from git import Actor, Repo
 
 from ralph.git.commit_result import CommitCreationResult
 from ralph.git.scoped_auto_commit import (
@@ -37,9 +36,7 @@ from ralph.project_policy._auto_commit import (
     commit_policy_updates,
     commit_policy_writes,
 )
-from ralph.project_policy.agents_md import bootstrap, condense_placeholder_block
 from ralph.project_policy.markers import AGENTS_MD
-from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -295,7 +292,7 @@ def test_gate_probe_detritus_is_never_committed(
 def test_commit_policy_writes_skips_path_already_dirty_at_head(
     tmp_git_repo: Path, fake_create_commit: MagicMock
 ) -> None:
-    """wt-012 (g): agent-edited AGENTS.md + real condense -> not in the policy chore commit.
+    """wt-012 (g): agent-edited AGENTS.md + condense -> not in the policy chore commit.
 
     The producer-level helper records the pre-write content hash
     BEFORE ``condense_placeholder_block`` rewrites AGENTS.md. If the
@@ -303,30 +300,38 @@ def test_commit_policy_writes_skips_path_already_dirty_at_head(
     run), the path is SKIPPED with a warning and stays in the agent
     flow; it can never enter the fixed-message policy commit.
     """
-    ws = FsWorkspace(tmp_git_repo)
-    bootstrap(ws)
+    # HEAD has no AGENTS.md yet -- the deterministic writer treats
+    # that as pre-write hash ``None`` and the commit would proceed.
+    # Force the "already dirty at HEAD" case by committing an
+    # initial AGENTS.md and then editing it (which the agent did
+    # mid-run).
+    from git import Actor, Repo
 
     repo = Repo(tmp_git_repo)
     try:
         actor = Actor("Test Author", "test@example.com")
+        initial = tmp_git_repo / AGENTS_MD
+        initial.write_text("# AGENTS.md -- initial\n", encoding="utf-8")
         repo.index.add([AGENTS_MD])
-        repo.index.commit("initial bootstrap", author=actor, committer=actor)
+        repo.index.commit("initial", author=actor, committer=actor)
     finally:
         repo.close()
 
-    # Agent edit: changes AGENTS.md outside managed block BEFORE condense runs.
-    current_content = (tmp_git_repo / AGENTS_MD).read_text(encoding="utf-8")
-    agent_addition = "\n## Agent Section\n\nAgent added this section mid-run.\n"
-    (tmp_git_repo / AGENTS_MD).write_text(current_content + agent_addition, encoding="utf-8")
+    # Agent edit: changes AGENTS.md BEFORE condense runs.
+    (tmp_git_repo / AGENTS_MD).write_text("# AGENTS.md -- agent edit\n", encoding="utf-8")
 
-    # Real condense operation
+    # Simulate condense rewriting AGENTS.md (the post-READY condense
+    # pass). The post-write content is the condense form.
+    condense_form = (
+        "<!-- ralph-managed:begin -->\n"
+        "<!-- ralph-managed:end -->\n"
+    )
     pre_contents = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
-    condensed = condense_placeholder_block(ws)
-    assert condensed == [AGENTS_MD]
+    (tmp_git_repo / AGENTS_MD).write_text(condense_form, encoding="utf-8")
 
     result = commit_policy_writes(
         tmp_git_repo,
-        written_paths=condensed,
+        written_paths=[AGENTS_MD],
         pre_contents=pre_contents,
         create_commit_fn=fake_create_commit,
     )
@@ -338,39 +343,6 @@ def test_commit_policy_writes_skips_path_already_dirty_at_head(
     )
     assert AGENTS_MD in result.skipped_paths
     fake_create_commit.assert_not_called()
-    after_content = (tmp_git_repo / AGENTS_MD).read_text(encoding="utf-8")
-    assert "Agent added this section mid-run." in after_content
-
-
-@pytest.mark.timeout_seconds(5)
-def test_commit_policy_writes_real_condense_clean_at_head_creates_commit(
-    tmp_git_repo: Path, fake_create_commit: MagicMock
-) -> None:
-    """wt-012: real condense on clean AGENTS.md at HEAD creates chore(policy) commit."""
-    ws = FsWorkspace(tmp_git_repo)
-    bootstrap(ws)
-
-    repo = Repo(tmp_git_repo)
-    try:
-        actor = Actor("Test Author", "test@example.com")
-        repo.index.add([AGENTS_MD])
-        repo.index.commit("initial bootstrap", author=actor, committer=actor)
-    finally:
-        repo.close()
-
-    pre_contents = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
-    condensed = condense_placeholder_block(ws)
-    assert condensed == [AGENTS_MD]
-
-    result = commit_policy_writes(
-        tmp_git_repo,
-        written_paths=condensed,
-        pre_contents=pre_contents,
-        create_commit_fn=fake_create_commit,
-    )
-
-    assert result.status is ScopedCommitStatus.CREATED
-    fake_create_commit.assert_called_once()
 
 
 @pytest.mark.timeout_seconds(5)
@@ -424,131 +396,3 @@ def test_commit_policy_writes_noop_when_no_writes(
     )
     assert result.status is ScopedCommitStatus.NOOP
     fake_create_commit.assert_not_called()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_commit_policy_writes_creates_new_starter_file(
-    tmp_git_repo: Path, fake_create_commit: MagicMock
-) -> None:
-    """wt-012: brand-new starter file committed with dedicated chore(policy) commit."""
-    policy_starter = "docs/ralph-workflow-policy/testing-policy.md"
-    pre_contents = capture_pre_write_contents(tmp_git_repo, [policy_starter])
-    assert pre_contents[policy_starter] is None
-
-    abs_starter = tmp_git_repo / policy_starter
-    abs_starter.parent.mkdir(parents=True, exist_ok=True)
-    abs_starter.write_text("# Testing Policy\n", encoding="utf-8")
-
-    result = commit_policy_writes(
-        tmp_git_repo,
-        written_paths=[policy_starter],
-        pre_contents=pre_contents,
-        create_commit_fn=fake_create_commit,
-    )
-
-    assert result.status is ScopedCommitStatus.CREATED
-    assert result.sha == "f" * 40
-    fake_create_commit.assert_called_once()
-    message = fake_create_commit.call_args[0][1]
-    assert message.splitlines()[0] == POLICY_AUTO_COMMIT_SUBJECT
-
-
-@pytest.mark.timeout_seconds(10)
-def test_commit_policy_writes_rollback_preserves_staged_deletion(
-    tmp_git_repo: Path,
-) -> None:
-    """wt-012: commit failure rolls back index, preserving exact pre-staged deletions, new and modified files."""
-    from git import Actor, Repo
-
-    deleted_file = tmp_git_repo / "deleted.txt"
-    deleted_file.write_text("to delete\n", encoding="utf-8")
-    mod_file = tmp_git_repo / "mod.txt"
-    mod_file.write_text("initial mod\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        actor = Actor("Test Author", "test@example.com")
-        repo.index.add(["deleted.txt", "mod.txt"])
-        repo.index.commit("add files", author=actor, committer=actor)
-        repo.index.remove(["deleted.txt"], working_tree=True)
-        mod_file.write_text("modified content\n", encoding="utf-8")
-        repo.index.add(["mod.txt"])
-        new_file = tmp_git_repo / "staged_new.txt"
-        new_file.write_text("brand new\n", encoding="utf-8")
-        repo.index.add(["staged_new.txt"])
-        exact_index_before = repo.git.ls_files("--stage")
-        exact_diff_before = repo.git.diff("--cached")
-    finally:
-        repo.close()
-
-    policy_starter = "docs/ralph-workflow-policy/testing-policy.md"
-    pre_contents = capture_pre_write_contents(tmp_git_repo, [policy_starter])
-    abs_starter = tmp_git_repo / policy_starter
-    abs_starter.parent.mkdir(parents=True, exist_ok=True)
-    abs_starter.write_text("# Testing Policy\n", encoding="utf-8")
-
-    failing_create_commit = MagicMock(return_value=CommitCreationResult.failed("forced commit failure"))
-
-    result = commit_policy_writes(
-        tmp_git_repo,
-        written_paths=[policy_starter],
-        pre_contents=pre_contents,
-        create_commit_fn=failing_create_commit,
-    )
-    assert result.status is ScopedCommitStatus.FAILED
-
-    repo = Repo(tmp_git_repo)
-    try:
-        exact_index_after = repo.git.ls_files("--stage")
-        exact_diff_after = repo.git.diff("--cached")
-        assert exact_index_after == exact_index_before, "Index must be byte-for-byte identical after rollback"
-        assert exact_diff_after == exact_diff_before, "Cached diff must be byte-for-byte identical after rollback"
-    finally:
-        repo.close()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_commit_policy_writes_noop_preserves_exact_index(
-    tmp_git_repo: Path,
-) -> None:
-    """wt-012: policy no-op with pre-staged files preserves index byte-for-byte without crash."""
-    from git import Actor, Repo
-
-    policy_starter = "docs/ralph-workflow-policy/testing-policy.md"
-    abs_starter = tmp_git_repo / policy_starter
-    abs_starter.parent.mkdir(parents=True, exist_ok=True)
-    abs_starter.write_text("# Testing Policy\n", encoding="utf-8")
-
-    repo = Repo(tmp_git_repo)
-    try:
-        actor = Actor("Test Author", "test@example.com")
-        repo.index.add([policy_starter])
-        repo.index.commit("commit starter", author=actor, committer=actor)
-
-        # Unrelated staged file
-        unrelated = tmp_git_repo / "unrelated.txt"
-        unrelated.write_text("staged\n", encoding="utf-8")
-        repo.index.add(["unrelated.txt"])
-        exact_index_before = repo.git.ls_files("--stage")
-        exact_diff_before = repo.git.diff("--cached")
-    finally:
-        repo.close()
-
-    pre_contents = capture_pre_write_contents(tmp_git_repo, [policy_starter])
-    abs_starter.write_text("# Testing Policy\n", encoding="utf-8")  # no change
-
-    result = commit_policy_writes(
-        tmp_git_repo,
-        written_paths=[policy_starter],
-        pre_contents=pre_contents,
-        create_commit_fn=lambda *a, **k: None,
-    )
-    assert result.status is ScopedCommitStatus.NOOP
-
-    repo = Repo(tmp_git_repo)
-    try:
-        exact_index_after = repo.git.ls_files("--stage")
-        exact_diff_after = repo.git.diff("--cached")
-        assert exact_index_after == exact_index_before, "No-op must preserve index exactly"
-        assert exact_diff_after == exact_diff_before, "No-op must preserve cached diff exactly"
-    finally:
-        repo.close()

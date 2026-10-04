@@ -128,36 +128,8 @@ def init_command(
         except ValueError as exc:
             display.emit_warning(str(exc))
             raise typer.Exit(code=1) from exc
-        from ralph.git.operations import create_commit, stage_files
-        from ralph.git.scoped_auto_commit import (
-            ScopedCommitStatus,
-            capture_pre_write_contents,
-            commit_deterministic_writes,
-        )
-
-        pre_contents = capture_pre_write_contents(target, ["PROMPT.md"])
-        # deterministic-writer-ok: PROMPT.md seed is committed immediately below via commit_deterministic_writes
         write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_path, prompt, encoding="utf-8")
         display.emit_status(f"Created: {prompt_path}")
-        try:
-            prompt_result = commit_deterministic_writes(
-                target,
-                paths=["PROMPT.md"],
-                pre_contents=pre_contents,
-                subject="chore(prompt): seed starter template",
-                create_commit_fn=create_commit,
-                stage_fn=stage_files,
-            )
-            if prompt_result.status is ScopedCommitStatus.FAILED:
-                display.emit_warning(
-                    f"Prompt auto-commit failed during --init (non-fatal): {prompt_result.error}. "
-                    "Prompt content is materialized; commit manually or re-run to retry."
-                )
-        except Exception as exc:
-            display.emit_warning(
-                f"Prompt auto-commit failed during --init (non-fatal): {exc}. "
-                "Prompt content is materialized; commit manually or re-run to retry."
-            )
     elif template:
         # PROMPT.md already exists. An explicit `--init <label>` is NEVER
         # silently dropped: the operator's intent was to choose a starter

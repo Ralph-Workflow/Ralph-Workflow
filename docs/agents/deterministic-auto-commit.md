@@ -2,10 +2,10 @@
 
 Ralph Workflow's own code writes files in the background: deterministic
 changes whose content is already known (skill updates, `.gitignore` seed,
-starter prompt seed, project-policy bootstrap). Without an auto-commit,
-those changes leak into the working tree and either get swept into an agent's
-later commit or get lost. This page is the contract for the deterministic
-auto-commit that captures them at the write site with a fixed commit message.
+project-policy bootstrap). Without an auto-commit, those changes leak
+into the working tree and either get swept into an agent's later commit
+or get lost. This page is the contract for the deterministic auto-commit
+that captures them at the write site with a fixed commit message.
 
 ## What gets committed
 
@@ -17,7 +17,6 @@ subject. The current set of routes:
 | --- | --- | --- |
 | Project-scope skill install (run start, `--init`, `--force-init-skills`) | `install_project_baseline_skills_with_diff` produces a byte-exact diff | `chore(skills): sync baseline bundle` |
 | `.gitignore` auto-seed | `auto_seed_default_gitignore` appended missing patterns | `chore(gitignore): seed ralph defaults` |
-| Starter prompt seed (`--init`) | `write_text_if_changed` seeds starter `PROMPT.md` | `chore(prompt): seed starter template` |
 | Policy preflight | `agents_md.bootstrap` + `_seed_missing_starters` write to canonical / `AGENTS.md` / `CLAUDE.md` | `chore(policy): sync project-policy readiness` |
 | Post-pipeline `condense_placeholder_block` | `_finalize_ready_state` rewrites the AGENTS.md managed block | `chore(policy): sync project-policy readiness` |
 
@@ -51,17 +50,17 @@ paths the writer just modified. It will NEVER sweep in:
 ## Failure semantics
 
 - **No diff = no commit.** A seed with nothing missing (the
-  `.gitignore` already covered, the starter `PROMPT.md` already present,
-  the skill bundle already current, the policy surfaces already committed)
-  is a NOOP. No commit, no error. Pre-staged entries are preserved untouched.
-- **Commit failure and skips are visible.** Both `FAILED` and `SKIPPED`
-  outcomes are logged at `WARNING` level across all deterministic writers
-  (skills installer, project policy, starter prompt seed) and never break
-  the pipeline. A failed attempt or partial staging failure also rolls back
-  the index completely: newly staged paths are unstaged (`git reset HEAD -- <paths>`),
-  and the full pre-staged snapshot is restored byte-for-byte (including staged
-  deletions via `git update-index --force-remove`), leaving the index
-  identical to its pre-attempt state. There is never a half-staged index.
+  `.gitignore` already covered, the skill bundle already current,
+  the policy surfaces already committed) is a NOOP. No commit, no
+  error.
+- **Commit failure is visible.** A `FAILED` outcome is logged at
+  the appropriate level (DEBUG by default; WARNING for the
+  run-start user surface) and never breaks the pipeline. The
+  failed attempt also rolls back the index: the paths the attempt
+  staged are unstaged (`git reset HEAD -- <paths>`) and the full
+  pre-staged snapshot is restored, so the index is byte-for-byte
+  identical to its pre-attempt state. There is no half-staged
+  index.
 - **Non-git workspace.** A non-git workspace (e.g. a fresh project
   that has not been `git init`-ed yet) is a `NOT_REPO` outcome.
   The deterministic writer logs the outcome and leaves the file
@@ -115,11 +114,3 @@ the audit and the gate.
   helpers.
 - [Verification Guide](verification.md) -- the budget / audit
   policy that owns the auto-commit's runtime discipline.
-
-## Documentation review note
-
-- *What changed.* Added the starter `PROMPT.md` seed row with fixed subject `chore(prompt): seed starter template`. Clarified `WARNING`-level logging across all writers for both `FAILED` and `SKIPPED` outcomes. Documented exact index rollback on partial staging failures and pre-staged deletion preservation.
-- *Why this surface owns it.* This document is the canonical reference contract for deterministic background commits.
-- *What was pruned or left alone.* The core producer-level isolation primitive structure and acceptance cases were retained and refined to reflect actual production behavior.
-- *How duplication was contained.* Kept concise reference tables and explicit invariants aligned with `ralph/git/scoped_auto_commit.py`.
-- *Why the route is clearer.* Operators and contributors now have full visibility into every engine-owned background commit route, message format, and rollback guarantee.

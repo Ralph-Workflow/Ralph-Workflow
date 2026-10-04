@@ -14,6 +14,7 @@ import sqlite3
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 
 from ralph.mcp.explore._store_types import (
     _DDL,
@@ -39,6 +40,7 @@ class _InitializeMethods:
     # class docstring; a regression that breaks the contract would
     # raise ``AttributeError`` at the first call.
     _conn: sqlite3.Connection
+    _db_path: Path
     _busy_timeout_ms: int
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
@@ -106,6 +108,15 @@ class _InitializeMethods:
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:
                     raise
+                if "disk i/o error" in msg:
+                    self._conn.close()
+                    self._conn = sqlite3.connect(
+                        str(self._db_path),
+                        timeout=self._busy_timeout_ms / 1000.0,
+                        isolation_level=None,
+                        check_same_thread=False,
+                    )
+                    self._conn.row_factory = sqlite3.Row
                 time.sleep(backoff)  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
                 backoff *= 2
 

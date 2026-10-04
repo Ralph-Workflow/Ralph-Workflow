@@ -43,6 +43,7 @@ from ralph.pipeline.phase_entry_cleaner import (
 from ralph.pipeline.phase_entry_cleaner import (
     is_fresh_phase_entry,
 )
+from ralph.pipeline.work_units import sanitize_ownership_paths
 from ralph.policy.models import ROLE_REVIEW
 from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
@@ -611,7 +612,14 @@ def _render_developer_prompt(
                 _worker_description(options.work_unit) if options.work_unit else ""
             ),
             work_unit_directories=(
-                json.dumps(options.work_unit.allowed_directories, indent=2)
+                json.dumps(
+                    sanitize_ownership_paths(options.work_unit.allowed_directories), indent=2
+                )
+                if options.work_unit
+                else ""
+            ),
+            work_unit_paths=(
+                json.dumps(sanitize_ownership_paths(options.work_unit.paths), indent=2)
                 if options.work_unit
                 else ""
             ),
@@ -805,7 +813,9 @@ def _should_preserve_planning_context(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
-    has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase, pipeline_policy=pipeline_policy)))
+    has_retry_hint = bool(
+        _read_optional(workspace, retry_hint_path(phase, pipeline_policy=pipeline_policy))
+    )
     preserve_retry_context = previous_phase == phase and has_retry_hint
     return is_loopback or preserve_retry_context or resume_existing_phase
 

@@ -13,10 +13,6 @@ from ralph.config.mcp_loader import McpConfigError
 from ralph.mcp.artifacts.development_result_validation_error import (
     DevelopmentResultValidationError,
 )
-from ralph.mcp.artifacts.plan import (
-    PlanArtifactValidationError,
-    normalize_plan_artifact_content,
-)
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
@@ -252,72 +248,9 @@ def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_malformed_plan_routes_to_artifact_validation() -> None:
-    """Malformed normalized plan content remains an artifact-validation failure."""
-    malformed_payload = {
-        "status": "completed",
-        "summary": ("Development pass plan for the verifier/test fixes and final verification."),
-        "steps": [
-            {
-                "title": "Step 1: Fix verification command",
-                "details": "Align tests/test_verify",
-            },
-            {
-                "title": "Step 2: Fix policy loader",
-                "details": "Tighten tests/test_policy",
-            },
-        ],
-    }
-
-    with pytest.raises(PlanArtifactValidationError) as exc_info:
-        normalize_plan_artifact_content(malformed_payload)
-
-    classifier = FailureClassifier()
-    failure = classifier.classify(exc_info.value, phase="development", agent="codex")
-
-    assert failure.category == FailureCategory.ARTIFACT_VALIDATION
-    assert failure.counts_against_budget is False
-
-
-def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -> None:
-    """A PlanArtifactValidationError raised by the real normalize path must not
-    debit the agent budget when surfaced through RecoveryController (mirrors the
-    prompt's recovery handling).
-    """
-    malformed_payload: dict[str, object] = {
-        "status": "completed",
-        "summary": "Development pass plan",
-        "steps": [{"title": "Step 1", "details": "do stuff"}],
-    }
-    with pytest.raises(PlanArtifactValidationError) as exc_info:
-        normalize_plan_artifact_content(malformed_payload)
-    real_exc = exc_info.value
-
-    registry = AgentBudgetRegistry().set_budget("development", "codex", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
-    state = _make_state(["codex"])
-
-    _, _, evt = controller.handle(
-        state, real_exc, FailureContext(phase="development", agent="codex")
-    )
-
-    assert evt.category == "artifact_validation"  # lowercase per existing convention
-    assert evt.counted_against_budget is False
-    budget_state = controller.budget_registry.get("development", "codex")
-    assert budget_state is not None
-    assert budget_state.consumed == 0
-
-
 @pytest.mark.parametrize(
     ("normalize_target", "malformed_payload", "expected_type_name"),
     [
-        (
-            "ralph.mcp.artifacts.plan:normalize_plan_artifact_content",
-            {"summary": "not-an-object", "steps": [{"title": "x", "details": "y"}]},
-            "PlanArtifactValidationError",
-        ),
         (
             ("ralph.mcp.artifacts.development_result:normalize_development_result_content"),
             {"status": "completed"},
@@ -344,24 +277,12 @@ def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -
             },
             "ProductSpecValidationError",
         ),
-        (
-            "ralph.pipeline.work_units:parse_work_units_from_artifact",
-            {
-                "work_units": [
-                    {"unit_id": "u1", "description": "x"},
-                    {"unit_id": "u1", "description": "y"},
-                ]
-            },
-            "WorkUnitsValidationError",
-        ),
     ],
     ids=[
-        "PlanArtifactValidationError",
         "DevelopmentResultValidationError",
         "TypedArtifactValidationError",
         "SmokeTestResultValidationError",
         "ProductSpecValidationError",
-        "WorkUnitsValidationError",
     ],
 )
 def test_all_typed_artifact_validation_errors_route_to_artifact_validation(

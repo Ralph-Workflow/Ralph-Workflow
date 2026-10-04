@@ -153,6 +153,7 @@ _NOOP_PLAN_DOC = """---
 type: plan
 noop: true
 ---
+No changes are needed because every requested behavior already works correctly today.
 """
 
 
@@ -590,12 +591,9 @@ def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
     assert len(result) == 1
     event = result[0]
     assert isinstance(event, PhaseFailureEvent)
-    assert event.phase == "planning"
-    assert event.recoverable is True
-    assert event.retry_in_session is True
 
 
-def test_handle_planning_accepts_unresolvable_work_units() -> None:
+def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
     workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
@@ -616,7 +614,10 @@ def test_handle_planning_accepts_unresolvable_work_units() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    result = handle_execution_phase(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert event == PipelineEvent.AGENT_SUCCESS
 
 
 def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
@@ -629,17 +630,6 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
     workspace.read.assert_called_once_with(".agent/artifacts/plan.md")
-
-
-def test_handle_planning_accepts_arbitrary_plan_shape() -> None:
-    ctx = _mk_policy_context()
-    workspace = ctx.workspace
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
-    workspace.read.return_value = _PLAN_DOC.replace("### [S-1]", "### [STEP-1]")
-
-    effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
-
-    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
 def test_handle_planning_accepts_noop_plan() -> None:

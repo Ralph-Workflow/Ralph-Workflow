@@ -598,7 +598,6 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     if missing:
         exclude_path.parent.mkdir(parents=True, exist_ok=True)
         payload = "\n".join(missing) + "\n"
-        # deterministic-writer-ok: .git/info/exclude is non-committable local repository metadata
         _atomic_append_text(exclude_path, payload)
     return list(missing)
 
@@ -693,16 +692,16 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
             if result.status is ScopedCommitStatus.CREATED and result.sha:
                 logger.debug(".gitignore auto-seed committed: {}", result.sha[:8])
             elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-                logger.warning(
+                logger.debug(
                     ".gitignore auto-seed skipped: .gitignore was already dirty at HEAD "
                     "(user mid-edit?); left for the user flow"
                 )
             elif result.status is ScopedCommitStatus.FAILED:
-                logger.warning(
+                logger.debug(
                     ".gitignore auto-seed commit failed (non-fatal): {}", result.error
                 )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
+            logger.debug(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
 
 

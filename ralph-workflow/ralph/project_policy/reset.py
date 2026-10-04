@@ -90,7 +90,6 @@ def _rewrite(workspace: Workspace, path: str, changed: list[str]) -> None:
     content = workspace.read(path)
     updated = _strip_migrated_markers(_strip_opt_out(_strip_managed_block(content)))
     if updated != content:
-        # deterministic-writer-ok: explicit operator reset CLI command removes policy markers
         workspace.write(path, updated)
         changed.append(path)
 

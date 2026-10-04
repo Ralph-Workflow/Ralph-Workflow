@@ -101,7 +101,6 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
     ("draft", "raises"),
     [
         ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", False),
-        ("Plan\x00binary", True),
         (
             (
                 "---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, "
@@ -116,6 +115,7 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
 def test_plan_handoff_regression_draft_fallback_requires_valid_plan(
     draft: str, raises: bool
 ) -> None:
+    """S-5: resume may use only a draft that clears PLAN001."""
     workspace = MemoryWorkspace()
     workspace.write(".agent/artifacts/.plan.draft.md", draft)
     if raises:

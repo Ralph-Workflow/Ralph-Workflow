@@ -37,8 +37,8 @@ def test_planning_partials_are_shared_by_every_authoring_variant() -> None:
         assert "shared/_planning_submission_mechanics.j2" in source
 
 
-def test_analysis_prompt_requires_step_or_plan_level_findings() -> None:
+def test_analysis_prompt_requires_criterion_level_findings() -> None:
     source = _source("planning_analysis.jinja")
 
-    assert "Step: [S-n]" in source
-    assert "canonical step ID" in source
+    assert "Criterion:" in source
+    assert "parallel decomposition" in source

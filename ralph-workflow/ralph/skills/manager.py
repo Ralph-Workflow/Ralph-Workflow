@@ -239,14 +239,14 @@ class SkillManager:
                     if result.status is ScopedCommitStatus.FAILED:
                         from loguru import logger as _logger  # noqa: PLC0415
 
-                        _logger.warning(
+                        _logger.debug(
                             "Skill auto-commit during --force-init-skills failed (non-fatal): {}",
                             result.error,
                         )
                 except Exception as exc:
                     from loguru import logger as _logger  # noqa: PLC0415
 
-                    _logger.warning(
+                    _logger.debug(
                         "Skill auto-commit during --force-init-skills raised (non-fatal): {}",
                         exc,
                     )

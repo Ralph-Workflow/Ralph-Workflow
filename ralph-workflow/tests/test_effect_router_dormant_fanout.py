@@ -266,8 +266,13 @@ def test_dormant_default_logs_warning_with_real_string(tmp_path: Path) -> None:
     WARNING string in ``effect_router.py``; this test asserts the same string
     is actually emitted at runtime by intercepting the loguru sink.
     """
-    _write_plan_artifact(tmp_path, _two_disjoint_units())
-    state = PipelineState(phase="development")
+    state = PipelineState(
+        phase="development",
+        work_units=(
+            WorkUnit(unit_id="unit-a", description="A", paths=["src/a.py"]),
+            WorkUnit(unit_id="unit-b", description="B", paths=["src/b.py"]),
+        ),
+    )
     bundle = _default_policy_bundle()
 
     captured: list[tuple[str, str]] = []

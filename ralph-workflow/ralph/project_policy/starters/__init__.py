@@ -118,12 +118,6 @@ def seed_starter_into(workspace: Workspace, name: str) -> bool:
     if workspace.exists(target_path):
         return False
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
-    # deterministic-writer-ok: starter writes are committed by the
-    # caller via ``ralph.project_policy._auto_commit.commit_policy_writes``
-    # from ``ralph.project_policy.preflight.run_policy_readiness_preflight``
-    # (preflight boundary) or via the post-pipeline finalize pass. The
-    # audit recognises the marker as the canonical writer-site
-    # identification.
     workspace.write(target_path, read_starter(name))
     return True
 

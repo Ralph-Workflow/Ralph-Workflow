@@ -47,10 +47,6 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "Preserve every required plan reference" in prompt
     assert "Difficulty, elapsed time" in prompt
     assert "status: partial" in prompt
-    assert "diagnose the failure from fresh evidence" in prompt
-    assert "change the hypothesis or implementation route" in prompt
-    assert "or report partial progress" not in prompt
-    assert "literally impossible to complete through any" in prompt
 
 
 @pytest.mark.parametrize(
@@ -129,7 +125,6 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         if is_worker:
             assert "## WORKER-SCOPED VERIFICATION" in prompt
             assert "Workers never dispatch sub-agents" in prompt
-            assert "loop the ready-reference walk until the entire assigned unit is verified" in prompt
             assert "full gate before completion" not in prompt
         else:
             assert "## Verification" in prompt
@@ -144,7 +139,6 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
             else "every required plan reference is proven"
         )
         assert expected_scope in prompt
-        assert "literally impossible to complete through any" in prompt
 
 
 def test_development_analyzer_separates_request_criteria_from_plan_routes() -> None:

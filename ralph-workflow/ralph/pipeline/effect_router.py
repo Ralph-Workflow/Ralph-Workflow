@@ -16,6 +16,7 @@ from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.plan._validation import (
     PlanArtifactValidationError,
     is_noop_plan,
+    normalize_plan_artifact_content,
 )
 from ralph.phases._agent_internal_paths import is_agent_internal_path
 from ralph.phases.artifacts import (
@@ -36,10 +37,10 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.work_units import (
     WorkUnit,
-    WorkUnitsPlan,
-    WorkUnitsValidationError,
+    canonical_plan_references,
+    dispatchable_work_units,
+    has_unextractable_work_units,
     parse_work_units_from_artifact,
-    validate_for_same_workspace,
 )
 from ralph.prompts.materialize import prompt_file_for_phase
 from ralph.workspace.fs import FsWorkspace
@@ -130,7 +131,12 @@ def _parallel_or_agent_effect(
     if not work_units and phase_def.parallelization is not None:
         scope = workspace_scope or resolve_workspace_scope()
         work_units = _work_units_from_plan_artifact(scope.root)
-    if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
+    dispatchable_units = dispatchable_work_units(work_units)
+    if (
+        phase_def.parallelization is not None
+        and len(dispatchable_units) == len(work_units)
+        and len(dispatchable_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION
+    ):
         phase_para = phase_def.parallelization
         if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
             logger.warning(
@@ -146,9 +152,7 @@ def _parallel_or_agent_effect(
                 count=len(work_units),
             )
         else:
-            fan_out = _fan_out_effect(state, phase_def, work_units)
-            if fan_out is not None:
-                return fan_out
+            return _fan_out_effect(state, phase_def, dispatchable_units)
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
@@ -164,15 +168,16 @@ def _fan_out_effect(
     state: PipelineState,
     phase_def: PhaseDefinition,
     work_units: tuple[WorkUnit, ...],
-) -> FanOutEffect | None:
+) -> Effect:
     phase_para = phase_def.parallelization
     if phase_para is None:
-        return None
-    try:
-        validate_for_same_workspace(WorkUnitsPlan(work_units=list(work_units)))
-    except WorkUnitsValidationError as exc:
-        logger.debug("Using the executing agent to refine work-unit scopes: {}", exc)
-        return None
+        return ExitFailureEffect(
+            reason=(
+                f"Phase {state.phase!r} does not declare parallelization but the plan "
+                f"declares {len(work_units)} work_units; either declare "
+                f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
+            )
+        )
     return FanOutEffect(
         work_units=work_units,
         max_workers=phase_para.max_parallel_workers,
@@ -185,8 +190,9 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
     """Best-effort read of work_units from the on-disk plan artifact.
 
     Returns an empty tuple when the plan is absent, a no-op, declares no
-    work_units, or cannot supply executable unit metadata. The executing
-    agent receives the original plan to refine unusable fan-out hints.
+    work_units, or fails to parse. Planning-phase validation already gated
+    validity, so a routing-time failure means corrupted on-disk state — the
+    serial single-agent fallback preserves prior behavior in that case.
     """
     workspace = FsWorkspace(workspace_root)
     try:
@@ -194,12 +200,16 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(content):
             return ()
-        parsed = parse_work_units_from_artifact(content)
+        artifact = (
+            content
+            if "work_units" in content and "summary" not in content
+            else normalize_plan_artifact_content(content)
+        )
+        parsed = parse_work_units_from_artifact(artifact)
     except (
         PhaseArtifactError,
         PlanArtifactValidationError,
         ValueError,
-        WorkUnitsValidationError,
     ) as exc:
         logger.warning(
             "Could not derive work_units from plan artifact at {}: {} — "
@@ -209,6 +219,13 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         )
         return ()
     if parsed is None:
+        return ()
+    if has_unextractable_work_units(artifact):
+        return ()
+    steps, _units, owned_steps = canonical_plan_references(artifact)
+    if steps != owned_steps:
+        # Native fan-out advances the phase after worker completion. Keep any
+        # unowned step in the main agent rather than silently omitting it.
         return ()
     return tuple(parsed.work_units)
 

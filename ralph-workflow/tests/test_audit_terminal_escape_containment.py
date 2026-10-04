@@ -341,15 +341,13 @@ def test_audit_blocks_regression_when_module_level_emit_activity_line_drops_sani
     """Adversarial: revert ``emit_activity_line`` unit_id-is-None branch to unsanitized print."""
     path = "display/parallel_display.py"
 
-    def _transform(_src: str) -> str:
-        # The function-body invariant is the behavior under test. Supply the
-        # smallest valid source that retains one sanitized branch and reverts
-        # the other, avoiding an expensive AST source-segment scan of the
-        # production display module under xdist contention.
-        return (
-            "def emit_activity_line():\n"
-            "    console.print(line)\n"
-            "    console.print(_sanitize(line), markup=False, highlight=False)\n"
+    def _transform(src: str) -> str:
+        # The pre-fix branch had ``console.print(line)`` -- this matches
+        # the whole-file forbidden literal AND removes the _sanitize call
+        # from emit_activity_line's body.
+        return src.replace(
+            "console.print(_sanitize(line), markup=False, highlight=False)",
+            "console.print(line)",
         )
 
     _patch_rel(monkeypatch, path, _transform)

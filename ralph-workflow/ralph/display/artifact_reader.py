@@ -9,7 +9,7 @@ during the first iteration before any analysis has run).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.display.plan_summary import PlanSummary
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -87,78 +87,46 @@ def read_plan_artifact(
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         return None
 
+    summary_obj = content.get("summary")
+    summary_text: str | None = None
+    scope_items: tuple[str, ...] = ()
+    if isinstance(summary_obj, dict):
+        summary_dict = cast("dict[str, object]", summary_obj)
+        ctx = summary_dict.get("context")
+        if isinstance(ctx, str) and ctx.strip():
+            summary_text = ctx.strip()
+        else:
+            intent = summary_dict.get("intent_verb")
+            if isinstance(intent, str) and intent.strip():
+                summary_text = intent.strip()
+        scope_items = _coerce_str_tuple(summary_dict.get("scope_items"))
+
+    if summary_text is None:
+        seen_open = False
+        seen_close = False
+        for line in markdown.splitlines():
+            stripped = line.strip()
+            if stripped == "---":
+                if not seen_open:
+                    seen_open = True
+                    continue
+                seen_close = True
+                continue
+            if seen_close and stripped and not stripped.startswith("#"):
+                summary_text = stripped
+                break
+
     steps_obj = content.get("steps")
     total_steps = len(steps_obj) if isinstance(steps_obj, list) else 0
 
+    risks = _coerce_str_tuple(content.get("risks_mitigations"))
+
     return PlanSummary(
-        summary=_extract_summary_text(markdown),
-        scope_items=_extract_section_bullets(markdown, "Scope"),
+        summary=summary_text,
+        scope_items=scope_items,
         total_steps=total_steps,
-        risks_mitigations=_extract_section_bullets(markdown, "Risks"),
+        risks_mitigations=risks,
     )
-
-
-def _extract_summary_text(markdown: str) -> str | None:
-    """Return the first non-heading line under a ``## Summary`` section.
-
-    The free-form plan contract accepts any readable prose; the display
-    surface only needs the first descriptive line for status panels.
-    """
-    in_summary = False
-    for line in markdown.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("##"):
-            in_summary = stripped == "## Summary"
-            continue
-        if in_summary and stripped and not stripped.startswith("#"):
-            return stripped
-    return None
-
-
-def _extract_section_bullets(markdown: str, heading: str) -> tuple[str, ...]:
-    """Return bullet texts under ``## <heading>`` (best-effort).
-
-    The free-form plan contract does not extract structured risks or
-    scope items; the display reader scans the raw markdown for bullet
-    lines under the named heading so users still see the plan's intent
-    in the status panel.
-    """
-    in_section = False
-    bullets: list[str] = []
-    target = f"## {heading}"
-    for line in markdown.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("##"):
-            in_section = stripped == target
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("#"):
-            in_section = False
-            continue
-        if not stripped:
-            continue
-        if stripped.startswith(("-", "*")):
-            text = stripped.lstrip("-*").strip()
-            if text:
-                bullets.append(_normalize_bullet(text))
-        elif stripped.startswith("["):
-            bullets.append(_normalize_bullet(stripped))
-    return tuple(bullets)
-
-
-def _normalize_bullet(text: str) -> str:
-    """Strip ``[R-1]`` / ``[SC-2]`` style identifiers from bullets.
-
-    The display reader surfaces risk and scope intents by their subject;
-    the bracket identifier is scaffolding, not part of the human-visible
-    intent.
-    """
-    if text.startswith("["):
-        end = text.find("]")
-        if end > 0:
-            return text[end + 1 :].strip()
-    return text
 
 
 def read_latest_analysis_decision(

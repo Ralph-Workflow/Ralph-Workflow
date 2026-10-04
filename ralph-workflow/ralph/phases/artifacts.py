@@ -61,12 +61,14 @@ def load_phase_artifact(
 
     try:
         text = workspace.read(path)
-    except (FileNotFoundError, OSError, UnicodeError) as exc:
+    except (FileNotFoundError, OSError) as exc:
         legacy_detail = legacy_json_rejection_detail(workspace, path)
         if legacy_detail is not None:
             raise PhaseArtifactError(legacy_detail) from exc
         raise PhaseArtifactError(f"Artifact not found at {path}") from exc
 
+    if artifact_type is None and path.replace("\\", "/").endswith("/plan.md"):
+        artifact_type = "plan"
     return _load_markdown_artifact(text, path, artifact_type=artifact_type)
 
 
@@ -80,8 +82,6 @@ def _load_markdown_artifact(
     import_module("ralph.mcp.artifacts.markdown.specs")
     document, _ = parse_markdown_document(text)
     declared = document.frontmatter.get("type")
-    if artifact_type is None and path.rsplit("/", 1)[-1].upper() == "PLAN.MD":
-        artifact_type = "plan"
     if artifact_type is None:
         if not declared:
             raise PhaseArtifactError(f"Markdown artifact at {path} must declare frontmatter 'type'")
