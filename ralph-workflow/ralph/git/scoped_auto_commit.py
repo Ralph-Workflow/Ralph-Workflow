@@ -37,6 +37,7 @@ sweeping in agent or user changes.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -239,6 +240,83 @@ def git_blob_sha(repo: Repo, rel_path: str) -> str | None:
         return None
 
 
+def _git_blob_shas(repo: Repo, rel_paths: list[str]) -> dict[str, str | None]:
+    """Batched :func:`git_blob_sha`: ONE ``git hash-object`` invocation.
+
+    Maps each input path to the same value the singular helper returns:
+    ``None`` for missing paths and real directories, the on-disk blob
+    SHA otherwise (symlinks hash as their link-target blob). Per-path
+    subprocess loops made the skill/policy sync pay one git spawn per
+    candidate file -- hundreds per startup. One bad operand fails a
+    whole ``hash-object`` call, so a failed or short batch falls back
+    to per-file hashing to preserve per-path error isolation.
+    """
+    results: dict[str, str | None] = dict.fromkeys(rel_paths)
+    try:
+        working_dir = repo.working_dir
+    except (OSError, ValueError):
+        return results
+    if not working_dir:
+        return results
+    root = Path(working_dir)
+    hashable: list[str] = []
+    for rel_path in rel_paths:
+        abs_path = root / rel_path
+        if not os.path.lexists(abs_path):  # filesystem-read-ok: lstat existence probe; FileBackend.exists follows symlinks and would misclassify broken symlink operands
+            continue  # missing -> None, same as the singular helper
+        if abs_path.is_dir() and not abs_path.is_symlink():
+            continue  # real directory -> None, same as the singular helper
+        hashable.append(rel_path)
+    if not hashable:
+        return results
+    operands = [str(root / p) for p in hashable]
+    try:
+        raw = cast("str", repo.git.hash_object("--", *operands))
+    except (GitCommandError, OSError):
+        raw = ""
+    lines = raw.splitlines()
+    if len(lines) != len(operands):
+        # The batch failed or short-circuited -- recover per file so one
+        # unreadable operand does not None-out its siblings.
+        for rel_path in hashable:
+            results[rel_path] = git_blob_sha(repo, rel_path)
+        return results
+    for rel_path, line in zip(hashable, lines, strict=True):
+        results[rel_path] = line.strip() or None
+    return results
+
+
+def _read_head_blob_shas(repo: Repo, rel_paths: list[str]) -> dict[str, str | None]:
+    """Batched :func:`_read_head_blob_sha`: ONE ``git ls-files --stage`` call.
+
+    Maps each input path to its index blob SHA (after the commit
+    helper's ``git reset`` the index equals HEAD, which is the
+    comparison the helper needs), or ``None`` when the path has no
+    index entry. Exact path matching: only an ``ls-files`` line whose
+    path field equals the requested path counts, so a directory-shaped
+    operand maps to ``None`` rather than to an arbitrary child's SHA.
+    The first matching line wins, mirroring the singular helper.
+    """
+    results: dict[str, str | None] = dict.fromkeys(rel_paths)
+    if not rel_paths:
+        return results
+    try:
+        raw = cast("str", repo.git.ls_files("--stage", "--", *rel_paths))
+    except GitCommandError:
+        return results
+    for line in raw.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != _GIT_LS_FILES_PATH_PARTS:
+            continue
+        meta = parts[0].split()
+        if len(meta) < _GIT_LS_FILES_META_FIELDS:
+            continue
+        path = parts[1]
+        if path in results and results[path] is None:
+            results[path] = meta[1]
+    return results
+
+
 def capture_pre_write_contents(
     repo_root: Path | str,
     paths: list[str] | tuple[str, ...],
@@ -258,8 +336,9 @@ def capture_pre_write_contents(
     A git error or OSError yields ``None`` for the offending path so
     :func:`commit_deterministic_writes` will SKIP it (paths without a
     recorded pre-write hash are NOT committed — see its docstring).
+    The hashing is batched into a single ``git hash-object`` call so a
+    large candidate set does not spawn a subprocess per file.
     """
-    recorded: dict[str, str | None] = {}
     try:
         repo = Repo(Path(repo_root))
     except (InvalidGitRepositoryError, Exception):
@@ -268,8 +347,7 @@ def capture_pre_write_contents(
         # the commit step will return a NOOP / NOT_REPO result).
         return {p: None for p in paths}  # noqa: C420  # ruff prefers dict.fromkeys; mypy loses the literal type on it
     try:
-        for path in paths:
-            recorded[path] = git_blob_sha(repo, path)
+        recorded = _git_blob_shas(repo, list(paths))
     finally:
         close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):
@@ -470,6 +548,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             # restore.
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_snapshots = _snapshot_pre_staged_index(repo, pre_staged_paths)
+            restored = False
             # Unstage EVERY pre-staged path so the chore commit cannot
             # capture unrelated pre-staged entries.
             if pre_staged_paths:
@@ -478,11 +557,16 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             try:
                 # Compare each in-scope path's HEAD blob hash against the
                 # caller-recorded pre-write content hash. SKIPPED paths
-                # stay dirty for the agent flow.
+                # stay dirty for the agent flow. The HEAD and on-disk
+                # SHAs are resolved with ONE ls-files call and ONE
+                # hash-object call -- per-path subprocess loops made a
+                # large candidate set spawn hundreds of git processes.
+                head_shas = _read_head_blob_shas(repo, path_list)
+                on_disk_shas = _git_blob_shas(repo, path_list)
                 stageable: list[str] = []
                 skipped: list[str] = []
                 for path in path_list:
-                    head_sha = _read_head_blob_sha(repo, path)
+                    head_sha = head_shas.get(path)
                     pre_sha = pre_contents.get(path)
                     if pre_sha is None and head_sha is None:
                         # Brand-new file: HEAD has no entry for it AND
@@ -527,17 +611,11 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                     # just produced is the only diff for this path
                     # since HEAD. Confirm the on-disk content also
                     # differs from HEAD (otherwise nothing to commit).
-                    on_disk_sha = git_blob_sha(repo, path)
-                    head_blob = _read_head_blob_sha(repo, path)
-                    if (
-                        on_disk_sha is not None
-                        and head_blob is not None
-                        and on_disk_sha == head_blob
-                    ):
+                    on_disk_sha = on_disk_shas.get(path)
+                    if on_disk_sha is not None and head_sha is not None and on_disk_sha == head_sha:
                         # No actual change since HEAD -- skip.
                         continue
                     stageable.append(path)
-                    del on_disk_sha, head_blob  # narrow explicit type for the next iter
 
                 if not stageable:
                     return ScopedCommitResult(
@@ -553,22 +631,19 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                 # raises, unstage whatever it already wrote and
                 # restore the pre-staged snapshot so the failed
                 # attempt leaves no half-staged debris.
-                restored = False
-                staged_so_far: list[str] = []
                 try:
                     stage_fn(repo_root_path, stageable)
-                    staged_so_far = list(stageable)
                 except (OSError, GitCommandError) as stage_exc:
                     logger.warning(
                         "commit_deterministic_writes: stage_fn raised ({!r}); "
                         "rolling back partial staging",
                         stage_exc,
                     )
-                    if staged_so_far:
+                    if stageable:
                         try:
                             _ = cast(
                                 "None",
-                                repo.git.reset("HEAD", "--", *staged_so_far),
+                                repo.git.reset("HEAD", "--", *stageable),
                             )
                         except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
                             logger.warning(
@@ -709,7 +784,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             if callable(close):
                 close()
     except (OSError, GitCommandError) as exc:
-        logger.debug("commit_deterministic_writes: outer guard caught (non-fatal): {}", exc)
+        logger.warning("commit_deterministic_writes: outer guard caught (non-fatal): {}", exc)
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 

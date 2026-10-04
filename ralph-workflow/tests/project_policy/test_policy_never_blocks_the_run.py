@@ -279,8 +279,6 @@ def test_a_failing_capture_restore_does_not_block_the_run(
             workspace_factory=MemoryWorkspace,
             emit_factory=emitted.append,
             is_tty=lambda: False,
-            working_tree_snapshot=lambda _scope: frozenset(),
-            commit_policy_updates=lambda _scope, _dirty: None,
         )
     finally:
         _loguru_logger.remove(sink_id)

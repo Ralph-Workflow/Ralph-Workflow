@@ -1,14 +1,12 @@
 """Working-tree hand-back regression (S-3) and footer neutralisation (S-7).
 
-The pre-S-4 build leaves the policy surfaces the bootstrap seeded dirty
-for the next phase to trip over. On the BLOCKED hand-back the helper
-never reaches the auto-commit; on the post-remediation READY route the
-helper DOES reach the auto-commit, but ``pre_run_dirty`` is taken AFTER
-the bootstrap has already dirtied every policy surface, so the
-deterministic ``commit_scoped_updates(..., exclude=pre_run_dirty)``
-commits nothing. The pre_run_dirty snapshot must move ABOVE the
-bootstrap so the policy surfaces the run actually authored are
-committed, and the auto-commit must run on BOTH hand-back routes.
+On the BLOCKED hand-back the deterministic policy surfaces the preflight
+seeded must not be left dirty for the next phase to trip over: the
+preflight commits its own writes immediately at the producer boundary,
+before any agent runs. On the post-remediation READY route the surfaces
+the remediation AGENT rewrote are agent-authored content: they must stay
+in the agent commit flow (dirty in the working tree) and must never be
+swept into a deterministic ``chore(policy)`` commit (wt-012 DA-003/DA-013).
 
 The S-7 case extends the same contract to the footer: a phase label
 left pinned after its loop ended reads exactly like the hang this
@@ -19,13 +17,14 @@ neutral ``Running`` label) on exit.
 
 The cases assert only the user-observable behavior: after the
 hand-back, ``list_dirty_paths(workspace_scope.root)`` reports no
-policy-scope path, and the pty-backed console's post-preflight
-transcript does not redirect the operator's status bar at a
-remediation label that has already finished. ``StatusBar._live`` and
-every other private display attribute stay off limits. The cases use
-the same real bundle the production closure resolves, so the chain
-agent that runs is the ``policy_remediation`` chain from the bundled
-defaults.
+policy-scope path the PREFLIGHT seeded (BLOCKED route), every
+agent-rewritten policy-scope path remains dirty (post-remediation
+route), and the pty-backed console's post-preflight transcript does
+not redirect the operator's status bar at a remediation label that
+has already finished. ``StatusBar._live`` and every other private
+display attribute stay off limits. The cases use the same real
+bundle the production closure resolves, so the chain agent that runs
+is the ``policy_remediation`` chain from the bundled defaults.
 """
 
 from __future__ import annotations
@@ -39,6 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 from rich.console import Console
 
 from ralph.cli.commands import run as run_module
@@ -271,14 +271,14 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
 
 
 @pytest.mark.timeout_seconds(10)
-def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
+def test_post_remediation_ready_handback_keeps_agent_writes_in_agent_flow(
     tmp_git_repo: Path,
 ) -> None:
-    """The post-remediation READY hand-back must commit the policy surfaces."""
+    """The post-remediation READY hand-back must NOT sweep remediation-agent
+    writes into a deterministic chore commit; they stay in the agent flow."""
     _ensure_run_func_state_unset()
     workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)
 
-    pre_run_dirty = list_dirty_paths(tmp_git_repo)
     captured_pipeline_state: list[PipelineState] = []
     preflight_order: list[str] = []
 
@@ -384,15 +384,39 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
         f"phase 4 was not reached after the post-remediation preflight: {preflight_order!r}"
     )
 
+    # wt-012 DA-003/DA-013: the post-pipeline sweep was REMOVED. Surfaces the
+    # remediation AGENT rewrote are agent-authored content and must stay in
+    # the agent commit flow (dirty in the working tree); the deterministic
+    # chore commit must never sweep them in. The preflight's OWN deterministic
+    # writes were committed immediately at the preflight boundary, before any
+    # agent ran.
     after_dirty = list_dirty_paths(tmp_git_repo)
-    new_policy_dirty = _policy_paths_in_scopes(after_dirty - pre_run_dirty)
-    assert not new_policy_dirty, (
-        "post-remediation READY hand-back left policy-scope paths dirty: "
-        f"{sorted(new_policy_dirty)!r}. The pre_run_dirty snapshot must "
-        "be taken BEFORE the preflight seeds the policy surfaces, "
-        "otherwise the deterministic chore commit's exclusion set "
-        "swallows the surfaces the run actually authored."
+    agent_seeds = frozenset(_POLICY_SCOPE_SEEDS)
+    swept = agent_seeds - after_dirty
+    assert not swept, (
+        "post-remediation READY hand-back swept remediation-agent-authored "
+        f"policy surfaces out of the agent commit flow: {sorted(swept)!r}. "
+        "The deterministic chore commit must never commit agent-authored "
+        "content; those paths stay dirty for the agent commit flow."
     )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        # The deterministic preflight commit exists: the preflight's own
+        # seeded surfaces were committed before any agent ran.
+        subjects = repo.git.log("--format=%s").splitlines()
+        assert "chore(policy): sync project-policy readiness" in subjects
+        # No chore commit carries the agent-authored rewrite: HEAD's version
+        # of the agent-written surfaces is the preflight seed, not the
+        # remediation agent's content.
+        from tests.project_policy.test_validator import _complete_policy_body
+
+        assert repo.git.show("HEAD:CLAUDE.md") != "# CLAUDE.md\n\nSee AGENTS.md.\n"
+        assert repo.git.show(
+            "HEAD:docs/ralph-workflow-policy/agent-policy.md"
+        ) != _complete_policy_body(filename="agent-policy.md", lang=None)
+    finally:
+        repo.close()
 
 
 @pytest.mark.timeout_seconds(10)

@@ -24,7 +24,6 @@ from loguru import logger
 from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import create_commit
-from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
@@ -36,7 +35,6 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
-from ralph.project_policy import _auto_commit as policy_auto_commit
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
 from ralph.project_policy import agents_md as policy_agents_md
@@ -83,8 +81,6 @@ _EXIT_PREFLIGHT: int = 2
 
 
 EmitFn = Callable[[str], None]
-WorkingTreeSnapshot = Callable[["WorkspaceScope"], frozenset[str]]
-PolicyCommit = Callable[["WorkspaceScope", frozenset[str] | None], None]
 
 #: Estimated wall-clock cost of the one-time policy setup. Stated in one
 #: place because it appears in several strings; it is an estimate, not a
@@ -504,29 +500,10 @@ def _build_workspace(
     return FsWorkspace(scope.root, allowed_roots=scope.allowed_roots)
 
 
-def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
-    """Capture the currently-dirty paths. Never raises."""
-    try:
-        return list_dirty_paths(workspace_scope.root)
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("working-tree snapshot failed (non-fatal): {}", exc)
-        return frozenset()
-
-
-def _commit_policy_changes(
-    workspace_scope: WorkspaceScope,
-    pre_run_dirty: frozenset[str] | None,
-) -> None:
-    _auto_commit_policy_changes(workspace_scope, pre_run_dirty)
-
-
 def _finalize_ready_state(
     workspace: Workspace,
     workspace_scope: WorkspaceScope,
     stack: ProjectStack,
-    pre_run_dirty: frozenset[str] | None = None,
-    *,
-    commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> None:
     """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
     block to its concise form, commit the policy surfaces, then write the
@@ -575,52 +552,20 @@ def _finalize_ready_state(
         if result.status.value == "created" and result.sha:
             logger.debug("project-policy auto-commit created: {}", result.sha)
         elif result.status.value == "skipped":
-            logger.debug(
+            logger.warning(
                 "project-policy auto-commit skipped: AGENTS.md was already dirty at HEAD "
                 "(agent edit?)"
             )
         elif result.status.value == "failed":
-            logger.debug(
+            logger.warning(
                 "project-policy auto-commit failed (non-fatal): {}", result.error
             )
     except Exception as exc:
-        logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
+        logger.warning("project-policy auto-commit failed (non-fatal): {}", exc)
     try:
         policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
     except Exception as exc:
         logger.debug("project-policy READY cache write failed (non-fatal): {}", exc)
-
-
-def _auto_commit_policy_changes(
-    workspace_scope: WorkspaceScope,
-    pre_run_dirty: frozenset[str] | None = None,
-) -> None:
-    """Best-effort deterministic auto-commit of the policy surfaces (post-pipeline).
-
-    wt-012: this is the safety-net pass that runs after the preflight's
-    producer-level commit. The preflight already committed the surfaces
-    it wrote; this pass picks up any remaining dirty policy surfaces
-    (e.g. ones that became dirty between the preflight and the post-
-    pipeline finalize) and commits them with the same exclusion
-    discipline as before. Agent-authored paths (gate scripts outside
-    the policy directories) are NOT swept in here; they stay in the
-    agent commit flow.
-
-    ``pre_run_dirty`` is subtracted from the in-scope set so a user
-    mid-edit on ``AGENTS.md`` or a policy file is never swept in.
-    Failures are logged and swallowed -- a broken git state must not
-    block the run.
-    """
-    try:
-        sha = policy_auto_commit.commit_policy_updates(
-            workspace_scope.root,
-            create_commit,
-            pre_run_dirty=pre_run_dirty,
-        )
-        if sha is not None:
-            logger.debug("project-policy auto-commit created: {}", sha)
-    except Exception as exc:
-        logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
 
 
 def _build_emit(
@@ -653,9 +598,6 @@ def _dispatch_preflight_result(
     mode: PolicyMode,
     emit: Callable[[str], None],
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
-    pre_run_dirty: frozenset[str],
-    working_tree_snapshot: WorkingTreeSnapshot,
-    commit_policy_updates: PolicyCommit,
 ) -> int:
     """Run the policy pipeline and map its result to an exit code.
 
@@ -664,12 +606,10 @@ def _dispatch_preflight_result(
     ready is a warning, not a failure of the run. See
     :func:`_exit_code_for_not_ready`.
 
-    ``pre_run_dirty`` is taken at the OUTER boundary (in
-    :func:`_run_policy_readiness`) BEFORE the preflight seeds the policy
-    surfaces, so the deterministic chore commit's exclusion set does
-    not swallow the surfaces the policy run actually authored. It is
-    threaded through here so both the READY and the NOT-READY routes
-    can hand the policy surfaces back committed instead of dirty.
+    wt-012: the NOT-READY route exits without any post-pipeline commit.
+    The preflight already committed its own deterministic writes before
+    any agent ran, and remediation-agent edits stay in the agent commit
+    flow; there is nothing left for a post-pipeline pass to sweep.
     """
     chain_agents = _resolve_chain_agents(load_result, PHASE_REMEDIATION)
     if not chain_agents and invoke_remediation_agent_factory is None:
@@ -681,7 +621,6 @@ def _dispatch_preflight_result(
             "project-policy-readiness: the policy_remediation chain has no "
             "configured agent; continuing without a ready policy."
         )
-        commit_policy_updates(workspace_scope, pre_run_dirty)
         return _exit_code_for_not_ready(mode)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
@@ -757,19 +696,11 @@ def _dispatch_preflight_result(
             workspace,
             workspace_scope,
             stack,
-            pre_run_dirty,
-            commit_policy_updates=commit_policy_updates,
         )
         return _EXIT_SUCCESS
-    # The NOT-READY route must run the same deterministic scoped commit the
-    # READY route runs, with the same ``pre_run_dirty``, so the files the
-    # policy run seeded are handed back committed instead of left for the
-    # next phase. The placeholder AGENTS.md block is NOT condensed here:
-    # only ``_finalize_ready_state`` owns that mutation, and the project
-    # is not ready. The ``authored`` set is no longer threaded to the
-    # commit -- wt-012 removed that scope expansion; remediation agent
-    # writes stay in the agent commit flow.
-    commit_policy_updates(workspace_scope, pre_run_dirty)
+    # The NOT-READY route exits without sweeping policy surfaces; preflight
+    # already committed deterministic pre-remediation writes before any agent ran.
+    # Remediation agent edits stay in the agent commit flow.
     emit("\n".join(final.report_lines))
     return _exit_code_for_not_ready(mode)
 
@@ -802,8 +733,6 @@ def run_project_policy_readiness(
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
     select_factory: _prompt_ui.SelectFn | None = None,
     is_tty: Callable[[], bool] | None = None,
-    working_tree_snapshot: WorkingTreeSnapshot = _snapshot_working_tree,
-    commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> int:
     """Run the project-policy preflight at run_pipeline startup. NEVER blocks.
 
@@ -839,8 +768,6 @@ def run_project_policy_readiness(
             invoke_remediation_agent_factory=invoke_remediation_agent_factory,
             select_factory=select_factory,
             is_tty=is_tty,
-            working_tree_snapshot=working_tree_snapshot,
-            commit_policy_updates=commit_policy_updates,
         )
     except Exception as exc:
         logger.opt(exception=True).warning(
@@ -884,8 +811,6 @@ def _run_policy_readiness(
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
     select_factory: _prompt_ui.SelectFn | None,
     is_tty: Callable[[], bool] | None,
-    working_tree_snapshot: WorkingTreeSnapshot,
-    commit_policy_updates: PolicyCommit,
 ) -> int:
     """The preflight body. Every exit path here is wrapped by the fault boundary.
 
@@ -902,14 +827,6 @@ def _run_policy_readiness(
     workspace_scope = load_result.workspace_scope
     if workspace_scope is None:
         return _EXIT_SUCCESS
-
-    # Snapshot the working tree BEFORE the policy preflight writes anything.
-    # The post-run difference is what attributes a newly-written gate script
-    # to the policy agents rather than to the user, and the snapshot lives
-    # outside the dispatch helper so the deterministic chore commit's
-    # exclusion set does NOT swallow the policy surfaces the bootstrap
-    # seeded (the surfaces the commit exists to pick up).
-    pre_run_dirty = working_tree_snapshot(workspace_scope)
 
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
@@ -945,8 +862,6 @@ def _run_policy_readiness(
             workspace,
             workspace_scope,
             stack,
-            pre_run_dirty,
-            commit_policy_updates=commit_policy_updates,
         )
         return _EXIT_SUCCESS
 
@@ -961,9 +876,6 @@ def _run_policy_readiness(
         mode=mode,
         emit=emit,
         invoke_remediation_agent_factory=invoke_remediation_agent_factory,
-        pre_run_dirty=pre_run_dirty,
-        working_tree_snapshot=working_tree_snapshot,
-        commit_policy_updates=commit_policy_updates,
     )
 
 

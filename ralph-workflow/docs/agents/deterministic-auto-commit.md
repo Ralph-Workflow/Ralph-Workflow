@@ -106,14 +106,14 @@ the audit and the gate.
 
 ## Cross-links
 
-- [AGENTS.md §'Non-negotiables'](../../AGENTS.md) -- the
+- [AGENTS.md §'Non-negotiables'](../../../AGENTS.md) -- the
   no-exemption rule for red gates.
 - `ralph/git/scoped_auto_commit.py` -- the shared isolation
   primitive.
 - `ralph/skills/_auto_commit.py` and
   `ralph/project_policy/_auto_commit.py` -- the producer-level
   helpers.
-- [Verification Guide](verification.md) -- the budget / audit
+- [Verification Guide](../../../docs/agents/verification.md) -- the budget / audit
   policy that owns the auto-commit's runtime discipline.
 
 ## Documentation review note

@@ -8,11 +8,12 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import GitCommandError, InvalidGitRepositoryError, Repo
+from git import InvalidGitRepositoryError, Repo
 
-from ralph.git.scoped_auto_commit import capture_pre_write_contents, git_blob_sha
+from ralph.git.scoped_auto_commit import capture_pre_write_contents
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._agent_paths import (
@@ -35,7 +36,8 @@ from ralph.skills._content import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
+
+    from git import Repo
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
 
@@ -66,6 +68,32 @@ class ProjectSkillInstallOutcome:
     pre_contents: dict[str, str | None] = field(default_factory=dict)
 
 
+def _discover_skill_names(root_path: Path) -> set[str]:
+    """Discover skill directory/symlink names in a root path."""
+    names: set[str] = set()
+    if root_path.is_dir():
+        try:
+            for entry in root_path.iterdir():
+                if entry.is_dir() or entry.is_symlink():
+                    names.add(entry.name)
+        except OSError:
+            pass
+    return names
+
+
+def _collect_dir_files(dir_path: Path, workspace_root: Path) -> list[str]:
+    """Collect all workspace-relative file paths under a non-symlink directory."""
+    if not dir_path.is_dir() or dir_path.is_symlink():
+        return []
+    try:
+        paths: list[str] = []
+        for root_dir, _dirs, files in os.walk(dir_path):  # filesystem-read-ok: symlink-aware descendant enumeration; Workspace.iter_files does not expose per-child os.walk ordering
+            paths.extend(_rel(Path(root_dir), f, workspace_root) for f in sorted(files))
+        return paths
+    except OSError:
+        return []
+
+
 def _candidate_skill_paths(workspace_root: Path) -> list[str]:
     """List every repo-relative path the project-scope install could write.
 
@@ -79,31 +107,41 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
     canonical = project_skill_root(workspace_root)
     candidates: list[str] = [_rel(canonical, "metadata.json", workspace_root)]
     skill_names = set(BASELINE_SKILL_NAMES)
-    if canonical.is_dir():
-        try:
-            for entry in canonical.iterdir():
-                if entry.is_dir() or entry.is_symlink():
-                    skill_names.add(entry.name)
-        except OSError:
-            pass
+    skill_names.update(_discover_skill_names(canonical))
     for sibling in project_sibling_skill_roots(workspace_root):
-        sibling_root = sibling.resolve(workspace_root)
-        if sibling_root.is_dir():
-            try:
-                for entry in sibling_root.iterdir():
-                    if entry.is_dir() or entry.is_symlink():
-                        skill_names.add(entry.name)
-            except OSError:
-                pass
+        skill_names.update(_discover_skill_names(sibling.resolve(workspace_root)))
+
     for name in sorted(skill_names):
         candidates.append(_rel(canonical / name, "SKILL.md", workspace_root))
         candidates.append(_rel(canonical / name, _MANAGED_MARKER, workspace_root))
+        candidates.extend(_collect_dir_files(canonical / name, workspace_root))
+
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
-        candidates.extend(
-            _rel(sibling_root, name, workspace_root) for name in sorted(skill_names)
-        )
-    return candidates
+        for name in sorted(skill_names):
+            candidates.append(_rel(sibling_root, name, workspace_root))
+            candidates.append(_rel(sibling_root / name, "SKILL.md", workspace_root))
+            candidates.append(_rel(sibling_root / name, _MANAGED_MARKER, workspace_root))
+            candidates.extend(_collect_dir_files(sibling_root / name, workspace_root))
+            canonical_dir = canonical / name
+            if canonical_dir.is_dir() and not canonical_dir.is_symlink():
+                sib_dir = sibling_root / name
+                try:
+                    for root_dir, _dirs, files in os.walk(canonical_dir):  # filesystem-read-ok: canonical descendant enumeration mirroring sibling paths; Workspace.iter_files does not expose per-child os.walk ordering
+                        for f in sorted(files):
+                            rel_to_canonical = Path(root_dir, f).relative_to(canonical_dir)
+                            candidates.append(
+                                _rel(sib_dir, rel_to_canonical.as_posix(), workspace_root)
+                            )
+                except OSError:
+                    pass
+    seen: set[str] = set()
+    unique_candidates: list[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+    return unique_candidates
 
 
 def _rel(absolute: Path, leaf: str, workspace_root: Path) -> str:
@@ -113,6 +151,50 @@ def _rel(absolute: Path, leaf: str, workspace_root: Path) -> str:
         return target.relative_to(workspace_root).as_posix()
     except ValueError:
         return (target.parent.resolve() / target.name).relative_to(workspace_root.resolve()).as_posix()
+
+
+def _is_beyond_symlink(abs_path: Path, workspace_root: Path) -> bool:
+    """Return True if any ancestor directory between workspace_root and abs_path is a symlink."""
+    try:
+        ws_resolved = workspace_root.resolve()
+        curr = abs_path.parent
+        while curr != workspace_root and curr.resolve() != ws_resolved:
+            if curr.is_symlink():
+                return True
+            parent = curr.parent
+            if parent == curr:
+                break
+            curr = parent
+    except OSError:
+        pass
+    return False
+
+
+def _diff_real_dir_descendants(
+    repo: Repo,
+    abs_path: Path,
+    workspace_root: Path,
+    pre_contents: dict[str, str | None],
+) -> list[str]:
+    """Find newly written or modified files under a materialized directory."""
+    from ralph.git.scoped_auto_commit import _git_blob_shas  # noqa: PLC0415
+
+    rel_children: list[str] = []
+    try:
+        for root_dir, _dirs, files in os.walk(abs_path):  # filesystem-read-ok: materialized-dir descendant enumeration; Workspace.iter_files does not expose per-child os.walk ordering
+            rel_children.extend(
+                Path(root_dir, f).relative_to(workspace_root).as_posix()
+                for f in sorted(files)
+            )
+    except OSError:
+        pass
+    child_shas = _git_blob_shas(repo, rel_children)
+    return [
+        rel_child
+        for rel_child in rel_children
+        if (child_sha := child_shas.get(rel_child)) is not None
+        and pre_contents.get(rel_child) != child_sha
+    ]
 
 
 def _diff_written_paths(
@@ -143,11 +225,19 @@ def _diff_written_paths(
     actually changed. The deterministic auto-commit consumes it via
     :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`.
     """
+    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415 -- producer-side diff helper
+        _git_blob_shas,
+    )
+
     try:
         repo = Repo(workspace_root)
     except (InvalidGitRepositoryError, Exception):
         return []
     try:
+        # ONE batched hash-object call for every candidate -- a per-path
+        # loop would spawn a git subprocess per file (hundreds per
+        # startup sync, a measurable S-1 latency regression).
+        on_disk_shas = _git_blob_shas(repo, candidate_paths)
         written: list[str] = []
         for path in candidate_paths:
             abs_path = workspace_root / path
@@ -159,8 +249,11 @@ def _diff_written_paths(
                     written.append(path)
                 continue
             if abs_path.is_dir() and not abs_path.is_symlink():
-                # A bare directory at this path is not what the
-                # install creates -- skip.
+                # Fallback materialization via copytree creates a real directory.
+                # Discover all descendant files and check if they are newly written.
+                for desc in _diff_real_dir_descendants(repo, abs_path, workspace_root, pre_contents):
+                    if desc not in written:
+                        written.append(desc)
                 continue
             if abs_path.is_dir():
                 # Directory-shaped candidate (project-scope sibling
@@ -171,10 +264,9 @@ def _diff_written_paths(
                 if pre_sha is None:
                     written.append(path)
                 continue
-            try:
-                current_sha = git_blob_sha(repo, path)
-            except (OSError, GitCommandError):
+            if _is_beyond_symlink(abs_path, workspace_root):
                 continue
+            current_sha = on_disk_shas.get(path)
             pre_sha = pre_contents.get(path)
             if pre_sha != current_sha:
                 written.append(path)
@@ -212,7 +304,7 @@ def install_project_baseline_skills_with_diff(
         entry=entry,
         failures=failures,
         written_paths=written,
-        pre_contents={path: pre_contents[path] for path in written},
+        pre_contents={path: pre_contents.get(path) for path in written},
     )
 
 
@@ -243,8 +335,7 @@ def _compute_skill_hash(name: str) -> str:
 
 
 def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
-    """Create a symlink without sharing mutable Path method state with tests.
-
+    """Create a symlink without sharing mutable Path method state with tests."""
     # deterministic-writer-ok: this is a sibling fan-out symlink
     # created by ``install_project_baseline_skills``; the producer-
     # level ``install_project_baseline_skills_with_diff`` wrapper
@@ -253,7 +344,6 @@ def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = Fal
     # ``ralph.git.scoped_auto_commit.commit_deterministic_writes``
     # at the install boundary. The audit recognises this file's
     # writers as routed by the caller.
-    """
     path.symlink_to(target, target_is_directory=target_is_directory)
 
 
@@ -275,6 +365,7 @@ def _mirror_skill_to_sibling_root(
         # filesystem-write-ok: replace managed sibling skill mirror before relinking it to canonical content
         shutil.rmtree(sibling_dir)
     try:
+        # deterministic-writer-ok: sibling skill symlink is committed at install boundary by caller
         _create_symlink(sibling_dir, canonical_root / skill_name, target_is_directory=True)
     except OSError:
         try:
@@ -300,6 +391,7 @@ def _mirror_baseline_skills_to_siblings(canonical_root: Path) -> list[str]:
             # filesystem-write-ok: replace managed sibling metadata directory before relinking canonical metadata
             shutil.rmtree(sibling_metadata)
         try:
+            # deterministic-writer-ok: sibling metadata symlink is committed at install boundary by caller
             _create_symlink(sibling_metadata, canonical_root / "metadata.json")
         except OSError:
             try:
@@ -426,7 +518,8 @@ def _materialize_project_sibling_dir(
         resolved_target = canonical_target.resolve()
         resolved_parent = sibling_dir.parent.resolve()
         relative_target = os.path.relpath(resolved_target, start=resolved_parent)
-        sibling_dir.symlink_to(relative_target, target_is_directory=True)
+        # deterministic-writer-ok: project sibling skill symlink is committed at install boundary by caller
+        _create_symlink(sibling_dir, Path(relative_target), target_is_directory=True)
     except OSError:
         try:
             # filesystem-write-ok: fallback materialization preserves the managed project sibling skill contract
@@ -491,6 +584,7 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         )
         if on_disk_hash == bundled_sha:
             return False
+        # deterministic-writer-ok: canonical skill overwrite is committed by the caller via commit_skill_writes
         write_text_if_changed(DEFAULT_FILE_BACKEND, skill_file, bundled_content, encoding="utf-8")
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,

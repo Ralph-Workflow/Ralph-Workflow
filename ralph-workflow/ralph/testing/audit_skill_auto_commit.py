@@ -486,6 +486,13 @@ _WRITER_AUDIT_RULES: tuple[dict[str, object], ...] = (
         ),
         "rule": "tracked",
     },
+    {
+        "path": "cli/commands/init.py",
+        "writer_literals": (
+            "write_text_if_changed",  # starter prompt seeding
+        ),
+        "rule": "tracked",
+    },
 )
 
 
@@ -574,82 +581,216 @@ def _check_no_direct_chore_commit() -> list[str]:
     return problems
 
 
+_MAX_PRECEDING_LINES_TO_CHECK: int = 15
+
+
+def _is_call_to_literal(node: ast.Call, lit: str) -> bool:
+    """Check if AST Call matches writer literal string."""
+    func = node.func
+    if lit == "workspace.write":
+        return isinstance(func, ast.Attribute) and func.attr == "write"
+    if isinstance(func, ast.Attribute) and func.attr == lit:
+        return True
+    return isinstance(func, ast.Name) and func.id == lit
+
+
+def _is_tracked_write_call(
+    node: ast.Call, rel: str, registered_literals: tuple[str, ...]
+) -> bool:
+    """Determine whether an AST Call is a tracked write operation in this file."""
+    if any(_is_call_to_literal(node, lit) for lit in registered_literals):
+        return True
+
+    func = node.func
+    if rel.startswith("project_policy/"):
+        return isinstance(func, ast.Attribute) and func.attr == "write"
+    if rel.startswith("skills/"):
+        return (
+            (isinstance(func, ast.Attribute) and func.attr in {"copytree", "symlink_to"})
+            or (isinstance(func, ast.Name) and func.id in {"_create_symlink", "copytree"})
+        )
+    if rel.startswith("config/"):
+        return isinstance(func, ast.Name) and func.id == "_atomic_append_text"
+    if rel == "cli/commands/init.py":
+        return isinstance(func, ast.Name) and func.id == "write_text_if_changed"
+
+    return False
+
+
+def _has_preceding_marker(src_lines: list[str], lineno: int) -> bool:
+    """Check if the call line or any contiguous preceding comment line has a writer marker."""
+    idx = lineno - 1
+    if 0 <= idx < len(src_lines):
+        line = src_lines[idx]
+        if "deterministic-writer-ok" in line or "filesystem-write-ok" in line:
+            return True
+    idx -= 1
+    checked = 0
+    while idx >= 0 and checked < _MAX_PRECEDING_LINES_TO_CHECK:
+        line = src_lines[idx].strip()
+        if not line:
+            idx -= 1
+            checked += 1
+            continue
+        if line.startswith("#"):
+            if "deterministic-writer-ok" in line or "filesystem-write-ok" in line:
+                return True
+            idx -= 1
+            checked += 1
+            continue
+        break
+    return False
+
+
+def _is_enclosing_function_routed(node: ast.Call, parent_map: dict[ast.AST, ast.AST]) -> bool:
+    """Check if the function enclosing the call site routes through a commit helper."""
+    curr: ast.AST | None = node
+    while curr is not None:
+        if isinstance(curr, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for n in ast.walk(curr):
+                if isinstance(n, ast.Call):
+                    name: str | None = None
+                    if isinstance(n.func, ast.Name):
+                        name = n.func.id
+                    elif isinstance(n.func, ast.Attribute):
+                        name = n.func.attr
+                    if name in (
+                        "commit_deterministic_writes",
+                        "commit_policy_writes",
+                        "commit_skill_writes",
+                        "commit_scoped_updates",
+                    ):
+                        return True
+        curr = parent_map.get(curr)
+    return False
+
+
+def _inspect_file_writes(
+    tree: ast.AST,
+    rel: str,
+    src_lines: list[str],
+    registered_literals: tuple[str, ...],
+) -> list[str]:
+    """Inspect AST calls in a file and return problems for unrouted/unmarked writes."""
+    parent_map: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parent_map[child] = parent
+
+    problems: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not _is_tracked_write_call(node, rel, registered_literals):
+            continue
+
+        has_marker = _has_preceding_marker(src_lines, node.lineno)
+        is_routed = _is_enclosing_function_routed(node, parent_map)
+        if not (has_marker or is_routed):
+            problems.append(
+                f"  {rel}:{node.lineno}: unmarked deterministic writer site; "
+                "route via commit_deterministic_writes or add an inline "
+                "# deterministic-writer-ok: <reason> marker"
+            )
+    return problems
+
+
 def _check_production_writer_scan() -> list[str]:
     """Scan all production files for tracked writes, requiring commit routing or an inline marker.
 
     AST-walks every production file in ralph/ (excluding testing/ and
-    __pycache__/). If a call to a tracked write primitive (such as
-    workspace.write in project_policy/, or copytree/_create_symlink/symlink_to
-    in skills/) is encountered, the file MUST route through
-    commit_deterministic_writes / commit_policy_writes / commit_skill_writes
-    OR the call line / its 3-line prelude MUST carry an inline
-    ``# deterministic-writer-ok: <reason>`` marker.
+    __pycache__/). If a call to a tracked write primitive is encountered,
+    the call must route through commit_deterministic_writes / commit_policy_writes /
+    commit_skill_writes OR the call line / preceding comments must carry an inline
+    ``# deterministic-writer-ok: <reason>`` or ``# filesystem-write-ok: <reason>`` marker.
     """
     problems: list[str] = []
-    target_dirs = ("project_policy", "skills", "config")
-    for subdir in target_dirs:
-        sub_path = _PACKAGE_ROOT / subdir
-        if not sub_path.exists():
+    rules_by_path = {
+        rule["path"]: rule for rule in _WRITER_AUDIT_RULES if isinstance(rule.get("path"), str)
+    }
+
+    for py_path in sorted(_PACKAGE_ROOT.rglob("*.py")):
+        rel = py_path.relative_to(_PACKAGE_ROOT).as_posix()
+        if rel.startswith("testing/") or "__pycache__" in rel or rel == "git/scoped_auto_commit.py":
             continue
-        for py_path in sorted(sub_path.rglob("*.py")):
-            rel = py_path.relative_to(_PACKAGE_ROOT).as_posix()
-            if rel.startswith("testing/"):
-                continue
-            if "__pycache__" in rel:
-                continue
-            src = _read(rel)
-            if not any(k in src for k in ("write", "copytree", "symlink_to", "_create_symlink")):
-                continue
-            try:
-                tree = ast.parse(src)
-            except SyntaxError:
-                continue
-            src_lines = src.splitlines()
-            routes_through_helper = any(
-                h in src
-                for h in (
-                    "commit_deterministic_writes",
-                    "commit_policy_writes",
-                    "commit_skill_writes",
-                    "commit_scoped_updates",
-                )
+        src = _read(rel)
+        if not any(
+            k in src
+            for k in (
+                "write",
+                "copytree",
+                "symlink_to",
+                "_create_symlink",
+                "_atomic_append_text",
+                "write_text_if_changed",
             )
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                is_tracked_write = (
-                    (
-                        isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "write"
-                        and (rel.startswith("project_policy/") or rel.startswith("skills/"))
-                    )
-                    or (
-                        rel.startswith("skills/")
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr in {"copytree", "symlink_to"}
-                    )
-                    or (
-                        rel.startswith("skills/")
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id in {"_create_symlink", "copytree"}
-                    )
-                )
-
-                if not is_tracked_write:
-                    continue
-                if routes_through_helper:
-                    continue
-
-                line_idx = max(0, (node.lineno or 1) - 4)
-                window = src_lines[line_idx : (node.lineno or 1)]
-                has_marker = any("deterministic-writer-ok" in line for line in window)
-                if not has_marker:
-                    problems.append(
-                        f"  {rel}:{node.lineno}: unmarked deterministic writer site; "
-                        "route via commit_deterministic_writes or add an inline "
-                        "# deterministic-writer-ok: <reason> marker"
-                    )
+        ):
+            continue
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        rule = rules_by_path.get(rel)
+        registered_literals_obj: object = rule.get("writer_literals", ()) if rule else ()
+        registered_literals = (
+            tuple(str(x) for x in registered_literals_obj)
+            if isinstance(registered_literals_obj, tuple)
+            else ()
+        )
+        problems.extend(_inspect_file_writes(tree, rel, src.splitlines(), registered_literals))
     return problems
+
+
+def _check_single_writer_rule(rule: dict[str, object]) -> list[str]:
+    """Validate that a registered tracked writer routes through commit or has marker."""
+    rel_raw: object = rule["path"]
+    writer_literals_raw: object = rule["writer_literals"]
+    rule_kind_raw: object = rule["rule"]
+    if (
+        not isinstance(rel_raw, str)
+        or not isinstance(writer_literals_raw, tuple)
+        or not isinstance(rule_kind_raw, str)
+    ):
+        return []
+    rel = rel_raw
+    writer_literals = tuple(str(x) for x in writer_literals_raw)
+    try:
+        content = _read(rel)
+    except FileNotFoundError:
+        return [f"  {rel}: required writer-audit file missing (delete must update audit registry)"]
+    if rule_kind_raw != "tracked":
+        return []
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return [f"  {rel}: syntax error parsing writer file"]
+
+    src_lines = content.splitlines()
+    parent_map: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parent_map[child] = parent
+
+    file_has_matching_site = False
+    unrouted_sites: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not any(_is_call_to_literal(node, lit) for lit in writer_literals):
+            continue
+        file_has_matching_site = True
+        has_marker = _has_preceding_marker(src_lines, node.lineno)
+        is_routed = _is_enclosing_function_routed(node, parent_map)
+        if not (has_marker or is_routed):
+            unrouted_sites.append(node.lineno)
+
+    if unrouted_sites or not file_has_matching_site:
+        return [
+            f"  {rel}: tracked writer ({writer_literals!r}) MUST either "
+            "route through commit_deterministic_writes or carry an "
+            "inline ``# deterministic-writer-ok: <reason>`` marker"
+        ]
+    return []
 
 
 def _check_writer_routing() -> list[str]:
@@ -662,36 +803,7 @@ def _check_writer_routing() -> list[str]:
     """
     problems: list[str] = []
     for rule in _WRITER_AUDIT_RULES:
-        rel_raw: object = rule["path"]
-        writer_literals_raw: object = rule["writer_literals"]
-        rule_kind_raw: object = rule["rule"]
-        if not isinstance(rel_raw, str):
-            continue
-        rel = rel_raw
-        if not isinstance(writer_literals_raw, tuple):
-            continue
-        writer_literals: tuple[object, ...] = writer_literals_raw
-        if not isinstance(rule_kind_raw, str):
-            continue
-        rule_kind = rule_kind_raw
-        try:
-            content = _read(rel)
-        except FileNotFoundError:
-            problems.append(
-                f"  {rel}: required writer-audit file missing (delete must update audit registry)"
-            )
-            continue
-        # The writer routes through commit_deterministic_writes if the
-        # file imports + calls the helper.
-        routes_through_helper = "commit_deterministic_writes" in content
-        # Or carries an inline deterministic-writer-ok marker.
-        carries_marker = "deterministic-writer-ok" in content
-        if rule_kind == "tracked" and not (routes_through_helper or carries_marker):
-            problems.append(
-                f"  {rel}: tracked writer ({writer_literals!r}) MUST either "
-                "route through commit_deterministic_writes or carry an "
-                "inline ``# deterministic-writer-ok: <reason>`` marker"
-            )
+        problems.extend(_check_single_writer_rule(rule))
     return problems
 
 

@@ -148,7 +148,7 @@ def commit_policy_updates(
     if result.status is ScopedCommitStatus.CREATED:
         return result.sha
     if result.status is ScopedCommitStatus.FAILED:
-        logger.debug("commit_policy_updates: failed ({}); returning None", result.error)
+        logger.warning("commit_policy_updates: failed ({}); returning None", result.error)
     return None
 
 

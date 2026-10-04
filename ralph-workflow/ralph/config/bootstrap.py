@@ -598,6 +598,7 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     if missing:
         exclude_path.parent.mkdir(parents=True, exist_ok=True)
         payload = "\n".join(missing) + "\n"
+        # deterministic-writer-ok: .git/info/exclude is non-committable local repository metadata
         _atomic_append_text(exclude_path, payload)
     return list(missing)
 

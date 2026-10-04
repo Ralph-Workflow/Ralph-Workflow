@@ -441,19 +441,16 @@ def test_post_preflight_channel_ledger_records_six_channels(
     assert new_thread_names == [], (
         f"threads channel: preflight created threads {new_thread_names!r}"
     )
-    # The S-1 measurement on the BLOCKED hand-back: the S-4 fix
-    # swept the deterministic chore commit onto the BLOCKED route
-    # (``_dispatch_preflight_result`` now calls
-    # ``_auto_commit_policy_changes`` on the not-ready path), and
-    # moved the ``pre_run_dirty`` snapshot ABOVE the preflight so
-    # the commit's exclusion set does not swallow the policy
-    # surfaces the bootstrap seeded. The post-S-4 ``after`` is the
-    # empty set; if this fails the auto-commit landed but the
-    # snapshot was taken too late, or the commit was skipped on the
-    # not-ready return.
+    # The S-1 measurement on the BLOCKED hand-back: the preflight
+    # commits its own deterministic writes immediately at the
+    # producer boundary (``preflight._commit_preflight_writes``),
+    # before any agent runs, so the BLOCKED route hands back a
+    # clean policy scope. The post-wt-012 ``after`` is the empty
+    # set; if this fails the preflight's producer-level commit
+    # landed late, was skipped, or never ran.
     assert not policy_dirty, (
         "dirty_tree channel: BLOCKED hand-back left policy-scope paths dirty: "
-        f"{sorted(policy_dirty)!r}. The S-4 fix should sweep the deterministic "
-        "chore commit onto the BLOCKED route -- see "
-        "cli_integration._dispatch_preflight_result."
+        f"{sorted(policy_dirty)!r}. The preflight's producer-level commit "
+        "should have committed the seeded surfaces -- see "
+        "project_policy.preflight._commit_preflight_writes."
     )
