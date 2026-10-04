@@ -42,6 +42,7 @@ subprocess, no network. Targets <5s wall clock to stay inside the
 
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -488,6 +489,10 @@ def test_every_advertised_endpoint_round_trips(
     spawning an OS process. See
     :func:`_patch_exec_handlers_with_in_memory_runner`.
     """
+    # Saturation has dedicated tests. This sweep isolates the endpoint bridge
+    # from process-global executor state left by other test modules.
+    saturated_dispatch = importlib.import_module("ralph.mcp.server._saturated_dispatch")
+    monkeypatch.setattr(saturated_dispatch, "submit", lambda callable_: callable_())
     _seed_workspace(tmp_path)
     _patch_exec_handlers_with_in_memory_runner(monkeypatch)
     _install_web_backends(monkeypatch)

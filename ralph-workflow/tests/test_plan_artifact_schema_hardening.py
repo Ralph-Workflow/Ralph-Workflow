@@ -21,7 +21,6 @@ from ralph.mcp.artifacts.plan import (
     PLAN_SECTION_OBJECT_MODELS,
     EvidenceRef,
     PlanArtifact,
-    PlanArtifactValidationError,
     PlanConstraints,
     VerificationStep,
     normalize_plan_artifact_content,
@@ -145,40 +144,6 @@ def test_plan_step_preserves_project_specific_step_types(alias: str) -> None:
     assert normalized_steps[0]["step_type"] == alias
 
 
-def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
-    """Direct canonical payloads share Markdown's document-wide step namespace."""
-    plan = _base_plan_dict()
-    steps = must_dict_list(plan["steps"])
-    steps.append(
-        {
-            "number": 1,
-            "title": "Duplicate",
-            "content": "This must not shadow the first consumed step.",
-            "step_type": "file_change",
-            "targets": [{"path": "src/a.py", "action": "modify"}],
-        }
-    )
-
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match=r"duplicate plan step number 1",
-    ):
-        normalize_plan_artifact_content(plan)
-
-
-def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
-    """A canonical dependency must resolve just like a Markdown ``S-n`` edge."""
-    plan = _base_plan_dict()
-    steps = must_dict_list(plan["steps"])
-    steps[0]["depends_on"] = [99]
-
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match=r"plan step 1 depends on unknown step 99",
-    ):
-        normalize_plan_artifact_content(plan)
-
-
 def test_canonical_step_command_accepts_missing_expected_outcome() -> None:
     plan = _base_plan_dict()
     steps = must_dict_list(plan["steps"])
@@ -188,27 +153,34 @@ def test_canonical_step_command_accepts_missing_expected_outcome() -> None:
     assert must_dict_list(normalized["steps"])[0]["verify_command"] == "pytest tests/test_x.py -q"
 
 
-def test_canonical_acceptance_command_requires_an_expected_outcome() -> None:
-    """Acceptance commands retain the same evaluator contract after mapping."""
+def test_canonical_plan_accepts_duplicate_consumed_step_numbers() -> None:
+    """Free-form plan shape accepts duplicate step numbers; extraction deduplicates."""
     plan = _base_plan_dict()
-    plan["design"] = {
-        "acceptance_criteria": {
-            "criteria": [
-                {
-                    "id": "AC-01",
-                    "description": "The focused behavior is proven.",
-                    "verification_step": "pytest tests/test_x.py -q",
-                    "satisfied_by_steps": [1],
-                }
-            ]
+    steps = must_dict_list(plan["steps"])
+    steps.append(
+        {
+            "number": 1,
+            "title": "Duplicate",
+            "content": "Free-form plans tolerate duplication for best-effort extraction.",
+            "step_type": "file_change",
+            "targets": [{"path": "src/a.py", "action": "modify"}],
         }
-    }
+    )
 
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match=r"verification_step must declare expected_outcome",
-    ):
-        normalize_plan_artifact_content(plan)
+    # The permissive shape contract does not raise on duplicate numbers.
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["steps"])[1]["title"] == "Duplicate"
+
+
+def test_canonical_plan_accepts_dangling_step_dependencies() -> None:
+    """Free-form plans do not enforce canonical dependency graph resolution."""
+    plan = _base_plan_dict()
+    steps = must_dict_list(plan["steps"])
+    steps[0]["depends_on"] = [99]
+
+    # The permissive shape contract does not raise on dangling dependencies.
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["steps"])[0]["depends_on"] == [99]
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +321,11 @@ def test_intent_verb_scope_category_add_accepts_broad_categories() -> None:
 
 
 def test_parallel_plan_and_work_units_mutually_exclusive() -> None:
-    """A plan declaring both parallel_plan and work_units is rejected."""
+    """Free-form plans tolerate both ``parallel_plan`` and ``work_units``.
+
+    The permissive shape contract preserves every field the planner
+    provides so best-effort extraction can still pick a representation.
+    """
     plan = _base_plan_dict()
     plan["parallel_plan"] = [
         {
@@ -367,11 +343,9 @@ def test_parallel_plan_and_work_units_mutually_exclusive() -> None:
             "dependencies": [],
         }
     ]
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match="plan cannot declare both parallel_plan and work_units",
-    ):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["parallel_plan"])[0]["id"] == "unit-a"
+    assert must_dict_list(normalized["work_units"])[0]["unit_id"] == "wu-1"
 
 
 @pytest.mark.parametrize(
@@ -447,12 +421,18 @@ def test_canonical_work_unit_graph_and_ownership_are_strict(
     work_units: list[dict[str, object]],
     message: str,
 ) -> None:
-    """Direct payloads retain every consumed fan-out graph invariant."""
+    """Free-form plans preserve the planner's work-unit payload verbatim.
+
+    The permissive shape contract leaves duplicate IDs, dangling
+    dependencies, dependency cycles, unknown step owners, and shared
+    step ownership undecided for the extraction phase to resolve.
+    """
+    del message
     plan = _base_plan_dict()
     plan["work_units"] = work_units
 
-    with pytest.raises(PlanArtifactValidationError, match=message):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["work_units"]) == work_units
 
 
 # ---------------------------------------------------------------------------
@@ -461,13 +441,17 @@ def test_canonical_work_unit_graph_and_ownership_are_strict(
 
 
 def test_verification_method_rejects_shell_invocation() -> None:
-    """A VerificationStep.method starting with 'bash -c ' is rejected."""
+    """Free-form plans preserve the planner's verification strategy verbatim.
+
+    The shell-invocation rejection was removed with the shape-only
+    contract; downstream gate enforcement still guards runtime execution.
+    """
     plan = _base_plan_dict()
     plan["verification_strategy"] = [
         {"method": "bash -c rm -rf /", "expected_outcome": "nothing breaks"}
     ]
-    with pytest.raises(PlanArtifactValidationError, match="must not invoke a shell interpreter"):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["verification_strategy"])[0]["method"] == "bash -c rm -rf /"
 
 
 # ---------------------------------------------------------------------------
@@ -546,7 +530,9 @@ def test_format_doc_describes_text_acceptance_and_recommended_structure() -> Non
         "Expect",
         "without schema or content validation",
         "ralph_edit_md_artifact",
+        "ralph_submit_md_artifact",
+        "declare_complete",
+        "executor",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
     assert "ralph_edit_md_plan_step" not in doc
-    assert "`PLAN001` is the sole error" not in doc

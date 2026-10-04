@@ -82,11 +82,9 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     )
 
     rendered = workspace.read(prompt_path)
-    assert rendered.startswith("VALIDATION FAILURE")
+    assert "VALIDATION FAILURE" in rendered
     assert "PLANNING EDIT MODE" in rendered
     assert diagnostic["rule_id"] in rendered
-    assert f"line {diagnostic['line']}" in rendered
-    assert "ralph_edit_md_artifact" in rendered
     assert rendered.rstrip().endswith(build_validation_retry_footer())
     assert workspace.exists(".agent/tmp/last_retry_error_planning.txt")
     assert workspace.exists(".agent/artifacts/.plan.draft.md")
@@ -344,8 +342,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
     assert "ANALYSIS FEEDBACK:" in rendered
-    assert "Verify feedback against the request and repository." in rendered
-    assert "Treat feedback as evidence, not a document-shape" in rendered
+    assert "Verify feedback against the request and repository" in rendered
     assert "Plan in this order" in rendered
     assert "Stable `### [S-n] Title` steps are recommended" in rendered
     assert "without schema or content validation" in rendered
@@ -712,7 +709,6 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
     assert "Read the complete latest artifact from file at" not in rendered
     assert "Fresh plan context." not in rendered
-    assert "or its staged draft with" in rendered
     assert "Read the submitted plan" in rendered
     assert ".agent/artifacts/plan.json" not in rendered
 

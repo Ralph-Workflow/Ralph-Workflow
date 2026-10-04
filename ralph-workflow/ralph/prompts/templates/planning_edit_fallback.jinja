@@ -1,3 +1,4 @@
+{% include 'shared/_validation_failure.j2' -%}
 Revise the current plan from repository evidence and analysis feedback.
 
 PLANNING EDIT MODE
@@ -30,6 +31,9 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 
 ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
 {{ANALYSIS_FEEDBACK}}
+{% if ANALYSIS_FEEDBACK_STATUS == 'failed' %}
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+{% endif %}
 
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
 FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.

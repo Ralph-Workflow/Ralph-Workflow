@@ -99,23 +99,19 @@ def test_size_limits_submodule_owners() -> None:
 
 
 def test_size_limits_invariants_runtime_checks() -> None:
-    """PlanSizeLimits rejects bad values at construction time (not via Pydantic)."""
-    # max_total_bytes=0 must raise RuntimeError
-    with pytest.raises(RuntimeError, match="must be positive"):
+    """PlanSizeLimits rejects deviations from the canonical constant.
+
+    The boundary is a single raw-byte cap; ``PlanSizeLimits`` is the sole
+    place a custom cap could be supplied, and the contract intentionally
+    pins every instance to the canonical constant so no caller can route
+    around the ``_MAX_TOTAL_BYTES`` ceiling. Any other value (including
+    zero, oversized payloads, or a lower redefinition) is rejected.
+    """
+    # The default is the canonical constant.
+    assert PlanSizeLimits.DEFAULT.max_total_bytes == 4_000_000
+
+    # Any deviation from the canonical constant is rejected with RuntimeError.
+    with pytest.raises(RuntimeError, match="must be 4000000"):
         PlanSizeLimits(max_total_bytes=0)
-
-    # max_total_bytes > 64 MB must raise RuntimeError
-    with pytest.raises(RuntimeError, match="must be <= 64000000"):
+    with pytest.raises(RuntimeError, match="must be 4000000"):
         PlanSizeLimits(max_total_bytes=10**9)
-
-    # Non-positive cap must raise
-    with pytest.raises(RuntimeError, match="max_steps must be positive"):
-        PlanSizeLimits(max_steps=0)
-
-    # Non-monotonic string tiers must raise
-    with pytest.raises(RuntimeError, match="non-decreasing sequence"):
-        PlanSizeLimits(
-            max_string_short=2000,
-            max_string_medium=1000,
-            max_string_long=20000,
-        )

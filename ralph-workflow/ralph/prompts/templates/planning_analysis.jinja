@@ -1,5 +1,5 @@
 {% include 'shared/_validation_failure.j2' -%}
-Verify that the submitted plan is truthful, executable, and mechanically checkable.
+Verify that the submitted plan is truthful and executable.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_path %}
@@ -13,7 +13,11 @@ Verify that the submitted plan is truthful, executable, and mechanically checkab
 
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 
-Read the submitted plan, the request, and the repository areas it cites, or its staged draft with {{ GET_MD_DRAFT_TOOL_REFERENCE }} when needed. Check executor-ready claims and acceptance criteria against fresh evidence. Do not grade formatting or treat the planner's account as proof.
+Read the submitted plan, the request, and cited repository areas, or its staged
+draft with {{ GET_MD_DRAFT_TOOL_REFERENCE }} when needed. Check claims against
+fresh evidence. Do not grade formatting, headings, field presence, IDs, unit
+syntax, caps, directory disjointness, or the planner's account as proof; do not
+grade document shape as a proxy for product correctness.
 
 ## Review contract
 
