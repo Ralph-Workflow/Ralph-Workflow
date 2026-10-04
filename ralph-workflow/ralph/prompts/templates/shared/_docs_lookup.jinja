@@ -17,5 +17,9 @@ The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`
 1. Search documentation using the docs-mcp search tool from your MCP tool list.
 2. Fall back to `{{WEB_SEARCH_TOOL_REFERENCE}}` only when docs-mcp returns no useful results for the specific API or behavior you need.
 
+When several library or API lookups are needed at once, fan them out to
+read-only research subagents that each return one compact summary per
+library, keeping documentation pages out of this session.
+
 {% endif %}
 {% endif %}
