@@ -242,3 +242,17 @@ evidence = "Surviving tests in ralph-workflow/tests/unit/display/test_brief_crit
 lifecycle = "remove unconditional-skip probe-injection stub; rerun the marker-presence and probe-completeness tests on every brief-criteria change"
 disposition = "REMOVE"
 removed-tests = "test_every_claimed_test_fails_under_its_regression_probe"
+
+[[controls]]
+id = "retired-source-shape-subagent-visibility-invariants"
+protected_outcome = "Subagent visibility (unit-scoped display path, subscriber activity record, recent-activity order) is observed end-to-end through the public rendering seams"
+fault_sensitivity = "The removed tests in tests/test_subagent_visibility_architecture.py used inspect.getsource on ralph.pipeline.effect_executor, ralph.display.parallel_display, and ralph.supervising and asserted literal text shapes (display.emit(effect.agent_name, invoke_line), self._subscriber.record_activity(unit_id=unit_id, ...), and the index-order of if snapshot.last_activity_line vs if snapshot.waiting_status_line in _recent_activity). A behaviour-preserving refactor (e.g. routing the call through a small helper, renaming a parameter, or reordering a non-observable else-branch) would have broken the oracles without changing observable behaviour. The outcomes are already pinned by behaviour-level tests that exercise the public surfaces (display.emit, subscriber.record_activity, recent_activity projection): the test_display_generated_scenes, test_parallel_display_completion_panel, test_supervising, test_lifecycle_rendering_show_phase_start_from_entry, test_parallel_display_output, test_run_end_flush_wiring, and test_subagent_progress_render_path families all drive the public seams and would fail if any of the three outcomes regressed."
+layer = "category-3 implementation-coupled text-shape elimination"
+owner = "project maintainers"
+trigger = "subagent-visibility production refactor"
+lane = "default"
+marginal_cost_seconds = 0.0
+evidence = "Behaviour-level coverage of the same outcomes: tests/test_display_generated_scenes.py and tests/test_parallel_display_completion_panel.py exercise display.emit through the public scene pipeline; tests/test_parallel_display_output.py and tests/test_parallel_display.py drive subscriber.record_activity through the parallel-display public API; tests/test_supervising.py and tests/test_run_end_flush_wiring.py exercise the recent-activity projection; tests/agents/test_subagent_progress_render_path.py pins the unit-scoped raw-emit to console path. Review note dated 2026-10-03 confirmed the three behaviours have full public-seam coverage and the source-shape file added zero independent verification."
+lifecycle = "remove source-text shape oracles; rerun the public-seam behaviour tests on every change to effect_executor / parallel_display / supervising"
+disposition = "REMOVE"
+removed-tests = "test_invoke_start_uses_unit_scoped_display_path,test_parallel_display_emit_records_subscriber_activity_for_unit_scoped_lines,test_supervising_recent_activity_appends_waiting_without_hiding_output"
