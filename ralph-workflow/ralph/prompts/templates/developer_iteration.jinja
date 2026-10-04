@@ -32,33 +32,37 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {% include 'shared/_artifact_history.j2' %}
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_subagents.j2' %}
+
+## PARALLEL EXECUTION (declared units and independent ready steps)
+
+{% include 'shared/_parallel_execution.j2' %}
 
 {% if not IS_CONTINUATION %}
 ## FIRST-ITERATION COVERAGE CHECK (request versus plan)
 
-Before implementing anything on this iteration, run a coverage check that maps
-**every concrete deliverable in the request** to a plan step or records it as a
-continuation gap. For plans with many distinct deliverables, fan out to a
-read-only subagent that returns the mapping; otherwise perform the same check
-sequentially. The mapping must list, for every item in `PROMPT`:
+Launch a read-only coverage check subagent while the main session starts
+the first ready step. Map **every concrete deliverable in the request** to a
+plan step or an uncovered criterion. Delegate independent library lookups at
+the same time. The mapping must list, for every item in `PROMPT`:
 
 - the plan step ID it maps to (e.g. `[S-3]`), or
 - a continuation need explaining what plan steps would have to change to
   cover it (file:line where the gap was identified, what plan change
   closes it).
 
-Implementation does not begin until every requested deliverable is mapped or
-recorded. Gaps are surfaced as `Next steps:` in the eventual development
-result, not as silent skips.
+Complete uncovered request criteria within the current scope and record their
+criterion, changed paths, and reproducible proof in `## Unplanned Work`.
+Only a concrete external blocker justifies a continuation gap or `Next steps:`;
+the missing plan step alone does not justify deferring required work.
 {% endif %}
+
+{% include 'shared/_developer_iteration_guidance.j2' %}
 
 Before submitting, run the cheap independent pre-submit review against the
 plan and proof contract — an open gap must close before the artifact is
 submitted or completion is declared. Run the review as an independent
-read-only sub-agent whenever more than one plan step remains or the diff
-spans more than one file; otherwise review in this session. Until that
+read-only sub-agent with fresh context on every iteration. Until that
 review closes the remaining gap, you MUST NOT submit the artifact or
 declare completion.
 
@@ -68,10 +72,6 @@ declare completion.
 {% include 'shared/_docs_lookup.j2' %}
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
-
-## PARALLEL EXECUTION (when the plan declares `## Work Units` or `## Parallel Plan`)
-
-{% include 'shared/_parallel_execution.j2' %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

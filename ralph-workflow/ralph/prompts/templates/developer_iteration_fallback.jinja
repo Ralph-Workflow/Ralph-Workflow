@@ -12,7 +12,11 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 {% include 'shared/_development_skills.j2' %}
+{% if IS_WORKER %}
+{% include 'shared/_worker_verification.j2' %}
+{% else %}
 {% include 'shared/_verification_commitments.j2' %}
+{% endif %}
 {% include 'shared/_run_budget.j2' %}
 
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
@@ -79,9 +83,15 @@ and what development-analysis feedback they received.
 {% endif %}
 
 {% if not IS_WORKER %}
-## PARALLEL EXECUTION (when the plan declares independent units)
+{% include 'shared/_subagents.j2' %}
+
+## PARALLEL EXECUTION (declared units and independent ready steps)
 
 {% include 'shared/_parallel_execution.j2' %}
+
+Launch a read-only request-versus-plan coverage check while implementing the
+first ready step. Complete uncovered request criteria and report their
+criterion, changed paths, and reproducible proof under `## Unplanned Work`.
 {% endif %}
 
 Use runtime-native orchestration, skill, todo, or web tools only when exposed.
@@ -104,8 +114,10 @@ and one next step.
 {% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
-{% if IS_CONTINUATION %}
-Before submitting a continuation, re-check the remaining work against the execution plan, continuation context, and proof contract. Run the review as an independent read-only sub-agent whenever more than one plan step remains or the diff spans more than one file; otherwise perform the same review sequentially in this session. Submit only after the remaining gap is closed.
+{% if not IS_WORKER %}
+Before submitting on every iteration, run an independent read-only pre-submit
+review against the request, execution plan, continuation context, and proof
+contract. Submit only after every required gap is closed.
 {% endif %}
 
 ## Development result artifact contract

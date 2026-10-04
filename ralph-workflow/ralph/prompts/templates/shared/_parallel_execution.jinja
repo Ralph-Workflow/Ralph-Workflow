@@ -2,20 +2,20 @@ Choose execution from the plan. Execute compact or coupled steps in the main ses
 
 ### Independent ready group (for linear plans too)
 
-Even when the plan is declared as a single linear thread, an **independent ready group** can form: the set of remaining steps with no `Depends on:` path between any pair AND pairwise disjoint `Files:` lists (no shared template, test file, contract, or fixture). When the remaining budget **cannot fit** the remaining steps sequentially, dispatch this ready group **concurrently rather than trimming scope**: scope trimming is the last resort, not the default. A ready group is a "no coordination needed" signal — the steps are independent, so fan-out is free.
+Even when the plan is declared as a single linear thread, an **independent ready group** can form: steps for which all dependencies are satisfied, with no `Depends on:` path between any pair AND pairwise disjoint `Files:` lists (no shared template, test file, contract, or fixture). Dispatch two or more ready steps concurrently by default. Estimate sequential duration against the remaining budget; when it **cannot fit**, dispatch independent work **concurrently rather than trimming scope**. Keep shared-contract changes and dependent work in dependency order.
 
-When the plan declares `## Work Units`, the ready group is one unit at a time, with the same disjointness rule applied across units (already guaranteed by `validate_work_units_against_policy`). When the plan is linear, walk the remaining steps in plan order, partition them at the first `Depends on:` edge, and treat the leading independent prefix as the ready group.
+When the plan declares `## Work Units`, dispatch all ready independent units within the active worker limit. For linear plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. Wait for all dispatched writers, read each unit's diff and focused proof, reconcile shared tests and interfaces, then integrate. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
 
 ### Per-unit subagent brief (when units exist)
 
-For every unit dispatched to a sub-agent, the brief MUST carry these fields. A brief missing any field is treated as a dispatch the main session cannot trust, and the work reverts to this session.
+For every unit dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has a clear assignment.
 
 1. **Unit ID** and the list of `### [S-n]` steps the unit owns.
 2. **Allowed directories** — verbatim from the unit's `Directories:` field. Anything outside that set is the main session's responsibility.
 3. **Tools** — Ralph Workflow's **brokered MCP tools only**. Native shell, native write tools, and editor commands are prohibited.
-4. **Prohibitions** — no git commands (the worker never commits), no writes outside the unit's allowed directories, no coordination of other units, no integration of the whole plan, no submission of artifacts other than the unit's own development_result via `submit_development_result`.
+4. **Prohibitions** — no git commands (the worker never commits), no status markdown files, no writes outside the unit's allowed directories, no coordination of other units, no integration of the whole plan, no submission of artifacts unless explicitly assigned a worker-local development_result via `submit_development_result`.
 5. **Focused verify** — the unit runs the `Verify` command from each assigned step and cites its exit code. The full repository-wide `make verify` runs in the main session after integration.
-6. **Return format** — exact fields the sub-agent must populate on return: `Unit ID`, `steps completed`, `files touched`, `verify command and exit code`, and any leads needing main-session reproduction. The return is a lead the main session spot-checks before relying on it; it is not evidence by itself.
+6. **Return format** — exact fields the sub-agent must populate on return: `Unit ID`, `steps completed`, `disposition`, `files touched`, `verify command and exit code`, and any leads needing main-session reproduction. The return is a lead the main session spot-checks before relying on it; it is not evidence by itself.
 
 ### Reference
 

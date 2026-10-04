@@ -21,22 +21,7 @@ IMPORTANT: The previous attempt did not complete successfully.
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_run_budget.j2' %}
 
-## WORKER DO-NOT-DISPATCH
-
-You are a worker for one assigned unit. **Do not dispatch sub-agents from
-inside this worker.** The shared delegation guidance does not apply here:
-the main session owns the orchestrator role, and a worker that spawns
-further agents breaks the single-writer-per-decision rule. Run your
-unit's focused verification yourself, cite the exit code as the unit's
-proof, and return the unit result. The full repository-wide gate is the
-main session's job; do not run it from inside this worker.
-
-## WORKER-SCOPED VERIFICATION
-
-You are a worker for one assigned unit. Run the focused `Verify` command from
-each of your unit's plan steps and cite its exit code as the unit's proof.
-The full repository-wide gate (`make verify`) is the main session's job and
-runs once after integration; do not run it from inside this worker.
+{% include 'shared/_worker_verification.j2' %}
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
@@ -87,8 +72,8 @@ the concrete blocker in the result instead of expanding scope.
 {% if IS_CONTINUATION %}
 Before submitting a continuation, check the unit against its assignment and
 proof contract. Workers never dispatch sub-agents (see WORKER DO-NOT-DISPATCH
-above), so even when coordination costs less than sequential execution, perform
-the same review sequentially in this session. Until the gap is closed, you MUST NOT submit the artifact or declare completion.
+above), so perform the same review sequentially in this session. Until the
+gap is closed, you MUST NOT submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}

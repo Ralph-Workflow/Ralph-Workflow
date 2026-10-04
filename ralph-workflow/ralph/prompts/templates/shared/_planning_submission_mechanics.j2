@@ -7,7 +7,16 @@ IDs are stable and never renumbered. Each step states its purpose and `Type`: `f
 
 Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
 
-For parallel work, add a `## Work Units` block of `- [U-N] description` items, each with a `Directories:` field naming a subdirectory the unit is permitted to edit; `Depends on:` (unit IDs) is optional. The unit count must fit within the cap of {{ WORK_UNITS_MAX_CAP|default('8') }} concurrent workers per the development phase policy — plan no more units than that. Keep the unit directories disjoint so two units cannot edit the same subdirectory; step-level `Depends on:` chains between units produce a cycle the validator rejects. A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.
+Prefer `## Work Units` for parallel work: use `- [U-N] description` items,
+each with `Directories:` naming permitted subdirectories and optional
+`Depends on:` naming prerequisite unit IDs. Nest stable `### [S-n]` steps
+under their owning unit. Observe the effective active policy cap of {{ WORK_UNITS_MAX_CAP|default('8') }}
+units. Keep directories disjoint, including
+ancestor/descendant paths; never claim `.`, `.git`, or `.agent`. Declare
+every cross-unit prerequisite on the dependent unit and keep step dependencies
+consistent with that order; reject cycles. Place shared-contract work before
+the fan-out and make consumers depend on its completion. `## Work Units`
+and `## Parallel Plan` are mutually exclusive; choose one format.
 
 On revision, retain every step ID and valid `Depends on:`/`Satisfies:` reference.
 When repairing a diagnostic, change only the named field; other valid fields are

@@ -5,7 +5,9 @@ Plan in this order:
 1. **Orient** — identify the outcome and relevant repository areas.
 2. **Characterize** — establish current behavior.
 3. **Change** — name the smallest concrete edits and dependencies.
-4. **Partition** — decide linear versus `## Work Units`. A linear plan
+4. **Partition** — prioritize parallel work unless a hard dependency or
+   shared write ownership requires ordering. Use `Depends on:` only for a
+   real prerequisite, never to serialize independent work. A linear plan
    is the shape for work that is genuinely coupled end to end; declare
    `## Work Units` whenever step groups have **pairwise disjoint
    `Files:` lists** (no shared templates, tests, or contracts across

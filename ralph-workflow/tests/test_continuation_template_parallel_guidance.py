@@ -82,7 +82,7 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
 def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
     source = _read_continuation_template()
     assert "compact or coupled steps" in source
-    assert "Execute the plan sequentially in plan order" in source
+    assert "Execute the plan sequentially in plan order" not in source
     assert "collect each unit's" in source
     assert "cross-unit and" in source
     assert "full verification" in source
@@ -91,6 +91,6 @@ def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
 def test_continuation_template_requires_fresh_review_before_submission() -> None:
     """A continuation requires review without imposing coordination overhead."""
     source = _read_continuation_template()
-    assert "when coordination costs less than sequential execution" in source
-    assert "otherwise perform the same review sequentially" in source
+    assert "independent read-only sub-agent" in source
+    assert "fresh-context" in source
     assert "you MUST NOT submit the artifact or declare completion" in source

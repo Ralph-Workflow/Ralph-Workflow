@@ -16,16 +16,20 @@ def test_primary_templates_share_thinking_first_guidance() -> None:
         assert "subagent" in source.lower() or name == "planning_edit.jinja"
 
 
-def test_primary_prompt_keeps_parallelism_optional() -> None:
+def test_primary_prompt_requires_units_for_disjoint_work() -> None:
     source = _source("planning.jinja")
-    assert "compact linear plan is valid" in source
+    assert "`## Work Units` whenever step groups have pairwise disjoint `Files:`" in " ".join(
+        source.split()
+    )
+    assert "genuinely coupled end to end" in source
     assert "disjoint" in source
 
 
-def test_fallback_templates_keep_a_condensed_sequential_hint() -> None:
+def test_fallback_templates_delegate_discovery_by_default() -> None:
     for name in ("planning_fallback.jinja", "planning_edit_fallback.jinja"):
         source = _source(name)
-        assert "subagent" in source.lower() or "sequential" in source.lower()
+        assert "shared/_subagents.j2" in source
+        assert "Use a subagent only" not in source
 
 
 def test_analysis_owns_a_concise_substantive_review() -> None:

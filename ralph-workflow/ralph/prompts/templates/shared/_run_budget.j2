@@ -7,8 +7,12 @@ timebox figures.
 {% endif %}
 {% if DEV_REMAINING_MINUTES|default('') and DEV_FORCE_CUT|default('') %}
 You have approximately **{{ DEV_REMAINING_MINUTES }} minutes remaining**
-before this development session is force-cut. Drive the current task to a
-verifiable state — a green suite, a passing focused test, or an explicit
-partial report — before the deadline; do not start new work that you cannot
-finish.
+before this development session is force-cut. An unsubmitted artifact is lost
+at the hard cut: reserve time for integration, verification, and submission,
+and submit before the deadline.
+{% if not IS_WORKER|default(false) %}
+Dispatch remaining independent ready work concurrently.
+{% endif %}
+Elapsed time alone never establishes an external blocker or
+justifies a false completion claim. Retries and loopbacks share this budget.
 {% endif %}

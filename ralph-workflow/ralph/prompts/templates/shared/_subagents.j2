@@ -10,11 +10,13 @@ fresh-context analysis phases; they speed up the work that feeds them.
 
 Delegate exploration, research, verification, and review to read-only
 sub-agents by default. Fan-out is the default for any task that touches
-multiple independent areas. The brief contract below is unconditional —
-sub-agent support is assumed.
+multiple independent areas. Use the brief contract below for each dispatch.
 
 The concrete fan-out signals:
 
+- At least three unrelated areas to inspect, four independent criteria to
+  verify, or a search spanning more than fifteen files: split the read-only
+  work into bounded groups and dispatch them concurrently.
 - Independent repository discovery that would otherwise flood this context
   (many files, large directories, broad web research that can be summarized
   compactly on return).
@@ -66,8 +68,7 @@ dispatch must respect:
 ### Brief contract (for dispatched sub-agents)
 
 Every sub-agent brief must carry these five fields. They are the contract the
-main session relies on; a brief missing any field is treated as a dispatch
-the main session cannot trust, and the work reverts to this session.
+main session relies on; repair a brief missing any field before dispatch.
 
 1. **Objective.** One sentence naming the outcome the sub-agent owns.
 2. **Scope.** Allowed paths (for read-only helpers) or the unit's
@@ -82,7 +83,7 @@ the main session cannot trust, and the work reverts to this session.
    `submit_development_result` for a worker. State the prohibitions.
 5. **Return format.** Exact fields the sub-agent must populate on return:
    unit ID (or task ID), scope touched, commands run with exit codes,
-   files changed (for implementers), and any new questions needing a follow-up
+   files changed and disposition (for implementers), and any new questions needing a follow-up
    in this session. The return is a lead the main session spot-checks
    before relying on it; it is not evidence by itself.
 
@@ -96,7 +97,9 @@ A sub-agent's return is a lead, never evidence by itself. For each:
   the sub-agent, not about the work.
 - that names a gap the plan omitted, the main session records it in the
   development result's `## Unplanned Work` section (or equivalent for the
-  phase) so the next iteration can plan around it.
+  phase), tied to the request criterion and reproducible proof. Complete
+  required in-scope gaps now; do not defer them merely because the plan
+  omitted them.
 
 ### Cost discipline
 

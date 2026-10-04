@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
@@ -8,6 +9,10 @@ from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseParallelization
+from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
@@ -35,19 +40,25 @@ class TestOldCheckpointLoads:
         assert loaded.work_units == ()
         assert loaded.worker_states == {}
 
-    def test_old_checkpoint_takes_serial_path(self) -> None:
+    def test_old_checkpoint_takes_serial_path(self, tmp_path: Path) -> None:
         state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
+        effect = determine_effect_from_policy(
+            state, policy_bundle, config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(root=tmp_path),
+        )
 
         assert isinstance(effect, InvokeAgentEffect)
         assert not isinstance(effect, FanOutEffect)
 
-    def test_fan_out_not_emitted_for_empty_work_units(self) -> None:
+    def test_fan_out_not_emitted_for_empty_work_units(self, tmp_path: Path) -> None:
         state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
+        effect = determine_effect_from_policy(
+            state, policy_bundle, config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(root=tmp_path),
+        )
 
         assert not isinstance(effect, FanOutEffect)

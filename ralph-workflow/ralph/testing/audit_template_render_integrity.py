@@ -128,7 +128,6 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "DOCS_LOOKUP_VARIANT": ("", "long", "short", "short_block"),
     "DOCS_MCP_PORT": ("localhost:6280",),
     "HAS_DOCS_MCP": ("true",),
-    "HAS_SUBAGENTS": ("true",),
     "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": ("true",),
     "ISSUES": ("Issue I-1 remains unresolved.",),
     "ISSUES_PATH": (".agent/tmp/issues.md",),

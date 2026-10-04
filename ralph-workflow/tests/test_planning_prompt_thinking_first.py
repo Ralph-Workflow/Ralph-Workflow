@@ -120,6 +120,32 @@ def test_submission_partial_renders_policy_derived_unit_cap(tmp_path: Path) -> N
     assert "cap of 8" in rendered
 
 
+def test_planning_analysis_renders_configured_unit_cap(tmp_path: Path) -> None:
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Validate a parallel plan.")
+    workspace.write(".agent/PLAN.md", "## Summary\nValidate the plan.\n")
+    policy = load_policy(tmp_path / ".agent")
+    development = policy.pipeline.phases["development"]
+    assert development.parallelization is not None
+    parallelization = development.parallelization.model_copy(update={"max_parallel_workers": 2})
+    phases = dict(policy.pipeline.phases)
+    phases["development"] = development.model_copy(update={"parallelization": parallelization})
+    pipeline = policy.pipeline.model_copy(update={"phases": phases})
+
+    path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning_analysis", workspace=workspace, pipeline_policy=pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=policy.artifacts),
+    )
+
+    assert "cap" in workspace.read(path)
+    assert "of 2" in workspace.read(path)
+    assert "of 8" not in workspace.read(path)
+
+
 def test_submission_partial_keeps_work_units_grammar_compact() -> None:
     """S-8: the partial documents the Work Units syntax compactly.
 

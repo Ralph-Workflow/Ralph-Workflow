@@ -86,7 +86,8 @@ def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
     assert "mandatory executor-ready plan" in text
-    assert "Orient, Characterize, Change, Verify" in text
+    for phase in ("Orient", "Characterize", "Partition", "Change", "Verify"):
+        assert phase in text
     assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 

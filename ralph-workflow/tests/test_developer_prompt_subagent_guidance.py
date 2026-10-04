@@ -131,6 +131,9 @@ def test_developer_prompt_defines_independent_ready_group_for_linear_plans() -> 
     assert "remaining budget" in source
     assert "cannot fit" in source
     assert "concurrently rather than trimming" in flat
+    assert "two or more ready steps" in flat
+    assert "all dependencies are satisfied" in flat
+    assert "read each unit's diff" in flat
 
 
 def test_developer_prompt_per_unit_brief_checklist_is_present() -> None:
@@ -179,6 +182,8 @@ def test_developer_prompt_first_iteration_maps_request_to_plan_steps() -> None:
     assert "plan step" in source.lower() or "plan items" in source.lower()
     # Continuation-gap recording.
     assert "continuation" in source.lower() or "next step" in source.lower()
+    assert "while the main session starts" in source
+    assert "Complete uncovered request criteria" in source
 
 
 def test_developer_prompt_has_pre_submit_review_on_every_iteration() -> None:

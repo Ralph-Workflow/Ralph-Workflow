@@ -26,7 +26,10 @@ _LARGE_CONTENT = "x" * (MAX_INLINE_PROMPT_BYTES + 1)
 
 def test_materialized_worker_prompt_has_one_unit_scoped_contract(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("RALPH_DEV_WARN_EPOCH", "9999999999")
+    monkeypatch.setenv("RALPH_DEV_DEADLINE_EPOCH", "99999999999")
     workspace = MemoryWorkspace(root=tmp_path)
     workspace.write("PROMPT.md", "Implement the requested behavior.")
     workspace.write(
@@ -80,6 +83,8 @@ Implement the behavior.
     assert "`## Continuation`" in rendered
     assert "Do not invent files or verification results." in rendered
     normalized = " ".join(rendered.split())
+    assert "minutes remaining" in normalized
+    assert "Dispatch remaining independent ready work" not in normalized
     assert "impossible to complete through any developer action available" in normalized
     assert "follow the completion-pressure rules from the developer iteration guidance" in normalized
     assert "The receipt is not phase completion" in normalized
@@ -153,7 +158,8 @@ status: request_changes
     assert "## WORKER SCOPE" in rendered
     assert "**Unit ID**: api" in rendered
     assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
-    assert "when coordination costs less than sequential execution" in rendered
+    assert "Workers never dispatch sub-agents" in rendered
+    assert "unit's focused verification" in rendered
     assert "you MUST NOT submit the artifact or declare completion" in rendered
 
 
@@ -215,7 +221,8 @@ status: partial
     assert "Finish the worker-local API test." in rendered
     assert "worker-session-7" in rendered
     assert "WRONG SHARED CONTEXT" not in rendered
-    assert "when coordination costs less than sequential execution" in rendered
+    assert "Workers never dispatch sub-agents" in rendered
+    assert "unit's focused verification" in rendered
 
 
 def test_worker_materialization_preserves_shared_development_history(

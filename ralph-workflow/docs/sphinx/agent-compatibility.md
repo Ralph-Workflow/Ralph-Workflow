@@ -210,31 +210,15 @@ json_parser = "generic"
 ## Delegation requirement
 
 Ralph Workflow requires a coding agent with subagent and parallel-agent
-support. The planning and developer prompts assume it unconditionally:
-they never detect, gate on, warn about, or compensate for its absence.
-The shared `shared/_subagents.j2` partial, the
-`shared/_parallel_execution.jinja` partial, and the
-`shared/_developer_iteration_guidance.j2` review trigger are rendered on
-every transport. Ralph Workflow does not render a degraded sequential prompt when
-the operator's agent lacks the surface; doing so would re-introduce a
-hidden capability flag and a per-runtime fork in the prompt contract.
+support. Operators must choose and configure an agent that provides both.
+Ralph Workflow's prompts assume this support unconditionally; the runtime does not detect
+missing support, warn at prompt time, or provide a sequential fallback.
+Configuring an agent without a subagent dispatch surface is an operator
+misconfiguration: select a capable agent using the notes above.
 
-The per-agent informational notes above (for example, the line-147
-`EXPLICIT_UNSUPPORTED` note for Kimi) remain useful as plain operator
-information for agents that genuinely do not expose a sub-agent
-dispatch surface. They describe the agent's own surface, never a
-Ralph Workflow-side gate or fallback. An operator who configures an agent without
-a sub-agent dispatch surface has misconfigured their side; the right
-fix is to choose a different agent, not a Ralph Workflow prompt knob.
-
-The worker prompt (`worker_developer.jinja`) replaces the shared
-partial with an explicit **WORKER DO-NOT-DISPATCH** section: a worker
-must not fan out further sub-agents, so the dispatch brief is
-suppressed for that one role. The worker still runs the unit's focused
-`Verify` command and cites its exit code as the unit's proof; the
-full repository-wide gate is the main session's job. This is the
-single-writer-per-decision rule for nested fan-out, not a runtime
-capability gate.
+The main agent delegates independent work, integrates the results, and runs
+the full repository verification gate. Workers stay inside their assigned
+directories, run focused checks, and return evidence to the main agent.
 
 ### Built-in configuration examples
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from pydantic import TypeAdapter
 
 from ralph.mcp.tools.md_artifact import (
@@ -22,6 +23,7 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
 from tests._artifact_format_docs_mock_session import planning_session
 from tests._support.typed_accessors import (
     must_dict_list,
@@ -30,8 +32,6 @@ from tests.mcp.test_md_plan_spec import _plan_document
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
     from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
     from ralph.mcp.tools.tool_result import ToolResult
@@ -280,6 +280,49 @@ def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
     follow_up_payload = _payload(follow_up)
     assert follow_up_payload["content"] == content
     assert follow_up_payload["exists"] is True
+
+
+@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
+def test_verify_rejects_units_when_effective_policy_cannot_be_loaded(
+    monkeypatch: pytest.MonkeyPatch, section: str
+) -> None:
+    def unavailable_policy(_config_dir: Path) -> PolicyBundle:
+        raise OSError("policy is unreadable")
+
+    monkeypatch.setattr(policy_loader, "load_policy", unavailable_policy)
+    content = _plan_with_work_units([("U-1", "src")]).replace("Work Units", section)
+    payload = _payload(handle_verify_md_artifact(
+        _session(), MemoryWorkspace(), {"artifact_type": "plan", "content": content}
+    ))
+
+    assert payload["valid"] is False
+    diagnostics = must_dict_list(payload["diagnostics"])
+    assert any(
+        item["rule_id"] == "WUPOL001" and "policy is unreadable" in item["message"]
+        and item["section"] == section
+        and item["line"] == content.splitlines().index(f"## {section}") + 1
+        for item in diagnostics
+    )
+
+
+def test_verify_rejects_parallel_plan_reserved_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = _make_bundle_with_development_parallelization(
+        MemoryWorkspace().root, parallelization=PhaseParallelization()
+    )
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
+    content = _plan_with_work_units([("U-1", ".git")]).replace("Work Units", "Parallel Plan")
+    payload = _payload(handle_verify_md_artifact(
+        _session(), MemoryWorkspace(), {"artifact_type": "plan", "content": content}
+    ))
+
+    assert payload["valid"] is False
+    assert any(
+        item["rule_id"] == "WUPOL001" and "reserved path" in item["message"]
+        and item["section"] == "Parallel Plan"
+        for item in must_dict_list(payload["diagnostics"])
+    )
 
 
 def _make_bundle_with_development_parallelization(

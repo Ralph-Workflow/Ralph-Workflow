@@ -1,0 +1,11 @@
+## WORKER DO-NOT-DISPATCH
+
+You own one assigned unit. Workers never dispatch sub-agents or coordinate
+other units. Run the unit's focused verification yourself and return its
+proof. Review the assignment and proof before every submission.
+
+## WORKER-SCOPED VERIFICATION
+
+Run the focused `Verify` command from each assigned step and cite its exit
+code. The full repository-wide gate (`make verify`) is the main session's
+job; do not run it from inside this worker.

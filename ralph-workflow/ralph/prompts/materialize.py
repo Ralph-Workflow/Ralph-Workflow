@@ -476,7 +476,10 @@ def _render_planning_prompt(
         development_phase.parallelization if development_phase is not None else None
     )
     max_parallel_workers = (
-        development_parallelization.max_parallel_workers
+        min(
+            development_parallelization.max_parallel_workers,
+            development_parallelization.max_work_units,
+        )
         if development_parallelization is not None
         else None
     )
@@ -692,6 +695,12 @@ def _render_template_based_prompt(
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
+    development_phase = pipeline_policy.phases.get("development")
+    parallelization = development_phase.parallelization if development_phase is not None else None
+    if parallelization is not None:
+        variables["WORK_UNITS_MAX_CAP"] = str(
+            min(parallelization.max_parallel_workers, parallelization.max_work_units)
+        )
     rendered = render_template(
         template,
         _merged_variables(variables, session_caps),

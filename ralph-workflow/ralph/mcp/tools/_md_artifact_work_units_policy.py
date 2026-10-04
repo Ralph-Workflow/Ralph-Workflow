@@ -11,17 +11,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pydantic import TypeAdapter
+
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_markdown_document
+from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 from ralph.mcp.tools.artifact import _workspace_root
 from ralph.pipeline.work_units import (
     WorkUnitsValidationError,
     parse_work_units_from_artifact,
 )
 from ralph.policy import loader as policy_loader
-from ralph.policy.validation import (
-    PolicyValidationError,
-    validate_work_units_against_policy,
-)
+from ralph.policy.validation import validate_work_units_against_policy
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,11 +38,10 @@ def work_units_policy_check(
 ) -> list[Diagnostic]:
     """Validate plan work_units against the workspace's effective pipeline policy.
 
-    Returns an empty list when the artifact is not a plan, when no work_units
-    are declared, when the structural validator already rejected them, or
-    when the workspace's policy cannot be loaded. The latter matches the
-    fail-open stance of ``_resolve_history_enabled`` so artifact
-    verification does not depend on policy I/O.
+    Returns an empty list when the artifact is not a plan, has no parallel
+    units, or has already failed structural validation. Both Work Units and
+    Parallel Plan use the effective policy; a policy-load error blocks
+    verification and submission instead of accepting unchecked ownership.
 
     Single diagnostic rule (``WUPOL001``) covers every per-unit and cap
     violation: the validator's error message names the violated limit and
@@ -52,12 +51,30 @@ def work_units_policy_check(
     diagnostics: list[Diagnostic] = []
     if artifact_type != "plan":
         return diagnostics
+    section_name = "Work Units"
     raw = parsed_content.get("work_units")
+    if not raw:
+        raw_parallel = parsed_content.get("parallel_plan")
+        if isinstance(raw_parallel, list) and raw_parallel:
+            section_name = "Parallel Plan"
+            try:
+                parallel_items = TypeAdapter(list[ParallelPlanItem]).validate_python(raw_parallel)
+            except ValueError:
+                return diagnostics
+            raw = [
+                {
+                    "unit_id": item.id,
+                    "description": item.description,
+                    "allowed_directories": item.edit_area.directories,
+                    "dependencies": item.depends_on,
+                }
+                for item in parallel_items
+            ]
     if not raw:
         return diagnostics
 
     try:
-        parsed = parse_work_units_from_artifact(parsed_content)
+        parsed = parse_work_units_from_artifact({"work_units": raw})
     except WorkUnitsValidationError:
         # Structural checks already surfaced; do not double-report.
         return diagnostics
@@ -65,19 +82,16 @@ def work_units_policy_check(
         return diagnostics
 
     workspace_root = _workspace_root(workspace)
-    pipeline = load_policy_pipeline(workspace_root)
-    if pipeline is None:
-        return diagnostics
-
-    section_line = _section_line(content, "Work Units") or 1
+    section_line = _section_line(content, section_name) or 1
 
     try:
+        pipeline = load_policy_pipeline(workspace_root)
         validate_work_units_against_policy(parsed, pipeline, phase="development")
-    except PolicyValidationError as exc:
+    except Exception as exc:
         diagnostics.append(
             Diagnostic(
                 section_line,
-                "Work Units",
+                section_name,
                 "WUPOL001",
                 str(exc),
             )
@@ -97,14 +111,11 @@ def _section_line(content: str, section_name: str) -> int | None:
     return section.line
 
 
-def load_policy_pipeline(workspace_root: Path) -> PipelinePolicy | None:
-    """Load the workspace's effective pipeline policy. Fail-open on I/O errors.
+def load_policy_pipeline(workspace_root: Path) -> PipelinePolicy:
+    """Load the workspace's effective pipeline policy, propagating load errors.
 
     Public hook so tests can replace it via ``monkeypatch.setattr`` without
     importing the underscored helper module.
     """
-    try:
-        bundle = policy_loader.load_policy(workspace_root / ".agent")
-    except Exception:
-        return None
+    bundle = policy_loader.load_policy(workspace_root / ".agent")
     return bundle.pipeline

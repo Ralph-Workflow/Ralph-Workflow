@@ -39,19 +39,25 @@ status: completed
 
 ## Unplanned Work example (optional, any status)
 
-Append a top-level `## Unplanned Work` section listing each mid-phase
-discovery, e.g.:
+Append a top-level `## Unplanned Work` section for work required by the
+request but omitted from the plan. Tie each item to its request criterion,
+the action and changed paths, a navigable anchor, and reproducible proof:
 
     ## Unplanned Work
 
-    - [UW-1] src/auth/refresh.py:78 — lock contention surfaced during the
-      refresh-token test; reproduced by
+    - [UW-1] Request criterion: same-key refreshes preserve token validity.
+      Replaced the global lock in src/auth/refresh.py:78 with a bounded
+      per-key lock; added tests/auth/test_refresh_race.py. Proof:
       pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid
-      on the pre-fix tree before the per-token-key lock landed.
-    - [UW-2] docs/auth/refresh.md — the design doc still describes a global
-      lock; the per-token-key change above means the doc is now misleading
-      and should be updated in a follow-up plan rather than silently
-      rewritten under this development.
+      exits 0 and confirms the refreshed token remains valid.
+    - [UW-2] Request criterion: document the new refresh behavior.
+      Updated docs/auth/refresh.md:12 to describe per-key serialization.
+      Proof: make docs exits 0; the rendered refresh page describes
+      same-key serialization and independent refreshes for different keys.
+
+Complete omitted required work in the current development phase and prove
+it before reporting completion. This section records that work without
+inventing plan-step IDs; it does not authorize deferring request criteria.
 
 ## Adapted and not-applicable examples
 
@@ -143,16 +149,16 @@ status decides whether the run ends.
 - `## Continuation` — optional; exactly one item containing the prior
   session id.
 - `## Unplanned Work` — optional bulleted section, accepted at any
-  status, for mid-phase discoveries the plan did not name. One
-  `- [UW-N] <anchor>` bullet per discovery, where the anchor is a
+  status, for required work the plan did not name. One
+  `- [UW-N]` bullet per item, naming its request criterion, action,
+  changed paths, anchor, and reproducible proof. The anchor is a
   stable `path:line` (or `path:line-line`) location with a reproducible
   piece of evidence. The bracketed IDs in this section are anchors,
   not plan-step references, and are not routed to proof validation —
   they never substitute for `## Plan Items Proven` or
-  `## Analysis Items Addressed`. Use this section to make honest
-  reporting cheaper: record what you found, where, and how you
-  reproduced it, so the next iteration can plan around it instead of
-  rediscovering it.
+  `## Analysis Items Addressed`. Finish omitted required work now;
+  the optional section does not relax completion requirements or
+  replace proof for any existing plan or analysis item.
 
 ## Hard errors vs warnings
 

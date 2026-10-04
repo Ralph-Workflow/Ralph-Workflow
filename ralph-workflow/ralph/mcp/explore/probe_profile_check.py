@@ -42,13 +42,14 @@ from __future__ import annotations
 import argparse
 import cProfile
 import json
-import shutil
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed, write_text_if_changed
 from ralph.mcp.explore.handlers import ExploreIndex
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.serving import (
@@ -74,7 +75,9 @@ _REQUIRED_PROBE_ENTRIES: tuple[str, ...] = (
     "collect_workspace_files",
     "bulk_size_mtime_for_paths",
 )
-_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = ("store.get_file",)
+_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = (
+    "store.get_file",
+)
 #: ``_staleness_block`` has been cached since S-3; on a hit the
 #: cumulative-time contribution of ``peek_dirty_paths`` /
 #: ``count_deleted_files`` / ``latest_job`` is near zero. We assert
@@ -117,8 +120,7 @@ def _build_indexed_workspace(tmp: Path) -> tuple[Path, Path, ExploreIndex]:
             continue
         dest = workspace_copy / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        # filesystem-write-ok: transient scratch workspace for an isolated profile run
-        shutil.copy2(src, dest)
+        write_bytes_if_changed(DEFAULT_FILE_BACKEND, dest, src.read_bytes())
     index_dir = tmp / DEFAULT_INDEX_ROOT
     store = ExploreStore(index_dir=index_dir)
     reindex(
@@ -159,6 +161,7 @@ def _table_rows(profiler: cProfile.Profile, *, top: int) -> list[tuple[str, floa
     # runtime value is a ``float``; we widen it to ``float`` here so the
     # downstream report formatter (``f"{ct:8.6f}"``) prints a real decimal.
     raw_rows: list[tuple[str, float]] = []
+    profiler.create_stats()
     for label, profile_row in profiler.stats.items():
         ct_int: int = profile_row[3]
         raw_rows.append((_qualname(label), float(ct_int)))
@@ -198,9 +201,7 @@ def _assert_entries_present(
     return [*missing, *forbidden_hits]
 
 
-class _ProfileArgs(argparse.Namespace):
-    """Typed namespace for this module's two CLI options."""
-
+class _ProfileArguments(argparse.Namespace):
     top: int
     out: Path | None
 
@@ -226,7 +227,7 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[int, Path | None]:
         default=None,
         help="Write the recorded profile to this path (JSON)",
     )
-    parsed = _ProfileArgs()
+    parsed = _ProfileArguments()
     parser.parse_args(argv, namespace=parsed)
     return parsed.top, parsed.out
 
@@ -249,7 +250,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return staleness_probe(session, workspace_root=workspace)
 
         def _run_metadata() -> object:
-            return serving_metadata(session, index_used=True, fallback_reason=None)
+            return serving_metadata(
+                session, index_used=True, fallback_reason=None
+            )
 
         probe_profiler: cProfile.Profile = _run_profile(_run_probe)
         metadata_profiler: cProfile.Profile = _run_profile(_run_metadata)
@@ -293,10 +296,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = {
             "top": top_n,
             "probe": [{"name": name, "cumtime": cumtime} for name, cumtime in probe_rows],
-            "metadata": [{"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows],
+            "metadata": [
+                {"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows
+            ],
         }
-        # filesystem-write-ok: explicit operator-requested transient profile report
-        out_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND, out_path, json.dumps(payload, indent=2, sort_keys=True)
+        )
     return 0
 
 

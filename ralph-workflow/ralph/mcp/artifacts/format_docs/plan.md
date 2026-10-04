@@ -40,7 +40,7 @@ Verify: pytest tests/test_retry.py -q
 Expect: the focused retry tests pass with exit code 0
 ```
 
-Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. For parallel work, use `## Work Units` or `## Parallel Plan` only when the executor will consume them.
+Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use `## Work Units` for two or more areas with disjoint ownership, keeping shared-contract changes ahead of their consumers. A linear plan fits work that is coupled end to end. Prefer `## Work Units` over the alternative `## Parallel Plan` format.
 
 ## Work Units plan format
 
@@ -55,16 +55,35 @@ A plan that fan-outs work across N workers uses `## Work Units` alongside the no
 
       Directories: src/auth
 
+    ### [S-1] Serialize refreshes per token key
+    Guard the refresh critical section with a bounded per-key lock lifecycle.
+
+    Type: file_change
+    Files:
+    - modify src/auth/refresh.py
+    Verify: pytest tests/auth/test_refresh.py -q
+    Expect: existing refresh tests pass with exit code 0
+
     - [U-2] Race regression test
       Add a focused regression proving the per-token-key lock holds.
 
       Directories: tests/auth
       Depends on: U-1
 
+    ### [S-2] Prove same-key refresh serialization
+    Add a deterministic regression against the completed lock implementation.
+
+    Type: file_create
+    Files:
+    - create tests/auth/test_refresh_race.py
+    Depends on: S-1
+    Verify: pytest tests/auth/test_refresh_race.py -q
+    Expect: same-key refresh regression passes with exit code 0
+
 - One `- [U-N] description` item per unit, where `<N>` is a stable positive integer and the bracket is the unit's proof ID in the development result.
 - A `Directories:` field is a comma-separated inline list (one value is fine) of relative paths; every line is a subdirectory the unit is permitted to edit. Disjoint directories across units are required (no shared subdirectory between any two units).
 - An optional `Depends on:` field is a comma-separated inline list of unit IDs that must complete first; the validator rejects cycles and unknown IDs.
-- Steps are listed under `## Work` (or any `### [S-n]`-bearing section) as usual; the executor infers the unit that owns a step by the step's `Files:` paths falling inside the unit's `Directories:` set, and adds a cross-unit `Depends on:` edge from the consuming unit to the producing unit.
+- Place nested `### [S-n]` steps after their owning unit item, as above. Alternatively, list steps under `## Work`; the executor infers ownership from `Files:` paths inside the unit's `Directories:` set. Cross-unit step dependencies add an edge from the consuming unit to the producing unit. The dependent pair above demonstrates ordering; units without a dependency path and with disjoint ownership run concurrently.
 - A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.
 
 ### Constraints

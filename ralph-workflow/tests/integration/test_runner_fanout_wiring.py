@@ -76,8 +76,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
 class TestFanOutRouting:
     """Test that runner routes correctly based on work_units."""
 
-    def test_serial_when_no_work_units(self) -> None:
-        """When work_units=(), development phase uses InvokeAgentEffect (serial path)."""
+    def test_serial_when_no_work_units(self, tmp_path: Path) -> None:
         state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
@@ -85,6 +84,7 @@ class TestFanOutRouting:
             state,
             policy_bundle,
             config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(root=tmp_path),
         )
 
         assert isinstance(effect, InvokeAgentEffect)

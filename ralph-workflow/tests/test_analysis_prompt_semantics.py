@@ -133,7 +133,7 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
     submitted linear, the verifier records a non-failing advisory suggesting
     units (verdict `met` with an Evidence note, not a new verdict class).
     """
-    source = TemplateContext.default().registry.get_template("planning_analysis")
+    source = " ".join(TemplateContext.default().registry.get_template("planning_analysis").split())
 
     for required in (
         "directory disjointness",
@@ -142,7 +142,7 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
         "shared contract",
         "advisory",
     ):
-        assert required in source, required
+        assert required.casefold() in source.casefold(), required
 
     # Preserve the S-2 framing: criterion-level verdicts, no document-shape grading.
     assert "do not grade document shape" in source

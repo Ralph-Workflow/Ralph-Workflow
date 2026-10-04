@@ -121,9 +121,15 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
             context.partials,
         )
         assert "## Plan fidelity" in prompt
-        assert "## Verification" in prompt
         assert "bounded" in prompt
-        assert "more than one plan step remains or the diff spans more than one file" in prompt
+        if is_worker:
+            assert "## WORKER-SCOPED VERIFICATION" in prompt
+            assert "Workers never dispatch sub-agents" in prompt
+            assert "full gate before completion" not in prompt
+        else:
+            assert "## Verification" in prompt
+            assert "independent read-only pre-submit" in prompt
+            assert "request-versus-plan coverage check" in prompt
         assert "MUST use at least one sub-agent as a hard gate" not in prompt
         assert "## Completion is the default outcome" in prompt
         assert "last resort" in prompt

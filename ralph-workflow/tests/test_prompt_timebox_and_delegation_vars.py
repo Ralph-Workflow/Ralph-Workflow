@@ -91,6 +91,10 @@ def test_developer_prompt_renders_remaining_minutes_when_epochs_published(
     # The warning-point countdown must also be rendered when both epochs are
     # published so the agent can pace work before the warning is reached.
     assert "warning point" in flat, "expected the warning-point countdown"
+    assert "unsubmitted artifact is lost" in flat
+    assert "submit before the deadline" in flat
+    assert "three unrelated areas" in flat
+    assert "four independent criteria" in flat
 
 
 def test_developer_prompt_no_minutes_when_no_epochs_published(
