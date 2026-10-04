@@ -39,18 +39,19 @@ status: completed
 
 ## Unplanned Work example (optional, any status)
 
-```markdown
-## Unplanned Work
+Append a top-level `## Unplanned Work` section listing each mid-phase
+discovery, e.g.:
 
-- [UW-1] src/auth/refresh.py:78 — lock contention surfaced during the
-  refresh-token test; reproduced by
-  pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid
-  on the pre-fix tree before the per-token-key lock landed.
-- [UW-2] docs/auth/refresh.md — the design doc still describes a global
-  lock; the per-token-key change above means the doc is now misleading
-  and should be updated in a follow-up plan rather than silently
-  rewritten under this development.
-```
+    ## Unplanned Work
+
+    - [UW-1] src/auth/refresh.py:78 — lock contention surfaced during the
+      refresh-token test; reproduced by
+      pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid
+      on the pre-fix tree before the per-token-key lock landed.
+    - [UW-2] docs/auth/refresh.md — the design doc still describes a global
+      lock; the per-token-key change above means the doc is now misleading
+      and should be updated in a follow-up plan rather than silently
+      rewritten under this development.
 
 ## Adapted and not-applicable examples
 

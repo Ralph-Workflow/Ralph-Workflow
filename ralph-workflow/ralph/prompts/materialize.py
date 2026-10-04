@@ -174,6 +174,9 @@ def materialize_prompt_for_phase(
             workspace_root=cast(
                 "Path", kwargs["workspace_root"]
             ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            transport=kwargs.get("transport"),
+            # S-5: surface the executing agent transport so the shared
+            # subagent partial can branch on HAS_SUBAGENTS.
         )
         if options is None:
             options = PromptPhaseOptions(
@@ -619,6 +622,7 @@ def _render_developer_prompt(
             is_continuation=is_continuation,
             dev_warn_epoch=dev_warn_epoch,
             dev_deadline_epoch=dev_deadline_epoch,
+            transport=context.transport,
         ),
         workspace=workspace,
         session_caps=session_caps,

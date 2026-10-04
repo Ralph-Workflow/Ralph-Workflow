@@ -20,7 +20,16 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_run_budget.j2' %}
-{% include 'shared/_subagents.j2' %}
+
+## WORKER DO-NOT-DISPATCH
+
+You are a worker for one assigned unit. **Do not dispatch sub-agents from
+inside this worker.** The shared delegation guidance does not apply here:
+the main session owns the orchestrator role, and a worker that spawns
+further agents breaks the single-writer-per-decision rule. Run your
+unit's focused verification yourself, cite the exit code as the unit's
+proof, and return the unit result. The full repository-wide gate is the
+main session's job; do not run it from inside this worker.
 
 ## WORKER-SCOPED VERIFICATION
 

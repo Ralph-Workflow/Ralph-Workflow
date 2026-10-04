@@ -192,21 +192,28 @@ def timebox_template_variables(
     deadline_epoch: float | None,
     now_epoch: float | None = None,
 ) -> dict[str, str]:
-    """Render ``DEV_REMAINING_MINUTES`` and ``DEV_FORCE_CUT`` for the run-budget partial.
+    """Render the development-timebox template variables.
 
-    Returns an empty mapping when either epoch is missing — the
-    ``|default('')`` idiom in the partial falls through to the
-    no-partial-on-exhaustion rule in that case. ``now_epoch`` is
-    injectable so tests can pin the clock; production callers omit it.
+    Returns three keys when both ``warn_epoch`` and ``deadline_epoch`` are
+    provided: ``DEV_WARN_REMAINING_MINUTES`` (minutes until the warning
+    point), ``DEV_REMAINING_MINUTES`` (minutes until the deadline), and
+    ``DEV_FORCE_CUT`` (the literal ``"true"`` flag that the partial uses
+    to gate the force-cut sentence). Returns an empty mapping when either
+    epoch is missing — the ``|default('')`` idiom in the partial falls
+    through to the no-partial-on-exhaustion rule in that case. ``now_epoch``
+    is injectable so tests can pin the clock; production callers omit it.
     """
     if warn_epoch is None or deadline_epoch is None:
         return {}
 
     now = _time.time() if now_epoch is None else now_epoch
-    remaining_seconds = max(0.0, deadline_epoch - now)
-    remaining_minutes = int(remaining_seconds // 60)
+    deadline_remaining_seconds = max(0.0, deadline_epoch - now)
+    deadline_remaining_minutes = int(deadline_remaining_seconds // 60)
+    warn_remaining_seconds = max(0.0, warn_epoch - now)
+    warn_remaining_minutes = int(warn_remaining_seconds // 60)
     return {
-        "DEV_REMAINING_MINUTES": str(remaining_minutes),
+        "DEV_WARN_REMAINING_MINUTES": str(warn_remaining_minutes),
+        "DEV_REMAINING_MINUTES": str(deadline_remaining_minutes),
         "DEV_FORCE_CUT": "true",
     }
 

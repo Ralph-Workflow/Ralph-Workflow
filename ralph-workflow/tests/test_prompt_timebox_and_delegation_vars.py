@@ -140,6 +140,9 @@ def test_developer_prompt_renders_remaining_minutes_when_epochs_published(
     assert "minutes remaining" in flat, "expected 'minutes remaining' phrase"
     # The deadline figure must mention "force-cut" (or equivalent wording).
     assert "force-cut" in flat, "expected the session force-cut sentence"
+    # The warning-point countdown must also be rendered when both epochs are
+    # published so the agent can pace work before the warning is reached.
+    assert "warning point" in flat, "expected the warning-point countdown"
 
 
 def test_developer_prompt_no_minutes_when_no_epochs_published(
@@ -164,6 +167,38 @@ def test_developer_prompt_no_minutes_when_no_epochs_published(
     assert "force-cut" not in flat, (
         "without a published deadline, the force-cut sentence should not appear"
     )
+    assert "warning point" not in flat, (
+        "without a published warning, no warning-point countdown should appear"
+    )
     # The partial's own pinned "exhausted budget" phrase still gates the
     # no-partial-on-exhaustion rule regardless of deadline publication.
     assert math.isfinite(time.time())  # sanity: wall clock reachable
+
+
+def test_timebox_template_variables_renders_warning_countdown() -> None:
+    """``timebox_template_variables`` exposes the warning countdown, the
+    deadline countdown, and the force-cut flag together; with no
+    published epochs, the mapping is empty so the partial falls through
+    to the no-partial-on-exhaustion rule.
+    """
+    from ralph.prompts.template_variables import timebox_template_variables
+
+    now = 1_000_000.0
+    warn_epoch = now + 600.0  # 10 minutes
+    deadline_epoch = now + 1500.0  # 25 minutes
+    vars_map = timebox_template_variables(
+        warn_epoch=warn_epoch,
+        deadline_epoch=deadline_epoch,
+        now_epoch=now,
+    )
+    assert vars_map["DEV_WARN_REMAINING_MINUTES"] == "10"
+    assert vars_map["DEV_REMAINING_MINUTES"] == "25"
+    assert vars_map["DEV_FORCE_CUT"] == "true"
+
+    # Missing epochs ⇒ empty mapping; partials fall through via |default('').
+    assert timebox_template_variables(
+        warn_epoch=None, deadline_epoch=deadline_epoch, now_epoch=now
+    ) == {}
+    assert timebox_template_variables(
+        warn_epoch=warn_epoch, deadline_epoch=None, now_epoch=now
+    ) == {}

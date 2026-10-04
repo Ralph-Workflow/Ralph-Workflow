@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
+from ralph.mcp.artifacts.markdown.specs._plan_steps import step_number_map
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.artifacts.md_draft_io import (
     delete_md_draft,
@@ -18,8 +20,24 @@ from ralph.mcp.artifacts.md_draft_io import (
     md_draft_character_cap,
     save_md_draft,
 )
+from ralph.mcp.artifacts.plan_item_proof import is_ui_plan_item
+from ralph.mcp.multimodal.resources import parse_media_uri
+from ralph.mcp.server._wire_ledger import params_digest, wire_evidence_for
+from ralph.mcp.tools._development_result_session_gate import development_result_session_diagnostics
+from ralph.mcp.tools._md_artifact_payload import (
+    diagnostic_payload as _diagnostic_payload,
+)
+from ralph.mcp.tools._md_artifact_payload import (
+    override_payload as _override_payload,
+)
+from ralph.mcp.tools._md_artifact_payload import (
+    severity_counts as _severity_counts,
+)
 from ralph.mcp.tools._md_artifact_validation_logging import (
     log_validation_rejection as _log_validation_rejection,
+)
+from ralph.mcp.tools._md_artifact_work_units_policy import (
+    work_units_policy_check as _work_units_policy_check,
 )
 from ralph.mcp.tools._validation_retry_hints import (
     clear_validation_retry_hint as _clear_validation_retry_hint,
@@ -676,21 +694,280 @@ def _validate_with_overrides(
 
 
 
-# Diagnostic helpers (work-units policy, context checks, planning-finding
-# targets, capture-handle ledger, severity/diagnostic/override serializers,
-# plan-aware parse-with-overrides) live in the sibling private module
-# :mod:`ralph.mcp.tools._md_artifact_diagnostics`. This module re-exports
-# them so the in-module callers below can keep their original short names
-# and so the public surface of ``md_artifact`` is unchanged.
-from ralph.mcp.tools._md_artifact_diagnostics import (
-    _current_context_diagnostics,
-    _diagnostic_payload,
-    _override_payload,
-    _parse_with_overrides,
-    _planning_finding_target_diagnostics,
-    _severity_counts,
-    _work_units_policy_check,
-)
+def _parse_with_overrides(
+    artifact_type: str, content: str
+) -> tuple[dict[str, object], list[Diagnostic], list[object]]:
+    """Return content, diagnostics, and overrides — plan-aware.
+
+    The content is the canonical mapping when validation passes; an empty
+    dict when the artifact fails validation. Tool callers use the same
+    shape whether they got the content from parse_and_validate (other
+    specs) or analyze_plan_document (plan).
+    """
+    if artifact_type == "plan":
+        parsed_content, diagnostics, overridden = analyze_plan_document(content)
+        return parsed_content, diagnostics, list(overridden)
+    parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
+    return parsed_content, diagnostics, []
+
+
+def _current_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    parsed_content: dict[str, object],
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    """Apply authenticated active-run evidence checks after structural parsing."""
+    session_run_id = _session_run_id(session)
+    if artifact_type == "design_verdict":
+        return _design_verdict_context_diagnostics(
+            session, workspace, parsed_content, session_run_id
+        )
+    if artifact_type == "development_result":
+        return _development_result_context_diagnostics(
+            session, workspace, parsed_content, session_run_id, deps
+        )
+    return []
+
+
+def _design_verdict_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    content: dict[str, object],
+    session_run_id: str | None,
+) -> list[Diagnostic]:
+    run_id = content.get("run_id")
+    if not isinstance(run_id, str) or session_run_id is None or run_id != session_run_id:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV009",
+                "design verdict run_id must match the active session run",
+            )
+        ]
+    tier = content.get("judgement_tier")
+    if tier not in ("deterministic", "on-demand"):
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV010",
+                "design verdict must declare judgement_tier as deterministic or on-demand",
+            )
+        ]
+    verdict_id = content.get("verdict_id")
+    if not isinstance(verdict_id, str) or not verdict_id:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV011",
+                "design verdict must declare a non-empty verdict_id for development-result proof",
+            )
+        ]
+    handles = _capture_handles(content)
+    if handles is None:
+        return [
+            Diagnostic(
+                1,
+                "Capture Provenance",
+                "DV012",
+                "design verdict requires non-empty before_handles and after_handles",
+            )
+        ]
+    return _ledger_handle_diagnostics(session, workspace, session_run_id, handles, "DV013")
+
+
+def _development_result_context_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    content: dict[str, object],
+    session_run_id: str | None,
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    session_diagnostics = development_result_session_diagnostics(session, workspace, content)
+    if session_diagnostics:
+        return session_diagnostics
+    if content.get("status") != "completed":
+        return []
+    diagnostics: list[Diagnostic] = []
+    for key in ("plan_items_proven", "analysis_items_addressed"):
+        proofs = content.get(key)
+        if not isinstance(proofs, list):
+            continue
+        for proof in proofs:
+            if not isinstance(proof, dict):
+                continue
+            item_id = proof.get("plan_item") if key == "plan_items_proven" else ""
+            if not isinstance(item_id, str) or not is_ui_plan_item(item_id):
+                continue
+            verdict_id = proof.get("verdict_id")
+            handles_value = proof.get("capture_handles")
+            if not isinstance(verdict_id, str) or not isinstance(handles_value, tuple):
+                diagnostics.append(
+                    Diagnostic(
+                        1,
+                        "Plan Items Proven",
+                        "DEV011",
+                        "completed UI proof requires verdict_id plus before/after ralph://media handles",
+                    )
+                )
+                continue
+            if session_run_id is None or not _submitted_active_verdict_matches(
+                session, workspace, session_run_id, verdict_id, handles_value, deps
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        1,
+                        "Plan Items Proven",
+                        "DEV012",
+                        "completed UI proof must cite an active-run submitted design verdict and its handles",
+                    )
+                )
+                continue
+            diagnostics.extend(
+                _ledger_handle_diagnostics(
+                    session, workspace, session_run_id, handles_value, "DEV013"
+                )
+            )
+    return diagnostics
+
+
+def _capture_handles(content: dict[str, object]) -> tuple[str, ...] | None:
+    before = content.get("before_handles")
+    after = content.get("after_handles")
+    if not isinstance(before, tuple) or not isinstance(after, tuple) or not before or not after:
+        return None
+    return (*before, *after)
+
+
+def _ledger_handle_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    run_id: str,
+    handles: tuple[str, ...],
+    rule_id: str,
+) -> list[Diagnostic]:
+    workspace_root = _workspace_root(workspace)
+    secret = session.broker_secret
+    return [
+        Diagnostic(
+            1,
+            "Capture Provenance",
+            rule_id,
+            f"capture handle {handle!r} is not authenticated by the active run ledger",
+        )
+        for handle in handles
+        if parse_media_uri(handle) is None
+        or not _active_run_ledger_has_handle(workspace_root, run_id, secret, handle)
+    ]
+
+def _active_run_ledger_has_handle(
+    workspace_root: Path,
+    run_id: str,
+    secret: str | None,
+    handle: str,
+) -> bool:
+    candidates: tuple[tuple[str, dict[str, object]], ...] = (
+        ("read_media", {"path": handle}),
+        ("read_image", {"path": handle}),
+        ("resources/read", {"uri": handle}),
+    )
+    for tool_name, params in candidates:
+        if wire_evidence_for(
+            workspace_root,
+            run_id,
+            tool_name=tool_name,
+            secret=secret,
+            params_digest=params_digest(params),
+        ):
+            return True
+    return False
+
+
+def _submitted_active_verdict_matches(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    run_id: str | None,
+    verdict_id: str,
+    handles: tuple[str, ...],
+    deps: ArtifactHandlerDeps | None,
+) -> bool:
+    if run_id is None or not artifact_receipt_present(
+        _workspace_root(workspace),
+        run_id,
+        "design_verdict",
+        backend=(deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend,
+        receipt_secret=session.broker_secret,
+    ):
+        return False
+    artifact_path = _resolve_artifact_dir(session, workspace) / "design_verdict.md"
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    try:
+        verdict_content = backend.read_text(artifact_path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return False
+    parsed, diagnostics = parse_and_validate(verdict_content, get_spec("design_verdict"))
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return False
+    cited_handles = _capture_handles(parsed)
+    return parsed.get("verdict_id") == verdict_id and cited_handles == handles
+
+
+def _planning_finding_target_diagnostics(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    content: str,
+    deps: ArtifactHandlerDeps | None,
+) -> list[Diagnostic]:
+    """Reject planning findings that cannot bind to the submitted plan's steps."""
+    if artifact_type != "planning_analysis_decision":
+        return []
+    decision, _ = parse_markdown_document(content)
+    target_lines = {
+        item.identifier: item.line
+        for section_name in ("What Came Up Short", "Criterion Verdicts")
+        for section in decision.sections_named(section_name)
+        for item in section.items
+    }
+    raw_targets = _parse_with_overrides(artifact_type, content)[0].get("finding_targets", {})
+    if not isinstance(raw_targets, dict):
+        return []
+    targets = {
+        finding_id: target
+        for finding_id, target in raw_targets.items()
+        if isinstance(finding_id, str) and isinstance(target, str)
+    }
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    plan_path = _resolve_artifact_dir(session, workspace) / "plan.md"
+    try:
+        plan_content = backend.read_text(plan_path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return [
+            Diagnostic(
+                target_lines.get(str(finding_id), 1),
+                "What Came Up Short",
+                "ANALYSIS004",
+                "planning finding target cannot be validated because no submitted plan is available",
+            )
+            for finding_id in targets
+        ]
+    plan, _ = parse_markdown_document(plan_content)
+    step_ids = step_number_map(plan, [])
+    return [
+        Diagnostic(
+            target_lines.get(str(finding_id), 1),
+            "What Came Up Short",
+            "ANALYSIS004",
+            f"planning finding references unknown step {target!r}; use an existing submitted plan step or 'Plan-level:'",
+        )
+        for finding_id, target in targets.items()
+        if target != "plan-level" and target not in step_ids
+    ]
+
 
 __all__ = [
     "handle_discard_md_draft",

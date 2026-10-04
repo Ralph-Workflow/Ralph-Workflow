@@ -209,10 +209,10 @@ json_parser = "generic"
 
 ## Delegation stance and HAS_SUBAGENTS
 
-The planning and developer prompts gate the sub-agent dispatch guidance
-in `shared/_subagents.jinja` on a single boolean variable, `HAS_SUBAGENTS`,
-which is computed from each transport's `agents.delegation_capabilities.delegation_for(...)`
-return value:
+The planning and non-worker developer prompts gate the sub-agent dispatch
+guidance in `shared/_subagents.j2` on a single boolean variable,
+`HAS_SUBAGENTS`, which is computed from each transport's
+`agents.delegation_capabilities.delegation_for(...)` return value:
 
 | Transport delegation value | `HAS_SUBAGENTS` rendered | Effect |
 | --- | --- | --- |
@@ -232,6 +232,18 @@ in the bundled `pipeline.toml` requires the executing agent to dispatch
 its own sub-agents, and a transport that cannot do so must opt in
 explicitly via `dispatch_mode = "ralph_fan_out"` or run sequentially in
 `unit_id` order (the same path Nanocoder and Pi take today).
+
+Production materialization threads the active `AgentTransport` from the
+runner through `PromptPhaseContext.transport` and into
+`DeveloperPromptInputs.transport`, so `delegation_template_variable()`
+sees the real transport — not `None` — and the rendered
+`HAS_SUBAGENTS` reflects the executing agent. The worker prompt
+(`worker_developer.jinja`) replaces the shared partial with an explicit
+**WORKER DO-NOT-DISPATCH** section: a worker must not fan out further
+sub-agents, so the dispatch brief is suppressed even on transports that
+otherwise expose it. The worker still runs the unit's focused `Verify`
+command and cites its exit code as the unit's proof; the full
+repository-wide gate is the main session's job.
 
 ### Built-in configuration examples
 

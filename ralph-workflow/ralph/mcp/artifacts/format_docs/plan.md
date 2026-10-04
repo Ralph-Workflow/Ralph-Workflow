@@ -48,20 +48,18 @@ A plan that fan-outs work across N workers uses `## Work Units` alongside the no
 
 ### Syntax
 
-```markdown
-## Work Units
+    ## Work Units
 
-- [U-1] Per-token-key lock body
-  Replace the global refresh lock with a per-token-key lock.
+    - [U-1] Per-token-key lock body
+      Replace the global refresh lock with a per-token-key lock.
 
-  Directories: src/auth
+      Directories: src/auth
 
-- [U-2] Race regression test
-  Add a focused regression proving the per-token-key lock holds.
+    - [U-2] Race regression test
+      Add a focused regression proving the per-token-key lock holds.
 
-  Directories: tests/auth
-  Depends on: U-1
-```
+      Directories: tests/auth
+      Depends on: U-1
 
 - One `- [U-N] description` item per unit, where `<N>` is a stable positive integer and the bracket is the unit's proof ID in the development result.
 - A `Directories:` field is a comma-separated inline list (one value is fine) of relative paths; every line is a subdirectory the unit is permitted to edit. Disjoint directories across units are required (no shared subdirectory between any two units).

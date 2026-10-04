@@ -130,15 +130,15 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
     The criterion checks declared units for directory disjointness, complete
     cross-unit `Depends on:` references, unit count within the cap, and shared
     contracts sequenced before units; when a large clearly separable plan is
-    submitted linear, the verifier records an advisory (not a failure)
-    suggesting units.
+    submitted linear, the verifier records a non-failing advisory suggesting
+    units (verdict `met` with an Evidence note, not a new verdict class).
     """
     source = TemplateContext.default().registry.get_template("planning_analysis")
 
     for required in (
         "directory disjointness",
         "Depends on:",
-        "max_work_units",
+        "max_parallel_workers",
         "shared contract",
         "advisory",
     ):
@@ -150,6 +150,9 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
     assert "## Decision artifact" in source
     # The advisory must not promote into a hard failure.
     assert "## What Came Up Short" in source
+    # The advisory uses the contract's accepted `met` verdict with an
+    # Evidence note rather than introducing a new "advisory" verdict class.
+    assert "verdict `met`" in source
     # The new criterion lives inside the criteria-and-verdicts block.
     assert source.index("directory disjointness") > source.index("## Criteria and verdicts")
     assert source.index("directory disjointness") < source.index("## Decision artifact")

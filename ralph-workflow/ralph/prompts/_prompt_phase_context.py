@@ -20,3 +20,8 @@ class PromptPhaseContext:
     pipeline_policy: PipelinePolicy
     session_caps: SessionCapabilities
     workspace_root: Path
+    # S-5: the executing agent transport (e.g. AgentTransport.CODEX). The
+    # materialization passes it into ``DeveloperPromptInputs.transport`` so
+    # the shared subagent partial can branch on HAS_SUBAGENTS in production;
+    # ``None`` falls through to the empty-string sequential path.
+    transport: object = None
