@@ -269,7 +269,7 @@ Depends on: S-1
     assert any(d.severity == "error" for d in diagnostics)
 
 
-def test_file_change_step_without_files_is_rejected() -> None:
+def test_file_change_step_without_files_retains_plan_with_advice() -> None:
     """A missing Files: line is a warning, never a PLAN001 error.
 
     Substantive (>100 chars of actual content) so the length floor does
@@ -292,7 +292,7 @@ Type: file_change
         f"missing Files: should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
-    assert any(d.rule_id == "PLAN010" and d.severity == "error" for d in diagnostics)
+    assert any(d.rule_id == "PLAN010" and d.severity == "warning" for d in diagnostics)
 
 
 def test_plan_with_malformed_step_id_is_a_plan() -> None:
@@ -327,31 +327,19 @@ Type: action
 # ---------------------------------------------------------------------------
 
 
-def test_plan_shaped_under_100_chars_emits_plan001_error() -> None:
-    """A plan-shaped document whose body is under 100 chars is not a plan.
-
-    The plan-shape bypass only protects the recognizably-other-text
-    checks; the actual-content 100-character floor fires before the
-    bypass so a truncated response that happens to include a single
-    step block cannot avoid rejection on a shape coincidence.
-    """
+def test_brief_parallel_plan_is_accepted_without_prose_padding() -> None:
     text = """---
 type: plan
 ---
-## Steps
-
-### [S-1] Do
+## Parallel Plan
+- [U-1] Inspect client
+### [S-1] Inspect client
+Type: discovery
+Location: src/client.py
 """
-    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
-    assert plan001_errors, (
-        f"expected PLAN001 error for plan-shaped under-100-char text, got: "
-        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
-    )
-    for d in plan001_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"PLAN001 for plan-shaped under-100-char text does not name its consumer: {d.message!r}"
-        )
+    content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    assert not any(item.severity == "error" for item in diagnostics)
+    assert content["steps"][0]["number"] == 1
 
 
 @pytest.mark.parametrize(

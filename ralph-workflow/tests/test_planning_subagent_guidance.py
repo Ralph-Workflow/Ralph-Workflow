@@ -16,12 +16,12 @@ def test_primary_templates_share_thinking_first_guidance() -> None:
         assert "subagent" in source.lower() or name == "planning_edit.jinja"
 
 
-def test_primary_prompt_requires_units_for_disjoint_work() -> None:
+def test_primary_prompt_defaults_to_parallel_distinct_responsibilities() -> None:
     source = _source("planning.jinja")
-    assert "pairwise disjoint directory ownership" in source
+    assert "distinct work responsibilities" in source
     assert "independent steps concurrently" in source
     assert "genuinely coupled" in source
-    assert "disjoint" in source
+    assert "responsibility paths are optional" in source
 
 
 def test_fallback_templates_delegate_discovery_by_default() -> None:

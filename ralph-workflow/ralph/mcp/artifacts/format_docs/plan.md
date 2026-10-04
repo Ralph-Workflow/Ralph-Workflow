@@ -44,7 +44,7 @@ Verify: make docs
 Expect: the documentation builds with exit code 0
 ```
 
-Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use an explicit parallel format for disjoint ownership, keeping shared-contract changes ahead of their consumers. Both `## Work Units` and `## Parallel Plan` are first-class parallel formats. Any step plan can also parallelize independent ready work.
+Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use an explicit parallel format for distinct responsibilities, keeping shared-contract changes ahead of their consumers. Both `## Work Units` and `## Parallel Plan` are first-class parallel formats. Any step plan can also parallelize independent ready work.
 
 Plans default to parallel work to reduce elapsed time. Use as many parallel workers as distinct ready responsibilities need within active capacity. A wholly sequential schedule requires real prerequisites or conflicting edits; a step list can still have independent branches that run concurrently. Explain dependencies, order shared contracts only before their consumers, and give each unit request criteria, outputs, and focused proof. Include integration verification after fan-in.
 

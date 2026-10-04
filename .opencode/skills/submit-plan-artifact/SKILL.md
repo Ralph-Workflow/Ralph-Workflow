@@ -11,7 +11,7 @@ Read `.agent/artifact-formats/plan.md`. The plan is the executor's instruction s
 ## Author and submit
 
 1. Ground the outcome, current behavior, target files, risks, and proof in repository evidence.
-2. Cover Orient, Characterize, Partition, Change, Verify. Use a discovery step for an unknown rather than inventing a path or command. Partition disjoint areas into work units, with shared contracts completed before their consumers.
+2. Cover Orient, Characterize, Partition, Change, Verify. Use a discovery step for an unknown rather than inventing a path or command. Partition distinct responsibilities into work units, with shared contracts completed before their consumers.
 3. Optionally check with `ralph_verify_md_artifact`, then submit with `ralph_submit_md_artifact` using `artifact_type: plan` and the full text.
 4. For a similar revision, use `ralph_edit_md_artifact` on the staged draft; it submits when valid. Use `ralph_stage_md_artifact` with `replace_all` only for a wholesale rewrite. `ralph_get_md_draft` inspects the draft and `ralph_finalize_md_artifact` submits an assembled staged draft.
 5. `ralph_discard_md_draft` is only for a genuine wholesale restart.
@@ -57,7 +57,7 @@ Use `ralph_verify_md_artifact` before submission when a fast diagnostic preview 
 
 ## Parallel plans (## Work Units)
 
-Parallel plans are the default. Use `## Work Units` for disjoint directories or the equally supported `## Parallel Plan` for directories and/or explicit `Paths:` files. Step plans also run independent ready steps concurrently; sequential scheduling is a fallback for concrete prerequisites or conflicting writers. Total units must fit `max_work_units`; `max_parallel_workers` limits concurrent workers, with additional ready units queued. Incomplete step details produce repair advice and preserve the plan for refinement. A unit is a stable-ID list item:
+Parallel plans are the default. Use `## Work Units` or the equally supported `## Parallel Plan` for distinct responsibilities with optional directories and/or explicit `Paths:` files. Step plans also run independent ready steps concurrently; sequential scheduling is a fallback for concrete prerequisites or conflicting edits. Total units must fit `max_work_units`; `max_parallel_workers` limits concurrent workers, with additional ready units queued. Incomplete step details produce repair advice and preserve the plan for refinement. A unit is a stable-ID list item:
 
 - `- [U-N] description` (one per unit, N a positive integer)
 - Optional `Directories: <path>[, <path>...]` or `Paths:` names responsibility areas. Units may share directories or files with distinct responsibilities and a shared-edit coordination strategy. Reserved `.agent`, `.git`, `.worktrees`, empty, and root paths are never allowed. Use as many workers as ready independent work needs within active capacity.

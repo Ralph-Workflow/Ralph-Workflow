@@ -37,8 +37,8 @@ without units still schedules independent steps concurrently.
 Before calling the submit tool, re-read the **Partition** step in the
 thinking section above. Decide explicitly:
 
-- **`## Work Units` plan (default).** Fan out every independent branch,
-  including branches alongside a dependency chain. Pairwise disjoint
+- **Parallel plan (default: `## Work Units` or `## Parallel Plan`).** Fan out every independent branch,
+  including branches alongside a dependency chain. Distinct
   work responsibilities and optional `Files:` lists guide coordination. Land shared contracts before
   their consumers while unrelated units proceed concurrently.
 - **Wholly linear plan.** Use this only for genuinely coupled work, when every step requires output

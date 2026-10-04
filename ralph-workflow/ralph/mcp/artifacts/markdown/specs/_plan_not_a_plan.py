@@ -399,13 +399,9 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     circuits before any other check so the canonical no-op plan always
     validates.
 
-    The actual-content length floor runs *before* the plan-shape bypass
-    so a truncated agent response that happens to include a single step
-    block cannot bypass the 100-character floor on a shape coincidence.
-    The plan-shape bypass only protects the recognizably-other-text
-    checks (``_is_refusal``, ``_is_tool_output``, etc.) where a real
-    plan body can incidentally match a crude prefix while still being a
-    plan.
+    Recognizable plan structure bypasses the prose-length floor, so compact
+    parallel units and discovery steps do not need filler text. Empty input
+    and recognizable truncation remain rejected.
     """
     # Noop exemption short-circuit: the canonical zero-content plan.
     try:
@@ -418,13 +414,11 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     first_line = _first_content_line(body_text)
     message: str | None = None
 
-    # Length floor runs before the plan-shape bypass. A document that
-    # happens to include ``### [S-1] Do`` and nothing else cannot be a plan.
     if _is_noop_only(document):
         pass
     elif content_chars == 0:
         message = _empty_message()
-    elif content_chars < _MIN_CONTENT_CHARS:
+    elif content_chars < _MIN_CONTENT_CHARS and not _has_plan_shape(document):
         message = _too_short_message(content_chars)
     elif _has_unterminated_frontmatter(text):
         message = _truncation_message(
