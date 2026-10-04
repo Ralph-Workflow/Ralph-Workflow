@@ -27,6 +27,7 @@ def test_install_conflict_regression_resolves_console_script_to_pipx_package() -
         resolve_package_file=lambda _exe: Path(
             "/home/u/.local/pipx/venvs/ralph-workflow/lib/ralph/__init__.py"
         ),
+        path_exists=lambda _path: False,
     )
 
     assert existing is not None
@@ -41,6 +42,7 @@ def test_install_conflict_detects_uv_tool_from_resolved_package_path() -> None:
         resolve_package_file=lambda _exe: Path(
             "/home/u/.local/share/uv/tools/ralph-workflow/lib/ralph/__init__.py"
         ),
+        path_exists=lambda _path: False,
     )
 
     assert existing is not None

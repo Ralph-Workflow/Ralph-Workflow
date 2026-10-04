@@ -536,6 +536,11 @@ def _to_content(document: ParsedDocument) -> Content:
 
 
 def analyze_plan_document(text: str) -> tuple[Content, list[Diagnostic], list[object]]:
+    """Extract optional hints from ``text``, returning content, diagnostics, and overrides.
+
+    Only binary control characters produce diagnostics. Unusable structured hints
+    yield empty steps; text formatting and content never require overrides.
+    """
     diagnostics = (
         [Diagnostic(1, None, "PLAN001", "plan contains binary control characters")]
         if any(character in _BINARY_CONTROL_CHARACTERS for character in text)
