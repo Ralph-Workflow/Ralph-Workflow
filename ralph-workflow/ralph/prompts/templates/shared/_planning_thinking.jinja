@@ -12,16 +12,19 @@ Plan in this order:
    branch around it. Use `Depends on:` only for an evidence-backed
    prerequisite; explain what output the consumer needs, never serialize
    independent work by list order. Declare
-   `## Work Units` whenever step groups have pairwise disjoint
-   directory ownership and `Files:` lists, regardless of group size.
+   `## Work Units` or `## Parallel Plan` whenever work has distinct
+   responsibilities, regardless of group size or shared paths.
    Independent files in the same directory or at repository root use
-   `## Parallel Plan` with disjoint `Paths:` or remain independent steps
+   `## Parallel Plan` with optional `Paths:` or remain independent steps
    scheduled concurrently. Sequential scheduling is a fallback, never
    implied by the step-list format. When
    partitioning, isolate **shared contract** or interface changes as
    prerequisite steps; order only the units that consume their outputs.
    A shared file constrains its writers, not every unrelated branch.
-   Keep each unit's ownership disjoint and its assignment self-contained:
+   Use as many parallel workers as the work needs within active capacity.
+   Directories and files may overlap when responsibilities are distinct;
+   define how shared edits are coordinated before dispatch. Ownership fields
+   are optional during planning. Keep each assignment self-contained:
    input contracts, request criteria, concrete outputs, and focused proof.
    Plan integration verification after fan-in to expose cross-unit
    incompatibilities; concurrency never relaxes accuracy or coverage.

@@ -6,7 +6,7 @@ version: 2.1.0
 
 # submit-plan-artifact
 
-Read `.agent/artifact-formats/plan.md`. Submit one mandatory executor-ready plan: stable `### [S-n] Title` steps, allowed `Type`, concrete targets or discovery location, real dependencies, and per-step proof.
+Read `.agent/artifact-formats/plan.md`. The plan is the executor's instruction set. Submit a parallel plan by default, with stable `### [S-n] Title` steps, concrete ownership, real dependencies, and focused proof. Incomplete step types, targets, and proof receive advisory diagnostics; preserve the plan and refine its substance rather than serializing it to satisfy formatting.
 
 ## Author and submit
 
@@ -57,10 +57,10 @@ Use `ralph_verify_md_artifact` before submission when a fast diagnostic preview 
 
 ## Parallel plans (## Work Units)
 
-Use `## Work Units` for two or more areas with disjoint ownership. Prefer it over `## Parallel Plan`; use a linear plan for work coupled end to end. The unit count must fit within the development phase's `max_parallel_workers` cap rendered in the planning prompt. A unit is a stable-ID list item:
+Parallel plans are the default. Use `## Work Units` for disjoint directories or the equally supported `## Parallel Plan` for directories and/or explicit `Paths:` files. Step plans also run independent ready steps concurrently; sequential scheduling is a fallback for concrete prerequisites or conflicting writers. Total units must fit `max_work_units`; `max_parallel_workers` limits concurrent workers, with additional ready units queued. Incomplete step details produce repair advice and preserve the plan for refinement. A unit is a stable-ID list item:
 
 - `- [U-N] description` (one per unit, N a positive integer)
-- `Directories: <path>[, <path>...]` — one inline list field naming subdirectories the unit may edit; every path must be disjoint from every other unit's set, and the reserved paths `.agent`, `.git`, and `.worktrees` (plus the empty / root path) are never allowed.
+- Optional `Directories: <path>[, <path>...]` or `Paths:` names responsibility areas. Units may share directories or files with distinct responsibilities and a shared-edit coordination strategy. Reserved `.agent`, `.git`, `.worktrees`, empty, and root paths are never allowed. Use as many workers as ready independent work needs within active capacity.
 - `Depends on: U-X[, U-Y...]` — optional inline list of unit IDs the unit must wait for; the validator rejects cycles and unknown IDs.
 - Nest `### [S-n]` steps after the owning unit item, or list steps under `## Work` and let `Files:` paths determine ownership. Step dependencies add cross-unit edges from consumer to producer. Avoid edges in both directions between two units; they form a rejected cycle.
 - A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.

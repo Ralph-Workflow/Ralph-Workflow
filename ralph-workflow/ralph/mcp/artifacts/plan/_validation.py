@@ -170,6 +170,17 @@ class PlanArtifact(RalphBaseModel):
             label="work unit",
         )
         _validate_work_unit_step_ownership(self.work_units, self.steps)
+        parallel_units = [
+            WorkUnit(
+                unit_id=item.id,
+                description=item.description,
+                allowed_directories=item.edit_area.directories + item.edit_area.paths,
+                dependencies=item.depends_on,
+                step_ids=item.step_ids,
+            )
+            for item in self.parallel_plan
+        ]
+        _validate_work_unit_step_ownership(parallel_units, self.steps)
         return self
 
     @model_validator(mode="after")

@@ -106,3 +106,23 @@ def test_incomplete_parallel_plan_is_accepted_with_repair_advice(heading: str) -
     assert any(item.severity == "warning" for item in diagnostics)
     normalized = normalize_plan_artifact_content(content)
     assert normalized["steps"][0]["number"] == 1
+
+
+@pytest.mark.parametrize("heading", ["Work Units", "Parallel Plan"])
+def test_parallel_units_can_share_file_responsibility(heading: str) -> None:
+    document = "---\ntype: plan\n---\n" + f"## {heading}\n"
+    for number, responsibility in enumerate(("retry policy", "error formatting"), start=1):
+        document += (
+            f"- [U-{number}] Implement {responsibility}\n  Directories: src/client\n"
+            f"### [S-{number}] Implement {responsibility}\nType: file_change\n"
+            "Files:\n- modify src/client/main.py\n"
+            "Verify: pytest tests/client -q\nExpect: client behavior passes\n"
+        )
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert not any(item.severity == "error" for item in diagnostics)
+    plan = parse_work_units_from_artifact(content)
+    assert plan is not None
+    assert [(unit.unit_id, unit.step_ids) for unit in plan.work_units] == [
+        ("U-1", ["S-1"]),
+        ("U-2", ["S-2"]),
+    ]

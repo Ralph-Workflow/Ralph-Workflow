@@ -30,10 +30,12 @@ REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
 
 Inspect the repository before making claims. Planning is read-only: do not edit
 files or run state-changing commands. Delegate exploration, research, and
-verification to read-only subagents. Declare `## Work Units` for groups with
-pairwise disjoint directory ownership and files. When directories overlap,
-retain independent steps and concurrently schedule disjoint file writers;
-serialize only work with a hard prerequisite or conflicting ownership.
+verification to read-only subagents. Declare `## Work Units` or `## Parallel Plan`
+for distinct responsibilities, using as many parallel workers as needed within
+active capacity. Responsibility paths are optional; units may share directories
+or files with a concrete coordination strategy. Step plans also schedule
+independent ready work concurrently; serialize only actual conflicting edits
+or hard prerequisites.
 
 A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
 After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

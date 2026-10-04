@@ -75,9 +75,12 @@ def work_units_policy_check(
 
     try:
         parsed = parse_work_units_from_artifact({"work_units": raw})
-    except WorkUnitsValidationError:
-        # Structural checks already surfaced; do not double-report.
-        return diagnostics
+    except (WorkUnitsValidationError, ValueError) as exc:
+        return [
+            Diagnostic(
+                _section_line(content, section_name) or 1, section_name, "WUPOL001", str(exc)
+            )
+        ]
     if parsed is None:
         return diagnostics
 

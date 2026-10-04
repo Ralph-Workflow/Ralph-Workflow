@@ -26,9 +26,11 @@ plan spec.
 {% include 'shared/_subagents.j2' %}
 
 Delegate exploration, research, and verification to read-only subagents.
-Declare `## Work Units` for groups with pairwise disjoint directory ownership
-and files, regardless of group size. A step plan without units still schedules
-independent steps concurrently when directory ownership prevents separate units.
+Declare `## Work Units` or `## Parallel Plan` for distinct work responsibilities.
+Use as many workers as independent work needs within active capacity.
+Directories and files may overlap; responsibility paths are optional planning
+context. Define coordination for shared edits before dispatch. A step plan
+without units still schedules independent steps concurrently.
 
 ## Submission guidance — read before submitting
 
@@ -37,7 +39,7 @@ thinking section above. Decide explicitly:
 
 - **`## Work Units` plan (default).** Fan out every independent branch,
   including branches alongside a dependency chain. Pairwise disjoint
-  directory ownership and `Files:` lists define writer ownership. Land shared contracts before
+  work responsibilities and optional `Files:` lists guide coordination. Land shared contracts before
   their consumers while unrelated units proceed concurrently.
 - **Wholly linear plan.** Use this only for genuinely coupled work, when every step requires output
   from preceding work. Cite that prerequisite for each dependency; a

@@ -9,7 +9,7 @@ Each step has a `Type` from `file_change`, `file_create`, `file_delete`, `refact
 - `discovery` should provide `Verify`, `Location`, or `Evidence`.
 - Use `Depends on: S-n` only where ordering exists. `Satisfies`, `Rationale`, and `Evidence` add useful execution context.
 
-Missing step types, targets, or verification details produce advisory diagnostics and preserve the submitted plan for analysis and refinement. An imperfect parallel plan is still a plan. Stable IDs and resolvable, acyclic dependencies remain required for dispatch. Reserved or overlapping ownership and unreadable execution policy block unsafe dispatch. `schema_version` and `## Validation Overrides` are unsupported.
+Missing step types, targets, or verification details produce advisory diagnostics and preserve the submitted plan for analysis and refinement. An imperfect parallel plan is still a plan. Stable IDs and resolvable, acyclic dependencies remain required for dispatch. Reserved ownership and unreadable execution policy block unsafe dispatch. `schema_version` and `## Validation Overrides` are unsupported.
 
 ## Example
 
@@ -46,9 +46,9 @@ Expect: the documentation builds with exit code 0
 
 Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use an explicit parallel format for disjoint ownership, keeping shared-contract changes ahead of their consumers. Both `## Work Units` and `## Parallel Plan` are first-class parallel formats. Any step plan can also parallelize independent ready work.
 
-Plans default to parallel work to reduce elapsed time. A wholly linear plan requires every step to depend on preceding work; a dependency chain may still have independent branches that run concurrently. Explain the output consumed by each dependency, order shared contracts only before their consumers, and give each unit disjoint ownership, request criteria, outputs, and focused proof. Include integration verification after fan-in to check that the combined result satisfies the request.
+Plans default to parallel work to reduce elapsed time. Use as many parallel workers as distinct ready responsibilities need within active capacity. A wholly sequential schedule requires real prerequisites or conflicting edits; a step list can still have independent branches that run concurrently. Explain dependencies, order shared contracts only before their consumers, and give each unit request criteria, outputs, and focused proof. Include integration verification after fan-in.
 
-Disjoint files alone do not permit separate directory-owned Work Units. Use `## Parallel Plan` with explicit `Paths:` for independent files in the same directory or at repository root, or retain independent steps in a step plan. Step plans also schedule disjoint ready writers concurrently; list order is not a dependency.
+Units may share directories or even files when their responsibilities are distinct. `Directories:` and `Paths:` are optional responsibility context, not acceptance requirements. Define coordination for shared edits before dispatch; isolated workers still need safe scopes, and conflicting edits must be integrated without lost changes. Step plans also schedule ready work concurrently; list order is not a dependency.
 
 ## Work Units plan format
 
@@ -89,15 +89,15 @@ A plan that fans out work uses `## Work Units` alongside the normal `### [S-n]` 
     Expect: same-key refresh regression passes with exit code 0
 
 - One `- [U-N] description` item per unit, where `<N>` is a stable positive integer and the bracket is the unit's proof ID in the development result.
-- A `Directories:` field is a comma-separated inline list (one value is fine) of relative paths; every line is a subdirectory the unit is permitted to edit. Disjoint directories across units are required (no shared subdirectory between any two units).
+- An optional `Directories:` field is a comma-separated inline list of relative responsibility areas. Areas may overlap across units with distinct work; an omitted field is refined before isolated worker dispatch.
 - An optional `Depends on:` field is a comma-separated inline list of unit IDs that must complete first; the validator rejects cycles and unknown IDs.
 - Place nested `### [S-n]` steps after their owning unit item, as above. Alternatively, list steps under `## Work`; the executor infers ownership from `Files:` paths inside the unit's `Directories:` set. Cross-unit step dependencies add an edge from the consuming unit to the producing unit. The dependent pair above demonstrates ordering; units without a dependency path and with disjoint ownership run concurrently.
 - A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.
 
 ### Constraints
 
-- Every unit must declare at least one `Directories:` entry; the unit may not edit the workspace root, an empty path, `.agent`, `.git`, or `.worktrees` (reserved paths).
-- No two units may share a directory prefix; the validator checks pairwise path-segment overlap, not just exact matches.
+- Responsibility paths are optional. Declared paths may not claim the workspace root, an empty path, `.agent`, `.git`, or `.worktrees` (reserved paths).
+- Shared directories and files are accepted at the planning boundary. Before isolated dispatch, refine edit scopes or coordinate shared-file changes in the main session.
 - The total unit count must fit within `max_work_units`, rendered into the planning prompt. `max_parallel_workers` limits simultaneous workers; additional ready units queue.
 - Avoid step-level `Depends on:` chains that would force the cross-unit inference to add an edge in both directions between two units; that pattern produces a cycle the validator rejects.
 
