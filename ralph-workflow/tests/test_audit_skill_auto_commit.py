@@ -166,8 +166,8 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
         content = real_read(rel_path)
         if rel_path == run_path:
             return content.replace(
-                "Skill auto-commit failed (non-fatal): {}",
-                "removed failure-path debug log",
+                "from ralph.skills._auto_commit import commit_skill_writes",
+                "from ralph.skills._auto_commit import removed_rename",
             )
         return content
 
@@ -175,39 +175,39 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     rc = audit_main([])
     captured = capsys.readouterr()
     assert rc == 1, (
-        f"Audit must exit 1 when the failure-path debug log is removed from run.py; got rc={rc}"
+        f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
     )
     assert run_path in captured.out
     assert "missing required literal" in captured.out
 
 
-def test_audit_blocks_regression_when_failure_path_try_except_removed(
+def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing the try/except wrapper around ``commit_skill_updates`` in
-    ``cli/commands/run.py`` triggers rc=1 -- pins the fail-closed contract.
+    """wt-012: reintroducing the phase-seam skill commit in the runner triggers rc=1.
 
-    A future refactor that drops the try/except could let a transient
-    git error break the pipeline, defeating the best-effort contract
-    pinned by ``test_auto_commit_fails_closed_on_git_lock``.
+    A future refactor that re-adds the ``commit_skill_updates`` call in
+    the phase seam (the legacy dirty-discovery sweep) would commit
+    whatever is dirty in the skill roots at every transition -- a
+    skill path the user or agent dirtied mid-run would be swept into
+    the deterministic chore commit. The audit's ``absent`` invariant
+    on ``pipeline/runner.py`` blocks the regression.
     """
     real_read = audit_module._read
-    run_path = "cli/commands/run.py"
+    runner_path = "pipeline/runner.py"
 
-    def _read_with_try_except_removed(rel_path: str) -> str:
+    def _read_with_seam_commit_removed(rel_path: str) -> str:
         content = real_read(rel_path)
-        if rel_path == run_path:
-            return content.replace(
-                "except Exception as exc:  # auto-commit is best-effort; never break the pipeline",
-                "REMOVED_TRY_EXCEPT_MARKER",
-            )
+        if rel_path == runner_path:
+            # Pretend the phase-seam sweep resurfaced.
+            return content + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
         return content
 
-    monkeypatch.setattr(audit_module, "_read", _read_with_try_except_removed)
+    monkeypatch.setattr(audit_module, "_read", _read_with_seam_commit_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
     assert rc == 1, (
-        f"Audit must exit 1 when the try/except wrapping commit_skill_updates is removed; "
-        f"got rc={rc}"
+        f"Audit must exit 1 when the phase-seam skill commit is reintroduced; got rc={rc}"
     )
-    assert run_path in captured.out
+    assert runner_path in captured.out
+    assert "forbidden literal" in captured.out

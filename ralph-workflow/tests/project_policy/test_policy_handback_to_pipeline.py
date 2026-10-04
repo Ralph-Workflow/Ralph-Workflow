@@ -444,10 +444,9 @@ def _build_handback_pipeline_stubs(
         def commit_policy_changes(
             _scope: WorkspaceScope,
             _pre_run_dirty: frozenset[str] | None,
-            authored_paths: frozenset[str] | None,
         ) -> None:
             if policy_commit_requests is not None:
-                policy_commit_requests.append(authored_paths)
+                policy_commit_requests.append(frozenset())
 
         with monkeypatch.context() as policy_monkeypatch:
             policy_monkeypatch.setattr(

@@ -6,9 +6,11 @@ import hashlib
 import json
 import os
 import shutil
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
+from ralph.git.scoped_auto_commit import capture_pre_write_contents
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._agent_paths import (
@@ -30,9 +32,139 @@ from ralph.skills._content import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
+
+
+@dataclass(frozen=True)
+class ProjectSkillInstallOutcome:
+    """Producer-level result of a project-scope baseline install.
+
+    The deterministic auto-commit at the producer boundary consumes
+    ``written_paths`` and ``pre_contents`` to know exactly which paths
+    the install touched and what the pre-write content was. The
+    ``entry`` and ``failures`` fields are the legacy install return
+    values; callers that only care about install status can still
+    destructure them via ``outcome.entry`` / ``outcome.failures``.
+
+    ``written_paths`` is the byte-exact set of paths the install
+    actually changed. ``pre_contents`` maps each such path to its
+    pre-write git blob SHA (or ``None`` for a path that did not
+    exist before the install). Together they are the contract
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
+    consumes to keep the deterministic chore commit isolated from
+    agent and user changes.
+    """
+
+    entry: CapabilityEntry
+    failures: list[str]
+    written_paths: list[str] = field(default_factory=list)
+    pre_contents: dict[str, str | None] = field(default_factory=dict)
+
+
+def _candidate_skill_paths(workspace_root: Path) -> list[str]:
+    """List every repo-relative path the project-scope install could write.
+
+    Covers the canonical metadata + every baseline skill's files, plus
+    the per-skill entry under each project sibling root (the symlinks).
+    The set is a SUPERSET: not every candidate is actually written on
+    every install. The post-install diff against the recorded pre-write
+    hashes narrows it down to the truly-written paths.
+    """
+    canonical = project_skill_root(workspace_root)
+    candidates: list[str] = [_rel(canonical, "metadata.json", workspace_root)]
+    for name in BASELINE_SKILL_NAMES:
+        candidates.append(_rel(canonical / name, "SKILL.md", workspace_root))
+        candidates.append(_rel(canonical / name, _MANAGED_MARKER, workspace_root))
+    for sibling in project_sibling_skill_roots(workspace_root):
+        sibling_root = sibling.resolve(workspace_root)
+        candidates.extend(
+            _rel(sibling_root, name, workspace_root) for name in BASELINE_SKILL_NAMES
+        )
+    return candidates
+
+
+def _rel(absolute: Path, leaf: str, workspace_root: Path) -> str:
+    """Build the workspace-relative string for ``absolute / leaf``."""
+    return str((absolute / leaf).resolve().relative_to(workspace_root.resolve()))
+
+
+def _diff_written_paths(
+    workspace_root: Path,
+    candidate_paths: list[str],
+    pre_contents: dict[str, str | None],
+) -> list[str]:
+    """Return the candidate paths whose on-disk content changed since the pre-write snapshot.
+
+    A candidate is "written" when either:
+
+    * its pre-write hash was ``None`` (path did not exist) and a path
+      now exists at the candidate location, OR
+    * its pre-write hash is a string and the current ``git hash-object``
+      at that location differs from the recorded pre-write hash.
+
+    The post-install diff is the byte-exact set of paths the install
+    actually changed. The deterministic auto-commit consumes it via
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`.
+    """
+    from git import GitCommandError, InvalidGitRepositoryError, Repo  # noqa: PLC0415
+
+    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415 -- producer-side diff helper
+        _git_blob_sha,
+    )
+
+    try:
+        repo = Repo(workspace_root)
+    except (InvalidGitRepositoryError, Exception):
+        return []
+    try:
+        written: list[str] = []
+        for path in candidate_paths:
+            try:
+                current_sha = _git_blob_sha(repo, path)
+            except (OSError, GitCommandError):
+                continue
+            pre_sha = pre_contents.get(path)
+            if pre_sha != current_sha:
+                written.append(path)
+        return written
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
+
+
+def install_project_baseline_skills_with_diff(
+    workspace_root: Path,
+) -> ProjectSkillInstallOutcome:
+    """Producer-level wrapper: install + record the byte-exact diff for the deterministic auto-commit.
+
+    Snapshots the pre-write content of every path the install could
+    touch BEFORE the install runs, runs the install, then narrows the
+    candidate set to the paths whose on-disk content actually changed.
+    The deterministic chore commit at the call site consumes
+    ``written_paths`` + ``pre_contents`` via
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`.
+
+    The install itself is unchanged -- this is a thin wrapper around
+    :func:`install_project_baseline_skills` so the install logic stays
+    single-sourced. A containment-gate / conflict-gate short-circuit
+    still records an empty written set (the install did not touch
+    anything), so the deterministic commit at the call site is a
+    safe no-op.
+    """
+    candidates = _candidate_skill_paths(workspace_root)
+    pre_contents = capture_pre_write_contents(workspace_root, candidates)
+    entry, failures = install_project_baseline_skills(workspace_root)
+    written = _diff_written_paths(workspace_root, candidates, pre_contents)
+    return ProjectSkillInstallOutcome(
+        entry=entry,
+        failures=failures,
+        written_paths=written,
+        pre_contents={path: pre_contents[path] for path in written},
+    )
 
 
 def _now_iso() -> str:
@@ -713,6 +845,7 @@ def check_skills_update_available() -> bool:
 
 
 __all__ = [
+    "ProjectSkillInstallOutcome",
     "_collect_project_skills_reasons",
     "_mirror_baseline_skills_to_siblings",
     "_mirror_skill_to_sibling_root",
@@ -723,5 +856,6 @@ __all__ = [
     "check_skills_update_available",
     "install_baseline_skills",
     "install_project_baseline_skills",
+    "install_project_baseline_skills_with_diff",
     "self_improving_skills_hook",
 ]

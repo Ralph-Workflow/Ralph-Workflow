@@ -113,6 +113,25 @@ The maintained operator manual is at
 configuration reference, MCP / artifact / pipeline configuration,
 concepts, troubleshooting, diagnostics, and developer internals.
 
+## Engine-owned writes are auto-committed
+
+Ralph Workflow's own code writes a small set of tracked files in
+the background: the project-scope skill bundle (across all three
+installer routes — run start, `ralph --init`, and
+`ralph --force-init-skills`), the project's `.gitignore` (seeded
+with the batteries-included defaults on first run), and the
+project-policy surfaces (`docs/ralph-workflow-policy/`, `AGENTS.md`,
+`CLAUDE.md`). Every one of those writers commits its own diff
+immediately, with a fixed conventional-commit subject, so the
+working tree is never left dirty for the next agent to inherit.
+
+The deterministic chore commit is restricted to the byte-exact
+set of paths the writer touched; agent or user edits to those
+paths (or to any other file) are never swept in. The full contract
+lives in
+[`docs/agents/deterministic-auto-commit.md`](docs/agents/deterministic-auto-commit.md)
+and is pinned by the `audit_skill_auto_commit` gate step.
+
 ## Project home
 
 - **Repository:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

@@ -84,9 +84,7 @@ _EXIT_PREFLIGHT: int = 2
 
 EmitFn = Callable[[str], None]
 WorkingTreeSnapshot = Callable[["WorkspaceScope"], frozenset[str]]
-PolicyCommit = Callable[
-    ["WorkspaceScope", frozenset[str] | None, frozenset[str] | None], None
-]
+PolicyCommit = Callable[["WorkspaceScope", frozenset[str] | None], None]
 
 #: Estimated wall-clock cost of the one-time policy setup. Stated in one
 #: place because it appears in several strings; it is an estimate, not a
@@ -515,45 +513,11 @@ def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
         return frozenset()
 
 
-def _track_authored_paths(
-    invoke_agent: InvokePolicyAgent,
-    workspace_scope: WorkspaceScope,
-    authored: set[str],
-    working_tree_snapshot: WorkingTreeSnapshot,
-) -> InvokePolicyAgent:
-    """Wrap ``invoke_agent`` so it records what the REMEDIATION agent authored.
-
-    Snapshots the working tree immediately before and after each REMEDIATION
-    invocation and accumulates the difference. That difference is the gate scripts
-    (and any other out-of-directory file) the agent wrote, which the deterministic
-    auto-commit then picks up.
-
-    The ANALYSIS phase is deliberately NOT tracked. It executes every declared gate
-    as a probe, and probes drop build detritus into the tree -- ``.coverage``,
-    ``coverage.xml``, ``*.tsbuildinfo``, stray caches. Those are side effects of
-    READING the project, not authored content, and committing them would be wrong.
-    Only the phase that can actually write is attributed.
-    """
-
-    def tracked(*, phase: str, prompt_path: str) -> bool:
-        if phase != PHASE_REMEDIATION:
-            return invoke_agent(phase=phase, prompt_path=prompt_path)
-        before = working_tree_snapshot(workspace_scope)
-        try:
-            return invoke_agent(phase=phase, prompt_path=prompt_path)
-        finally:
-            authored.update(working_tree_snapshot(workspace_scope) - before)
-
-    typed: InvokePolicyAgent = tracked
-    return typed
-
-
 def _commit_policy_changes(
     workspace_scope: WorkspaceScope,
     pre_run_dirty: frozenset[str] | None,
-    authored_paths: frozenset[str] | None,
 ) -> None:
-    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, authored_paths)
+    _auto_commit_policy_changes(workspace_scope, pre_run_dirty)
 
 
 def _finalize_ready_state(
@@ -561,7 +525,6 @@ def _finalize_ready_state(
     workspace_scope: WorkspaceScope,
     stack: ProjectStack,
     pre_run_dirty: frozenset[str] | None = None,
-    authored_paths: frozenset[str] | None = None,
     *,
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> None:
@@ -577,12 +540,51 @@ def _finalize_ready_state(
     preflight into a full re-validation for work that is already
     done. ``stack`` is required here because the cache signature is
     the project-stack's view of the evidence inventory.
+
+    wt-012: the post-pipeline commit routes through the producer-level
+    :func:`commit_policy_writes` helper with the pre-write content
+    hash of AGENTS.md recorded BEFORE ``condense_placeholder_block``
+    runs. If the file was already dirty at HEAD (an agent edited it
+    during the run), the path is SKIPPED with a warning and stays in
+    the agent flow; it can never enter a fixed-message policy commit.
     """
+    # Record AGENTS.md's pre-write content hash BEFORE condense rewrites
+    # it. The producer-level commit uses the hash to detect that the
+    # file was already dirty at HEAD and SKIP the path -- agent
+    # edits stay in the agent flow.
+    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415 -- lazy import avoids cli_integration<->scoped_auto_commit cycle
+        capture_pre_write_contents,
+    )
+    from ralph.project_policy._auto_commit import commit_policy_writes  # noqa: PLC0415
+    from ralph.project_policy.markers import AGENTS_MD  # noqa: PLC0415
+
+    pre_contents = capture_pre_write_contents(
+        workspace_scope.root, [AGENTS_MD]
+    )
     try:
         policy_agents_md.condense_placeholder_block(workspace)
     except Exception as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
-    commit_policy_updates(workspace_scope, pre_run_dirty, authored_paths)
+    try:
+        result = commit_policy_writes(
+            workspace_scope.root,
+            written_paths=[AGENTS_MD],
+            pre_contents=pre_contents,
+            create_commit_fn=create_commit,
+        )
+        if result.status.value == "created" and result.sha:
+            logger.debug("project-policy auto-commit created: {}", result.sha)
+        elif result.status.value == "skipped":
+            logger.debug(
+                "project-policy auto-commit skipped: AGENTS.md was already dirty at HEAD "
+                "(agent edit?)"
+            )
+        elif result.status.value == "failed":
+            logger.debug(
+                "project-policy auto-commit failed (non-fatal): {}", result.error
+            )
+    except Exception as exc:
+        logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
     try:
         policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
     except Exception as exc:
@@ -592,26 +594,28 @@ def _finalize_ready_state(
 def _auto_commit_policy_changes(
     workspace_scope: WorkspaceScope,
     pre_run_dirty: frozenset[str] | None = None,
-    authored_paths: frozenset[str] | None = None,
 ) -> None:
-    """Best-effort deterministic auto-commit of everything the policy run wrote.
+    """Best-effort deterministic auto-commit of the policy surfaces (post-pipeline).
 
-    Covers the policy surfaces AND any gate script the remediation agent authored
-    to wire up a declared gate -- a gate script left uncommitted would dirty the
-    working tree for the next agent and trip the commit-cleanup phase.
+    wt-012: this is the safety-net pass that runs after the preflight's
+    producer-level commit. The preflight already committed the surfaces
+    it wrote; this pass picks up any remaining dirty policy surfaces
+    (e.g. ones that became dirty between the preflight and the post-
+    pipeline finalize) and commits them with the same exclusion
+    discipline as before. Agent-authored paths (gate scripts outside
+    the policy directories) are NOT swept in here; they stay in the
+    agent commit flow.
 
-    No commit agent is involved: the subject and body are fixed, and the file set
-    is computed deterministically. ``pre_run_dirty`` is subtracted from everything
-    so the user's in-progress edits are never swept in; ``authored_paths`` is what
-    the remediation agent actually wrote. Failures are logged and swallowed -- a
-    broken git state must not block the run.
+    ``pre_run_dirty`` is subtracted from the in-scope set so a user
+    mid-edit on ``AGENTS.md`` or a policy file is never swept in.
+    Failures are logged and swallowed -- a broken git state must not
+    block the run.
     """
     try:
         sha = policy_auto_commit.commit_policy_updates(
             workspace_scope.root,
             create_commit,
             pre_run_dirty=pre_run_dirty,
-            authored_paths=authored_paths,
         )
         if sha is not None:
             logger.debug("project-policy auto-commit created: {}", sha)
@@ -677,7 +681,7 @@ def _dispatch_preflight_result(
             "project-policy-readiness: the policy_remediation chain has no "
             "configured agent; continuing without a ready policy."
         )
-        commit_policy_updates(workspace_scope, pre_run_dirty, frozenset())
+        commit_policy_updates(workspace_scope, pre_run_dirty)
         return _exit_code_for_not_ready(mode)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
@@ -693,15 +697,10 @@ def _dispatch_preflight_result(
             display_context,
         )
 
-    # Record what the REMEDIATION agent writes outside the canonical directory
-    # (its gate scripts), so the deterministic auto-commit can pick them up.
-    authored: set[str] = set()
-    invoke_agent = _track_authored_paths(
-        invoke_agent,
-        workspace_scope,
-        authored,
-        working_tree_snapshot,
-    )
+    # wt-012: the ``_track_authored_paths`` wrapper and its ``authored``
+    # accumulator were removed. Remediation-agent authored paths (gate
+    # scripts) stay in the agent commit flow; the deterministic chore
+    # commit must never ride an agent's authoring.
 
     # Drive the SAME display lifecycle the pipeline run loop uses: a started
     # display (live status bar) for the duration of the agent work. The
@@ -759,17 +758,18 @@ def _dispatch_preflight_result(
             workspace_scope,
             stack,
             pre_run_dirty,
-            frozenset(authored),
             commit_policy_updates=commit_policy_updates,
         )
         return _EXIT_SUCCESS
     # The NOT-READY route must run the same deterministic scoped commit the
-    # READY route runs, with the same ``pre_run_dirty`` and the same tracked
-    # ``authored`` set, so the files the policy run seeded are handed back
-    # committed instead of left for the next phase. The placeholder
-    # AGENTS.md block is NOT condensed here: only ``_finalize_ready_state``
-    # owns that mutation, and the project is not ready.
-    commit_policy_updates(workspace_scope, pre_run_dirty, frozenset(authored))
+    # READY route runs, with the same ``pre_run_dirty``, so the files the
+    # policy run seeded are handed back committed instead of left for the
+    # next phase. The placeholder AGENTS.md block is NOT condensed here:
+    # only ``_finalize_ready_state`` owns that mutation, and the project
+    # is not ready. The ``authored`` set is no longer threaded to the
+    # commit -- wt-012 removed that scope expansion; remediation agent
+    # writes stay in the agent commit flow.
+    commit_policy_updates(workspace_scope, pre_run_dirty)
     emit("\n".join(final.report_lines))
     return _exit_code_for_not_ready(mode)
 
@@ -946,7 +946,6 @@ def _run_policy_readiness(
             workspace_scope,
             stack,
             pre_run_dirty,
-            frozenset(),
             commit_policy_updates=commit_policy_updates,
         )
         return _EXIT_SUCCESS

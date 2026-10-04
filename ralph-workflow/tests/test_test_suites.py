@@ -33,6 +33,13 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_explore_concurrency.py",
     "tests/test_explore_cold_start_lifecycle.py",
     "tests/test_explore_perf_regression_gate.py",
+    # wt-012: the deterministic auto-commit acceptance cases for the
+    # skill and policy surfaces are subprocess_e2e (real-git boundary
+    # exercised end-to-end) but must stay on the default ``make test``
+    # profile so the isolation / rollback contract cannot rot
+    # silently.
+    "tests/test_skills_auto_commit.py",
+    "tests/project_policy/test_policy_auto_commit.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

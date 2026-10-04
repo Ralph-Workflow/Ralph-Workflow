@@ -618,6 +618,14 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
     Handles the no-git case: the helper just touches ``.gitignore`` in
     ``repo_root``; it does not require a ``.git`` directory to exist.
 
+    wt-012: when the seed actually appended new patterns, this helper
+    commits the ``.gitignore`` change via the producer-level
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
+    isolation primitive. The pre-write content hash is recorded BEFORE
+    the append so a user mid-edit on ``.gitignore`` is never swept into
+    the deterministic commit. A non-git workspace (or any git error)
+    is logged at DEBUG and never blocks the run.
+
     Args:
         repo_root: Path to the repository (or project) root.
 
@@ -647,11 +655,54 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
             )
             existing = set()
     missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
+    appended: list[str] = []
     if missing:
+        # Record the pre-write content hash BEFORE the append so the
+        # deterministic auto-commit can detect a user mid-edit on
+        # ``.gitignore`` and SKIP the path (it stays in the agent /
+        # user commit flow). A non-git workspace returns ``None`` for
+        # the pre-write hash; the commit helper handles that as
+        # NOT_REPO and returns a NOOP, so the seed is still safe to
+        # leave the file dirty in a non-git project.
+        from ralph.git.operations import (
+            create_commit,
+        )
+        from ralph.git.scoped_auto_commit import (
+            ScopedCommitStatus,
+            capture_pre_write_contents,
+            commit_deterministic_writes,
+        )
+
+        pre_contents = capture_pre_write_contents(repo_root, [".gitignore"])
         gitignore_path = repo_root / ".gitignore"
         payload = "\n".join(missing) + "\n"
         _atomic_append_text(gitignore_path, payload)
-    return list(missing)
+        appended = list(missing)
+        try:
+            from ralph.git.operations import stage_files as _stage_files
+
+            result = commit_deterministic_writes(
+                repo_root,
+                paths=[".gitignore"],
+                pre_contents=pre_contents,
+                subject="chore(gitignore): seed ralph defaults",
+                create_commit_fn=create_commit,
+                stage_fn=_stage_files,
+            )
+            if result.status is ScopedCommitStatus.CREATED and result.sha:
+                logger.debug(".gitignore auto-seed committed: {}", result.sha[:8])
+            elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
+                logger.debug(
+                    ".gitignore auto-seed skipped: .gitignore was already dirty at HEAD "
+                    "(user mid-edit?); left for the user flow"
+                )
+            elif result.status is ScopedCommitStatus.FAILED:
+                logger.debug(
+                    ".gitignore auto-seed commit failed (non-fatal): {}", result.error
+                )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(".gitignore auto-seed commit failed (non-fatal): {}", exc)
+    return appended
 
 
 def _regenerate_existing_local_configs(

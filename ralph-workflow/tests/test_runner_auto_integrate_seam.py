@@ -226,15 +226,19 @@ def test_phase_transition_event_runs_boundary_integration(
     assert result is outcome
 
 
-def test_phase_transition_commits_skill_updates_before_integration(
+def test_phase_transition_no_longer_sweeps_skill_root(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    """wt-012: the phase seam no longer carries a skill auto-commit.
+
+    The previous behavior swept a ``commit_skill_updates`` over
+    whatever was dirty in the FIVE skill roots at every phase
+    transition, which could sweep in agent or user changes the
+    deterministic writer did not author. wt-012 replaced that
+    with a producer-level commit at each install boundary; the
+    phase seam now only runs the integration hook.
+    """
     calls: list[str] = []
-    monkeypatch.setattr(
-        runner_module,
-        "commit_skill_updates",
-        lambda *_args, **_kwargs: calls.append("skill-commit"),
-    )
     monkeypatch.setattr(
         runner_module,
         "auto_integrate_on_phase_transition",
@@ -256,7 +260,8 @@ def test_phase_transition_commits_skill_updates_before_integration(
         registry=MagicMock(),
     )
 
-    assert calls == ["skill-commit", "integrate"]
+    assert calls == ["integrate"]
+    assert "skill-commit" not in calls
 
 
 def test_commit_skipped_still_integrates_via_boundary_hook(

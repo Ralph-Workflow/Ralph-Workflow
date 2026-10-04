@@ -1,14 +1,13 @@
 """Deterministic auto-commit for project-policy readiness changes.
 
-Mirror of the wt-025 skill auto-commit: when the readiness preflight (or
-the out-of-graph remediation loop) leaves the project READY, the policy
-surfaces it wrote — the canonical policy directory, ``AGENTS.md``, and
-``CLAUDE.md`` — are committed in one deterministic chore commit. Without
-it, the next run's development agent sees the drift in its working tree
-and the commit-cleanup phase warns about files it does not own.
+Mirror of the wt-025 skill auto-commit: when the readiness preflight leaves
+the project READY, the policy surfaces it wrote are committed in one
+deterministic chore commit. Without it, the next run's development agent
+sees the drift in its working tree and the commit-cleanup phase warns about
+files it does not own.
 
-Shares the git mechanics (scoped dirty discovery, staged-state
-preservation, best-effort semantics) with the skill auto-commit through
+Shares the git mechanics (scoped dirty discovery, staged-state preservation,
+best-effort semantics) with the skill auto-commit through
 :mod:`ralph.git.scoped_auto_commit`.
 """
 
@@ -17,16 +16,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.commit_result import CommitCreationResult
 from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import (
+    ScopedCommitResult,
+    ScopedCommitStatus,
+    commit_deterministic_writes,
     commit_scoped_updates,
-    path_in_scope,
 )
 from ralph.project_policy import markers
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from typing import Protocol
 
     from ralph.git.commit_result import CommitCreationResult
@@ -100,55 +103,41 @@ def commit_policy_updates(
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
     pre_run_dirty: frozenset[str] | None = None,
-    authored_paths: frozenset[str] | None = None,
 ) -> str | None:
     """Create the deterministic policy-readiness auto-commit.
 
-    Commits two things:
+    wt-012 contract:
 
-    #. The policy surfaces themselves (``_POLICY_COMMIT_SCOPES``).
-    #. ``authored_paths`` -- files the REMEDIATION agent wrote outside the
-       canonical directory, most importantly the GATE SCRIPTS backing a declared
-       gate (``scripts/``, a ``Makefile``, a CI workflow). Left uncommitted these
-       dirty the working tree for the next agent and trip commit-cleanup.
+    * Commits only the policy surfaces themselves (``_POLICY_COMMIT_SCOPES``)
+      and the conditional migration candidates whose content carries
+      the migration marker.
+    * Remediation-agent authored paths (gate scripts outside the
+      policy directories) are NO LONGER swept in here -- the
+      remediation-author scope expansion was removed in wt-012. The
+      deterministic chore commit must never ride an agent's authoring.
+    * ``pre_run_dirty`` -- the paths already dirty BEFORE the policy
+      pipeline ran -- is subtracted from the in-scope set so a user
+      mid-edit on ``AGENTS.md`` or a policy file is not swept into
+      the chore commit.
 
-    TWO SEPARATE SAFETY RULES, because they guard different mistakes:
+    New callers should prefer :func:`commit_policy_writes` (the
+    producer-level isolation primitive) when the deterministic
+    writer knows the byte-exact set of paths it just wrote. This
+    legacy scope-dirty helper is retained for callers that only have
+    dirty-tree visibility (and as a final safety net for any policy
+    path the preflight surfaced that the producer-level pass missed).
 
-    ``pre_run_dirty`` -- the paths already dirty BEFORE the policy pipeline ran --
-    is subtracted from EVERYTHING, in-scope included. A user mid-edit on
-    ``AGENTS.md`` or on a policy file has an uncommitted change to a Ralph-owned
-    file; that makes it in-scope, but it does NOT make their work ours to commit.
-
-    ``authored_paths`` must be attributed to the REMEDIATION phase specifically,
-    not to "whatever became dirty during the run". The ANALYSIS phase executes
-    every declared gate as a probe, and a probe drops build detritus (``.coverage``,
-    ``coverage.xml``, ``*.tsbuildinfo``) into the tree. Those are side effects of
-    reading the project, not authored content, and must never be committed. The
-    caller computes this set by snapshotting around each remediation invocation --
-    see :func:`ralph.project_policy.cli_integration._track_authored_paths`.
-
-    Both default to ``None``, which disables the extension entirely and restores
-    the original scoped behavior -- the conservative default.
-
-    Deterministic: no commit agent is involved. The subject and body are fixed.
-
-    Returns the commit SHA, or ``None`` when nothing is dirty, the workspace is
-    not a git repo, or git errored (best-effort, never blocks the run).
+    Returns the commit SHA on ``CREATED``, else ``None``. The explicit
+    result type used internally is :class:`ScopedCommitResult`; this
+    legacy signature keeps the ``str | None`` return for the existing
+    call sites and tests.
     """
     if stage_fn is None:
         stage_fn = stage_files
-    scopes = _POLICY_COMMIT_SCOPES
     path_filter = _migrated_only(Path(repo_root))
-    authored = _committable_authored_paths(authored_paths)
-    if authored:
-        # Exact-file scopes for what the remediation agent authored. Combined with
-        # the filter, only these exact paths can be committed from outside the
-        # policy scopes.
-        scopes = (*scopes, *sorted(authored))
-        path_filter = _in_scope_or_authored(Path(repo_root), authored)
-    return commit_scoped_updates(
+    result = commit_scoped_updates(
         repo_root,
-        scopes=scopes,
+        scopes=_POLICY_COMMIT_SCOPES,
         subject=POLICY_AUTO_COMMIT_SUBJECT,
         body_builder=_build_body,
         create_commit_fn=create_commit_fn,
@@ -156,39 +145,52 @@ def commit_policy_updates(
         path_filter=path_filter,
         exclude=pre_run_dirty or frozenset(),
     )
+    if result.status is ScopedCommitStatus.CREATED:
+        return result.sha
+    if result.status is ScopedCommitStatus.FAILED:
+        logger.debug("commit_policy_updates: failed ({}); returning None", result.error)
+    return None
 
 
-def _committable_authored_paths(
-    authored_paths: frozenset[str] | None,
-) -> frozenset[str]:
-    """Narrow the remediation agent's authored set to what may be committed.
+def commit_policy_writes(
+    repo_root: Path | str,
+    *,
+    written_paths: list[str] | tuple[str, ...],
+    pre_contents: Mapping[str, str | None],
+    create_commit_fn: _CreateCommitFn,
+    stage_fn: Callable[[Path | str, list[str]], None] | None = None,
+) -> ScopedCommitResult:
+    """Producer-level deterministic auto-commit for the policy preflight.
 
-    Drops anything already covered by the policy scopes (committed anyway) and
-    anything under ``.agent/``, which is engine-owned scratch -- prompts,
-    artifacts, caches -- and is never committed.
+    Routes the byte-exact set of paths the preflight wrote
+    (``agents_md.bootstrap`` + ``_seed_missing_starters`` outputs) plus
+    the policy surfaces touched by the post-pipeline finalize pass
+    (e.g. ``agents_md.condense_placeholder_block``) through the shared
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
+    isolation primitive. A path that was already dirty at HEAD before
+    the preflight (HEAD != pre-write hash) is SKIPPED with a warning so
+    the agent or user flow owns it. The fixed-message policy commit can
+    never sweep in unrelated work.
+
+    Returns a :class:`ScopedCommitResult`; ``result.sha`` is the commit
+    SHA on ``CREATED``, else ``None``.
     """
-    if not authored_paths:
-        return frozenset()
-    return frozenset(
-        path
-        for path in authored_paths
-        if not path_in_scope(path, _POLICY_COMMIT_SCOPES) and not path.startswith(".agent/")
+    if stage_fn is None:
+        stage_fn = stage_files
+    return commit_deterministic_writes(
+        repo_root,
+        paths=tuple(written_paths),
+        pre_contents=pre_contents,
+        subject=POLICY_AUTO_COMMIT_SUBJECT,
+        create_commit_fn=create_commit_fn,
+        stage_fn=stage_fn,
     )
-
-
-def _in_scope_or_authored(repo_root: Path, authored: frozenset[str]) -> Callable[[str], bool]:
-    """Filter: the normal policy-scope rules, plus the authored paths."""
-    migrated = _migrated_only(repo_root)
-
-    def check(path: str) -> bool:
-        if path in authored:
-            return True
-        return migrated(path)
-
-    return check
 
 
 __all__ = [
     "POLICY_AUTO_COMMIT_SUBJECT",
+    "ScopedCommitResult",
+    "ScopedCommitStatus",
     "commit_policy_updates",
+    "commit_policy_writes",
 ]

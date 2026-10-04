@@ -77,13 +77,60 @@ def sync_shipped_skills(
             f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
         )
     try:
-        from ralph.git.operations import create_commit as create_commit_impl
-        from ralph.skills._auto_commit import commit_skill_updates
+        from ralph.git.operations import (
+            create_commit as create_commit_impl,
+        )
+        from ralph.git.scoped_auto_commit import (
+            ScopedCommitStatus,
+            snapshot_dirty_paths_strict,
+        )
+        from ralph.skills._auto_commit import commit_skill_writes
+        from ralph.skills._installer import (
+            install_project_baseline_skills_with_diff,
+        )
 
         create_commit = create_commit_impl
-        sha = commit_skill_updates(target_root, create_commit)
-        if sha:
-            logger.info("Auto-committed skill updates: {}", sha[:8])
+        # The strict pre-snapshot is a second guard on top of the
+        # producer-level pre-write hash discipline: if the tree is
+        # unreadable, surface NOT_REPO so the run can warn.
+        pre_tree = snapshot_dirty_paths_strict(target_root)
+        if pre_tree is None:
+            dependencies.emit_warning(
+                "Project-scope skill install: working tree could not be read; "
+                "skipping the deterministic chore commit (will retry on next run)."
+            )
+        else:
+            try:
+                outcome = install_project_baseline_skills_with_diff(target_root)
+                if outcome.failures:
+                    dependencies.print_project_skill_conflict_hint(outcome.failures)
+                result = commit_skill_writes(
+                    target_root,
+                    written_paths=outcome.written_paths,
+                    pre_contents=outcome.pre_contents,
+                    create_commit_fn=create_commit,
+                )
+                if result.status is ScopedCommitStatus.CREATED and result.sha:
+                    logger.info("Auto-committed skill updates: {}", result.sha[:8])
+                elif result.status is ScopedCommitStatus.FAILED:
+                    dependencies.emit_warning(
+                        f"Skill auto-commit failed (non-fatal): {result.error}. "
+                        "The run continues with the new skill content uncommitted; "
+                        "commit manually or re-run to retry."
+                    )
+                elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
+                    logger.warning(
+                        "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
+                        "left for the agent flow",
+                        len(result.skipped_paths),
+                    )
+            except Exception as exc:
+                logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
+                dependencies.emit_warning(
+                    f"Skill auto-commit failed (non-fatal): {exc}. "
+                    "The run continues with the new skill content uncommitted; "
+                    "commit manually or re-run to retry."
+                )
     except Exception as exc:
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         dependencies.emit_warning(

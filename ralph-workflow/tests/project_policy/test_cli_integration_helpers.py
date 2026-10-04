@@ -177,15 +177,22 @@ def test_ready_preflight_triggers_policy_auto_commit(
 
     def fake_commit(
         repo_root: object,
-        _create_commit_fn: object,
         *,
-        pre_run_dirty: frozenset[str] | None = None,
-        authored_paths: frozenset[str] | None = None,
+        written_paths: object = None,
+        pre_contents: object = None,
+        create_commit_fn: object = None,
     ) -> None:
-        del pre_run_dirty, authored_paths
+        del written_paths, pre_contents, create_commit_fn
         committed_roots.append(repo_root)
 
-    monkeypatch.setattr(policy_auto_commit_module, "commit_policy_updates", fake_commit)
+    # wt-012: the post-pipeline commit now uses the producer-level
+    # ``commit_policy_writes`` helper (with pre-write hash discipline)
+    # instead of the legacy ``commit_policy_updates`` scope-dirty
+    # helper. The MemoryWorkspace test seam does NOT carry a real
+    # on-disk root, so the producer-level commit at the pre-write
+    # hash capture step is a no-op for this test; only the post-
+    # pipeline call exercises the new helper.
+    monkeypatch.setattr(policy_auto_commit_module, "commit_policy_writes", fake_commit)
 
     load_result = _load_result(load_policy(default_dir()))
     rc = cli_integration.run_project_policy_readiness(

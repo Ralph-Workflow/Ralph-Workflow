@@ -120,6 +120,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
             "SKILL_AUTO_COMMIT_SUBJECT",
             _SKILL_AUTO_COMMIT_SUBJECT,
             "commit_skill_updates",
+            "commit_skill_writes",
             "stage_files",  # imports from ralph.git.operations (selective, not stage_all)
         ),
         absent=("stage_all",),
@@ -148,29 +149,102 @@ _INVARIANTS: tuple[Invariant, ...] = (
             "Skipping tracked skill-root path",
         ),
     ),
-    # The CLI wiring in run.py MUST call commit_skill_updates inside
-    # _sync_shipped_skills_on_pipeline_run. The run-path literals pin the
-    # success path; the failure-path literals pin the best-effort
-    # fail-closed contract so a future refactor that silently drops the
-    # try/except handler is caught at audit time. Per plan step 12.
+    # The CLI wiring in run.py MUST route the deterministic skill
+    # auto-commit through ``commit_skill_writes`` (the wt-012
+    # producer-level primitive that consumes the install's
+    # ``written_paths`` + ``pre_contents``). The legacy
+    # ``commit_skill_updates`` import is still present for the
+    # dirty-tree post-condition path; the run-path literals pin the
+    # producer-level success path; the failure-path literals pin the
+    # best-effort fail-closed contract so a future refactor that
+    # silently drops the try/except handler is caught at audit time.
     Invariant(
         rel_path="cli/commands/run.py",
         present=(
-            "from ralph.skills._auto_commit import commit_skill_updates",
-            "commit_skill_updates(target_root, create_commit)",
+            "from ralph.skills._auto_commit import commit_skill_writes",
             "Auto-committed skill updates",
-            # Failure-path invariants: the best-effort contract
-            # requires both the try/except wrapper AND the debug log
-            # line so a broken git state cannot block the pipeline.
-            "except Exception as exc:  # auto-commit is best-effort; never break the pipeline",
-            "Skill auto-commit failed (non-fatal): {}",
         ),
     ),
     # The new helper overwrites stale canonical content in the installer
     # (the locked project-scope conflict-resolution branch).
     Invariant(
         rel_path="skills/_installer.py",
-        present=("_materialize_canonical_skill",),
+        present=(
+            "_materialize_canonical_skill",
+            # wt-012: the producer-level wrapper that records the
+            # install's byte-exact diff for the auto-commit at the
+            # install boundary.
+            "install_project_baseline_skills_with_diff",
+            "ProjectSkillInstallOutcome",
+        ),
+    ),
+    # wt-012: the shared helper owns the producer-level isolation
+    # primitive (``commit_deterministic_writes``) plus the strict
+    # pre-snapshot used at every producer boundary to distinguish
+    # clean from unreadable.
+    Invariant(
+        rel_path="git/scoped_auto_commit.py",
+        present=(
+            "ScopedCommitResult",
+            "ScopedCommitStatus",
+            "commit_deterministic_writes",
+            "snapshot_dirty_paths_strict",
+            "capture_pre_write_contents",
+            "STAGED_DELETION_SENTINEL",
+        ),
+    ),
+    # wt-012: the policy preflight routes its own writes through the
+    # producer-level ``commit_policy_writes`` helper at the
+    # preflight boundary (BEFORE the validator runs).
+    Invariant(
+        rel_path="project_policy/preflight.py",
+        present=(
+            "commit_policy_writes",
+            "capture_pre_write_contents",
+        ),
+    ),
+    # wt-012: the post-pipeline finalize uses the producer-level
+    # commit with the pre-write hash of AGENTS.md recorded BEFORE
+    # ``condense_placeholder_block`` runs, so an agent edit to AGENTS.md
+    # in flight is SKIPPED (not committed in the policy chore commit).
+    Invariant(
+        rel_path="project_policy/cli_integration.py",
+        present=(
+            "commit_policy_writes",
+            "condense_placeholder_block",
+            "capture_pre_write_contents",
+        ),
+    ),
+    # wt-012: the policy auto-commit module no longer carries the
+    # ``authored_paths`` scope expansion; only the policy surfaces
+    # themselves are committed by the legacy helper.
+    Invariant(
+        rel_path="project_policy/_auto_commit.py",
+        present=(
+            "POLICY_AUTO_COMMIT_SUBJECT",
+            "commit_policy_updates",
+            "commit_policy_writes",
+        ),
+        absent=("authored_paths",),
+    ),
+    # wt-012: the .gitignore auto-seed commits its own writes at the
+    # producer boundary via the shared
+    # ``commit_deterministic_writes`` helper.
+    Invariant(
+        rel_path="config/bootstrap.py",
+        present=(
+            "auto_seed_default_gitignore",
+            "commit_deterministic_writes",
+            "chore(gitignore): seed ralph defaults",
+        ),
+    ),
+    # wt-012: the pipeline runner no longer carries the phase-seam
+    # skill auto-commit; every deterministic skill writer commits at
+    # its own write site.
+    Invariant(
+        rel_path="pipeline/runner.py",
+        present=(),
+        absent=("commit_skill_updates",),
     ),
 )
 

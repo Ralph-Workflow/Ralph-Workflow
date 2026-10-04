@@ -138,6 +138,13 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # layer lives in a dedicated subprocess_e2e test so this
     # file stays inside the 60s combined verify budget.
     "tests/test_explore_perf_regression_gate.py",
+    # wt-12: the deterministic auto-commit acceptance cases for the
+    # skill and policy surfaces are subprocess_e2e (real-git boundary
+    # exercised end-to-end). Keep them on the default ``make test``
+    # profile so the isolation / rollback contract cannot rot
+    # silently. In-budget on the 60s combined verify budget.
+    "tests/test_skills_auto_commit.py",
+    "tests/project_policy/test_policy_auto_commit.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

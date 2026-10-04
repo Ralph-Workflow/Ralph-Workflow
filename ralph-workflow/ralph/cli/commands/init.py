@@ -251,7 +251,6 @@ def _ensure_baseline_capabilities(
 
     from ralph.skills._installer import (
         _project_skills_need_install,
-        install_project_baseline_skills,
     )
 
     ctx = display_context
@@ -265,8 +264,39 @@ def _ensure_baseline_capabilities(
                 # PA-004: discard the CapabilityEntry since
                 # ensure_baseline_capabilities already re-stamped the
                 # state with whichever user-global entry is worst.
-                _, project_failures = install_project_baseline_skills(target_root)
-                failures.extend(project_failures)
+                # wt-012: use the producer-level wrapper that records
+                # the byte-exact diff and immediately commits the
+                # install at the install boundary. ``ralph --init`` is
+                # the canonical "first install" path; the deterministic
+                # chore commit must run here too.
+                from ralph.git.operations import (
+                    create_commit,
+                )
+                from ralph.git.scoped_auto_commit import ScopedCommitStatus
+                from ralph.skills._auto_commit import commit_skill_writes
+                from ralph.skills._installer import (
+                    install_project_baseline_skills_with_diff,
+                )
+
+                outcome = install_project_baseline_skills_with_diff(target_root)
+                failures.extend(outcome.failures)
+                try:
+                    result = commit_skill_writes(
+                        target_root,
+                        written_paths=outcome.written_paths,
+                        pre_contents=outcome.pre_contents,
+                        create_commit_fn=create_commit,
+                    )
+                    if result.status is ScopedCommitStatus.FAILED:
+                        display.emit_warning(
+                            f"Skill auto-commit failed during --init (non-fatal): {result.error}. "
+                            "Skill content is materialized; commit manually or re-run to retry."
+                        )
+                except Exception as exc:
+                    display.emit_warning(
+                        f"Skill auto-commit failed during --init (non-fatal): {exc}. "
+                        "Skill content is materialized; commit manually or re-run to retry."
+                    )
         display.emit_capability_summary(cap_state, workspace_root=target_root)
         return cap_state, failures
     except Exception:

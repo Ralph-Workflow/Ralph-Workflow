@@ -15,7 +15,6 @@ from ralph.skills._docs_mcp_probe import is_supported_docs_mcp_url, probe_docs_m
 from ralph.skills._installer import (
     check_skills_update_available,
     install_baseline_skills,
-    install_project_baseline_skills,
 )
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy, needs_recheck
 from ralph.skills._state_store import load_capability_state, save_capability_state
@@ -198,12 +197,59 @@ class SkillManager:
         the failure-code lists are concatenated. Saved to state and
         returned.
 
+        wt-012: the project-scope install uses the producer-level
+        :func:`ralph.skills._installer.install_project_baseline_skills_with_diff`
+        wrapper that records the byte-exact diff, and the
+        :func:`ralph.skills._auto_commit.commit_skill_writes` helper
+        commits the install at the install boundary. The user-global
+        install is unchanged (it stays in the user-global canonical
+        under ``~/.claude/skills/`` and is auto-committed on the next
+        ``ralph`` run via the run-start sync).
+
         Non-fatal: a raising exception is caught and reported via the
         'reinstall-exception' failure code so the CLI surface stays usable.
         """
         try:
+            from ralph.git.operations import (  # noqa: PLC0415
+                create_commit,
+            )
+            from ralph.git.scoped_auto_commit import ScopedCommitStatus  # noqa: PLC0415
+            from ralph.skills._auto_commit import commit_skill_writes  # noqa: PLC0415
+            from ralph.skills._installer import (  # noqa: PLC0415
+                install_project_baseline_skills_with_diff,
+            )
+
             user_entry, user_failures = install_baseline_skills()
-            project_entry, project_failures = install_project_baseline_skills(workspace_root)
+            project_outcome = install_project_baseline_skills_with_diff(workspace_root)
+            project_entry = project_outcome.entry
+            project_failures = project_outcome.failures
+            # Commit the project-scope install at the producer boundary
+            # so the deterministic chore commit is immediate. A
+            # non-git workspace, a user-dirty path, or any other
+            # FAILED / NOT_REPO outcome is logged at DEBUG and never
+            # blocks the reinstall.
+            if project_outcome.written_paths:
+                try:
+                    result = commit_skill_writes(
+                        workspace_root,
+                        written_paths=project_outcome.written_paths,
+                        pre_contents=project_outcome.pre_contents,
+                        create_commit_fn=create_commit,
+                    )
+                    if result.status is ScopedCommitStatus.FAILED:
+                        from loguru import logger as _logger  # noqa: PLC0415
+
+                        _logger.debug(
+                            "Skill auto-commit during --force-init-skills failed (non-fatal): {}",
+                            result.error,
+                        )
+                except Exception as exc:
+                    from loguru import logger as _logger  # noqa: PLC0415
+
+                    _logger.debug(
+                        "Skill auto-commit during --force-init-skills raised (non-fatal): {}",
+                        exc,
+                    )
         except Exception:
             return self._load_state(), ["reinstall-exception"]
 

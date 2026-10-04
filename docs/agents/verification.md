@@ -200,6 +200,7 @@ Documentation review note:
 - `ralph/testing/audit_*.py` — per-audit machinery (see each docstring for the per-audit invariant list)
 - [AGENTS.md §'Non-negotiables'](../../AGENTS.md) — canonical policy and circumvention table
 - [Testing Guide](testing-guide.md) — test design rules and required doubles
+- [Deterministic Auto-Commit](deterministic-auto-commit.md) — the producer-level discipline for engine-owned writes
 - [Documentation Rubric](../code-style/documentation-rubric.md) — for any docs/README/manual change
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read [Documentation Rubric](../code-style/documentation-rubric.md) first and check the edited surface against it before calling the docs work done.

@@ -659,8 +659,9 @@ def _sync_shipped_skills_on_pipeline_run(
     """Sync skills, auto-commit updates, then sweep retained run state.
 
     The extracted helper performs the equivalent of ``from
-    ``from ralph.skills._auto_commit import commit_skill_updates`` and
-    ``commit_skill_updates(target_root, create_commit)``. The compatibility
+    ``from ralph.skills._auto_commit import commit_skill_writes`` and
+    ``commit_skill_writes(target_root, written_paths, pre_contents, create_commit)``.
+    The compatibility
     wrapper keeps the historical ``Auto-committed skill updates`` and
     ``Skill auto-commit failed (non-fatal): {}`` operator contract while
     preserving the best-effort boundary (``except Exception as exc:  # auto-commit is best-effort; never break the pipeline``).
