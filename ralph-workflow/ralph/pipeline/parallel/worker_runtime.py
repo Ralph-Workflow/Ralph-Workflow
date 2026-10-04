@@ -382,7 +382,7 @@ def run_parallel_worker_from_manifest(
     worker_namespace = Path(manifest.worker_namespace)
     workspace_scope = WorkspaceScope.for_same_workspace_worker(
         repo_root=workspace_root,
-        allowed_directories=tuple(manifest.allowed_directories),
+        allowed_directories=(*manifest.allowed_directories, *manifest.paths),
         worker_namespace=worker_namespace,
     )
     config = load_config(

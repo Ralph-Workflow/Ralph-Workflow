@@ -6,36 +6,17 @@ PLANNING MODE
 {% include 'shared/_unattended_mode.j2' %}
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
-
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
-{% if LAST_RETRY_ERROR %}
-PREVIOUS ATTEMPT ERROR:
-{{ LAST_RETRY_ERROR }}
-
-Fix the underlying submission or validation issue before completing this plan.
-{% endif %}
-
 Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
-the only workspace path; native write tools are prohibited.
+the only workspace path; native write tools are prohibited. Planning is
+read-only. Delegate exploration, research, and verification to read-only
+subagents.
 
-Read `.agent/artifact-formats/plan.md` for the authoritative plan contract.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {% include 'shared/_subagents.j2' %}
 
-REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):
+REQUEST ({{PRODUCT_CRITERIA_PATH}}):
 {{PRODUCT_CRITERIA}}
-
-Inspect the repository before making claims. Planning is read-only: do not edit
-files or run state-changing commands. Delegate exploration, research, and
-verification to read-only subagents. Declare `## Work Units` or `## Parallel Plan`
-for distinct responsibilities, using as many parallel workers as needed within
-active capacity. Responsibility paths are optional; units may share directories
-or files with a concrete coordination strategy. Step plans also schedule
-independent ready work concurrently; serialize only actual conflicting edits
-or hard prerequisites.
-
-A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
-After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

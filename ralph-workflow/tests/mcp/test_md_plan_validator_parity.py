@@ -1,4 +1,10 @@
-"""Parity coverage for the plan validation entry points."""
+"""Parity coverage for the plan validation entry points.
+
+The new spec is sanity-only: both entry points must agree on the
+PLAN001 (recognizably not a plan) outcome and otherwise produce
+no error-severity diagnostics. Best-effort extraction happens
+on every parse so the two entry points are parity-equivalent.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +13,6 @@ import pytest
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
-from ralph.mcp.artifacts.plan import normalize_plan_artifact_content
-from ralph.pipeline.work_units import parse_work_units_from_artifact
 
 _COMPLETE_PLAN = """---
 type: plan
@@ -24,37 +28,29 @@ Verify: uv run pytest tests/mcp/test_md_plan_validator_parity.py -q
 Expect: the validation parity tests pass with exit code 0
 """
 
+_PROSE_PLAN = """---
+type: plan
+---
+This is a prose plan with no headings, no step blocks, and more than ten
+words so it clears the readability floor. The implementation will touch
+several files across the spec, the validation module, and the tools.
+"""
+
 
 @pytest.mark.parametrize(
     "document",
     [
         _COMPLETE_PLAN,
-        _COMPLETE_PLAN.rstrip() + "\nThen run the following commands:\n",
+        _PROSE_PLAN,
         "---\ntype: plan\nnoop: true\n---\n",
-        "---\ntype: plan\n---\nI cannot produce the requested plan in this environment.\n",
-        """---
-type: plan
-schema_version: 1
-## Outcome
-Keep both plan validator entry points aligned when an interrupted metadata
-block consumes otherwise complete plan content before the closing delimiter.
-
-### [S-1] Reject swallowed plan bodies
-Ensure canonical submission cannot accept this incomplete artifact form.
-""",
-        """---
-type: plan
----
-## Intent
-This incomplete plan must be rejected before execution.
-""",
+        "I'm sorry, I cannot help with that. I am an AI assistant.",
     ],
-    ids=("complete", "truncated", "noop", "refusal", "unterminated_frontmatter", "missing_steps"),
+    ids=("complete", "prose", "noop", "refusal"),
 )
 def test_plan_regression_validation_entry_points_emit_same_rule_severity_set(
     document: str,
 ) -> None:
-    """S-6: direct and MCP-facing plan validation remain diagnostically equivalent."""
+    """Direct and analyzed entry points agree on the diagnostic rule set."""
     _content, direct_diagnostics = parse_and_validate(document, PLAN_SPEC)
     _content, analyzed_diagnostics, _overridden = analyze_plan_document(document)
 
@@ -63,66 +59,27 @@ def test_plan_regression_validation_entry_points_emit_same_rule_severity_set(
     }
 
 
-@pytest.mark.parametrize("heading", ["Work Units", "Parallel Plan"])
-@pytest.mark.parametrize("ownership_field", ["Directories", "Paths"])
-def test_parallel_formats_preserve_executable_ownership_and_dependencies(
-    heading: str,
-    ownership_field: str,
-) -> None:
-    if heading == "Work Units" and ownership_field == "Paths":
-        ownership_field = "Directories"
-    document = "---\ntype: plan\n---\n" + f"## {heading}\n"
-    for number, area in enumerate(("contracts", "client", "docs"), start=1):
-        document += (
-            f"- [U-{number}] Update {area}\n  {ownership_field}: src/{area}/main.py\n"
-            f"\n### [S-{number}] Update {area}\n"
-            f"Type: file_change\nFiles:\n- modify src/{area}/main.py\n"
-            + ("Depends on: S-1\n" if number == 2 else "")
-            + f"Verify: pytest tests/{area} -q\nExpect: focused tests pass\n\n"
-        )
+def test_prose_plan_is_accepted_by_both_entry_points() -> None:
+    """A prose plan produces no error diagnostics through either entry point."""
+    direct_content, direct_diagnostics = parse_and_validate(_PROSE_PLAN, PLAN_SPEC)
+    analyzed_content, analyzed_diagnostics, _ = analyze_plan_document(_PROSE_PLAN)
 
-    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-    assert diagnostics == []
-    plan = parse_work_units_from_artifact(content)
-    assert plan is not None
-    assert [(unit.unit_id, unit.step_ids, unit.dependencies) for unit in plan.work_units] == [
-        ("U-1", ["S-1"], []),
-        ("U-2", ["S-2"], ["U-1"]),
-        ("U-3", ["S-3"], []),
-    ]
+    assert not any(item.severity == "error" for item in direct_diagnostics)
+    assert not any(item.severity == "error" for item in analyzed_diagnostics)
+    assert "steps" not in direct_content
+    assert "steps" not in analyzed_content
 
 
-@pytest.mark.parametrize("heading", ["Work Units", "Parallel Plan"])
-def test_incomplete_parallel_plan_is_accepted_with_repair_advice(heading: str) -> None:
-    document = (
-        "---\ntype: plan\n---\n"
-        f"## {heading}\n- [U-1] Implement independent client behavior\n"
-        "### [S-1] Update the client behavior and preserve existing behavior\n"
-        "The executor should inspect the client and determine concrete targets and proof.\n"
+def test_noop_short_circuits_both_entry_points() -> None:
+    """The ``noop: true`` payload returns ``{"noop": True}`` with no diagnostics."""
+    direct_content, direct_diagnostics = parse_and_validate(
+        "---\ntype: plan\nnoop: true\n---\n", PLAN_SPEC
     )
-    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-    assert content["steps"][0]["number"] == 1
-    assert not any(item.severity == "error" for item in diagnostics)
-    assert any(item.severity == "warning" for item in diagnostics)
-    normalized = normalize_plan_artifact_content(content)
-    assert normalized["steps"][0]["number"] == 1
+    analyzed_content, analyzed_diagnostics, _ = analyze_plan_document(
+        "---\ntype: plan\nnoop: true\n---\n"
+    )
 
-
-@pytest.mark.parametrize("heading", ["Work Units", "Parallel Plan"])
-def test_parallel_units_can_share_file_responsibility(heading: str) -> None:
-    document = "---\ntype: plan\n---\n" + f"## {heading}\n"
-    for number, responsibility in enumerate(("retry policy", "error formatting"), start=1):
-        document += (
-            f"- [U-{number}] Implement {responsibility}\n  Directories: src/client\n"
-            f"### [S-{number}] Implement {responsibility}\nType: file_change\n"
-            "Files:\n- modify src/client/main.py\n"
-            "Verify: pytest tests/client -q\nExpect: client behavior passes\n"
-        )
-    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-    assert not any(item.severity == "error" for item in diagnostics)
-    plan = parse_work_units_from_artifact(content)
-    assert plan is not None
-    assert [(unit.unit_id, unit.step_ids) for unit in plan.work_units] == [
-        ("U-1", ["S-1"]),
-        ("U-2", ["S-2"]),
-    ]
+    assert direct_diagnostics == []
+    assert analyzed_diagnostics == []
+    assert direct_content.get("noop") is True
+    assert analyzed_content.get("noop") is True

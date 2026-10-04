@@ -1,4 +1,3 @@
-{% include 'shared/_validation_failure.j2' -%}
 Produce an executor-ready plan from the request and repository evidence.
 
 You are in PLANNING MODE.
@@ -16,40 +15,11 @@ You are in PLANNING MODE.
 {% include 'shared/_docs_lookup.j2' %}
 
 This is read-only planning: inspect the repository and run only non-mutating
-commands. Do not edit files or install dependencies.
-
-Read `.agent/artifact-formats/plan.md` for the authoritative, validator-backed
-plan spec.
+commands. Do not edit files or install dependencies. Delegate exploration,
+research, and verification to read-only subagents.
 
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 {% include 'shared/_subagents.j2' %}
-
-Delegate exploration, research, and verification to read-only subagents.
-Declare `## Work Units` or `## Parallel Plan` for distinct work responsibilities.
-Use as many workers as independent work needs within active capacity.
-Directories and files may overlap; responsibility paths are optional planning
-context. Define coordination for shared edits before dispatch. A step plan
-without units still schedules independent steps concurrently.
-
-## Submission guidance — read before submitting
-
-Before calling the submit tool, re-read the **Partition** step in the
-thinking section above. Decide explicitly:
-
-- **Parallel plan (default: `## Work Units` or `## Parallel Plan`).** Fan out every independent branch,
-  including branches alongside a dependency chain. Distinct
-  work responsibilities and optional `Files:` lists guide coordination. Land shared contracts before
-  their consumers while unrelated units proceed concurrently.
-- **Wholly linear plan.** Use this only for genuinely coupled work, when every step requires output
-  from preceding work. Cite that prerequisite for each dependency; a
-  connected dependency graph, list order, or one shared file does not
-  justify serializing independent branches.
-
-The full Work Units syntax and validator behavior live in
-`.agent/artifact-formats/plan.md` and
-`ralph/policy/validation/_api.py:validate_work_units_against_policy`. A plan
-that declares work units must fit `max_work_units`; `max_parallel_workers`
-limits concurrent execution, with additional units queued.
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}

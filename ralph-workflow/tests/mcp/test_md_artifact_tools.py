@@ -363,30 +363,15 @@ def test_markdown_artifact_tools_are_registered() -> None:
         ),
     ],
 )
-def test_plan_verify_rejects_routing_failures(tmp_path, label, content) -> None:
-    """The public ``handle_verify_md_artifact`` rejects routing-failure plans.
-
-    Under the plan-scoped severity policy, routing failures (duplicate
-    closed-frontmatter vocabulary, malformed frontmatter) are blocking
-    because the spec registry cannot identify the document as a plan.
-    Content-shape failures (top-level prose, etc.) are demoted to
-    warning and are not exercised by this test.
-    """
+def test_plan_verify_accepts_malformed_frontmatter_as_prose(tmp_path, label, content) -> None:
+    """Plan sanity does not judge duplicate or malformed metadata."""
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "plan", "content": content}
 
     verified = handle_verify_md_artifact(session, workspace, params)
 
-    assert verified.is_error is True, (
-        f"malformed plan ({label}) should fail through the public tool path"
-    )
+    assert verified.is_error is False, f"malformed plan ({label}) is accepted prose"
     payload = _payload(verified)
-    assert payload["valid"] is False
-    diagnostics = must_dict_list(payload["diagnostics"])
-    assert diagnostics, f"malformed plan ({label}) must surface at least one diagnostic"
-    rule_ids = {diagnostic["rule_id"] for diagnostic in diagnostics}
-    assert rule_ids & {"MD002", "MD005", "MD006", "MD007"}, (
-        f"malformed plan ({label}) should surface a parser-originated error; "
-        f"got rule_ids={sorted(rule_ids)!r}"
-    )
+    assert payload["valid"] is True
+    assert must_dict_list(payload["diagnostics"]) == []

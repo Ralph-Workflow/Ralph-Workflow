@@ -270,33 +270,21 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 ## Work Units in the plan artifact
 
-A `plan` artifact that declares `## Work Units` partitions its work into
-same-workspace units that an executing agent can dispatch to its own
-sub-agents in parallel. The list-item form is `- [U-N] description`,
-followed by an inline-list `Directories:` field (one value, comma-separated)
-and an optional `Depends on:` field. The unit body lives in the same
-`### [S-n]` step block, so the plan is a single source of truth for both
-the sequential steps and the per-unit slices.
+A `plan` may use `## Work Units` as a recommended convention for
+independent work. A unit can name `Directories:`, exact `Paths:`, and real
+`Depends on:` prerequisites. The executor uses this extracted information
+best-effort: missing or inconsistent structure does not reject the plan.
 
-Per-unit directory validation runs at `ralph_submit_md_artifact` and
-`ralph_verify_md_artifact` time, ahead of the post-receipt backstop:
+`max_parallel_workers` limits simultaneous workers, so additional ready work
+runs in queued waves. Exact paths remain file-level ownership; conflicting
+files or directory containment serialize, while disjoint files in the same
+directory may proceed together. Assignments to `.agent`, `.git`, and
+`.worktrees` are removed from worker briefs; unknown ownership remains in the
+main session. The brokered write protection remains authoritative.
 
-- Reserved paths (`.agent`, `.git`, `.worktrees`, the repository root)
-  are rejected as `Directories:` values.
-- Empty or `Directories:` values are rejected.
-- Cross-unit overlap (two units sharing a directory) is rejected.
-- The unit count must fit within the configured `max_work_units` (parse
-  ceiling for plan size) and `max_parallel_workers` (per-phase worker
-  fan-out ceiling). The full cap description lives in
-  [Advanced Pipeline Configuration](advanced-pipeline-configuration.md#work-units-validation-at-plan-submission).
-
-A draft that fails a work-unit policy check stays staged for repair but
-is blocked from submission. The post-receipt backstop in
-`ralph/phases/execution.py` remains the fail-closed safety net for
-plans that bypass the artifact submission path. The exact grammar and
-worked example live in the bundled format doc
-`.agent/artifact-formats/plan.md` and the bundled skill
-`submit-plan-artifact`.
+The exact guidance and worked example live in
+`.agent/artifact-formats/plan.md` and the bundled
+`submit-plan-artifact` skill.
 
 ## Unplanned Work in the development-result artifact
 

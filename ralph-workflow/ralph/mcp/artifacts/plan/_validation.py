@@ -234,16 +234,10 @@ class PlanArtifact(RalphBaseModel):
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     """Return True when ``artifact`` represents a planning no-op.
 
-    The explicit ``noop: true`` marker and the legacy empty
-    ``steps``/``work_units`` representation both describe no planned work.
+    Only an explicit marker routes as no-op. An empty extraction is an
+    active prose plan, never an implicit no-op.
     """
-    if artifact.get("noop") is True:
-        return True
-    return (
-        artifact.get("steps") == []
-        and artifact.get("work_units") == []
-        and not artifact.get("parallel_plan")
-    )
+    return artifact.get("noop") is True
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:
@@ -260,23 +254,9 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
     size_error = check_plan_size(content)
     if size_error is not None:
         raise PlanArtifactValidationError(f"plan size violation: {size_error}")
-    raw_steps = content.get("steps")
-    if isinstance(raw_steps, list):
-        raw_numbers = [step.get("number") for step in raw_steps if isinstance(step, dict)]
-        if len(raw_numbers) != len(set(raw_numbers)):
-            duplicate = next(
-                number for index, number in enumerate(raw_numbers) if number in raw_numbers[:index]
-            )
-            raise PlanArtifactValidationError(f"duplicate plan step number {duplicate}")
-    try:
-        validated = PlanArtifact.model_validate(content)
-        return validated.model_dump(
-            mode="python",
-            exclude_none=True,
-            exclude_defaults=True,
-        )
-    except ValidationError as exc:
-        raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
+    # Plan shape is advisory extraction data. Do not re-impose Pydantic
+    # field, cardinality, cross-reference, or graph requirements here.
+    return dict(content)
 
 
 def _format_validation_error(exc: ValidationError) -> str:

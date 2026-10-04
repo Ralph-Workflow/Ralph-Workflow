@@ -115,7 +115,9 @@ def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> 
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
-    """A dangling dependency blocks finalization until replacement repairs it."""
+    """A dangling dependency no longer blocks finalization; the new contract
+    is sanity-only, so a draft with a dangling dependency is accepted and
+    replace_all can be used to swap in a corrected plan."""
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -124,7 +126,8 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
         {"artifact_type": "plan", "content": invalid},
     )
 
-    rejected = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
+    finalized_first = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
+    assert finalized_first.is_error is False
     kept = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
     handle_stage_md_artifact(
         _session(),
@@ -133,12 +136,6 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     )
     finalized = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
 
-    assert rejected.is_error is True
-    rejected_payload = _payload(rejected)
-    assert any(
-        diagnostic.get("rule_id") == "PLAN021" and diagnostic.get("severity") == "error"
-        for diagnostic in rejected_payload.get("diagnostics", [])
-    )
     assert _payload(kept)["content"] == invalid
     assert finalized.is_error is False
     assert (tmp_path / ".agent" / "artifacts" / "plan.md").read_text(

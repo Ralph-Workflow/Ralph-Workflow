@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -35,20 +36,13 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
 )
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
-from ralph.pipeline.work_units import (
-    WorkUnit,
-    WorkUnitsPlan,
-    WorkUnitsValidationError,
-    parse_work_units_from_artifact,
-    validate_for_same_workspace,
-)
+from ralph.pipeline.work_units import WorkUnit, parse_work_units_from_artifact
 from ralph.prompts.materialize import prompt_file_for_phase
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.effects import Effect
@@ -131,7 +125,8 @@ def _parallel_or_agent_effect(
     if not work_units and phase_def.parallelization is not None:
         scope = workspace_scope or resolve_workspace_scope()
         work_units = _work_units_from_plan_artifact(scope.root)
-    if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
+    dispatchable_units = _dispatchable_units(work_units)
+    if len(dispatchable_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
         phase_para = phase_def.parallelization
         if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
             logger.warning(
@@ -147,7 +142,7 @@ def _parallel_or_agent_effect(
                 count=len(work_units),
             )
         else:
-            return _fan_out_effect(state, phase_def, work_units)
+            return _fan_out_effect(state, phase_def, dispatchable_units)
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
@@ -173,20 +168,29 @@ def _fan_out_effect(
                 f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
             )
         )
-    try:
-        validate_for_same_workspace(WorkUnitsPlan(work_units=list(work_units)))
-    except WorkUnitsValidationError as exc:
-        offending = (
-            ", ".join(u.unit_id for u in work_units if not u.allowed_directories) or "(see details)"
-        )
-        return ExitFailureEffect(
-            reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
-        )
     return FanOutEffect(
         work_units=work_units,
         max_workers=phase_para.max_parallel_workers,
         run_post_fanout_verification=phase_para.post_fanout_verification,
         phase=str(state.phase),
+    )
+
+
+def _dispatchable_units(work_units: tuple[WorkUnit, ...]) -> tuple[WorkUnit, ...]:
+    """Keep unknown, protected, or unowned plan work in the main-agent brief."""
+    known = {unit.unit_id for unit in work_units}
+
+    def has_safe_scope(unit: WorkUnit) -> bool:
+        ownership = (*unit.allowed_directories, *unit.paths)
+        return bool(ownership) and all(
+            not any(part in {".agent", ".git", ".worktrees"} for part in Path(path).parts)
+            for path in ownership
+        )
+
+    return tuple(
+        unit for unit in work_units
+        if has_safe_scope(unit)
+        and all(dependency in known and dependency != unit.unit_id for dependency in unit.dependencies)
     )
 
 
@@ -214,7 +218,6 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         PhaseArtifactError,
         PlanArtifactValidationError,
         ValueError,
-        WorkUnitsValidationError,
     ) as exc:
         logger.warning(
             "Could not derive work_units from plan artifact at {}: {} — "

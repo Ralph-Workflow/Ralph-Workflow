@@ -36,9 +36,6 @@ from ralph.mcp.tools._md_artifact_payload import (
 from ralph.mcp.tools._md_artifact_validation_logging import (
     log_validation_rejection as _log_validation_rejection,
 )
-from ralph.mcp.tools._md_artifact_work_units_policy import (
-    work_units_policy_check as _work_units_policy_check,
-)
 from ralph.mcp.tools._validation_retry_hints import (
     clear_validation_retry_hint as _clear_validation_retry_hint,
 )
@@ -109,9 +106,6 @@ def handle_verify_md_artifact(
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, None)
     )
-    diagnostics.extend(
-        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
-    )
     return _validation_result(artifact_type, diagnostics, overridden)
 
 
@@ -137,9 +131,6 @@ def handle_submit_md_artifact(
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
-    )
-    diagnostics.extend(
-        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
@@ -231,12 +222,6 @@ def handle_edit_md_artifact(
         _planning_finding_target_diagnostics(
             session, workspace, artifact_type, content, deps
         )
-    )
-    # S-9: enforce plan work-unit policy on the edited content the way verify
-    # and direct submit do, otherwise the edit gate accepts unsafe drafts
-    # that verify/submit would reject.
-    diagnostics.extend(
-        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
     )
     submitted = not any(item.severity == "error" for item in diagnostics)
     validation_recovered = False
@@ -369,12 +354,6 @@ def handle_finalize_md_artifact(
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
-    )
-    # S-9: enforce plan work-unit policy on the finalized content the way
-    # verify and direct submit do, otherwise the finalize gate accepts
-    # unsafe drafts that verify/submit would reject.
-    diagnostics.extend(
-        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:

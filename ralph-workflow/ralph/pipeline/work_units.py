@@ -10,9 +10,8 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from pydantic import ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import ConfigDict, Field
 
-from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 from ralph.pipeline.work_unit import WorkUnit
 from ralph.pipeline.work_units_validation_error import WorkUnitsValidationError
 from ralph.pydantic_compat import RalphBaseModel
@@ -47,30 +46,6 @@ class WorkUnitsPlan(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
     work_units: list[WorkUnit] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_graph(self) -> WorkUnitsPlan:
-        ids = [unit.unit_id for unit in self.work_units]
-        seen: set[str] = set()
-        for unit_id in ids:
-            if unit_id in seen:
-                raise WorkUnitsValidationError(f"Duplicate work unit id: {unit_id}")
-            seen.add(unit_id)
-
-        known = set(ids)
-        dependency_map: dict[str, list[str]] = {}
-        for unit in self.work_units:
-            dependency_map[unit.unit_id] = unit.dependencies
-            if unit.unit_id in unit.dependencies:
-                raise WorkUnitsValidationError(f"Work unit '{unit.unit_id}' depends on itself")
-            for dependency in unit.dependencies:
-                if dependency not in known:
-                    raise WorkUnitsValidationError(
-                        f"Unknown dependency '{dependency}' in work unit '{unit.unit_id}'"
-                    )
-
-        _validate_acyclic(dependency_map)
-        return self
 
 
 def validate_for_same_workspace(plan: WorkUnitsPlan, *, planning_intent: bool = False) -> None:
@@ -157,51 +132,47 @@ def _path_parts_overlap(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
     return longer[: len(shorter)] == shorter
 
 
-def _validate_acyclic(dependency_map: dict[str, list[str]]) -> None:
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def dfs(node: str) -> None:
-        if node in visited:
-            return
-        if node in visiting:
-            raise WorkUnitsValidationError(f"Dependency cycle detected at '{node}'")
-
-        visiting.add(node)
-        for dependency in dependency_map.get(node, []):
-            dfs(dependency)
-        visiting.remove(node)
-        visited.add(node)
-
-    for node in dependency_map:
-        dfs(node)
+def _string_list(value: object) -> list[str]:
+    """Return only string members from a best-effort extracted field."""
+    return [member for member in value if isinstance(member, str)] if isinstance(value, list) else []
 
 
 def parse_work_units_from_artifact(artifact: Mapping[str, object]) -> WorkUnitsPlan | None:
-    """Parse and validate work_units[] from a planning artifact payload.
+    """Best-effort convert extracted plan units without making prose a gate.
 
-    Returns None when the artifact does not declare work_units.
+    Invalid siblings are omitted deterministically; their raw plan prose remains
+    available to the main agent rather than creating an unsafe worker scope.
     """
-    raw = artifact.get("work_units")
-    if not raw and artifact.get("parallel_plan"):
-        items = TypeAdapter(list[ParallelPlanItem]).validate_python(artifact["parallel_plan"])
-        raw = [
-            WorkUnit(
-                unit_id=item.id,
-                description=item.description,
-                allowed_directories=item.edit_area.directories + item.edit_area.paths,
-                dependencies=item.depends_on,
-                step_ids=item.step_ids,
-            )
-            for item in items
-        ]
+    raw = artifact.get("work_units") or artifact.get("parallel_plan")
     if raw is None:
         return None
+    if not isinstance(raw, list):
+        return WorkUnitsPlan()
 
-    try:
-        payload: dict[str, object] = {"work_units": raw}
-        return WorkUnitsPlan.model_validate(payload)
-    except Exception as exc:  # pragma: no cover - converted to domain error below
-        if isinstance(exc, WorkUnitsValidationError):
-            raise
-        raise WorkUnitsValidationError(str(exc)) from exc
+    units: list[WorkUnit] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        unit_id = item.get("unit_id", item.get("id"))
+        if not isinstance(unit_id, str) or unit_id in seen or unit_id.startswith("AC-"):
+            continue
+        directories: object = item.get("directories", item.get("allowed_directories", []))
+        paths: object = item.get("paths", [])
+        files: object = item.get("files", [])
+        dependencies: object = item.get("dependencies", item.get("depends_on", []))
+        step_ids: object = item.get("step_ids", [])
+        try:
+            unit = WorkUnit(
+                unit_id=unit_id,
+                description=str(item.get("description", unit_id)),
+                allowed_directories=_string_list(directories),
+                paths=[*_string_list(paths), *_string_list(files)],
+                dependencies=_string_list(dependencies),
+                step_ids=_string_list(step_ids),
+            )
+        except (TypeError, ValueError):
+            continue
+        seen.add(unit_id)
+        units.append(unit)
+    return WorkUnitsPlan(work_units=units)

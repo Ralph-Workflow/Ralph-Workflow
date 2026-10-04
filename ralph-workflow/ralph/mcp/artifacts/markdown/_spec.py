@@ -69,6 +69,15 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         text,
         allow_nested_headings=spec.allow_nested_headings,
     )
+    if spec.artifact_type == "plan":
+        return _parse_plan_sanity_only(text, spec, document)
+    return _parse_non_plan(text, spec, document, diagnostics)
+
+
+def _parse_non_plan(
+    text: str, spec: MdArtifactSpec, document: ParsedDocument, diagnostics: list[Diagnostic]
+) -> tuple[Content, list[Diagnostic]]:
+    """Run the shared closed grammar for every non-plan artifact."""
     if spec.validate_text is not None:
         # Spec-level text validators run after the parser so the document
         # state is available, but before structure validation so a
@@ -140,6 +149,20 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
                 return _best_effort_content(spec, document, diagnostics)
             return {}, diagnostics
     return {}, diagnostics
+
+
+def _parse_plan_sanity_only(
+    text: str, spec: MdArtifactSpec, document: ParsedDocument
+) -> tuple[Content, list[Diagnostic]]:
+    """Apply the plan's deliberately narrow text boundary."""
+    diagnostics = spec.validate_text(text) if spec.validate_text is not None else []
+    if _has_errors(diagnostics):
+        return {}, diagnostics
+    try:
+        spec.normalize_content({"_raw_bytes": len(text.encode("utf-8"))})
+        return spec.normalize_content(spec.to_content(document)), diagnostics
+    except (TypeError, ValueError) as exc:
+        return {}, [_normalizer_diagnostic(document, str(exc), spec.artifact_type)]
 
 
 def _best_effort_content(

@@ -32,11 +32,6 @@ from ralph.pipeline.parallel.scheduler import schedule_next_wave
 from ralph.pipeline.parallel.worker_context import WorkerContext
 from ralph.pipeline.parallel.worker_failure_error import WorkerFailureError as _WorkerFailureError
 from ralph.pipeline.parallel.worker_log import WorkerLog
-from ralph.pipeline.work_units import (
-    WorkUnitsPlan,
-    WorkUnitsValidationError,
-    validate_for_same_workspace,
-)
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import ProcessTerminationError, get_process_manager
 from ralph.workspace import fs
@@ -89,19 +84,6 @@ class ParallelCoordinator:
             n=len(effect.work_units),
             ns=ns_root,
         )
-
-        if effect.work_units:
-            try:
-                validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
-            except WorkUnitsValidationError as exc:
-                logger.error("coordinator preflight rejected plan: {}", exc)
-                return [
-                    WorkerFailedEvent(
-                        unit_id="__preflight__",
-                        exit_code=2,
-                        error=f"parallel preflight rejected plan: {exc}",
-                    )
-                ]
 
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         if not effect.work_units:
@@ -211,7 +193,7 @@ def _prepare_executor(
 
     worker_scope = WorkspaceScope.for_same_workspace_worker(
         repo_root=same_workspace.repo_root,
-        allowed_directories=tuple(unit.allowed_directories),
+        allowed_directories=(*unit.allowed_directories, *unit.paths),
         worker_namespace=worker_namespace,
     )
 

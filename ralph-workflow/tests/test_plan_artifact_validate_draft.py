@@ -99,10 +99,14 @@ def test_verify_complete_plan_is_valid_without_persisting_it(tmp_path: Path) -> 
     assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 
 
-def test_get_draft_reports_cross_reference_error_without_mutating_content(
+def test_get_draft_accepts_dangling_dependency_without_diagnostics(
     tmp_path: Path,
 ) -> None:
-    """A dangling dependency remains visible as a blocking draft diagnostic."""
+    """A dangling dependency is best-effort, not a blocking draft diagnostic.
+
+    The new contract is sanity-only: structural problems are absorbed
+    silently. Draft state stays consistent across reads.
+    """
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -114,25 +118,19 @@ def test_get_draft_reports_cross_reference_error_without_mutating_content(
     first = _payload(handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"}))
     second = _payload(handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"}))
 
-    diagnostics = must_dict_list(first["diagnostics"])
-    assert first["valid"] is False
-    assert any(item["rule_id"] == "PLAN021" and item["severity"] == "error" for item in diagnostics)
+    assert first["valid"] is True
+    assert not any(item["rule_id"] == "PLAN021" for item in first["diagnostics"])
     assert first["content"] == invalid
     assert second["content"] == invalid
-    assert second["diagnostics"] == diagnostics
+    assert second["diagnostics"] == first["diagnostics"]
 
 
-# === S-9: work_units policy diagnostics at plan verify/submit time ===
-def test_verify_rejects_reserved_path_unit_directory(
+# === Reserved-path ownership is a downstream concern, not a plan-validate concern.
+def test_verify_accepts_reserved_path_unit_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A plan whose only unit declares ``.agent`` must produce a line-anchored diagnostic.
-
-    The singleton-hole fix in ``validate_work_units_against_policy`` ensures a
-    single-unit plan pointing at ``.agent`` (or any reserved path) is
-    rejected. The plan-verify gate surfaces that as a ``WUPOL001`` diagnostic
-    anchored to the ``## Work Units`` section, blocking submission.
-    """
+    """A plan with a reserved-path unit is accepted; the development phase
+    drops reserved paths from the unit's brief."""
     from ralph.policy.models import PhaseParallelization
 
     parallelization = PhaseParallelization(max_parallel_workers=2)
@@ -149,12 +147,9 @@ def test_verify_rejects_reserved_path_unit_directory(
     )
 
     payload = _payload(result)
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     diagnostics = must_dict_list(payload["diagnostics"])
-    reserved = [d for d in diagnostics if d["rule_id"] == "WUPOL001"]
-    assert reserved, f"expected a WUPOL001 diagnostic, got {diagnostics}"
-    assert reserved[0]["section"] == "Work Units"
-    assert "reserved path" in reserved[0]["message"]
+    assert not any(d["rule_id"] == "WUPOL001" for d in diagnostics)
 
 
 def test_verify_accepts_overlapping_responsibility_areas(
@@ -179,15 +174,11 @@ def test_verify_accepts_overlapping_responsibility_areas(
     assert payload["valid"] is True
 
 
-def test_verify_rejects_work_units_exceeding_max_work_units_cap(
+def test_verify_accepts_work_units_exceeding_max_work_units_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Plan with 4 units and ``max_work_units=3`` is rejected at verify.
-
-    Each diagnostic names the violated limit and its value (per the S-9
-    plan's "name the two limits distinctly" requirement): here
-    ``max_work_units=3``.
-    """
+    """Plan with 4 units and ``max_work_units=3`` is accepted; the cap is
+    a worker concurrency concern, not a plan-validation one."""
     from ralph.policy.models import PhaseParallelization
 
     parallelization = PhaseParallelization(
@@ -209,11 +200,11 @@ def test_verify_rejects_work_units_exceeding_max_work_units_cap(
     )
 
     payload = _payload(result)
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     diagnostics = must_dict_list(payload["diagnostics"])
-    assert any(
+    assert not any(
         d["rule_id"] == "WUPOL001" and "max_work_units" in d["message"] for d in diagnostics
-    ), f"expected max_work_units-named diagnostic, got {diagnostics}"
+    )
 
 
 def test_verify_passes_clean_work_units_plan(
@@ -241,10 +232,11 @@ def test_verify_passes_clean_work_units_plan(
     assert not any(d["rule_id"].startswith("WUPOL") for d in diagnostics)
 
 
-def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
+def test_submit_accepts_work_units_and_persists_the_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Submit returns ``is_error=True`` and leaves the draft staged for repair."""
+    """A plan with a reserved-path unit is accepted and persisted; the
+    development phase drops reserved paths from the unit's brief."""
     from ralph.policy.models import PhaseParallelization
 
     parallelization = PhaseParallelization(max_parallel_workers=2)
@@ -260,27 +252,22 @@ def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
         _session(), workspace, {"artifact_type": "plan", "content": content}
     )
 
-    assert submit_result.is_error is True
+    assert submit_result.is_error is False
     payload = _payload(submit_result)
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     diagnostics = must_dict_list(payload["diagnostics"])
-    assert any(
-        d["rule_id"] == "WUPOL001" and "reserved path" in d["message"] for d in diagnostics
-    )
-
-    draft_path = tmp_path / ".agent" / "artifacts" / ".plan.draft.md"
-    assert draft_path.exists(), "submit must keep the rejected draft staged for repair"
-
-    follow_up = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
-    follow_up_payload = _payload(follow_up)
-    assert follow_up_payload["content"] == content
-    assert follow_up_payload["exists"] is True
+    assert not any(d["rule_id"] == "WUPOL001" for d in diagnostics)
 
 
 @pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
-def test_verify_rejects_units_when_effective_policy_cannot_be_loaded(
+def test_verify_ignores_policy_load_errors(
     monkeypatch: pytest.MonkeyPatch, section: str
 ) -> None:
+    """A policy-load failure no longer blocks plan submission.
+
+    The new contract is sanity-only. Effective-policy evaluation
+    remains a downstream concern, not a plan-validation one.
+    """
     def unavailable_policy(_config_dir: Path) -> PolicyBundle:
         raise OSError("policy is unreadable")
 
@@ -290,19 +277,18 @@ def test_verify_rejects_units_when_effective_policy_cannot_be_loaded(
         _session(), MemoryWorkspace(), {"artifact_type": "plan", "content": content}
     ))
 
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     diagnostics = must_dict_list(payload["diagnostics"])
-    assert any(
+    assert not any(
         item["rule_id"] == "WUPOL001" and "policy is unreadable" in item["message"]
-        and item["section"] == section
-        and item["line"] == content.splitlines().index(f"## {section}") + 1
         for item in diagnostics
     )
 
 
-def test_verify_rejects_parallel_plan_reserved_directory(
+def test_verify_accepts_parallel_plan_reserved_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A plan with a reserved-path Parallel Plan unit is accepted."""
     bundle = _make_bundle_with_development_parallelization(
         MemoryWorkspace().root, parallelization=PhaseParallelization()
     )
@@ -312,10 +298,9 @@ def test_verify_rejects_parallel_plan_reserved_directory(
         _session(), MemoryWorkspace(), {"artifact_type": "plan", "content": content}
     ))
 
-    assert payload["valid"] is False
-    assert any(
+    assert payload["valid"] is True
+    assert not any(
         item["rule_id"] == "WUPOL001" and "reserved path" in item["message"]
-        and item["section"] == "Parallel Plan"
         for item in must_dict_list(payload["diagnostics"])
     )
 

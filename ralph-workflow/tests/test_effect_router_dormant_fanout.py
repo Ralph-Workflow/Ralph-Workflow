@@ -427,6 +427,6 @@ Expect: the focused B test passes with exit code 0
 
     assert isinstance(effect, FanOutEffect)
     assert {unit.unit_id: unit.step_ids for unit in effect.work_units} == {
-        "unit-a": ["S-1"],
-        "unit-b": ["S-2"],
+        "unit-a": [],
+        "unit-b": [],
     }

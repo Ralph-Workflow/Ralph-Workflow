@@ -462,6 +462,7 @@ def _persist_parallel_worker_manifests(
             unit_id=unit.unit_id,
             description=unit.description,
             allowed_directories=list(unit.allowed_directories),
+            paths=list(unit.paths),
             step_ids=list(unit.step_ids),
             phase=effect.phase,
             drain=session_drain,

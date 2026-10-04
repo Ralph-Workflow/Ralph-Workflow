@@ -95,7 +95,10 @@ def test_analysis_format_docs_teach_evidence_first_decision_invariants(
         assert "Criterion:" in normalized
         assert "Expected observation:" in normalized
         assert "not permitted" in normalized
-    if artifact_type != _POLICY_REMEDIATION_ANALYSIS_DECISION:
+    if artifact_type == "planning_analysis_decision":
+        for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+            assert criterion in normalized
+    elif artifact_type != _POLICY_REMEDIATION_ANALYSIS_DECISION:
         assert "stable" in normalized
 
 
@@ -264,21 +267,19 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         )
 
 
-def test_plan_doc_teaches_mandatory_executor_ready_contract() -> None:
+def test_plan_doc_teaches_sanity_only_parallel_guidance() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for phrase in (
-        "Every active plan uses stable `### [S-n] Title` steps",
-        "Work steps should provide `Files`, a concrete `Verify`, and an observable `Expect`.",
-        "`schema_version` and `## Validation Overrides` are unsupported",
-        "Orient, Characterize, Change, and Verify",
+        "only submission requirements",
+        "Parallel work is recommended by default",
+        "Paths:",
         "ralph_edit_md_artifact",
         ".agent/artifact-formats/examples/plan.md",
     ):
         assert phrase in doc
-    assert doc.count("```markdown") >= 1
-    assert "`PLAN001` is the sole error" not in doc
-    assert "Warnings and info never make a plan invalid" not in doc
+    assert "max_work_units" not in doc
+    assert "Validation Overrides" not in doc
 
 
 @pytest.mark.parametrize(
@@ -292,7 +293,7 @@ def test_consumed_status_docs_teach_closed_vocabulary(
     doc = load_bundled_format_doc(artifact_type)
     assert doc is not None
     if artifact_type.endswith("analysis_decision") and artifact_type != "review_analysis_decision":
-        assert "not evaluable" in doc
+        assert "not evaluable" in doc or artifact_type == "planning_analysis_decision"
     else:
         assert "hard error" in doc.lower()
         assert "`done`" in doc
