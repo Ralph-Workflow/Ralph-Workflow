@@ -83,6 +83,7 @@ def test_no_unbounded_deque_in_explore() -> None:
                 pytest.fail(f"{py_file}:{line_no}: unbounded deque: {line.strip()}")
 
 
+@pytest.mark.timeout_seconds(3)
 def test_no_module_level_mutable_list_in_explore() -> None:
     """Module-level ``[]``/``{}``/``set()`` are flagged by the audit."""
     import ast
