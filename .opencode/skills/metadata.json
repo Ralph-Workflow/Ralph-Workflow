@@ -17,7 +17,6 @@
     "brainstorming",
     "writing-plans",
     "executing-plans",
-    "subagent-driven-development",
     "dispatching-parallel-agents",
     "test-driven-development",
     "systematic-debugging",
@@ -48,7 +47,6 @@
     "brainstorming": "core-workflow",
     "writing-plans": "core-workflow",
     "executing-plans": "core-workflow",
-    "subagent-driven-development": "core-workflow",
     "dispatching-parallel-agents": "core-workflow",
     "test-driven-development": "core-workflow",
     "systematic-debugging": "core-workflow",
@@ -114,16 +112,6 @@
       "repo": "https://github.com/obra/superpowers",
       "ref": "main",
       "path": "skills/executing-plans/SKILL.md"
-    },
-    "subagent-driven-development": {
-      "bundle": "core-workflow",
-      "upstream_name": "subagent-driven-development",
-      "catalog_repo": null,
-      "catalog_ref": null,
-      "catalog_path": null,
-      "repo": "https://github.com/obra/superpowers",
-      "ref": "main",
-      "path": "skills/subagent-driven-development/SKILL.md"
     },
     "dispatching-parallel-agents": {
       "bundle": "core-workflow",
