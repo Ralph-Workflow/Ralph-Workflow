@@ -11,7 +11,6 @@ import re
 import tomllib
 from pathlib import Path
 
-import pytest
 from pydantic import BaseModel
 
 from ralph.config.models import UnifiedConfig
@@ -35,23 +34,6 @@ def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
         "[phases.<phase>.parallelization] only."
     )
 
-
-@pytest.mark.parametrize(
-    "toml_filename",
-    ["ralph-workflow.toml", "ralph-workflow-local.toml"],
-)
-def test_ralph_workflow_toml_has_no_global_parallel_keys(toml_filename: str) -> None:
-    """ralph-workflow.toml and ralph-workflow-local.toml must not have global parallel keys."""
-    toml_path = _DEFAULTS_DIR / toml_filename
-    if not toml_path.exists():
-        pytest.skip(f"{toml_filename} not found in defaults directory")
-
-    data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-    for forbidden in ("parallel_execution", "max_parallel_workers", "max_work_units"):
-        assert forbidden not in data, (
-            f"{toml_filename} must not have a top-level '{forbidden}' key. "
-            f"Parallelization belongs only in pipeline.toml under [phases.<phase>.parallelization]."
-        )
 
 
 def _walk_model_fields(

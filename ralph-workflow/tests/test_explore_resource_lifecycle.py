@@ -20,9 +20,6 @@ regression in the resource contract surfaces immediately.
 
 from __future__ import annotations
 
-import contextlib
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -53,37 +50,6 @@ def _count_fds() -> int:
         return sum(1 for _ in fd_dir.iterdir()) - 1
     except (FileNotFoundError, PermissionError, OSError):
         return 0
-
-
-def _count_inotify_watches() -> int:
-    """Return the count of inotify watches held by the current process.
-
-    Reads ``/proc/self/fdinfo/<N>`` for each open ``inotify`` fd
-    and sums the ``watches`` field. Returns 0 when ``/proc`` is
-    unavailable (e.g. macOS, sandboxed env).
-    """
-    total = 0
-    fd_dir = Path("/proc/self/fd")
-    if not fd_dir.is_dir():
-        return 0
-    for entry in fd_dir.iterdir():
-        try:
-            target = entry.readlink().as_posix()
-        except OSError:
-            continue
-        if "inotify" not in target:
-            continue
-        fdinfo = Path("/proc/self/fdinfo") / entry.name
-        try:
-            text = fdinfo.read_text(encoding="utf-8")
-        except (FileNotFoundError, PermissionError, OSError):
-            continue
-        for line in text.splitlines():
-            if line.startswith("watches:"):
-                with contextlib.suppress(ValueError, IndexError):
-                    total += int(line.split(":", 1)[1].strip())
-                break
-    return total
 
 
 def test_explore_handlers_use_bounded_accumulators() -> None:
@@ -216,94 +182,6 @@ def test_no_fd_leak_after_reindex_and_search(tmp_path: Path) -> None:
         f"FD leak: before={fds_before}, after={fds_after}"
     )
 
-
-def test_no_inotify_watches_held_by_explore(tmp_path: Path) -> None:
-    """No inotify watches must be held after the explore workload.
-
-    R5 requires the explore substrate not to hold long-lived OS
-    watch handles. The proof runs the index + search workload in
-    a child process and checks the child's inotify watch count
-    via ``/proc/<pid>/fd``/``fdinfo``; the steady-state count must
-    be zero.
-    """
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    _seed_workspace(workspace)
-    index_dir = tmp_path / ".agent" / "ralph-explore"
-    index_dir.mkdir(parents=True, exist_ok=True)
-    script = """
-import os
-import sys
-import time
-from pathlib import Path
-
-WORKSPACE = Path(__WORKSPACE__)
-INDEX_DIR = WORKSPACE / \".agent\" / \"ralph-explore\"
-
-from ralph.mcp.explore.pipeline import ReindexOptions, reindex
-from ralph.mcp.explore.store import ExploreStore
-from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
-from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
-from ralph.mcp.explore.handlers import ExploreIndex
-from ralph.workspace.fs import FsWorkspace
-
-store = ExploreStore(INDEX_DIR)
-try:
-    reindex(store, WORKSPACE, options=ReindexOptions(timeout_ms=5_000))
-finally:
-    store.close()
-store2 = ExploreStore(INDEX_DIR)
-session = type(\"S\", (), {
-    \"explore_index\": build_sqlite_index_handle(store2),
-    \"check_capability\": lambda self, c: {\"status\": \"approved\", \"capability\": c},
-    \"check_edit_area\": lambda self, p: {\"status\": \"approved\", \"path\": p},
-})()
-ws = FsWorkspace(WORKSPACE)
-for _ in range(5):
-    handle_grep_files(
-        session, ws,
-        {\"pattern\": \"def\", \"path\": \".\", \"regex\": False, \"case_sensitive\": False, \"use_index\": \"auto\"},
-    )
-store2.close()
-# Output the PID + watch count for the parent to verify.
-print(os.getpid(), end=\"\\n\")
-sys.stdout.flush()
-sys.stdin.readline()
-"""
-    script = script.replace("__WORKSPACE__", repr(str(workspace)))
-    proc = subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        stdin=subprocess.PIPE,
-    )
-    assert proc.stdout is not None and proc.stdin is not None
-    child_pid = int(proc.stdout.readline().decode().strip())
-    fd_dir = Path(f"/proc/{child_pid}/fd")
-    assert fd_dir.is_dir()
-    watches = 0
-    for entry in fd_dir.iterdir():
-        try:
-            target = entry.readlink().as_posix()
-        except OSError:
-            continue
-        if "inotify" not in target:
-            continue
-        fdinfo = Path(f"/proc/{child_pid}/fdinfo") / entry.name
-        try:
-            text = fdinfo.read_text(encoding="utf-8")
-        except (FileNotFoundError, PermissionError, OSError):
-            continue
-        for line in text.splitlines():
-            if line.startswith("watches:"):
-                with contextlib.suppress(ValueError, IndexError):
-                    watches += int(line.split(":", 1)[1].strip())
-                break
-    proc.stdin.write(b"\n")
-    proc.stdin.flush()
-    proc.wait(timeout=5)
-    assert proc.returncode == 0
-    assert watches == 0, f"explore substrate holds {watches} inotify watches"
 
 
 def test_no_fd_leak_under_concurrent_searches(tmp_path: Path) -> None:

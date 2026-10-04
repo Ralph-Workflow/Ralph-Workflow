@@ -97,7 +97,11 @@ class _InitializeMethods:
                 return
             except sqlite3.OperationalError as exc:
                 msg = str(exc).lower()
-                if "locked" not in msg and "busy" not in msg:
+                if (
+                    "locked" not in msg
+                    and "busy" not in msg
+                    and "disk i/o error" not in msg
+                ):
                     raise
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:

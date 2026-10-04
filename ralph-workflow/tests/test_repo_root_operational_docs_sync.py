@@ -7,8 +7,6 @@ markers, and no stale Rust-era claims.
 
 from pathlib import Path
 
-import pytest
-
 from tests.doc_roots import REPO_ROOT_DOCS_DIR, REPOSITORY_ROOT
 
 # Sphinx is the canonical home for these guides; check the Sphinx copy.
@@ -69,20 +67,6 @@ def test_no_stale_rust_workflow_references() -> None:
             )
 
 
-def test_python_tooling_guide_is_current() -> None:
-    """docs/tooling/python-tooling.md must be current Python guidance."""
-    path = REPO_ROOT_DOCS_DIR / "tooling" / "python-tooling.md"
-    if not path.exists():
-        pytest.skip("python-tooling.md may not exist")
-    content = path.read_text().lower()
-    # Should be Python-focused
-    assert "python" in content or "uv" in content, (
-        "python-tooling.md should be Python-focused guidance"
-    )
-    # Should not be Rust-focused
-    assert "cargo" not in content, "python-tooling.md should not reference Rust-era cargo"
-
-
 def test_quick_reference_has_current_commands() -> None:
     """quick-reference.md was merged into cli.md during the wt-026 consolidation.
 
@@ -99,19 +83,6 @@ def test_quick_reference_has_current_commands() -> None:
         f"{quick_ref_path} was deleted in wt-026; the canonical CLI "
         f"reference lives in ralph-workflow/docs/sphinx/cli.md"
     )
-
-
-def test_agent_compatibility_has_current_provider_info() -> None:
-    """agent-compatibility.md should have current provider matrix."""
-    path = REPO_ROOT_DOCS_DIR / "agent-compatibility.md"
-    if not path.exists():
-        pytest.skip("agent-compatibility.md may not exist")
-    content = path.read_text().lower()
-    # Should reference current providers
-    has_provider_info = any(
-        provider in content for provider in ["claude", "gemini", "openai", "codex"]
-    )
-    assert has_provider_info, "agent-compatibility.md should contain current provider information"
 
 
 def test_agy_mcp_setup_reflects_pty_injection() -> None:
@@ -145,21 +116,3 @@ def test_agy_mcp_setup_reflects_pty_injection() -> None:
             )
 
 
-def test_template_guide_is_python_focused() -> None:
-    """template-guide.md should be Python-focused."""
-    path = REPO_ROOT_DOCS_DIR / "template-guide.md"
-    if not path.exists():
-        pytest.skip("template-guide.md may not exist")
-    content = path.read_text()
-    # Should reference Python/template patterns, not Rust
-    assert "cargo" not in content.lower()
-
-
-def test_git_workflow_is_current() -> None:
-    """git-workflow.md should describe current Git workflow."""
-    path = REPO_ROOT_DOCS_DIR / "git-workflow.md"
-    if not path.exists():
-        pytest.skip("git-workflow.md may not exist")
-    content = path.read_text()
-    # Should reference current workflow (ralph --generate-commit)
-    assert "ralph" in content.lower() or "commit" in content.lower()

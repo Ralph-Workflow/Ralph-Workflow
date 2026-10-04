@@ -55,3 +55,71 @@ disposition = "KEEP"
 
 [local_tightening]
 controls = []
+
+
+[[controls]]
+id = "explore-linux-inotify-probe"
+protected_outcome = "Explore leaves no Linux inotify watches after an indexed-search workload"
+fault_sensitivity = "The removed test inspected a child process's Linux /proc fdinfo state, which is unavailable on supported developer hosts"
+layer = "one-off platform receipt"
+owner = "domain owner"
+trigger = "Linux watcher implementation change"
+lane = "triggered"
+marginal_cost_seconds = 0.0
+evidence = "dated Linux-host command receipt recorded with the implementation change"
+lifecycle = "remove from the default suite; review only when watcher implementation changes"
+disposition = "REMOVE"
+
+[[controls]]
+id = "retired-root-operational-doc-guards"
+protected_outcome = "Retired repo-root operational guides contain current guidance"
+fault_sensitivity = "The removed tests always skipped because their retired guide paths are absent from a clean clone"
+layer = "vacuity elimination"
+owner = "project maintainers"
+trigger = "documentation-route change"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "canonical Sphinx routes and documented retirement decisions"
+lifecycle = "remove absent-path guards; add an objective test only for a current canonical route"
+disposition = "REMOVE"
+
+
+[[controls]]
+id = "retired-root-performance-doc-guards"
+protected_outcome = "Retired repo-root performance guides retain their historical labels"
+fault_sensitivity = "Every test in the removed file skipped because the archived performance directory is absent from a clean clone"
+layer = "vacuity elimination"
+owner = "project maintainers"
+trigger = "historical archive restoration"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "archive restoration review and the documentation map's historical-route classification"
+lifecycle = "remove absent-archive guards; review any restored archive as a documentation change"
+disposition = "REMOVE"
+
+
+[[controls]]
+id = "retired-default-config-guards"
+protected_outcome = "Retired default ralph-workflow TOML templates have no global parallelization keys"
+fault_sensitivity = "Both parameterized tests always skipped because neither retired template is tracked in the clean clone"
+layer = "vacuity elimination"
+owner = "project maintainers"
+trigger = "default template reintroduction"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "default-template inventory and pipeline.toml's retained objective parallelization check"
+lifecycle = "remove absent-template guards; add a test only with a current template"
+disposition = "REMOVE"
+
+[[controls]]
+id = "retired-code-style-leaf-guards"
+protected_outcome = "Retired code-style leaves contain historical Rust markers"
+fault_sensitivity = "All parameter cases skipped because every retired code-style leaf path is absent from the clean clone"
+layer = "vacuity elimination"
+owner = "project maintainers"
+trigger = "historical documentation restoration"
+lane = "human"
+marginal_cost_seconds = 0.0
+evidence = "documentation map and archived-route review"
+lifecycle = "remove absent-leaf guards; review restored historical documents as documentation changes"
+disposition = "REMOVE"
