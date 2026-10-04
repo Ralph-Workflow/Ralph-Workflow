@@ -207,43 +207,34 @@ json_parser = "generic"
       rather than the 80-line interactive ceiling, so subagent runs are not
       spuriously failed on output volume.
 
-## Delegation stance and HAS_SUBAGENTS
+## Delegation requirement
 
-The planning and non-worker developer prompts gate the sub-agent dispatch
-guidance in `shared/_subagents.j2` on a single boolean variable,
-`HAS_SUBAGENTS`, which is computed from each transport's
-`agents.delegation_capabilities.delegation_for(...)` return value:
+Ralph Workflow requires a coding agent with subagent and parallel-agent
+support. The planning and developer prompts assume it unconditionally:
+they never detect, gate on, warn about, or compensate for its absence.
+The shared `shared/_subagents.j2` partial, the
+`shared/_parallel_execution.jinja` partial, and the
+`shared/_developer_iteration_guidance.j2` review trigger are rendered on
+every transport. Ralph does not render a degraded sequential prompt when
+the operator's agent lacks the surface; doing so would re-introduce a
+hidden capability flag and a per-runtime fork in the prompt contract.
 
-| Transport delegation value | `HAS_SUBAGENTS` rendered | Effect |
-| --- | --- | --- |
-| `SUPPORTED` | `"true"` | Dispatch path is exposed; the agent may fan out sub-agents per the partial's concrete triggers (independent repository discovery, independent verification checks, ready work units the plan already declares). |
-| `EXPLICIT_UNSUPPORTED` | `""` (empty) | Sequential path is the only safe fallback; the prompt renders a one-line sequential note instead of the dispatch guidance. |
-| `NOT_APPLICABLE` | `""` (empty) | Same as `EXPLICIT_UNSUPPORTED` — the transport is not a candidate for sub-agent dispatch. |
+The per-agent informational notes above (for example, the line-147
+`EXPLICIT_UNSUPPORTED` note for Kimi) remain useful as plain operator
+information for agents that genuinely do not expose a sub-agent
+dispatch surface. They describe the agent's own surface, never a
+Ralph-side gate or fallback. An operator who configures an agent without
+a sub-agent dispatch surface has misconfigured their side; the right
+fix is to choose a different agent, not a Ralph prompt knob.
 
-The empty-string convention matches the existing `|default('')`
-`StrictUndefined`-safe idiom used elsewhere in the prompt templates
-(for example `_shipped_skills.j2`'s `shipped_skills_mode|default('')` and
-`_mcp_tools.jinja`'s `HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)`),
-so a transport that does not declare a delegation value does not crash
-template rendering. Transports whose `delegation_for` value is
-`EXPLICIT_UNSUPPORTED` or `NOT_APPLICABLE` get the sequential path; that
-is a correctness floor, not a downgrade — `dispatch_mode = "agent_subagents"`
-in the bundled `pipeline.toml` requires the executing agent to dispatch
-its own sub-agents, and a transport that cannot do so must opt in
-explicitly via `dispatch_mode = "ralph_fan_out"` or run sequentially in
-`unit_id` order (the same path Nanocoder and Pi take today).
-
-Production materialization threads the active `AgentTransport` from the
-runner through `PromptPhaseContext.transport` and into
-`DeveloperPromptInputs.transport`, so `delegation_template_variable()`
-sees the real transport — not `None` — and the rendered
-`HAS_SUBAGENTS` reflects the executing agent. The worker prompt
-(`worker_developer.jinja`) replaces the shared partial with an explicit
-**WORKER DO-NOT-DISPATCH** section: a worker must not fan out further
-sub-agents, so the dispatch brief is suppressed even on transports that
-otherwise expose it. The worker still runs the unit's focused `Verify`
-command and cites its exit code as the unit's proof; the full
-repository-wide gate is the main session's job.
+The worker prompt (`worker_developer.jinja`) replaces the shared
+partial with an explicit **WORKER DO-NOT-DISPATCH** section: a worker
+must not fan out further sub-agents, so the dispatch brief is
+suppressed for that one role. The worker still runs the unit's focused
+`Verify` command and cites its exit code as the unit's proof; the
+full repository-wide gate is the main session's job. This is the
+single-writer-per-decision rule for nested fan-out, not a runtime
+capability gate.
 
 ### Built-in configuration examples
 
