@@ -86,8 +86,9 @@ the concrete blocker in the result instead of expanding scope.
 
 {% if IS_CONTINUATION %}
 Before submitting a continuation, check the unit against its assignment and
-proof contract. Use an independent sub-agent when coordination costs less than sequential execution;
-otherwise perform the same review sequentially. Until the gap is closed, you MUST NOT submit the artifact or declare completion.
+proof contract. Workers never dispatch sub-agents (see WORKER DO-NOT-DISPATCH
+above), so perform the same review sequentially in this session. Until the
+gap is closed, you MUST NOT submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}

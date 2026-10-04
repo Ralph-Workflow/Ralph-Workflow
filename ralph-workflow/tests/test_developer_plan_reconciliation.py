@@ -123,7 +123,7 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         assert "## Plan fidelity" in prompt
         assert "## Verification" in prompt
         assert "bounded" in prompt
-        assert "when coordination costs less than sequential execution" in prompt
+        assert "more than one plan step remains or the diff spans more than one file" in prompt
         assert "MUST use at least one sub-agent as a hard gate" not in prompt
         assert "## Completion is the default outcome" in prompt
         assert "last resort" in prompt
