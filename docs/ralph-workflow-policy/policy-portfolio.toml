@@ -66,7 +66,7 @@ owner = "domain owner"
 trigger = "Linux watcher implementation change"
 lane = "triggered"
 marginal_cost_seconds = 0.0
-evidence = "Linux-host manual receipt captured 2026-10-03 against f05524607 by re-running scripts/explore_inotify_probe.sh: open the ExploreStore, run a five-query grep_files workload, and assert the steady-state inotify watch count via /proc/<pid>/fdinfo is zero. The script lives at ralph-workflow/scripts/explore_inotify_probe.sh and is the inspectable artifact for this control."
+evidence = "scripts/explore_inotify_probe.sh opens the ExploreStore, runs a five-query grep_files workload, and tallies the inotify watch count by counting lines beginning with 'inotify wd:' inside /proc/<pid>/fdinfo (the actual per-watch kernel record; the earlier 'watches:' prefix counted zero against any live inotify descriptor). The script aborts non-zero when the count is non-zero. Linux-host developers rerun the script on every watcher implementation change and attach the dated stdout to the change."
 lifecycle = "remove from the default suite; rerun the probe on every Linux implementation change and attach the dated receipt to the change"
 disposition = "REMOVE"
 
@@ -99,17 +99,17 @@ disposition = "REMOVE"
 
 
 [[controls]]
-id = "retired-default-config-guards"
-protected_outcome = "Retired default ralph-workflow TOML templates have no global parallelization keys"
-fault_sensitivity = "Both parameterized tests always skipped because neither retired template is tracked in the clean clone"
-layer = "vacuity elimination"
+id = "default-template-parallel-keys"
+protected_outcome = "Tracked default ralph-workflow TOML templates do not expose global parallelization keys"
+fault_sensitivity = "A regression that re-introduces a top-level parallel_execution/max_parallel_workers/max_work_units key in the tracked ralph-workflow.toml or ralph-workflow-local.toml template would re-enable cross-pipeline parallel switches that the design forbids"
+layer = "objective TOML key check"
 owner = "project maintainers"
-trigger = "default template reintroduction"
-lane = "human"
-marginal_cost_seconds = 0.0
-evidence = "default-template inventory (ralph/.../defaults/) and pipeline.toml's retained objective parallelization check (test_pipeline_toml_has_no_top_level_parallel_execution in ralph-workflow/tests/test_no_global_parallelization_config.py)"
-lifecycle = "remove absent-template guards; add a test only with a current template"
-disposition = "REMOVE"
+trigger = "default template change"
+lane = "default"
+marginal_cost_seconds = 0.05
+evidence = "ralph-workflow/tests/test_no_global_parallelization_config.py::test_ralph_workflow_toml_has_no_global_parallel_keys asserts no top-level forbidden key exists in either tracked template; companion test_pipeline_toml_has_no_top_level_parallel_execution covers pipeline.toml and test_unified_config_has_no_forbidden_parallel_fields covers the UnifiedConfig model surface"
+lifecycle = "keep; rerun on every change to the tracked default templates or to UnifiedConfig"
+disposition = "KEEP"
 
 [[controls]]
 id = "retired-code-style-leaf-guards"

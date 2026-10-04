@@ -47,7 +47,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ralph.mcp.explore.handlers import ExploreIndex
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
@@ -59,6 +59,34 @@ from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT, ExploreStore
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+class _Profilable(Protocol):
+    """Anything we can call repeatedly under :class:`cProfile.Profile`.
+
+    Both :func:`ralph.mcp.explore.serving.staleness_probe` and
+    :func:`ralph.mcp.explore.serving.serving_metadata` have distinct
+    positional/keyword signatures, so the protocol accepts a variadic
+    call. The return value is ignored -- the profile only measures
+    side-effects on the profiler itself.
+    """
+
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+class _SessionLike:
+    """Ad-hoc stand-in for the MCP session used by ``staleness_probe``.
+
+    The real session is a complex object the probe does not need; only
+    the ``explore_index`` attribute is read. Exposing it as a typed
+    attribute keeps mypy's ``disallow_any_expr`` happy without an
+    ``Any`` leak from the ``type(...)`` builtin.
+    """
+
+    __slots__ = ("explore_index",)
+
+    def __init__(self, handle: ExploreIndex) -> None:
+        self.explore_index = handle
 
 
 #: Cumulative-time sub-strings that MUST appear in the profile when the
@@ -119,7 +147,7 @@ def _build_indexed_workspace(tmp: Path) -> tuple[Path, Path, ExploreIndex]:
             continue
         dest = workspace_copy / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
+        shutil.copy2(src, dest)  # filesystem-write-ok: transient scratch in TemporaryDirectory
     index_dir = tmp / DEFAULT_INDEX_ROOT
     store = ExploreStore(index_dir=index_dir)
     reindex(
@@ -137,7 +165,7 @@ def _build_indexed_workspace(tmp: Path) -> tuple[Path, Path, ExploreIndex]:
 
 
 def _run_profile(
-    callable_: object,
+    callable_: _Profilable,
     *args: object,
     **kwargs: object,
 ) -> cProfile.Profile:
@@ -159,11 +187,17 @@ def _table_rows(profiler: cProfile.Profile, *, top: int) -> list[tuple[str, floa
     descending so the report reads naturally.
     """
     stats = pstats.Stats(profiler).sort_stats("cumulative")
+    stats_dict: dict[tuple[str, int, str], tuple[int, int, float, float, dict[str, tuple[int, int, float]]]]
+    stats_dict = cast(
+        "dict[tuple[str, int, str], tuple[int, int, float, float, dict[str, tuple[int, int, float]]]]",
+        stats.stats,  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
     rows: list[tuple[str, float]] = []
-    for func, (_cc, _nc, _tt, ct, _callers) in stats.stats.items():
+    for func, entry in stats_dict.items():
+        ct: float = entry[3]
         rows.append((_qualname(func), ct))
-    rows.sort(key=lambda row: row)
-    rows.sort(key=lambda row: -row[1])
+    rows.sort(key=_by_name)
+    rows.sort(key=_by_cumtime_desc)
     return rows[:top]
 
 
@@ -171,6 +205,16 @@ def _qualname(func: tuple[str, int, str]) -> str:
     """Return ``path:line(name)`` for a ``(file, line, name)`` triple."""
     path, line, name = func
     return f"{path}:{line}({name})"
+
+
+def _by_name(row: tuple[str, float]) -> str:
+    """Sort key: by name only (used to break cumtime ties)."""
+    return row[0]
+
+
+def _by_cumtime_desc(row: tuple[str, float]) -> float:
+    """Sort key: by cumtime descending (negated so the sort is ascending)."""
+    return -row[1]
 
 
 def _assert_entries_present(
@@ -211,27 +255,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Write the recorded profile to this path (JSON)",
     )
     args = parser.parse_args(argv)
+    top_value: int = args.top
+    out_value: Path | None = args.out
 
     with tempfile.TemporaryDirectory(prefix="ralph-probe-profile-") as raw_tmp:
         tmp = Path(raw_tmp)
         workspace, _index_dir, handle = _build_indexed_workspace(tmp)
-        session = type(
-            "_Session",
-            (),
-            {"explore_index": handle},
-        )()
-        probe_profiler = _run_profile(staleness_probe, session, workspace_root=workspace)
-        metadata_profiler = _run_profile(
-            serving_metadata, session, index_used=True, fallback_reason=None
+        session: _SessionLike = _SessionLike(handle)
+        probe_profiler = _run_profile(
+            cast(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                "_Profilable", staleness_probe
+            ),
+            session,
+            workspace_root=workspace,
         )
-        probe_rows = _table_rows(probe_profiler, top=args.top)
-        metadata_rows = _table_rows(metadata_profiler, top=args.top)
+        metadata_profiler = _run_profile(
+            cast(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                "_Profilable", serving_metadata
+            ),
+            session,
+            index_used=True,
+            fallback_reason=None,
+        )
+        probe_rows: list[tuple[str, float]] = _table_rows(probe_profiler, top=top_value)
+        metadata_rows: list[tuple[str, float]] = _table_rows(metadata_profiler, top=top_value)
 
-    print(f"=== staleness_probe cumulative-time (top {args.top}) ===")
+    print(f"=== staleness_probe cumulative-time (top {top_value}) ===")
     for name, cumtime in probe_rows:
         print(f"  {cumtime:8.6f}  {name}")
     print()
-    print(f"=== serving_metadata cumulative-time (top {args.top}) ===")
+    print(f"=== serving_metadata cumulative-time (top {top_value}) ===")
     for name, cumtime in metadata_rows:
         print(f"  {cumtime:8.6f}  {name}")
     print()
@@ -259,16 +312,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  {f}")
         return 1
     print("OK")
-    if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "top": args.top,
-            "probe": [{"name": name, "cumtime": cumtime} for name, cumtime in probe_rows],
-            "metadata": [
-                {"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows
-            ],
+    if out_value is not None:
+        out_value.parent.mkdir(parents=True, exist_ok=True)
+        probe_entries: list[dict[str, object]] = [
+            {"name": name, "cumtime": ct} for name, ct in probe_rows
+        ]
+        metadata_entries: list[dict[str, object]] = [
+            {"name": name, "cumtime": ct} for name, ct in metadata_rows
+        ]
+        payload: dict[str, object] = {
+            "top": top_value,
+            "probe": probe_entries,
+            "metadata": metadata_entries,
         }
-        args.out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        out_value.write_text(  # filesystem-write-ok: opt-in profile dump (caller-supplied path)
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
     return 0
 
 

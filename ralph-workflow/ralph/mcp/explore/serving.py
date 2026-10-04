@@ -24,7 +24,7 @@ from __future__ import annotations
 import contextlib
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.mcp.explore.handlers import ExploreIndex
 
@@ -148,7 +148,10 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     # value the cache was originally bound to (caller's clock may
     # have advanced between calls; the signature uses the raw
     # store value, not the time-relative derived field).
-    cached = getattr(handle, "staleness_block_cache", None)
+    cached = cast(
+        "tuple[tuple[int, int, float | None, int], dict[str, object]] | None",
+        getattr(handle, "staleness_block_cache", None),
+    )
     signature = (
         stale_paths_count,
         int(finished_at) if finished_at is not None else 0,

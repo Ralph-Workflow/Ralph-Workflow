@@ -104,12 +104,8 @@ for entry in fd_dir.iterdir():
     except (FileNotFoundError, PermissionError, OSError):
         continue
     for line in text.splitlines():
-        if line.startswith("watches:"):
-            try:
-                total += int(line.split(":", 1)[1].strip())
-            except (ValueError, IndexError):
-                pass
-            break
+        if line.startswith("inotify wd:"):
+            total += 1
 
 print(f"inotify_watches={total}")
 sys.stdout.flush()

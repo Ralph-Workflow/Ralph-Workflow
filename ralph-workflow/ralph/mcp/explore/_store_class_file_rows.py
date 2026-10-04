@@ -140,9 +140,9 @@ class _FileRowMethods:
         result: dict[str, tuple[int, int]] = {}
         for row in all_rows:
             try:
-                size_obj = row["size_bytes"]
-                mtime_obj = row["mtime_ns"]
-                path_value = row["path"]
+                size_obj: object = row["size_bytes"]
+                mtime_obj: object = row["mtime_ns"]
+                path_value: object = row["path"]
             except (KeyError, IndexError):
                 continue
             if not isinstance(path_value, str):

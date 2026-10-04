@@ -35,6 +35,32 @@ def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
     )
 
 
+def test_ralph_workflow_toml_has_no_global_parallel_keys() -> None:
+    """ralph-workflow.toml and ralph-workflow-local.toml must not have global parallel keys.
+
+    Both templates are tracked in the clean clone at
+    ``ralph/policy/defaults/ralph-workflow.toml`` and
+    ``ralph/policy/defaults/ralph-workflow-local.toml``. The contract is that
+    neither may expose a top-level ``parallel_execution``,
+    ``max_parallel_workers``, or ``max_work_units`` key. Parallelization is
+    transition-scoped and belongs in ``pipeline.toml`` only.
+    """
+    expected = {
+        _DEFAULTS_DIR / "ralph-workflow.toml",
+        _DEFAULTS_DIR / "ralph-workflow-local.toml",
+    }
+    missing = sorted(str(p) for p in expected if not p.exists())
+    assert not missing, f"tracked template(s) missing from clean clone: {missing}"
+    forbidden = ("parallel_execution", "max_parallel_workers", "max_work_units")
+    for toml_path in sorted(expected):
+        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+        offenders = [name for name in forbidden if name in data]
+        assert not offenders, (
+            f"{toml_path.name} must not have top-level parallel key(s) "
+            f"{offenders!r}; parallelization is transition-scoped and lives in "
+            "pipeline.toml under [phases.<phase>.parallelization]."
+        )
+
 
 def _walk_model_fields(
     model_cls: type,

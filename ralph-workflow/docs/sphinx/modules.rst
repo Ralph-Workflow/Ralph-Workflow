@@ -2875,6 +2875,17 @@ ralph.mcp.explore.reindex_bench
 .. automodule:: ralph.mcp.explore.reindex_bench
    :no-members:
 
+ralph.mcp.explore.probe_profile_check
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.mcp.explore.probe_profile_check is a standalone ``python -m``
+   ``cProfile`` probe for the ``staleness_probe``/``serving_metadata`` hot
+   path; using :no-members: keeps autodoc from introspecting the
+   ``argparse`` ``main`` entry point, which is callable but not a public class.
+
+.. automodule:: ralph.mcp.explore.probe_profile_check
+   :no-members:
+
 ralph.mcp.explore.deferred_phases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

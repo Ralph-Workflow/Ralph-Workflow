@@ -30,6 +30,11 @@ _GUARD_ALLOWLIST: dict[str, str] = {
         "through real MCP handlers (no subprocess spawn), so the guard "
         "is safe to keep."
     ),
+    "ralph/mcp/explore/probe_profile_check.py": (
+        "in-process cProfile probe; staleness_probe/serving_metadata run "
+        "inside the current process (no subprocess spawn), so the guard "
+        "is safe to keep."
+    ),
     **dict.fromkeys(
         (
             "ralph/testing/audit_activity_aware_watchdog.py",

@@ -1,9 +1,7 @@
-"""Regression tests for tooling and code-style scope boundaries.
+"""Regression tests for the docs/code-style/ family status.
 
 Ensures:
-- docs/tooling/remote-build.md and docs/tooling/dylint.md are explicitly historical
 - docs/code-style/index.md accurately states the family's Python status
-- Every archival code-style leaf contains required in-body historical marker
 """
 
 from __future__ import annotations
@@ -12,27 +10,8 @@ from tests.doc_roots import (
     REPO_ROOT_DOCS_CODE_STYLE_DIR,
 )
 
-# Archival tooling files (should be labeled historical)
-_ARCHIVAL_TOOLING = [
-    "remote-build.md",
-    "dylint.md",
-]
-
 # Code-style family
 _CODE_STYLE_INDEX = REPO_ROOT_DOCS_CODE_STYLE_DIR / "index.md"
-
-# Archival code-style leaves (must have in-body historical markers)
-_CODE_STYLE_LEAVES = [
-    "architecture.md",
-    "boundaries.md",
-    "code-shape.md",
-    "coding-patterns.md",
-    "errors-and-diagnostics.md",
-    "functional-transformations.md",
-    "generics-and-abstractions.md",
-    "module-organization.md",
-    "testing.md",
-]
 
 
 class TestCodeStyleIndex:

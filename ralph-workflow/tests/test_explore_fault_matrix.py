@@ -276,16 +276,23 @@ def test_f5_corrupted_index_falls_through(tmp_path: Path) -> None:
     """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
-    _populate_index(workspace, store)
-    # Delete the entire index directory (simulate catastrophic corruption).
-    import shutil
+    try:
+        _populate_index(workspace, store)
+        # Delete the entire index directory (simulate catastrophic corruption).
+        import shutil
 
-    shutil.rmtree(tmp_path / ".agent" / "ralph-explore")
-    store.close()
-    new_session = _attach_session(store, workspace)
-    payload = _grep_call(new_session, workspace, use_index="auto")
-    assert payload["index_used"] is False
-    _assert_matches_contain_hello(payload)
+        shutil.rmtree(tmp_path / ".agent" / "ralph-explore")
+        # New ExploreStore to point at the deleted path; the old one is closed.
+        new_store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+        try:
+            new_session = _attach_session(new_store, workspace)
+            payload = _grep_call(new_session, workspace, use_index="auto")
+            assert payload["index_used"] is False
+            _assert_matches_contain_hello(payload)
+        finally:
+            new_store.close()
+    finally:
+        store.close()
 
 
 # --- F6: interrupted build (covered by test_explore_crash_safety.py) -----

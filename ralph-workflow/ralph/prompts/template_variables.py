@@ -180,7 +180,9 @@ def delegation_template_variable(transport: object) -> dict[str, str]:
     # "not supported" rather than raising, so a single bad input cannot
     # break prompt materialization for the rest of the run.
     try:
-        capability = delegation_for(_AgentTransport(cast("str", transport)))
+        capability = delegation_for(
+            _AgentTransport(cast("str", transport))  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     except (KeyError, ValueError):
         return {"HAS_SUBAGENTS": ""}
     return {"HAS_SUBAGENTS": bool_to_string(capability.stance == DelegationStance.SUPPORTED)}

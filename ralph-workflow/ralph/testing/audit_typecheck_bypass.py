@@ -127,6 +127,13 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("handlers", "misc"),
     ("_handlers_graph", "misc"),
     ("_handlers_graph", "misc,operator"),
+    # probe_profile_check.py: ``pstats.Stats.stats`` is a runtime dict the
+    # standard library types loosely; the probe reads it directly because
+    # re-parsing the printed table is fragile (header lines, total lines,
+    # ``List reduced ... due to restriction``). The ``attr-defined`` ignore
+    # covers that direct read; the probe carries the
+    # ``# reason: external library`` marker on the same line.
+    ("probe_profile_check", "attr-defined"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line
