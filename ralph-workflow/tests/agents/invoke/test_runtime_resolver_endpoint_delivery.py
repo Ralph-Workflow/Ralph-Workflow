@@ -357,12 +357,12 @@ class TestRuntimeResolverEndpointDelivery:
         [
             entry
             for entry in _DELIVERY_CHANNELS
-            if entry[2](Path("/tmp")).__class__ is Path.__class__
+            if entry[2](Path("/tmp")) is not None
         ],
         ids=[
             entry[0].name
             for entry in _DELIVERY_CHANNELS
-            if entry[2](Path("/tmp")).__class__ is Path.__class__
+            if entry[2](Path("/tmp")) is not None
         ],
     )
     def test_file_channel_carries_endpoint(

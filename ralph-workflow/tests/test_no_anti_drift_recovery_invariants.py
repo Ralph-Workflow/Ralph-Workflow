@@ -110,8 +110,6 @@ class TestCanonicalChildEvidenceModel:
         helper sites.
         """
         helpers = RALPH_ROOT / "agents" / "execution_state" / "_helpers.py"
-        if not helpers.exists():
-            pytest.skip("execution_state/_helpers.py not present")
         source = _read(helpers)
         # The three helper sites are _probe_check_quiet, _registry_check_for_exit, _probe_check_exit
         assert "classify_child_snapshot" in source, (
@@ -131,8 +129,6 @@ class TestSecondSigintEscalates:
 
     def test_interrupt_controller_defines_install_force_kill_handler(self) -> None:
         controller = RALPH_ROOT / "interrupt" / "controller.py"
-        if not controller.exists():
-            pytest.skip("interrupt/controller.py not present")
         source = _read(controller)
         assert "def install_force_kill_handler" in source
         assert "os._exit" in source or "_exit" in source
@@ -148,8 +144,6 @@ class TestRecoveryCycleCapOwner:
 
     def test_recovery_controller_owns_cycle_cap(self) -> None:
         controller = RALPH_ROOT / "recovery" / "controller.py"
-        if not controller.exists():
-            pytest.skip("recovery/controller.py not present")
         source = _read(controller)
         assert "RecoveryController" in source
         # The cycle cap field/method should live on the controller class.
@@ -208,8 +202,6 @@ class TestPostExitWatchdogConsumesCallback:
 
     def test_post_exit_watchdog_consumes_callback(self) -> None:
         watchdog = RALPH_ROOT / "agents" / "idle_watchdog" / "_post_exit_watchdog.py"
-        if not watchdog.exists():
-            pytest.skip("post_exit_watchdog module not present")
         source = _read(watchdog)
         tree = ast.parse(source)
         offenders: list[str] = []
@@ -257,8 +249,6 @@ class TestClassifyQuietUnknownStateDefaultsToWaiting:
     def test_classify_quiet_unknown_state_defaults_to_waiting(
         self, strategy_module: pathlib.Path
     ) -> None:
-        if not strategy_module.exists():
-            pytest.skip(f"{strategy_module.name} not present")
         source = _read(strategy_module)
         # The strategy must define a `classify_quiet` method (or not
         # define one — in which case the base class default applies). The
@@ -312,8 +302,6 @@ class TestCommitPlumbingFailureClassificationPreserved:
         )
 
         plumbing = RALPH_ROOT / "pipeline" / "plumbing" / "commit_plumbing.py"
-        if not plumbing.exists():
-            pytest.skip("commit_plumbing.py not present")
         source = _read(plumbing)
         # The plumbing must NOT construct FailureClassifier() inline.
         assert "FailureClassifier()" not in source, (

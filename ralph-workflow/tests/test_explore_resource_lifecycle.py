@@ -62,8 +62,6 @@ def _count_fds() -> int:
 
 
 def test_explore_handlers_use_bounded_accumulators() -> None:
-    if not EXPLORE_ROOT.is_dir():
-        pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
     violations, files_checked = _audit_module_via_python_api()
     formatted = "\n".join(str(v) for v in violations)
     assert not violations, (
@@ -74,8 +72,6 @@ def test_explore_handlers_use_bounded_accumulators() -> None:
 
 def test_no_unbounded_deque_in_explore() -> None:
     """A ``deque()`` without ``maxlen`` is treated as unbounded."""
-    if not EXPLORE_ROOT.is_dir():
-        pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
     import re
 
     for py_file in sorted(EXPLORE_ROOT.rglob("*.py")):
@@ -91,8 +87,6 @@ def test_no_unbounded_deque_in_explore() -> None:
 
 def test_no_module_level_mutable_list_in_explore() -> None:
     """Module-level ``[]``/``{}``/``set()`` are flagged by the audit."""
-    if not EXPLORE_ROOT.is_dir():
-        pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
     import ast
 
     for py_file in sorted(EXPLORE_ROOT.rglob("*.py")):

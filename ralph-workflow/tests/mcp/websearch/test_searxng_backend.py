@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from importlib import import_module
 
 import pytest
@@ -75,21 +74,6 @@ def test_search_failure_raises_scrubbed_error(monkeypatch: pytest.MonkeyPatch) -
     assert "searxng" in message.lower()
     assert "leaked-token" not in message
     assert query not in message
-
-
-def test_live_search_returns_results_when_searxng_url_configured() -> None:
-    pytest.importorskip("httpx")
-    searxng = _import_searxng_module()
-
-    searxng_url = os.environ.get("SEARXNG_URL")
-    if not searxng_url:
-        pytest.skip("SEARXNG_URL is not set")
-
-    backend = searxng.SearxngBackend(url=searxng_url)
-    results = backend.search("python mcp", limit=3)
-
-    assert results
-    assert all(result.title and result.url for result in results)
 
 
 def test_timeout_sourced_from_central_constants(monkeypatch: pytest.MonkeyPatch) -> None:

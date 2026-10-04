@@ -530,8 +530,6 @@ class TestPlumbingCommitUsesSharedPipeline:
 
     def test_plumbing_commit_module_calls_execute_agent_effect(self) -> None:
         plumbing = RALPH_ROOT / "pipeline" / "plumbing" / "commit_plumbing.py"
-        if not plumbing.exists():
-            pytest.skip("plumbing module not yet created; pin in Step 6")
         source = _read(plumbing)
         assert "execute_agent_effect" in source, (
             "commit_plumbing.py must delegate agent invocation to "
@@ -548,8 +546,6 @@ class TestPlumbingCommitUsesSharedPipeline:
 
     def test_plumbing_commit_module_does_not_construct_failure_classifier(self) -> None:
         plumbing = RALPH_ROOT / "pipeline" / "plumbing" / "commit_plumbing.py"
-        if not plumbing.exists():
-            pytest.skip("plumbing module not yet created; pin in Step 6")
         source = _read(plumbing)
         # The plumbing module must delegate classification through
         # run_with_direct_mcp_recovery, NOT construct FailureClassifier() inline.

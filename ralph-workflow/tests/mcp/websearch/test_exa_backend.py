@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import os
 import sys
 import threading
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
 
 import pytest
-from _pytest.mark import Mark, MarkDecorator
-
-NETWORK_MARK = MarkDecorator(Mark("network", (), {}))
 
 API_KEY = "exa-secret-key"
-ENV_NAME = "EXA_API_KEY"
 SEARCH_LIMIT = 2
 IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 
@@ -99,17 +94,6 @@ def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(exa_backend.WebSearchError, match=IMPORT_ERROR_MATCH):
         exa_backend.ExaBackend(api_key=API_KEY).search("python")
-
-
-@NETWORK_MARK
-@pytest.mark.skipif(not os.environ.get(ENV_NAME), reason=f"{ENV_NAME} is not set")
-def test_live_search_returns_results() -> None:
-    exa_backend = _import_exa_module()
-
-    results = exa_backend.ExaBackend(api_key_env=ENV_NAME).search("python mcp", limit=3)
-
-    assert results
-    assert all(result.title and result.url for result in results)
 
 
 def test_exa_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

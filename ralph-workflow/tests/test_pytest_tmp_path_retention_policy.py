@@ -1,7 +1,7 @@
 """Pins the ``tmp_path`` retention policy that keeps ``make test`` in budget.
 
 pytest's defaults keep the ``tmp_path`` tree of EVERY passing test for three
-sessions. With ~12k tests this suite leaves roughly 150 MB behind per session,
+sessions. With ~17.4k tests this suite leaves roughly 150 MB behind per session,
 so a machine that runs ``make test`` repeatedly accumulates gigabytes under
 ``$TMPDIR/pytest-of-<user>/``. The bill arrives at the START of a later
 session: ``make_numbered_dir_with_cleanup`` rmtree's the expired session

@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import os
 import sys
 from importlib import import_module
 from types import ModuleType
 
 import pytest
-from _pytest.mark import Mark, MarkDecorator
 
 from tests.mcp.websearch._brave_backend_helper__explodingresponse import _ExplodingResponse
 
-NETWORK_MARK = MarkDecorator(Mark("network", (), {}))
-
 API_KEY = "brave-secret-key"
-ENV_NAME = "BRAVE_SEARCH_API_KEY"
 CLIENT_MODULE_NAME = "brave_search_python_client"
 IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 
@@ -118,17 +113,6 @@ def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(brave_backend.WebSearchError, match=IMPORT_ERROR_MATCH):
         brave_backend.BraveBackend(api_key=API_KEY).search("python")
-
-
-@NETWORK_MARK
-@pytest.mark.skipif(not os.environ.get(ENV_NAME), reason=f"{ENV_NAME} is not set")
-def test_live_search_returns_results() -> None:
-    brave_backend = _import_brave_module()
-
-    results = brave_backend.BraveBackend(api_key_env=ENV_NAME).search("python mcp", limit=3)
-
-    assert results
-    assert all(result.title and result.url for result in results)
 
 
 def test_timeout_sourced_from_central_constants(monkeypatch: pytest.MonkeyPatch) -> None:

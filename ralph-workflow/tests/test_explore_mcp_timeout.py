@@ -31,8 +31,6 @@ EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 @pytest.mark.timeout_seconds(5)
 def test_explore_module_passes_mcp_timeout_audit() -> None:
     """Every file in ralph/mcp/explore/ must satisfy the MCP timeout contract."""
-    if not EXPLORE_ROOT.is_dir():
-        pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
     violations, files_checked = audit_mcp_directory(EXPLORE_ROOT)
     formatted = "\n".join(str(v) for v in violations)
     assert not violations, (
@@ -43,11 +41,7 @@ def test_explore_module_passes_mcp_timeout_audit() -> None:
 
 def test_explore_handlers_use_bounded_timeouts() -> None:
     """Handlers must perform bounded I/O (no unbounded subprocess / network calls)."""
-    if not EXPLORE_ROOT.is_dir():
-        pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
     handlers_py = EXPLORE_ROOT / "handlers.py"
-    if not handlers_py.is_file():
-        pytest.skip("handlers.py not present")
     violations, _ = audit_mcp_directory(handlers_py)
     assert not violations, "\n".join(str(v) for v in violations)
 
@@ -55,7 +49,5 @@ def test_explore_handlers_use_bounded_timeouts() -> None:
 def test_explore_pipeline_uses_bounded_timeouts() -> None:
     """Pipeline must use bounded reindex operations."""
     pipeline_py = EXPLORE_ROOT / "pipeline.py"
-    if not pipeline_py.is_file():
-        pytest.skip("pipeline.py not present")
     violations, _ = audit_mcp_directory(pipeline_py)
     assert not violations, "\n".join(str(v) for v in violations)

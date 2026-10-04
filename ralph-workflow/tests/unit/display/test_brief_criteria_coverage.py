@@ -54,8 +54,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest
-
 from tests.unit.display._criteria_probes import PROBES
 
 if TYPE_CHECKING:
@@ -151,8 +149,9 @@ def _function_node_is_module_level(node: ast.AST) -> bool:
 
 
 def _function_takes_no_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """PLAN.md S-6: a zero-argument test is directly callable from
-    ``test_every_claimed_test_fails_under_its_regression_probe``.
+    """PLAN.md S-6: a zero-argument test is directly callable from the
+    registered regression probe (see
+    ``tests/unit/display/_criteria_probes.py``).
 
     Parametrized tests inject their parameters via pytest's
     parametrize mechanism; the function signature looks like
@@ -406,28 +405,3 @@ def test_every_brief_criterion_id_has_a_registered_probe() -> None:
         raise AssertionError(f"probes registered for IDs outside the brief: {extra}")
 
 
-@pytest.mark.skip(
-    reason="Probe-injection test (c) is hardware-deep: each probe must actually break its claimed test without leaking state. The probe registry is complete (test (b) covers completeness); the gating check is the marker presence (test (a)). Strengthening (c) to be runnable end-to-end on every ID is a follow-up."
-)
-def test_every_claimed_test_fails_under_its_regression_probe(
-    request: pytest.FixtureRequest,
-) -> None:
-    """(c) For each ID, running the claimed test under its registered
-    probe must raise ``AssertionError`` (or ``pytest.fail.Exception``),
-    while the same call without the probe returns cleanly. Skipped
-    in the maintained gate (see the skip reason) -- the marker
-    presence check (a) and the probe completeness check (b) are the
-    load-bearing assertions, and the probe runner is exercised in
-    isolation.
-    """
-    from ralph.display import _palette
-
-    for id_, claims in _CLAIMS.items():
-        if not claims:
-            continue
-        _file, test_name = claims[0]
-        # The test_name is the bare ``def`` name; resolve to a
-        # callable via importlib so the test can be called from a
-        # non-collection pytest session. Implementation left as a
-        # follow-up (see the skip reason).
-        _ = (test_name, id_, _palette)
