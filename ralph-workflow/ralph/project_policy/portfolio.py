@@ -106,6 +106,7 @@ class _Control:
     evidence: str
     lifecycle: str
     disposition: str
+    removed_tests: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +242,14 @@ def _parse_controls(
                 "relabel the same protected outcome"
             )
         outcomes[outcome] = control_id
+        removed_tests_raw = table.get("removed-tests")
+        removed_tests_value: str | None
+        if removed_tests_raw is None:
+            removed_tests_value = None
+        elif isinstance(removed_tests_raw, str):
+            removed_tests_value = removed_tests_raw
+        else:
+            raise _error(f"control {control_id} removed-tests must be a string")
         controls[control_id] = _Control(
             id=control_id,
             protected_outcome=outcome,
@@ -253,6 +262,7 @@ def _parse_controls(
             evidence=evidence,
             lifecycle=_text(table, "lifecycle", f"control {control_id}"),
             disposition=disposition,
+            removed_tests=removed_tests_value,
         )
     return controls
 
