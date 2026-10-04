@@ -23,6 +23,7 @@ import pytest
 
 from ralph.testing.audit_mcp_timeout import (
     audit_mcp_directory,
+    audit_mcp_file,
 )
 
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
@@ -42,12 +43,12 @@ def test_explore_module_passes_mcp_timeout_audit() -> None:
 def test_explore_handlers_use_bounded_timeouts() -> None:
     """Handlers must perform bounded I/O (no unbounded subprocess / network calls)."""
     handlers_py = EXPLORE_ROOT / "handlers.py"
-    violations, _ = audit_mcp_directory(handlers_py)
+    violations = audit_mcp_file(handlers_py)
     assert not violations, "\n".join(str(v) for v in violations)
 
 
 def test_explore_pipeline_uses_bounded_timeouts() -> None:
     """Pipeline must use bounded reindex operations."""
     pipeline_py = EXPLORE_ROOT / "pipeline.py"
-    violations, _ = audit_mcp_directory(pipeline_py)
+    violations = audit_mcp_file(pipeline_py)
     assert not violations, "\n".join(str(v) for v in violations)

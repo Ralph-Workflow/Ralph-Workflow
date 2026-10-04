@@ -148,25 +148,6 @@ def _function_node_is_module_level(node: ast.AST) -> bool:
     return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
 
 
-def _function_takes_no_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """PLAN.md S-6: a zero-argument test is directly callable from the
-    registered regression probe (see
-    ``tests/unit/display/_criteria_probes.py``).
-
-    Parametrized tests inject their parameters via pytest's
-    parametrize mechanism; the function signature looks like
-    ``def test_xxx(reply: str) -> None`` even though the test
-    itself is callable with one auto-supplied argument. The
-    criteria gate accepts zero-arg AND parametrized tests: a
-    parametrized variant is still collectable and runnable as one
-    piece of behavioural proof.
-    """
-    args = node.args
-    return not (
-        args.posonlyargs or args.args or args.kwonlyargs or args.vararg or args.kwarg
-    ) or bool(args.args)  # allow parametrize: any named arg is OK
-
-
 def _parse_criteria_marker(node: ast.AST) -> list[str] | None:
     """Return the list of declared IDs on a ``@pytest.mark.criteria(...)``
     decorator, or ``None`` if the node has no such marker.

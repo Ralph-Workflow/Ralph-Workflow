@@ -2,7 +2,7 @@
 
 pytest's unraisableexception plugin runs ``gc_collect_harder(5)`` at the end
 of every xdist worker session. On this suite that performs five full
-``gc.collect`` passes over the ~12k-test object graph, which was measured at
+``gc.collect`` passes over the ~17.4k-test object graph, which was measured at
 5.7s+ per worker (~11.5s of the 48.87s baseline ``make test`` run). Setting
 the plugin's iteration stash key to 0 keeps the unraisable hook active while
 skipping only those teardown gc passes.

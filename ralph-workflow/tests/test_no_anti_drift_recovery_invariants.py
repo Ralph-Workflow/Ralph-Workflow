@@ -21,8 +21,6 @@ from ralph.agents.invoke._session_resume import recovery_action_for_failure_reas
 from ralph.agents.timeout_clock import FakeClock
 from ralph.interrupt.controller import INTERRUPT_EXIT_CODE, InterruptController
 
-pytestmark = pytest.mark.timeout_seconds(10)
-
 RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 
 

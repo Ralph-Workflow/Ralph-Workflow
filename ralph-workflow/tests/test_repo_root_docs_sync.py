@@ -8,8 +8,6 @@ wt-026 consolidation removed repo-root CODE_STYLE.md; the canonical home
 for the strict-typing contract is docs/code-style/index.md.
 """
 
-import pytest
-
 from tests.doc_roots import (
     REPO_ROOT_CODE_STYLE,
     REPO_ROOT_CONTRIBUTING,
@@ -52,8 +50,9 @@ def test_code_style_encodes_documentation_contract() -> None:
     """
     candidates = [REPO_ROOT_CODE_STYLE, REPOSITORY_ROOT / "docs" / "code-style" / "index.md"]
     primary = next((p for p in candidates if p.exists()), None)
-    if primary is None:
-        pytest.skip("Neither CODE_STYLE.md nor docs/code-style/index.md exists")
+    assert primary is not None, (
+        f"Neither CODE_STYLE.md nor docs/code-style/index.md exists; checked: {candidates}"
+    )
     content = primary.read_text()
     # Public docstrings should be self-sufficient
     assert "docstring" in content.lower() or "pydoc" in content.lower(), (

@@ -166,7 +166,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     The unraisableexception plugin runs ``gc_collect_harder(5)`` (five full
     ``gc.collect`` passes) in every xdist worker at session teardown. On this
-    ~12k-test suite that was measured at 5.7s+ per worker, accounting for
+    ~17.4k-test suite that was measured at 5.7s+ per worker, accounting for
     ~11.5s of the 48.87s baseline ``make test`` wall-clock. Setting the
     plugin's stash key to 0 keeps the unraisable hook fully active while
     skipping only those end-of-session gc passes.

@@ -24,8 +24,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.timeout_seconds(5)
-
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 

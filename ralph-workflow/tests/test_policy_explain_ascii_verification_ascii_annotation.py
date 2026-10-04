@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from ralph.policy.explain import (
     explain_policy,
 )
@@ -47,7 +45,9 @@ def _get_default_policy_path() -> Path:
     for candidate in candidates:
         if candidate.is_dir():
             return candidate
-    pytest.skip("Default policy directory not found")
+    raise FileNotFoundError(
+        "Default policy directory not found in any candidate location"
+    )
 
 
 class TestVerificationAsciiAnnotation:
