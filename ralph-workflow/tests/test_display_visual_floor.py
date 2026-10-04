@@ -639,33 +639,15 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
     # below the production baseline; if it doesn't, the partial-fill check
     # is not actually catching partial fills.
     lines = rendered.splitlines(keepends=True)
-    if len(lines) < 2:
-        pytest.skip("preview unexpectedly collapsed to a single row")
+    assert len(lines) >= 2, (
+        "preview unexpectedly collapsed to a single row; the negative-control "
+        "mutation cannot proceed, so the partial-fill check would prove nothing"
+    )
     mutated = "".join(
         line.replace(preview_fill, "", 1) if index == len(lines) - 1 else line
         for index, line in enumerate(lines)
     )
     assert mutated.count(preview_fill) < production_count
-
-
-def test_visual_floor_over_width_unicode_row_fixture_is_rejected() -> None:
-    """DA-003 (b): an over-width wide-character row fails the cell-width check."""
-    from rich.cells import cell_len
-
-    # Build a deliberately over-wide row mixing wide CJK + combining marks.
-    over_width_row = "你好" * 30 + "café" * 8  # far wider than 80 columns
-    assert cell_len(over_width_row) > 80
-
-    allowed_width = 40
-    assert cell_len(over_width_row) > allowed_width
-
-    # The production guard rejects any non-empty row whose cell width
-    # exceeds the declared width. A deliberately-violating row must
-    # trip the guard.
-    def production_guard(row: str, width: int) -> bool:
-        return cell_len(row) <= width
-
-    assert not production_guard(over_width_row, allowed_width)
 
 
 def test_visual_floor_silent_elision_fixture_is_rejected() -> None:

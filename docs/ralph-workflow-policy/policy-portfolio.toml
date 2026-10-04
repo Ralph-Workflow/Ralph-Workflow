@@ -256,3 +256,17 @@ evidence = "Behaviour-level coverage of the same outcomes: tests/test_display_ge
 lifecycle = "remove source-text shape oracles; rerun the public-seam behaviour tests on every change to effect_executor / parallel_display / supervising"
 disposition = "REMOVE"
 removed-tests = "test_invoke_start_uses_unit_scoped_display_path,test_parallel_display_emit_records_subscriber_activity_for_unit_scoped_lines,test_supervising_recent_activity_appends_waiting_without_hiding_output"
+
+[[controls]]
+id = "retired-vacuous-display-visual-floor-row-width-guard"
+protected_outcome = "Edit-preview rendering stays within the declared row-width floor"
+fault_sensitivity = "The removed test_visual_floor_over_width_unicode_row_fixture_is_rejected defined its own `production_guard(row, width)` inside the test body returning `cell_len(row) <= width` and asserted only `not production_guard(over_width_row, allowed_width)` over a self-built string. No `ralph` seam was invoked: the oracle was defined and consumed entirely inside the test, so the assertion was independent of production behaviour (category-1 vacuity). No replacement is possible because the production edit-preview surface has no row-width floor: ralph/display/edit_preview.py:_build_edit_preview documents `del width  # reserved for future width-aware wrapping; currently unused` and `grep -n cell_len ralph/display/edit_preview.py` returns zero hits, so the test pinned no behaviour."
+layer = "category-1 vacuity elimination"
+owner = "project maintainers"
+trigger = "edit-preview row-width enforcement is reintroduced as a production seam"
+lane = "default"
+marginal_cost_seconds = 0.0
+evidence = "ralph-workflow/ralph/display/edit_preview.py:_build_edit_preview `del width  # reserved for future width-aware wrapping; currently unused` (lines 585-588); grep over ralph/display/edit_preview.py for cell_len returns zero hits; sibling tests in tests/test_display_visual_floor.py (test_visual_floor_partial_fill_fixture_is_rejected, test_visual_floor_silent_elision_fixture_is_rejected, test_visual_floor_palette_pairs_stay_separable_under_cvd_simulation) cover the remaining DA-003 (a)/(/n)/cvd outcomes through the production scene-rendering seam; review note 2026-10-04 confirmed no other suite test asserts a row-width floor on this surface"
+lifecycle = "remove vacuous test-local oracle; if a row-width floor is reintroduced as a production seam, add a black-box test that drives render_scene or build_edit_preview through the public seam at a narrow declared width and asserts each emitted row's cell_len stays within the bound"
+disposition = "REMOVE"
+removed-tests = "test_visual_floor_over_width_unicode_row_fixture_is_rejected"
