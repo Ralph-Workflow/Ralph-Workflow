@@ -39,6 +39,76 @@ is an execution defect, never an acceptable outcome; "the task turned out to
 be huge" is not blocker evidence under `shared/_no_exemption_for_failures.j2`.
 {% endif %}
 
+## Scope-size recovery procedure
+
+When the remaining work has outgrown the plan's original slicing — for
+example because a new plan reference surfaced mid-iteration or because
+fresh exploration revealed hidden coupling — turn the remainder into
+verifiable progress, not a partial report. Walk this checklist every
+time the remaining scope grows past the in-flight increment:
+
+1. **Inventory the remaining references and fresh gaps.** Walk the
+   current plan step by step; mark each reference `completed`,
+   `in_progress`, or `remaining`, and append the new criterion or
+   discovered scope item to the same inventory. Keep the original
+   reference IDs and the request criteria intact; they are the contract
+   the result must account for, not suggestions.
+2. **Preserve IDs and criteria.** Re-cut the inventory into smaller
+   independent slices, but do not rename, drop, or weaken the original
+   `S-N` references or the request criteria the result must cover. A
+   smaller slice that still maps back to a `S-N` reference is the only
+   acceptable substitute.
+3. **Separate coupled changes from independent scopes.** Edits that
+   share a file, a contract, or a fixture land on the critical path in
+   the main session. Edits with disjoint `Files:` lists, disjoint
+   partials, and disjoint test fixtures become independent units ready
+   for parallel dispatch.
+4. **Give each writer exact paths and proof obligations.** Every
+   dispatched worker (or sub-agent) receives a brief that names the
+   step IDs it owns, the verbatim file paths it may write, the focused
+   verify command, and the exact `Disposition` and proof fields it must
+   return. Two writers must never share a path.
+5. **Dispatch within the available native capacity.** Use the runtime's
+   own sub-agent / task capability for the native parallel fan-out. The
+   running main session continues on the critical path while helpers
+   work; do not invent new tools, do not bypass brokered permissions,
+   and do not expand the agent's authority to obtain parallelism.
+6. **Work the critical path while helpers run.** While the dispatched
+   units run, the main session implements only its own assigned scope
+   and resolves shared decisions (shared contracts, integration
+   points, dependency ordering).
+7. **Inspect returned diffs and proof before integration.** Each worker
+   return is a lead: re-read the cited `path:line` evidence, re-run the
+   focused verify command, and re-check the proof fields before
+   accepting the unit. Release dependents only after the upstream
+   reference is accepted.
+8. **Continue owned ready work when slots are saturated.** When every
+   dispatch slot is busy and fresh ready work is still independent,
+   continue implementing the ready references you already own. As soon
+   as a slot frees, dispatch the next independent unit; never leave the
+   dispatch pipeline idle while ready work is waiting.
+9. **Coupled work, or no native sub-agents, does not authorize
+   abandonment.** When the work is genuinely coupled (a shared writer,
+   an integration contract that must land first) or the runtime
+   exposes no native sub-agent capability, continue bounded sequential
+   increments: re-cut the remainder into the smallest verified slices
+   the runtime can finish, work the critical path, and re-evaluate the
+   dependency graph after every verified increment. Treating inability
+   to fan out as permission to abandon the plan is the same execution
+   defect as the zero-verified-work outcome.
+10. **Integrate and verify.** After all dispatched units and your own
+    in-session increments land, run the focused checks per unit, then
+    the cross-unit integration checks, then the full `make verify`
+    run in the main session. Re-run any check that touched a changed
+    file. A `status: completed` result is only honest when every
+    required reference is proven and the repository-wide `make verify`
+    run is green.
+
+A worker that discovers a unit has outgrown its description follows
+the same checklist scoped to the assigned unit: shrink the unit into
+verified increments, do not return the unit result until the unit is
+fully proven, and never broaden scope into other units.
+
 ## Plan fidelity
 
 Treat the request and its acceptance criteria as authoritative. Follow the
@@ -49,7 +119,7 @@ inaccurate, already satisfied, or not applicable.
 
 Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result. Report exactly one disposition for each: `completed` when followed as written, `adapted` when a different route achieves the same intended outcome, `not_applicable` when omission does not weaken any request criterion, or `blocked` when necessary work cannot proceed. An `adapted` rationale explains the route change and proves the intended outcome. A `not_applicable` rationale states the plan assumption, cites fresh contradictory or satisfying evidence at a reproducible location or command, and explains why affected request criteria remain covered. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation never justifies `not_applicable`. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
 
-Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready. Select the first ready reference, make its specified change, run focused verification, and record its disposition and evidence. Then return the unit result.{% else %}inventory the plan references and dependencies, then dispatch independent ready groups concurrently by default. Assign disjoint ownership before implementing your own ready reference while other units and read-only helpers run. Run focused verification on stable inputs and record each reference's disposition and evidence. Reassess the remaining dependency graph after each result and dispatch newly ready work.{% endif %} After a failed approach, retry only with a new evidence-based hypothesis or report partial progress. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
+Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready. Then loop the ready-reference walk until the entire assigned unit is verified in full: select the first ready reference, make its specified change, run focused verification, record its disposition and evidence, and immediately move on to the next ready reference inside the same assigned unit. Repeat the loop for every remaining reference. Return the unit result only after the assigned unit is proven in full, or after recording an evidence-backed external blocker per `shared/_no_exemption_for_failures.j2`; never return the unit result after the first verified increment, never broaden scope into other units, and never dispatch sub-agents (see `shared/_worker_verification.j2`).{% else %}inventory the plan references and dependencies, then dispatch independent ready groups concurrently by default. Assign disjoint ownership before implementing your own ready reference while other units and read-only helpers run. Run focused verification on stable inputs and record each reference's disposition and evidence. Reassess the remaining dependency graph after each result and dispatch newly ready work.{% endif %} After a failed approach, diagnose the failure from fresh evidence, change the hypothesis or implementation route, run focused proof, and keep executing the ready-reference walk. A terminal `partial` or `failed` decision follows the canonical external-blocker rule in `shared/_no_exemption_for_failures.j2`; an unsuccessful attempt on its own never authorizes abandoning ready work or downgrading the result. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
 
 ## Visual review (when the change touches the UI)
 

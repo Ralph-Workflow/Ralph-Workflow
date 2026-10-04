@@ -28,6 +28,51 @@ within the active worker limit rather than waiting for unrelated units.
 When the scope exceeds what one session can hold, split it by ownership
 across more workers instead of trimming required work or stopping early.
 
+#### Dispatch pipeline must stay full
+
+Saturated slots are not an excuse to idle. When every dispatch slot is
+busy and new independent ready work has surfaced:
+
+- Continue implementing the ready references the main session already
+  owns. Owned work, a focused check, and a recorded disposition are
+  always cheaper than a stalled dispatch.
+- Refill every freed slot the moment a worker returns. The dispatch
+  pipeline is "full" only when no independent ready reference is
+  waiting on a slot; an empty pipeline with ready work in it is a
+  pipeline defect, not efficiency.
+- Re-evaluate the dependency graph after each result, not just after
+  each batch. A new independent slice is the next dispatch, never an
+  excuse to keep one worker busy on its own.
+
+#### When fan-out is unavailable or the work is coupled
+
+Inability to fan out is a scheduling constraint, not permission to
+abandon. Two cases turn the parallel-fan-out path into a sequential
+recovery loop without weakening the ready-reference contract:
+
+- **Genuinely coupled work** — shared writer ownership, a contract
+  that must land first, or an integration point that every ready
+  reference depends on — keeps the implementation sequential by
+  necessity. Re-cut the remainder into the smallest verified slices
+  the runtime can finish one at a time, work the critical path, and
+  re-evaluate the dependency graph after every verified increment.
+  Treat the in-flight slice exactly like a worker return: focused
+  proof, recorded disposition, and a recomputed readiness check.
+- **No native sub-agents exposed by the runtime** — Pi's native
+  subagent tooling is unavailable, or the run-time refuses
+  sub-dispatch, or the operator's brokered capability set forbids
+  worker fan-out. The recovery is identical: bounded sequential
+  increments, the smallest verified slices the runtime can finish,
+  the critical path, and a recomputed dependency graph after every
+  increment. Do not weaken any quality gate, do not invent new
+  tools, and do not bypass brokered permissions to obtain
+  parallelism; the in-session path is the canonical recovery.
+
+A sequential recovery that ends with zero verified work delivered is
+the same execution defect as a parallel one that ended the same way;
+see `shared/_no_exemption_for_failures.j2` for the canonical
+external-blocker rule.
+
 ### Per-unit subagent brief (when units exist)
 
 For every unit or step group dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has clear allowed directories or exact file ownership and cannot write outside scope.
