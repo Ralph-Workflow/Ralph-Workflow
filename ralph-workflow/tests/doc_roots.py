@@ -28,12 +28,7 @@ REPO_ROOT_CODE_STYLE = REPOSITORY_ROOT / "CODE_STYLE.md"
 REPO_ROOT_DOCS_DIR = REPOSITORY_ROOT / "docs"
 REPO_ROOT_DOCS_AGENTS_DIR = REPO_ROOT_DOCS_DIR / "agents"
 REPO_ROOT_DOCS_CODE_STYLE_DIR = REPO_ROOT_DOCS_DIR / "code-style"
-REPO_ROOT_DOCS_TOOLING_DIR = REPO_ROOT_DOCS_DIR / "tooling"
-# The performance/ subdirectory was quarantined to tmp/legacy-rust-archive/performance/
-# during the wt-026 documentation consolidation; the regression tests now read
-# from the archive location while still asserting the historical / Rust-era
-# labeling contract that was the original purpose of these tests.
-REPO_ROOT_DOCS_PERFORMANCE_DIR = REPOSITORY_ROOT / "tmp" / "legacy-rust-archive" / "performance"
+REPO_ROOT_DOCS_TOOLING_DIR = REPOSITORY_ROOT / "docs" / "tooling"
 
 # Package docs
 PACKAGE_DOCS_DIR = PACKAGE_ROOT / "docs"
@@ -49,7 +44,6 @@ __all__ = [
     "REPO_ROOT_DOCS_AGENTS_DIR",
     "REPO_ROOT_DOCS_CODE_STYLE_DIR",
     "REPO_ROOT_DOCS_DIR",
-    "REPO_ROOT_DOCS_PERFORMANCE_DIR",
     "REPO_ROOT_DOCS_TOOLING_DIR",
     "REPO_ROOT_README",
 ]

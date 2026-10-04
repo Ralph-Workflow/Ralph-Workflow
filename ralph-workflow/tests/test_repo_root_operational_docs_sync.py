@@ -3,11 +3,19 @@
 Ensures the canonical Sphinx copies of operational guides
 (ralph-workflow/docs/sphinx/<name>.md) carry current commands, links, status
 markers, and no stale Rust-era claims.
+
+Lane-2 prose-wording judgements (e.g. asserting that specific editorial
+phrases such as "cannot inject a Ralph-only MCP config" do not appear
+in documentation) were moved out of the default suite to a docs-owner
+review note (see docs/ralph-workflow-policy/policy-portfolio.toml
+``retired-default-lane-2-prose-guards``). The retained tests assert
+objective technical contracts: file existence, canonical-route
+preservation, and absence of stale Rust-era technical references.
 """
 
 from pathlib import Path
 
-from tests.doc_roots import REPO_ROOT_DOCS_DIR, REPOSITORY_ROOT
+from tests.doc_roots import REPO_ROOT_DOCS_DIR
 
 # Sphinx is the canonical home for these guides; check the Sphinx copy.
 # Repo-root copies were intentionally removed during the docs/dedup work.
@@ -83,36 +91,3 @@ def test_quick_reference_has_current_commands() -> None:
         f"{quick_ref_path} was deleted in wt-026; the canonical CLI "
         f"reference lives in ralph-workflow/docs/sphinx/cli.md"
     )
-
-
-def test_agy_mcp_setup_reflects_pty_injection() -> None:
-    """AGY docs must reflect PTY-based injection rather than stale pre-configure wording."""
-    stale_phrases_by_file = {
-        "architecture/mcp-upstream-proxy.md": [
-            "cannot inject a Ralph-only MCP config",
-            "users must pre-configure",
-            "Add the Ralph MCP endpoint",
-            "before running Ralph",
-        ],
-        "agent-compatibility.md": [
-            "config-discovery-based setup",
-            "--conversation",
-            "config-discovery-based, not env-var injection",
-            "pre-configure `mcp_config.json`",
-        ],
-    }
-    for relative_path, stale_phrases in stale_phrases_by_file.items():
-        # Sphinx copies are the canonical home; check both repo-root and Sphinx.
-        sphinx_path = REPOSITORY_ROOT / "ralph-workflow" / "docs" / "sphinx" / relative_path
-        repo_root_path = REPO_ROOT_DOCS_DIR / relative_path
-        # Prefer Sphinx copy if it exists, else fall back to repo-root.
-        check_path = sphinx_path if sphinx_path.exists() else repo_root_path
-        if not check_path.exists():
-            continue
-        content = check_path.read_text().lower()
-        for phrase in stale_phrases:
-            assert phrase.lower() not in content, (
-                f"{relative_path} should not contain stale AGY wording: {phrase!r}"
-            )
-
-

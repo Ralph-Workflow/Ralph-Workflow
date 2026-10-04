@@ -66,19 +66,16 @@ class TestFailureClassifierSingleOwner:
 # ---------------------------------------------------------------------------
 # Surface (f) — watchdog invariant
 # ---------------------------------------------------------------------------
-
-
-class TestWatchdogInvariant:
-    """Pin Surface (f): the watchdog.evaluate invariant is preserved."""
-
-    def test_watchdog_evaluate_call_sites_unchanged(self) -> None:
-        """``watchdog.evaluate(...)`` must be called at the 6 expected sites."""
-        pty = RALPH_ROOT / "agents" / "invoke" / "_pty_line_reader.py"
-        process = RALPH_ROOT / "agents" / "invoke" / "_process_reader.py"
-        pty_count = _read(pty).count("watchdog.evaluate")
-        process_count = _read(process).count("watchdog.evaluate")
-        total = pty_count + process_count
-        assert total == 6, f"Expected exactly 6 watchdog.evaluate(...) call sites; got {total}."
+# The previous ``test_watchdog_evaluate_call_sites_unchanged`` pinned the
+# literal text ``watchdog.evaluate`` appearing exactly 6 times across the
+# two production source files. That was a category-3 (implementation-
+# coupled) assertion: a behaviour-preserving refactor (e.g. routing the
+# call through a small helper) would have broken the contract without
+# changing observable behaviour. The watchdog.evaluate behaviour is
+# now exercised through the IdleWatchdog public surface by the
+# ``tests/agents/test_idle_watchdog*.py`` family and the family-level
+# invariants in this file. Disposition REMOVE (category 3);
+# evidence home: public IdleWatchdog black-box tests.
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +244,13 @@ class TestClassifyQuietUnknownStateDefaultsToWaiting:
         [
             RALPH_ROOT / "agents" / "execution_state" / "opencode_execution_strategy.py",
             RALPH_ROOT / "agents" / "execution_state" / "claude_interactive_execution_strategy.py",
-            RALPH_ROOT / "agents" / "execution_state" / "agy_execution_strategy.py",
+            # agy_execution_strategy.py is intentionally absent from the
+            # default checkout (AGY runs through the generic strategy
+            # pathway); an absent-path parametrize case would always
+            # skip and add zero default coverage. The classify_quiet
+            # contract still lives in the base class and is enforced by
+            # the three remaining parametrized cases plus the WAITING_ON_CHILD
+            # assertion below.
             RALPH_ROOT / "agents" / "execution_state" / "generic_execution_strategy.py",
         ],
     )

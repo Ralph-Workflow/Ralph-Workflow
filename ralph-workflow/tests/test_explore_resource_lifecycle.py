@@ -41,10 +41,19 @@ def _audit_module_via_python_api() -> tuple[list, int]:
 def _count_fds() -> int:
     """Return the number of open file descriptors of the current process.
 
-    Counts entries under ``/proc/self/fd`` (Linux) and falls back
-    to ``len(os.listdir('/proc/self/fd')) - 1`` to exclude the
-    fd used by the listing itself.
+    Uses ``psutil.Process().num_fds()`` which works on both Linux
+    (procfs) and macOS (libproc). The Linux ``/proc/self/fd`` fallback
+    is preserved for hosts where psutil is unavailable. A zero count
+    from both fallbacks is no longer a passing answer: psutil is a
+    runtime dependency, so the assertion below stays falsifiable on
+    every supported developer host.
     """
+    try:
+        import psutil
+
+        return int(psutil.Process().num_fds())
+    except (ImportError, AttributeError, OSError):
+        pass
     fd_dir = Path("/proc/self/fd")
     try:
         return sum(1 for _ in fd_dir.iterdir()) - 1
