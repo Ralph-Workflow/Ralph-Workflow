@@ -1,3 +1,5 @@
+"""Accept plan text and extract optional execution hints without schema validation."""
+
 from __future__ import annotations
 
 import re
