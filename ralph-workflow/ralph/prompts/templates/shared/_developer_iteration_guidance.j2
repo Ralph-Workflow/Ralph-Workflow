@@ -1,9 +1,11 @@
 ## Completion is the default outcome
 
 Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
-{% if IS_WORKER %}Work as a loop: pick the next ready plan reference, implement it, verify it,
+{% if IS_WORKER %}
+Work as a loop: pick the next ready plan reference, implement it, verify it,
 record its disposition, then immediately continue to the next ready reference.
-{% else %}Start with the dependency graph and dispatch independent ready groups before
+{% else %}
+Start with the dependency graph and dispatch independent ready groups before
 starting implementation yourself. Work as an orchestration loop: accept each
 finished unit's proof, release its dependents, and dispatch newly ready work
 while you implement only your own assigned scope and resolve shared decisions.
@@ -15,6 +17,27 @@ completed` is permitted only when {% if IS_WORKER %}the assigned unit is proven 
 Treat `partial`, `blocked`, or `failed` as a last resort. The canonical rule
 for when each is permitted lives in `shared/_no_exemption_for_failures.j2`
 — refer to it before deciding between `completed`, `partial`, or `failed`.
+
+## Large scope is a dispatch signal, not a stop signal
+
+{% if IS_WORKER %}
+When the assigned unit proves far larger than its description — deeper
+coupling, more files, bigger diffs — keep working the ready-reference loop in
+smaller verified increments and record each one's disposition and evidence.
+Magnitude alone never ends the loop, downgrades the result, or converts
+completable work into a blocker report.
+{% else %}
+Discovering mid-run that the work is far larger than the plan indicated —
+more steps, bigger diffs, hidden coupling, an underestimated criterion —
+never justifies stopping, deferring the whole plan, or reporting
+`partial`/`failed` with nothing delivered. The magnitude of remaining work is
+a scheduling input, never an exit condition: re-cut the remainder into
+smaller independent slices, dispatch read-only discovery and independent
+implementation concurrently, and keep at least one verified increment in
+flight at all times. An iteration that ends with zero verified work delivered
+is an execution defect, never an acceptable outcome; "the task turned out to
+be huge" is not blocker evidence under `shared/_no_exemption_for_failures.j2`.
+{% endif %}
 
 ## Plan fidelity
 

@@ -16,6 +16,18 @@ Even when the plan is declared as a single linear thread, an **independent ready
 
 When the plan declares `## Work Units` or `## Parallel Plan`, dispatch all ready independent units within the active worker limit. For step plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. As each result arrives, inspect its diff and focused proof, accept completed outputs, and release dependent work without waiting for unrelated writers. Perform any integration edits only on paths with no active writer. Wait for all writers before final reconciliation of shared tests and interfaces and repository-wide verification. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
 
+### Scope-size escalation
+
+The larger the remaining scope, the stronger the obligation to fan out. When
+newly discovered work swells the scope, re-form the independent ready group
+from the remaining steps and dispatch it concurrently instead of absorbing
+the growth serially in the main session; a large remaining scope executed one
+step at a time is a dispatch failure, not prudence. Keep the dispatch pipeline full
+— as soon as a worker returns, dispatch the next independent ready work
+within the active worker limit rather than waiting for unrelated units.
+When the scope exceeds what one session can hold, split it by ownership
+across more workers instead of trimming required work or stopping early.
+
 ### Per-unit subagent brief (when units exist)
 
 For every unit or step group dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has clear allowed directories or exact file ownership and cannot write outside scope.
