@@ -46,7 +46,46 @@ def _legacy_fan_out_policy_bundle() -> PolicyBundle:
     )
 
 
-class TestRunnerBoundaryPreflightRejection:
+class TestRunnerBoundaryPreflightFallback:
+    def test_runner_delegates_overlapping_work_units_to_agent(self) -> None:
+        bundle = _legacy_fan_out_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/api"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/api/auth"]),
+            ),
+        )
+        effect = runner_module.determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
+
+    def test_runner_delegates_missing_allowed_directories_to_agent(self) -> None:
+        bundle = _legacy_fan_out_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=[]),
+            ),
+        )
+        effect = runner_module.determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
+
+    def test_runner_delegates_reserved_path_dot_agent_to_agent(self) -> None:
+        bundle = _legacy_fan_out_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=[".agent/custom"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+            ),
+        )
+        effect = runner_module.determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
+
     def test_runner_constructs_fan_out_effect_when_safe(self) -> None:
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
@@ -59,6 +98,19 @@ class TestRunnerBoundaryPreflightRejection:
         effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+
+    def test_runner_falls_back_to_agent_for_shared_scopes(self) -> None:
+        bundle = _legacy_fan_out_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/shared"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/shared"]),
+            ),
+        )
+        effect = runner_module.determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
     def test_runner_single_work_unit_does_not_trigger_validation(self) -> None:
         """Single work unit must bypass fan-out validation and run normal serial path."""
@@ -88,8 +140,7 @@ class TestRunnerBoundaryPreflightRejection:
             "run_post_fanout_verification must default to False so tests never run make verify"
         )
 
-    def test_runner_keeps_unroutable_units_in_the_main_agent(self) -> None:
-        """A missing parallelization declaration never rejects an accepted plan."""
+    def test_runner_uses_agent_when_phase_has_no_parallelization_policy(self) -> None:
         bundle = _load_default_policy_bundle()
         # planning phase has no parallelization declared
         state = PipelineState(

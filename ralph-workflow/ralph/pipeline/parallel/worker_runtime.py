@@ -332,8 +332,7 @@ def run_worker_auto_integration(
             display_context=display_context,
             strategy_history=(
                 state.conflict_strategies_tried
-                if state is not None
-                and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                if state is not None and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
                 else ()
             ),
         )
@@ -384,7 +383,6 @@ def run_parallel_worker_from_manifest(
     workspace_scope = WorkspaceScope.for_same_workspace_worker(
         repo_root=workspace_root,
         allowed_directories=tuple(manifest.allowed_directories),
-        paths=tuple(manifest.paths),
         worker_namespace=worker_namespace,
     )
     config = load_config(

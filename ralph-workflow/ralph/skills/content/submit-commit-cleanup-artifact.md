@@ -1,7 +1,7 @@
 ---
 name: submit-commit-cleanup-artifact
 description: Use when submitting a commit_cleanup artifact as markdown via ralph_submit_md_artifact with delete_file / add_to_gitignore / add_to_git_exclude actions, or when an action was rejected by the printable-ASCII rule or silently dropped by the security boundary
-version: 2.2.0
+version: 2.1.0
 ---
 
 # submit-commit-cleanup-artifact

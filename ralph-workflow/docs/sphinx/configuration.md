@@ -341,7 +341,7 @@ local override set, use `ralph --init-local-config` explicitly.
 - transitions — where Ralph Workflow goes next on success, failure, or loopback
 - counters and budgets — how Ralph Workflow limits iteration and retry behavior
 - post-commit routes — what happens after a commit-producing step
-- parallel execution — how independent extracted work units can fan out concurrently in safe waves
+- parallel execution — whether independent work units can fan out concurrently
 
 The development phase supports a proof policy block:
 

@@ -1,35 +1,614 @@
-"""Optional extraction helpers, never a second plan acceptance gate."""
+"""Plan-artifact validation and normalization.
+
+The single source of truth for ``PlanArtifact`` (the top-level
+validated schema) lives here because it owns the cross-reference
+validator (steps <-> acceptance-criteria) and needs the
+``_collect_criteria`` / ``_check_satisfies_links`` /
+``_check_satisfied_by_steps_links`` helpers in the same module.
+
+The lazy WorkUnit forward reference (handled by
+``_PlanArtifactRebuildState`` / ``_ensure_plan_artifact_rebuilt``)
+also lives here so the rebuild state is a local concern of the
+module that owns the model that needs it.
+
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
+from pydantic import ConfigDict, Field, ValidationError, model_validator
+
+from ralph.mcp.artifacts.plan._section_models import (
+    AcceptanceCriterion,
+    CriticalFiles,
+    DesignSection,
+    PlanArtifactDict,
+    PlanConstraints,
+    PlanStep,
+    RiskMitigation,
+    SkillsMcp,
+    Summary,
+    VerificationStep,
+)
+from ralph.mcp.artifacts.plan._section_registry import (
+    PLAN_SECTION_LIST_ITEM_MODELS,
+    PLAN_SECTION_NAMES,
+    PLAN_SECTION_OBJECT_MODELS,
+    SectionMode,
+)
+from ralph.mcp.artifacts.plan._size_limits import check_plan_size
+from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
+    PlanArtifactValidationError,
+)
+from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
+from ralph.pipeline.work_unit import WorkUnit
+from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_validation_errors import (
+    format_validation_error_messages,
+    suggest_canonical_field,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
-    from ralph.mcp.artifacts.plan._section_registry import SectionMode
+
+# Shell-invocation denylist for VerificationStep.method. Each prefix is
+# startswith() matched; the trailing space on each entry ensures legitimate
+# commands like 'bash ./scripts/check.sh' (prefix 'bash ') are NOT blocked.
+_SHELL_INVOCATION_PREFIXES: tuple[str, ...] = (
+    "bash -c ",
+    "sh -c ",
+    "eval ",
+)
+
+
+class PlanArtifact(RalphBaseModel):
+    """Top-level validated schema for a plan artifact.
+
+    Only the structure the pipeline consumes is required: at least one
+    step (unless the plan is a no-op). Every other section is optional
+    context — a plan may take any shape (single linear step list,
+    several subplans, or per-work-unit mini-plans) as long as its step
+    IDs stay unique and, when work units are used, the work-unit
+    structure stays parseable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    summary: Summary | None = None
+    skills_mcp: SkillsMcp | None = None
+    steps: list[PlanStep] = Field(..., min_length=1)
+    critical_files: CriticalFiles | None = None
+    risks_mitigations: list[RiskMitigation] = Field(default_factory=list)
+    constraints: PlanConstraints | None = None
+    noop: bool | None = Field(default=None, exclude=True)
+    design: DesignSection | None = None
+    verification_strategy: list[VerificationStep] = Field(default_factory=list)
+    parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
+    work_units: list[WorkUnit] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_depends_on_acyclic(self) -> PlanArtifact:
+        """Reject ambiguous, dangling, or cyclic consumed step identifiers.
+
+        Step numbers are the canonical form of document-wide ``S-n`` IDs.
+        Validate uniqueness and reference resolution before building the graph,
+        so direct canonical payloads cannot bypass the Markdown boundary's
+        strict consumed-ID contract.
+
+        Cycle detection mirrors the pattern in
+        :func:`ralph.pipeline.work_units._validate_acyclic` (line 158 of
+        ``ralph/pipeline/work_units.py``): DFS with two sets
+        (``visiting`` = current DFS stack, ``visited`` = fully explored).
+        A node that re-enters the ``visiting`` set is on a cycle; a node
+        that re-enters the ``visited`` set is fine (it is a diamond / DAG
+        with multiple parents).
+
+        Runs FIRST inside the cross-reference validator (Pydantic v2
+        calls ``@model_validator(mode='after')`` methods in source
+        declaration order), so a cyclic graph is rejected before any
+        other cross-section scan.
+
+        Error message is stable: ``plan step depends_on cycle detected
+        at step N`` where ``N`` is the step number that re-entered the
+        DFS stack.
+        """
+        step_numbers = [step.number for step in self.steps]
+        known_steps: set[int] = set()
+        for step_number in step_numbers:
+            if step_number in known_steps:
+                raise PlanArtifactValidationError(f"duplicate plan step number {step_number}")
+            known_steps.add(step_number)
+        for step in self.steps:
+            for dependency in step.depends_on:
+                if dependency not in known_steps:
+                    raise PlanArtifactValidationError(
+                        f"plan step {step.number} depends on unknown step {dependency}"
+                    )
+
+        graph: dict[int, list[int]] = {step.number: list(step.depends_on) for step in self.steps}
+        visiting: set[int] = set()
+        visited: set[int] = set()
+
+        def dfs(node: int) -> None:
+            if node in visited:
+                return
+            if node in visiting:
+                raise PlanArtifactValidationError(
+                    f"plan step depends_on cycle detected at step {node!r}"
+                )
+            visiting.add(node)
+            for dependency in graph.get(node, []):
+                dfs(dependency)
+            visiting.remove(node)
+            visited.add(node)
+
+        for node in graph:
+            dfs(node)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_explicit_design_is_not_empty(self) -> PlanArtifact:
+        """Reject an explicitly staged empty design object before finalization."""
+        if self.design is not None and not self.design.model_dump(exclude_none=True):
+            raise PlanArtifactValidationError(
+                "design section is empty; remove it or provide at least one design field"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_parallel_unit_graphs(self) -> PlanArtifact:
+        """Validate every consumed fan-out graph and nested-step ownership."""
+        _validate_named_dependency_graph(
+            [(item.id, item.depends_on) for item in self.parallel_plan],
+            label="parallel plan item",
+        )
+        _validate_named_dependency_graph(
+            [(unit.unit_id, unit.dependencies) for unit in self.work_units],
+            label="work unit",
+        )
+        _validate_work_unit_step_ownership(self.work_units, self.steps)
+        parallel_units = [
+            WorkUnit(
+                unit_id=item.id,
+                description=item.description,
+                allowed_directories=item.edit_area.directories + item.edit_area.paths,
+                dependencies=item.depends_on,
+                step_ids=item.step_ids,
+            )
+            for item in self.parallel_plan
+        ]
+        _validate_work_unit_step_ownership(parallel_units, self.steps)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_step_ac_cross_references(self) -> PlanArtifact:
+        """Cross-validate step/criterion links and consumed execution invariants.
+
+        Each step's ``satisfies`` list must reference an AC id that exists on
+        the plan, and each AC's ``satisfied_by_steps`` list must reference a
+        real step number. Orphan links are rejected so the executor never
+        consumes a stale or broken AC<->step link.
+
+        Two additional consumed invariants remain hard:
+
+        1. ``parallel_plan`` and ``work_units`` are mutually exclusive. A
+           plan that declares both raises a validation error.
+        2. ``verification_strategy[*].method`` must not invoke a shell
+           interpreter directly. Three strict ``startswith()`` prefixes are
+           denied: ``bash -c ``, ``sh -c ``, ``eval `` (with trailing
+           space so legitimate invocations like ``bash ./script.sh`` pass).
+        """
+        criteria: list[AcceptanceCriterion] = _collect_criteria(self.design)
+        ac_ids: set[str] = {c.id for c in criteria}
+        step_numbers: set[int] = set()
+        for s in self.steps:
+            n: int = s.number
+            step_numbers.add(n)
+
+        _check_satisfies_links(self.steps, criteria, ac_ids)
+        _check_satisfied_by_steps_links(criteria, step_numbers)
+
+        # Parallel Plan and Work Units are two representations of the same
+        # consumed fan-out contract and therefore remain mutually exclusive.
+        if self.parallel_plan and self.work_units:
+            msg = "plan cannot declare both parallel_plan and work_units; pick one"
+            raise PlanArtifactValidationError(msg)
+
+        # Shell-invocation guard on verification.
+        for step in self.verification_strategy:
+            method = step.method
+            for prefix in _SHELL_INVOCATION_PREFIXES:
+                if method.startswith(prefix):
+                    msg = (
+                        "verification method must not invoke a shell interpreter "
+                        "directly; use the executable path"
+                    )
+                    raise PlanArtifactValidationError(msg)
+
+        return self
 
 
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
-    """Only an explicit true marker is a no-op; prose plans remain active."""
-    return artifact.get("noop") is True
+    """Return True when ``artifact`` represents a planning no-op.
+
+    The explicit ``noop: true`` marker and the legacy empty
+    ``steps``/``work_units`` representation both describe no planned work.
+    """
+    if artifact.get("noop") is True:
+        return True
+    return (
+        artifact.get("steps") == []
+        and artifact.get("work_units") == []
+        and not artifact.get("parallel_plan")
+    )
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:
-    """Preserve optional context; sanity belongs to raw Markdown."""
-    return dict(content)
+    """Validate and normalize a raw plan artifact content dict.
+
+    The size guard (``check_plan_size``) runs FIRST after the noop
+    short-circuit so a runaway payload is rejected in < 100 ms before
+    Pydantic ever touches it. The helper is PURE — it never raises —
+    so the call site is a single ``if error is not None: raise`` with
+    no try/except.
+    """
+    if is_noop_plan(content):
+        return {"noop": True}
+    size_error = check_plan_size(content)
+    if size_error is not None:
+        raise PlanArtifactValidationError(f"plan size violation: {size_error}")
+    raw_steps = content.get("steps")
+    if isinstance(raw_steps, list):
+        raw_numbers = [step.get("number") for step in raw_steps if isinstance(step, dict)]
+        if len(raw_numbers) != len(set(raw_numbers)):
+            duplicate = next(
+                number for index, number in enumerate(raw_numbers) if number in raw_numbers[:index]
+            )
+            raise PlanArtifactValidationError(f"duplicate plan step number {duplicate}")
+    try:
+        validated = PlanArtifact.model_validate(content)
+        return validated.model_dump(
+            mode="python",
+            exclude_none=True,
+            exclude_defaults=True,
+        )
+    except ValidationError as exc:
+        raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
 
 
-def validate_plan_section(section: str, payload: object, mode: SectionMode = "replace") -> object:
-    """Retain section edit payloads without imposing schema requirements."""
-    return payload
+def _format_validation_error(exc: ValidationError) -> str:
+    """Format a pydantic ValidationError into an agent-friendly message.
+
+    Uses the shared :mod:`ralph.pydantic_validation_errors` formatter to
+    produce a field-level, value-aware message for every error in the
+    exception. Unknown top-level or design sub-section keys also receive
+    focused follow-up hints.
+    """
+    shared_lines = format_validation_error_messages(exc)
+    follow_ups: list[str] = []
+    section_hint = _top_level_unknown_section_hint(exc)
+    if section_hint is not None:
+        follow_ups.append(section_hint)
+    design_hint = _design_subkey_suggestion_hint(exc)
+    if design_hint is not None:
+        follow_ups.append(design_hint)
+    if not follow_ups:
+        return "\n".join(shared_lines) if shared_lines else str(exc)
+    return "\n".join(shared_lines) + "\n" + "\n".join(follow_ups)
+
+
+def _format_design_subkey_suggestion(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown design sub-section key, if any.
+
+    When the plan dict contains a top-level field that does not match
+    any known section, pydantic emits an ``extra_forbidden`` error at
+    the top level. This helper detects those errors, names the rejected
+    key, and suggests the closest canonical section name so the agent
+    can self-correct without reading the schema.
+    """
+    for err in _error_records(exc):
+        err_type = err.get("type")
+        if err_type != "extra_forbidden":
+            continue
+        loc_obj = err.get("loc", ())
+        loc: tuple[object, ...] = (
+            cast("tuple[object, ...]", loc_obj) if isinstance(loc_obj, tuple) else ()
+        )
+        if not loc:
+            continue
+        if loc[0] != "":
+            continue
+        bad_key_obj = err.get("input")
+        if not isinstance(bad_key_obj, str):
+            continue
+        suggestion = suggest_canonical_field(bad_key_obj, sorted(PLAN_SECTION_NAMES))
+        if suggestion is None:
+            return f"unknown section {bad_key_obj!r}; valid sections: {sorted(PLAN_SECTION_NAMES)}"
+        return (
+            f"unknown section {bad_key_obj!r}; did you mean {suggestion!r}? "
+            f"valid sections: {sorted(PLAN_SECTION_NAMES)}"
+        )
+    return None
+
+
+def _top_level_unknown_section_hint(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown top-level plan section, if any.
+
+    This is a thin alias for :func:`_format_design_subkey_suggestion`
+    kept for readability at the call site.
+    """
+    return _format_design_subkey_suggestion(exc)
+
+
+_DESIGN_SECTION_KEYS: tuple[str, ...] = (
+    "planning_profile",
+    "constraints",
+    "non_goals",
+    "dependency_injection",
+    "drift_detection",
+    "testability",
+    "refactor_strategy",
+    "acceptance_criteria",
+    "outcome",
+    "notes",
+)
+
+
+_DESIGN_SUBSECTION_MIN_LOC_LEN: int = 2
+
+
+def _design_subkey_suggestion_hint(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown ``design`` sub-section key, if any.
+
+    Pydantic emits ``extra_forbidden`` with ``loc=('design', <bad>)``
+    when the agent writes ``design.design_constraints`` (or similar)
+    inside a top-level ``design`` block. When the agent validates the
+    ``design`` section in isolation (via
+    :func:`validate_plan_section`), the location collapses to
+    ``loc=(<bad>,)`` because the ``DesignSection`` model is the
+    validation target. This helper handles both shapes so the agent
+    always sees the canonical sub-section list and the closest
+    suggestion.
+    """
+    for err in _error_records(exc):
+        err_type = err.get("type")
+        if err_type != "extra_forbidden":
+            continue
+        loc_obj = err.get("loc", ())
+        loc: tuple[object, ...] = (
+            cast("tuple[object, ...]", loc_obj) if isinstance(loc_obj, tuple) else ()
+        )
+        if not loc:
+            continue
+        first = loc[0]
+        bad_key_obj: object | None
+        if first == "design" and len(loc) >= _DESIGN_SUBSECTION_MIN_LOC_LEN:
+            bad_key_obj = loc[1]
+        elif isinstance(first, str):
+            bad_key_obj = first
+        else:
+            continue
+        if not isinstance(bad_key_obj, str):
+            continue
+        suggestion = suggest_canonical_field(bad_key_obj, list(_DESIGN_SECTION_KEYS))
+        if suggestion is None:
+            return (
+                f"unknown design sub-section {bad_key_obj!r}; "
+                f"valid design sub-sections: {list(_DESIGN_SECTION_KEYS)}"
+            )
+        return (
+            f"unknown design sub-section {bad_key_obj!r}; "
+            f"did you mean design.{suggestion!r}? "
+            f"valid design sub-sections: {list(_DESIGN_SECTION_KEYS)}"
+        )
+    return None
+
+
+def _error_records(exc: ValidationError) -> list[dict[str, object]]:
+    """Wrap ``ValidationError.errors()`` and re-cast to a clean dict type.
+
+    Pydantic's ``ErrorDetails`` TypedDict has fields annotated with
+    ``_Any`` so mypy with ``disallow_any_expr=True`` rejects direct
+    iteration. This helper isolates the cast in one place so the
+    consumer can iterate without spreading the cast across the loop.
+    """
+    raw = cast("list[object]", exc.errors())
+    records: list[dict[str, object]] = [cast("dict[str, object]", r) for r in raw]
+    return records
+
+
+def _dump_model(model: RalphBaseModel) -> dict[str, object]:
+    return model.model_dump(mode="python", exclude_none=True, exclude_defaults=True)
+
+
+def _validate_list_item(
+    section: str, item_model: type[RalphBaseModel], item: object
+) -> dict[str, object]:
+    if not isinstance(item, dict):
+        raise PlanArtifactValidationError(f"section '{section}' items must be JSON objects")
+    try:
+        validated = item_model.model_validate(item)
+    except ValidationError as exc:
+        raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
+    return _dump_model(validated)
+
+
+def validate_plan_section(
+    section: str,
+    payload: object,
+    mode: SectionMode = "replace",
+) -> object:
+    """Validate a single plan section fragment against its submodel.
+
+    Returns the normalized fragment (dict for object sections, list of dicts
+    for list sections in replace mode, single dict for list sections in append
+    mode). Raises PlanArtifactValidationError on any schema violation.
+    """
+    if section in PLAN_SECTION_OBJECT_MODELS:
+        if mode != "replace":
+            raise PlanArtifactValidationError(f"section '{section}' only supports mode='replace'")
+        if not isinstance(payload, dict):
+            raise PlanArtifactValidationError(f"section '{section}' must be a JSON object")
+        model = PLAN_SECTION_OBJECT_MODELS[section]
+        try:
+            validated = model.model_validate(payload)
+        except ValidationError as exc:
+            raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
+        return _dump_model(validated)
+
+    if section == "work_units":
+        work_unit_model = cast(
+            "type[RalphBaseModel]",
+            import_module("ralph.pipeline.work_unit").WorkUnit,
+        )
+        if mode == "replace":
+            if not isinstance(payload, list):
+                raise PlanArtifactValidationError(
+                    "section 'work_units' with mode='replace' must be a JSON array"
+                )
+            return [_validate_list_item(section, work_unit_model, item) for item in payload]
+        if mode == "append":
+            return _validate_list_item(section, work_unit_model, payload)
+        raise PlanArtifactValidationError(f"unknown mode '{mode}' for section '{section}'")
+
+    if section in PLAN_SECTION_LIST_ITEM_MODELS:
+        item_model = PLAN_SECTION_LIST_ITEM_MODELS[section]
+        if mode == "replace":
+            if not isinstance(payload, list):
+                raise PlanArtifactValidationError(
+                    f"section '{section}' with mode='replace' must be a JSON array"
+                )
+            return [_validate_list_item(section, item_model, item) for item in payload]
+        if mode == "append":
+            return _validate_list_item(section, item_model, payload)
+        raise PlanArtifactValidationError(f"unknown mode '{mode}' for section '{section}'")
+
+    raise PlanArtifactValidationError(
+        f"unknown plan section '{section}'. Valid sections: {sorted(PLAN_SECTION_NAMES)}"
+    )
+
+
+def _collect_criteria(design: DesignSection | None) -> list[AcceptanceCriterion]:
+    if design is None or design.acceptance_criteria is None:
+        return []
+    return list(design.acceptance_criteria.criteria)
+
+
+def _check_satisfies_links(
+    steps: list[PlanStep],
+    criteria: list[AcceptanceCriterion],
+    ac_ids: set[str],
+) -> None:
+    for step in steps:
+        if not step.satisfies:
+            continue
+        if not criteria:
+            msg = (
+                f"step {step.number} declares satisfies entries but plan has no "
+                "design.acceptance_criteria"
+            )
+            raise PlanArtifactValidationError(msg)
+        for entry in step.satisfies:
+            if entry not in ac_ids:
+                msg = f"step {step.number} satisfies unknown acceptance criterion {entry!r}"
+                raise PlanArtifactValidationError(msg)
+
+
+def _check_satisfied_by_steps_links(
+    criteria: list[AcceptanceCriterion],
+    step_numbers: set[int],
+) -> None:
+    for criterion in criteria:
+        # Read the runtime field directly to avoid a mypy static-analysis gap
+        # where pydantic v2 updates __pydantic_fields__ without refreshing
+        # the class __annotations__ that mypy reads.
+        raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
+        refs: list[int] = (
+            [raw for raw in raw_refs if isinstance(raw, int)] if isinstance(raw_refs, list) else []
+        )
+        for step_ref in refs:
+            if step_ref not in step_numbers:
+                msg = (
+                    f"acceptance criterion {criterion.id!r} references unknown step "
+                    f"number {step_ref}"
+                )
+                raise PlanArtifactValidationError(msg)
+
+
+def _validate_named_dependency_graph(
+    entries: list[tuple[str, list[str]]],
+    *,
+    label: str,
+) -> None:
+    """Reject duplicate, dangling, self-referential, or cyclic unit graphs."""
+    identifiers = [identifier for identifier, _ in entries]
+    known = set(identifiers)
+    if len(known) != len(identifiers):
+        duplicate = next(
+            identifier
+            for index, identifier in enumerate(identifiers)
+            if identifier in identifiers[:index]
+        )
+        raise PlanArtifactValidationError(f"duplicate {label} ID {duplicate!r}")
+    graph = dict(entries)
+    for identifier, dependencies in entries:
+        for dependency in dependencies:
+            if dependency == identifier:
+                raise PlanArtifactValidationError(f"{label} {identifier!r} depends on itself")
+            if dependency not in known:
+                raise PlanArtifactValidationError(
+                    f"{label} {identifier!r} references unknown dependency {dependency!r}"
+                )
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(identifier: str) -> None:
+        if identifier in visited:
+            return
+        if identifier in visiting:
+            raise PlanArtifactValidationError(
+                f"{label} dependency cycle detected at {identifier!r}"
+            )
+        visiting.add(identifier)
+        for dependency in graph.get(identifier, []):
+            visit(dependency)
+        visiting.remove(identifier)
+        visited.add(identifier)
+
+    for identifier in identifiers:
+        visit(identifier)
+
+
+def _validate_work_unit_step_ownership(
+    work_units: list[WorkUnit],
+    steps: list[PlanStep],
+) -> None:
+    """Keep nested mini-plan ownership resolvable and one-to-one."""
+    known_steps = {f"S-{step.number}" for step in steps}
+    owner_by_step: dict[str, str] = {}
+    for unit in work_units:
+        for step_id in unit.step_ids:
+            if step_id not in known_steps:
+                raise PlanArtifactValidationError(
+                    f"work unit {unit.unit_id!r} owns unknown step ID {step_id!r}"
+                )
+            prior_owner = owner_by_step.get(step_id)
+            if prior_owner is not None:
+                raise PlanArtifactValidationError(
+                    f"step ID {step_id!r} is owned by work units "
+                    f"{prior_owner!r} and {unit.unit_id!r}"
+                )
+            owner_by_step[step_id] = unit.unit_id
 
 
 __all__ = [
+    "PlanArtifact",
     "PlanArtifactValidationError",
+    "SectionMode",
     "is_noop_plan",
     "normalize_plan_artifact_content",
     "validate_plan_section",

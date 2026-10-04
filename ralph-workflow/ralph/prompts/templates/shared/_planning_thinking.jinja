@@ -2,15 +2,35 @@
 
 Plan in this order:
 
-1. **Orient** — identify the requested outcome and relevant repository areas.
-2. **Characterize** — establish current behavior from repository evidence.
-3. **Change** — name concrete edits and real prerequisites.
-4. **Partition** — parallel work is the default. Split two or more independent
-   areas into `## Work Units`; a wholly linear plan explains the real coupling.
-   Each unit may name `Directories:` and/or exact `Paths:` it owns. Put shared
-   contracts before their consumers, use dependencies only for genuine
-   prerequisites, and plan one integration check after fan-in.
+1. **Orient** — identify the outcome and relevant repository areas.
+2. **Characterize** — establish current behavior.
+3. **Change** — name the smallest concrete edits and dependencies.
+4. **Partition** — make the plan parallel by default to shorten elapsed
+   time. A wholly linear plan is justified only when every remaining step
+   has a hard dependency on the preceding work: genuinely coupled end to
+   end. Identify the critical path and fan out every ready independent
+   branch around it. Use `Depends on:` only for an evidence-backed
+   prerequisite; explain what output the consumer needs, never serialize
+   independent work by list order. Declare
+   `## Work Units` or `## Parallel Plan` whenever work has distinct
+   responsibilities, regardless of group size or shared paths.
+   Independent files in the same directory or at repository root use
+   `## Parallel Plan` with optional `Paths:` or remain independent steps
+   scheduled concurrently. Sequential scheduling is a fallback, never
+   implied by the step-list format. When
+   partitioning, isolate **shared contract** or interface changes as
+   prerequisite steps; order only the units that consume their outputs.
+   A shared file constrains its writers, not every unrelated branch.
+   Use as many parallel workers as the work needs within active capacity.
+   Directories and files may overlap when responsibilities are distinct;
+   define how shared edits are coordinated before dispatch. Ownership fields
+   are optional during planning. Keep each assignment self-contained:
+   input contracts, request criteria, concrete outputs, and focused proof.
+   Plan integration verification after fan-in to expose cross-unit
+   incompatibilities; concurrency never relaxes accuracy or coverage.
+   Use the format documented in
+   `.agent/artifact-formats/plan.md` and locked by
+   `ralph/policy/validation/_api.py:validate_work_units_against_policy`.
 5. **Verify** — name runnable proof for the outcome.
 
-Subagents and parallel agents are always available. Inspect the repository before
-naming paths or commands; use discovery work for an honest unknown.
+Inspect the repository before naming paths or commands; use a discovery step for an honest unknown.

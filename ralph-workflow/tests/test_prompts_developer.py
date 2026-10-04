@@ -44,8 +44,9 @@ def test_planning_prompt_uses_concise_artifact_workflow(tmp_path: Path) -> None:
     assert "Characterize" in prompt
     assert "Change" in prompt
     assert "Verify" in prompt
-    assert "recommended shape" in prompt
-    assert "parallel" in prompt
+    assert "Stable `### [S-n] Title` steps are recommended" in prompt
+    assert "without schema or content validation" in prompt
+    assert "Only binary control characters are rejected" in prompt
     assert 'artifact_type="plan"' in prompt
     assert "ralph_edit_md_artifact" in prompt
     assert "ralph_edit_md_plan_step" not in prompt
@@ -64,7 +65,7 @@ def test_planning_edit_treats_analysis_as_advice(tmp_path: Path) -> None:
     )
 
     assert "PLANNING EDIT MODE" in prompt
-    assert "fresh repository evidence" in prompt
+    assert "Treat feedback as evidence, not a document-shape" in prompt
     assert "ralph_edit_md_plan_step" not in prompt
 
 

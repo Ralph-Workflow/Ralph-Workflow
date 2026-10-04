@@ -493,7 +493,7 @@ def test_planning_analysis_regression_materializes_exact_validator_retry_context
     )
 
     rendered = workspace.read(prompt_path)
-    assert "Verify that the submitted plan is truthful" in rendered
+    assert rendered.startswith(diagnostic)
     assert workspace.exists(retry_hint_path("planning_analysis"))
 
 

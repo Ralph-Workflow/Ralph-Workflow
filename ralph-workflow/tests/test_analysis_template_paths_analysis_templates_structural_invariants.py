@@ -143,6 +143,11 @@ class TestAnalysisTemplatesStructuralInvariants:
     def test_plan_uses_render_payload_path_not_section(self) -> None:
         for template in self._analysis_templates():
             source = template.read_text(encoding="utf-8")
+            if template.name == "planning_analysis.jinja":
+                assert "render_payload_path('PLAN'" not in source
+                assert 'render_payload_path("PLAN"' not in source
+                assert "GET_MD_DRAFT_TOOL_REFERENCE" in source
+                continue
             uses_path = (
                 "render_payload_path('PLAN'" in source or 'render_payload_path("PLAN"' in source
             )

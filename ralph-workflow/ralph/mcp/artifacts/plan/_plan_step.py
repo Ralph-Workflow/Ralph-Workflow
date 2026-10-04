@@ -1,0 +1,183 @@
+"""Plan step sub-model.
+
+The ``satisfies`` / ``expected_evidence`` / ``verify_command`` fields turn each
+step into an executor-ready unit with an explicit completion contract. The
+``_validate_step_type_contract`` model-level validator enforces that every
+``file_change`` step declares at least one ``targets`` entry and every
+``verify`` step declares either ``verify_command`` or ``location``.
+
+The allowed step types are the shared executor contract; free-form values
+would leave downstream workers unable to determine their required evidence.
+"""
+
+from __future__ import annotations
+
+import re
+
+from pydantic import ConfigDict, Field, field_validator
+
+from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
+from ralph.mcp.artifacts.plan._step_contract import StepType
+from ralph.mcp.artifacts.plan._step_target import StepTarget
+from ralph.pydantic_compat import RalphBaseModel
+
+_ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^[A-Z]+-\d{2,}$")
+# Generous-but-bounded caps. The old _MAX_EVIDENCE_ENTRIES=50 was tight
+# for a detailed plan; the new 500 mirrors the PlanSizeLimits.default
+# max_evidence_per_step cap. The per-entry length is enforced inside
+# _evidence_ref.EvidenceRef.
+_MAX_EVIDENCE_ENTRIES = 500
+
+
+class PlanStep(RalphBaseModel):
+    """One executable step in a plan artifact.
+
+    A plan step carries a numbered instruction, its type contract, optional
+    targets, evidence, and dependency/satisfaction metadata. The
+    ``step_type`` field determines which extra fields are required: a
+    ``file_change`` step must declare ``targets``, while a ``verify`` step
+    must declare either ``verify_command`` or ``location``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    number: int = Field(..., ge=1, description="1-based step number.")
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Short step title (non-empty, max 500 chars).",
+    )
+    content: str = Field(
+        default="",
+        max_length=20000,
+        description="Step purpose or detailed execution context (max 20000 chars).",
+    )
+    step_type: str = Field(
+        default=StepType.FILE_CHANGE.value,
+        min_length=1,
+        max_length=200,
+        description=("One supported executor step type."),
+    )
+    priority: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Optional free-form scheduling/importance hint.",
+    )
+    targets: list[StepTarget] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Required for file_change; list of {path, action} entries (max 100).",
+    )
+    location: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional location; required for verify steps when verify_command is absent.",
+    )
+    rationale: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Optional rationale for the step (max 8000 chars).",
+    )
+    depends_on: list[int] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Optional list of step numbers this step depends on (max 50).",
+    )
+    satisfies: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies (max 50).",
+    )
+    expected_evidence: list[EvidenceRef] = Field(
+        default_factory=list,
+        description="Optional list of evidence references (max 500 entries).",
+    )
+    verify_command: str | None = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "Optional verify command (max 2000 chars). Commands require an "
+            "expected_outcome; verify steps may instead name a location."
+        ),
+    )
+    expected_outcome: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Observable result expected from verify_command (max 8000 chars).",
+    )
+
+    @field_validator("satisfies")
+    @classmethod
+    def _validate_satisfies(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for entry in value:
+            stripped = entry.strip()
+            if not stripped:
+                msg = "satisfies entries must not be empty"
+                raise ValueError(msg)
+            if not _ACCEPTANCE_CRITERION_ID_PATTERN.match(stripped):
+                msg = (
+                    f"satisfies entry {stripped!r} does not match the AC id pattern "
+                    r"^[A-Z]+-\d{2,}$"
+                )
+                raise ValueError(msg)
+            cleaned.append(stripped)
+        return cleaned
+
+    @field_validator("expected_evidence", mode="before")
+    @classmethod
+    def _validate_expected_evidence(cls, value: object) -> list[EvidenceRef]:
+        """Validate and dedupe ``expected_evidence`` entries.
+
+        Each structured entry is converted to ``EvidenceRef``. Dedup is
+        case-insensitive on ``(kind, ref.lower())`` with last-wins so a
+        later ``EvidenceRef`` overrides an earlier one with the same key.
+        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and ``EvidenceRef.ref`` field
+        limit together bound the size of the evidence list.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            msg = "expected_evidence must be a list of EvidenceRef entries"
+            raise ValueError(msg)
+        cleaned: list[EvidenceRef] = []
+        position_by_key: dict[tuple[str, str], int] = {}
+        for entry in value:
+            ref = entry if isinstance(entry, EvidenceRef) else EvidenceRef.model_validate(entry)
+            key = (str(ref.kind), ref.ref.lower())
+            if key in position_by_key:
+                cleaned[position_by_key[key]] = ref
+                continue
+            position_by_key[key] = len(cleaned)
+            cleaned.append(ref)
+        if len(cleaned) > _MAX_EVIDENCE_ENTRIES:
+            msg = f"expected_evidence has more than {_MAX_EVIDENCE_ENTRIES} entries"
+            raise ValueError(msg)
+        return cleaned
+
+    @field_validator("verify_command")
+    @classmethod
+    def _validate_verify_command(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            msg = "verify_command must not be empty when provided"
+            raise ValueError(msg)
+        return stripped
+
+    @field_validator("expected_outcome")
+    @classmethod
+    def _validate_expected_outcome(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            msg = "expected_outcome must not be empty when provided"
+            raise ValueError(msg)
+        return stripped
+
+
+__all__ = ["PlanStep"]

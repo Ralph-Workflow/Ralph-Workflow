@@ -7,6 +7,7 @@ import json
 import pytest
 
 from ralph.config.mcp_models import McpConfig
+from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
 from ralph.mcp.tools.md_artifact import (
@@ -197,14 +198,13 @@ def test_commit_message_validation_failure_requires_rewriting_the_message(tmp_pa
 
 
 def test_development_result_missing_work_requires_completion_verification_and_evidence(
-    tmp_path,
+    tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
-    backend = MemoryBackend()
-    backend.write_text(
-        tmp_path / ".agent/artifacts/plan.md",
-        "Inspect the repository then implement independent changes and verify their combined behavior.",
+    monkeypatch.setattr(
+        "ralph.mcp.tools.md_artifact.development_result_session_diagnostics",
+        lambda *_args: [Diagnostic(1, "Plan Items Proven", "DEV015", "missing=['S-2']")],
     )
     result = handle_submit_md_artifact(
         session,
@@ -215,7 +215,7 @@ def test_development_result_missing_work_requires_completion_verification_and_ev
             "## Summary\n- [SUM-1] Completed the requested work.\n"
             "## Files Changed\n- [F-1] ralph/example.py\n",
         },
-        deps=ArtifactHandlerDeps(backend=backend),
+        deps=ArtifactHandlerDeps(backend=MemoryBackend()),
     )
 
     assert result.is_error is True
@@ -363,15 +363,14 @@ def test_markdown_artifact_tools_are_registered() -> None:
         ),
     ],
 )
-def test_plan_verify_accepts_malformed_frontmatter_as_prose(tmp_path, label, content) -> None:
-    """Plan sanity does not judge duplicate or malformed metadata."""
+def test_plan_verify_accepts_irregular_frontmatter(tmp_path, label, content) -> None:
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "plan", "content": content}
 
     verified = handle_verify_md_artifact(session, workspace, params)
 
-    assert verified.is_error is False, f"malformed plan ({label}) is accepted prose"
+    assert verified.is_error is False
     payload = _payload(verified)
     assert payload["valid"] is True
-    assert must_dict_list(payload["diagnostics"]) == []
+    assert payload["diagnostics"] == []

@@ -42,14 +42,7 @@ def _build_acyclic_dag(n: int, edge_seed: int) -> list[WorkUnit]:
         # Pick 0-2 random deps from lower-index units
         k = min(len(possible_deps), (edge_seed + i) % 3)
         deps = possible_deps[:k]
-        units.append(
-            WorkUnit(
-                unit_id=uid,
-                description=f"Work unit {uid}",
-                paths=[f"src/{uid}.py"],
-                dependencies=deps,
-            )
-        )
+        units.append(WorkUnit(unit_id=uid, description=f"Work unit {uid}", dependencies=deps))
     return units
 
 

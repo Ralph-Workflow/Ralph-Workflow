@@ -9,12 +9,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.skills._capability_entry import CapabilityEntry
     from ralph.skills.manager import SkillManager
-
-
-class _InstallSkills(Protocol):
-    def __call__(self, workspace_root: Path) -> tuple[CapabilityEntry, list[str]]: ...
 
 
 class _RetentionSweep(Protocol):
@@ -35,7 +30,6 @@ class SetupDependencies:
     run_retention_sweep: _RetentionSweep
     skill_manager_factory: Callable[[], SkillManager]
     project_skills_need_install: Callable[[Path], bool]
-    install_project_skills: _InstallSkills
 
 
 def sync_shipped_skills(
@@ -55,27 +49,14 @@ def sync_shipped_skills(
         update_available = False
     if update_available:
         dependencies.print_user_global_update_hint()
-    try:
-        if dependencies.project_skills_need_install(target_root):
-            _, failures = dependencies.install_project_skills(target_root)
-            if failures:
-                dependencies.print_project_skill_conflict_hint(failures)
-    except Exception as exc:
-        dependencies.emit_warning(
-            f"Project-scope skill install failed (non-fatal): {exc}. Run `ralph --force-init-skills` to retry, or check file permissions on .agent/skills/."
-        )
-    try:
-        from ralph.config.bootstrap import (
-            auto_seed_default_git_exclude,
-            auto_seed_default_gitignore,
-        )
-
-        auto_seed_default_gitignore(target_root)
-        auto_seed_default_git_exclude(target_root)
-    except Exception as exc:
-        dependencies.emit_warning(
-            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
-        )
+    # wt-012: the FIRST run-start install uses the producer-level
+    # wrapper that records the byte-exact diff and immediately
+    # commits the install at the install boundary. The legacy
+    # ``dependencies.install_project_skills`` install call (which
+    # returned ``(CapabilityEntry, failures)``) was REMOVED here so
+    # the run-start setup only commits at the producer boundary --
+    # a second install would be a no-op (already committed) and the
+    # gitignore / agent work would race the commit.
     try:
         from ralph.git.operations import (
             create_commit as create_commit_impl,
@@ -101,29 +82,31 @@ def sync_shipped_skills(
             )
         else:
             try:
-                outcome = install_project_baseline_skills_with_diff(target_root)
-                if outcome.failures:
-                    dependencies.print_project_skill_conflict_hint(outcome.failures)
-                result = commit_skill_writes(
-                    target_root,
-                    written_paths=outcome.written_paths,
-                    pre_contents=outcome.pre_contents,
-                    create_commit_fn=create_commit,
-                )
-                if result.status is ScopedCommitStatus.CREATED and result.sha:
-                    logger.info("Auto-committed skill updates: {}", result.sha[:8])
-                elif result.status is ScopedCommitStatus.FAILED:
-                    dependencies.emit_warning(
-                        f"Skill auto-commit failed (non-fatal): {result.error}. "
-                        "The run continues with the new skill content uncommitted; "
-                        "commit manually or re-run to retry."
-                    )
-                elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-                    logger.warning(
-                        "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
-                        "left for the agent flow",
-                        len(result.skipped_paths),
-                    )
+                if dependencies.project_skills_need_install(target_root):
+                    outcome = install_project_baseline_skills_with_diff(target_root)
+                    if outcome.failures:
+                        dependencies.print_project_skill_conflict_hint(outcome.failures)
+                    if outcome.written_paths:
+                        result = commit_skill_writes(
+                            target_root,
+                            written_paths=outcome.written_paths,
+                            pre_contents=outcome.pre_contents,
+                            create_commit_fn=create_commit,
+                        )
+                        if result.status is ScopedCommitStatus.CREATED and result.sha:
+                            logger.info("Auto-committed skill updates: {}", result.sha[:8])
+                        elif result.status is ScopedCommitStatus.FAILED:
+                            dependencies.emit_warning(
+                                f"Skill auto-commit failed (non-fatal): {result.error}. "
+                                "The run continues with the new skill content uncommitted; "
+                                "commit manually or re-run to retry."
+                            )
+                        elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
+                            logger.warning(
+                                "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
+                                "left for the agent flow",
+                                len(result.skipped_paths),
+                            )
             except Exception as exc:
                 logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
                 dependencies.emit_warning(
@@ -135,6 +118,18 @@ def sync_shipped_skills(
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         dependencies.emit_warning(
             f"Skill auto-commit failed (non-fatal): {exc}. The run continues with the new skill content uncommitted; commit manually or re-run to retry."
+        )
+    try:
+        from ralph.config.bootstrap import (
+            auto_seed_default_git_exclude,
+            auto_seed_default_gitignore,
+        )
+
+        auto_seed_default_gitignore(target_root)
+        auto_seed_default_git_exclude(target_root)
+    except Exception as exc:
+        dependencies.emit_warning(
+            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
         )
     dependencies.run_retention_sweep(
         target_root, keep_run_id=keep_run_id, retention_max_age_seconds=retention_max_age_seconds

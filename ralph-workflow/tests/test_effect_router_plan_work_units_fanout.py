@@ -154,24 +154,7 @@ Expect: the focused {name} tests pass with exit code 0
     return "---\ntype: plan\n---\n" + "\n".join(sections)
 
 
-def test_native_router_keeps_cyclic_and_unowned_work_in_main_session() -> None:
-    units = (
-        WorkUnit(unit_id="A", description="A", paths=["src/a.py"], dependencies=["B"]),
-        WorkUnit(unit_id="B", description="B", paths=["src/b.py"], dependencies=["A"]),
-        WorkUnit(unit_id="C", description="C"),
-        WorkUnit(unit_id="D", description="D", paths=["src/d.py"]),
-        WorkUnit(unit_id="E", description="E", paths=["src/e.py"]),
-    )
-    effect = determine_effect_from_policy(
-        PipelineState(phase="development", work_units=units),
-        _legacy_fan_out_policy_bundle(),
-        WorkspaceScope(Path("/workspace")),
-        config=_config_with_development_agent(),
-    )
-    assert isinstance(effect, InvokeAgentEffect)
-
-
-def test_unowned_plan_step_keeps_plan_artifact_work_in_main_session(tmp_path: Path) -> None:
+def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path) -> None:
     _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(phase="development")
     legacy_bundle = _legacy_fan_out_policy_bundle()
@@ -183,8 +166,11 @@ def test_unowned_plan_step_keeps_plan_artifact_work_in_main_session(tmp_path: Pa
         config=_config_with_development_agent(),
     )
 
-    assert isinstance(effect, InvokeAgentEffect)
-    assert effect.phase == "development"
+    assert isinstance(effect, FanOutEffect)
+    assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+    parallelization = legacy_bundle.pipeline.phases["development"].parallelization
+    assert parallelization is not None
+    assert effect.max_workers == parallelization.max_parallel_workers
 
 
 def test_fanout_regression_routes_five_units_with_nested_step_assignments(
@@ -201,12 +187,12 @@ def test_fanout_regression_routes_five_units_with_nested_step_assignments(
     )
 
     assert isinstance(effect, FanOutEffect)
-    assert [unit.unit_id for unit in effect.work_units] == [
-        "api",
-        "web",
-        "docs",
-        "contract",
-        "integration",
+    assert [(unit.unit_id, unit.step_ids) for unit in effect.work_units] == [
+        ("api", ["S-1"]),
+        ("web", ["S-2"]),
+        ("docs", ["S-3"]),
+        ("contract", ["S-4"]),
+        ("integration", ["S-5"]),
     ]
 
 
@@ -319,8 +305,8 @@ def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
     assert effect.phase == "planning"
 
 
-def test_resume_with_unowned_plan_step_stays_in_main_session(tmp_path: Path) -> None:
-    """A resume must not fan out a plan whose step has no worker owner."""
+def test_resume_with_recorded_worker_states_still_fans_out(tmp_path: Path) -> None:
+    """After checkpoint resume the plan on disk must re-trigger fan-out."""
     _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(
         phase="development",
@@ -336,12 +322,11 @@ def test_resume_with_unowned_plan_step_stays_in_main_session(tmp_path: Path) -> 
         config=_config_with_development_agent(),
     )
 
-    assert isinstance(effect, InvokeAgentEffect)
-    assert effect.phase == "development"
+    assert isinstance(effect, FanOutEffect)
+    assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
 
-def test_overlapping_units_are_dispatched_for_serialized_execution(tmp_path: Path) -> None:
-    """Overlapping ownership is serialized by the scheduler, never rejected."""
+def test_overlapping_plan_work_unit_directories_fall_back_to_agent(tmp_path: Path) -> None:
     _write_plan_artifact(
         tmp_path,
         _plan_document(
@@ -360,4 +345,5 @@ def test_overlapping_units_are_dispatched_for_serialized_execution(tmp_path: Pat
         config=_config_with_development_agent(),
     )
 
-    assert isinstance(effect, FanOutEffect)
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"

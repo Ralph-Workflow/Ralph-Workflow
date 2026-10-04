@@ -297,6 +297,46 @@ Parallel plan execution is **delegated to the executing AI agent's native sub-ag
 
 The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and produces the matching `plan_items_proven` evidence. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
 
+### What the strengthened default prompts require
+
+The developer prompt and the worker prompt are engineered to keep the
+agent on the ready-reference walk instead of surrendering the plan.
+That is prompt engineering — it makes the intended behavior explicit
+and consistent across surfaces — not a guarantee that any particular
+model completes an arbitrary plan. The contract every developer
+session receives has four operating requirements:
+
+- **Independent ready steps in linear plans still fan out.** A plan
+  that reads as a single linear thread can still form an independent
+  ready group when two or more steps have no `Depends on:` path
+  between them and disjoint `Files:` lists. The default behavior on
+  such a group is parallel dispatch, not serial execution.
+- **Mid-run scope growth is a scheduling signal, never an exit
+  condition.** When the remaining scope grows because fresh
+  exploration or a new criterion surfaces, the prompt tells the
+  executing agent to re-cut the remainder, preserve the original
+  `S-N` references, and keep dispatching. A `status: partial` result
+  is reserved for the canonical external-blocker cases in
+  `shared/_no_exemption_for_failures.j2` (an operator-only decision,
+  a physical-world action, an external system change outside the
+  developer's authority). Difficulty, elapsed time, an exhausted
+  run budget, and the size of the remaining work do not qualify.
+- **Capacity and ownership constraints are surfaced.** Saturated
+  dispatch slots are not a reason to idle: the agent continues the
+  ready references it already owns, refills every freed slot the
+  moment a worker returns, and only treats inability to fan out as a
+  reason to fall back to bounded sequential increments. The fallback
+  preserves the readiness-and-proof loop; it does not authorize
+  abandonment, scope trimming, or fake completion. Coupled work
+  (shared writer, a contract that must land first) stays sequential
+  by necessity, not by pessimism.
+- **Final integrated proof lives in the main session.** Every
+  dispatched unit returns a lead, not evidence by itself. The main
+  session reproduces the cited `path:line` reads, re-runs the
+  focused verify commands, and runs the cross-unit integration
+  checks plus the full `make verify` gate before accepting a
+  `status: completed` result.
+
 ### How plans express parallelization intent
 
 A plan communicates parallelization intent to the executing agent through two shapes. Both are **agent-facing intent**, not Ralph fan-out instructions:
@@ -316,7 +356,12 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 
 For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). AGY routes through the supported agent_subagents path based on the measured native-dispatch evidence above; it does not fail based on the `agy agents` listing. Nanocoder and Pi execute the same plan sequentially in `unit_id` order — no correctness loss.
 
-The planning prompt (`planning.jinja`) carries the `## Agent-Driven Parallel Execution` block that tells the planner to write agent-facing intent (work units, dependencies, scope) and forbids routing parallel plan work through Ralph-managed coordination. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance.
+The planning prompt (`planning.jinja`) carries the `## Agent-Driven Parallel Execution` block that tells the planner to write agent-facing intent (work units, dependencies, scope) and forbids routing parallel plan work through Ralph-managed coordination. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance. The shared
+`shared/_parallel_execution.jinja` partial is the single source of
+truth for the dispatch contract, and the shared
+`shared/_developer_iteration_guidance.j2` partial is the single source
+of truth for the recovery procedure. Worker prompts must not
+re-define them.
 
 ### Re-arming Ralph-managed fan-out (dormant)
 
@@ -646,10 +691,18 @@ or the development wrapup notice, both surfaces use the same minutes
 remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 
 - The developer prompt includes a remaining-minutes warning and a force-cut
-  sentence in `shared/_run_budget.j2` so the agent drives the current task
-  to a verifiable state (a green suite, a passing focused test, or an
-  explicit partial report) before the deadline and does not start new work
-  it cannot finish.
+  sentence in `shared/_run_budget.j2` so the agent reserves time for
+  integration, verification, and submission before the deadline and does
+  not start new work it cannot finish. The warning and force-cut sentences
+  are scheduling signals; the canonical rule on when a partial or failed
+  result is permitted lives in
+  `ralph/prompts/templates/shared/_no_exemption_for_failures.j2` and is
+  not weakened by elapsed time, large remaining scope, or an exhausted
+  run budget. The agent drives the current task to a verifiable state
+  (a green suite, a passing focused test, or the canonical submission)
+  before the deadline and treats any partial/failed claim as governed
+  by the external-blocker rule above, never as a deadline-driven
+  outcome in its own right.
 - The development wrapup notice
   (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
   the same remaining minutes, suggests dispatching an independent ready
@@ -661,16 +714,47 @@ remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 The shared minutes convention means the wrapup notice and the developer
 prompt cannot diverge at the warning boundary.
 
-## Work Units execution
+### Reserve time for integration, verification, and submission
 
-Plan submission performs only the plan sanity check; a unit count, ownership
-shape, dependency graph, and overlap do not reject an otherwise accepted plan.
-`max_parallel_workers` is a concurrency limit, not a plan-size limit.
-Additional ready units run in queued waves.
+The minutes-remaining figure is a wall-clock signal, not a result
+classifier. The agent must keep that distinction visible at the
+warning boundary:
 
-The executor derives ownership from `Paths:`, `Directories:`, or step
-`Files:` when available. Conflicting files and directory containment run
-serially; disjoint files in the same directory may run together. Protected
-assignments are removed before worker briefs, and unknown ownership or
-unextractable graphs remain main-session work. Brokered write protections
-continue to enforce filesystem safety.
+- The runtime hard cut at `DEV_DEADLINE_EPOCH` is independent of any
+  result the agent might emit. A `status: completed` result submitted
+  after the cut is not promoted to acceptance; the cut is enforced
+  by the pipeline, not by the agent's claim.
+- The agent's permitted result claims are governed by the canonical
+  external-blocker rule in
+  `ralph/prompts/templates/shared/_no_exemption_for_failures.j2`.
+  A `status: partial` or `status: failed` result is only honest when
+  verified progress exists and the remaining work is literally
+  impossible to complete through any developer action available in
+  the run (a physical-world action, an operator-only credential or
+  decision, an external system change outside the developer's
+  authority). Elapsed budget or large remaining scope alone never
+  establishes that standard; the warning minutes are a scheduling
+  signal, not a permission slip.
+- When the warning is reached, dispatch remaining independent ready
+  work concurrently, and reserve time for focused checks, the
+  cross-unit integration pass, and the canonical submission. A late
+  submission is not a way around the warning: the next cycle is
+  governed by the `cycle_timebox` warning, not by the previous
+  cycle's development warning.
+
+The prompt contract encourages this behavior, not guarantees it. The
+minutes convention and the no-exemptions rule live in shared
+partials, so the developer prompt and the wrapup notice cannot
+silently diverge at the warning boundary.
+
+## Work Units validation at plan submission
+
+Plan tools accept authored text without schema, reference, or work-unit
+policy validation. The planning output gate and development input gate use
+the same text contract. Only binary control characters are rejected.
+
+The scheduler and worker dispatch enforce execution limits and safe edit
+scopes when work actually runs. `max_work_units` limits dispatchable units;
+`max_parallel_workers` limits concurrent workers. Plan authors should use
+these settings as execution guidance, but exceeding them in descriptive
+planning text does not fail artifact submission.

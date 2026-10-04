@@ -120,7 +120,7 @@ status: request_changes
 def _write_noop_plan(workspace: MemoryWorkspace) -> None:
     workspace.write(
         ".agent/artifacts/plan.md",
-        "---\ntype: plan\nnoop: true\n---\nThis explicit no-op plan has enough readable explanatory words for acceptance.\n",
+        "---\ntype: plan\nnoop: true\n---\n",
     )
 
 
@@ -347,38 +347,6 @@ def test_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
     events = handle_execution_phase(_invoke(), ctx)
 
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
-
-
-def test_planning_phase_keeps_accepted_prose_active() -> None:
-    workspace = MemoryWorkspace()
-    workspace.write(
-        ".agent/artifacts/plan.md",
-        "Implement the requested behavior and demonstrate correctness with focused tests and full verification.",
-    )
-    events = handle_execution_phase(
-        InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="plan.txt"),
-        _make_context(workspace),
-    )
-    assert events == [PipelineEvent.AGENT_SUCCESS]
-
-
-def test_prose_plan_requires_exactly_one_plan_level_proof() -> None:
-    workspace = MemoryWorkspace()
-    workspace.write(
-        ".agent/artifacts/plan.md",
-        "Implement the requested behavior and demonstrate correctness with focused tests and full verification.",
-    )
-    _write_dev_result(workspace)
-    assert any(
-        isinstance(event, PhaseFailureEvent)
-        for event in handle_execution_phase(_invoke(), _make_context(workspace))
-    )
-    _write_dev_result(
-        workspace, plan_items=[{"plan_item": "plan", "proof": "Verified requested behavior."}]
-    )
-    assert handle_execution_phase(_invoke(), _make_context(workspace)) == [
-        ExecutionResultEvent(phase="development", status="completed")
-    ]
 
 
 def test_steps_plan_fails_when_no_proof_is_submitted() -> None:

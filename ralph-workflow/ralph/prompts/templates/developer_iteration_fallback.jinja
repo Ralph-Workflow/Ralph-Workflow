@@ -59,13 +59,6 @@ modify:
 
 {{allowed_directories}}
 
-### Allowed exact paths
-
-These exact files are also within your scope. Do not widen an exact-file
-assignment to its parent directory:
-
-{{paths|default('(none)')}}
-
 Keep prompt payloads, logs, artifacts, and fallback output under
 `{{WORKER_NAMESPACE}}/`. Do not modify another worker's namespace. Implement
 and verify only `{{unit_id}}`. Do not coordinate or integrate the whole plan.

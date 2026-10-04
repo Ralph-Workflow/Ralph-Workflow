@@ -19,7 +19,6 @@ class ParallelWorkerManifest(RalphBaseModel):
     unit_id: str
     description: str
     allowed_directories: list[str]
-    paths: list[str] = Field(default_factory=list)
     step_ids: list[str] = Field(default_factory=list)
     phase: str
     drain: str
@@ -41,6 +40,5 @@ class ParallelWorkerManifest(RalphBaseModel):
             unit_id=self.unit_id,
             description=self.description,
             allowed_directories=list(self.allowed_directories),
-            paths=list(self.paths),
             step_ids=list(self.step_ids),
         )

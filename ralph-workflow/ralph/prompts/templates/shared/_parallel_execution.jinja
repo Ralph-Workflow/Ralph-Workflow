@@ -1,7 +1,89 @@
-Choose execution from extracted dependencies. Execute only coupled steps in the main session. When the plan declares independent units, dispatch ready units concurrently to sub-agents. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
+Choose execution from the dependency graph. Execute only coupled steps in the main session. When the plan declares independent units, dispatch ready units concurrently to sub-agents with disjoint file ownership and declared directory limits. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
 
-Ownership may come from a unit's exact `Paths:`, its `Directories:` (the declared directory limits), or its steps' `Files:` when the unit has neither. Do not broaden file ownership to a parent directory. Remove assignments to `.agent`, `.git`, and `.worktrees` (and descendants) before making a worker brief. An unknown or empty effective scope, malformed dependency graph, or unextractable ownership stays in the main session; it never grants broad worker writes.
+Drive development as an orchestrator: delegate independent implementation,
+exploration, documentation research, focused verification, and review
+extensively. Keep read-only helpers working while writers implement; keep
+the main session on shared decisions, the critical path, and integration.
+After each result, recompute readiness and dispatch newly unblocked work
+without waiting for unrelated units. A linear plan is not a command to
+execute serially: fan out its independent steps with explicit ownership.
+Use sequential implementation only where a hard prerequisite or shared
+writer ownership requires it, never merely because a change is small.
 
-A worker cap limits concurrent units, not total units: queue later ready units in waves. Serialize conflicting ownership—equal files, directory ancestry, and directory/file containment conflict—until the earlier writer finishes. disjoint file ownership in one directory may proceed together. Recompute readiness after each result; list order alone is not a dependency.
+### Independent ready group (for linear plans too)
 
-For every dispatched unit, give the worker its unit ID, assigned steps, exact effective ownership, focused verification, and the brokered-tools-only rule. Workers do not commit, integrate, or submit the main artifact. Their result is a lead the main session checks before final reconciliation.
+Even when the plan is declared as a single linear thread, an **independent ready group** can form: steps for which all dependencies are satisfied, with no `Depends on:` path between any pair AND pairwise disjoint `Files:` lists (no shared template, test file, contract, or fixture). Dispatch two or more ready steps concurrently by default. Estimate sequential duration against the remaining budget; when it **cannot fit**, dispatch independent work **concurrently rather than trimming scope**. Keep shared-contract changes and dependent work in dependency order.
+
+When the plan declares `## Work Units` or `## Parallel Plan`, dispatch all ready independent units within the active worker limit. For step plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. As each result arrives, inspect its diff and focused proof, accept completed outputs, and release dependent work without waiting for unrelated writers. Perform any integration edits only on paths with no active writer. Wait for all writers before final reconciliation of shared tests and interfaces and repository-wide verification. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
+
+### Scope-size escalation
+
+The larger the remaining scope, the stronger the obligation to fan out. When
+newly discovered work swells the scope, re-form the independent ready group
+from the remaining steps and dispatch it concurrently instead of absorbing
+the growth serially in the main session; a large remaining scope executed one
+step at a time is a dispatch failure, not prudence. Keep the dispatch pipeline full
+— as soon as a worker returns, dispatch the next independent ready work
+within the active worker limit rather than waiting for unrelated units.
+When the scope exceeds what one session can hold, split it by ownership
+across more workers instead of trimming required work or stopping early.
+
+#### Dispatch pipeline must stay full
+
+Saturated slots are not an excuse to idle. When every dispatch slot is
+busy and new independent ready work has surfaced:
+
+- Continue implementing the ready references the main session already
+  owns. Owned work, a focused check, and a recorded disposition are
+  always cheaper than a stalled dispatch.
+- Refill every freed slot the moment a worker returns. The dispatch
+  pipeline is "full" only when no independent ready reference is
+  waiting on a slot; an empty pipeline with ready work in it is a
+  pipeline defect, not efficiency.
+- Re-evaluate the dependency graph after each result, not just after
+  each batch. A new independent slice is the next dispatch, never an
+  excuse to keep one worker busy on its own.
+
+#### When fan-out is unavailable or the work is coupled
+
+Inability to fan out is a scheduling constraint, not permission to
+abandon. Two cases turn the parallel-fan-out path into a sequential
+recovery loop without weakening the ready-reference contract:
+
+- **Genuinely coupled work** — shared writer ownership, a contract
+  that must land first, or an integration point that every ready
+  reference depends on — keeps the implementation sequential by
+  necessity. Re-cut the remainder into the smallest verified slices
+  the runtime can finish one at a time, work the critical path, and
+  re-evaluate the dependency graph after every verified increment.
+  Treat the in-flight slice exactly like a worker return: focused
+  proof, recorded disposition, and a recomputed readiness check.
+- **No native sub-agents exposed by the runtime** — Pi's native
+  subagent tooling is unavailable, or the run-time refuses
+  sub-dispatch, or the operator's brokered capability set forbids
+  worker fan-out. The recovery is identical: bounded sequential
+  increments, the smallest verified slices the runtime can finish,
+  the critical path, and a recomputed dependency graph after every
+  increment. Do not weaken any quality gate, do not invent new
+  tools, and do not bypass brokered permissions to obtain
+  parallelism; the in-session path is the canonical recovery.
+
+A sequential recovery that ends with zero verified work delivered is
+the same execution defect as a parallel one that ended the same way;
+see `shared/_no_exemption_for_failures.j2` for the canonical
+external-blocker rule.
+
+### Per-unit subagent brief (when units exist)
+
+For every unit or step group dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has clear allowed directories or exact file ownership and cannot write outside scope.
+
+1. **Unit ID** (or task ID for a step group) and the list of `### [S-n]` steps the implementer owns.
+2. **Edit ownership** — verbatim from a declared unit's `Directories:` and/or `Paths:` fields. For a step group without a unit, assign exact file paths instead; overlapping parent directories do not grant ownership of other files. Anything outside the assigned scope is the main session's responsibility.
+3. **Tools** — Ralph Workflow's **brokered MCP tools only**. Native shell, native write tools, and editor commands are prohibited.
+4. **Prohibitions** — no git commands (the worker never commits), no status markdown files, no writes outside the assigned scope, no coordination of other units, no integration of the whole plan, no submission of artifacts unless explicitly assigned a worker-local development_result via `submit_development_result`.
+5. **Focused verify** — the unit runs the `Verify` command from each assigned step and cites its exit code. The full repository-wide `make verify` runs in the main session after integration.
+6. **Return format** — exact fields the sub-agent must populate on return: `Unit ID`, `steps completed`, `disposition`, `files touched`, `verify command and exit code`, and any leads needing main-session reproduction. The return is a lead the main session spot-checks before relying on it; it is not evidence by itself.
+
+### Reference
+
+When units exist, follow the `dispatching-parallel-agents` skill for the general dispatch pattern; the brief contract above is the Ralph Workflow-specific overlay that skill does not provide.

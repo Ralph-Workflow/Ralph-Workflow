@@ -847,28 +847,19 @@ def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
         del command, opts
         return FakeStubbornPopen(pid=1, final_returncode=-9)
 
-    sink_records: list[str] = []
-    sink_id = logger.add(
-        lambda msg: sink_records.append(str(msg)),
-        level="DEBUG",
-        format="{level}:{message}",
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=stubborn_factory,
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=None,
     )
-    try:
-        pm = ProcessManager(
-            policy=_FAST_POLICY,
-            sync_process_factory=stubborn_factory,
-            async_process_factory=make_async_process_factory(itertools.count(100)),
-            psutil=None,
-        )
-        handle = pm.spawn([sys.executable, "-c", "pass"])
+    handle = pm.spawn([sys.executable, "-c", "pass"])
 
-        handle.terminate(grace_period_s=0.01)
+    handle.terminate(grace_period_s=0.01)
 
-        assert handle.record.status == ProcessStatus.KILLED
-        assert handle.record.returncode == -9
-        assert handle.record.cause == "killed"
-    finally:
-        logger.remove(sink_id)
+    assert handle.record.status == ProcessStatus.KILLED
+    assert handle.record.returncode == -9
+    assert handle.record.cause == "killed"
 
 
 def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:

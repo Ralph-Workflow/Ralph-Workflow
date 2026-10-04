@@ -39,4 +39,7 @@ def diagnostic_payload(diagnostic: Diagnostic) -> dict[str, object]:
     }
 
 
-__all__ = ["diagnostic_payload", "severity_counts"]
+__all__ = [
+    "diagnostic_payload",
+    "severity_counts",
+]

@@ -19,7 +19,9 @@ def test_plan_skill_teaches_current_artifact_flow() -> None:
     skill = get_skill_content("submit-plan-artifact")
 
     assert "ralph_edit_md_artifact" in skill
-    assert "ralph_submit_md_artifact" in skill
+    assert "without schema or content validation" in skill
+    assert "Frontmatter and step blocks are optional" in skill
+    assert "Only binary control characters are rejected" in skill
     assert "ralph_edit_md_plan_step" not in skill
 
 

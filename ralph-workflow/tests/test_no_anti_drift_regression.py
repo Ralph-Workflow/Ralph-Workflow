@@ -70,6 +70,10 @@ def _parse(path: pathlib.Path) -> ast.AST:
 # function body so the per-call cost is the regex match, not the
 # regex compile.
 _DEF_NAME_RE = re.compile(r"(?:async\s+def|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_RETRY_DEF_NAME_RE = re.compile(
+    r"^[ \t]*(?:async[ \t]+def|def)[ \t]+((?=[A-Za-z0-9_]*retry)[A-Za-z_][A-Za-z0-9_]*)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 _DISPLAY_CONTEXT_CONSTRUCTION_RE = re.compile(r"^\s*DisplayContext\s*\(")
 _STATIC_WIRE_FORM_LITERAL_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?:[rRuUbBfF]{0,3})?['\"](mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)['\"]"
@@ -1088,8 +1092,8 @@ class TestNoRetryDecisionReimplementation:
                 continue
             if "test" in rel.parts:
                 continue
-            source = _read(path).lower()
-            if "retry" not in source:
+            source = _read(path)
+            if "retry" not in source.lower():
                 continue
             # Substring pre-filter: an offender MUST be a function
             # definition line whose name contains BOTH ``retry`` AND
@@ -1107,7 +1111,7 @@ class TestNoRetryDecisionReimplementation:
             # the offender names (no leading/trailing word
             # characters on the verb side).
             _has_candidate = False
-            for _fname in _DEF_NAME_RE.findall(source):
+            for _fname in _RETRY_DEF_NAME_RE.findall(source):
                 _lname = _fname.lower()
                 if "retry" in _lname and any(verb in _lname for verb in decision_verbs):
                     _has_candidate = True

@@ -54,13 +54,6 @@ You share the checkout with parallel workers. These are the only paths outside
 
 {{ allowed_directories }}
 
-### Allowed exact paths
-
-These exact files are also within your scope. Do not widen an exact-file
-assignment to its parent directory:
-
-{{ paths|default('(none)') }}
-
 Your prompt payloads, logs, and artifacts belong under
 `.agent/workers/{{ unit_id }}/`. Do not inspect repo-wide status to infer
 success, coordinate other units, integrate the whole plan, or modify another

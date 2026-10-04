@@ -1,24 +1,39 @@
 ## Plan submission
 
-Write one executor-ready Markdown plan. The recommended shape is concise prose
-plus steps and, when work is independent, `## Work Units`. This convention helps
-the executor; it is not a submission format rule. A useful unit names its
-responsibility and optional `Directories:` and/or exact `Paths:`, with
-`Depends on:` only for a real prerequisite. Steps usefully name touched files
-and focused verification.
+Submit one Markdown plan. Stable `### [S-n] Title` steps are recommended for proof tracking.
+IDs are stable and never renumbered. Each step states its purpose and `Type`: `file_change`, `file_create`,
+`file_delete`, `refactor`, `config_change`, `discovery`, or `verify`; use
+`Type: verify` for proof-only work.
 
-The submission boundary checks only that the text is readable, non-empty, at
-least ten words, within the size limit, and recognizably a plan. It does not
-judge headings, IDs, fields, dependency graphs, ownership overlap, or unit
-counts. Keep the actual prose authoritative even when structure is partial.
+Work types should provide `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step should provide `Verify` plus `Expect` or `Location`; a `discovery` step should provide `Verify`, `Evidence`, or `Location`. The submission tools accept plan text without schema or content validation. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Frontmatter and step blocks are optional. Use `noop: true` only when intentionally skipping development.
 
-Submit the complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
+Parallel plans are the default and remain valid planning text.
+Use `## Work Units` for directory ownership or `## Parallel Plan` for directory
+or explicit file ownership (`Paths:`). Sequential execution is a fallback
+only for evidence-backed prerequisites or conflicting writers.
+Use `- [U-N] description` items,
+each with optional `Directories:` or `Paths:` naming responsibility areas and
+`Depends on:` naming prerequisite unit IDs. Nest stable `### [S-n]` steps
+under their owning unit. Observe the effective active policy cap of {{ WORK_UNITS_MAX_CAP|default('8') }}
+units; `max_parallel_workers` limits concurrent workers, not total units.
+Use as many workers as independent work needs, up to active capacity; queue
+additional ready units. Units may share directories or files when they name
+distinct responsibilities. Ownership fields are optional planning context.
+Before dispatch, assign precise edits and coordinate shared-file integration;
+never claim `.`, `.git`, or `.agent`. Declare
+every cross-unit prerequisite on the dependent unit and keep step dependencies
+consistent with that order. Make only consumers depend on
+shared-contract completion; unrelated branches start immediately. When
+directory ownership cannot represent independent work areas, retain the
+parallel units and describe their distinct responsibilities, or use a step
+plan with concurrent ready steps. `## Work Units`
+and `## Parallel Plan` are mutually exclusive; choose one format.
+
+On revision, retain every step ID and valid `Depends on:`/`Satisfies:` reference.
+The submitted text is preserved verbatim. Plan content and formatting do not produce validation failures. Only binary control characters are rejected.
+
+Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 (`artifact_type="plan"`). For a similar revision, use
-{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}. Staging is not submission. You may verify
-with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} if exposed.
-
-A valid artifact receipt—or a validated, promoted fallback receipt—is
-mandatory. After a receipt (or a promoted fallback receipt) you MUST call
-{{DECLARE_COMPLETE_TOOL_REFERENCE}} as the final explicit action. The
-receipt must be paired with the `declare_complete` call to close the phase;
-stopping after submission without the terminal call is incomplete.
+{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}; it resubmits the edited text. Staging is not
+submission. {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} checks text readability if exposed. After a valid receipt—or a validated promoted fallback receipt—call
+{{DECLARE_COMPLETE_TOOL_REFERENCE}} as the final explicit action.

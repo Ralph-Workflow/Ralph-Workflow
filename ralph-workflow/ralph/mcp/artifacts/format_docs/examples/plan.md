@@ -4,28 +4,32 @@ type: plan
 
 ## Work Units
 
-- [U-1] Shared request model
-  Paths: ralph/api/request_model.py
+- [U-1] Race regression test
+  Characterize the refresh race before changing the lock implementation.
 
-### [S-1] Define the shared request result
-Update the result contract that both independent consumers read.
+  Directories: tests/auth
 
-- [U-2] Command implementation
-  Paths: ralph/commands/request.py
+### [S-1] Reproduce the refresh race
+Create a deterministic regression for two refreshes using the same token key.
+
+Type: file_create
+Files:
+- create tests/auth/test_refresh_race.py
+Verify: pytest tests/auth/test_refresh_race.py -q
+Expect: pytest reports one failing same-key refresh test with exit code 1
+
+- [U-2] Per-token-key lock body
+  Replace the global refresh lock with a per-token-key lock.
+
+  Directories: src/auth
   Depends on: U-1
 
-### [S-2] Adopt the shared result in the command
-Implement command behavior and run its focused command test.
+### [S-2] Serialize refreshes per token key
+Guard the check-then-refresh critical section with a bounded per-key lock lifecycle.
 
-- [U-3] Operator documentation
-  Directories: docs/requests
-  Depends on: U-1
-
-### [S-3] Document the shared result
-Explain the operator-visible result and build documentation.
-
-- [U-4] Integration verification
-  Depends on: U-2, U-3
-
-### [S-4] Verify consumers after fan-in
-Run focused command and documentation checks after both consumers complete.
+Type: file_change
+Files:
+- modify src/auth/refresh.py
+Depends on: S-1
+Verify: pytest tests/auth/test_refresh_race.py -q
+Expect: the race regression passes with exit code 0

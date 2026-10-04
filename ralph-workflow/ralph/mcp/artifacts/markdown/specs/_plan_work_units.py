@@ -64,10 +64,7 @@ def attach_owned_step_ids(
         if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is not None
     ]
     for unit_id, entry in entry_by_id.items():
-        owned = sorted(
-            {step_id for step_id in ordered_step_ids if owner_by_step.get(step_id) == unit_id},
-            key=ordered_step_ids.index,
-        )
+        owned = [step_id for step_id in ordered_step_ids if owner_by_step.get(step_id) == unit_id]
         if owned:
             entry["step_ids"] = owned
     _attach_cross_unit_dependencies(entries, steps)

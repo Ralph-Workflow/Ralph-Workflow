@@ -133,14 +133,15 @@ status decides whether the run ends.
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
 - `## Plan Items Proven` — optional section, but proof policy requires one
-  item per usable extracted plan reference. Use canonical step IDs when usable
-  steps exist; for an explicit Work Units plan use its usable unit IDs. When
-  extraction yields no usable IDs, provide exactly one item with ID `plan` to
-  prove the accepted prose plan. The item text is the proof. Add an indented
-  `Disposition:` field with one of `completed`, `adapted`, `not_applicable`,
-  or `blocked`. Add an indented `Rationale:` for `adapted`, `not_applicable`,
-  and `blocked`. A completed artifact cannot contain `blocked`; necessary
-  blocked work requires `status: partial`.
+  item per plan step. The item ID is the plan-step stable ID itself
+  (`S-1`, `S-2`, … exactly as in the plan's `## Steps` section; for
+  work-unit plans use your assigned `[unit-ID]` bracket ID exactly as it
+  appears in the plan's `## Work Units` items). The item text is
+  the proof. Never write "Step N: title" — reference by ID only.
+  Add an indented `Disposition:` field with one of `completed`, `adapted`,
+  `not_applicable`, or `blocked`. Add an indented `Rationale:` for
+  `adapted`, `not_applicable`, and `blocked`. A completed artifact cannot
+  contain `blocked`; necessary blocked work requires `status: partial`.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## What Came Up Short` finding, using that
   finding's stable ID as the item ID and proof of closure as the text.

@@ -1,13 +1,25 @@
 # planning_analysis_decision artifact format
 
-Report whether the plan is ready to execute. Submit markdown with
-`ralph_submit_md_artifact` (`artifact_type: planning_analysis_decision`).
+Report whether each fixed request and plan criterion is executor-ready. Submit
+markdown with `ralph_submit_md_artifact`
+(`artifact_type: planning_analysis_decision`).
 
-The analyzer assesses substance, not plan shape. `status` is `completed`,
-`request_changes`, or `failed`. Its five criteria are coverage, truthfulness,
-actionability, parallel decomposition, and execution conflicts. For avoidable serialization, return `request_changes` and put a
-concrete proposed unit split in the finding's Observation; do not add a
-`## How To Fix` section.
+## Completed example
+
+```markdown
+---
+type: planning_analysis_decision
+status: completed
+---
+
+## Summary
+
+- [SUM-1] No counterexample was found for the fixed criteria.
+
+## Criterion Verdicts
+
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Verdict: met. Evidence: `pytest tests/test_plan.py -q` reports 12 passed. Location: S-2 Verify field.
+```
 
 ## Request-changes example
 
@@ -19,26 +31,34 @@ status: request_changes
 
 ## Summary
 
-- [SUM-1] Parallel decomposition is not met.
+- [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
 
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test work can proceed concurrently. Observation: the plan serializes them without coupling; split into a shared-contract unit, documentation unit, test unit, then integration. Verdict: not met. Evidence: repository paths have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Observation: the command does not resolve. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field. Cost: the executor cannot run the promised proof.
 
 ## Criterion Verdicts
 
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test work can proceed concurrently. Observation: the plan serializes them without coupling; split into a shared-contract unit, documentation unit, test unit, then integration. Verdict: not met. Evidence: repository paths have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Step: [S-2] Criterion: S-2 provides a runnable verification command. Expected observation: the command resolves in this repository. Observation: the command does not resolve. Verdict: not met. Evidence: `pytest tests/missing.py -q` reports a missing path. Location: S-2 Verify field. Cost: the executor cannot run the promised proof.
 ```
 
 ## Sections
 
 - `## Summary` is required and has exactly one item.
-- `## Criterion Verdicts` is required and non-empty. Each item uses a stable,
-  unique `PA-###` ID and records criterion-level evidence. A `not evaluable`
-  criterion requires `failed` rather than completion.
-- `## What Came Up Short` is required for `request_changes` and `failed`;
-  it mirrors localized non-met verdicts and contains the proposed unit split
-  when parallel decomposition is not met.
-- `## How To Fix` is not permitted.
+- `## Criterion Verdicts` is required and non-empty for every decision. Each
+  item has a unique `PA-###` ID, `Step: [S-n]` or `Plan-level:`, and
+  `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`,
+  non-empty `Evidence:`, non-empty `Location:`, and `Cost:` fields. Every
+  non-met verdict has a same-ID mirror in `## What Came Up Short`.
+- `## What Came Up Short` is required and non-empty for `request_changes` and
+  `failed`; it mirrors localized non-met criterion verdicts and is omitted for
+  `completed`.
+- `## How To Fix` is not permitted. A later phase uses the stable finding ID,
+  not a verifier-authored remedy, as its closure reference.
 
-See `.agent/artifact-formats/examples/planning_analysis_decision.md`.
+`status` is `completed`, `request_changes`, or `failed`. `met` means no
+counterexample was found. `not evaluable` requires `failed` rather than
+completion.
+
+See `.agent/artifact-formats/examples/planning_analysis_decision.md` for the
+validator-backed complete example.

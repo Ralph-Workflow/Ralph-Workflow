@@ -71,6 +71,9 @@ def test_project_skill_install_failure_emits_visible_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A project-scope skill install error surfaces as a warning."""
+    import git
+
+    git.Repo.init(tmp_path)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -79,9 +82,11 @@ def test_project_skill_install_failure_emits_visible_warning(
         "_project_skills_need_install",
         lambda _root: True,
     )
+    # wt-012: the producer-level wrapper is the one actually called by
+    # the run-start setup; patching it here reproduces the install-side
+    # raise and exercises the warning path.
     monkeypatch.setattr(
-        run_module,
-        "install_project_baseline_skills",
+        "ralph.skills._installer.install_project_baseline_skills_with_diff",
         MagicMock(side_effect=RuntimeError("project install broken")),
     )
 
@@ -92,7 +97,7 @@ def test_project_skill_install_failure_emits_visible_warning(
         logger.remove(sink_id)
 
     warning_text = "\n".join(records)
-    assert "Project-scope skill install failed" in warning_text, (
+    assert "Skill auto-commit failed" in warning_text, (
         f"project install failure MUST surface as a visible warning; got: {warning_text!r}"
     )
 

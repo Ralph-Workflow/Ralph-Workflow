@@ -13,7 +13,6 @@ from ralph.mcp.artifacts.markdown._document import ParsedDocument
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document, stray_line_diagnostic
 from ralph.mcp.artifacts.markdown._references import validate_unique_ids
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
-from ralph.mcp.artifacts.plan._size_limits import check_plan_size
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
@@ -26,6 +25,7 @@ type ContentNormalizer = Callable[[Content], Content]
 type DocumentValidator = Callable[[ParsedDocument], list[Diagnostic]]
 type TextValidator = Callable[[str], list[Diagnostic]]
 type MinimalVariantParser = Callable[[ParsedDocument], tuple[Content | None, list[Diagnostic]]]
+type SeverityPolicy = Callable[[list[Diagnostic]], None]
 
 
 _BODY_GRAMMAR_RULES = frozenset({"MD001", "MD002", "MD003", "MD004"})
@@ -60,23 +60,22 @@ class MdArtifactSpec:
     allow_nested_headings: bool = False
     structured_body: DocumentPredicate | None = None
     validate_text: TextValidator | None = None
+    severity_policy: SeverityPolicy | None = None
+    parse_text: Callable[[str], tuple[Content, list[Diagnostic]]] | None = None
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
     """Parse and validate markdown through one shared, pure artifact gate."""
-    if spec.artifact_type == "plan":
-        return _parse_plan_sanity_only(text, spec)
+    if spec.parse_text is not None:
+        return spec.parse_text(text)
+    return _parse_structured_artifact(text, spec)
+
+
+def _parse_structured_artifact(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
     document, diagnostics = parse_markdown_document(
         text,
         allow_nested_headings=spec.allow_nested_headings,
     )
-    return _parse_non_plan(text, spec, document, diagnostics)
-
-
-def _parse_non_plan(
-    text: str, spec: MdArtifactSpec, document: ParsedDocument, diagnostics: list[Diagnostic]
-) -> tuple[Content, list[Diagnostic]]:
-    """Run the shared closed grammar for every non-plan artifact."""
     if spec.validate_text is not None:
         # Spec-level text validators run after the parser so the document
         # state is available, but before structure validation so a
@@ -113,6 +112,14 @@ def _parse_non_plan(
         and structured_body
     ):
         diagnostics.extend(spec.validate_document(document))
+    if spec.severity_policy is not None:
+        # The plan-scoped policy demotes content-shape findings (PLAN021,
+        # PLAN022, REF001-004, the pydantic branch of SPEC010, ...) from
+        # error to warning. Applying it after every diagnostic has been
+        # gathered (including the pydantic-side SPEC010 raised below) keeps
+        # the advisory-wearing-an-error-label failure mode the brief is
+        # designed to prevent closed off in this code path.
+        spec.severity_policy(diagnostics)
     if not _has_errors(diagnostics):
         try:
             raw_content = (
@@ -121,21 +128,55 @@ def _parse_non_plan(
             return spec.normalize_content(raw_content), diagnostics
         except MarkdownArtifactError as exc:
             diagnostics.extend(exc.diagnostics)
+            if spec.severity_policy is not None:
+                spec.severity_policy(diagnostics)
+            # Best-effort: if the markdown mapper's diagnostics were all
+            # demoted to warning, persist the raw mapped content so a
+            # warnings-only plan still reaches downstream consumers.
+            if not _has_errors(diagnostics) and minimal_content is None:
+                return _best_effort_content(spec, document, diagnostics)
+            return {}, diagnostics
         except (TypeError, ValueError) as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc), spec.artifact_type))
+            if spec.severity_policy is not None:
+                spec.severity_policy(diagnostics)
+            # Best-effort: if the pydantic-side SPEC010 was demoted to
+            # warning, persist the raw mapped content so consumers still
+            # see what the markdown side produced.
+            if not _has_errors(diagnostics) and minimal_content is None:
+                return _best_effort_content(spec, document, diagnostics)
+            return {}, diagnostics
     return {}, diagnostics
 
 
-def _parse_plan_sanity_only(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
-    """Check raw UTF-8 text before spending work on optional extraction."""
-    diagnostics = spec.validate_text(text) if spec.validate_text is not None else []
-    if _has_errors(diagnostics):
+def _best_effort_content(
+    spec: MdArtifactSpec,
+    document: ParsedDocument,
+    diagnostics: list[Diagnostic],
+) -> tuple[Content, list[Diagnostic]]:
+    """Return the raw mapped content when only warnings remain.
+
+    Used when the canonical normalizer raised a finding the plan-scoped
+    policy has demoted to warning: the document has no blocking errors
+    but its canonical content fails pydantic or section-shape. Consumers
+    (development_result proof readers, work-unit dispatch) are defensive
+    about partial content; persisting the raw mapped dict keeps the
+    warnings-only document visible to them instead of collapsing it to
+    ``{}`` and forcing the agent to lose the planning substance to a
+    shape complaint.
+    """
+    try:
+        raw_content = spec.to_content(document)
+    except MarkdownArtifactError as exc:
+        for diagnostic in exc.diagnostics:
+            if diagnostic not in diagnostics:
+                diagnostics.append(diagnostic)
+        if spec.severity_policy is not None:
+            spec.severity_policy(diagnostics)
+        if not _has_errors(diagnostics):
+            return {}, diagnostics
         return {}, diagnostics
-    size_error = check_plan_size({"_raw_bytes": len(text.encode("utf-8"))})
-    if size_error is not None:
-        return {}, [Diagnostic(1, None, "SPEC010", str(size_error))]
-    document, _ = parse_markdown_document(text, allow_nested_headings=True)
-    return spec.normalize_content(spec.to_content(document)), []
+    return raw_content, diagnostics
 
 
 def _validate_structure(

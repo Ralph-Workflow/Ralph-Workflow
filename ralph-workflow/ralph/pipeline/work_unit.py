@@ -12,6 +12,7 @@ from ralph.pydantic_compat import RalphBaseModel
 _UNIT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 _STEP_ID_RE = re.compile(r"^S-[1-9][0-9]*$")
 _UNIT_ID_MAX_LEN = 64
+MAX_DESCRIPTION_CHARS = 4096
 
 
 def _validate_relative_subpath(path: str) -> str:
@@ -33,9 +34,8 @@ class WorkUnit(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
     unit_id: str = Field(..., min_length=1)
-    description: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
     allowed_directories: list[str] = Field(default_factory=list)
-    paths: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     step_ids: list[str] = Field(default_factory=list)
 
@@ -57,9 +57,9 @@ class WorkUnit(RalphBaseModel):
             )
         raise ValueError(f"unit_id must match ^[a-zA-Z0-9_-]{{1,64}}$ (got: {v!r})")
 
-    @field_validator("allowed_directories", "paths")
+    @field_validator("allowed_directories")
     @classmethod
-    def _validate_relative_paths(cls, v: list[str]) -> list[str]:
+    def _validate_allowed_directories(cls, v: list[str]) -> list[str]:
         return [_validate_relative_subpath(path) for path in v]
 
     @field_validator("step_ids")

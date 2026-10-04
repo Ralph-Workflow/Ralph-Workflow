@@ -200,8 +200,6 @@ class WorkspaceScope:
         repo_root: Path,
         allowed_directories: tuple[str, ...],
         worker_namespace: Path,
-        *,
-        paths: tuple[str, ...] = (),
     ) -> WorkspaceScope:
         """Build a worker-scoped view of the shared checkout.
 
@@ -219,8 +217,7 @@ class WorkspaceScope:
 
         Args:
             repo_root: Shared repository root (same for all parallel workers).
-            allowed_directories: Relative directories the worker may edit.
-            paths: Exact relative files; never widened to their parent directory.
+            allowed_directories: Relative subpaths the worker may edit.
             worker_namespace: Per-worker scratch directory (always allowed).
 
         Returns:
@@ -231,14 +228,9 @@ class WorkspaceScope:
         canonical_ns = _canonicalize(worker_namespace)
 
         allowed_roots: list[Path] = []
-        for ad in (*allowed_directories, *paths):
-            if not ad or Path(ad) == Path():
-                raise ValueError("allowed_directory must be a specific non-empty path")
-            relative = Path(ad)
-            if relative.is_absolute() or any(
-                part in {".agent", ".git", ".worktrees"} for part in relative.parts
-            ):
-                raise ValueError(f"allowed_directory {ad!r} includes a protected path")
+        for ad in allowed_directories:
+            if not ad:
+                raise ValueError("allowed_directory must be non-empty")
             p = canonical_root / ad
             resolved = p.resolve()
             try:
