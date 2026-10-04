@@ -968,13 +968,14 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
 
 
 def _parallel_plan_content(
-    document: ParsedDocument, diagnostics: list[Diagnostic]
+    document: ParsedDocument, steps: list[Content], diagnostics: list[Diagnostic]
 ) -> list[Content] | None:
     sections = document.sections_named("Parallel Plan")
     if not sections:
         return None
     items = _fan_out_unit_items(document, "Parallel Plan", diagnostics)
     entries: list[Content] = []
+    ownership: list[Content] = []
     for item in items:
         fields = _item_fields(
             item,
@@ -982,17 +983,30 @@ def _parallel_plan_content(
             "Parallel Plan",
             diagnostics,
         )
+        directories = [entry.text for entry in fields.lists.get("directories", [])]
+        paths = [entry.text for entry in fields.lists.get("paths", [])]
+        dependencies = [entry.text for entry in fields.lists.get("depends on", [])]
+        ownership.append(
+            {
+                "unit_id": item.identifier,
+                "allowed_directories": directories + paths,
+                "dependencies": dependencies,
+            }
+        )
         entries.append(
             {
                 "id": item.identifier,
                 "description": item.text,
                 "edit_area": {
-                    "paths": [entry.text for entry in fields.lists.get("paths", [])],
-                    "directories": [entry.text for entry in fields.lists.get("directories", [])],
+                    "paths": paths,
+                    "directories": directories,
                 },
-                "depends_on": [entry.text for entry in fields.lists.get("depends on", [])],
+                "depends_on": dependencies,
             }
         )
+    attach_owned_step_ids(document, ownership, steps, section_name="Parallel Plan")
+    for entry, unit in zip(entries, ownership, strict=True):
+        entry["step_ids"] = unit.get("step_ids", [])
     _validate_unit_graph(
         entries,
         id_key="id",
@@ -1177,7 +1191,7 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     design = design_content(document, criteria, diagnostics)
     if design is not None:
         content["design"] = design
-    parallel_plan = _parallel_plan_content(document, diagnostics)
+    parallel_plan = _parallel_plan_content(document, steps, diagnostics)
     if parallel_plan is not None:
         content["parallel_plan"] = parallel_plan
     work_units = _work_units_content(document, steps, diagnostics)

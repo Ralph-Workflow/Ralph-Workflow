@@ -14,14 +14,10 @@ from __future__ import annotations
 
 import re
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
-from ralph.mcp.artifacts.plan._step_contract import (
-    StepType,
-    requires_targets,
-    requires_verify_handle,
-)
+from ralph.mcp.artifacts.plan._step_contract import StepType
 from ralph.mcp.artifacts.plan._step_target import StepTarget
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -182,23 +178,6 @@ class PlanStep(RalphBaseModel):
             msg = "expected_outcome must not be empty when provided"
             raise ValueError(msg)
         return stripped
-
-    @model_validator(mode="after")
-    def _validate_step_type_contract(self) -> PlanStep:
-        if requires_targets(self.step_type) and not self.targets:
-            msg = "file_change step must declare at least one target"
-            raise ValueError(msg)
-        if (
-            requires_verify_handle(self.step_type)
-            and self.verify_command is None
-            and self.location is None
-        ):
-            msg = "verify step must declare verify_command or location"
-            raise ValueError(msg)
-        if self.verify_command is not None and self.expected_outcome is None:
-            msg = "verify_command must declare expected_outcome"
-            raise ValueError(msg)
-        return self
 
 
 __all__ = ["PlanStep"]

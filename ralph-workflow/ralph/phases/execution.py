@@ -261,7 +261,7 @@ def _validate_plan_output(
         if parsed is not None:
             successor = _transitions_on_success(phase_def)
             validate_work_units_against_policy(
-                parsed, ctx.pipeline_policy, phase=successor or phase
+                parsed, ctx.pipeline_policy, phase=successor or phase, planning_intent=True
             )
     except (
         PlanArtifactValidationError,
@@ -297,7 +297,11 @@ def _validate_plan_input(
         detail = f"Missing planning artifact at {PLAN_ARTIFACT_PATH}"
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
-            ctx.workspace.write(retry_hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy), hint)
+            ctx.workspace.write(
+                retry_hint_path_override
+                or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy),
+                hint,
+            )
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
@@ -307,7 +311,14 @@ def _validate_plan_input(
         artifact = normalize_plan_artifact_content(artifact_content)
         parsed = parse_work_units_from_artifact(artifact)
         if parsed is not None:
-            validate_work_units_against_policy(parsed, ctx.pipeline_policy, phase=phase)
+            parallelization = ctx.pipeline_policy.phases[phase].parallelization
+            validate_work_units_against_policy(
+                parsed,
+                ctx.pipeline_policy,
+                phase=phase,
+                planning_intent=parallelization is not None
+                and parallelization.dispatch_mode == "agent_subagents",
+            )
     except (
         PlanArtifactValidationError,
         PhaseArtifactError,
@@ -569,7 +580,10 @@ def _plan_declares_explicit_work_units(ctx: PhaseContext) -> bool:
         markdown = ctx.workspace.read(PLAN_ARTIFACT_PATH)
     except Exception:
         return False
-    return any(line.strip().casefold() == "## work units" for line in markdown.splitlines())
+    return any(
+        line.strip().casefold() in {"## work units", "## parallel plan"}
+        for line in markdown.splitlines()
+    )
 
 
 def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:

@@ -228,7 +228,11 @@ def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     """
     if artifact.get("noop") is True:
         return True
-    return artifact.get("steps") == [] and artifact.get("work_units") == []
+    return (
+        artifact.get("steps") == []
+        and artifact.get("work_units") == []
+        and not artifact.get("parallel_plan")
+    )
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:

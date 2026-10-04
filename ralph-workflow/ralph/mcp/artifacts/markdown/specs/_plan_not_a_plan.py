@@ -25,6 +25,7 @@ zero-content plan.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
@@ -454,12 +455,34 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
 
 
 def apply_plan_severity_policy(diagnostics: list[Diagnostic]) -> None:
-    """Keep plan-contract diagnostics blocking.
-
-    A plan is the executor's instruction set. Invalid structure, references,
-    and completion evidence must be repaired before the pipeline can proceed.
-    """
-    del diagnostics
+    """Preserve imperfect plans with advice for analysis and execution."""
+    advisory_rules = {
+        "MD001",
+        "MD002",
+        "MD003",
+        "MD004",
+        "SPEC004",
+        "SPEC005",
+        "SPEC006",
+        "SPEC007",
+        "SPEC008",
+        "SPEC011",
+        "SPEC012",
+        "PLAN010",
+        "PLAN011",
+        "PLAN020",
+    }
+    for index, diagnostic in enumerate(diagnostics):
+        canonical_shape = diagnostic.rule_id == "SPEC010" and not (
+            "plan size violation" in diagnostic.message
+            or "shell interpreter" in diagnostic.message
+            or "cycle" in diagnostic.message
+            or "unknown" in diagnostic.message
+            or "duplicate" in diagnostic.message
+            or "both parallel_plan and work_units" in diagnostic.message
+        )
+        if diagnostic.rule_id in advisory_rules or canonical_shape:
+            diagnostics[index] = replace(diagnostic, severity="warning")
 
 
 __all__ = [

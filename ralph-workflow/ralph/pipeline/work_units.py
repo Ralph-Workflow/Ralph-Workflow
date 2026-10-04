@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, TypeAdapter, model_validator
 
+from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 from ralph.pipeline.work_unit import WorkUnit
 from ralph.pipeline.work_units_validation_error import WorkUnitsValidationError
 from ralph.pydantic_compat import RalphBaseModel
@@ -72,7 +73,7 @@ class WorkUnitsPlan(RalphBaseModel):
         return self
 
 
-def validate_for_same_workspace(plan: WorkUnitsPlan) -> None:
+def validate_for_same_workspace(plan: WorkUnitsPlan, *, planning_intent: bool = False) -> None:
     """Validate that a plan is safe for same-workspace parallel execution.
 
     Enforces rules that apply specifically when workers share the same checkout:
@@ -85,7 +86,7 @@ def validate_for_same_workspace(plan: WorkUnitsPlan) -> None:
             units/paths and suggesting a fix.
     """
     for unit in plan.work_units:
-        if not unit.allowed_directories:
+        if not unit.allowed_directories and not planning_intent:
             raise WorkUnitsValidationError(
                 f"Work unit '{unit.unit_id}' does not declare any allowed_directories. "
                 "Each unit must declare the subdirectories it is permitted to edit. "
@@ -94,7 +95,8 @@ def validate_for_same_workspace(plan: WorkUnitsPlan) -> None:
         for d in unit.allowed_directories:
             _check_reserved(unit.unit_id, d)
 
-    _check_no_overlap(plan.work_units)
+    if not planning_intent:
+        _check_no_overlap(plan.work_units)
 
 
 def _check_reserved(unit_id: str, directory: str) -> None:
@@ -181,6 +183,18 @@ def parse_work_units_from_artifact(artifact: Mapping[str, object]) -> WorkUnitsP
     Returns None when the artifact does not declare work_units.
     """
     raw = artifact.get("work_units")
+    if not raw and artifact.get("parallel_plan"):
+        items = TypeAdapter(list[ParallelPlanItem]).validate_python(artifact["parallel_plan"])
+        raw = [
+            WorkUnit(
+                unit_id=item.id,
+                description=item.description,
+                allowed_directories=item.edit_area.directories + item.edit_area.paths,
+                dependencies=item.depends_on,
+                step_ids=item.step_ids,
+            )
+            for item in items
+        ]
     if raw is None:
         return None
 

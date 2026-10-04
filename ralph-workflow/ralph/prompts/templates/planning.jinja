@@ -47,7 +47,7 @@ thinking section above. Decide explicitly:
 The full Work Units syntax and validator behavior live in
 `.agent/artifact-formats/plan.md` and
 `ralph/policy/validation/_api.py:validate_work_units_against_policy`. A plan
-that declares work units must also fit within the development phase's
-`max_parallel_workers` cap.
+that declares work units must fit `max_work_units`; `max_parallel_workers`
+limits concurrent execution, with additional units queued.
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}

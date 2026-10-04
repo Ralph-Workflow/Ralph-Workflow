@@ -5,19 +5,28 @@ IDs are stable and never renumbered. Each step states its purpose and `Type`: `f
 `file_delete`, `refactor`, `config_change`, `discovery`, or `verify`; use
 `Type: verify` for proof-only work.
 
-Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
+Work types should provide `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step should provide `Verify` plus `Expect` or `Location`; a `discovery` step should provide `Verify`, `Evidence`, or `Location`. Missing details produce advisory diagnostics and preserve the plan for refinement. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`. The only step-less plan is `noop: true`.
 
-Prefer `## Work Units` for parallel work: use `- [U-N] description` items,
-each with `Directories:` naming permitted subdirectories and optional
+Parallel plans are the default and are validated as first-class execution plans.
+Use `## Work Units` for directory ownership or `## Parallel Plan` for directory
+or explicit file ownership (`Paths:`). Sequential execution is a fallback
+only for evidence-backed prerequisites or conflicting writers.
+Use `- [U-N] description` items,
+each with optional `Directories:` or `Paths:` naming responsibility areas and
 `Depends on:` naming prerequisite unit IDs. Nest stable `### [S-n]` steps
 under their owning unit. Observe the effective active policy cap of {{ WORK_UNITS_MAX_CAP|default('8') }}
-units. Keep directories disjoint, including
-ancestor/descendant paths; never claim `.`, `.git`, or `.agent`. Declare
+units; `max_parallel_workers` limits concurrent workers, not total units.
+Use as many workers as independent work needs, up to active capacity; queue
+additional ready units. Units may share directories or files when they name
+distinct responsibilities. Ownership fields are optional planning context.
+Before dispatch, assign precise edits and coordinate shared-file integration;
+never claim `.`, `.git`, or `.agent`. Declare
 every cross-unit prerequisite on the dependent unit and keep step dependencies
 consistent with that order; reject cycles. Make only consumers depend on
 shared-contract completion; unrelated branches start immediately. When
-directory ownership cannot represent independent file groups, use a step
-plan with concurrent ready steps and disjoint writers. `## Work Units`
+directory ownership cannot represent independent work areas, retain the
+parallel units and describe their distinct responsibilities, or use a step
+plan with concurrent ready steps. `## Work Units`
 and `## Parallel Plan` are mutually exclusive; choose one format.
 
 On revision, retain every step ID and valid `Depends on:`/`Satisfies:` reference.

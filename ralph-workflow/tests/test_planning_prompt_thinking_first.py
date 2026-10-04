@@ -74,7 +74,6 @@ def test_planning_prompt_submission_guidance_points_at_partition() -> None:
     assert "Work Units" in source
 
 
-
 def test_submission_partial_names_the_mandatory_contract() -> None:
     source = _source("shared/_planning_submission_mechanics.j2")
 
@@ -87,7 +86,7 @@ def test_submission_partial_names_the_mandatory_contract() -> None:
 def test_submission_partial_renders_policy_derived_unit_cap(tmp_path: Path) -> None:
     """S-8: the planning prompt states the policy-derived ``## Work Units`` cap.
 
-    The cap is read from the development phase's ``max_parallel_workers``
+    The cap is read from the development phase's ``max_work_units``
     (the per-workspace worker ceiling) rather than hard-coded; the
     template receives it as ``WORK_UNITS_MAX_CAP`` and renders it as
     part of the submission mechanics so the planner plans around the
@@ -96,9 +95,7 @@ def test_submission_partial_renders_policy_derived_unit_cap(tmp_path: Path) -> N
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Author a parallel plan with Work Units")
     policy = load_policy(tmp_path / ".agent")
-    # Bundled default caps development at 8 workers; the planning prompt
-    # must surface exactly that number rather than a hard-coded literal.
-    cap = policy.pipeline.phases["development"].parallelization.max_parallel_workers
+    cap = policy.pipeline.phases["development"].parallelization.max_work_units
 
     path = materialize_prompt_for_phase(
         PromptPhaseContext(
@@ -115,9 +112,7 @@ def test_submission_partial_renders_policy_derived_unit_cap(tmp_path: Path) -> N
     rendered = workspace.read(path)
 
     assert f"cap of {cap}" in rendered
-    # The cap is not hard-coded: a single "cap of 8" appears; a different
-    # cap would produce "cap of <N>" with the right value.
-    assert "cap of 8" in rendered
+    assert "limits concurrent workers, not total units" in rendered
 
 
 def test_planning_analysis_renders_configured_unit_cap(tmp_path: Path) -> None:
@@ -127,14 +122,18 @@ def test_planning_analysis_renders_configured_unit_cap(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     development = policy.pipeline.phases["development"]
     assert development.parallelization is not None
-    parallelization = development.parallelization.model_copy(update={"max_parallel_workers": 2})
+    parallelization = development.parallelization.model_copy(
+        update={"max_parallel_workers": 2, "max_work_units": 13}
+    )
     phases = dict(policy.pipeline.phases)
     phases["development"] = development.model_copy(update={"parallelization": parallelization})
     pipeline = policy.pipeline.model_copy(update={"phases": phases})
 
     path = materialize_prompt_for_phase(
         PromptPhaseContext(
-            phase="planning_analysis", workspace=workspace, pipeline_policy=pipeline,
+            phase="planning_analysis",
+            workspace=workspace,
+            pipeline_policy=pipeline,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS),
             workspace_root=tmp_path,
         ),
@@ -142,7 +141,7 @@ def test_planning_analysis_renders_configured_unit_cap(tmp_path: Path) -> None:
     )
 
     assert "cap" in workspace.read(path)
-    assert "of 2" in workspace.read(path)
+    assert "of 13" in workspace.read(path)
     assert "of 8" not in workspace.read(path)
 
 

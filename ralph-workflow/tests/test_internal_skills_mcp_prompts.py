@@ -85,7 +85,8 @@ def test_planning_skills_teach_the_mandatory_contract() -> None:
 def test_plan_skill_teaches_mandatory_steps_and_submission() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "mandatory executor-ready plan" in text
+    assert "parallel plan by default" in text
+    assert "advisory diagnostics" in text
     for phase in ("Orient", "Characterize", "Partition", "Change", "Verify"):
         assert phase in text
     assert "ralph_edit_md_artifact" in text

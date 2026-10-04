@@ -3260,7 +3260,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         with pytest.raises(PolicyValidationError, match="parallelization"):
             validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
-    def test_multi_work_units_respects_max_parallel_workers(self) -> None:
+    def test_multi_work_units_can_queue_with_one_parallel_worker(self) -> None:
         pipeline = self._minimal_pipeline(
             parallelization=PhaseParallelization(max_parallel_workers=1)
         )
@@ -3274,8 +3274,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
-            validate_work_units_against_policy(work_units, pipeline, phase="planning")
+        validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
     def test_work_units_count_cap_exceeded(self) -> None:
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
@@ -3505,8 +3504,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         with pytest.raises(PolicyValidationError, match="max_work_units"):
             validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
-    def test_max_parallel_workers_cap_error_names_max_parallel_workers(self) -> None:
-        """S-9: when ``max_parallel_workers`` is the violated cap, the error must name it."""
+    def test_work_units_can_exceed_concurrent_worker_capacity(self) -> None:
         pipeline = self._minimal_pipeline(
             parallelization=PhaseParallelization(
                 max_parallel_workers=2,
@@ -3527,8 +3525,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
-            validate_work_units_against_policy(work_units, pipeline, phase="planning")
+        validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
 
 # === consolidated from invocation_gate success-path validation (DA-006) ===

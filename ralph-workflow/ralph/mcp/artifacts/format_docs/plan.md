@@ -1,15 +1,15 @@
 # plan artifact format
 
-A plan is the executor's instruction set. Every active plan uses stable `### [S-n] Title` steps. The only step-less form is exactly `type: plan` with `noop: true`.
+A plan is the executor's instruction set. Parallel plans are the default; sequential execution is a fallback for real prerequisites or conflicting writers. Every active plan uses stable `### [S-n] Title` steps. The only step-less form is exactly `type: plan` with `noop: true`.
 
 Each step has a `Type` from `file_change`, `file_create`, `file_delete`, `refactor`, `config_change`, `discovery`, or `verify`.
 
-- Work steps require `Files`, a concrete `Verify`, and an observable `Expect`.
-- `verify` requires `Verify` plus `Expect` or `Location`.
-- `discovery` requires `Verify`, `Location`, or `Evidence`.
+- Work steps should provide `Files`, a concrete `Verify`, and an observable `Expect`.
+- `verify` should provide `Verify` plus `Expect` or `Location`.
+- `discovery` should provide `Verify`, `Location`, or `Evidence`.
 - Use `Depends on: S-n` only where ordering exists. `Satisfies`, `Rationale`, and `Evidence` add useful execution context.
 
-Missing or inconsistent required structure blocks submission with a line- and step-anchored repair diagnostic. `schema_version` and `## Validation Overrides` are unsupported; repair the plan instead of bypassing validation.
+Missing step types, targets, or verification details produce advisory diagnostics and preserve the submitted plan for analysis and refinement. An imperfect parallel plan is still a plan. Stable IDs and resolvable, acyclic dependencies remain required for dispatch. Reserved or overlapping ownership and unreadable execution policy block unsafe dispatch. `schema_version` and `## Validation Overrides` are unsupported.
 
 ## Example
 
@@ -20,7 +20,10 @@ See the complete validator-backed example at `.agent/artifact-formats/examples/p
 type: plan
 ---
 
-## Work
+## Work Units
+
+- [U-1] Retry implementation
+  Directories: ralph
 
 ### [S-1] Characterize current retry behavior
 Inspect the current default and preserve it in a focused regression.
@@ -28,27 +31,28 @@ Inspect the current default and preserve it in a focused regression.
 Type: discovery
 Location: tests/test_retry.py
 
-### [S-2] Change and prove the default
-Update retry handling and run the focused regression.
+- [U-2] Independent command documentation
+  Directories: docs
+
+### [S-2] Document existing retry commands
+Document the current retry command while implementation is characterized.
 
 Type: file_change
 Files:
-- modify ralph/retry.py
-- modify tests/test_retry.py
-Depends on: S-1
-Verify: pytest tests/test_retry.py -q
-Expect: the focused retry tests pass with exit code 0
+- modify docs/retry.md
+Verify: make docs
+Expect: the documentation builds with exit code 0
 ```
 
-Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use `## Work Units` for two or more areas with disjoint ownership, keeping shared-contract changes ahead of their consumers. A linear plan fits work that is coupled end to end. Prefer `## Work Units` over the alternative `## Parallel Plan` format.
+Orient, Characterize, Change, and Verify are useful ordering guidance, not required document sections. Add a Partition decision before Change: use an explicit parallel format for disjoint ownership, keeping shared-contract changes ahead of their consumers. Both `## Work Units` and `## Parallel Plan` are first-class parallel formats. Any step plan can also parallelize independent ready work.
 
 Plans default to parallel work to reduce elapsed time. A wholly linear plan requires every step to depend on preceding work; a dependency chain may still have independent branches that run concurrently. Explain the output consumed by each dependency, order shared contracts only before their consumers, and give each unit disjoint ownership, request criteria, outputs, and focused proof. Include integration verification after fan-in to check that the combined result satisfies the request.
 
-Disjoint files alone do not permit separate directory-owned units. Independent files in the same directory or at repository root remain independent steps in a step plan; schedule disjoint writers concurrently without inventing dependencies or overlapping unit directories.
+Disjoint files alone do not permit separate directory-owned Work Units. Use `## Parallel Plan` with explicit `Paths:` for independent files in the same directory or at repository root, or retain independent steps in a step plan. Step plans also schedule disjoint ready writers concurrently; list order is not a dependency.
 
 ## Work Units plan format
 
-A plan that fan-outs work across N workers uses `## Work Units` alongside the normal `### [S-n]` step list. Each unit is a stable-ID list item with a `Directories:` field that scopes which subdirectory the unit may edit; the executor dispatches units in parallel up to the policy-derived `max_parallel_workers` cap that the planning prompt renders as the unit-count budget.
+A plan that fans out work uses `## Work Units` alongside the normal `### [S-n]` step list. Each unit is a stable-ID list item with a `Directories:` field that scopes its edits. The planning prompt renders the `max_work_units` total-unit budget; the executor dispatches ready units up to `max_parallel_workers` concurrently.
 
 ### Syntax
 
@@ -94,10 +98,16 @@ A plan that fan-outs work across N workers uses `## Work Units` alongside the no
 
 - Every unit must declare at least one `Directories:` entry; the unit may not edit the workspace root, an empty path, `.agent`, `.git`, or `.worktrees` (reserved paths).
 - No two units may share a directory prefix; the validator checks pairwise path-segment overlap, not just exact matches.
-- The unit count must fit within the development phase's `max_parallel_workers` cap; the cap is rendered into the planning prompt so the planner plans around it.
+- The total unit count must fit within `max_work_units`, rendered into the planning prompt. `max_parallel_workers` limits simultaneous workers; additional ready units queue.
 - Avoid step-level `Depends on:` chains that would force the cross-unit inference to add an edge in both directions between two units; that pattern produces a cycle the validator rejects.
 
 The compact two-unit example in `.agent/artifact-formats/examples/plan.md` exercises this syntax end-to-end and round-trips through the validator.
+
+## Parallel Plan format
+
+`## Parallel Plan` is equally supported by validation, execution, and unit proof tracking. Use the same unit items and nested steps as Work Units, with `Directories:` and/or `Paths:` as comma-separated relative edit areas. `Paths:` preserves file ownership without expanding it to the parent directory. Dependencies and owned step IDs survive normalization and dispatch. Declare exactly one of the two unit formats.
+
+Prefer either explicit parallel format when ownership is known. A step plan remains valid and encourages concurrent ready steps; use sequential scheduling only where a concrete prerequisite or writer conflict requires it. Missing ownership produces advice for refinement before worker dispatch, rather than rejecting the planning substance.
 
 ## Submission
 

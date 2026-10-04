@@ -18,6 +18,10 @@ Read the submitted plan, the request, and the repository areas it cites, or its 
 ## Review contract
 
 Return criterion-level verdicts, not a holistic quality score; do not grade document shape.
+Parallel plans are the default. Accept imperfect parallel plans as planning
+artifacts and assess their substance here; advisory validator findings are
+not automatic rejection criteria. Step plans also encourage parallel execution
+of independent ready work and may gain parallel units during refinement.
 
 {% set planning_decision_example %}
 ---
@@ -44,13 +48,18 @@ Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Inc
 ### Parallel structure
 
 For `## Work Units` or `## Parallel Plan`, check parallel structure as a
-first-class criterion: pairwise **directory disjointness**, including
-ancestor/descendant overlap; no reserved `.`, `.git`, or `.agent` ownership;
+first-class criterion: distinct responsibilities and a workable coordination
+strategy. Directory disjointness and exact-file ownership are useful dispatch
+options, not requirements for plan acceptance. Units may share directories
+or even files; check that their work areas are distinct and shared edits can
+be integrated without lost changes. Responsibility paths are optional.
+Check no reserved `.`, `.git`, or `.agent` ownership;
 every cross-unit dependency names a declared unit and every actual cross-unit
 prerequisite has a `Depends on:` edge; and no cycles or inconsistent step
 dependencies. The unit count must not exceed the effective active policy cap
-of {{ WORK_UNITS_MAX_CAP|default('8') }} (bounded by `max_parallel_workers` and
-`max_work_units`). Shared contracts, interfaces, and schemas must be fixed
+of {{ WORK_UNITS_MAX_CAP|default('32') }} (`max_work_units`). `max_parallel_workers`
+limits concurrent execution; queued units are valid. `## Parallel Plan` may
+use disjoint `Paths:` files in the same directory. Shared contracts, interfaces, and schemas must be fixed
 before dependent writers start, without delaying unrelated branches.
 Check every ordering edge for a concrete prerequisite. Unnecessary serialization
 through invented dependencies or explicit serial scheduling violates the

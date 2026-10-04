@@ -34,6 +34,7 @@ class ParallelPlanItem(RalphBaseModel):
     description: str = Field(..., min_length=1)
     edit_area: EditArea
     depends_on: list[str] = Field(default_factory=list)
+    step_ids: list[str] = Field(default_factory=list)
 
 
 __all__ = [

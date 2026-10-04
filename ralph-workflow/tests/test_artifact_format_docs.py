@@ -269,7 +269,7 @@ def test_plan_doc_teaches_mandatory_executor_ready_contract() -> None:
     assert doc is not None
     for phrase in (
         "Every active plan uses stable `### [S-n] Title` steps",
-        "Work steps require `Files`, a concrete `Verify`, and an observable `Expect`.",
+        "Work steps should provide `Files`, a concrete `Verify`, and an observable `Expect`.",
         "`schema_version` and `## Validation Overrides` are unsupported",
         "Orient, Characterize, Change, and Verify",
         "ralph_edit_md_artifact",

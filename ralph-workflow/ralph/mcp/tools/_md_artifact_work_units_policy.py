@@ -65,7 +65,7 @@ def work_units_policy_check(
                 {
                     "unit_id": item.id,
                     "description": item.description,
-                    "allowed_directories": item.edit_area.directories,
+                    "allowed_directories": item.edit_area.directories + item.edit_area.paths,
                     "dependencies": item.depends_on,
                 }
                 for item in parallel_items
@@ -86,7 +86,9 @@ def work_units_policy_check(
 
     try:
         pipeline = load_policy_pipeline(workspace_root)
-        validate_work_units_against_policy(parsed, pipeline, phase="development")
+        validate_work_units_against_policy(
+            parsed, pipeline, phase="development", planning_intent=True
+        )
     except Exception as exc:
         diagnostics.append(
             Diagnostic(

@@ -157,10 +157,9 @@ def test_verify_rejects_reserved_path_unit_directory(
     assert "reserved path" in reserved[0]["message"]
 
 
-def test_verify_rejects_overlapping_unit_directories(
+def test_verify_accepts_overlapping_responsibility_areas(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two units with prefix-overlapping directories fail verify at submit time."""
     from ralph.policy.models import PhaseParallelization
 
     parallelization = PhaseParallelization(max_parallel_workers=2)
@@ -177,11 +176,7 @@ def test_verify_rejects_overlapping_unit_directories(
     )
 
     payload = _payload(result)
-    assert payload["valid"] is False
-    diagnostics = must_dict_list(payload["diagnostics"])
-    assert any(
-        d["rule_id"] == "WUPOL001" and "overlaps" in d["message"] for d in diagnostics
-    ), f"expected a WUPOL001 overlap diagnostic, got {diagnostics}"
+    assert payload["valid"] is True
 
 
 def test_verify_rejects_work_units_exceeding_max_work_units_cap(

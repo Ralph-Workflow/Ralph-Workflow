@@ -92,10 +92,13 @@ def test_plan_contract_accepts_executor_ready_work_step() -> None:
         ("discovery", "Verify: run the tests\nExpect: it passes\n", "PLAN020"),
     ],
 )
-def test_plan_contract_rejects_incomplete_step(
+def test_plan_contract_accepts_incomplete_step_with_advice(
     step_type: str, fields: str | None, rule_id: str
 ) -> None:
-    assert rule_id in _errors(_plan(step_type=step_type, fields=fields))
+    content, diagnostics = parse_and_validate(_plan(step_type=step_type, fields=fields), PLAN_SPEC)
+    assert content["steps"][0]["number"] == 1
+    assert not any(item.severity == "error" for item in diagnostics)
+    assert any(item.rule_id == rule_id and item.severity == "warning" for item in diagnostics)
 
 
 def test_plan_contract_rejects_missing_or_malformed_or_duplicate_step_ids() -> None:

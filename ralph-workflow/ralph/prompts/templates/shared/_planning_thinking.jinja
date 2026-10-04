@@ -14,10 +14,10 @@ Plan in this order:
    independent work by list order. Declare
    `## Work Units` whenever step groups have pairwise disjoint
    directory ownership and `Files:` lists, regardless of group size.
-   Independent files in the same directory or at repository root cannot
-   form separate directory-owned units: keep their steps independent in
-   the step plan and schedule disjoint writers concurrently instead of
-   inventing dependencies or invalid ownership. When
+   Independent files in the same directory or at repository root use
+   `## Parallel Plan` with disjoint `Paths:` or remain independent steps
+   scheduled concurrently. Sequential scheduling is a fallback, never
+   implied by the step-list format. When
    partitioning, isolate **shared contract** or interface changes as
    prerequisite steps; order only the units that consume their outputs.
    A shared file constrains its writers, not every unrelated branch.

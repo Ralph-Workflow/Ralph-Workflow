@@ -179,17 +179,13 @@ def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
         normalize_plan_artifact_content(plan)
 
 
-def test_canonical_step_command_requires_an_expected_outcome() -> None:
-    """The runtime model cannot bypass Markdown's command-plus-outcome pair."""
+def test_canonical_step_command_accepts_missing_expected_outcome() -> None:
     plan = _base_plan_dict()
     steps = must_dict_list(plan["steps"])
     steps[0]["verify_command"] = "pytest tests/test_x.py -q"
 
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match=r"verify_command must declare expected_outcome",
-    ):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    assert must_dict_list(normalized["steps"])[0]["verify_command"] == "pytest tests/test_x.py -q"
 
 
 def test_canonical_acceptance_command_requires_an_expected_outcome() -> None:

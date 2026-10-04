@@ -29,13 +29,14 @@ def test_executor_ready_plan_has_no_diagnostics() -> None:
     assert diagnostics == []
 
 
-def test_required_shape_diagnostics_block_submission() -> None:
+def test_incomplete_step_retains_plan_with_advisory_diagnostics() -> None:
     document = _plan().replace("Files:\n- modify ralph/mcp/artifacts/markdown/specs/plan.py\n", "")
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
-    assert any(item.rule_id == "PLAN010" and item.severity == "error" for item in diagnostics)
+    assert content["steps"][0]["title"] == "Update validation"
+    assert not any(item.severity == "error" for item in diagnostics)
+    assert any(item.rule_id == "PLAN010" and item.severity == "warning" for item in diagnostics)
 
 
 def test_validation_overrides_are_rejected_not_recorded() -> None:

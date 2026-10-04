@@ -54,13 +54,16 @@ def test_public_verify_accepts_executor_ready_plan() -> None:
     assert payload["counts"] == {"error": 0, "info": 0, "warning": 0}
 
 
-def test_public_verify_rejects_incomplete_plan() -> None:
+def test_public_verify_accepts_incomplete_plan_with_advice() -> None:
     payload = _verify_payload(
         _plan().replace("Expect: the focused contract tests pass with exit code 0\n", "")
     )
 
-    assert payload["valid"] is False
-    assert any(item["rule_id"] == "PLAN020" for item in payload["diagnostics"])
+    assert payload["valid"] is True
+    assert any(
+        item["rule_id"] == "PLAN020" and item["severity"] == "warning"
+        for item in payload["diagnostics"]
+    )
 
 
 def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Path) -> None:

@@ -76,7 +76,10 @@ if TYPE_CHECKING:
 
     class _WorkUnitsModule(Protocol):
         WorkUnitsValidationError: type[Exception]
-        validate_for_same_workspace: Callable[[object], object]
+
+        def validate_for_same_workspace(
+            self, plan: WorkUnitsPlan, *, planning_intent: bool = False
+        ) -> None: ...
 
 
 def validate_phase_exists_in_policy(
@@ -162,11 +165,11 @@ def validate_drain_contracts(bundle: PolicyBundle) -> None:
         )
 
 
-def _work_units_validation_deps() -> tuple[type[Exception], Callable[[object], object]]:
+def _work_units_validation_deps() -> _WorkUnitsModule:
     module = cast(
         "_WorkUnitsModule", import_module("ralph.pipeline.work_units")
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    return (module.WorkUnitsValidationError, module.validate_for_same_workspace)
+    return module
 
 
 def validate_cli_counter_overrides(
@@ -276,16 +279,17 @@ def validate_work_units_against_policy(
     pipeline_policy: PipelinePolicy,
     *,
     phase: str,
+    planning_intent: bool = False,
 ) -> None:
     """Validate parsed planning work_units against the active phase's parallelization policy.
 
     Per-unit directory validation (reserved paths, cross-unit overlap) runs for
     every plan that declares at least one unit, including singleton plans: a
     single unit pointing at ``.agent`` is unsafe regardless of whether it fans
-    out. The parallelization-declaration requirement and both caps
-    (``max_work_units`` for the parse ceiling, ``max_parallel_workers`` for the
-    fan-out ceiling) only apply to plans that actually fan out, i.e. multi-unit
-    plans. Zero-unit plans return immediately without raising.
+    out. Multi-unit plans require parallelization and must fit the
+    ``max_work_units`` plan-size ceiling. ``max_parallel_workers`` limits
+    simultaneous execution, so additional units wait for a free worker.
+    Zero-unit plans return immediately without raising.
     """
     work_units_count = len(work_units.work_units)
     if work_units_count == 0:
@@ -297,20 +301,24 @@ def validate_work_units_against_policy(
     # Per-unit directory checks: reserved paths and cross-unit overlap. These
     # apply to every plan with at least one unit; reserved paths and overlaps
     # are unsafe whether or not the plan fans out.
-    if parallel_policy is not None and parallel_policy.require_allowed_directories:
+    if (
+        not planning_intent
+        and parallel_policy is not None
+        and parallel_policy.require_allowed_directories
+    ):
         for unit in work_units.work_units:
             if not unit.allowed_directories:
                 raise PolicyValidationError(
                     f"Work unit '{unit.unit_id}' must declare allowed_directories"
                 )
 
-    work_units_validation_error, validate_for_same_workspace = _work_units_validation_deps()
+    validation = _work_units_validation_deps()
     try:
-        validate_for_same_workspace(work_units)
-    except work_units_validation_error as exc:
+        validation.validate_for_same_workspace(work_units, planning_intent=planning_intent)
+    except validation.WorkUnitsValidationError as exc:
         raise PolicyValidationError(str(exc)) from exc
 
-    # Multi-unit-only checks: parallelization declaration and both caps. A
+    # Multi-unit-only checks: parallelization declaration and plan-size cap. A
     # single unit does not fan out, so the phase need not declare
     # parallelization and neither cap applies.
     if work_units_count < _MULTI_UNIT_THRESHOLD:
@@ -327,14 +335,6 @@ def validate_work_units_against_policy(
         raise PolicyValidationError(
             f"work_units count {work_units_count} exceeds max_work_units="
             f"{parallel_policy.max_work_units} (the parse ceiling for plan size)"
-        )
-
-    if work_units_count > parallel_policy.max_parallel_workers:
-        raise PolicyValidationError(
-            "Planning artifact declares "
-            f"{work_units_count} work_units, exceeding "
-            f"max_parallel_workers={parallel_policy.max_parallel_workers} "
-            "(the per-phase worker fan-out ceiling)"
         )
 
 
