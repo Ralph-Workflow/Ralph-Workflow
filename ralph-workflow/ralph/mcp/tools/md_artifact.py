@@ -64,12 +64,22 @@ from ralph.mcp.tools.text_edits import (
     sha256_text,
 )
 from ralph.phases.required_artifacts import validation_corrective_action
+from ralph.pipeline.work_units import (
+    WorkUnitsValidationError,
+    parse_work_units_from_artifact,
+)
+from ralph.policy.loader import load_policy
+from ralph.policy.validation import (
+    PolicyValidationError,
+    validate_work_units_against_policy,
+)
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.tools.text_edits import TextEdit
+    from ralph.policy.models import PipelinePolicy
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 #: Every validating endpoint returns this so a rejected document is repaired
 #: in place rather than re-transcribed in full. Submission always leaves the
@@ -84,14 +94,25 @@ REPAIR_HINT: str = (
 )
 def handle_verify_md_artifact(
     session: CoordinationSessionLike,
-    _workspace: WorkspaceLike,
+    workspace: WorkspaceLike,
     params: dict[str, object],
 ) -> ToolResult:
     """Check a markdown artifact without writing it."""
     require_capability(session, _PLAN_READ_CAPABILITY, "Markdown artifact verification")
     artifact_type, content = _params(params)
-    diagnostics, overridden = _validate_with_overrides(artifact_type, content)
+    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    diagnostics.extend(
+        _current_context_diagnostics(session, workspace, artifact_type, parsed_content, None)
+    )
+    diagnostics.extend(
+        _planning_finding_target_diagnostics(session, workspace, artifact_type, content, None)
+    )
+    diagnostics.extend(
+        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
+    )
     return _validation_result(artifact_type, diagnostics, overridden)
+
+
 def handle_submit_md_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -114,6 +135,9 @@ def handle_submit_md_artifact(
     )
     diagnostics.extend(
         _planning_finding_target_diagnostics(session, workspace, artifact_type, content, deps)
+    )
+    diagnostics.extend(
+        _work_units_policy_check(workspace, artifact_type, parsed_content, content)
     )
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
@@ -683,6 +707,82 @@ def _parse_with_overrides(
         return parsed_content, diagnostics, list(overridden)
     parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return parsed_content, diagnostics, []
+
+
+def _work_units_policy_check(
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    parsed_content: dict[str, object],
+    content: str,
+) -> list[Diagnostic]:
+    """Validate plan work_units against the workspace's effective pipeline policy.
+
+    Returns an empty list when the artifact is not a plan, when no work_units
+    are declared, when the structural validator already rejected them, or
+    when the workspace's policy cannot be loaded. The latter matches the
+    fail-open stance of ``_resolve_history_enabled`` so artifact
+    verification does not depend on policy I/O.
+
+    Single diagnostic rule (``WUPOL001``) covers every per-unit and cap
+    violation: the validator's error message names the violated limit and
+    its value, and the diagnostic anchors on the line of the
+    ``## Work Units`` section heading.
+    """
+    diagnostics: list[Diagnostic] = []
+    if artifact_type != "plan":
+        return diagnostics
+    raw = parsed_content.get("work_units")
+    if not raw:
+        return diagnostics
+
+    try:
+        parsed = parse_work_units_from_artifact(parsed_content)
+    except WorkUnitsValidationError:
+        # Structural checks already surfaced; do not double-report.
+        return diagnostics
+    if parsed is None:
+        return diagnostics
+
+    workspace_root = _workspace_root(workspace)
+    pipeline = _load_policy_pipeline(workspace_root)
+    if pipeline is None:
+        return diagnostics
+
+    section_line = _section_line(content, "Work Units") or 1
+
+    try:
+        validate_work_units_against_policy(parsed, pipeline, phase="development")
+    except PolicyValidationError as exc:
+        diagnostics.append(
+            Diagnostic(
+                section_line,
+                "Work Units",
+                "WUPOL001",
+                str(exc),
+            )
+        )
+    return diagnostics
+
+
+def _section_line(content: str, section_name: str) -> int | None:
+    """Return the 1-based line of the first ``## {section_name}`` heading, or None."""
+    try:
+        document, _ = parse_markdown_document(content, allow_nested_headings=False)
+    except Exception:
+        return None
+    section = document.section(section_name)
+    if section is None:
+        return None
+    return section.line
+
+
+def _load_policy_pipeline(workspace_root: Path) -> PipelinePolicy | None:
+    """Load the workspace's effective pipeline policy. Fail-open on I/O errors."""
+    try:
+        bundle = load_policy(workspace_root / ".agent")
+    except Exception:
+        return None
+    return bundle.pipeline
 
 
 def _current_context_diagnostics(

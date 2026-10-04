@@ -267,3 +267,52 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 - [MCP Architecture](mcp-architecture.md) — the MCP server that exposes artifact submission tools
 - [Concepts](concepts.md) — artifact types as first-class concepts
+
+## Work Units in the plan artifact
+
+A `plan` artifact that declares `## Work Units` partitions its work into
+same-workspace units that an executing agent can dispatch to its own
+sub-agents in parallel. The list-item form is `- [U-N] description`,
+followed by an inline-list `Directories:` field (one value, comma-separated)
+and an optional `Depends on:` field. The unit body lives in the same
+`### [S-n]` step block, so the plan is a single source of truth for both
+the sequential steps and the per-unit slices.
+
+Per-unit directory validation runs at `ralph_submit_md_artifact` and
+`ralph_verify_md_artifact` time, ahead of the post-receipt backstop:
+
+- Reserved paths (`.agent`, `.git`, `.worktrees`, the repository root)
+  are rejected as `Directories:` values.
+- Empty or `Directories:` values are rejected.
+- Cross-unit overlap (two units sharing a directory) is rejected.
+- The unit count must fit within the configured `max_work_units` (parse
+  ceiling for plan size) and `max_parallel_workers` (per-phase worker
+  fan-out ceiling). The full cap description lives in
+  [Advanced Pipeline Configuration](advanced-pipeline-configuration.md#work-units-validation-at-plan-submission).
+
+A draft that fails a work-unit policy check stays staged for repair but
+is blocked from submission. The post-receipt backstop in
+`ralph/phases/execution.py` remains the fail-closed safety net for
+plans that bypass the artifact submission path. The exact grammar and
+worked example live in the bundled format doc
+`.agent/artifact-formats/plan.md` and the bundled skill
+`submit-plan-artifact`.
+
+## Unplanned Work in the development-result artifact
+
+A `development_result` artifact may include an optional `## Unplanned
+Work` section to record mid-phase discoveries the plan did not name:
+a dead branch, a brittle lock, a contract mismatch, or a verification
+gap the focused tests revealed. One `- [UW-N] <anchor>` bullet per
+discovery, where the anchor is a stable `path:line` or
+`path:line-line` location that can be navigated to in one step. Each
+item cites a reproducible piece of evidence (a focused test, a
+`git blame` line, a stack frame, or a configuration that contradicts
+the plan).
+
+`## Unplanned Work` is **not** a substitute for `## Plan Items Proven`
+or `## Analysis Items Addressed`: the bracketed IDs there are anchors,
+not plan-step references, and are not routed to proof validation.
+`status: completed` requires every required plan item to be proven
+through the regular sections; `## Unplanned Work` makes honest reporting
+cheaper for the next iteration without changing the completion contract.

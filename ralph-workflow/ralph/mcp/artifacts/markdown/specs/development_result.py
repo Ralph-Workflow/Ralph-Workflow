@@ -173,6 +173,7 @@ def _free_form_content(document: ParsedDocument) -> Content:
             # while every other branch stores the stable ID made one field
             # mean two things.
             content["incomplete_work"] = [f"[{item.identifier}] {item.text}" for item in existing]
+    _carry_unplanned_work(document, content)
     next_steps = _first_item(document, "Next Steps")
     if next_steps:
         content["next_steps"] = next_steps
@@ -330,6 +331,30 @@ def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
             )
 
 
+def _carry_unplanned_work(document: ParsedDocument, content: Content) -> None:
+    """Record any ``## Unplanned Work`` bullets under a separate content key.
+
+    Mid-phase discoveries live here, not in ``Plan Items Proven`` or
+    ``Analysis Items Addressed``: the bracketed ID is an anchor pointing
+    at a file:line, never a plan step reference, so a development_result
+    with a ``[UW-1]`` entry must report it only under
+    ``content["unplanned_work"]``. Each item is stored as
+    ``"[<ID>] <text>"`` so downstream consumers can query the anchor
+    without re-parsing the markdown.
+
+    The section is optional and shape-free: the spec admits body lines
+    (and accepts whatever bullet form the agent wrote), so we only
+    consume items the parser built from a bracketed bullet. Anything
+    written as plain prose under the heading stays in the document but
+    is dropped here, exactly like every other optional section's prose
+    is dropped on purpose.
+    """
+    items = _optional_items(document, "Unplanned Work")
+    if not items:
+        return
+    content["unplanned_work"] = [f"[{item.identifier}] {item.text}" for item in items]
+
+
 def _to_content(document: ParsedDocument) -> Content:
     if not _is_completed(document):
         return _free_form_content(document)
@@ -371,6 +396,7 @@ def _to_content(document: ParsedDocument) -> Content:
         content["incomplete_work"] = [
             f"[{item.identifier}] {item.text}" for item in completed_incomplete
         ]
+    _carry_unplanned_work(document, content)
     next_steps = document.section("Next Steps")
     if next_steps is not None:
         if len(next_steps.items) != 1:
@@ -399,6 +425,13 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
         "Next Steps": SectionRule(required=False, require_items=True, max_items=1, allow_body=True),
         "Continuation": SectionRule(required=False, require_items=True, max_items=1),
         "Incomplete Work": SectionRule(required=False, require_items=True, allow_body=True),
+        # Sanctioned home for mid-phase discoveries. The bracketed IDs in
+        # this section are anchors (not plan step references), so the
+        # spec admits them as items but they are never routed through
+        # proof validation: ``_to_content`` carries them in a separate
+        # ``unplanned_work`` field and the ``Plan Items Proven`` mapping
+        # never reads this section.
+        "Unplanned Work": SectionRule(required=False, allow_body=True),
     },
     to_content=_to_content,
     normalize_content=normalize_development_result_content,

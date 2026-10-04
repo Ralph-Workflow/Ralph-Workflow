@@ -3286,7 +3286,8 @@ class TestValidateWorkUnitsAgainstPolicy:
                     {
                         "unit_id": f"u{i}",
                         "description": f"Work unit {i}",
-                        "allowed_directories": ["src"],
+                        # Disjoint dirs so the cap check (not overlap) fires.
+                        "allowed_directories": [f"dir{i}"],
                     }
                     for i in range(51)
                 ]
@@ -3294,7 +3295,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        with pytest.raises(PolicyValidationError, match="exceeds cap"):
+        with pytest.raises(PolicyValidationError, match="max_work_units"):
             validate_work_units_against_policy(work_units, bundle.pipeline, phase="development")
 
     def test_work_units_count_cap_custom(self) -> None:
@@ -3335,7 +3336,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert rejected_work_units is not None
 
-        with pytest.raises(PolicyValidationError, match="exceeds cap"):
+        with pytest.raises(PolicyValidationError, match="max_work_units"):
             validate_work_units_against_policy(rejected_work_units, pipeline, phase="planning")
 
     def test_overlapping_edit_areas_raise_policy_validation_error(self) -> None:
@@ -3415,15 +3416,118 @@ class TestValidateWorkUnitsAgainstPolicy:
         work_units = parse_work_units_from_artifact(
             {
                 "work_units": [
-                    # Overlapping — but the phase-scoped error fires before the overlap check
+                    # Disjoint dirs so the parallelization check (not overlap) fires.
                     {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
-                    {"unit_id": "u2", "description": "B", "allowed_directories": ["src/sub"]},
+                    {"unit_id": "u2", "description": "B", "allowed_directories": ["tests"]},
                 ]
             }
         )
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="does not declare parallelization"):
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
+    def test_single_unit_with_reserved_path_is_rejected(self) -> None:
+        """S-9 singleton-hole fix: a one-unit plan declaring a reserved path must raise.
+
+        Previously the validator short-circuited on ``len(work_units) <= 1``, so a
+        single unit pointing at ``.agent`` (or any reserved path) escaped
+        ``validate_for_same_workspace`` and reached the post-receipt backstop in
+        ``phases/execution.py``. The fix tightens the early return so the
+        per-unit reserved-path and overlap checks run for every plan that
+        declares at least one unit.
+        """
+        pipeline = self._minimal_pipeline(
+            parallelization=PhaseParallelization(max_parallel_workers=2)
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": "u1",
+                        "description": "Solo unit",
+                        "allowed_directories": [".agent"],
+                    },
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="reserved path"):
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
+    def test_single_unit_clean_plan_passes_without_parallelization_declared(self) -> None:
+        """S-9: a one-unit plan does not require parallelization — single units do not fan out."""
+        pipeline = self._minimal_pipeline()  # no parallelization declared
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": "u1",
+                        "description": "Solo unit",
+                        "allowed_directories": ["src"],
+                    },
+                ]
+            }
+        )
+        assert work_units is not None
+
+        validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
+    def test_max_work_units_cap_error_names_max_work_units(self) -> None:
+        """S-9: when ``max_work_units`` is the violated cap, the error must name it.
+
+        Each diagnostic distinguishes the two limits: ``max_work_units`` is the
+        parse ceiling for plan size, while ``max_parallel_workers`` is the
+        worker fan-out ceiling. ``test_work_units_count_cap_custom`` only
+        matches ``"exceeds cap"``; here we require the cap's name.
+        """
+        pipeline = self._minimal_pipeline(
+            parallelization=PhaseParallelization(
+                max_parallel_workers=8,
+                max_work_units=3,
+            )
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": f"u{i}",
+                        "description": f"Work unit {i}",
+                        "allowed_directories": [f"dir{i}"],
+                    }
+                    for i in range(4)
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="max_work_units"):
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
+    def test_max_parallel_workers_cap_error_names_max_parallel_workers(self) -> None:
+        """S-9: when ``max_parallel_workers`` is the violated cap, the error must name it."""
+        pipeline = self._minimal_pipeline(
+            parallelization=PhaseParallelization(
+                max_parallel_workers=2,
+                max_work_units=8,
+            )
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": f"u{i}",
+                        "description": f"Work unit {i}",
+                        "allowed_directories": [f"dir{i}"],
+                    }
+                    for i in range(3)
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
             validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
 

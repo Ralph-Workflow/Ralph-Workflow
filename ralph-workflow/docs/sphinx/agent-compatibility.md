@@ -207,9 +207,36 @@ json_parser = "generic"
       rather than the 80-line interactive ceiling, so subagent runs are not
       spuriously failed on output volume.
 
+## Delegation stance and HAS_SUBAGENTS
+
+The planning and developer prompts gate the sub-agent dispatch guidance
+in `shared/_subagents.jinja` on a single boolean variable, `HAS_SUBAGENTS`,
+which is computed from each transport's `agents.delegation_capabilities.delegation_for(...)`
+return value:
+
+| Transport delegation value | `HAS_SUBAGENTS` rendered | Effect |
+| --- | --- | --- |
+| `SUPPORTED` | `"true"` | Dispatch path is exposed; the agent may fan out sub-agents per the partial's concrete triggers (independent repository discovery, independent verification checks, ready work units the plan already declares). |
+| `EXPLICIT_UNSUPPORTED` | `""` (empty) | Sequential path is the only safe fallback; the prompt renders a one-line sequential note instead of the dispatch guidance. |
+| `NOT_APPLICABLE` | `""` (empty) | Same as `EXPLICIT_UNSUPPORTED` — the transport is not a candidate for sub-agent dispatch. |
+
+The empty-string convention matches the existing `|default('')`
+`StrictUndefined`-safe idiom used elsewhere in the prompt templates
+(for example `_shipped_skills.j2`'s `shipped_skills_mode|default('')` and
+`_mcp_tools.jinja`'s `HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)`),
+so a transport that does not declare a delegation value does not crash
+template rendering. Transports whose `delegation_for` value is
+`EXPLICIT_UNSUPPORTED` or `NOT_APPLICABLE` get the sequential path; that
+is a correctness floor, not a downgrade — `dispatch_mode = "agent_subagents"`
+in the bundled `pipeline.toml` requires the executing agent to dispatch
+its own sub-agents, and a transport that cannot do so must opt in
+explicitly via `dispatch_mode = "ralph_fan_out"` or run sequentially in
+`unit_id` order (the same path Nanocoder and Pi take today).
+
 ### Built-in configuration examples
 
 These examples are validated against the current agent configuration schema.
+
 
 ```toml
 [agents.claude]

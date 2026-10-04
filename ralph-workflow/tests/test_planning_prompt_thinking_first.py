@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from ralph.policy.loader import load_policy
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    materialize_prompt_for_phase,
+)
 from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
 
 
 def _source(name: str) -> str:
@@ -30,6 +40,39 @@ def test_thinking_partial_uses_evidence_and_the_four_work_phases() -> None:
     assert "discovery step for an honest unknown" in source
 
 
+def test_thinking_partial_adds_partition_step_with_size_heuristic() -> None:
+    """S-3: a fifth Partition step decides linear vs `## Work Units` and forces
+    shared contract changes to land in one sequential step before any units.
+    """
+    source = _source("shared/_planning_thinking.jinja")
+    # Markdown line breaks split phrases like "compact linear plan" across
+    # two lines, so normalize whitespace before checking.
+    flat = " ".join(source.split())
+
+    # New phase appears alongside the original four.
+    assert "Partition" in source
+    # Size heuristic: disjoint Files sets + non-trivial change set => units.
+    # Markdown bolding splits the words, so check the heuristics individually.
+    assert "pairwise" in source
+    assert "disjoint" in source
+    assert "## Work Units" in source
+    assert "compact linear plan is valid" in flat
+    # Shared contracts must precede the units so units cannot coordinate them.
+    assert "shared contract" in flat.lower() or "shared contracts" in flat.lower()
+
+
+def test_planning_prompt_submission_guidance_points_at_partition() -> None:
+    """S-3: planning.jinja's submission guidance must reference the Partition
+    step so the planner reads the partition heuristic before submitting.
+    """
+    source = _source("planning.jinja")
+
+    # Submission section names the Partition step and the Work Units format.
+    assert "Partition" in source
+    assert "Work Units" in source
+
+
+
 def test_submission_partial_names_the_mandatory_contract() -> None:
     source = _source("shared/_planning_submission_mechanics.j2")
 
@@ -37,3 +80,65 @@ def test_submission_partial_names_the_mandatory_contract() -> None:
     assert "stable `### [S-n] Title` steps" in source
     assert "Validation Overrides" in source
     assert "schema_version" in source
+
+
+def test_submission_partial_renders_policy_derived_unit_cap(tmp_path: Path) -> None:
+    """S-8: the planning prompt states the policy-derived ``## Work Units`` cap.
+
+    The cap is read from the development phase's ``max_parallel_workers``
+    (the per-workspace worker ceiling) rather than hard-coded; the
+    template receives it as ``WORK_UNITS_MAX_CAP`` and renders it as
+    part of the submission mechanics so the planner plans around the
+    actual limit instead of guessing.
+    """
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Author a parallel plan with Work Units")
+    policy = load_policy(tmp_path / ".agent")
+    # Bundled default caps development at 8 workers; the planning prompt
+    # must surface exactly that number rather than a hard-coded literal.
+    cap = policy.pipeline.phases["development"].parallelization.max_parallel_workers
+
+    path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
+    )
+    rendered = workspace.read(path)
+
+    assert f"cap of {cap}" in rendered
+    # The cap is not hard-coded: a single "cap of 8" appears; a different
+    # cap would produce "cap of <N>" with the right value.
+    assert "cap of 8" in rendered
+
+
+def test_submission_partial_keeps_work_units_grammar_compact() -> None:
+    """S-8: the partial documents the Work Units syntax compactly.
+
+    The format-doc tells the planner the exact bracket and field shape
+    (``[U-1]`` items, ``Directories:`` + optional ``Paths:``,
+    ``Depends on:``, nested ``### [S-n]`` steps, the disjoint-directory
+    constraint, the no-reserved-paths rule, and the Work Units XOR
+    Parallel Plan exclusivity). The submission mechanics render the
+    cap; the format doc is where the planner reads the syntax.
+    """
+    from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
+
+    source = load_bundled_format_doc("plan")
+    assert source is not None
+
+    assert "## Work Units" in source
+    assert "- [U-1]" in source
+    assert "Directories:" in source
+    assert "Depends on:" in source
+    assert ".agent" in source
+    assert ".git" in source
+    assert ".worktrees" in source
+    # Mutually exclusive with the legacy `## Parallel Plan` form.
+    assert "Parallel Plan" in source

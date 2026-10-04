@@ -636,3 +636,56 @@ If `--explain-policy` looks wrong, the policy is not ready.
 - [Configuration Reference](configuration.md)
 - [Policy Explanation](configuration.md#inspecting-the-active-policy)
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md)
+
+## Timebox-aware development prompts and wrapup notice
+
+The development phase surfaces a deadline-budget signal to the running agent
+through the existing cycle-deadline environment helpers. When the runtime
+publishes a `DEV_DEADLINE_EPOCH` and the agent renders the developer prompt
+or the development wrapup notice, both surfaces use the same minutes
+remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
+
+- The developer prompt includes a remaining-minutes warning and a force-cut
+  sentence in `shared/_run_budget.j2` so the agent drives the current task
+  to a verifiable state (a green suite, a passing focused test, or an
+  explicit partial report) before the deadline and does not start new work
+  it cannot finish.
+- The development wrapup notice
+  (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
+  the same remaining minutes, suggests dispatching an independent ready
+  group when ready steps remain, and instructs the agent to submit the
+  development result before the cut rather than after it. The static text
+  is byte-identical to the pre-timebox wording when no `DEV_DEADLINE_EPOCH`
+  is published.
+
+The shared minutes convention means the wrapup notice and the developer
+prompt cannot diverge at the warning boundary.
+
+## Work Units validation at plan submission
+
+`ralph_submit_md_artifact` and `ralph_verify_md_artifact` validate plan
+work units ahead of the post-receipt backstop in `ralph/phases/execution.py`.
+A draft that fails a work-unit policy check stays staged for repair but
+is blocked from submission, and the diagnostics are line-anchored to the
+`## Work Units` section with rule id `WUPOL001`. The two distinct caps
+are named in the diagnostic message so operators can tell which limit was
+exceeded:
+
+- `max_work_units` is the parse ceiling for plan size. A plan declaring
+  more work units than the configured `max_work_units` is rejected at
+  verify and submit time. The default is `50` for the development phase.
+- `max_parallel_workers` is the per-phase worker fan-out ceiling. A
+  same-workspace plan's unit count must also fit within
+  `max_parallel_workers` because each unit maps to one worker. The
+  default is `8` for the development phase.
+
+Per-unit directory validation (`require_allowed_directories` plus
+`validate_for_same_workspace` from `ralph/pipeline/work_units.py`,
+which rejects reserved paths `.agent`/`.git`/`.worktrees`/`/`/empty and
+cross-unit overlap) runs for every plan with at least one unit. A
+single-unit plan declaring a reserved path is rejected; a single-unit
+clean plan still validates without requiring a parallelization
+declaration, because a single unit does not fan out. The
+post-receipt backstop in `ralph/phases/execution.py` remains in place
+as the fail-closed safety net for plans that bypass the artifact
+submission path.

@@ -7,6 +7,8 @@ IDs are stable and never renumbered. Each step states its purpose and `Type`: `f
 
 Work types require `Files`, a concrete `Verify`, and observable `Expect`. A `verify` step requires `Verify` plus `Expect` or `Location`; a `discovery` step requires `Verify`, `Evidence`, or `Location`. Recommend `Type: verify` for a step whose only job is running an existing test suite. Add `Depends on: S-n` only for real ordering and `Satisfies:` when a requirement mapping applies. Do not use `schema_version` or `Validation Overrides`; repair validator findings directly. The only step-less plan is `noop: true`.
 
+For parallel work, add a `## Work Units` block of `- [U-N] description` items, each with a `Directories:` field naming a subdirectory the unit is permitted to edit; `Depends on:` (unit IDs) is optional. The unit count must fit within the cap of {{ WORK_UNITS_MAX_CAP|default('8') }} concurrent workers per the development phase policy — plan no more units than that. Keep the unit directories disjoint so two units cannot edit the same subdirectory; step-level `Depends on:` chains between units produce a cycle the validator rejects. A `## Work Units` plan and a `## Parallel Plan` plan are mutually exclusive; declare exactly one.
+
 On revision, retain every step ID and valid `Depends on:`/`Satisfies:` reference.
 When repairing a diagnostic, change only the named field; other valid fields are
 preserved verbatim. `PLAN001` means the submission was not

@@ -23,6 +23,8 @@ from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_docu
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
+from ralph.mcp.protocol.cycle_deadline_env import read_published_epoch
+from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
 from ralph.mcp.tools.names import (
     SUBMIT_MD_ARTIFACT_TOOL,
     claude_tool_name,
@@ -466,6 +468,18 @@ def _render_planning_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    # S-8: thread the development phase's worker cap from the pipeline policy
+    # into the planning prompt so the planner plans around the actual limit
+    # rather than a hard-coded default.
+    development_phase = context.pipeline_policy.phases.get("development")
+    development_parallelization = (
+        development_phase.parallelization if development_phase is not None else None
+    )
+    max_parallel_workers = (
+        development_parallelization.max_parallel_workers
+        if development_parallelization is not None
+        else None
+    )
     rendered = prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -488,6 +502,7 @@ def _render_planning_prompt(
             last_retry_error=last_retry_error,
             skills_inline_content=skills_inline_content,
             has_docs_mcp=has_docs_mcp,
+            max_parallel_workers=max_parallel_workers,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -555,6 +570,13 @@ def _render_developer_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    # S-5: pull the published development-timebox epochs out of the
+    # process environment so the prompt can render the concrete
+    # remaining minutes and the force-cut sentence. The runtime
+    # publishes both together; if either is absent the partial falls
+    # through to the no-partial-on-exhaustion rule.
+    dev_warn_epoch = read_published_epoch(DEV_WARN_EPOCH_ENV)
+    dev_deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV)
     rendered = prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -595,6 +617,8 @@ def _render_developer_prompt(
             ),
             worker_namespace=str(options.worker_namespace or ""),
             is_continuation=is_continuation,
+            dev_warn_epoch=dev_warn_epoch,
+            dev_deadline_epoch=dev_deadline_epoch,
         ),
         workspace=workspace,
         session_caps=session_caps,

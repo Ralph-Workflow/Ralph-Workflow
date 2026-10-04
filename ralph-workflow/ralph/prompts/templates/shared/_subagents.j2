@@ -1,0 +1,84 @@
+## DELEGATION GUIDANCE (context isolation first)
+
+The primary reason to use sub-agents is **context isolation** — keep
+exploration, search output, and verification logs out of your own context so
+this session can stay focused on the work units and proof requirements. Speed
+and breadth are secondary benefits, not the goal. Sub-agents do not replace
+fresh-context analysis phases; they speed up the work that feeds them.
+
+### When delegation is permitted
+
+Use sub-agents only when one of the following concrete triggers is true:
+
+- Independent repository discovery that would otherwise flood this context
+  (many files, large directories, broad web research that can be summarized
+  compactly on return).
+- Independent verification checks that return compact evidence (a single
+  command plus exit code, or a small set of file:line citations) without
+  polluting the main session with the command's stdout.
+- Ready work units the plan already declared under `## Work Units`.
+
+A vague "this might help" is not a trigger. A single-file read, a quick
+search, or a focused pytest run is not worth the coordination cost — do it
+in this session.
+
+### Stance
+
+{% if HAS_SUBAGENTS|default('') %}
+Sub-agents are available on this runtime (`HAS_SUBAGENTS` rendered). Use the
+brief contract below when you dispatch them. Every dispatch must respect:
+
+- **Read-only by default.** Only the assigned work-unit implementer writes,
+  and only inside the unit's allowed directories. Exploration, verification,
+  and review sub-agents never write.
+- **Single writer per decision.** Two agents must never edit the same file.
+  When a verification sub-agent needs to assert a side effect, it returns the
+  observation as a lead and the main session reproduces it.
+- **Focused checks in sub-agents.** Sub-agents run the unit's per-step
+  `Verify` commands (focused, in-budget) and return the exit code. The full
+  gate runs once, in this session, after integration.
+{% else %}
+Sub-agents are not available on this runtime (`HAS_SUBAGENTS` not rendered).
+Continue sequentially in plan order; no sub-agent prompt should be drafted
+or dispatched. The brief contract below is intentionally not rendered.
+{% endif %}
+
+### Brief contract (for dispatched sub-agents)
+
+Every sub-agent brief must carry these five fields. They are the contract the
+main session relies on; a brief missing any field is treated as a dispatch
+the main session cannot trust, and the work reverts to this session.
+
+1. **Objective.** One sentence naming the outcome the sub-agent owns.
+2. **Scope.** Allowed paths (for read-only helpers) or the unit's
+   `Directories:` set (for unit implementers). Anything outside scope is the
+   main session's responsibility.
+3. **Tools.** The Ralph Workflow brokered MCP tools only. Native shell,
+   native write tools, and editor commands are prohibited. State this
+   explicitly in the brief.
+4. **Prohibitions.** No git commit, no status markdown files, no writes
+   outside scope, no coordination of other units, no integration of the
+   whole plan, no artifact submission unless the brief names
+   `submit_development_result` for a worker. State the prohibitions.
+5. **Return format.** Exact fields the sub-agent must populate on return:
+   unit ID (or task ID), scope touched, commands run with exit codes,
+   files changed (for implementers), and any new questions needing a follow-up
+   in this session. The return is a lead the main session spot-checks
+   before relying on it; it is not evidence by itself.
+
+### Reading sub-agent output
+
+A sub-agent's return is a lead, never evidence by itself. For each:
+
+- that grounds a verdict, the main session reproduces it (re-runs the command,
+  re-reads the cited file:line) before the verdict is written. Failing leads
+  must be reproduced too — an un-reproduced failing lead is a finding about
+  the sub-agent, not about the work.
+- that names a gap the plan omitted, the main session records it in the
+  development result's `## Unplanned Work` section (or equivalent for the
+  phase) so the next iteration can plan around it.
+
+### Cost discipline
+
+Sub-agent dispatches consume host resources. Do not fan out for fan-out's
+sake. When in doubt, run the read or check in this session.

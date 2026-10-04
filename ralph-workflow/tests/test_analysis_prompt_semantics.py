@@ -122,3 +122,76 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
 
     assert source.index("## Criteria and verdicts") < source.index("## Decision artifact")
     assert source.index("## Criterion Verdicts") < source.index("## Decision artifact")
+
+
+def test_planning_analysis_includes_parallel_structure_criterion() -> None:
+    """S-10: planning_analysis.jinja must list a parallel-structure criterion.
+
+    The criterion checks declared units for directory disjointness, complete
+    cross-unit `Depends on:` references, unit count within the cap, and shared
+    contracts sequenced before units; when a large clearly separable plan is
+    submitted linear, the verifier records an advisory (not a failure)
+    suggesting units.
+    """
+    source = TemplateContext.default().registry.get_template("planning_analysis")
+
+    for required in (
+        "directory disjointness",
+        "Depends on:",
+        "max_work_units",
+        "shared contract",
+        "advisory",
+    ):
+        assert required in source, required
+
+    # Preserve the S-2 framing: criterion-level verdicts, no document-shape grading.
+    assert "do not grade document shape" in source
+    assert "## Criterion Verdicts" in source
+    assert "## Decision artifact" in source
+    # The advisory must not promote into a hard failure.
+    assert "## What Came Up Short" in source
+    # The new criterion lives inside the criteria-and-verdicts block.
+    assert source.index("directory disjointness") > source.index("## Criteria and verdicts")
+    assert source.index("directory disjointness") < source.index("## Decision artifact")
+
+
+def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
+    """S-11: development_analysis.jinja must describe a concrete fan-out pattern.
+
+    The prompt dispatches read-only verification subagents, one per criterion
+    group (build, lint, types, focused tests), each returning the four-field
+    shape (Expected / Observed / Evidence / Location) and the reproduce rule:
+    every subagent lead a verdict relies on — passing or failing — must be
+    reproduced in the main session before the verdict is written.
+    """
+    context = TemplateContext.default()
+    source = context.registry.get_template("development_analysis")
+    source += context.partials["shared/_criterion_verification_procedure"]
+
+    # Four-field return format.
+    for required in ("Expected", "Observed", "Evidence", "Location"):
+        assert required in source, required
+
+    # Concrete criterion groups named in the prompt.
+    for group in ("build", "lint", "types", "focused tests"):
+        assert group in source, group
+
+    # Reproduce rule: every relied-on lead is re-run in the main session.
+    assert "reproduce" in source.lower(), "reproduce rule missing"
+    # The S-2 rule is preserved (subagent output is a lead, not evidence by itself).
+    assert "lead" in source.lower()
+
+    # Pinned framing must survive.
+    for pinned in (
+        "Expected observation",
+        "`met`, `not met`, or `not evaluable`",
+        "no counterexample found",
+        "## Criterion Verdicts",
+    ):
+        assert pinned in source, pinned
+
+    # The new fan-out block lives between the inspection intro and Decision artifact.
+    intro = source.index("inspect the current worktree")
+    decision = source.index("## Decision artifact")
+    fanout = source.lower().index("reproduce")
+    assert intro < fanout < decision

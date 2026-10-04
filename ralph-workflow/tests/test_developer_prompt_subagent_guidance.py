@@ -107,3 +107,85 @@ def test_developer_prompt_keeps_development_result_block_intact() -> None:
     assert "## DEVELOPMENT RESULT ARTIFACT" in source
     assert "## PARALLEL EXECUTION" in source
     assert source.index("## PARALLEL EXECUTION") < source.index("## DEVELOPMENT RESULT ARTIFACT")
+
+
+# ---------------------------------------------------------------------------
+# S-4: ready group, per-unit brief checklist, and budget-overflow dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_developer_prompt_defines_independent_ready_group_for_linear_plans() -> None:
+    """S-4(a): a linear plan with no `Depends on:` path between any pair and
+    pairwise disjoint `Files:` lists forms an independent ready group; budget
+    pressure escalates the group to a concurrent dispatch rather than
+    trimming scope.
+    """
+    source = _read_developer_template()
+    flat = " ".join(source.split())
+    # Ready group definition.
+    assert "ready group" in source
+    assert "no" in source and "Depends on:" in source
+    # Budget-overflow dispatch (no scope trimming).
+    assert "remaining budget" in source
+    assert "cannot fit" in source
+    assert "concurrently rather than trimming" in flat
+
+
+def test_developer_prompt_per_unit_brief_checklist_is_present() -> None:
+    """S-4(b): the per-unit subagent brief carries unit ID, allowed dirs,
+    brokered-MCP-only tools, no git / no out-of-scope writes, focused verify,
+    and the exact return format.
+    """
+    source = _read_developer_template()
+
+    # Brief checklist headers.
+    assert "Unit ID" in source
+    assert "allowed directories" in source
+    assert "brokered MCP tools" in source
+    # Prohibitions.
+    assert "no git" in source or "No git" in source
+    assert "outside the unit" in source or "outside scope" in source
+    # Verify contract.
+    assert "focused" in source.lower()
+    # Return format fields.
+    assert "files touched" in source or "files changed" in source
+    assert "exit code" in source
+    assert "reprodu" in source  # reproduce / reproduction
+
+
+def test_developer_prompt_names_dispatching_parallel_agents_skill() -> None:
+    """S-4(c): when units exist, the prompt points at the
+    dispatching-parallel-agents skill as the reference.
+    """
+    source = _read_developer_template()
+    assert "dispatching-parallel-agents" in source
+
+
+# ---------------------------------------------------------------------------
+# S-6: first-iteration coverage check and every-iteration pre-submit review
+# ---------------------------------------------------------------------------
+
+
+def test_developer_prompt_first_iteration_maps_request_to_plan_steps() -> None:
+    """S-6(a): on the first iteration, the developer prompt must require a
+    request-versus-plan coverage check before implementing, mapping every
+    concrete deliverable to a plan step (or recording a continuation gap).
+    """
+    source = _read_developer_template()
+    assert "coverage check" in source.lower() or "map every" in source.lower()
+    assert "request" in source.lower()
+    assert "plan step" in source.lower() or "plan items" in source.lower()
+    # Continuation-gap recording.
+    assert "continuation" in source.lower() or "next step" in source.lower()
+
+
+def test_developer_prompt_has_pre_submit_review_on_every_iteration() -> None:
+    """S-6(a): the cheap independent pre-submit review must run on every
+    iteration, not only continuations — the continuation template already
+    carries the rule.
+    """
+    source = _read_developer_template()
+    assert "Before submitting" in source or "before submitting" in source.lower()
+    assert "review" in source.lower() or "check" in source.lower()
+    # Parallel ordering: PARALLEL EXECUTION precedes DEVELOPMENT RESULT.
+    assert source.index("## PARALLEL EXECUTION") < source.index("## DEVELOPMENT RESULT ARTIFACT")

@@ -204,3 +204,30 @@ def test_materialize_skills_to_dir_second_pass_writes_nothing(tmp_path: Path) ->
         for path in tmp_path.rglob("*")
         if path.is_file()
     } == first_contents
+
+
+class TestSubagentDrivenDevelopmentRetired:
+    """S-12: the subagent-driven-development skill must be absent from the bundle.
+
+    It assumes per-task commits, worktrees, and a human partner, which is
+    incompatible with Ralph's unattended, no-manual-commit, shared-checkout
+    model. Use dispatching-parallel-agents instead.
+    """
+
+    def test_baseline_skill_names_excludes_subagent_driven_development(self) -> None:
+        assert "subagent-driven-development" not in BASELINE_SKILL_NAMES
+        assert "subagent-driven-development" not in list_skill_names()
+
+    def test_bundled_metadata_excludes_subagent_driven_development(self) -> None:
+        metadata = get_skill_metadata()
+        assert "subagent-driven-development" not in metadata["skills"]
+        assert "subagent-driven-development" not in metadata["bundles"]
+        assert "subagent-driven-development" not in metadata["skill_sources"]
+
+    def test_get_skill_content_for_subagent_driven_development_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown baseline skill"):
+            get_skill_content("subagent-driven-development")
+
+    def test_executing_plans_does_not_redirect_to_subagent_driven_development(self) -> None:
+        executing_plans = get_skill_content("executing-plans")
+        assert "subagent-driven-development" not in executing_plans

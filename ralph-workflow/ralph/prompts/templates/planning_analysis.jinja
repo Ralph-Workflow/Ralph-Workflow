@@ -6,6 +6,7 @@ Verify that the submitted plan is truthful, executable, and mechanically checkab
 {% include 'shared/_unattended_mode.j2' %}
 {% include 'shared/_session_capabilities.j2' %}
 {% include 'shared/_mcp_tools.j2' %}
+{% include 'shared/_subagents.j2' %}
 {% set DOCS_LOOKUP_PHASE = 'planning analysis' %}
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% include 'shared/_docs_lookup.j2' %}
@@ -39,6 +40,10 @@ status: request_changes
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
 Use one stable `PA-###` item per fixed criterion in `## Criterion Verdicts`. Include `Step: [S-n]` with the canonical step ID or `Plan-level:`, then `Criterion:`, `Expected observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not add `How To Fix`. A `not evaluable` criterion requires `failed`.
+
+### Parallel structure
+
+When the plan declares `## Work Units`, treat parallel structure as a first-class criterion: declared units must have pairwise **directory disjointness** (no shared template, test, or contract directory between any two units' `Directories:` lists); every cross-unit `Depends on:` reference must point to a declared unit and to a step inside it; the unit count must not exceed the cap (the plan is rendered with `max_work_units` from the active policy); and any shared contract, interface, or schema change that more than one unit depends on must be sequenced as its own `### [S-n]` step ahead of the units so they cannot drift. When a large, clearly separable plan is submitted linear (no `## Work Units`) and the steps form groups with pairwise disjoint `Files:` lists, record an **advisory** in `## Criterion Verdicts` (verdict `advisory`, not `not met`) noting that units would have parallelized the work — do not mirror the advisory in `## What Came Up Short` and do not change the decision status. Evidence gathering may fan out to read-only subagents per the shared partial when the unit surface is large.
 
 ## Decision artifact
 

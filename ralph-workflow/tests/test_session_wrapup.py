@@ -114,3 +114,52 @@ def test_reset_wrapup_notification_preserves_wire_compatibility(tmp_path: Path) 
     )
     assert response is None
     assert state is ServerState.RUNNING
+
+
+# ---------------------------------------------------------------------------
+# S-6: budget-aware development_wrapup_notice
+# ---------------------------------------------------------------------------
+
+
+def test_development_wrapup_notice_states_remaining_minutes_when_epochs_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With DEV_WARN_EPOCH / DEV_DEADLINE_EPOCH published, the notice names
+    the remaining minutes, the submit-before-cut instruction, and the
+    ready-group suggestion.
+    """
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    now = time.time()
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now + 600.0))
+    monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
+
+    notice = development_wrapup_notice()
+    flat = " ".join(notice.split())
+
+    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+    assert "minutes remaining" in flat
+    assert "submit the development result before the cut" in flat
+    assert "independent ready group" in flat
+
+
+def test_development_wrapup_notice_keeps_static_text_without_epochs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without published epochs, the notice keeps the existing static text
+    (no remaining-minutes figure, no ready-group suggestion).
+    """
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
+    monkeypatch.delenv(DEV_DEADLINE_EPOCH_ENV, raising=False)
+
+    notice = development_wrapup_notice()
+    flat = " ".join(notice.split())
+
+    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+    assert "minutes remaining" not in flat
+    assert "independent ready group" not in flat
+    assert "literally impossible" in notice

@@ -32,3 +32,16 @@ class DeveloperPromptInputs:
     work_unit_directories: str = ""
     worker_namespace: str = ""
     is_continuation: bool = False
+    # S-5: development timebox publications. ``None`` means "no timebox
+    # published" and the run-budget partial renders no minute figures.
+    # When the pipeline publishes the warn/deadline epochs (see
+    # ``ralph.mcp.protocol.env.DEV_WARN_EPOCH_ENV`` /
+    # ``DEV_DEADLINE_EPOCH_ENV``), the partial renders the concrete
+    # remaining minutes and the force-cut sentence.
+    dev_warn_epoch: float | None = None
+    dev_deadline_epoch: float | None = None
+    # S-5: which ``AgentTransport`` the executing session is using. ``None``
+    # means "unknown" and the partial falls through to the empty-string
+    # ``HAS_SUBAGENTS`` (the sequential path). The pipeline always supplies
+    # this in production; tests construct inputs directly and may omit it.
+    transport: object = None

@@ -15,7 +15,6 @@
     {"name": "brainstorming", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/brainstorming/SKILL.md"}},
     {"name": "writing-plans", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/writing-plans/SKILL.md"}},
     {"name": "executing-plans", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/executing-plans/SKILL.md"}},
-    {"name": "subagent-driven-development", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/subagent-driven-development/SKILL.md"}},
     {"name": "dispatching-parallel-agents", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/dispatching-parallel-agents/SKILL.md"}},
     {"name": "test-driven-development", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/test-driven-development/SKILL.md"}},
     {"name": "systematic-debugging", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/systematic-debugging/SKILL.md"}},

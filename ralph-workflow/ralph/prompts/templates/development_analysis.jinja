@@ -11,11 +11,23 @@ complete unless every required plan item is complete or has a proven
 {% include 'shared/_unattended_mode.j2' %}
 {% include 'shared/_session_capabilities.j2' %}
 {% include 'shared/_mcp_tools.j2' %}
+{% include 'shared/_subagents.j2' %}
 
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
-Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Use parallel or subagent evidence gathering when it improves the decision; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
+Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Do not use an implementer summary, rationale, or completion claim as evidence.
+
+### Verification fan-out
+
+Fan out read-only verification across criterion groups, one subagent per group, when the surface is large enough to make sequential inspection costly. The four concrete groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). Each subagent returns the same four-field shape per check:
+
+- **Expected** — the observation that would mean the check passed.
+- **Observed** — the literal command output or file:line citation the subagent read.
+- **Evidence** — the exact command plus its exit code, or `path:line` for a static read.
+- **Location** — the file, line, or step ID the evidence attaches to.
+
+Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any `## Criterion Verdicts` entry is written.
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
 

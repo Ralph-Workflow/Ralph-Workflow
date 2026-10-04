@@ -19,14 +19,17 @@ Guard the check-then-refresh critical section with a bounded per-key lock lifecy
 Type: file_change
 Files:
 - modify src/auth/refresh.py
-Depends on: S-1
 Verify: pytest tests/auth/test_refresh_race.py -q
 Expect: the race regression passes with exit code 0
 
-### [S-3] Prove auth behavior remains correct
-Run the relevant auth suite after the focused regression passes.
+## Work Units
 
-Type: verify
-Depends on: S-2
-Verify: pytest tests/auth -q
-Expect: the auth suite passes with zero failures
+- [U-1] Per-token-key lock body
+  Replace the global refresh lock with a per-token-key lock.
+
+  Directories: src/auth
+
+- [U-2] Race regression test
+  Add a focused regression proving the per-token-key lock holds.
+
+  Directories: tests/auth

@@ -45,6 +45,18 @@ _INVARIANTS: tuple[Invariant, ...] = (
         absent=("## Same-Workspace Parallel Worker Rules",),
     ),
     Invariant(
+        rel_path="prompts/templates/shared/_subagents.j2",
+        present=(
+            "DELEGATION GUIDANCE (context isolation first)",
+            "primary reason to use sub-agents is",
+        ),
+        absent=(
+            "ralph coordinate",
+            "Dispatch every work unit to a sub-agent",
+            "MUST run as a sub-agent",
+        ),
+    ),
+    Invariant(
         rel_path="prompts/templates/planning_analysis.jinja",
         present=("do not grade document shape",),
         absent=("nine-dimension",),

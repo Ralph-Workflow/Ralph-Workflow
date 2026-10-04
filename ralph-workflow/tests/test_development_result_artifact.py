@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 import pytest
 from pydantic import ValidationError
 
@@ -12,6 +14,8 @@ from ralph.mcp.artifacts.development_result import (
     PlanItemProof,
     normalize_development_result_content,
 )
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 
 
 def test_plan_item_proof_validates_with_valid_fields() -> None:
@@ -227,3 +231,132 @@ def test_normalize_development_result_rejects_completed_without_files_changed() 
 def test_normalize_development_result_still_rejects_unknown_status() -> None:
     with pytest.raises(DevelopmentResultValidationError, match="completed"):
         normalize_development_result_content({"status": "done", "summary": "Done."})
+
+
+# --- S-7: optional Unplanned Work section ---
+
+
+def test_normalize_development_result_carries_unplanned_work_through() -> None:
+    """`unplanned_work` is a sanctioned field for mid-phase discoveries.
+
+    Bulleted items entered as `## Unplanned Work` round-trip into the
+    normalized payload under their own key and never spill into the
+    proof arrays: a plan step ID coincidentally equal to an item
+    bracket (e.g. ``UW-1``) does not become a proof.
+    """
+    normalized = normalize_development_result_content(
+        {
+            "status": "completed",
+            "summary": "Done.",
+            "files_changed": "- ralph/mcp/tool_bridge.py",
+            "unplanned_work": [
+                "[UW-1] ralph/mcp/tool_bridge.py:78 — lock contention surfaced "
+                "during the refresh-token test; reproduced before the fix.",
+            ],
+        }
+    )
+
+    assert normalized["unplanned_work"] == [
+        "[UW-1] ralph/mcp/tool_bridge.py:78 — lock contention surfaced "
+        "during the refresh-token test; reproduced before the fix.",
+    ]
+    assert normalized["plan_items_proven"] == []
+    assert normalized["analysis_items_addressed"] == []
+
+
+def test_normalize_development_result_omits_unplanned_work_when_empty() -> None:
+    """Empty ``unplanned_work`` is stripped so the payload matches the
+    pre-S-7 shape for plans that did not record a mid-phase discovery."""
+    normalized = normalize_development_result_content(
+        {
+            "status": "completed",
+            "summary": "Done.",
+            "files_changed": "- ralph/mcp/tool_bridge.py",
+            "unplanned_work": [],
+        }
+    )
+
+    assert "unplanned_work" not in normalized
+
+
+def test_unplanned_work_markdown_section_validates_with_zero_section_errors() -> None:
+    """A ``## Unplanned Work`` section in the markdown validates cleanly.
+
+    The section is documented in the format doc as optional and
+    bulleted; its bracketed IDs are not proof IDs, so the spec must
+    not raise ``unknown section`` or any other shape diagnostic.
+    """
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    spec = get_spec("development_result")
+    content = (
+        "---\n"
+        "type: development_result\n"
+        "status: completed\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] Implemented the requested change.\n"
+        "\n"
+        "## Files Changed\n"
+        "\n"
+        "- [F-1] ralph/mcp/tool_bridge.py\n"
+        "\n"
+        "## Plan Items Proven\n"
+        "\n"
+        "- [S-1] ralph/mcp/tool_bridge.py now contains the change; "
+        "pytest tests/test_tool_bridge.py -q passes.\n"
+        "  Disposition: completed\n"
+        "\n"
+        "## Unplanned Work\n"
+        "\n"
+        "- [UW-1] ralph/mcp/tool_bridge.py:78 — lock contention surfaced "
+        "during the refresh-token test; reproduced before the fix.\n"
+    )
+
+    _, diagnostics = parse_and_validate(content, spec)
+    errors = [d for d in diagnostics if d.severity == "error"]
+
+    assert errors == [], "; ".join(
+        f"line {d.line} [{d.rule_id}] {d.message}" for d in errors
+    )
+
+
+def test_unplanned_work_items_are_not_promoted_to_proof_ids() -> None:
+    """`## Unplanned Work` items must not appear in the proof arrays.
+
+    The bracketed IDs in this section are anchors (not plan-step
+    references), so a development_result that carries a ``UW-1``
+    discovery must report it only under ``unplanned_work``.
+    """
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    spec = get_spec("development_result")
+    content = (
+        "---\n"
+        "type: development_result\n"
+        "status: completed\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] Done.\n"
+        "\n"
+        "## Files Changed\n"
+        "\n"
+        "- [F-1] ralph/mcp/tool_bridge.py\n"
+        "\n"
+        "## Unplanned Work\n"
+        "\n"
+        "- [UW-1] ralph/mcp/tool_bridge.py:78 — mid-phase discovery.\n"
+    )
+
+    content_dict, diagnostics = parse_and_validate(content, spec)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert errors == [], "; ".join(
+        f"line {d.line} [{d.rule_id}] {d.message}" for d in errors
+    )
+    assert content_dict["unplanned_work"] == [
+        "[UW-1] ralph/mcp/tool_bridge.py:78 — mid-phase discovery."
+    ]
+    assert content_dict["plan_items_proven"] == []
+    assert content_dict["analysis_items_addressed"] == []

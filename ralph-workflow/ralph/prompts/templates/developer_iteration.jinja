@@ -33,6 +33,33 @@ IMPORTANT: The previous attempt did not complete successfully.
 {% include 'shared/_artifact_history.j2' %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
+{% include 'shared/_subagents.j2' %}
+
+{% if not IS_CONTINUATION %}
+## FIRST-ITERATION COVERAGE CHECK (request versus plan)
+
+Before implementing anything on this iteration, run a coverage check that maps
+**every concrete deliverable in the request** to a plan step or records it as a
+continuation gap. For plans with many distinct deliverables, fan out to a
+read-only subagent that returns the mapping; otherwise perform the same check
+sequentially. The mapping must list, for every item in `PROMPT`:
+
+- the plan step ID it maps to (e.g. `[S-3]`), or
+- a continuation need explaining what plan steps would have to change to
+  cover it (file:line where the gap was identified, what plan change
+  closes it).
+
+Implementation does not begin until every requested deliverable is mapped or
+recorded. Gaps are surfaced as `Next steps:` in the eventual development
+result, not as silent skips.
+{% endif %}
+
+Before submitting, run the cheap independent pre-submit review against the
+plan and proof contract — an open gap must close before the artifact is
+submitted or completion is declared. Use an independent sub-agent when
+coordination costs less than sequential execution; otherwise perform the same
+check sequentially. Until that review closes the remaining gap, you MUST NOT
+submit the artifact or declare completion.
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% set DOCS_LOOKUP_PHASE = 'development' %}

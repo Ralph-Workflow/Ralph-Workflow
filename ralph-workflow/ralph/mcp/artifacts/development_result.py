@@ -29,6 +29,11 @@ class DevelopmentResult(RalphBaseModel):
     next_steps: str | None = None
     continuation: Continuation | None = None
     incomplete_work: list[str] = Field(default_factory=list)
+    # Sanctioned home for mid-phase discoveries: a developer can record a
+    # file:line finding that the plan omitted under a stable-ID bracket,
+    # and the bracket is an anchor (not a plan step reference), so it is
+    # never routed to proof validation.
+    unplanned_work: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_status_requirements(self) -> DevelopmentResult:
@@ -82,6 +87,11 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
         # Strip empty incomplete_work so non-warned results keep their shape.
         if not dumped.get("incomplete_work"):
             dumped.pop("incomplete_work", None)
+        # Strip empty unplanned_work so plans without mid-phase discoveries
+        # keep their pre-S-7 payload shape; a non-empty list is preserved
+        # verbatim so the bracketed anchors stay queryable downstream.
+        if not dumped.get("unplanned_work"):
+            dumped.pop("unplanned_work", None)
         return dumped
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)

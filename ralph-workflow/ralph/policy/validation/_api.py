@@ -42,6 +42,7 @@ from ralph.policy.validation._policy_validation_error import PolicyValidationErr
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 _BLOCK_BASED_POLICY_FORMAT_VERSION = 2
+_MULTI_UNIT_THRESHOLD = 2
 _AGY_ALIAS_HELP = (
     "Available AGY models: gemini-3.6-flash-high, gemini-3.6-flash-medium, "
     "gemini-3.6-flash-low, gemini-3.5-flash-high, gemini-3.5-flash-medium, "
@@ -276,36 +277,27 @@ def validate_work_units_against_policy(
     *,
     phase: str,
 ) -> None:
-    """Validate parsed planning work_units against the active phase's parallelization policy."""
-    if len(work_units.work_units) <= 1:
+    """Validate parsed planning work_units against the active phase's parallelization policy.
+
+    Per-unit directory validation (reserved paths, cross-unit overlap) runs for
+    every plan that declares at least one unit, including singleton plans: a
+    single unit pointing at ``.agent`` is unsafe regardless of whether it fans
+    out. The parallelization-declaration requirement and both caps
+    (``max_work_units`` for the parse ceiling, ``max_parallel_workers`` for the
+    fan-out ceiling) only apply to plans that actually fan out, i.e. multi-unit
+    plans. Zero-unit plans return immediately without raising.
+    """
+    work_units_count = len(work_units.work_units)
+    if work_units_count == 0:
         return
 
     phase_def = pipeline_policy.phases.get(phase)
     parallel_policy = phase_def.parallelization if phase_def is not None else None
 
-    if parallel_policy is None:
-        work_units_count = len(work_units.work_units)
-        raise PolicyValidationError(
-            f"Phase {phase!r} does not declare parallelization but the plan declares "
-            f"{work_units_count} work_units; the active transition policy must explicitly "
-            f"enable same-workspace fan-out via [phases.{phase}.parallelization]"
-        )
-
-    work_units_count = len(work_units.work_units)
-
-    if work_units_count > parallel_policy.max_work_units:
-        raise PolicyValidationError(
-            f"work_units count {work_units_count} exceeds cap {parallel_policy.max_work_units}"
-        )
-
-    if work_units_count > parallel_policy.max_parallel_workers:
-        raise PolicyValidationError(
-            "Planning artifact declares "
-            f"{work_units_count} work_units, exceeding "
-            f"max_parallel_workers={parallel_policy.max_parallel_workers}"
-        )
-
-    if parallel_policy.require_allowed_directories:
+    # Per-unit directory checks: reserved paths and cross-unit overlap. These
+    # apply to every plan with at least one unit; reserved paths and overlaps
+    # are unsafe whether or not the plan fans out.
+    if parallel_policy is not None and parallel_policy.require_allowed_directories:
         for unit in work_units.work_units:
             if not unit.allowed_directories:
                 raise PolicyValidationError(
@@ -317,6 +309,33 @@ def validate_work_units_against_policy(
         validate_for_same_workspace(work_units)
     except work_units_validation_error as exc:
         raise PolicyValidationError(str(exc)) from exc
+
+    # Multi-unit-only checks: parallelization declaration and both caps. A
+    # single unit does not fan out, so the phase need not declare
+    # parallelization and neither cap applies.
+    if work_units_count < _MULTI_UNIT_THRESHOLD:
+        return
+
+    if parallel_policy is None:
+        raise PolicyValidationError(
+            f"Phase {phase!r} does not declare parallelization but the plan declares "
+            f"{work_units_count} work_units; the active transition policy must explicitly "
+            f"enable same-workspace fan-out via [phases.{phase}.parallelization]"
+        )
+
+    if work_units_count > parallel_policy.max_work_units:
+        raise PolicyValidationError(
+            f"work_units count {work_units_count} exceeds max_work_units="
+            f"{parallel_policy.max_work_units} (the parse ceiling for plan size)"
+        )
+
+    if work_units_count > parallel_policy.max_parallel_workers:
+        raise PolicyValidationError(
+            "Planning artifact declares "
+            f"{work_units_count} work_units, exceeding "
+            f"max_parallel_workers={parallel_policy.max_parallel_workers} "
+            "(the per-phase worker fan-out ceiling)"
+        )
 
 
 def validate_agent_chains_satisfiable(

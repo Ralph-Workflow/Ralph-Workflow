@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import time as _time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.agents.delegation_capabilities import DelegationStance, delegation_for
+from ralph.config.agent_transport import AgentTransport as _AgentTransport
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
@@ -160,6 +163,54 @@ def capability_template_variables_from_session(
     return capability_template_variables(caps, flags, tool_name_prefix=tool_name_prefix)
 
 
+def delegation_template_variable(transport: object) -> dict[str, str]:
+    """Render the ``HAS_SUBAGENTS`` template variable for a given transport.
+
+    The variable is set to the literal ``"true"`` for a transport whose
+    :class:`DelegationStance` is :attr:`DelegationStance.SUPPORTED` and to
+    the empty string otherwise. The empty-string default matches the
+    ``|default('')`` idiom used by the shared subagent partial, so the
+    partial renders the sequential fallback path when the variable is
+    absent from the rendering context as well as when the transport
+    explicitly does not support delegation.
+    """
+    # Defensive: tolerate callers that pass the enum or a stringly-typed
+    # transport. The mapping is the canonical source of truth; an unknown
+    # transport (i.e. one without a delegation declaration) falls back to
+    # "not supported" rather than raising, so a single bad input cannot
+    # break prompt materialization for the rest of the run.
+    try:
+        capability = delegation_for(_AgentTransport(cast("str", transport)))
+    except (KeyError, ValueError):
+        return {"HAS_SUBAGENTS": ""}
+    return {"HAS_SUBAGENTS": bool_to_string(capability.stance == DelegationStance.SUPPORTED)}
+
+
+def timebox_template_variables(
+    *,
+    warn_epoch: float | None,
+    deadline_epoch: float | None,
+    now_epoch: float | None = None,
+) -> dict[str, str]:
+    """Render ``DEV_REMAINING_MINUTES`` and ``DEV_FORCE_CUT`` for the run-budget partial.
+
+    Returns an empty mapping when either epoch is missing — the
+    ``|default('')`` idiom in the partial falls through to the
+    no-partial-on-exhaustion rule in that case. ``now_epoch`` is
+    injectable so tests can pin the clock; production callers omit it.
+    """
+    if warn_epoch is None or deadline_epoch is None:
+        return {}
+
+    now = _time.time() if now_epoch is None else now_epoch
+    remaining_seconds = max(0.0, deadline_epoch - now)
+    remaining_minutes = int(remaining_seconds // 60)
+    return {
+        "DEV_REMAINING_MINUTES": str(remaining_minutes),
+        "DEV_FORCE_CUT": "true",
+    }
+
+
 def bool_to_string(value: bool) -> str:
     """Render a boolean as the template convention 'true' or the empty string."""
     return "true" if value else ""
@@ -289,6 +340,8 @@ __all__ = [
     "capability_template_variables_from_session",
     "default_capability_identifiers_for_drain",
     "default_caps_and_flags_for_drain",
+    "delegation_template_variable",
     "format_capability_summary",
     "format_mcp_tools_list",
+    "timebox_template_variables",
 ]
