@@ -273,12 +273,22 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
     overlapping recursive observer on the same workspace. Holding it
     after abandoning the watch keeps that guarantee's cost -- no one
     else may watch -- with none of its benefit, until the process exits.
+
+    The sidecar's ``begin_ownership`` is mocked to a fast stub so the
+    test's path is deterministic under shard load: the
+    ``call_within_budget`` budget the test injects is the one being
+    tested, not real-disk latency, and asserting that the
+    ``_abandon_slow_watch_start`` branch releases the lock does not
+    require the system to be idle.
     """
     lock = _SlowWatchLock(stall=False)
     monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
     observer = _SlowObserver()
     monkeypatch.setattr(
         "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: _FastSidecar()
     )
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -295,6 +305,34 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
 
     assert observer.entered.is_set(), "the watch start was never reached"
     assert lock.released, "the abandoned watch kept its cross-process claim"
+
+
+class _FastSidecar:
+    """A shared-awareness sidecar stub that completes synchronously.
+
+    Used by tests that pin an invariant on the workspace-monitor's
+    internal timing (e.g. the cross-process lock release on
+    abandoned watch start) without wanting the test to depend on
+    the real sidecar's disk latency. The interface matches
+    ``SharedAwarenessSidecar`` for the methods the monitor reaches
+    on the success path: ``begin_ownership`` returns the new
+    epoch, ``publish_changes`` is a no-op, ``claim_epoch`` is a
+    no-op, and ``end_ownership`` is a no-op.
+    """
+
+    def begin_ownership(self, owner_id: str, *, prior_holder: str | None = None) -> int:
+        del owner_id, prior_holder
+        return 1
+
+    def publish_changes(self, *args: object, **kwargs: object) -> int:
+        del args, kwargs
+        return 1
+
+    def claim_epoch(self, epoch: int) -> None:
+        del epoch
+
+    def end_ownership(self) -> None:
+        return None
 
 
 class _SlowStoppingObserver(_SlowObserver):

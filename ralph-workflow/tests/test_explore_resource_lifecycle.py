@@ -27,15 +27,6 @@ import pytest
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 
-def _audit_module_via_python_api() -> tuple[list, int]:
-    """Run the resource-lifecycle audit on the explore package."""
-    from ralph.testing.audit_resource_lifecycle import (
-        audit_resource_lifecycle_directory,
-    )
-
-    return audit_resource_lifecycle_directory(EXPLORE_ROOT)
-
-
 def _count_fds() -> int:
     """Return the number of open file descriptors of the current process.
 
@@ -57,15 +48,6 @@ def _count_fds() -> int:
         return sum(1 for _ in fd_dir.iterdir()) - 1
     except (FileNotFoundError, PermissionError, OSError):
         return 0
-
-
-def test_explore_handlers_use_bounded_accumulators() -> None:
-    violations, files_checked = _audit_module_via_python_api()
-    formatted = "\n".join(str(v) for v in violations)
-    assert not violations, (
-        f"Found {len(violations)} resource-lifecycle violations in "
-        f"{files_checked} file(s):\n{formatted}"
-    )
 
 
 def test_no_unbounded_deque_in_explore() -> None:

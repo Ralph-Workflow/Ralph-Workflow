@@ -270,3 +270,17 @@ evidence = "ralph-workflow/ralph/display/edit_preview.py:_build_edit_preview `de
 lifecycle = "remove vacuous test-local oracle; if a row-width floor is reintroduced as a production seam, add a black-box test that drives render_scene or build_edit_preview through the public seam at a narrow declared width and asserts each emitted row's cell_len stays within the bound"
 disposition = "REMOVE"
 removed-tests = "test_visual_floor_over_width_unicode_row_fixture_is_rejected"
+
+[[controls]]
+id = "retired-explore-resource-lifecycle-suite-duplicate"
+protected_outcome = "The ralph/mcp/explore package tree carries no unbounded resource accumulators"
+fault_sensitivity = "category-2 redundancy: the removed test re-ran the public audit_resource_lifecycle_directory API over ralph/mcp/explore on every default-suite make test, with a measured 0.93s solo runtime and over 1.0s under 12-shard load (tests.conftest.TestExecutionTimeoutError: test exceeded 1.0 seconds, observed 2026-10-04); the make verify step 'resource lifecycle audit (audit_resource_lifecycle)' already audits a superset (ralph/mcp) on every run"
+layer = "redundant public-audit duplicate removed; surviving control is the make-verify audit step"
+owner = "project maintainers"
+trigger = "explore accumulator or watcher implementation change"
+lane = "default"
+marginal_cost_seconds = 0.0
+evidence = "Surviving verify step `python -m ralph.testing.audit_resource_lifecycle` over ralph/mcp (a superset of ralph/mcp/explore) declared in ralph-workflow/ralph/verify.py _VERIFY_STEPS; audit machinery itself covered by 66 tests in ralph-workflow/tests/test_audit_resource_lifecycle.py; sibling tests test_no_unbounded_deque_in_explore and test_no_module_level_mutable_list_in_explore in ralph-workflow/tests/test_explore_resource_lifecycle.py continue to pin the same invariant through the static-source path. Review note dated 2026-10-04 recorded the redundant-duplicate classification against the 0.93s solo / over-1.0s under-shard-load figures."
+lifecycle = "remove the redundant public-audit duplicate; rerun the audit_resource_lifecycle verify step and the sibling static-source tests on every change to the audit's default roots"
+disposition = "REMOVE"
+removed-tests = "test_explore_handlers_use_bounded_accumulators"
