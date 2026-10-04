@@ -692,16 +692,16 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
             if result.status is ScopedCommitStatus.CREATED and result.sha:
                 logger.debug(".gitignore auto-seed committed: {}", result.sha[:8])
             elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-                logger.debug(
+                logger.warning(
                     ".gitignore auto-seed skipped: .gitignore was already dirty at HEAD "
                     "(user mid-edit?); left for the user flow"
                 )
             elif result.status is ScopedCommitStatus.FAILED:
-                logger.debug(
+                logger.warning(
                     ".gitignore auto-seed commit failed (non-fatal): {}", result.error
                 )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug(".gitignore auto-seed commit failed (non-fatal): {}", exc)
+            logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
 
 

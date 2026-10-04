@@ -419,6 +419,293 @@ def _check_skill_root_prefixes_constant_matches() -> list[str]:  # noqa: PLR0912
     return []
 
 
+# --- Production-writer registry (wt-012 enforcement) -------------------------
+#
+# Every deterministic tracked-file writer in ralph/ MUST either route
+# through the shared ``commit_deterministic_writes`` helper (preferred)
+# OR carry an inline ``# deterministic-writer-ok: <reason>`` marker
+# naming its commit route or its classification as non-committable
+# runtime state (e.g. ignored cache files, private /tmp dirs). A direct
+# chore-purpose ``create_commit`` call in ralph/ production code that
+# is NOT inside ``commit_scoped_updates`` / ``commit_deterministic_writes``
+# / ``commit_skill_updates`` / ``commit_skill_writes`` / ``commit_policy_updates``
+# / ``commit_policy_writes`` is FORBIDDEN -- the helper is the single
+# isolation primitive; ad-hoc commits would re-introduce the wt-01 / wt-09
+# agent-work-sweep-in bug.
+#
+# This registry is the source of truth for the writer enumeration.
+# Adding a new deterministic writer: register it here AND route its commit
+# through ``commit_deterministic_writes`` (or add an inline marker naming
+# the commit route).
+
+# Per-file rule: a path is classified as either
+#   - "tracked" : the file writes tracked, committable paths (default);
+#                  the writer MUST route through ``commit_deterministic_writes``
+#                  OR carry an inline ``# deterministic-writer-ok: ...`` marker.
+#   - "ignored" : the file writes ONLY non-committable runtime state
+#                  (ignored cache files, private /tmp paths, .git/info/exclude
+#                  after-the-fact writes, etc.). Such files carry an
+#                  inline marker and are not enforced.
+# The default is "tracked"; non-committable writers mark themselves.
+_WRITER_AUDIT_RULES: tuple[dict[str, object], ...] = (
+    # writer_path: string literal or AST pattern that identifies a
+    # tracked write site; rule: "tracked" or "ignored".
+    {
+        "path": "skills/_installer.py",
+        "writer_literals": (
+            "copytree",  # sibling fan-out materialization
+            "_create_symlink",  # sibling symlink materialization
+        ),
+        "rule": "tracked",
+    },
+    {
+        "path": "project_policy/agents_md.py",
+        "writer_literals": (
+            "workspace.write",  # bootstrap + condense
+        ),
+        "rule": "tracked",
+    },
+    {
+        "path": "project_policy/_schema_upgrade.py",
+        "writer_literals": (
+            "workspace.write",  # schema-freeze marker rewrite
+        ),
+        "rule": "tracked",
+    },
+    {
+        "path": "project_policy/starters/__init__.py",
+        "writer_literals": (
+            "workspace.write",  # starter seeding
+        ),
+        "rule": "tracked",
+    },
+    {
+        "path": "config/bootstrap.py",
+        "writer_literals": (
+            "_atomic_append_text",  # .gitignore + .git/info/exclude seeding
+        ),
+        "rule": "tracked",
+    },
+)
+
+
+# Helper symbols whose call sites are the legitimate commit entry points.
+# Calls to ``create_commit`` inside these helpers are ALLOWED; calls
+# elsewhere in ralph/ production code are FORBIDDEN by
+# ``_check_no_direct_chore_commit``.
+_COMMIT_HELPER_MODULES: frozenset[str] = frozenset(
+    {
+        "ralph.git.scoped_auto_commit",
+        "ralph.git.operations",
+        "ralph.skills._auto_commit",
+        "ralph.skills._installer",
+        "ralph.project_policy._auto_commit",
+        "ralph.project_policy.preflight",
+        "ralph.project_policy._schema_upgrade",
+    }
+)
+
+
+def _check_no_direct_chore_commit() -> list[str]:
+    """No direct ``create_commit`` call in production code outside the helpers.
+
+    Any ``create_commit(...)`` call in ralph/ that is NOT inside a
+    helper listed in ``_COMMIT_HELPER_MODULES`` (or is not routed
+    through ``commit_scoped_updates`` / ``commit_deterministic_writes``)
+    is a regression: a future ad-hoc chore commit would re-introduce
+    the deterministic-writer isolation bug. The audit scans every
+    ralph/ production module and flags direct calls.
+
+    Returns the list of violations (each is ``<file>:<line>`` plus
+    the violation reason).
+    """
+    problems: list[str] = []
+    for py_path in sorted(_PACKAGE_ROOT.rglob("*.py")):
+        # Skip the audit itself, tests, and non-production submodules.
+        rel = py_path.relative_to(_PACKAGE_ROOT).as_posix()
+        if rel.startswith("testing/"):
+            continue
+        if rel.startswith("__pycache__/"):
+            continue
+        # Use the patchable ``_read`` (matches the rest of the audit)
+        # so tests can monkeypatch production file content.
+        src = _read(rel)
+        if "create_commit" not in src:
+            continue
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        # Build a line->content map so we can detect inline
+        # ``# deterministic-writer-ok: ...`` markers on the call line
+        # or its 3-line prelude (a future refactor moving the marker
+        # up to the call site would still be detected).
+        src_lines = src.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                not isinstance(func, ast.Name)
+                or func.id != "create_commit"
+            ):
+                continue
+            # Direct ``create_commit(...)`` call. The only legitimate
+            # call sites are inside the helpers listed above. We
+            # allow ``create_commit`` inside any of those modules AND
+            # inside the testing/ audit (which itself imports the
+            # symbol for tests).
+            if any(
+                rel == f"{name.split('.', 1)[1]}.py".replace("/", "/")
+                or rel.startswith(name.split(".", 1)[1].replace(".", "/") + "/")
+                for name in _COMMIT_HELPER_MODULES
+                if name.startswith("ralph.")
+            ):
+                continue
+            # Check for an inline ``# deterministic-writer-ok:`` marker
+            # on the call line or the three lines above it.
+            line_idx = max(0, (node.lineno or 1) - 4)
+            window = src_lines[line_idx : (node.lineno or 1)]
+            has_marker = any(
+                "deterministic-writer-ok" in line for line in window
+            )
+            if has_marker:
+                continue
+            problems.append(
+                f"  {rel}:{node.lineno}: direct create_commit call in production code; "
+                "route via commit_scoped_updates / commit_deterministic_writes "
+                "(or add an inline # deterministic-writer-ok: marker)"
+            )
+    return problems
+
+
+def _check_production_writer_scan() -> list[str]:
+    """Scan all production files for tracked writes, requiring commit routing or an inline marker.
+
+    AST-walks every production file in ralph/ (excluding testing/ and
+    __pycache__/). If a call to a tracked write primitive (such as
+    workspace.write in project_policy/, or copytree/_create_symlink/symlink_to
+    in skills/) is encountered, the file MUST route through
+    commit_deterministic_writes / commit_policy_writes / commit_skill_writes
+    OR the call line / its 3-line prelude MUST carry an inline
+    ``# deterministic-writer-ok: <reason>`` marker.
+    """
+    problems: list[str] = []
+    target_dirs = ("project_policy", "skills", "config")
+    for subdir in target_dirs:
+        sub_path = _PACKAGE_ROOT / subdir
+        if not sub_path.exists():
+            continue
+        for py_path in sorted(sub_path.rglob("*.py")):
+            rel = py_path.relative_to(_PACKAGE_ROOT).as_posix()
+            if rel.startswith("testing/"):
+                continue
+            if "__pycache__" in rel:
+                continue
+            src = _read(rel)
+            if not any(k in src for k in ("write", "copytree", "symlink_to", "_create_symlink")):
+                continue
+            try:
+                tree = ast.parse(src)
+            except SyntaxError:
+                continue
+            src_lines = src.splitlines()
+        routes_through_helper = any(
+            h in src
+            for h in (
+                "commit_deterministic_writes",
+                "commit_policy_writes",
+                "commit_skill_writes",
+                "commit_scoped_updates",
+            )
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            is_tracked_write = (
+                (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "write"
+                    and (
+                        rel.startswith("project_policy/")
+                        or rel.startswith("skills/")
+                    )
+                )
+                or (
+                    rel.startswith("skills/")
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"copytree", "symlink_to"}
+                )
+                or (
+                    rel.startswith("skills/")
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in {"_create_symlink", "copytree"}
+                )
+            )
+
+            if not is_tracked_write:
+                continue
+            if routes_through_helper:
+                continue
+
+            line_idx = max(0, (node.lineno or 1) - 4)
+            window = src_lines[line_idx : (node.lineno or 1)]
+            has_marker = any("deterministic-writer-ok" in line for line in window)
+            if not has_marker:
+                problems.append(
+                    f"  {rel}:{node.lineno}: unmarked deterministic writer site; "
+                    "route via commit_deterministic_writes or add an inline "
+                    "# deterministic-writer-ok: <reason> marker"
+                )
+    return problems
+
+
+def _check_writer_routing() -> list[str]:
+    """Every registered tracked writer MUST route through
+    ``commit_deterministic_writes`` OR carry an inline marker.
+
+    The rule is enforced for each writer site in ``_WRITER_AUDIT_RULES``
+    whose rule is "tracked". A tracked writer that lacks BOTH routing
+    AND a marker is a regression.
+    """
+    problems: list[str] = []
+    for rule in _WRITER_AUDIT_RULES:
+        rel_raw: object = rule["path"]
+        writer_literals_raw: object = rule["writer_literals"]
+        rule_kind_raw: object = rule["rule"]
+        if not isinstance(rel_raw, str):
+            continue
+        rel = rel_raw
+        if not isinstance(writer_literals_raw, tuple):
+            continue
+        writer_literals: tuple[object, ...] = writer_literals_raw
+        if not isinstance(rule_kind_raw, str):
+            continue
+        rule_kind = rule_kind_raw
+        try:
+            content = _read(rel)
+        except FileNotFoundError:
+            problems.append(
+                f"  {rel}: required writer-audit file missing "
+                "(delete must update audit registry)"
+            )
+            continue
+        # The writer routes through commit_deterministic_writes if the
+        # file imports + calls the helper.
+        routes_through_helper = "commit_deterministic_writes" in content
+        # Or carries an inline deterministic-writer-ok marker.
+        carries_marker = "deterministic-writer-ok" in content
+        if rule_kind == "tracked" and not (
+            routes_through_helper or carries_marker
+        ):
+            problems.append(
+                f"  {rel}: tracked writer ({writer_literals!r}) MUST either "
+                "route through commit_deterministic_writes or carry an "
+                "inline ``# deterministic-writer-ok: <reason>`` marker"
+            )
+    return problems
+
+
 # --- Main entry point --------------------------------------------------------
 
 
@@ -443,18 +730,32 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_check_skill_root_skip_placement())
     problems.extend(_check_skill_root_prefixes_constant_matches())
 
+    # 4. Production-writer enforcement (wt-012)
+    problems.extend(_check_no_direct_chore_commit())
+    problems.extend(_check_writer_routing())
+    problems.extend(_check_production_writer_scan())
+
     if problems:
         print(f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)")
         for problem in problems:
             print(problem)
         return 1
 
-    invariants_checked = len(_INVARIANTS) + len(_FILE_EXISTENCE_CHECKS) + 2
+    invariants_checked = (
+        len(_INVARIANTS)
+        + len(_FILE_EXISTENCE_CHECKS)
+        + 2  # AST placement checks
+        + len(_WRITER_AUDIT_RULES)  # writer-routing checks
+        + 1  # direct-chore-commit check
+        + 1  # production-wide writer scan
+    )
     print(
         f"audit_skill_auto_commit OK ({invariants_checked} invariants checked): "
         f"subject={_SKILL_AUTO_COMMIT_SUBJECT!r}, "
         f"skill_roots={len(_SKILL_ROOT_PREFIXES)}, "
-        "ast_placement=pinned, helper_module=present"
+        "ast_placement=pinned, helper_module=present, "
+        f"writer_routing={len(_WRITER_AUDIT_RULES)}_tracked, "
+        "production_writer_scan=enforced"
     )
     return 0
 

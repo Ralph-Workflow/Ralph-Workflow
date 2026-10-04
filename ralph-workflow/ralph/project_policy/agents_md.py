@@ -164,6 +164,12 @@ def write_opt_out(workspace: Workspace) -> list[str]:
     if content and not content.endswith("\n"):
         content += "\n"
     separator = "\n" if content else ""
+    # deterministic-writer-ok: this write site is owned by the caller;
+    # the producer-level commit routes through
+    # ``ralph.project_policy._auto_commit.commit_policy_writes`` from
+    # ``ralph.project_policy.preflight`` (bootstrap) and from
+    # ``ralph.project_policy.cli_integration`` (condense). The audit
+    # recognises the marker as the canonical writer-site identification.
     workspace.write(
         markers.AGENTS_MD,
         content + separator + markers.OPT_OUT_MARKER + "\n",
@@ -211,6 +217,7 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
     contract for first-time projects.
     """
     if not workspace.exists(markers.AGENTS_MD):
+        # deterministic-writer-ok: bootstrap write committed via preflight commit_policy_writes
         workspace.write(markers.AGENTS_MD, _managed_block().rstrip() + "\n")
         return [markers.AGENTS_MD]
     content = workspace.read(markers.AGENTS_MD)
@@ -228,6 +235,7 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
     # so the project enters Ralph's policy-readiness contract.
     if not content.endswith("\n"):
         content = content + "\n"
+    # deterministic-writer-ok: bootstrap write committed via preflight commit_policy_writes
     workspace.write(
         markers.AGENTS_MD,
         content + "\n" + _managed_block(),
@@ -250,6 +258,7 @@ def _has_any_managed_marker(content: str) -> bool:
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
     """Create or update CLAUDE.md; return the changed-file list."""
     if not workspace.exists(markers.CLAUDE_MD):
+        # deterministic-writer-ok: bootstrap write committed via preflight commit_policy_writes
         workspace.write(markers.CLAUDE_MD, _CLAUDE_MINIMAL_CONTENT)
         return [markers.CLAUDE_MD]
     content = workspace.read(markers.CLAUDE_MD)
@@ -257,6 +266,7 @@ def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
     if "AGENTS.md" in content:
         return []
     separator = "" if content.endswith("\n") else "\n"
+    # deterministic-writer-ok: bootstrap write committed via preflight commit_policy_writes
     workspace.write(
         markers.CLAUDE_MD,
         content + separator + "\n# AGENTS.md\n\nSee `AGENTS.md` for project policy.\n",
@@ -292,6 +302,7 @@ def condense_placeholder_block(workspace: Workspace) -> list[str]:
         canonical_dir=markers.CANONICAL_DIR,
     ).strip()
     block_end = end_idx + len(markers.AGENTS_BLOCK_END)
+    # deterministic-writer-ok: condense write committed via post-pipeline commit_policy_writes
     workspace.write(
         markers.AGENTS_MD,
         content[:begin_idx] + ready_block + content[block_end:],

@@ -14,12 +14,20 @@ stays under the 1000-line repository cap.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.operations import create_commit, stage_files
+from ralph.git.scoped_auto_commit import (
+    ScopedCommitStatus,
+    capture_pre_write_contents,
+    commit_deterministic_writes,
+)
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import markers as policy_markers
+from ralph.project_policy.markers import CANONICAL_DIR
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -195,8 +203,30 @@ def _freeze_policy_files(
     workspace: Workspace,
     emit: EmitFn,
     outdated: Sequence[tuple[str, str, int]],
-) -> None:
-    """Pin every outdated policy file at its installed schema version."""
+) -> list[str]:
+    """Pin every outdated policy file at its installed schema version.
+
+    Each freeze rewrites the ``<!-- ralph-policy-schema: vN -->`` marker
+    into a ``<!-- ralph-policy-schema: freeze vN -->`` line, which is a
+    deterministic rewrite that MUST be committed by Ralph itself so the
+    user's working tree stays clean. The pre-write content hash for
+    every frozen path is recorded BEFORE the rewrite so a user /
+    agent mid-edit is never swept into the fixed-message freeze commit;
+    the deterministic writer's pre-write-hash discipline handles the
+    commit boundary (FAILED / SKIPPED outcomes are visible and the
+    user's working tree stays in its pre-freeze state on FAILED).
+
+    Returns:
+        The list of repo-relative frozen paths, in iteration order.
+    """
+    # Build the workspace-relative path strings so the producer-level
+    # writer (which works on repo-relative strings) can route the
+    # freeze at the canonical-policy commit boundary.
+    candidate_paths = [f"{CANONICAL_DIR}{path}" for path, _marker, _version in outdated]
+    repo_root = _resolve_workspace_root_for_freeze(workspace)
+    if repo_root is not None:
+        pre_contents = capture_pre_write_contents(repo_root, candidate_paths)
+
     frozen: list[str] = []
     for path, marker, installed_version in outdated:
         content = workspace.read(path)
@@ -208,7 +238,7 @@ def _freeze_policy_files(
                 1,
             ),
         )
-        frozen.append(path)
+        frozen.append(f"{CANONICAL_DIR}{path}")
     frozen_list = "\n".join(f"  \u2022 {path}" for path in frozen)
     emit(
         f"Froze {len(frozen)} policy file(s) at their current schema \u2014 Ralph "
@@ -218,6 +248,56 @@ def _freeze_policy_files(
         "(or change `freeze vN` back to `vN`) and rerun \u2014 Ralph Workflow will "
         "offer the upgrade again."
     )
+
+    # Auto-commit the freeze at the producer boundary so the user's
+    # working tree stays clean. A non-git workspace (the freeze is still
+    # allowed but the commit is a NOOP) or a SKIPPED outcome (the user
+    # already dirtied the file before the freeze ran) is logged and
+    # never blocks the run.
+    if repo_root is None or not frozen:
+        return frozen
+    try:
+        result = commit_deterministic_writes(
+            repo_root,
+            paths=frozen,
+            pre_contents=pre_contents,
+            subject="chore(policy): freeze outdated schema",
+            create_commit_fn=create_commit,
+            stage_fn=stage_files,
+        )
+        if result.status is ScopedCommitStatus.CREATED and result.sha:
+            logger.debug("schema-freeze auto-commit created: {}", result.sha)
+        elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
+            logger.warning(
+                "schema-freeze auto-commit skipped {} path(s) already dirty at HEAD; "
+                "left for the agent flow",
+                len(result.skipped_paths),
+            )
+        elif result.status is ScopedCommitStatus.FAILED:
+            logger.warning(
+                "schema-freeze auto-commit failed (non-fatal): {}",
+                str(result.error) if result.error is not None else "<no error detail>",
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("schema-freeze auto-commit raised (non-fatal): {}", exc)
+
+    return frozen
+
+
+def _resolve_workspace_root_for_freeze(workspace: Workspace) -> Path | None:
+    """Return the on-disk workspace root, or ``None`` for a synthetic test seam.
+
+    Mirrors :func:`ralph.project_policy.preflight._workspace_root`: the
+    freeze must work with the production :class:`FsWorkspace` (real root)
+    and the in-memory ``MemoryWorkspace`` test seam (no root). The
+    deterministic auto-commit needs a ``Path``; fall back to no-commit
+    for the synthetic case so the freeze stays testable without
+    touching real on-disk git state.
+    """
+    root: object = getattr(workspace, "root", None)
+    if root is not None and isinstance(root, Path):
+        return root
+    return None
 
 
 __all__ = [
