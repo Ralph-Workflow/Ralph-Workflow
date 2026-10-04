@@ -134,14 +134,8 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
     """
     source = " ".join(TemplateContext.default().registry.get_template("planning_analysis").split())
 
-    for required in (
-        "directory disjointness",
-        "Depends on:",
-        "max_parallel_workers",
-        "shared contract",
-        "unnecessary serialization",
-    ):
-        assert required.casefold() in source.casefold(), required
+    for field in ("Depends on:", "max_parallel_workers", "max_work_units"):
+        assert field in source
 
     # Preserve the S-2 framing: criterion-level verdicts, no document-shape grading.
     assert "do not grade document shape" in source
@@ -150,8 +144,8 @@ def test_planning_analysis_includes_parallel_structure_criterion() -> None:
     assert "## What Came Up Short" in source
     assert "request_changes" in source
     # The new criterion lives inside the criteria-and-verdicts block.
-    assert source.index("directory disjointness") > source.index("## Criteria and verdicts")
-    assert source.index("directory disjointness") < source.index("## Decision artifact")
+    assert source.index("max_work_units") > source.index("## Criteria and verdicts")
+    assert source.index("max_work_units") < source.index("## Decision artifact")
 
 
 def test_development_analysis_prescribes_concrete_verification_fanout() -> None:

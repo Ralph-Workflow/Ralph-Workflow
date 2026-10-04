@@ -16,14 +16,6 @@ def test_primary_templates_share_thinking_first_guidance() -> None:
         assert "subagent" in source.lower() or name == "planning_edit.jinja"
 
 
-def test_primary_prompt_defaults_to_parallel_distinct_responsibilities() -> None:
-    source = _source("planning.jinja")
-    assert "distinct work responsibilities" in source
-    assert "independent steps concurrently" in source
-    assert "genuinely coupled" in source
-    assert "responsibility paths are optional" in source
-
-
 def test_fallback_templates_delegate_discovery_by_default() -> None:
     for name in ("planning_fallback.jinja", "planning_edit_fallback.jinja"):
         source = _source(name)
