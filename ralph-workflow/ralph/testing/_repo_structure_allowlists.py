@@ -267,17 +267,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.process.manager",
             ("_process_manager",),
         ),
-        # wt-01-test-suites: test_plan_artifact_validate_draft imports
-        # the private ``_md_artifact_work_units_policy`` module to
-        # patch ``_load_policy_pipeline`` at its definition site; the
-        # public re-export would force the test to round-trip through
-        # the artifact tool wrapper and lose the precise monkeypatch
-        # surface this test is designed to exercise.
-        (
-            "tests/test_plan_artifact_validate_draft.py",
-            "ralph.mcp.tools",
-            ("_md_artifact_work_units_policy",),
-        ),
         # wt-07-multimodal-visual: the degradation-warning suite imports
         # the private ``_media_blocks`` module to drive the same internal
         # functions production wires up. The public re-export would

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
-from ralph.mcp.tools import _md_artifact_work_units_policy as work_units_policy_module
 from ralph.mcp.tools.md_artifact import (
     REPAIR_HINT,
     handle_get_md_draft,
@@ -15,6 +14,7 @@ from ralph.mcp.tools.md_artifact import (
     handle_verify_md_artifact,
 )
 from ralph.mcp.tools.tool_content import ToolContent
+from ralph.policy import loader as policy_loader
 from ralph.policy.models import (
     PhaseDefinition,
     PhaseParallelization,
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
     from ralph.mcp.tools.tool_result import ToolResult
+    from ralph.policy.models._policy_bundle import PolicyBundle
 
 _JSON_OBJECT = TypeAdapter(dict[str, object])
 
@@ -134,10 +135,11 @@ def test_verify_rejects_reserved_path_unit_directory(
     """
     from ralph.policy.models import PhaseParallelization
 
-    policy = _minimal_pipeline_policy_with_parallelization(
-        parallelization=PhaseParallelization(max_parallel_workers=2)
+    parallelization = PhaseParallelization(max_parallel_workers=2)
+    bundle = _make_bundle_with_development_parallelization(
+        tmp_path, parallelization=parallelization
     )
-    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", ".agent")])
@@ -161,10 +163,11 @@ def test_verify_rejects_overlapping_unit_directories(
     """Two units with prefix-overlapping directories fail verify at submit time."""
     from ralph.policy.models import PhaseParallelization
 
-    policy = _minimal_pipeline_policy_with_parallelization(
-        parallelization=PhaseParallelization(max_parallel_workers=2)
+    parallelization = PhaseParallelization(max_parallel_workers=2)
+    bundle = _make_bundle_with_development_parallelization(
+        tmp_path, parallelization=parallelization
     )
-    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", "src"), ("u2", "src/sub")])
@@ -192,13 +195,14 @@ def test_verify_rejects_work_units_exceeding_max_work_units_cap(
     """
     from ralph.policy.models import PhaseParallelization
 
-    policy = _minimal_pipeline_policy_with_parallelization(
-        parallelization=PhaseParallelization(
-            max_parallel_workers=8,
-            max_work_units=3,
-        )
+    parallelization = PhaseParallelization(
+        max_parallel_workers=8,
+        max_work_units=3,
     )
-    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
+    bundle = _make_bundle_with_development_parallelization(
+        tmp_path, parallelization=parallelization
+    )
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units(
@@ -223,10 +227,11 @@ def test_verify_passes_clean_work_units_plan(
     """A clean two-unit plan with disjoint directories validates successfully."""
     from ralph.policy.models import PhaseParallelization
 
-    policy = _minimal_pipeline_policy_with_parallelization(
-        parallelization=PhaseParallelization(max_parallel_workers=2)
+    parallelization = PhaseParallelization(max_parallel_workers=2)
+    bundle = _make_bundle_with_development_parallelization(
+        tmp_path, parallelization=parallelization
     )
-    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", "src"), ("u2", "tests")])
@@ -247,10 +252,11 @@ def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
     """Submit returns ``is_error=True`` and leaves the draft staged for repair."""
     from ralph.policy.models import PhaseParallelization
 
-    policy = _minimal_pipeline_policy_with_parallelization(
-        parallelization=PhaseParallelization(max_parallel_workers=2)
+    parallelization = PhaseParallelization(max_parallel_workers=2)
+    bundle = _make_bundle_with_development_parallelization(
+        tmp_path, parallelization=parallelization
     )
-    monkeypatch.setattr(work_units_policy_module, "_load_policy_pipeline", lambda _root: policy)
+    monkeypatch.setattr(policy_loader, "load_policy", lambda _config_dir: bundle)
 
     workspace = FsWorkspace(tmp_path)
     content = _plan_with_work_units([("u1", ".agent")])
@@ -276,12 +282,23 @@ def test_submit_blocks_work_units_violations_and_keeps_draft_staged(
     assert follow_up_payload["exists"] is True
 
 
-def _minimal_pipeline_policy_with_parallelization(
+def _make_bundle_with_development_parallelization(
+    workspace_root: Path,
     *,
     parallelization: PhaseParallelization,
-) -> PipelinePolicy:
-    """Return a minimal two-phase ``PipelinePolicy`` with the given development parallelization."""
-    return PipelinePolicy(
+) -> PolicyBundle:
+    """Return a real ``PolicyBundle`` with the development phase's parallelization swapped.
+
+    Loads the bundled default policy against a real ``.agent/`` directory (or
+    an empty temp directory; the loader falls back to bundled defaults when
+    policy files are absent) and replaces its pipeline with a minimal two-phase
+    graph that carries the desired ``PhaseParallelization``. Tests then
+    monkeypatch the public ``ralph.policy.loader.load_policy`` to return this
+    bundle, satisfying the DA-011 contract that tests patch public seams
+    rather than import private helpers.
+    """
+    real_bundle = policy_loader.load_policy(workspace_root / ".agent")
+    synthetic_pipeline = PipelinePolicy(
         entry_phase="development",
         terminal_phase="complete",
         phases={
@@ -296,3 +313,4 @@ def _minimal_pipeline_policy_with_parallelization(
             ),
         },
     )
+    return real_bundle.model_copy(update={"pipeline": synthetic_pipeline})

@@ -20,12 +20,7 @@ Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, c
 
 ### Verification fan-out
 
-Use parallel or subagent evidence gathering when it improves the decision. Fan out read-only verification across criterion groups, one subagent per group, when the surface is large enough to make sequential inspection costly. The four concrete groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). Each subagent returns the same four-field shape per check:
-
-- **Expected** — the observation that would mean the check passed.
-- **Observed** — the literal command output or file:line citation the subagent read.
-- **Evidence** — the exact command plus its exit code, or `path:line` for a static read.
-- **Location** — the file, line, or step ID the evidence attaches to.
+Use parallel or subagent evidence gathering when it improves the decision. Fan out read-only verification across criterion groups, one subagent per group, when the surface is large enough to make sequential inspection costly. The four concrete groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any `## Criterion Verdicts` entry is written.
 

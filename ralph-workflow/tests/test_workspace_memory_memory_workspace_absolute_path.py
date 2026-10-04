@@ -12,4 +12,4 @@ class TestMemoryWorkspaceAbsolutePath:
         abs_path = ws.absolute_path("file.txt")
 
         assert "file.txt" in abs_path
-        assert ws._root.name in abs_path
+        assert ws.root.name in abs_path
