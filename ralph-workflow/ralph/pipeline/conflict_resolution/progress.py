@@ -158,7 +158,7 @@ def save_progress(root: Path, progress: RebaseResolutionProgress) -> None:
         "feature_sha": progress.feature_sha,
         "target_sha": progress.target_sha,
         "stage_oids": list(progress.stage_oids),
-    # filesystem-write-ok: conflict-resolution progress under .agent/conflict_resolution, runtime progress not tracked
+        # filesystem-write-ok: conflict-resolution progress under .agent/conflict_resolution, runtime progress not tracked
     }
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

@@ -49,9 +49,7 @@ def retryable_agent_failure_reason(
 ) -> str | None:
     """Return the canonical retry reason for a retryable agent failure."""
     detail_parts = failure_detail_parts(exc)
-    if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(
-        detail_parts
-    ):
+    if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(detail_parts):
         return None
     primary_text = _primary_recovery_error_text(exc)
     checks: tuple[tuple[bool, str], ...] = (

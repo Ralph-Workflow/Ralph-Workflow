@@ -433,8 +433,7 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
     except GitCommandError as exc:
         if exc.status != 1:
             logger.debug(
-                "classify_target_for_commit: ls-files failed for {} ({}); "
-                "treating as not_repo",
+                "classify_target_for_commit: ls-files failed for {} ({}); treating as not_repo",
                 rel_path,
                 exc.status,
             )
@@ -453,8 +452,7 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
         # ignore status cannot be trusted to commit on. Skip silently
         # rather than misclassifying a broken repo as ``untracked_new``.
         logger.debug(
-            "classify_target_for_commit: check-ignore failed for {} ({}); "
-            "treating as not_repo",
+            "classify_target_for_commit: check-ignore failed for {} ({}); treating as not_repo",
             rel_path,
             exc.status,
         )
@@ -504,8 +502,12 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
     # ``NoSuchPathError`` when ``target`` itself does not exist on disk
     # yet -- the canonical first-creation shape -- and we wrongly
     # classify the path as ``not_repo``.
-    repo_anchor = target if target.exists() else target.parent  # filesystem-read-ok: git boundary probe -- the repo root must be found before FileBackend seams are importable
-    while not repo_anchor.exists():  # filesystem-read-ok: same git-discovery probe, closest existing ancestor walk
+    repo_anchor = (
+        target if target.exists() else target.parent
+    )  # filesystem-read-ok: git boundary probe -- the repo root must be found before FileBackend seams are importable
+    while (
+        not repo_anchor.exists()
+    ):  # filesystem-read-ok: same git-discovery probe, closest existing ancestor walk
         repo_anchor = repo_anchor.parent
     try:
         repo = Repo(repo_anchor, search_parent_directories=True)
@@ -639,9 +641,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                 "(no commits yet); refusing the deterministic commit",
                 repo_root_path,
             )
-            return ScopedCommitResult(
-                status=ScopedCommitStatus.FAILED, error=str(unborn_exc)
-            )
+            return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(unborn_exc))
 
         try:
             # Snapshot the FULL pre-staged state (in-scope and out-of-scope)
@@ -680,8 +680,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                             status=ScopedCommitStatus.FAILED,
                             skipped_paths=tuple(skipped),
                             error=(
-                                "HEAD metadata probe failed; refusing to stage "
-                                "deterministic commit"
+                                "HEAD metadata probe failed; refusing to stage deterministic commit"
                             ),
                         )
                     if pre_sha is None and head_sha is None:
@@ -699,9 +698,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         # brand-new path to the symlink ancestor so the
                         # new symlink and the materialized leaves land
                         # atomically in one commit.
-                        if _has_symlink_ancestor(
-                            Path(repo.working_dir) / path
-                        ):
+                        if _has_symlink_ancestor(Path(repo.working_dir) / path):
                             ancestor_path = _symlink_ancestor_path(repo, path)
                             if ancestor_path is not None:
                                 logger.debug(
@@ -827,9 +824,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
 
                 if not stageable:
                     return ScopedCommitResult(
-                        status=ScopedCommitStatus.SKIPPED
-                        if skipped
-                        else ScopedCommitStatus.NOOP,
+                        status=ScopedCommitStatus.SKIPPED if skipped else ScopedCommitStatus.NOOP,
                         skipped_paths=tuple(skipped),
                     )
 
@@ -857,9 +852,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         body = "\n".join(body_lines)
                     message = f"{subject}\n\n{body}"
                     expected_head = str(repo.head.commit.hexsha)
-                    result = create_commit_fn(
-                        repo_root_path, message, expected_head=expected_head
-                    )
+                    result = create_commit_fn(repo_root_path, message, expected_head=expected_head)
                     if result.status is not CommitCreationStatus.CREATED or result.sha is None:
                         # Failed commit -- rollback the stage we just did
                         # and restore the pre-staged snapshot. NO half
@@ -931,9 +924,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             if callable(close):
                 close()
     except (OSError, GitCommandError, ValueError) as exc:
-        logger.warning(
-            "commit_deterministic_writes: outer guard caught (non-fatal): {}", exc
-        )
+        logger.warning("commit_deterministic_writes: outer guard caught (non-fatal): {}", exc)
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 
@@ -1023,8 +1014,7 @@ def commit_scoped_updates(  # noqa: PLR0912
                         _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
                     except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
                         logger.debug(
-                            "commit_scoped_updates: failed-attempt unstage failed "
-                            "(non-fatal): {}",
+                            "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
                             reset_exc,
                         )
                     _restore_pre_staged_index(repo, pre_staged_blobs)
@@ -1077,13 +1067,13 @@ def commit_scoped_updates(  # noqa: PLR0912
             if callable(close):
                 close()
     except (OSError, GitCommandError, ValueError) as exc:
-        logger.warning(
-            "commit_scoped_updates: outer guard caught (non-fatal): {}", exc
-        )
+        logger.warning("commit_scoped_updates: outer guard caught (non-fatal): {}", exc)
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 
-__all__ = ["CreateCommitFn", "ScopedCommitResult",
+__all__ = [
+    "CreateCommitFn",
+    "ScopedCommitResult",
     "ScopedCommitStatus",
     "TargetCommitClass",
     "capture_pre_write_contents",

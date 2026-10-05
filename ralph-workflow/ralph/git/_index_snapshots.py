@@ -29,9 +29,7 @@ _GIT_INDEX_STAGE_MERGED: str = "0"
 _STAGED_DELETION_SENTINEL: str = "__STAGED_DELETION__"
 
 
-def _snapshot_pre_staged_index(
-    repo: Repo, paths: list[str]
-) -> dict[str, str | None]:
+def _snapshot_pre_staged_index(repo: Repo, paths: list[str]) -> dict[str, str | None]:
     """Capture each pre-staged path's index entry, including staged deletions.
 
     A path the user pre-staged for a modification has an index entry

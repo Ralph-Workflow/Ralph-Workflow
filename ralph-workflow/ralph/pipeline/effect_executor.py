@@ -471,17 +471,14 @@ def _prepare_recovery_attempt(
         else 0.0
     )
     development_timebox = (
-        ctx.policy_bundle.pipeline.development_timebox
-        if ctx.policy_bundle is not None
-        else None
+        ctx.policy_bundle.pipeline.development_timebox if ctx.policy_bundle is not None else None
     )
     if (
         ctx.state is not None
         and ctx.state.dev_timebox_active
         and development_timebox is not None
         and ctx.effect.phase == development_timebox.guarded_entry
-        and ctx.state.dev_timebox_consumed_seconds + elapsed
-        >= development_timebox.warning_seconds
+        and ctx.state.dev_timebox_consumed_seconds + elapsed >= development_timebox.warning_seconds
     ):
         _set_last_captured_retry_intent(cleared_agent_retry_intent())
         return None
@@ -558,6 +555,7 @@ def _invoke_agent_with_recovery(
             last_agent_session_id=_safe_last_agent_session_id(ctx.state),
         )
         progress_guard = RetryProgressGuard()
+
         def attempt_fn(
             retry_session_id: str | None,
             capture_session_id: Callable[[str], None],

@@ -829,7 +829,7 @@ def record_conformance_matrix(
     json_payload = {
         row_transport: {fact: _evidence_to_json(ev) for fact, ev in row.items()}
         for row_transport, row in updated.items()
-    # filesystem-write-ok: smoke plumbing fixture under tmp, not a repo-tracked deliverable
+        # filesystem-write-ok: smoke plumbing fixture under tmp, not a repo-tracked deliverable
     }
     write_text_if_changed(
         backend,

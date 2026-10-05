@@ -1271,9 +1271,7 @@ def _handle_commit_success(
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         if has_override:
-            return _advance_phase(
-                progress_state, next_phase, policy, routing_timing=routing_timing
-            )
+            return _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
         return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(
@@ -1314,9 +1312,7 @@ def _handle_commit_skipped(
         if commit_closes_a_cycle(state.phase, policy):
             progress_state = progress_state.copy_with(pending_cycle_outcome=None)
         if has_override:
-            return _advance_phase(
-                progress_state, next_phase, policy, routing_timing=routing_timing
-            )
+            return _advance_phase(progress_state, next_phase, policy, routing_timing=routing_timing)
         return _advance_through_invocation_gate(progress_state, next_phase, policy, routing_timing)
     except ValueError as exc:
         return _advance_to_failed(

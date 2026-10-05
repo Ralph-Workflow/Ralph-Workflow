@@ -343,9 +343,7 @@ def run_commit_plumbing(
             if cfg is None:
                 continue
             evidence = (
-                build_commit_evidence_bundle(repo_root)
-                if (repo_root / ".git").exists()
-                else diff
+                build_commit_evidence_bundle(repo_root) if (repo_root / ".git").exists() else diff
             )
             prompt = _commit_prompt_for_agent(
                 cfg,
