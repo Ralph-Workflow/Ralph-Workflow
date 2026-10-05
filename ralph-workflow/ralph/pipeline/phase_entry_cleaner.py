@@ -144,6 +144,8 @@ def _seed_drafts_from_canonical(workspace: Workspace, artifacts_policy: Artifact
         artifact_path = required_artifact.artifact_path
         if not workspace.exists(artifact_path):
             continue
+        # deterministic-writer-ok: .agent/ seeded-draft state --
+        # non-committable runtime state
         workspace.write(draft_path, workspace.read(artifact_path))
         workspace.write(seeded_draft_workspace_path(required_artifact.artifact_type), "")
 

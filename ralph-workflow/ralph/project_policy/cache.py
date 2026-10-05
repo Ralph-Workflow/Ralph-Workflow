@@ -85,6 +85,7 @@ def write_cache(workspace: Workspace, stack: ProjectStack, status: ReadinessStat
     parent_dir = "/".join(cache_path.split("/")[:-1])
     if parent_dir:
         workspace.mkdirs(parent_dir)
+    # deterministic-writer-ok: ignored policy cache state -- non-committable
     workspace.write(cache_path, json.dumps(payload, sort_keys=True))
 
 

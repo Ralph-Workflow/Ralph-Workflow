@@ -201,6 +201,8 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                     existing = ctx.workspace.read(hint_path).strip()
                     if existing:
                         hint = f"{existing}\n\n{hint}"
+                # deterministic-writer-ok: .agent/ retry-hint state --
+                # non-committable runtime state
                 ctx.workspace.write(hint_path, hint)
             return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 

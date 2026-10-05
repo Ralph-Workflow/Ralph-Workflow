@@ -286,6 +286,8 @@ def _validate_plan_input(
         detail = f"Missing planning artifact at {PLAN_ARTIFACT_PATH}"
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
+            # deterministic-writer-ok: .agent/ retry-hint state --
+            # non-committable runtime state
             ctx.workspace.write(
                 retry_hint_path_override
                 or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy),
@@ -420,6 +422,8 @@ def _write_retry_hint(
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
                 hint = f"{existing}\n\n{hint}"
+        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
+        # runtime state
         ctx.workspace.write(hint_path, hint)
 
 
@@ -437,6 +441,8 @@ def _write_proof_failure_hint(
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
                 hint = f"{existing}\n\n{hint}"
+        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
+        # runtime state
         ctx.workspace.write(hint_path, hint)
 
 

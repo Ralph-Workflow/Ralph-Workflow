@@ -17,13 +17,33 @@ labeled violation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
+
+import pytest
 
 import ralph.testing.audit_skill_auto_commit as audit_module
-from ralph.testing.audit_skill_auto_commit import main as audit_main
+from ralph.testing.audit_skill_auto_commit import (
+    _check_no_direct_chore_commit,
+    _check_production_writer_scan,
+)
+from ralph.testing.audit_skill_auto_commit import (
+    main as audit_main,
+)
 
-if TYPE_CHECKING:
-    import pytest
+
+@pytest.fixture(autouse=True)
+def _stub_full_tree_scans(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the wt-012 full-tree writer scans out of the legacy
+    literal-invariant regression tests below.
+
+    Those tests monkeypatch ``_read`` and run ``audit_main`` under the
+    real-time per-test SIGALRM budget; the production-writer scan walks and
+    AST-parses the whole package tree, which is a different subsystem with
+    its own dedicated tests at the bottom of this file. Stubbing it here
+    keeps each regression test focused on the invariant it names.
+    """
+    monkeypatch.setattr(audit_module, "_check_production_writer_scan", lambda: [])
+    monkeypatch.setattr(audit_module, "_check_no_direct_chore_commit", lambda: [])
 
 
 # NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,
@@ -211,3 +231,176 @@ def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
     )
     assert runner_path in captured.out
     assert "forbidden literal" in captured.out
+
+
+# --- wt-012: production-writer scan (S-7/S-8, DA-004/DA-016) ---------------------
+
+
+def _write_module(root: Path, rel: str, body: str) -> None:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def test_writer_scan_flags_unmarked_write_in_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DA-004 probe case: a new unmarked writer under config/ is flagged."""
+    _write_module(
+        tmp_path,
+        "config/new_module.py",
+        "def sync(workspace):\n    workspace.write('state.json', '{}')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any("config/new_module.py:2" in p for p in problems), (
+        f"unmarked workspace.write under config/ must be flagged; got: {problems}"
+    )
+
+
+def test_writer_scan_flags_unmarked_write_in_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DA-004 probe case: a new unmarked writer under skills/ is flagged."""
+    _write_module(
+        tmp_path,
+        "skills/new_module.py",
+        "from pathlib import Path\n\ndef sync():\n    Path('x').write_text('y')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any("skills/new_module.py:4" in p for p in problems), (
+        f"unmarked write_text under skills/ must be flagged; got: {problems}"
+    )
+
+
+def test_writer_scan_flags_unmarked_write_in_new_top_level_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DA-004 probe case: a new top-level module is scanned too."""
+    _write_module(
+        tmp_path,
+        "new_module.py",
+        "def seed(ws):\n    ws.write('seed.md', 'x')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any("new_module.py:2" in p for p in problems), (
+        f"unmarked ws.write in a top-level module must be flagged; got: {problems}"
+    )
+
+
+def test_writer_scan_passes_with_classification_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-committable write carrying the marker is accepted."""
+    _write_module(
+        tmp_path,
+        "config/new_module.py",
+        "def sync(workspace):\n"
+        "    # deterministic-writer-ok: runtime cache state -- non-committable\n"
+        "    workspace.write('state.json', '{}')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_production_writer_scan() == []
+
+
+def test_writer_scan_passes_when_enclosing_function_commits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write inside a function that routes through a commit helper is routed."""
+    _write_module(
+        tmp_path,
+        "config/new_module.py",
+        "from ralph.git.scoped_auto_commit import commit_deterministic_writes\n"
+        "\n"
+        "def sync(root, workspace):\n"
+        "    pre = {}\n"
+        "    workspace.write('state.json', '{}')\n"
+        "    commit_deterministic_writes(\n"
+        "        root, written_paths=['state.json'], pre_contents=pre,\n"
+        "        subject='chore: x', create_commit_fn=None,\n"
+        "    )\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_production_writer_scan() == []
+
+
+def test_writer_scan_keeps_source_and_path_paired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DA-016: with multiple modules the finding reports the path whose content
+    actually contains the unmarked write -- source and path cannot desync."""
+    _write_module(tmp_path, "config/clean.py", "X = 1\n")
+    _write_module(
+        tmp_path,
+        "config/dirty.py",
+        "def f(workspace):\n    workspace.write('a', 'b')\n",
+    )
+    _write_module(tmp_path, "skills/other.py", "Y = 2\n")
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any("config/dirty.py:2" in p for p in problems)
+    assert not any("clean.py" in p or "other.py" in p for p in problems)
+
+
+def test_writer_scan_excludes_canonical_primitives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The excluded primitive modules are not scanned."""
+    _write_module(
+        tmp_path,
+        "mcp/artifacts/file_backend.py",
+        "from pathlib import Path\n\ndef write(p):\n    Path(p).write_text('x')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_production_writer_scan() == []
+
+
+def test_no_direct_chore_commit_flags_new_chore_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-8: a fresh direct create_commit call outside the allowlist is flagged."""
+    _write_module(
+        tmp_path,
+        "phases/new_chore.py",
+        "from ralph.git.operations import create_commit\n"
+        "\n"
+        "def go(root):\n"
+        "    create_commit(root, 'chore: ad-hoc')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_no_direct_chore_commit()
+
+    assert any("phases/new_chore.py:4" in p for p in problems), (
+        f"direct create_commit outside the allowlist must be flagged; got: {problems}"
+    )
+
+
+def test_no_direct_chore_commit_respects_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-8: the allowlisted agent-commit flow is not flagged."""
+    _write_module(
+        tmp_path,
+        "cli/commands/commit.py",
+        "from ralph.git.operations import create_commit\n"
+        "\n"
+        "def go(root):\n"
+        "    create_commit(root, 'feat: agent work')\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_no_direct_chore_commit() == []

@@ -67,6 +67,60 @@ _SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
     }
 )
 
+#: Commit helpers that mark a deterministic write site as routed through the
+#: shared scoped-auto-commit helper (wt-012 S-7). Every other production
+#: filesystem write must either route through one of these helpers or carry
+#: an inline ``deterministic-writer-ok: <reason>`` classification marker.
+_WRITER_COMMIT_HELPERS: frozenset[str] = frozenset(
+    {
+        "commit_deterministic_writes",
+        "commit_scoped_updates",
+        "commit_policy_writes",
+        "commit_skill_writes",
+    }
+)
+
+#: Filesystem-mutation attribute calls scanned by the production-writer scan
+#: (wt-012 S-7, DA-004): the broader mutation-method class the pre-wt-012
+#: scan enforced, restored after the policy-commit move dropped it.
+_WRITER_WRITE_ATTRS: frozenset[str] = frozenset(
+    {"write_text", "write_bytes", "copytree", "copy2", "symlink_to"}
+)
+
+#: Bare-name mutation calls scanned by the production-writer scan.
+_WRITER_WRITE_NAMES: frozenset[str] = frozenset(
+    {"write_text", "write_bytes", "copytree", "copy2", "mkdir", "_create_symlink"}
+)
+
+#: Inline classification markers accepted by the production-writer scan.
+_WRITER_MARKER_TOKENS: tuple[str, ...] = (
+    "deterministic-writer-ok",
+    "filesystem-write-ok",
+    "inline-rationale-ok",
+)
+
+#: Top-level subdirectories excluded from the production-writer scan. The
+#: audit module itself lives under ``testing/`` and is self-excluded here.
+_WRITER_SCAN_EXCLUDED_DIRS: tuple[str, ...] = ("testing",)
+
+#: Individual files excluded from the production-writer scan: the shared
+#: commit helper itself plus the canonical write primitives (the artifacts
+#: modules are exempt from the filesystem-write consolidation audit for the
+#: same reason -- they ARE the primitives, not deterministic writers).
+_WRITER_SCAN_EXCLUDED_FILES: frozenset[str] = frozenset(
+    {
+        "git/scoped_auto_commit.py",
+        "mcp/artifacts/idempotent_write.py",
+        "mcp/artifacts/file_backend.py",
+        "mcp/artifacts/_path_file_backend.py",
+    }
+)
+
+#: Modules allowed to call ``create_commit`` directly (the agent-authored
+#: commit flow). Every other production module must route deterministic
+#: commits through ``commit_deterministic_writes`` (wt-012 S-8).
+_DIRECT_CHORE_COMMIT_ALLOWLIST: frozenset[str] = frozenset({"cli/commands/commit.py"})
+
 
 class Invariant:
     """A literal-string presence/absence check on a single source file."""
@@ -419,6 +473,165 @@ def _check_skill_root_prefixes_constant_matches() -> list[str]:  # noqa: PLR0912
     return []
 
 
+# --- Production-writer scan (wt-012 S-7/S-8, DA-004) ---------------------------
+
+
+def _writer_scan_excluded(rel_path: str) -> bool:
+    """True when ``rel_path`` is outside the production-writer scan contract."""
+    parts = rel_path.split("/")
+    if parts[0] in _WRITER_SCAN_EXCLUDED_DIRS or "__pycache__" in parts:
+        return True
+    return rel_path in _WRITER_SCAN_EXCLUDED_FILES
+
+
+def _workspaceish_receiver(node: ast.AST) -> bool:
+    """True when a ``.write(...)`` receiver chain mentions the workspace seam."""
+    current = node
+    while isinstance(current, ast.Attribute):
+        if "workspace" in current.attr.lower():
+            return True
+        current = current.value
+    return isinstance(current, ast.Name) and current.id in {"ws", "workspace"}
+
+
+def _iter_write_callsites(tree: ast.AST) -> list[tuple[int, str]]:
+    """Return ``(lineno, kind)`` for every scanned filesystem-mutation call."""
+    calls: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute):
+            if func.attr in _WRITER_WRITE_ATTRS:
+                calls.append((node.lineno, func.attr))
+            elif func.attr == "write" and _workspaceish_receiver(func.value):
+                calls.append((node.lineno, "workspace.write"))
+        elif isinstance(func, ast.Name) and func.id in _WRITER_WRITE_NAMES:
+            calls.append((node.lineno, func.id))
+    return calls
+
+
+def _enclosing_calls_helper(tree: ast.AST, lineno: int) -> bool:
+    """True when the innermost function enclosing ``lineno`` calls a commit helper."""
+    best: ast.AST | None = None
+    best_size: int | None = None
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        end = node.end_lineno
+        if end is None or not node.lineno <= lineno <= end:
+            continue
+        size = end - node.lineno
+        if best_size is None or size < best_size:
+            best, best_size = node, size
+    if best is None:
+        return False
+    return any(
+        isinstance(child, ast.Call)
+        and (
+            (isinstance(child.func, ast.Name) and child.func.id in _WRITER_COMMIT_HELPERS)
+            or (
+                isinstance(child.func, ast.Attribute)
+                and child.func.attr in _WRITER_COMMIT_HELPERS
+            )
+        )
+        for child in ast.walk(best)
+    )
+
+
+def _source_has_marker(source: str, lineno: int) -> bool:
+    """True when a marker token appears at or within 3 lines above ``lineno``."""
+    lines = source.splitlines()
+    start = max(0, lineno - 4)
+    window = lines[start:lineno]
+    return any(token in line for line in window for token in _WRITER_MARKER_TOKENS)
+
+
+def _iter_production_sources() -> list[tuple[str, str]]:
+    """``(rel_path, source)`` pairs for every module under the package root.
+
+    The rel path and the source are paired through ``_read(rel)`` so a mocked
+    or relocated package root cannot desynchronise them (DA-016).
+    """
+    out: list[tuple[str, str]] = []
+    for path in sorted(_PACKAGE_ROOT.rglob("*.py")):
+        rel = (
+            path.relative_to(_PACKAGE_ROOT).as_posix()
+            if path.is_absolute()
+            else path.as_posix()
+        )
+        try:
+            source = _read(rel)
+        except (FileNotFoundError, OSError):
+            continue
+        out.append((rel, source))
+    return out
+
+
+def _check_production_writer_scan() -> list[str]:
+    """Every production filesystem write is routed through a commit helper or
+    carries an inline classification marker (wt-012 S-7, DA-004).
+
+    This is the generic enforcement that catches the NEXT new deterministic
+    writer at introduction time: a fresh ``workspace.write``/``write_text``/
+    ``symlink_to``/``copytree``/``copy2``/``mkdir``/``_create_symlink`` call
+    that neither routes through ``commit_deterministic_writes`` /
+    ``commit_policy_writes`` / ``commit_skill_writes`` nor documents why it is
+    non-committable fails this audit immediately.
+    """
+    problems: list[str] = []
+    for rel, source in _iter_production_sources():
+        if _writer_scan_excluded(rel):
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as exc:
+            problems.append(f"  {rel}: syntax error {exc}")
+            continue
+        for lineno, kind in _iter_write_callsites(tree):
+            if _enclosing_calls_helper(tree, lineno):
+                continue
+            if _source_has_marker(source, lineno):
+                continue
+            problems.append(
+                f"  {rel}:{lineno}: unmarked `{kind}` call -- deterministic writers must "
+                "route through commit_deterministic_writes/commit_policy_writes/"
+                "commit_skill_writes or carry an inline "
+                "`deterministic-writer-ok: <reason>` marker (wt-012 S-7)"
+            )
+    return problems
+
+
+def _check_no_direct_chore_commit() -> list[str]:
+    """Only the allowlisted agent-commit flow may call ``create_commit``
+    directly; deterministic commits route through the shared helper (wt-012 S-8).
+    """
+    problems: list[str] = []
+    for rel, source in _iter_production_sources():
+        if rel in _DIRECT_CHORE_COMMIT_ALLOWLIST or _writer_scan_excluded(rel):
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else (func.attr if isinstance(func, ast.Attribute) else None)
+            )
+            if name == "create_commit":
+                problems.append(
+                    f"  {rel}:{node.lineno}: direct create_commit call outside the "
+                    "allowlist -- deterministic commits must route through "
+                    "commit_deterministic_writes (wt-012 S-8)"
+                )
+    return problems
+
+
 # --- Main entry point --------------------------------------------------------
 
 
@@ -443,18 +656,23 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_check_skill_root_skip_placement())
     problems.extend(_check_skill_root_prefixes_constant_matches())
 
+    # 4. Deterministic-writer scans (wt-012 S-7/S-8)
+    problems.extend(_check_production_writer_scan())
+    problems.extend(_check_no_direct_chore_commit())
+
     if problems:
         print(f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)")
         for problem in problems:
             print(problem)
         return 1
 
-    invariants_checked = len(_INVARIANTS) + len(_FILE_EXISTENCE_CHECKS) + 2
+    invariants_checked = len(_INVARIANTS) + len(_FILE_EXISTENCE_CHECKS) + 4
     print(
         f"audit_skill_auto_commit OK ({invariants_checked} invariants checked): "
         f"subject={_SKILL_AUTO_COMMIT_SUBJECT!r}, "
         f"skill_roots={len(_SKILL_ROOT_PREFIXES)}, "
-        "ast_placement=pinned, helper_module=present"
+        "ast_placement=pinned, helper_module=present, "
+        "writer_scan=passed, no_direct_chore_commit=passed"
     )
     return 0
 

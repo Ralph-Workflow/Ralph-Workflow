@@ -24,7 +24,11 @@ from loguru import logger
 from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import create_commit
-from ralph.git.scoped_auto_commit import list_dirty_paths
+from ralph.git.scoped_auto_commit import (
+    ScopedCommitStatus,
+    capture_pre_write_contents,
+    list_dirty_paths,
+)
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
@@ -227,6 +231,52 @@ def _policy_contents_detail(workspace: Workspace) -> str:
     )
 
 
+def _write_and_commit_opt_out(workspace: Workspace) -> None:
+    """Write the opt-out marker and commit it immediately (wt-012 DA-001/DA-010).
+
+    The opt-out marker write is a deterministic engine-owned write (append
+    the byte-exact marker if missing), so the fixed policy chore commit
+    must carry it right after the write. Without the commit the preflight
+    exits SKIPPED -- the post-pipeline policy commit never runs -- and the
+    marker lingers as uncommitted background dirt that leaks into a later
+    agent commit. An AGENTS.md already dirty at HEAD is SKIPPED by the
+    shared isolation primitive and stays in the user/agent flow; a commit
+    failure is reported and never blocks the run.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    root: object = getattr(workspace, "root", None)
+    pre_contents: dict[str, str | None] = (
+        capture_pre_write_contents(root, [policy_markers.AGENTS_MD])
+        if isinstance(root, Path)
+        else {policy_markers.AGENTS_MD: None}
+    )
+    written = policy_agents_md.write_opt_out(workspace)
+    if not written or not isinstance(root, Path):
+        return
+    try:
+        result = policy_auto_commit.commit_policy_writes(
+            root,
+            written_paths=written,
+            pre_contents=pre_contents,
+            create_commit_fn=create_commit,
+        )
+    except Exception as exc:  # defensive: the commit must never block the run
+        logger.warning("policy opt-out auto-commit raised (non-fatal): {}", exc)
+        return
+    if result.status is ScopedCommitStatus.CREATED:
+        logger.info(
+            "policy opt-out: committed opt-out marker ({})", (result.sha or "")[:12]
+        )
+    elif result.status is ScopedCommitStatus.FAILED:
+        logger.warning("policy opt-out: marker commit failed (non-fatal): {}", result.error)
+    elif result.status is ScopedCommitStatus.SKIPPED:
+        logger.warning(
+            "policy opt-out: marker commit skipped dirty path(s): {}",
+            ", ".join(result.skipped_paths),
+        )
+
+
 def _maybe_offer_inline_policy_skip(
     workspace: Workspace,
     emit: EmitFn,
@@ -275,7 +325,7 @@ def _maybe_offer_inline_policy_skip(
             emit(_policy_contents_detail(workspace))
             continue
         if choice == _CHOICE_KEEP:
-            policy_agents_md.write_opt_out(workspace)
+            _write_and_commit_opt_out(workspace)
             emit(
                 "Keeping the existing AGENTS.md policy — wrote the opt-out "
                 "marker; Ralph Workflow policy enforcement is disabled for "

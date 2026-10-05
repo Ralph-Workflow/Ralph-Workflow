@@ -195,6 +195,8 @@ def _compute_skill_hash(name: str) -> str:
 
 def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
     """Create a symlink without sharing mutable Path method state with tests."""
+    # deterministic-writer-ok: skill-install symlink; committed by the caller
+    # via commit_skill_writes at the install boundary
     path.symlink_to(target, target_is_directory=target_is_directory)
 
 
@@ -367,6 +369,8 @@ def _materialize_project_sibling_dir(
         resolved_target = canonical_target.resolve()
         resolved_parent = sibling_dir.parent.resolve()
         relative_target = os.path.relpath(resolved_target, start=resolved_parent)
+        # deterministic-writer-ok: skill sibling-root symlink; committed by the
+        # caller via commit_skill_writes at the install boundary
         sibling_dir.symlink_to(relative_target, target_is_directory=True)
     except OSError:
         try:

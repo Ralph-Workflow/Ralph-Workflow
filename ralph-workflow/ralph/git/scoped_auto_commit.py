@@ -186,6 +186,13 @@ def snapshot_dirty_paths_strict(repo_root: Path | str) -> frozenset[str] | None:
     )
 
 
+# Sentinel returned by :func:`_read_head_blob_sha` when the HEAD metadata
+# probe itself failed (``GitCommandError``). MUST be distinguishable from
+# ``None`` ("absent at HEAD") so a broken index can never masquerade as a
+# brand-new path and authorize staging (wt-012 DA-006/DA-011: fail closed).
+_HEAD_PROBE_FAILED: str = "__HEAD_PROBE_FAILED__"
+
+
 def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     """Return the HEAD blob SHA for ``path`` or ``None`` if not tracked / absent.
 
@@ -195,11 +202,16 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     a missing path that the deterministic writer is adding fresh must
     show up as ``None`` in the caller's pre-write map, and this helper
     must return ``None`` too, so the SHA-equality check is correct.
+
+    A probe FAILURE (``GitCommandError`` from the index metadata read)
+    returns the ``_HEAD_PROBE_FAILED`` sentinel instead of ``None`` --
+    the caller treats it as fail-closed (``FAILED``), never as
+    "absent at HEAD" (wt-012 DA-006/DA-011).
     """
     try:
         raw = cast("str", repo.git.ls_files("--stage", "--", path))
     except GitCommandError:
-        return None
+        return _HEAD_PROBE_FAILED
     if not raw.strip():
         return None
     for line in raw.splitlines():
@@ -467,12 +479,39 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                 for path in path_list:
                     head_sha = _read_head_blob_sha(repo, path)
                     pre_sha = pre_contents.get(path)
+                    if head_sha == _HEAD_PROBE_FAILED:
+                        # HEAD metadata probe failed -- cannot distinguish
+                        # "absent at HEAD" from a broken index. Fail closed:
+                        # stage NOTHING and report FAILED (wt-012 DA-006/
+                        # DA-011). The finally below restores the pre-staged
+                        # snapshot, so the index stays byte-for-byte intact.
+                        logger.warning(
+                            "commit_deterministic_writes: HEAD metadata probe failed "
+                            "for {}; refusing to stage the deterministic commit",
+                            path,
+                        )
+                        return ScopedCommitResult(
+                            status=ScopedCommitStatus.FAILED,
+                            skipped_paths=tuple(skipped),
+                            error=(
+                                "HEAD metadata probe failed; refusing to stage "
+                                "deterministic commit"
+                            ),
+                        )
+                    if pre_sha is None and head_sha is None:
+                        # Brand-new path: absent on disk at pre-write capture
+                        # AND confirmed absent at HEAD -- the deterministic
+                        # writer authored the whole file, so committing it
+                        # cannot sweep in anyone else's work (wt-012 DA-006).
+                        stageable.append(path)
+                        continue
                     if pre_sha is None:
                         # Caller did not record a pre-write hash for this
-                        # path. Treat as suspicious -- the deterministic
-                        # writer should know what every path's prior
-                        # content was. SKIP rather than commit a path we
-                        # cannot isolate.
+                        # path (or the file existed at HEAD but was missing
+                        # on disk at capture time). Treat as suspicious --
+                        # the deterministic writer should know what every
+                        # path's prior content was. SKIP rather than commit
+                        # a path we cannot isolate.
                         logger.warning(
                             "commit_deterministic_writes: path {} has no pre-write hash "
                             "recorded; skipping to avoid sweeping in unrelated changes",
@@ -498,16 +537,11 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                     # content also differs from HEAD (otherwise nothing
                     # to commit).
                     on_disk_sha = _git_blob_sha(repo, path)
-                    head_blob = _read_head_blob_sha(repo, path)
-                    if (
-                        on_disk_sha is not None
-                        and head_blob is not None
-                        and on_disk_sha == head_blob
-                    ):
+                    if on_disk_sha is not None and on_disk_sha == head_sha:
                         # No actual change since HEAD -- skip.
                         continue
                     stageable.append(path)
-                    del on_disk_sha, head_blob  # narrow explicit type for the next iter
+                    del on_disk_sha  # narrow explicit type for the next iter
 
                 if not stageable:
                     return ScopedCommitResult(

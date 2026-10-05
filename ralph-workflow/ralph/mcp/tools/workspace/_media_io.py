@@ -183,6 +183,8 @@ def _persist_media_registry_entry(
             "schema_version": _MEDIA_SESSION_SCHEMA_VERSION,
             "artifacts": artifacts,
         }
+        # deterministic-writer-ok: agent-brokered media index write; the
+        # agent's own commit flow owns the change
         workspace.write(path, json.dumps(payload, indent=2))
     except Exception:
         pass
@@ -280,6 +282,8 @@ def _persist_media_session_entry(
             "phase": phase,
             "artifacts": list(ordered.values()),
         }
+        # deterministic-writer-ok: agent-brokered media index write; the
+        # agent's own commit flow owns the change
         workspace.write(path, json.dumps(payload, indent=2))
     except Exception:
         pass

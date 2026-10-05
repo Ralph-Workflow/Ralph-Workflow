@@ -164,6 +164,8 @@ def _write_prompt(workspace: Workspace, prompt_text: str) -> str:
     parent_dir = "/".join(ANALYSIS_PROMPT_REL_PATH.split("/")[:-1])
     if parent_dir:
         workspace.mkdirs(parent_dir)
+    # deterministic-writer-ok: .agent/ analysis-prompt materialization --
+    # non-committable runtime state
     workspace.write(ANALYSIS_PROMPT_REL_PATH, prompt_text)
     return ANALYSIS_PROMPT_REL_PATH
 
