@@ -14,6 +14,6 @@ never qualifies while an available developer action could advance the
 plan. {% if not IS_WORKER|default(false) %}The size of the remaining work never qualifies either: when the
 remaining scope still contains independent work, dispatch it in parallel
 rather than completing one piece at a time and handing each increment
-back as `partial`; piecemeal handbacks waste the cycle.{% else %}The size of the remaining work never qualifies either. Workers must not dispatch sub-agents or coordinate other units (see `shared/_worker_verification.j2`); continue in-scope recovery within the assigned unit and return the unit result only when it is fully verified or with an evidence-backed external blocker.{% endif %} Use `failed` when
+back as `partial`; piecemeal handbacks waste the cycle.{% else %}The size of the remaining work never qualifies either. Workers must not dispatch sub-agents or coordinate other units (see `shared/_worker_verification.jinja`); continue in-scope recovery within the assigned unit and return the unit result only when it is fully verified or with an evidence-backed external blocker.{% endif %} Use `failed` when
 no safe actionable continuation exists. Both statuses close this attempt
 and flow to independent analysis; neither decides the run outcome.

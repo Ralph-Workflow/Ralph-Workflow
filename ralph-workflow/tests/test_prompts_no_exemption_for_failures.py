@@ -10,6 +10,7 @@ an exit condition. The wording is single-sourced in the
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -74,8 +75,6 @@ def test_no_template_sentence_starts_lowercase() -> None:
     and the parallel execution partial. Other templates are out of scope for
     this consolidation.
     """
-    import re
-
     touched = (
         _TEMPLATES_DIR / "worker_developer.jinja",
         _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2",
@@ -852,3 +851,28 @@ def test_worker_renders_carry_worker_safe_recovery_procedure(surface: str) -> No
     assert "Workers never dispatch sub-agents" in rendered, surface
     assert "WORKER-SCOPED VERIFICATION" in rendered, surface
     assert "until the entire assigned unit is verified" in rendered, surface
+
+
+_BACKTICK_SHARED_REFERENCE = re.compile(r"`(shared/[A-Za-z0-9_./-]+)`")
+
+
+@pytest.mark.parametrize("surface", _SURFACE_NAMES)
+def test_rendered_shared_rule_references_resolve_to_packaged_templates(
+    surface: str,
+) -> None:
+    """DA-017: prose rule pointers must name a packaged template that
+    exists on disk. ``.j2`` is only the Jinja include alias (the loader
+    maps every partial to ``<name>.j2`` regardless of its real suffix),
+    so a backtick pointer such as ``shared/_worker_verification.j2``
+    sends an agent to a path that does not exist; rendered text must
+    cite the on-disk filename (``.jinja`` or ``.j2``).
+    """
+    rendered = _render_surface(surface)
+
+    references = set(_BACKTICK_SHARED_REFERENCE.findall(rendered))
+    assert references, f"{surface}: expected at least one shared/ rule pointer"
+    for reference in sorted(references):
+        assert (_TEMPLATES_DIR / reference).is_file(), (
+            f"{surface}: rule pointer {reference!r} does not resolve to a "
+            "packaged template under ralph/prompts/templates"
+        )
