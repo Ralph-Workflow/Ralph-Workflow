@@ -254,3 +254,63 @@ def test_auto_seed_git_exclude_warns_on_unreadable_existing_file(
     assert "Could not read existing git exclude" in warning, (
         f"OSError warning MUST label the failure; got: {warning!r}"
     )
+
+
+# --- wt-012 DA-001/DA-008: the bootstrap writer commits immediately ----------
+
+
+@pytest.mark.timeout_seconds(5)
+def test_gitignore_seed_is_committed_immediately(tmp_git_repo: Path) -> None:
+    """DA-001/DA-008: the auto-seed leaves HEAD holding the seeded .gitignore.
+
+    The deterministic gitignore writer must commit before returning (in a
+    git workspace); after the call, ``git status`` must be clean.
+    """
+    from git import Actor, Repo
+
+    repo = Repo(tmp_git_repo)
+    try:
+        actor = Actor("Test Author", "test@example.com")
+        (tmp_git_repo / "seed.txt").write_text("x\n", encoding="utf-8")
+        repo.index.add(["seed.txt"])
+        repo.index.commit("initial", author=actor, committer=actor)
+    finally:
+        repo.close()
+
+    appended = auto_seed_default_gitignore(tmp_git_repo)
+    assert appended, "setup invariant: a fresh repo must append default patterns"
+
+    repo = Repo(tmp_git_repo)
+    try:
+        assert not repo.is_dirty(untracked_files=True), (
+            "the gitignore seed MUST be committed before returning; "
+            f"dirty paths: {repo.git.status('--porcelain')!r}"
+        )
+        committed_files = set(repo.head.commit.stats.files)
+        assert ".gitignore" in committed_files
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_ensure_default_gitignore_commits_in_git_workspace(tmp_git_repo: Path) -> None:
+    """DA-001: the bootstrap support-config path commits the gitignore append."""
+    from git import Actor, Repo
+
+    repo = Repo(tmp_git_repo)
+    try:
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.commit("initial", author=actor, committer=actor)
+    finally:
+        repo.close()
+
+    auto_seed_default_gitignore(tmp_git_repo)
+
+    repo = Repo(tmp_git_repo)
+    try:
+        assert not repo.is_dirty(untracked_files=True), (
+            f"bootstrap gitignore append MUST be committed; got: "
+            f"{repo.git.status('--porcelain')!r}"
+        )
+    finally:
+        repo.close()

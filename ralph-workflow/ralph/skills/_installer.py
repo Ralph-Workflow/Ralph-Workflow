@@ -78,6 +78,18 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
     for name in BASELINE_SKILL_NAMES:
         candidates.append(_rel(canonical / name, "SKILL.md", workspace_root))
         candidates.append(_rel(canonical / name, _MANAGED_MARKER, workspace_root))
+    # wt-012 DA-007: the prune removes managed skill directories that the
+    # baseline no longer ships. Enumerate any existing managed directories
+    # OUTSIDE the baseline so their (deleted) paths are present in the
+    # candidate set; the post-install diff then attributes the deletions
+    # to the deterministic commit via ``git add --all``.
+    canonical_skills_dir = workspace_root / canonical.relative_to(workspace_root.resolve())
+    if canonical_skills_dir.is_dir():
+        for entry in canonical_skills_dir.iterdir():
+            if entry.name in BASELINE_SKILL_NAMES or not (entry / _MANAGED_MARKER).exists():
+                continue
+            candidates.append(_rel(entry, "SKILL.md", workspace_root))
+            candidates.append(_rel(entry, _MANAGED_MARKER, workspace_root))
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
         candidates.extend(

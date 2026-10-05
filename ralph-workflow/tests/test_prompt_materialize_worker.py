@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import ralph.prompts.materialize as materialize_module
@@ -71,7 +72,12 @@ Implement the behavior.
     assert "- [S-1]" not in rendered
     assert "- [api]" in rendered
     assert "assigned unit as your sole required plan reference" in rendered
-    assert "return that one unit result" in rendered
+    # The template wraps this instruction across lines, so match the
+    # phrase whitespace-tolerantly (behavioral intent: the worker is told
+    # to return exactly one unit result, not an increment).
+    assert re.search(r"return\s+that\s+one\s+unit\s+result", rendered), (
+        "worker prompt must instruct returning exactly one unit result"
+    )
     assert "advance to the next ready reference" not in rendered
     worker_namespace = tmp_path / ".agent" / "workers" / "api"
     assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
@@ -86,7 +92,9 @@ Implement the behavior.
     assert "minutes remaining" in normalized
     assert "Dispatch remaining independent ready work" not in normalized
     assert "impossible to complete through any developer action available" in normalized
-    assert "follow the completion-pressure rules from the developer iteration guidance" in normalized
+    assert (
+        "follow the completion-pressure rules from the developer iteration guidance" in normalized
+    )
     assert "The receipt is not phase completion" in normalized
     assert "MANDATORY FINAL ACTION" in rendered
     receipt_index = normalized.index("promote that worker-local fallback")

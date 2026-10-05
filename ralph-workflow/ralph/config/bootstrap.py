@@ -39,7 +39,7 @@ from loguru import logger
 
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.loader import load_toml
-from ralph.git.operations import _atomic_append_text, append_to_gitignore
+from ralph.git.operations import _atomic_append_text
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
@@ -476,7 +476,17 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
 
 
 def _ensure_default_gitignore(repo_root: Path) -> None:
-    append_to_gitignore(repo_root, list(_DEFAULT_GITIGNORE_PATTERNS))
+    """Append missing default .gitignore patterns and commit the change.
+
+    wt-012 DA-001/DA-008: this used to append via ``append_to_gitignore``
+    and return without committing, leaving a deterministic write dirty.
+    It now routes through :func:`auto_seed_default_gitignore`, which
+    commits via the producer-level
+    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
+    isolation primitive (and stays a safe no-op append in a non-git
+    workspace).
+    """
+    auto_seed_default_gitignore(repo_root)
 
 
 def _ensure_default_git_exclude(repo_root: Path) -> None:
@@ -692,16 +702,16 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
             if result.status is ScopedCommitStatus.CREATED and result.sha:
                 logger.debug(".gitignore auto-seed committed: {}", result.sha[:8])
             elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-                logger.debug(
+                logger.warning(
                     ".gitignore auto-seed skipped: .gitignore was already dirty at HEAD "
                     "(user mid-edit?); left for the user flow"
                 )
             elif result.status is ScopedCommitStatus.FAILED:
-                logger.debug(
+                logger.warning(
                     ".gitignore auto-seed commit failed (non-fatal): {}", result.error
                 )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug(".gitignore auto-seed commit failed (non-fatal): {}", exc)
+            logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
 
 

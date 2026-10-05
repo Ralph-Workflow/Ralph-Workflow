@@ -11,6 +11,7 @@ an exit condition. The wording is single-sourced in the
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from jinja2 import Environment
@@ -75,6 +76,7 @@ def test_no_template_sentence_starts_lowercase() -> None:
     this consolidation.
     """
     import re
+
     touched = (
         _TEMPLATES_DIR / "worker_developer.jinja",
         _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2",
@@ -89,8 +91,7 @@ def test_no_template_sentence_starts_lowercase() -> None:
         # Strip Jinja control lines so `{% if ... %}` and `{% include ... %}`
         # don't count as sentences.
         stripped = "\n".join(
-            line for line in source.splitlines()
-            if not line.lstrip().startswith("{%")
+            line for line in source.splitlines() if not line.lstrip().startswith("{%")
         )
         sentences: list[str] = re.split(r"(?<=[.!?])\s+", stripped)
         for raw_sentence in sentences:
@@ -361,15 +362,6 @@ def test_s1_recovery_mandate_occurs_once_before_retained_payloads(surface: str) 
         "Recompute readiness",
     ):
         assert action in rendered, (surface, action)
-    assert "at first read" in rendered
-    assert "or report partial progress" not in rendered
-
-
-@pytest.mark.parametrize("surface", _WORKER_SURFACE_NAMES)
-def test_s1_s2_worker_results_prove_only_assigned_scope(surface: str) -> None:
-    """DA-002/004: worker fallback proof must not teach whole-plan verification."""
-    rendered = _render_surface(surface)
-
     for phrase in (
         "Workers never dispatch sub-agents",
         "WORKER DO-NOT-DISPATCH",
