@@ -146,9 +146,9 @@ def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> boo
             if any(block.identifier not in unit_step_ids for block in section.blocks):
                 return True
             continue
-        if section.name not in metadata_sections and (section.lines or section.items):
+        if section.name == "Scope" and section.lines:
             return True
-        if section.name not in metadata_sections and section.lines:
+        if section.name not in metadata_sections and (section.lines or section.items):
             return True
     return False
 

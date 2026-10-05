@@ -344,11 +344,12 @@ def test_overlapping_units_are_dispatched_for_serialized_execution(tmp_path: Pat
     """Overlapping ownership is serialized by the scheduler, never rejected."""
     _write_plan_artifact(
         tmp_path,
-        _plan_document(
-            [
-                {"unit_id": "unit-a", "description": "A", "allowed_directories": ["src"]},
-                {"unit_id": "unit-b", "description": "B", "allowed_directories": ["src/sub"]},
-            ]
+        (
+            "## Work Units\n"
+            "- [unit-a] A\n"
+            "  Directories: src\n"
+            "- [unit-b] B\n"
+            "  Directories: src/sub\n"
         ),
     )
     state = PipelineState(phase="development")
@@ -402,6 +403,33 @@ def test_fanout_keeps_post_unit_integration_work_in_main_session(tmp_path: Path)
             "\n"
             "## Final release\n"
             "- [release] Create release/manifest.json after both components are complete.\n"
+        ),
+    )
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _legacy_fan_out_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"
+
+
+def test_fanout_keeps_scope_residual_prose_in_main_session(tmp_path: Path) -> None:
+    """Scope prose not represented by a unit must keep native work serial."""
+    _write_plan_artifact(
+        tmp_path,
+        (
+            "## Scope\n"
+            "Prepare release/manifest.json, tag the release, and verify the published artifact.\n"
+            "\n"
+            "## Work Units\n"
+            "- [one] Implement first component\n"
+            "  Paths: src/one.py\n"
+            "- [two] Implement second component\n"
+            "  Paths: src/two.py\n"
         ),
     )
 
