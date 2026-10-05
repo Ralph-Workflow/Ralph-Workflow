@@ -111,7 +111,7 @@ Depends on: S-1
             "description": "Update API",
             "allowed_directories": [],
             "allowed_paths": ["src/api.py"],
-            "dependencies": [],
+            "dependencies": ["tests"],
             "step_ids": ["S-1"],
         }
     ]
@@ -120,7 +120,7 @@ Depends on: S-1
             "id": "tests",
             "description": "Update tests",
             "edit_area": {"directories": [], "paths": ["tests/api.py"]},
-            "depends_on": [],
+            "depends_on": ["api"],
             "step_ids": ["S-2"],
         }
     ]
