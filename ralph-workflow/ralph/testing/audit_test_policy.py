@@ -219,6 +219,15 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # assert the fixture's completeness, not the shipped files'. Reading
     # those two files is the ONLY thing the test needs exempted.
     "test_linting_policy_inventory",
+    # Parallel-execution guidance contract guard. Reads the shipped
+    # ``shared/_parallel_execution.jinja`` template because its literal
+    # wording on paths, waves, ownership serialization, and main-session
+    # integration is the regression contract: the test detects drift
+    # between the rendered prompt and the per-unit subagent brief. A
+    # ``tmp_path`` copy would assert against the fixture, not the shipped
+    # file, so the guard would stop detecting drift entirely. Reading
+    # that template is the ONLY thing the test needs exempted.
+    "test_developer_prompt_subagent_guidance",
 }
 
 # Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.

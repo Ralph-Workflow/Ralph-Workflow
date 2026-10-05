@@ -27,6 +27,12 @@ Even when the plan is declared as a single linear thread, an **independent ready
 
 When the plan declares `## Work Units` or `## Parallel Plan`, dispatch all ready independent units within the active worker limit. For step plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. Assign each group explicit paths and step IDs using the same brief below. As each result arrives, inspect its diff and focused proof, accept completed outputs, and release dependent work without waiting for unrelated writers. Perform any integration edits only on paths with no active writer. Wait for all writers before final reconciliation of shared tests and interfaces and repository-wide verification. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
 
+#### Ownership, paths, and waves
+
+Ownership may come from a unit's exact `Paths:`, its `Directories:` (the declared directory limits), or its steps' `Files:` when the unit has neither. Do not broaden file ownership to a parent directory: an overlapping parent does not grant ownership of other files, and a broader scope than the unit actually needs is the same execution defect as a missing ownership declaration. Before making a worker brief, remove any assignment that targets `.agent`, `.git`, or `.worktrees` (and their descendants) so the worker cannot mutate shared coordination state, version control, or sibling worktree bookkeeping. An unknown or empty effective scope, a malformed dependency graph, or unextractable ownership stays in the main session; it never grants broad worker writes.
+
+A worker cap limits concurrent units, not total units. Queue later ready units in waves; do not let a saturated cap trim required work. Serialize conflicting ownership -- equal files, directory ancestry, and directory/file containment -- until the earlier writer finishes. Disjoint file ownership in one directory may proceed together. Recompute readiness after each result; list order alone is not a dependency. A worker that finishes mid-wave frees its slot for the next queued independent unit without waiting for the rest of the wave.
+
 ### Scope-size escalation
 
 The larger the remaining scope, the stronger the obligation to fan out. When

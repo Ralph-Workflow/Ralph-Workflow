@@ -318,6 +318,30 @@ For capable agents, the agent's native sub-agent / task capability is enabled by
 
 The planning prompt (`planning.jinja`) carries the `## Agent-Driven Parallel Execution` block that tells the planner to write agent-facing intent (work units, dependencies, scope) and forbids routing parallel plan work through Ralph-managed coordination. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance.
 
+#### Independent ready steps in a linear plan
+
+A plan that does not declare `work_units` or `parallel_plan` is still dispatchable. The continuation template's `## PARALLEL EXECUTION` block (mirrored by the shared `shared/_parallel_execution.jinja` partial) tells the executing agent to form an **independent ready group** from the remaining steps: any two steps whose dependencies are satisfied AND whose `Files:` lists are pairwise disjoint (no shared template, test file, contract, or fixture) are dispatched concurrently even inside an otherwise linear plan. Serial execution is reserved for shared-writer ownership, integration contracts that must land first, or hard prerequisites -- never for the convenience of a "small change."
+
+#### Mid-run scope growth
+
+When fresh exploration reveals that the work is far larger than the plan indicated -- more steps, hidden coupling, an underestimated criterion -- the executing agent's `shared/_developer_iteration_guidance.j2` partial treats that growth as a scheduling input, not a stop signal. The recovery is role-aware: the main session re-cuts the remainder into smaller independent slices, dispatches read-only discovery and independent implementation concurrently, keeps at least one verified increment in flight, and runs the full `make verify` integration check in the main session. A worker shrinks its assigned unit into smaller verified increments and loops within it. Both branches end on the canonical external-blocker rule in `shared/_no_exemption_for_failures.j2`; difficulty, elapsed time, an exhausted run budget, slow progress, uncertainty, and the size of the remaining work never justify `partial`/`failed` while an available developer action could advance the plan.
+
+#### Capacity, ownership, and the dispatch pipeline
+
+Every dispatched sub-agent receives an exact `allowed_directories` (or per-step `Files:`) scope, the step IDs it owns, a focused verify command, and the exact `Disposition` and proof fields it must return. Two writers must never share a path; the main session owns the critical path, integration, and the full `make verify` gate. When every dispatch slot is busy and fresh independent ready work is still available, the main session continues implementing the ready references it already owns and refills freed slots the moment a worker returns -- an empty dispatch pipeline with ready work in it is a pipeline defect, not efficiency.
+
+#### When fan-out is unavailable or work is coupled
+
+Inability to fan out is a scheduling constraint, not permission to abandon. Genuinely coupled work (a shared writer, a contract that must land first, an integration point every ready reference depends on) and runtimes that do not expose native sub-agent tooling both fall back to bounded sequential increments: re-cut the remainder into the smallest verified slices, work the critical path, and re-evaluate the dependency graph after every verified increment. Do not weaken any quality gate, do not invent new tools, and do not bypass brokered permissions to obtain parallelism; the in-session path is the canonical recovery. A sequential recovery that ends with zero verified work delivered is the same execution defect as a parallel one, and only a genuine external blocker can support a terminal `partial`/`failed` result.
+
+#### Final integrated proof
+
+Integration, cross-unit checks, and the full `make verify` gate run in the main session after all dispatched units and the main session's in-flight increments land. Each worker return is a lead: re-read the cited `path:line` evidence, re-run the focused verify command, and re-check the proof fields before accepting the unit. Release dependents only after the upstream reference is accepted. A `status: completed` `development_result` is only honest when every required plan reference is proven and the repository-wide `make verify` run is green.
+
+#### What prompt contracts do and do not guarantee
+
+The developer prompt contracts in `shared/_parallel_execution.jinja`, `shared/_developer_iteration_guidance.j2`, and `shared/_no_exemption_for_failures.j2` are **instructions to the executing agent**, not runtime enforcement. They shape the agent's reasoning so it keeps working, dispatches safely when possible, and reserves `partial`/`failed` for genuine external blockers -- but the runtime does not refuse to accept a false completion, and no prompt rewrite can guarantee a particular model completes arbitrary work. Operators who need runtime-enforced bounds should use the per-phase timebox configuration, the cycle-deadline environment helpers, and the iteration counter; those are enforced regardless of the agent's claim.
+
 ### Re-arming Ralph-managed fan-out (dormant)
 
 Ralph-managed fan-out is retained in policy for future use. To opt back into the same-workspace worker model, set the development phase's `parallelization.dispatch_mode` to `ralph_fan_out` in `pipeline.toml`:
@@ -646,10 +670,16 @@ or the development wrapup notice, both surfaces use the same minutes
 remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 
 - The developer prompt includes a remaining-minutes warning and a force-cut
-  sentence in `shared/_run_budget.j2` so the agent drives the current task
-  to a verifiable state (a green suite, a passing focused test, or an
-  explicit partial report) before the deadline and does not start new work
-  it cannot finish.
+  sentence in `shared/_run_budget.j2` so the agent reserves time for
+  integration, verification, and submission, dispatches remaining
+  independent ready work concurrently, and submits before the deadline.
+  The remaining budget is a hint to schedule the work, not a license to
+  claim a partial result: elapsed time alone never establishes an
+  external blocker or justifies a false completion claim. A terminal
+  `partial` or `failed` result still requires the canonical
+  external-blocker rule from `shared/_no_exemption_for_failures.j2` --
+  a near deadline with verified work still possible is a signal to keep
+  working, not to abandon the plan.
 - The development wrapup notice
   (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
   the same remaining minutes, suggests dispatching an independent ready

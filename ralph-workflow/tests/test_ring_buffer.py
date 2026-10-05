@@ -2,6 +2,8 @@
 
 import threading
 
+import pytest
+
 from ralph.display.ring_buffer import PARALLEL_DISPLAY_BUFFER_SIZE, RingBuffer
 
 DEFAULT_BUFFER_SIZE = 1000
@@ -66,6 +68,11 @@ def test_enqueue_five_drain_three() -> None:
     assert buf.dropped_count == EXPECTED_DROPPED_ITEMS
 
 
+# wt-05-test-opti: the default 1.0s per-test budget can be tight when
+# the suite is fan-out across many shards and the host is contended;
+# 3.0s is the smallest budget that keeps the conservation assertion
+# reliable without masking a real hang.
+@pytest.mark.timeout_seconds(3.0)
 def test_thread_safety_conservation() -> None:
     """10 threads x 1000 enqueues; dropped + drained == 10000."""
     buf = RingBuffer(maxsize=PARALLEL_DISPLAY_BUFFER_SIZE)
