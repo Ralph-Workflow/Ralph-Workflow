@@ -1299,16 +1299,31 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/git/scoped_auto_commit.py", 388),
         ("ralph/git/scoped_auto_commit.py", 642),
         ("ralph/project_policy/cli_integration.py", 246),
+        ("ralph/project_policy/cli_integration.py", 605),
+        ("ralph/project_policy/cli_integration.py", 608),
+        ("ralph/project_policy/cli_integration.py", 609),
+        # wt-012: ``_schema_upgrade._freeze_policy_files`` lazy-imports
+        # the same git + policy-auto-commit machinery that the
+        # preflight and post-pipeline finalize already route through;
+        # the module-level import graph must stay free of those
+        # subsystems so the readiness preflight can be imported in
+        # non-git / non-tty environments (mirrors the cli_integration
+        # and _auto_commit lazy-import precedent in this allowlist).
         ("ralph/project_policy/_schema_upgrade.py", 210),
         ("ralph/project_policy/_schema_upgrade.py", 212),
         ("ralph/project_policy/_schema_upgrade.py", 213),
         ("ralph/project_policy/_schema_upgrade.py", 217),
-        ("ralph/project_policy/cli_integration.py", 555),
-        ("ralph/project_policy/cli_integration.py", 558),
-        ("ralph/project_policy/cli_integration.py", 559),
-        ("ralph/project_policy/cli_integration.py", 605),
-        ("ralph/project_policy/cli_integration.py", 608),
-        ("ralph/project_policy/cli_integration.py", 609),
+        # wt-012: ``_auto_commit_integration`` (extracted from
+        # ``cli_integration`` to keep the latter under the 1000-line
+        # cap) preserves the same function-scope lazy imports the
+        # original file relied on: ``pathlib.Path`` for the
+        # opt-out flow's ``isinstance(root, Path)`` guard, and
+        # ``markers.AGENTS_MD`` for the post-condense producer-level
+        # commit. The lazy import keeps the module importable in
+        # non-git / non-tty environments (mirrors the cli_integration
+        # and _schema_upgrade lazy-import precedent above).
+        ("ralph/project_policy/_auto_commit_integration.py", 69),
+        ("ralph/project_policy/_auto_commit_integration.py", 142),
         ("ralph/project_policy/preflight.py", 185),
         ("ralph/project_policy/preflight.py", 191),
         ("ralph/project_policy/preflight.py", 223),
@@ -1327,10 +1342,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/skills/manager.py", 218),
         ("ralph/skills/manager.py", 240),
         ("ralph/skills/manager.py", 247),
-        ("ralph/testing/audit_skill_auto_commit.py", 255),
-        ("ralph/testing/audit_skill_auto_commit.py", 309),
-        ("ralph/testing/audit_skill_auto_commit.py", 352),
-        ("ralph/testing/audit_skill_auto_commit.py", 406),
+        ("ralph/testing/audit_skill_auto_commit.py", 312),
+        ("ralph/testing/audit_skill_auto_commit.py", 409),
         ("ralph/agents/__init__.py", 44),
         ("ralph/agents/catalog.py", 216),
         ("ralph/agents/catalog.py", 217),

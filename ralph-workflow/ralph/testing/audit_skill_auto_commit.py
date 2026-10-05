@@ -261,8 +261,11 @@ _INVARIANTS: tuple[Invariant, ...] = (
     # commit with the pre-write hash of AGENTS.md recorded BEFORE
     # ``condense_placeholder_block`` runs, so an agent edit to AGENTS.md
     # in flight is SKIPPED (not committed in the policy chore commit).
+    # The finalize was extracted from ``cli_integration`` to
+    # ``_auto_commit_integration`` to keep the orchestrator under the
+    # 1000-line cap; the invariant tracks the new home of the literals.
     Invariant(
-        rel_path="project_policy/cli_integration.py",
+        rel_path="project_policy/_auto_commit_integration.py",
         present=(
             "commit_policy_writes",
             "condense_placeholder_block",

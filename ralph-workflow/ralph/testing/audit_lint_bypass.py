@@ -98,6 +98,14 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("bootstrap", "PLC0415"),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle
     ("preflight", "PLC0415"),  # wt-012 -- lazy import in preflight commit path
     ("cli_integration", "PLC0415"),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
+    (
+        "_schema_upgrade",
+        "PLC0415",
+    ),  # wt-012 -- lazy imports in _freeze_policy_files keep the module importable in non-git environments (mirrors cli_integration / scoped_auto_commit / _auto_commit lazy-import precedent; the freeze rewrite commits deterministically when git is available and stays a no-op when it is not)
+    (
+        "_auto_commit_integration",
+        "PLC0415",
+    ),  # wt-012 -- extracted from cli_integration to keep it under the 1000-line cap; preserves the function-scope lazy imports the original file relied on (pathlib.Path for the opt-out isinstance guard, markers.AGENTS_MD for the post-condense producer-level commit).
     ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
     ("_schema_upgrade", "PLC0415"),  # wt-012 -- lazy import in _freeze_policy_files to avoid module-load cycle with ralph.git.operations / ralph.git.scoped_auto_commit
     ("run_loop", "PLR0912"),
