@@ -338,7 +338,7 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
                     fix_section.line,
                     "How To Fix",
                     "ANALYSIS011",
-                    "verification decisions must omit How To Fix; remedies belong to a later phase",
+                    "verification decisions must omit How To Fix; remedies are inline in the verdict's 'Proposed revision:' (planning) or 'Remaining work:' (development) field on the next pass, so a separate remediation section would split one rule across two places",
                 )
             )
     else:

@@ -397,3 +397,54 @@ status: completed
 
     assert diagnostics == []
     assert content["criterion_verdict_ids"] == ["PR-001"]
+
+
+def test_analysis011_message_aligns_with_inline_remedy_contract() -> None:
+    """ANALYSIS011's diagnostic must not contradict the inline-remedy contract.
+
+    PRODUCT_CRITERIA §1 (no contradictions) requires the validator
+    message to agree with the prompts and format docs. The planning
+    prompt (``planning_analysis.jinja:87-95``) and the planning format
+    doc require each non-met verdict to carry an inline
+    ``Proposed revision:`` the planner applies or rebuts, and the
+    development prompt requires ``Remaining work:`` describing the
+    leftover outcome. A validator message that says remedies "belong to
+    a later phase" reads as contradicting the inline-remedy rule, so
+    the message must point at the inline fields the prompts already
+    name. Lock the alignment here so a regression that reintroduces
+    ambiguous wording is caught.
+    """
+    document = """---
+type: planning_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] The plan needs correction.
+
+## How To Fix
+- [FIX-1] Add an inline Proposed revision: to each non-met verdict.
+
+## What Came Up Short
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: split. Proposed revision: split. Verdict: not met. Evidence: cited paths. Location: plan prose. Cost: time.
+
+## Criterion Verdicts
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: split. Proposed revision: split. Verdict: not met. Evidence: cited paths. Location: plan prose. Cost: time.
+"""
+
+    _content, diagnostics = parse_and_validate(
+        document, get_spec("planning_analysis_decision")
+    )
+
+    analysis_011 = [d for d in diagnostics if d.rule_id == "ANALYSIS011"]
+    assert len(analysis_011) == 1
+    message = analysis_011[0].message
+    # The ambiguous "later phase" wording reads as contradicting the
+    # inline-remedy contract; the planning prompt forbids a separate
+    # How To Fix section precisely because remedies live inline.
+    assert "later phase" not in message.lower(), message
+    assert "later pass" not in message.lower(), message
+    # The message must point at the inline remedy field the prompt
+    # already names, so the rejection agrees with the rule.
+    assert "Proposed revision:" in message or "Remaining work:" in message, message
+    # The "How To Fix" prohibition is preserved verbatim.
+    assert "How To Fix" in message or "How To Fix" in message.lower(), message
