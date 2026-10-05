@@ -164,6 +164,7 @@ def test_developer_prompt_regression_scope_recovery_is_early_once_and_role_scope
         ("worker_developer.jinja", True, True),
         ("developer_iteration_fallback.jinja", True, False),
     )
+    missing_obligations: list[str] = []
     for template_name, worker, continuation in surfaces:
         rendered = _render_recovery_surface(
             tmp_path,
@@ -180,6 +181,56 @@ def test_developer_prompt_regression_scope_recovery_is_early_once_and_role_scope
             if marker in rendered
         )
         assert guidance_at < payload_at
+        recovery = " ".join(
+            rendered[guidance_at:].split("## Completion is the default outcome")[0].split()
+        )
+        opening = recovery.split("1. **Inventory")[0]
+        obligations = {
+            "direct execution instruction": "If the task is huge," in opening
+            and "early guidance must give" not in opening,
+        }
+        if worker:
+            obligations.update({
+                "unit-local opening": "Decompose only your assigned unit" in opening,
+                "no coordinator dispatch in worker recovery": all(
+                    phrase not in recovery
+                    for phrase in ("parallel dispatch", "dispatch independent ready scopes")
+                ),
+            })
+        else:
+            obligations.update({
+                "coordinator opening": "dispatch independent ready scopes" in opening,
+                "unsuccessful delegation recovery": all(
+                    phrase in recovery
+                    for phrase in (
+                        "delegation fails", "inspect its evidence", "retry a corrected brief",
+                        "another exposed helper", "finish the ready scope locally",
+                    )
+                ),
+                "stopped-writer ownership transfer": all(
+                    phrase in recovery
+                    for phrase in (
+                        "Before transferring ownership", "previous writer has stopped",
+                        "never overlap writers", "revert others' changes",
+                    )
+                ),
+                "local progress while helpers are pending": all(
+                    phrase in recovery
+                    for phrase in ("Continue safe local work", "while results are pending")
+                ),
+                "review cannot be bypassed": all(
+                    phrase in recovery
+                    for phrase in (
+                        "independent coverage", "pre-submit review", "verification blocker",
+                        "never claim a review happened",
+                    )
+                ),
+            })
+        missing_obligations.extend(
+            f"{template_name} (worker={worker}, continuation={continuation}): {obligation}"
+            for obligation, satisfied in obligations.items()
+            if not satisfied
+        )
         for marker in _RECOVERY_MARKERS:
             assert marker in rendered
         assert "safe concrete continuation requires" not in rendered
@@ -203,6 +254,7 @@ def test_developer_prompt_regression_scope_recovery_is_early_once_and_role_scope
             assert "implement its own ready critical-path work" in rendered
             assert "queues later work in waves" in rendered
             assert "continue ready work sequentially" in rendered
+    assert not missing_obligations, "\n".join(missing_obligations)
 
 
 def test_developer_prompt_regression_rendering_failure_uses_recovery_fallback(

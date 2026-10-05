@@ -696,25 +696,38 @@ payloads. That section tells the executing agent:
 - **Inventory the remaining references** and pick an immediately
   actionable, falsifiable increment before prolonged scope analysis.
 - **As a coordinator,** assign disjoint ownership, dispatch independent
-  ready scopes within exposed capacity, and implement its own ready
-  critical-path work while helpers run. Saturated capacity queues later
-  ready work in waves; coupled work or unavailable dispatch continues
-  ready work sequentially within the main session without bypassing
-  permissions.
-- **As a worker,** run the worker loop on the assigned unit until it is
-  fully proven; workers never recursively dispatch, integrate other
-  units, or run the full repository-wide gate (the main session owns
-  that).
+  ready scopes within exposed capacity, and immediately implement its own
+  ready critical-path work while helpers run. Saturated capacity queues
+  later ready work in waves. Coupled work or unavailable dispatch continues
+  sequentially within the main session without bypassing permissions;
+  pending helpers or failed dispatch must not idle safe local work.
+- **After a helper fails,** inspect its evidence and change tactics: retry
+  with a corrected brief, use another exposed helper, or finish the ready
+  scope locally. Before transferring ownership, confirm the previous
+  writer has stopped. Never overlap writers or revert another agent's
+  changes, and do not repeat unsuccessful dispatch attempts instead of
+  doing available safe work.
+- **As a worker,** decompose and verify only the assigned unit until it is
+  fully proven. Workers never recursively dispatch, widen ownership,
+  integrate other units, or run the full repository-wide gate (the main
+  session owns that).
 - **After a failed tactic,** diagnose its evidence and try a changed,
   evidence-backed approach. A failed tactic is not a stop signal while
-  another safe action remains.
+  another safe action remains within the agent's role and ownership.
 - **Reassess readiness after every result** and keep going until all
-  required references are proven. The canonical external-impossibility
-  rule in `shared/_no_exemption_for_failures.j2` is the only path to a
-  partial or failed artifact, and difficulty, elapsed time, or
-  unavailable sub-agents do not satisfy it.
+  required references are proven. Difficulty, elapsed time, or unavailable
+  helpers do not by themselves justify an incomplete outcome; the
+  canonical rule remains in `shared/_no_exemption_for_failures.j2`.
 
-This section clarifies the existing prompt contract rather than changing
-plan structure, worker ownership, or the brokered write protections
-above. The covered regression lives in
+Recovery does not waive required verification, independent coverage, or
+pre-submit review. When exposed, mandatory review helpers remain mandatory;
+if review stays unavailable, report the verification blocker accurately
+rather than claiming review happened or declaring completion. Continue safe
+implementation work while attempting recovery, and report any remaining
+incompleteness honestly under the canonical rule.
+
+These are prompt instructions, not a guarantee that every model completes
+arbitrary work. They do not change plan structure, worker ownership,
+brokered write protections, runtime deadlines, or Ralph Workflow's fan-out settings.
+The covered regression lives in
 `tests/test_prompts_no_exemption_for_failures.py`.

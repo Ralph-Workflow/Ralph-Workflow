@@ -1,9 +1,13 @@
 ## Scope-size recovery procedure
 
-For a large task, the early guidance must give this concrete procedure before
-prolonged scope analysis. Discovering a huge task causes decomposition,
-parallel dispatch, and immediate verified implementation — not an
-assessment-only handback.
+If the task is huge, change your execution strategy, not the required outcome.
+{% if IS_WORKER %}
+Decompose only your assigned unit into ready increments and start implementing
+the first one immediately; do not widen ownership or return only an assessment.
+{% else %}
+Decompose the plan, dispatch independent ready scopes within exposed capacity,
+and start your own assigned work immediately; do not return only an assessment.
+{% endif %}
 
 1. **Inventory the remaining references and acceptance criteria;** identify
    actual dependencies and an immediately actionable, falsifiable increment
@@ -12,7 +16,11 @@ assessment-only handback.
 {% if IS_WORKER %}
 2. **Worker loop.** Confirm dependency readiness on your assigned unit, implement it, run its focused proof, record evidence, and reassess readiness to select the next ready increment. Workers never recursively dispatch sub-agents, integrate other units, or run the full repository-wide gate (the main session owns that); they stay inside their exact assigned ownership and emit one-unit result. Repeat this loop until the assigned unit is fully proven.
 {% else %}
-2. **Coordinator loop.** Start with the dependency graph and assign disjoint ownership, dispatch independent ready scopes within exposed capacity, and implement its own ready critical-path work while helpers run. Saturated capacity queues later work in waves; coupled work or unavailable dispatches continue ready work sequentially without bypassing permissions.
+2. **Coordinator loop.** Start with the dependency graph and assign disjoint ownership, dispatch independent ready scopes within exposed capacity, and implement its own ready critical-path work while helpers run. Saturated capacity queues later work in waves; coupled work or unavailable dispatches continue ready work sequentially without bypassing permissions. Continue safe local work while results are pending or dispatch is unavailable; do not idle solely because helpers are busy.
+
+   If delegation fails, inspect its evidence and retry a corrected brief, use another exposed helper, or finish the ready scope locally. Do not repeat unsuccessful dispatch attempts while safe local work remains. Before transferring ownership, confirm the previous writer has stopped; never overlap writers or revert others' changes.
+
+   Required independent coverage and pre-submit review remain mandatory when exposed. Helper failure does not waive these obligations: persistent review unavailability is a verification blocker; never claim a review happened when it did not.
 {% endif %}
 
 3. **After a failed tactic,** diagnose its evidence and try a changed, evidence-backed approach. A failed tactic is not a blocked outcome while another safe action remains.

@@ -28,3 +28,4 @@ def test_parallel_guidance_serializes_conflicts_without_broadening_scope() -> No
     source = _source()
     assert "Do not broaden file ownership" in source
     assert "Serialize conflicting ownership" in source
+    assert "Continue your own ready work while results are pending" in source
