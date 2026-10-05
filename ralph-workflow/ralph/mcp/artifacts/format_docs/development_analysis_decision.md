@@ -78,38 +78,33 @@ status: request_changes
 
 ## Plan reference coverage
 
-The `Plan reference:` line in each `DA-###` plan-reference item covers
-whatever references the plan actually uses (numeric `S-n` IDs, named
-anchors, or, for a prose plan, the prose anchor being judged). A prose
-plan is judged on whether its requests are covered, not on whether a
-specific identifier matches; the analyst writes whatever stable label
-the plan itself uses inside the brackets.
-
-`Plan reference:` and `Disposition:` are required for every separate
-plan-reference item the analyst chooses to emit. Emit one additional
-`DA-###` item per plan reference the plan actually uses, pairing
-`Plan reference: [<stable id>]` with
-`Disposition: completed|adapted|not_applicable|blocked` in the same item.
-The shared validator's subject slot already accepts any free-form
-`Plan reference: [<stable id>]` — see
+Besides the per-criterion items, emit one additional `DA-###` item for
+whatever references the plan actually uses. These items are required, not
+optional: the development-result proof gate no longer matches plan IDs,
+so this decision is where plan coverage is recorded. Write whatever
+stable label the plan itself uses inside the brackets — a numeric `S-n`
+ID, a named anchor, or, for a prose plan, the prose anchor being judged —
+because a prose plan is judged on whether its requests are covered, not
+on whether a specific identifier matches. The shared validator's subject
+slot already accepts any free-form `Plan reference: [<stable id>]` — see
 `ralph/mcp/artifacts/markdown/specs/analysis_decision.py` at
-`_PLAN_REFERENCE_PATTERN` (line 84) and `_finding_fields_complete` (lines
-53-58) — so a prose plan is judged on whether its requests are covered,
-not on whether a specific identifier matches; the analyst writes whatever
-stable label the plan itself uses (a numeric `S-n`, a named anchor, or
-the prose anchor text) inside the brackets.
+`_PLAN_REFERENCE_PATTERN` (line 82) and `_finding_fields_complete` (line
+49).
 
-Ordinary request-criterion findings (e.g. `Criterion: oversized indexes
-are handled safely.`) are NOT plan references and do not require
-`Plan reference:` or `Disposition:`. That pair is mandatory only for the
-additional plan-reference items the analyst chooses to emit, and only
-those items must carry both fields — every other `DA-###` finding is
-scoped to a request criterion and keeps the standard
+A plan-reference item keeps the standard
 `Criterion:`/`Expected observation:`/`Verdict:`/`Evidence:`/`Location:`
-shape. The bundled example mirrors this contract in both
-`## What Came Up Short` and `## Criterion Verdicts` so the same `DA-###`
-carries its criterion finding and the paired `Plan reference:` +
-`Disposition:` together.
+shape — the validator requires those fields on every
+`## Criterion Verdicts` item — with `Criterion:` stating the plan
+reference's expected outcome, and adds `Plan reference: [<stable id>]`
+paired with `Disposition: completed|adapted|not_applicable|blocked` in
+the same item. `Plan reference:` and `Disposition:` are mandatory on
+plan-reference items only: ordinary request-criterion findings (e.g.
+`Criterion: oversized indexes are handled safely.`) are not plan
+references and do not invent the pair. The bundled example models this
+split: DA-003 is the request-criterion finding and DA-004 is the
+separate plan-reference item carrying `Plan reference: [WU-1]` with
+`Disposition: blocked`, mirrored consistently in `## What Came Up Short`
+and `## Criterion Verdicts`.
 
 `status` is `completed`, `request_changes`, or `failed`. `met` means no
 counterexample was found. `not evaluable` requires `failed` rather than
