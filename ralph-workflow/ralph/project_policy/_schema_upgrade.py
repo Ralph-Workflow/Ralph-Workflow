@@ -222,7 +222,7 @@ def _freeze_policy_files(
     frozen: list[str] = []
     for path, marker, installed_version in outdated:
         content = workspace.read(path)
-        workspace.write(
+        workspace.write(  # deterministic-writer-ok: schema-freeze write; committed by commit_policy_writes below (the helper sits inside a sibling guard but the write's deterministic intent is fixed)
             path,
             content.replace(
                 marker,

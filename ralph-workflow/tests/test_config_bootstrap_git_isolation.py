@@ -152,6 +152,76 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
     assert not any(".bak" in line for line in tracked.splitlines())
 
 
+def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
+    tmp_path: Path,
+) -> None:
+    """Forced regeneration of a TRACKED SYMLINK config commits at the lexical path.
+
+    Regression for wt-12 DA-001 / DA-007 / DA-008 / DA-010: the
+    ``_repo_rel_path`` helper used to call ``target.resolve(strict=False)``,
+    which collapsed a tracked symlink (``.agent/ralph-workflow.toml ->
+    ../real.toml``) into the symlink target's path
+    (``real.toml``). The deterministic commit routing then
+    staged/hashed the wrong blob, the chore commit never landed, and
+    the symlink's lexical entry was left as a ``T`` (type change) in
+    ``git status`` for the agent flow.
+
+    The fix uses the LEXICAL path. With the fix, the dedicated
+    ``chore(config): update ralph-workflow.toml`` commit lands, the
+    ``.agent/ralph-workflow.toml`` type-change entry is removed, and the
+    unrelated user-dirty ``real.toml`` stays uncommitted.
+    """
+    repo_root = tmp_path
+    _init_repo_with_initial_commit(repo_root)
+    # A regular file the symlink resolves to; committing it under HEAD
+    # produces a "source" blob for both the symlink (target bytes) and
+    # the regular file.
+    real_path = repo_root / "real.toml"
+    real_path.write_text("source\n", encoding="utf-8")
+    agent_dir = repo_root / ".agent"
+    agent_dir.mkdir(parents=True)
+    config_path = agent_dir / "ralph-workflow.toml"
+    config_path.symlink_to(real_path)
+    _git(repo_root, "add", ".agent/ralph-workflow.toml", "real.toml")
+    _git(repo_root, "commit", "-m", "track symlink config", "--no-gpg-sign")
+    # User/agent edits the resolved file -- this is unrelated to the
+    # config replacement and must stay uncommitted.
+    real_path.write_text("user edit\n", encoding="utf-8")
+    subjects_before = set(_commit_subjects(repo_root))
+
+    with _WarningCapture() as captured:
+        results = ensure_local_configs(agent_dir, force=True)
+
+    assert not any(
+        "has no pre-write hash recorded" in msg for msg in captured.messages
+    ), (
+        f"Tracked-symlink regeneration must record a pre-write hash; got {captured.messages!r}"
+    )
+    assert not any(
+        "was already dirty at HEAD" in msg for msg in captured.messages
+    ), (
+        f"Tracked-symlink regeneration must not see HEAD-dirty paths; got {captured.messages!r}"
+    )
+    new_subjects = _non_gitignore_new_subjects(repo_root, subjects_before)
+    assert "chore(config): update ralph-workflow.toml" in new_subjects, (
+        f"Expected a dedicated chore(config) commit for ralph-workflow.toml; "
+        f"new commits: {new_subjects!r}"
+    )
+    regenerated = [r for r in results if r.path == config_path]
+    assert regenerated and regenerated[0].action == "regenerated"
+
+    # ONLY the user-dirty resolved file remains in the working tree.
+    # The symlink's lexical entry must NOT be a dirty ``T`` after the
+    # deterministic commit lands.
+    porcelain = _git(repo_root, "status", "--porcelain")
+    assert ".agent/ralph-workflow.toml" not in porcelain, (
+        f"Tracked symlink must be committed; porcelain: {porcelain!r}"
+    )
+    assert "real.toml" in porcelain, (
+        f"User-dirty real.toml must stay uncommitted; porcelain: {porcelain!r}"
+    )
+
+
 def test_nonignored_first_creation_commits_dedicated_chore(tmp_path: Path) -> None:
     """First creation of a NONIGNORED config: dedicated commit lands.
 

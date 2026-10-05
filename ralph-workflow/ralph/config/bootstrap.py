@@ -901,12 +901,12 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         # config write routed through commit_deterministic_writes below
         # (wt-12). The audit's helper-following check accepts the write
         # as routed.
-        shutil.move(str(target), str(backup))  # filesystem-write-ok: deliberately timestamped backup of the previous config before regeneration (wt-12)
+        shutil.move(str(target), str(backup))
 
     # Shipped-template install write, committed by the routing below
     # (wt-12). The audit's helper-following check accepts the write as
     # routed.
-    shutil.copy2(str(source), str(target))  # filesystem-write-ok: shipped-template install write, committed by the routing below (wt-12)
+    shutil.copy2(str(source), str(target))
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )
@@ -959,5 +959,18 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
 
 
 def _repo_rel_path(target: Path, working_dir: Path) -> str:
-    """Return the repo-relative POSIX path of ``target`` inside ``working_dir``."""
-    return target.resolve(strict=False).relative_to(working_dir).as_posix()
+    """Return the repo-relative POSIX path of ``target`` inside ``working_dir``.
+
+    wt-12: uses the LEXICAL path (``target`` as-is), NOT
+    ``target.resolve(...)``. A tracked symlink (e.g. ``.agent/ralph-workflow.toml
+    -> ../real.toml``) is tracked at its lexical path; ``resolve`` would
+    swap the path for the symlink target and the deterministic commit
+    helper would stage/commit the wrong blob (or warn
+    "already dirty at HEAD" when the target file differs from HEAD),
+    leaving the symlink's lexical entry dirty for the agent flow
+    (DA-001 / DA-007 / DA-008 / DA-010).
+
+    The caller is responsible for passing a target whose lexical path is
+    inside ``working_dir``; bootstrap only writes paths inside the repo.
+    """
+    return target.relative_to(working_dir).as_posix()

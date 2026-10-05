@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import ast
 import sys
+from enum import Enum
 from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -672,41 +673,202 @@ def _within_helper_call_argument(stmt: ast.stmt, lineno: int) -> bool:
     return visit(stmt, False)
 
 
-def _followed_by_helper_in_block(body: list[ast.stmt], lineno: int) -> bool:
+def _inner_walk_after(stmt: ast.stmt) -> bool:
+    """Inner-walk helper: a helper inside a NESTED if/while/for in the
+    same arm is on the same path (the nested control flow only adds
+    conditions, not a new sibling). The check is structural, not
+    runtime: any ``if/while/for`` body that contains a DIRECT helper
+    call (Expr/Assign of a call to a commit helper) is accepted.
+
+    Defensive guards: a helper inside a nested ``def``/``lambda`` is
+    NEVER on the same path (the nested function may not run). A
+    helper inside an ``if/else`` is only followed via the body arm;
+    the ``else`` arm is mutually exclusive.
+    """
+    for block in _sub_blocks(stmt):
+        for inner in block:
+            if _is_direct_helper_call(inner):
+                return True
+            if isinstance(inner, _CONTROL_FLOW_DIVERGENCE) and _inner_walk_after(
+                inner
+            ):
+                return True
+    return False
+
+
+def _followed_by_helper_in_block(
+    body: list[ast.stmt], lineno: int, *, _outer_walk: bool = False
+) -> bool:
     """Fail-closed statement-path check for a write at ``lineno``.
 
     True ONLY when a commit-helper call provably executes after the write
-    on the same statement path: a helper call in a LATER statement of this
-    block (or deeper, along the nested-block chain from the write
+    on the same statement path: a helper call in a LATER statement of
+    this block (or deeper, along the nested-block chain from the write
     outward), with no intervening ``return`` / ``raise`` and no ``if`` /
     ``elif`` sibling-arm separation. Helper-before-write, helper-only-in
     a sibling branch, helper after an early return, and helper inside a
     nested function are all violations (False).
+
+    wt-12 DA-004 / DA-012: the previous version accepted helpers inside
+    SIBLING ``if`` statements (different condition), helpers after an
+    ``if/else`` whose write-arm returned (unreachable), and helpers
+    inside a NESTED ``if`` in a ``finally`` block (conditional). The
+    fix tightens the check at the OUTER walk (after the write's
+    containing statement): a sibling ``if/while/for`` is rejected
+    (the helper is on a different conditional path). The INNER walk
+    (within the write's containing arm, reached via
+    ``_followed_by_helper_within_stmt``) is intentionally more
+    lenient: a helper nested in a deeper ``if/while/for`` inside the
+    same arm is accepted because it shares the outer conditions.
     """
-    after_write = False
+    return _walk_for_helper(body, lineno, _outer_walk, after_write_ref=[False])
+
+
+def _walk_for_helper(
+    body: list[ast.stmt],
+    lineno: int,
+    outer_walk: bool,
+    after_write_ref: list[bool],
+) -> bool:
+    """Recursive helper: walk ``body`` looking for a helper on the write's path.
+
+    ``after_write_ref`` is a single-element list used as a mutable
+    flag the inner recursion can flip when it encounters the write.
+    Splitting the loop body out of the main entry point keeps the
+    ruff PLR0911/PLR0912 caps intact (the original implementation
+    needed 11 returns to express the state machine; extracting the
+    outcome predicates trims the per-function branch count).
+    """
     for stmt in body:
-        if not after_write:
+        if not after_write_ref[0]:
             if not _stmt_contains_lineno(stmt, lineno):
                 continue
             if _within_helper_call_argument(stmt, lineno):
                 return True
-            # The write is inside this statement. Look deeper along the
-            # nested-block chain first; a helper found there is followed.
             if _followed_by_helper_within_stmt(stmt, lineno):
                 return True
-            after_write = True
+            after_write_ref[0] = True
+            # A return/raise between the write and the end of this
+            # statement makes every later statement in the enclosing
+            # block unreachable from the write's path.
+            if _stmt_has_barrier_after_write(stmt, lineno):
+                return False
             continue
-        # Statements AFTER the write's statement in this block: the first
-        # helper call wins, but a return/raise before it is a barrier
-        # (fail closed -- the helper might never execute).
-        if isinstance(stmt, (ast.Return, ast.Raise)):
-            return False
-        if _has_commit_helper_call(stmt) or _within_helper_call_argument(stmt, lineno):
+        # Statements AFTER the write's statement in this block.
+        outcome = _classify_after_write(stmt, lineno, outer_walk)
+        if outcome is _AfterWriteOutcome.HELPER_FOUND:
             return True
-        if _contains_terminator(stmt):
-            # A conditionally-executed return/raise nested inside an
-            # intervening statement is ambiguous routing -- fail closed.
+        if outcome is _AfterWriteOutcome.HELPER_UNREACHABLE:
             return False
+        # outcome is _AfterWriteOutcome.CONTINUE -- keep walking.
+    return False
+
+
+class _AfterWriteOutcome(Enum):
+    """Per-statement verdict for the after-walk predicate.
+
+    The walk inspects each statement in lexical order after the
+    write's containing statement. Each statement maps to exactly one
+    of:
+
+    * ``HELPER_FOUND`` -- a direct helper call on the same path;
+      propagate True up the recursion.
+    * ``HELPER_UNREACHABLE`` -- a return/raise or guarded
+      conditional makes a later helper unreachable; propagate False
+      (fail closed).
+    * ``CONTINUE`` -- this statement is on the same path and does
+      not conclude the walk; iterate.
+    """
+
+    HELPER_FOUND = "helper_found"
+    HELPER_UNREACHABLE = "helper_unreachable"
+    CONTINUE = "continue"
+
+
+def _classify_after_write(
+    stmt: ast.stmt, lineno: int, outer_walk: bool
+) -> _AfterWriteOutcome:
+    """Classify a single statement that sits AFTER the write in the
+    same block.
+
+    Returns the outcome the outer walk should apply: ``HELPER_FOUND``
+    / ``HELPER_UNREACHABLE`` short-circuits the walk, ``CONTINUE``
+    moves on to the next statement.
+    """
+    if isinstance(stmt, (ast.Return, ast.Raise)):
+        return _AfterWriteOutcome.HELPER_UNREACHABLE
+    if outer_walk and isinstance(stmt, _CONTROL_FLOW_DIVERGENCE):
+        # Outer walk: a sibling ``if/while/for``. The walk does NOT
+        # descend into the body (a helper there is on a different
+        # conditional path), but a subsequent unconditional statement
+        # (e.g. a ``try`` with a direct helper at the top of its
+        # body) is still on the same path. However, when the
+        # ``if/while/for`` has a terminator in its body, statements
+        # AFTER the conditional are reachable only via the
+        # non-terminating arm -- the write ran unconditionally, so a
+        # helper only reachable via the non-terminating arm is on a
+        # different path. Fail closed (DA-004 / DA-012).
+        return (
+            _AfterWriteOutcome.HELPER_UNREACHABLE
+            if _contains_terminator(stmt)
+            else _AfterWriteOutcome.CONTINUE
+        )
+    if isinstance(stmt, ast.Try):
+        # A try statement is conditional on its except handlers, but
+        # the try body always runs. A direct helper at the top level
+        # of the try body is provable; anything in ``except`` or
+        # ``finally`` of this OUTER try is conditional or has its
+        # own routing (handled by ``_followed_by_helper_within_stmt``
+        # for the write's own try). We accept only a direct helper
+        # in the try body here.
+        return (
+            _AfterWriteOutcome.HELPER_FOUND
+            if any(_is_direct_helper_call(inner) for inner in stmt.body)
+            else _AfterWriteOutcome.HELPER_UNREACHABLE
+        )
+    if _is_direct_helper_call(stmt):
+        return _AfterWriteOutcome.HELPER_FOUND
+    # Fall through: the remaining cases are control-flow divergence
+    # (inner walk only) and the no-helper-found default. Both share
+    # a single continue-vs-unreachable verdict derived from the
+    # inner-walk descent and the terminator probe.
+    if not outer_walk and isinstance(stmt, _CONTROL_FLOW_DIVERGENCE):
+        # Inner walk: a nested ``if/while/for`` shares the outer
+        # conditions. A direct helper inside the body is on the
+        # same path. Walk in to confirm.
+        return (
+            _AfterWriteOutcome.HELPER_FOUND
+            if _inner_walk_after(stmt)
+            else _AfterWriteOutcome.HELPER_UNREACHABLE
+        )
+    return (
+        _AfterWriteOutcome.HELPER_UNREACHABLE
+        if _contains_terminator(stmt)
+        else _AfterWriteOutcome.CONTINUE
+    )
+
+
+def _stmt_has_barrier_after_write(stmt: ast.stmt, lineno: int) -> bool:
+    """True when a return/raise sits between the write and the end of
+    the arm containing the write.
+
+    Used by :func:`_followed_by_helper_in_block` to detect the
+    ``write; return; ...; helper`` shape (DA-004 / DA-012 case 2): the
+    return is in the same arm as the write, so every later statement
+    in the enclosing block is unreachable from the write's path.
+    """
+    for block in _sub_blocks(stmt):
+        if not any(_stmt_contains_lineno(s, lineno) for s in block):
+            continue
+        seen_write = False
+        for inner in block:
+            if not seen_write:
+                if _stmt_contains_lineno(inner, lineno):
+                    seen_write = True
+                continue
+            if isinstance(inner, (ast.Return, ast.Raise)):
+                return True
+        return False
     return False
 
 
@@ -720,6 +882,65 @@ def _contains_terminator(stmt: ast.stmt) -> bool:
     return False
 
 
+#: Control-flow statement types that introduce a CONDITIONAL path divergence
+#: (DA-004 / DA-012). A commit-helper call nested inside one of these
+#: (at the top level of a sibling statement, or inside the ``finally`` of
+#: a try that contains the write) cannot be proved to execute after the
+#: write, so the audit fail-closed rejects it.
+_CONTROL_FLOW_DIVERGENCE: tuple[type[ast.stmt], ...] = (
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+)
+
+
+def _is_control_flow_divergence(stmt: ast.stmt) -> bool:
+    """True when ``stmt`` itself is a conditional/loop control-flow construct.
+
+    A helper inside such a statement (or, equivalently, an entire
+    ``if/while/for`` statement at the top level after the write's
+    containing statement) is on a path the write may never reach.
+    The audit fail-closed: do not descend, return False from the walk.
+    """
+    return isinstance(stmt, _CONTROL_FLOW_DIVERGENCE)
+
+
+def _is_direct_helper_call(stmt: ast.stmt) -> bool:
+    """True when ``stmt`` is a top-level call expression to a commit helper.
+
+    "Top-level" means the statement is ``Expr(Call(...))`` (or an
+    ``Assign`` whose value is a call) -- the helper is the direct child
+    of the statement, not nested inside an ``if/while/for`` body. This
+    is the safe shape the audit accepts in the "after the write's
+    containing statement" walk: the helper is unconditional and
+    executes if the write executed.
+    """
+    if isinstance(stmt, (ast.Expr, ast.Assign)):
+        candidate = stmt.value
+    else:
+        return False
+    if not isinstance(candidate, ast.Call):
+        return False
+    func = candidate.func
+    if isinstance(func, ast.Name):
+        return func.id in _WRITER_COMMIT_HELPERS
+    if isinstance(func, ast.Attribute):
+        return func.attr in _WRITER_COMMIT_HELPERS
+    return False
+
+
+def _finally_has_direct_helper(stmt: ast.Try) -> bool:
+    """True when ``stmt.finalbody`` has a top-level direct helper call.
+
+    ``finally`` always executes after the write's arm, so a DIRECT
+    helper at the top level of the finally is provable routing. A
+    helper nested inside an ``if/while/for`` in the finally is a
+    conditional path and is rejected (DA-004 / DA-012).
+    """
+    return any(_is_direct_helper_call(inner) for inner in stmt.finalbody)
+
+
 def _followed_by_helper_within_stmt(stmt: ast.stmt, lineno: int) -> bool:
     """Search the branch arm of ``stmt`` that contains ``lineno``.
 
@@ -727,30 +948,21 @@ def _followed_by_helper_within_stmt(stmt: ast.stmt, lineno: int) -> bool:
     mutually exclusive -- a helper there never executes with the write).
     A ``return`` / ``raise`` between the write and the arm's end is a
     fail-closed barrier even when an enclosing block has a later helper.
+
+    wt-12 DA-004 / DA-012: the ``finally`` check only accepts a DIRECT
+    top-level helper call. A helper nested in an ``if/while/for`` inside
+    the finally body is on a conditional path -- fail closed.
     """
     for block in _sub_blocks(stmt):
         if not any(_stmt_contains_lineno(s, lineno) for s in block):
             continue
         if _followed_by_helper_in_block(block, lineno):
             return True
-        # ``finally`` always executes after the write's arm, so a helper
-        # there is provable routing even without one in the arm itself.
-        if isinstance(stmt, ast.Try) and any(
-            _has_commit_helper_call(inner) for inner in stmt.finalbody
-        ):
-            return True
-        # No helper found deeper in the containing arm. Fail closed when a
-        # return/raise sits between the write and the arm's end: an outer
-        # later helper would then be ambiguous.
-        seen_write = False
-        for inner in block:
-            if not seen_write:
-                if _stmt_contains_lineno(inner, lineno):
-                    seen_write = True
-                continue
-            if isinstance(inner, (ast.Return, ast.Raise)):
-                return True  # barrier -> definitive violation for this write
-        return False
+        # ``finally`` always executes after the write's arm, so a DIRECT
+        # top-level helper there is provable routing even without one in
+        # the arm itself. A helper nested in an ``if/while/for`` inside
+        # the finally is on a conditional path -- rejected.
+        return bool(isinstance(stmt, ast.Try) and _finally_has_direct_helper(stmt))
     return False
 
 
@@ -778,7 +990,7 @@ def _enclosing_calls_helper(tree: ast.AST, lineno: int) -> bool:
             best, best_size = node, size
     if best is None or not isinstance(best, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
-    return _followed_by_helper_in_block(list(best.body), lineno)
+    return _followed_by_helper_in_block(list(best.body), lineno, _outer_walk=True)
 
 
 def _source_has_marker(source: str, lineno: int) -> bool:

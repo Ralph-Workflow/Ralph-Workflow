@@ -626,12 +626,12 @@ def _helper_check(source: str, write_lineno: int) -> bool:
 @pytest.mark.parametrize(
     ("source", "write_lineno"),
     [
-        # helper-before-write
+        # helper-before-write (write at line 3, helper at line 2)
         (
             "def f():\n"
             "    commit_deterministic_writes(root, [], {}, 's', None)\n"
             "    path.write_text('x')\n",
-            2,
+            3,
         ),
         # helper only in a sibling ``else`` arm
         (
@@ -661,13 +661,58 @@ def _helper_check(source: str, write_lineno: int) -> bool:
         ),
         # unmarked write with no helper at all
         ("def f():\n    path.write_text('x')\n", 2),
+        # DA-004 / DA-012 case 1: helper in a SIBLING ``if`` block
+        # (independent condition)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "    if other_cond:\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # DA-004 / DA-012 case 2: write+return, helper after the if
+        # (write-arm always returns, so the helper is unreachable)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "        return\n"
+            "    else:\n"
+            "        pass\n"
+            "    commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # DA-004 / DA-012 case 3: helper conditional inside a
+        # ``finally`` block (the if-true condition is independent)
+        (
+            "def f():\n"
+            "    try:\n"
+            "        path.write_text('x')\n"
+            "    finally:\n"
+            "        if cond:\n"
+            "            commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # helper in a deeply-nested if-true inside a different if
+        # (deeper version of case 1 -- still on a different path)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "    if other_cond:\n"
+            "        if yet_another:\n"
+            "            commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
     ],
 )
 def test_enclosing_calls_helper_rejects_ambiguous_routing(
     source: str, write_lineno: int
 ) -> None:
     """Fail closed: ambiguous routing (before-write, sibling arm, barrier,
-    nested def, no helper) is a violation."""
+    nested def, no helper, sibling-if, unreachable-after-return,
+    conditional-in-finally, deeply-nested-sibling-if) is a violation."""
     assert _helper_check(source, write_lineno) is False
 
 
@@ -698,6 +743,44 @@ def test_enclosing_calls_helper_rejects_ambiguous_routing(
             "        write_fn=lambda: path.write_text('x'),\n"
             "    )\n",
             4,
+        ),
+        # helper in the SAME ``if`` body as the write (one arm,
+        # unconditional)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # helper nested in a deeper ``if`` inside the write's
+        # enclosing arm (shares the outer condition)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "        if other:\n"
+            "            commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # unconditional helper after an if (no sibling if, no barrier)
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "    commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # helper at the top level of a ``finally`` body (always runs)
+        (
+            "def f():\n"
+            "    try:\n"
+            "        path.write_text('x')\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "    finally:\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
         ),
     ],
 )
