@@ -141,7 +141,8 @@ completion claim is the one thing this artifact can fully check. With
 `status: partial` or `status: failed` the document is otherwise free-form below
 the frontmatter, with two exceptions that are always enforced: `## Summary`
 with at least one item is required, so the reason for the outcome is never
-silently omitted; and once the run's cycle timebox has warned, `## Incomplete
+silently omitted; and once the run's cycle timebox or development timebox
+has warned, `## Incomplete
 Work` is required, with a stable-ID bracket, a `Reason:` field, and an
 `Evidence:` field on every item. The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
 
@@ -157,8 +158,8 @@ status decides whether the run ends.
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
 - `## Plan Items Proven` — required on a `completed` result once the
-  run's cycle timebox has warned; one item per plan reference the plan
-  actually uses. The bracketed ID is shape-independent: a step ID
+  run's cycle timebox or development timebox has warned; one item per
+  plan reference the plan actually uses. The bracketed ID is shape-independent: a step ID
   (`S-N`) when the plan declares one, a work-unit bracket ID when the
   plan uses `## Work Units` / `## Parallel Plan`, the ID `plan` for an
   accepted prose plan, or a subplan / section heading. Coverage of the
@@ -196,12 +197,14 @@ status decides whether the run ends.
 ## Hard errors vs warnings
 
 Hard errors at any status: an unrecognized `status`; a missing `## Summary`;
-and, once the cycle timebox has warned, a missing or malformed `## Incomplete
-Work` on a `partial`/`failed` result or a missing `## Plan Items Proven` on a
-`completed` one. Whether the cycle warned is read from the run's own clock.
-A declared `cycle_timebox_warned: true` frontmatter flag is also honoured, so
-a result validated outside the warned invocation (a replay or a hand-written
-report) keeps its stricter reading.
+and, once the cycle timebox or the development timebox has warned, a missing
+or malformed `## Incomplete Work` on a `partial`/`failed` result or a
+missing `## Plan Items Proven` on a `completed` one. Whether the timebox
+warned is read from the run's own published clock for the relevant timer
+(cycle or development), with a matching declared frontmatter flag —
+`cycle_timebox_warned: true` or `development_timebox_warned: true` — also
+honoured, so a result validated outside the warned invocation (a replay
+or a hand-written report) keeps its stricter reading.
 
 Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation

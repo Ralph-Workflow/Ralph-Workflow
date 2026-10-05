@@ -215,7 +215,7 @@ def _lexical_descendants(root: Path, workspace_root: Path) -> list[str]:
         except ValueError:
             return []
     paths: list[str] = []
-    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):  # filesystem-read-ok: git-tracked path enumeration must follow the real tree, including files Workspace.iter_files skips (ignored/untracked markers do not apply to a physical install manifest).
         base_rel = Path(str(dirpath)).relative_to(workspace_root)
         for filename in filenames:
             file_path = base_rel / filename

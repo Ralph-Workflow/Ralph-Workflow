@@ -13,7 +13,10 @@ enforces this on submission (`ANALYSIS019`), so missing revisions are
 rejected, not just suggested. Do not just grade. For avoidable
 serialization, return `request_changes` and put a concrete proposed unit
 split in the finding's `Proposed revision:`. Do not add a `## How To Fix`
-section.
+section: the planner applies or rebuts each `Proposed revision:` inline on
+the next pass, so a separate remediation section would split one rule
+across two places and force the analyzer to re-derive the same fix in two
+shapes.
 
 ## Request-changes example
 
@@ -42,13 +45,16 @@ status: request_changes
 - `## Criterion Verdicts` is required and non-empty. Each item uses a stable,
   unique `PA-###` ID, carries `Criterion:`, `Expected observation:`,
   `Observation:`, `Proposed revision:`, `Verdict:`, `Evidence:`,
-  `Location:`, and `Cost:`, and records criterion-level evidence. A
-  `not evaluable` criterion requires `failed` rather than completion.
-  `Proposed revision:` is the concrete revision the planner applies or
-  rebuts on the next pass; the validator enforces it on every non-completed
-  planning verdict (`ANALYSIS019`), so submissions missing it are rejected.
-  A completed decision with met verdicts does not need a revision because
-  the plan was approved as-is.
+  `Location:`, and `Cost:`, and records criterion-level evidence. The
+  planning contract treats the cost of the missed split as part of the
+  verdict, so the validator enforces `Cost:` on every planning verdict
+  (`ANALYSIS005`); a submission without it is rejected, not just
+  suggested. A `not evaluable` criterion requires `failed` rather than
+  completion. `Proposed revision:` is the concrete revision the planner
+  applies or rebuts on the next pass; the validator enforces it on every
+  non-completed planning verdict (`ANALYSIS019`), so submissions missing
+  it are rejected. A completed decision with met verdicts does not need a
+  revision because the plan was approved as-is.
 - `## What Came Up Short` is required for `request_changes` and `failed`;
   it mirrors localized non-met verdicts and each mirrored finding carries
   its `Proposed revision:` so the planner can apply or rebut it on the next

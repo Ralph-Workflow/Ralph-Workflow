@@ -45,10 +45,12 @@ Important: the previous attempt did not complete successfully.
 
 Launch a read-only coverage check subagent while the main session starts
 the first ready step. Map **every concrete deliverable in the request** to a
-plan step or an uncovered criterion. Delegate independent library lookups at
+plan reference or an uncovered criterion. Delegate independent library lookups at
 the same time. The mapping must list, for every item in `PROMPT`:
 
-- the plan step ID it maps to (e.g. `[S-3]`), or
+- the plan reference it maps to — whatever stable anchor the plan actually
+  uses, whether that is a `S-N` step ID, a work-unit bracket ID, a
+  prose-plan ID, or a named subplan / section anchor; or
 - a continuation need explaining what plan steps would have to change to
   cover it (file:line where the gap was identified, what plan change
   closes it).

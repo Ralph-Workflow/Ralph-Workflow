@@ -38,9 +38,10 @@ def _markdown(artifact_type: str, verdict: str, evidence: str, location: str) ->
         if artifact_type == "planning_analysis_decision" and verdict != "met"
         else ""
     )
+    cost = " Cost: unnecessary elapsed time." if artifact_type == "planning_analysis_decision" else ""
     verdict_item = (
         f"- [{prefix}-001] {target}Criterion: behavior holds. Expected observation: focused evidence observes it. "
-        f"{revision}Verdict: {verdict}. Evidence: {evidence} Location: {location}."
+        f"{revision}Verdict: {verdict}. Evidence: {evidence} Location: {location}.{cost}"
     )
     if verdict != "met" and artifact_type == "development_analysis_decision":
         shortfall_item = f"{verdict_item} Remaining work: fix the failing behavior."

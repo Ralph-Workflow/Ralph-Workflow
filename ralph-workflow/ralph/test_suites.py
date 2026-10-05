@@ -153,11 +153,11 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # cannot rot silently.
     "tests/test_scoped_auto_commit.py",
     # wt-12: the deterministic auto-commit acceptance cases for the
-    # config write sites (migration, autowire, enable, init PROMPT.md).
-    # subprocess_e2e (real-git boundary exercised end-to-end) but must
-    # stay on the default ``make test`` profile so the config-write
-    # isolation / rollback contract cannot rot silently. In-budget on
-    # the 60s combined verify budget.
+    # config write sites (migration, autowire, enable, init starter
+    # prompt). subprocess_e2e (real-git boundary exercised end-to-end)
+    # but must stay on the default ``make test`` profile so the
+    # config-write isolation / rollback contract cannot rot silently.
+    # In-budget on the 60s combined verify budget.
     "tests/test_config_auto_commit.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"

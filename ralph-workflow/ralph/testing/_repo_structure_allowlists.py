@@ -56,6 +56,13 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_internal_skills_mcp_prompts.py",
         "ralph/recovery/failure_classifier.py",
         "tests/test_artifact_format_docs.py",
+        "tests/test_skills_auto_commit.py",
+        # wt-13 auto-integrated sibling commits pushed ralph/skills/_installer.py
+        # (1035 lines) past the cap. The installer is one producer-side seam
+        # (baseline manifest + prune + install) whose sections share the
+        # managed-marker contract; splitting would scatter that contract
+        # with no testable boundary.
+        "ralph/skills/_installer.py",
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         "ralph/agents/invoke/_process_reader.py",
         "ralph/mcp/explore/structure.py",
@@ -1126,6 +1133,14 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._content",
             ("_MANAGED_MARKER",),
         ),
+        # wt-13: the consolidated auto-commit suite pins the managed-skill
+        # marker contract directly; the constant is the private seam under
+        # test, mirroring the test_skills_installer_project.py grant above.
+        (
+            "tests/test_skills_auto_commit.py",
+            "ralph.skills._content",
+            ("_MANAGED_MARKER",),
+        ),
         (
             "tests/test_skills_installer_project.py",
             "ralph.skills._installer",
@@ -1294,9 +1309,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # PLR0911/PLR0912/PLR0915 markers opt the explicit-outcome
         # state machine out of the project complexity caps; the
         # rationale is documented inline on each marker.
-        ("ralph/git/scoped_auto_commit.py", 229),
-        ("ralph/git/scoped_auto_commit.py", 423),
-        ("ralph/git/scoped_auto_commit.py", 715),
+        ("ralph/git/scoped_auto_commit.py", 320),
+        ("ralph/git/scoped_auto_commit.py", 528),
+        ("ralph/git/scoped_auto_commit.py", 848),
         ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/_auto_commit_integration.py", 69),
         ("ralph/project_policy/_auto_commit_integration.py", 142),
@@ -1311,16 +1326,17 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/preflight.py", 254),
         ("ralph/project_policy/preflight.py", 262),
         ("ralph/project_policy/preflight.py", 269),
-        ("ralph/skills/_installer.py", 124),
-        ("ralph/skills/_installer.py", 126),
+        ("ralph/skills/_installer.py", 174),
+        ("ralph/skills/_installer.py", 276),
+        ("ralph/skills/_installer.py", 278),
         ("ralph/skills/manager.py", 213),
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),
         ("ralph/skills/manager.py", 218),
         ("ralph/skills/manager.py", 240),
         ("ralph/skills/manager.py", 247),
-        ("ralph/testing/audit_skill_auto_commit.py", 312),
-        ("ralph/testing/audit_skill_auto_commit.py", 409),
+        ("ralph/testing/audit_skill_auto_commit.py", 352),
+        ("ralph/testing/audit_skill_auto_commit.py", 449),
 
         ("ralph/agents/__init__.py", 44),
         ("ralph/agents/catalog.py", 216),

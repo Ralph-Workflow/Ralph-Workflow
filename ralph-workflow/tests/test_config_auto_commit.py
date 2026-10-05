@@ -39,7 +39,6 @@ inside the IMMUTABLE 60 s combined verify budget.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 import pytest
 from git import Actor, Repo
@@ -53,9 +52,6 @@ from ralph.config.agent_detection import (
 from ralph.config.loader import load_toml
 from ralph.git.commit_result import CommitCreationResult
 from ralph.git.scoped_auto_commit import ScopedCommitResult, ScopedCommitStatus
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -84,7 +80,7 @@ def _git_log_subjects(repo_root: Path) -> list[str]:
     """Return ``git log`` subject lines (newest first) for the test repo."""
     repo = Repo(repo_root)
     try:
-        return [cast("str", c.message).splitlines()[0] for c in repo.iter_commits()]
+        return [str(c.message).splitlines()[0] for c in repo.iter_commits()]
     finally:
         repo.close()
 
@@ -271,10 +267,7 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
     # The committed content must contain the activated block (uncommented).
     repo = Repo(tmp_path)
     try:
-        committed_text = cast(
-            "str",
-            repo.head.commit.tree["ralph-workflow-agents.toml"].data_stream.read().decode(),
-        )
+        committed_text: str = repo.head.commit.tree["ralph-workflow-agents.toml"].data_stream.read().decode()
     finally:
         repo.close()
     assert "[agents.codex]" in committed_text
@@ -523,9 +516,7 @@ def test_failed_create_commit_injection_preserves_head_and_index(
                 "[agents.claude]\ncmd = \"claude\"\n",
                 encoding="utf-8",
             ),
-            create_commit_fn=cast(
-                "Callable[..., CommitCreationResult]", _failing_create_commit
-            ),
+            create_commit_fn=_failing_create_commit,
         )
     finally:
         logger.remove(sink_id)

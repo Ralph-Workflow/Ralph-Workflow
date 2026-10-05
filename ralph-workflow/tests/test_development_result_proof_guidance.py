@@ -151,12 +151,18 @@ def test_rendered_partial_scopes_rationale_to_non_completed_dispositions() -> No
 
 def test_format_doc_states_cycle_warning_runtime_clock_plus_declared_flag() -> None:
     """The format doc names both sources the spec consults: the run's
-    own clock, and a declared ``cycle_timebox_warned: true`` frontmatter
-    flag honoured for replays and hand-written reports."""
+    own published clock for the relevant timer (cycle or development),
+    and the matching declared frontmatter flag
+    (``cycle_timebox_warned: true`` or ``development_timebox_warned: true``)
+    honoured for replays and hand-written reports.
+    """
     text = _normalized(_FORMAT_DOC)
 
-    assert "Whether the cycle warned is read from the run's own clock." in text
-    assert "A declared `cycle_timebox_warned: true` frontmatter flag is also honoured" in text
+    assert "Whether the timebox warned is read from the run's own published clock" in text
+    assert "cycle or development" in text
+    assert "matching declared frontmatter flag" in text
+    assert "cycle_timebox_warned: true" in text
+    assert "development_timebox_warned: true" in text
     assert (
         "a result validated outside the warned invocation (a replay or a "
         "hand-written report) keeps its stricter reading"

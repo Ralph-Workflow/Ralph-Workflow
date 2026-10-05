@@ -34,6 +34,12 @@ _REQUIRED_VERDICT_FIELDS = (
     "Evidence:",
     "Location:",
 )
+#: planning_analysis_decision verdicts are the only ones that must
+#: include ``Cost:``; the planning contract treats the cost of the
+#: missed split as part of the verdict, while development and policy
+#: decisions document what remains via ``Remaining work:`` and never
+#: duplicate the cost on every verdict.
+_PLANNING_VERDICT_FIELDS = (*_REQUIRED_VERDICT_FIELDS, "Cost:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
 _REQUIRED_FINDING_FIELDS = tuple(
     field for field in _REQUIRED_VERDICT_FIELDS if field != "Criterion:"
@@ -162,13 +168,21 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     f"criterion verdict IDs for {artifact_type} must use its numeric phase ID pattern",
                 )
             )
-        if any(field not in item.text for field in _REQUIRED_VERDICT_FIELDS):
+        if any(field not in item.text for field in _REQUIRED_VERDICT_FIELDS) or (
+            artifact_type == "planning_analysis_decision"
+            and "Cost:" not in item.text
+        ):
+            missing_cost = (
+                artifact_type == "planning_analysis_decision"
+                and "Cost:" not in item.text
+            )
             diagnostics.append(
                 _validation_diagnostic(
                     item.line,
                     "Criterion Verdicts",
                     "ANALYSIS005",
-                    "criterion verdict must include Criterion:, Expected observation:, Verdict:, Evidence:, and Location:",
+                    "criterion verdict must include Criterion:, Expected observation:, Verdict:, Evidence:, Location:"
+                    + (", and Cost: for planning_analysis_decision" if missing_cost else ""),
                 )
             )
             continue

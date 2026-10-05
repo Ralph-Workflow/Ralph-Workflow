@@ -14,9 +14,9 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step.
+- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step. Cost: re-running the same failing check on the next pass.
 ## Criterion Verdicts
-- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step.
+- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step. Cost: re-running the same failing check on the next pass.
 """
 
 
@@ -36,8 +36,8 @@ def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> Non
         .replace("planning_analysis_decision", "development_analysis_decision")
         .replace("PA-001", "DA-001")
         .replace(
-            "Location: plan step.\n## Criterion",
-            "Location: src/example.py:1. Remaining work: add the missing negative test.\n## Criterion",
+            "Location: plan step. Cost:",
+            "Location: src/example.py:1. Remaining work: add the missing negative test. Cost:",
         )
     )
 
@@ -204,10 +204,10 @@ status: request_changes
 - [SUM-1] Evidence is unavailable.
 
 ## What Came Up Short
-- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command unavailable. Location: plan.
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command unavailable. Location: plan. Cost: extra discovery work.
 
 ## Criterion Verdicts
-- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not evaluable. Evidence: command unavailable. Location: plan.
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not evaluable. Evidence: command unavailable. Location: plan. Cost: extra discovery work.
 """
 
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
@@ -330,3 +330,89 @@ status: request_changes
 
     assert diagnostics == []
     assert content["finding_ids"] == ["DA-001"]
+
+
+def test_planning_verdict_must_carry_cost() -> None:
+    """ANALYSIS005: planning verdicts must include ``Cost:``.
+
+    The planning contract treats the cost of the missed split as part of
+    the verdict, so the validator rejects a planning verdict that omits
+    ``Cost:`` with ANALYSIS005. The same is not required of development
+    or policy decisions, which document what remains via ``Remaining
+    work:`` and never duplicate the cost on every verdict.
+    """
+    document = """---
+type: planning_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] The plan needs a cost.
+## What Came Up Short
+- [PA-001] Step: [S-2] lacks cost. Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command output. Location: plan step.
+## Criterion Verdicts
+- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command output. Location: plan step.
+"""
+
+    content, diagnostics = parse_and_validate(
+        document, get_spec("planning_analysis_decision")
+    )
+
+    assert content == {}
+    # The verdict item is missing ``Cost:``, so ANALYSIS005 fires once
+    # with a message that names the missing field. The finding's
+    # field-completeness check is independent and does not require
+    # ``Cost:`` (planning findings document the concrete proposed
+    # revision, which the analyzer already pins via ANALYSIS019).
+    analysis_005 = [d for d in diagnostics if d.rule_id == "ANALYSIS005"]
+    assert len(analysis_005) == 1
+    assert "Cost:" in analysis_005[0].message
+
+
+def test_development_verdict_does_not_require_cost() -> None:
+    """``Cost:`` is planning-only; development verdicts stay valid without it.
+
+    Development decisions document the remaining work via ``Remaining
+    work:`` and do not duplicate the cost on every verdict, so removing
+    ``Cost:`` from a development verdict must not add an ANALYSIS005.
+    """
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] One criterion is not met.
+
+## What Came Up Short
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10. Remaining work: implement the missing behavior.
+
+## Criterion Verdicts
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(
+        document, get_spec("development_analysis_decision")
+    )
+
+    assert diagnostics == []
+    assert content["finding_ids"] == ["DA-001"]
+
+
+def test_policy_remediation_verdict_does_not_require_cost() -> None:
+    """``Cost:`` is planning-only; policy verdicts stay valid without it."""
+    document = """---
+type: policy_remediation_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [PR-001] Criterion: the fact is current. Expected observation: the location matches. Verdict: met. Evidence: command output. Location: policy.md:10.
+"""
+
+    content, diagnostics = parse_and_validate(
+        document, get_spec("policy_remediation_analysis_decision")
+    )
+
+    assert diagnostics == []
+    assert content["criterion_verdict_ids"] == ["PR-001"]

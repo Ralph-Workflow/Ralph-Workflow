@@ -43,9 +43,13 @@ on the next pass, because parallel safety requires them:
 - **Each unit has its own check** — every unit names the focused verify step a worker can run inside its assigned scope. Without a per-unit check the unit cannot be proven independently.
 - **Sized for one agent** — the work inside a unit fits a single agent's slice; a unit that only one large agent can finish defeats the purpose of fan-out.
 
-Reject the plan when any of the three properties is missing from a proposed unit,
-because absent ownership, an absent check, or a unit sized for more than one agent
-turns the split into a coordination hazard rather than a parallel win.
+Reject the plan by marking parallel decomposition `not met` and submitting
+`request_changes` with the concrete unit split in the finding's
+`Proposed revision:`. Absent ownership, an absent check, or a unit sized
+for more than one agent turns the split into a coordination hazard rather
+than a parallel win; a bare "missing ownership" verdict without the split
+does not let the planner recover on the next pass, so the split is the
+action they can apply.
 
 {% set planning_decision_example %}
 ---
@@ -81,7 +85,10 @@ verdict in `## What Came Up Short`; each mirrored finding carries its
 `Proposed revision:` so the planner can apply it on the next pass, or rebut
 it with evidence. `Proposed revision:` is enforced on submission for
 non-completed decisions (`ANALYSIS019`): a verdict or finding missing the
-field is rejected, not just suggested. Do not add a `## How To Fix` section.
+field is rejected, not just suggested. Do not add a `## How To Fix` section
+because the planner applies or rebuts each `Proposed revision:` inline on
+the next pass; a separate remediation section would split one rule across
+two places and force the analyzer to re-derive the same fix in two shapes.
 A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact

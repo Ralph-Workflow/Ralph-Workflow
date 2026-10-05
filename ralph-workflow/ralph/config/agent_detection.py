@@ -52,7 +52,7 @@ def _commit_deterministic_config_write(
 
     This is the shared producer-side wiring every Ralph-owned config
     write site (``load_toml`` migration, ``autowire_chains_to_detected_agent``,
-    ``enable_detected_agents``, the ``ralph --init`` PROMPT.md
+    ``enable_detected_agents``, and the ``ralph --init`` starter-prompt
     creation) routes through after wt-012. The contract mirrors the
     skill / policy ``commit_deterministic_writes`` callers:
 
@@ -106,7 +106,7 @@ def _commit_deterministic_config_write(
         # GitOperationError is the documented ``find_repo_root`` failure
         # when ``config_path`` is not inside a git working tree. OSError
         # covers the secondary case where ``config_path`` does not exist
-        # on disk yet (a fresh ``PROMPT.md`` on first ``ralph --init``):
+        # on disk yet (a fresh starter-prompt file on first ``ralph --init``):
         # ``git.Repo`` raises ``NoSuchPathError`` (an ``OSError``) when
         # the start path itself does not exist, even with
         # ``search_parent_directories=True``. Both branches collapse to

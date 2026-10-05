@@ -23,7 +23,7 @@ combined verify budget.
 from __future__ import annotations
 
 import shutil
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Actor, Repo
@@ -40,7 +40,6 @@ from ralph.git.scoped_auto_commit import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -77,7 +76,7 @@ def test_read_head_blob_sha_returns_sha_for_tracked_file(tmp_path: Path) -> None
     try:
         repo.index.add(["tracked.txt"])
         repo.index.commit("add tracked", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
-        expected_sha = cast("str", repo.head.commit.tree["tracked.txt"].hexsha)
+        expected_sha: str = repo.head.commit.tree["tracked.txt"].hexsha
     finally:
         repo.close()
     repo2 = Repo(tmp_path)
@@ -123,7 +122,7 @@ def test_read_head_blob_sha_rejects_prefix_collision(tmp_path: Path) -> None:
         # implementation returned a/b's blob here.
         assert _read_head_blob_sha(repo2, "a") is None
         # Sanity: the descendant still returns its real blob.
-        nested_sha = cast("str", repo2.head.commit.tree["a/b"].hexsha)
+        nested_sha: str = repo2.head.commit.tree["a/b"].hexsha
         assert _read_head_blob_sha(repo2, "a/b") == nested_sha
     finally:
         repo2.close()
@@ -331,7 +330,7 @@ def test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index(
         ],
         pre_contents=pre_contents,
         subject="chore(skills): sync baseline bundle",
-        create_commit_fn=cast("Callable[..., CommitCreationResult]", _failing_create_commit),
+        create_commit_fn=_failing_create_commit,
         stage_fn=stage_files,
     )
 

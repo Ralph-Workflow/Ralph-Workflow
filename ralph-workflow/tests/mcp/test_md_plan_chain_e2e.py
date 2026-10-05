@@ -45,9 +45,9 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field.
+- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field. Cost: discovery work on every iteration.
 ## Criterion Verdicts
-- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field.
+- [PA-001] Step: [{step}] Criterion: the step provides a runnable verification command. Expected observation: the command resolves in this repository. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: the command path is missing. Location: {step} Verify field. Cost: discovery work on every iteration.
 """
 
 
