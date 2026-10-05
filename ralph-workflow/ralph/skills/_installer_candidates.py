@@ -107,6 +107,29 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
         candidates.extend(
             _rel(sibling_root, name, workspace_root) for name in BASELINE_SKILL_NAMES
         )
+        # DA-007/DA-012 (fallback materialization): when
+        # ``Path.symlink_to`` raises ``OSError`` (e.g. a Windows /
+        # FAT-filesystem / cross-filesystem link), the install falls
+        # back to ``shutil.copytree(canonical_target, sibling_dir)``
+        # which materializes every file under the canonical skill
+        # directory into the sibling. Enumerate the canonical SOURCE
+        # files for each baseline skill and add the SAME leaf paths
+        # under the sibling root to the candidate set so the
+        # post-install diff detects the new on-disk files and the
+        # deterministic commit stages them. Without this, a first
+        # install on a filesystem where symlinks are not supported
+        # leaves the materialized sibling trees uncommitted (the
+        # sibling ROOT itself is a directory that ``git hash-object``
+        # cannot hash, so it never reports as a change).
+        for skill_name in BASELINE_SKILL_NAMES:
+            canonical_skill_dir = canonical / skill_name
+            sibling_skill_leaves = _canonical_skill_leaf_names(
+                canonical_skill_dir, workspace_root
+            )
+            candidates.extend(
+                _rel(sibling_root / skill_name, source_leaf, workspace_root)
+                for source_leaf in sibling_skill_leaves
+            )
         # U2: tracked descendants of the sibling ROOT so the install's
         # pre-write snapshot records the pre-write hash of every tracked
         # descendant that ``shutil.rmtree`` will delete when the install
@@ -116,6 +139,51 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
         # do not pollute the candidate set.
         candidates.extend(_tracked_descendants(sibling_root, workspace_root))
     return candidates
+
+
+def _canonical_skill_leaf_names(
+    canonical_skill_dir: Path, workspace_root: Path
+) -> list[str]:
+    """Return every leaf filename (lexical, no symlink resolution) under ``canonical_skill_dir``.
+
+    The canonical skill directory is the source-of-truth that
+    ``shutil.copytree`` copies into each sibling root during the
+    DA-007/DA-012 fallback materialization. Every file the copy may
+    create MUST appear in the candidate set under the sibling root so
+    the post-install diff attributes the new on-disk files to the
+    deterministic commit.
+
+    Returns the bare filenames (no parent path), lexical walk only
+    (no symlink resolution on the directory or its descendants). The
+    function ALWAYS seeds the result with the canonical well-known
+    leaves (``SKILL.md`` and ``_MANAGED_MARKER``) so a first install
+    whose canonical directory does not yet exist on disk still
+    captures the leaves the fallback will materialize; an existing
+    canonical contributes any extra leaves (e.g. nested reference
+    material) on top.
+    """
+    _ = workspace_root  # workspace_root is unused; reserved for future lexical walk expansion
+    leaves: set[str] = {"SKILL.md", _MANAGED_MARKER}
+    if canonical_skill_dir.exists() or canonical_skill_dir.is_symlink():
+        if canonical_skill_dir.is_file() or canonical_skill_dir.is_symlink():
+            # Defensive: a non-directory canonical is a malformed
+            # install but the function MUST NOT raise. Return just
+            # the well-known leaves.
+            return sorted(leaves)
+        try:
+            for dirpath, _dirnames, filenames in os.walk(  # filesystem-read-ok: skill candidate capture must NOT descend through directory symlinks (the canonical source itself is the boundary being enumerated); Workspace.iter_files follows no such guarantee
+                str(canonical_skill_dir), followlinks=False
+            ):
+                base = Path(str(dirpath)).relative_to(canonical_skill_dir)
+                for filename in filenames:
+                    # ``base / filename`` is the source's relative
+                    # leaf name; e.g. ``SKILL.md`` or
+                    # ``subdir/nested.md`` when a skill ships nested
+                    # reference material.
+                    leaves.add(str(base / filename))
+        except OSError:
+            return sorted(leaves)
+    return sorted(leaves)
 
 
 def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:

@@ -584,6 +584,30 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         # AND confirmed absent at HEAD -- the deterministic
                         # writer authored the whole file, so committing it
                         # cannot sweep in anyone else's work (wt-012 DA-006).
+                        # wt-012 DA-007/DA-012: a brand-new path that sits
+                        # under a newly-installed symlink ancestor (e.g. a
+                        # ``shutil.copytree`` fallback that materialized a
+                        # leaf under a sibling root now backed by a
+                        # symlink) cannot be staged as its lexical path --
+                        # ``git add --all`` would fatal with ``pathspec ...
+                        # is beyond a symbolic link``. Rewrite the
+                        # brand-new path to the symlink ancestor so the
+                        # new symlink and the materialized leaves land
+                        # atomically in one commit.
+                        if _has_symlink_ancestor(
+                            Path(repo.working_dir) / path
+                        ):
+                            ancestor_path = _symlink_ancestor_path(repo, path)
+                            if ancestor_path is not None:
+                                logger.debug(
+                                    "commit_deterministic_writes: brand-new path {} "
+                                    "is beyond a symlink; rewriting to ancestor {} for "
+                                    "atomic staging",
+                                    path,
+                                    ancestor_path,
+                                )
+                                stageable.append(ancestor_path)
+                                continue
                         stageable.append(path)
                         continue
                     if pre_sha is None:

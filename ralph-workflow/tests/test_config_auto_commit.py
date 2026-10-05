@@ -162,6 +162,133 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
     )
 
 
+def test_load_toml_migration_commits_via_symlinked_config_path(
+    tmp_path: Path,
+) -> None:
+    """DA-001/DA-008/DA-011: a symlinked config entry commits the LEXICAL path.
+
+    The pre-fix bug: ``_commit_deterministic_config_write`` resolved the
+    symlink to capture and commit ``target.toml`` (the symlink target),
+    but ``atomic_write_text_if_changed`` writes to the lexical
+    ``config.toml`` and ``Path.replace``s the symlink with a regular
+    file -- the symlink target is left unchanged (and may end up
+    dangling). The pre-write hash of ``target.toml`` then equals its
+    on-disk hash after the write, so the deterministic helper
+    incorrectly returned ``NOOP`` and the lexical ``config.toml`` entry
+    stayed dirty. The fix captures the LEXICAL path so the on-disk
+    hash check observes the new regular file at the lexical path.
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    # ``target.toml`` holds the original (un-migrated) content. It is
+    # tracked at HEAD so the deterministic writer's pre-write hash
+    # matches HEAD before ``load_toml`` runs.
+    target = tmp_path / "target.toml"
+    target.write_text(
+        "[agents.claude]\n"
+        'cmd = "claude"\n'
+        "can_commit = true\n"
+        'display_name = "Claude Code"\n',
+        encoding="utf-8",
+    )
+    # ``config.toml`` is a tracked symlink to ``target.toml``. The
+    # migration helper writes to ``config.toml`` (the lexical entry the
+    # user-facing config lives at), so the chore commit must reference
+    # ``config.toml`` and leave the replaced lexical entry clean.
+    config_link = tmp_path / "config.toml"
+    config_link.symlink_to(target)
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(["target.toml"])
+        repo.index.commit(
+            "seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
+        )
+        # Add the symlink as a tracked entry AFTER seeding the target
+        # so git records the symlink blob (the target text) at HEAD.
+        repo.index.add(["config.toml"])
+        repo.index.commit(
+            "seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
+        )
+    finally:
+        repo.close()
+
+    # Sanity: ``config.toml`` was tracked as a symlink at HEAD.
+    assert config_link.is_symlink(), "config.toml must be a symlink at HEAD"
+    tracked_mode = repo_head_tree_mode(tmp_path, "config.toml")
+    assert tracked_mode == 0o120000, (
+        f"config.toml must be tracked as a symlink at HEAD; mode={tracked_mode!r}"
+    )
+
+    data = load_toml(config_link)
+
+    # 1. The migration removed the retired key in-memory.
+    assert "can_commit" not in data.get("agents", {}).get("claude", {})
+    # 2. The lexical ``config.toml`` is now a regular file (the symlink
+    #    was replaced by the atomic temp+rename write).
+    assert not config_link.is_symlink(), (
+        "atomic_write_text_if_changed must replace the symlink with a regular file"
+    )
+    rewritten = config_link.read_text(encoding="utf-8")
+    assert "can_commit = true" not in rewritten
+    assert '[agents.claude]' in rewritten
+    # 3. A chore commit with the pinned subject landed on the lexical
+    #    ``config.toml`` entry -- not on the (unchanged) symlink target.
+    subjects = _git_log_subjects(tmp_path)
+    assert subjects[0] == "chore(config): migrate retired agent_can_commit assignments"
+    committed_paths = _head_commit_paths(tmp_path)
+    assert "config.toml" in committed_paths, (
+        f"chore commit must include the lexical config.toml entry; got: {sorted(committed_paths)}"
+    )
+    # 4. The post-commit tree is clean: the lexical config.toml entry is
+    #    committed, the unchanged symlink target is NOT swept in.
+    assert _git_status_clean(tmp_path), (
+        "tree must be clean after the deterministic commit; the lexical "
+        "config.toml must NOT be left dirty"
+    )
+
+
+def repo_head_tree_mode(repo_root: Path, path: str) -> str:
+    """Return the git mode (``100644`` / ``100755`` / ``120000`` / ``160000``) of ``path`` in HEAD.
+
+    Used by the symlink test to assert the file is tracked as a symlink
+    (mode ``120000``) at HEAD before the migration runs.
+    """
+    from git import Repo as _Repo  # local import keeps the top-level imports narrow
+
+    repo = _Repo(repo_root)
+    try:
+        try:
+            return repo.head.commit.tree[path].mode
+        except KeyError:
+            return ""
+    finally:
+        repo.close()
+
+
+def _head_commit_paths(repo_root: Path) -> set[str]:
+    """Return every blob/symlink path in the HEAD commit tree.
+
+    Walks the tree depth-first and collects the lexical path of every
+    non-tree entry. Used by the symlink test to assert the chore
+    commit's HEAD tree includes the lexical ``config.toml`` entry.
+    """
+    from git import Repo as _Repo  # local import keeps the top-level imports narrow
+
+    repo = _Repo(repo_root)
+    try:
+        paths: set[str] = set()
+        stack = [repo.head.commit.tree]
+        while stack:
+            subtree = stack.pop()
+            for entry in subtree:
+                if entry.type == "tree":
+                    stack.append(entry)
+                else:
+                    paths.add(entry.path)
+        return paths
+    finally:
+        repo.close()
+
+
 # ---------------------------------------------------------------------------
 # 2. Autowire commits
 # ---------------------------------------------------------------------------

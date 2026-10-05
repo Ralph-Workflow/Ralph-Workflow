@@ -34,7 +34,21 @@ from ralph.skills._auto_commit import (
 from ralph.skills._content import _MANAGED_MARKER, get_skill_content
 from ralph.skills._installer import install_project_baseline_skills_with_diff
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    # wt-012 DA-007/DA-012: the per-test timeout is widened from 5s to
+    # 15s because the candidate-set expansion enumerates every
+    # baseline skill leaf under every sibling root, which is many
+    # hundreds of ``git hash-object`` subprocess invocations per test.
+    # The cumulative pytest budget (60s, enforced by
+    # ``ralph.testing.verify_timeout``) is the authoritative cap;
+    # this per-test cap is a local safeguard against a runaway
+    # install path. The cumulative budget stays well under 60s in
+    # practice (the full ``make verify`` test step runs in ~30s on
+    # this branch) and widening the per-test cap here does not
+    # weaken the budget enforcement.
+    pytest.mark.timeout_seconds(15),
+]
 
 
 def _commit_all_initial(repo_root: Path) -> None:
@@ -616,5 +630,114 @@ def test_install_repeat_run_is_noop(tmp_path: Path) -> None:
         assert repo.head.commit.hexsha == first_result.sha, (
             "second install MUST NOT advance HEAD; got a spurious commit"
         )
+    finally:
+        repo.close()
+
+
+def test_install_symlink_unavailable_fallback_commits_materialized_leaves(
+    tmp_path: Path,
+) -> None:
+    """DA-007/DA-012: copytree fallback materializes every source file; the
+    chore commit must include each materialized leaf.
+
+    Forces ``Path.symlink_to`` to raise ``OSError`` so the sibling install
+    falls back to ``shutil.copytree(canonical_target, sibling_dir)``,
+    which materializes every file under the canonical source into the
+    sibling root. The pre-fix candidate set did not enumerate the
+    SOURCE files under the canonical skill directory, so the
+    post-install diff never observed the new on-disk files and the
+    four sibling roots stayed untracked (``STATUS ?? .agents/``,
+    ``?? .claude/``, etc.) despite the commit reporting ``CREATED``.
+
+    The fix enumerates the canonical source's leaf filenames for every
+    baseline skill and adds the SAME leaf paths under each sibling
+    root to the candidate set. The post-install diff therefore
+    detects the new on-disk files and the deterministic commit
+    stages them, leaving the tree clean.
+    """
+    from git import Actor as _Actor  # local import keeps the top-level imports narrow
+
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    # Force ``Path.symlink_to`` to raise ``OSError`` (mimics
+    # Windows / FAT / cross-filesystem where directory symlinks
+    # are not supported). The patch is scoped to ``ralph.skills``
+    # so the rest of the test repo's symlink usage is unaffected.
+    def _raise_oserror(self: Path, *args: object, **kwargs: object) -> None:
+        raise OSError("simulated: symlinks not supported on this filesystem")
+
+    # Force the fallback for both sibling-root materialization and
+    # the metadata.json symlink; the install path expects
+    # ``OSError`` to fall through to ``shutil.copytree`` / ``copy2``.
+    import ralph.skills._installer as _installer_module  # local import
+
+    with patch.object(Path, "symlink_to", _raise_oserror):
+        home = tmp_path / "fake-home"
+        home.mkdir(parents=True, exist_ok=True)
+        with patch("pathlib.Path.home", return_value=home):
+            outcome = install_project_baseline_skills_with_diff(tmp_path)
+
+    # Every baseline skill must show up in written_paths via the
+    # fallback materialization. The pre-fix bug left these as
+    # untracked directory trees.
+    assert outcome.written_paths, (
+        "fallback materialization MUST produce written_paths; got empty list"
+    )
+    # Spot-check: at least one leaf per sibling root must be in
+    # written_paths so the deterministic commit stages the
+    # materialized files. The pre-fix set would have been empty
+    # because the candidate enumeration never reached the
+    # copytree-created leaves.
+    sibling_roots = _installer_module.project_sibling_skill_roots(tmp_path)
+    sibling_rel_roots = {s.resolve(tmp_path).relative_to(tmp_path).as_posix() for s in sibling_roots}
+    for sibling_root in sibling_rel_roots:
+        # The skill names live as immediate subdirectories of each
+        # sibling root, and the materialized ``SKILL.md`` /
+        # ``_MANAGED_MARKER.json`` are the copytree leaves.
+        sibling_leaves = {p for p in outcome.written_paths if p.startswith(sibling_root + "/")}
+        assert sibling_leaves, (
+            f"sibling root {sibling_root!r} MUST contribute materialized leaves to "
+            f"written_paths; got: {sorted(outcome.written_paths)}"
+        )
+
+    # 4. Run the REAL production commit pipeline. With the
+    #    pre-fix candidate set the helper returned CREATED but the
+    #    materialized leaves stayed untracked; the post-fix
+    #    candidate set must drive the chore commit to include
+    #    every materialized leaf.
+    result = commit_skill_writes(
+        tmp_path,
+        written_paths=outcome.written_paths,
+        pre_contents=outcome.pre_contents,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+    assert result.status is ScopedCommitStatus.CREATED, (
+        f"fallback materialization MUST commit; got: {result!r}"
+    )
+
+    # 5. Post-commit: every sibling root's tree is clean -- the
+    #    fallback copytree leaves are committed, not left as
+    #    untracked working-tree debris.
+    repo = Repo(tmp_path)
+    try:
+        porcelain = repo.git.status("--porcelain")
+        # The chore commit must have staged every materialized
+        # leaf. Tracked entries can still appear as added but
+        # untracked entries (``?? ...``) MUST be gone for the
+        # sibling roots.
+        untracked_sibling_lines = [
+            line for line in porcelain.splitlines()
+            if line.startswith("?? ") and any(
+                line.endswith(sibling_root) or f"{sibling_root}/" in line
+                for sibling_root in sibling_rel_roots
+            )
+        ]
+        assert not untracked_sibling_lines, (
+            f"fallback materialization MUST leave the sibling roots clean; "
+            f"untracked lines: {untracked_sibling_lines!r}; full status: {porcelain!r}"
+        )
+        _ = _Actor  # narrow the import to the test scope
     finally:
         repo.close()

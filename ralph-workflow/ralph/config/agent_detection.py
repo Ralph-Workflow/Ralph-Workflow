@@ -126,8 +126,22 @@ def _commit_deterministic_config_write(
         write_fn()
         return None
     resolved_config = config_path.resolve()
+    # Capture the LEXICAL path the writer actually writes to. A symlinked
+    # ``config_path`` (e.g. ``config.toml`` -> ``target.toml``) is replaced
+    # in place by ``atomic_write_text_if_changed`` (it stages to a temp
+    # file in the same directory and ``Path.replace``s the temp onto the
+    # lexical destination, which removes the symlink and leaves a regular
+    # file at the lexical path -- the symlink target is untouched and may
+    # end up dangling). The repo-relative path the chore commit must
+    # reference is therefore the LEXICAL path, not the resolved one:
+    # using the resolved path would capture the pre-write hash of the
+    # symlink target (unchanged) and skip the deterministic commit
+    # because the on-disk hash of the (still unchanged) target equals
+    # the recorded pre-write hash, leaving the lexical config entry
+    # uncommitted.
+    abs_config = config_path if config_path.is_absolute() else (Path.cwd() / config_path)
     try:
-        rel_path = resolved_config.relative_to(repo_root).as_posix()
+        rel_path = abs_config.relative_to(repo_root).as_posix()
     except ValueError:
         logger.debug(
             "config write at {} resolves outside the git repo at {}; skipping auto-commit",

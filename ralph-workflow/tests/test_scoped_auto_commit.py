@@ -38,16 +38,17 @@ from ralph.git.scoped_auto_commit import (
     capture_pre_write_contents,
     commit_deterministic_writes,
 )
+from tests._support.typed_accessors import must_str
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-pytestmark = pytest.mark.subprocess_e2e
-
-
-# ponytail: real-git setup; 5s per test fits inside the 60s combined verify budget.
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    # ponytail: real-git setup; 5s per test fits inside the 60s combined verify budget.
+    pytest.mark.timeout_seconds(5),
+]
 
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
@@ -361,6 +362,115 @@ def test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index(
         # debris AND no half-rolled-back debris.
         assert ".claude/skills/foo/SKILL.md" in index_paths
         assert ".claude/skills/foo/_MANAGED_MARKER.json" in index_paths
+    finally:
+        repo.close()
+
+
+def test_commit_dir_to_symlink_failed_attempt_byte_identical_pre_staged_index(
+    tmp_path: Path,
+) -> None:
+    """wt-012 DA-010: FAILED transition restores the full pre-staged index byte-for-byte.
+
+    The earlier ``in index_paths`` membership assertions
+    (``test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index``)
+    are path-membership-only: a rollback that restored the right path
+    but with the wrong blob SHA, or vice versa, would silently pass.
+    This regression closes that hole by comparing the full
+    ``git ls-files --stage`` output (mode + blob SHA + path) before
+    and after the failed attempt -- the rollback MUST be byte-identical
+    to the pre-staged snapshot, and HEAD MUST remain the seed commit
+    byte-for-byte.
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    claude = tmp_path / ".claude" / "skills" / "foo"
+    claude.mkdir(parents=True)
+    (claude / "SKILL.md").write_text("old\n", encoding="utf-8")
+    (claude / "_MANAGED_MARKER.json").write_text('{"managed": true}\n', encoding="utf-8")
+    wip = tmp_path / "my_wip.txt"
+    wip.write_text("wip\n", encoding="utf-8")
+
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(
+            [
+                ".claude/skills/foo/SKILL.md",
+                ".claude/skills/foo/_MANAGED_MARKER.json",
+                "my_wip.txt",
+            ]
+        )
+        repo.index.commit(
+            "seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
+        )
+        wip.write_text("wip updated\n", encoding="utf-8")
+        repo.index.add(["my_wip.txt"])
+        # wt-012 DA-010: capture the pre-staged index bytes
+        # (``git ls-files --stage``) so the post-FAILED assertion can
+        # compare the full pre-staged index to the rollback result
+        # byte-for-byte. Capturing the raw text here is the cheapest
+        # way to assert exact byte equivalence (mode + blob SHA +
+        # path) without depending on gitpython's index internals.
+        pre_staged_raw = must_str(repo.git.ls_files("--stage"))
+        seed_head = str(repo.head.commit.hexsha)
+    finally:
+        repo.close()
+
+    canonical = tmp_path / ".opencode" / "skills" / "foo"
+    canonical.mkdir(parents=True)
+    (canonical / "SKILL.md").write_text("new\n", encoding="utf-8")
+    pre_contents = capture_pre_write_contents(
+        tmp_path,
+        [
+            ".claude/skills/foo",
+            ".claude/skills/foo/SKILL.md",
+            ".claude/skills/foo/_MANAGED_MARKER.json",
+        ],
+    )
+    shutil.rmtree(claude)
+    claude.symlink_to(canonical)
+
+    def _failing_create_commit(
+        _repo_root: Path, _message: str, *, expected_head: str
+    ) -> CommitCreationResult:
+        del expected_head
+        return CommitCreationResult.failed("simulated failure")
+
+    result = commit_deterministic_writes(
+        tmp_path,
+        paths=[
+            ".claude/skills/foo",
+            ".claude/skills/foo/SKILL.md",
+            ".claude/skills/foo/_MANAGED_MARKER.json",
+        ],
+        pre_contents=pre_contents,
+        subject="chore(skills): sync baseline bundle",
+        create_commit_fn=_failing_create_commit,
+        stage_fn=stage_files,
+    )
+
+    assert result.status is ScopedCommitStatus.FAILED, (
+        f"injected failure must be reported FAILED; got: {result!r}"
+    )
+
+    repo = Repo(tmp_path)
+    try:
+        # HEAD is byte-identical to the seed commit (no advance).
+        assert repo.head.commit.hexsha == seed_head, (
+            f"FAILED transition MUST leave HEAD byte-for-byte unchanged; "
+            f"head={repo.head.commit.hexsha!r} seed={seed_head!r}"
+        )
+        # The full pre-staged index bytes (entry path, mode, sha) MUST
+        # be restored. ``git ls-files --stage`` is the authoritative
+        # index dump; comparing its raw output to the pre-write
+        # snapshot catches any silent corruption of an in-scope entry
+        # (e.g. the rollback restoring the right path but the wrong
+        # blob SHA, or vice versa).
+        post_staged_raw = must_str(repo.git.ls_files("--stage"))
+        pre_staged_lines = sorted(pre_staged_raw.splitlines())
+        post_staged_lines = sorted(post_staged_raw.splitlines())
+        assert post_staged_lines == pre_staged_lines, (
+            f"FAILED transition MUST restore the pre-staged index bytes; "
+            f"pre={pre_staged_lines!r} post={post_staged_lines!r}"
+        )
     finally:
         repo.close()
 

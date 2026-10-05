@@ -418,39 +418,34 @@ def test_no_direct_chore_commit_respects_allowlist(
         "atomic_write_bytes_if_changed",
     ],
 )
-def test_writer_scan_flags_unmarked_canonical_helper_call(
+def test_writer_scan_flags_unmarked_canonical_helper_call_attr_form(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     helper_name: str,
 ) -> None:
-    """PA-001: a fresh ``<helper_name>`` call without a marker or commit helper is flagged.
+    """DA-013: the attribute-call form is flagged for every required helper.
 
-    Mirrors the existing ``test_writer_scan_flags_unmarked_write_in_*`` cases
-    for the new helper names added by the PA-001 fix. One regression test
-    per helper name, covering both attribute-call and bare-name forms.
+    The PA-001 widening of both scan sets added
+    ``atomic_write_text_if_changed``, ``write_text_if_changed``, and
+    ``write_bytes_if_changed`` to ``_WRITER_WRITE_ATTRS``. A fresh
+    ``backend.<helper_name>(...)`` call without a marker or commit
+    helper MUST be flagged regardless of whether the helper is the
+    canonical three (which the audit also requires in the bare-name
+    set) or ``atomic_write_bytes_if_changed`` (which is bare-name only
+    but still tests the attribute form when the helper accidentally
+    lands in the attribute set).
     """
-    # The audit's ``_iter_write_callsites`` distinguishes attribute-call from
-    # bare-name by AST shape; both must be flagged when the helper appears
-    # in the appropriate scan set. The bare-name form needs an extra import
-    # line so the call lands on line 5 instead of 4; the attribute form
-    # is on line 4.
-    if helper_name in audit_module._WRITER_WRITE_ATTRS:
-        body = (
-            "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
-            f"\n"
-            f"def sync(backend, dest, payload):\n"
-            f"    backend.{helper_name}(dest, payload)\n"
+    if helper_name not in audit_module._WRITER_WRITE_ATTRS:
+        pytest.skip(
+            f"helper {helper_name!r} is bare-name only; attribute form is out of scope"
         )
-        expected_line = "4"
-    else:
-        body = (
-            f"from ralph.mcp.artifacts.idempotent_write import {helper_name}\n"
-            "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
-            "\n"
-            f"def sync(dest, payload):\n"
-            f"    {helper_name}(DEFAULT_FILE_BACKEND, dest, payload)\n"
-        )
-        expected_line = "5"
+    body = (
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        f"\n"
+        f"def sync(backend, dest, payload):\n"
+        f"    backend.{helper_name}(dest, payload)\n"
+    )
+    expected_line = "4"
     _write_module(tmp_path, "config/new_helper.py", body)
     monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
 
@@ -459,7 +454,121 @@ def test_writer_scan_flags_unmarked_canonical_helper_call(
     assert any(
         f"config/new_helper.py:{expected_line}" in p and f"`{helper_name}`" in p
         for p in problems
-    ), f"unmarked `{helper_name}` call at line {expected_line} must be flagged; got: {problems}"
+    ), f"unmarked `{helper_name}` attr-call at line {expected_line} must be flagged; got: {problems}"
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        "atomic_write_text_if_changed",
+        "write_text_if_changed",
+        "write_bytes_if_changed",
+        "atomic_write_bytes_if_changed",
+    ],
+)
+def test_writer_scan_flags_unmarked_canonical_helper_call_bare_name_form(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+) -> None:
+    """DA-013: the bare-name form is flagged for every required helper.
+
+    Mirrors the attribute-form regression above. The PA-001 widening
+    added the canonical three helpers to ``_WRITER_WRITE_NAMES``; the
+    pre-fix test only selected one form per helper (the attribute
+    form, which was true for all three) so the bare-name branch was
+    never exercised. This independent test forces the bare-name form
+    for every helper in both scan sets, including the canonical three.
+    """
+    if helper_name not in audit_module._WRITER_WRITE_NAMES:
+        pytest.skip(
+            f"helper {helper_name!r} is attribute-only; bare-name form is out of scope"
+        )
+    body = (
+        f"from ralph.mcp.artifacts.idempotent_write import {helper_name}\n"
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        "\n"
+        f"def sync(dest, payload):\n"
+        f"    {helper_name}(DEFAULT_FILE_BACKEND, dest, payload)\n"
+    )
+    expected_line = "5"
+    _write_module(tmp_path, "config/new_helper.py", body)
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any(
+        f"config/new_helper.py:{expected_line}" in p and f"`{helper_name}`" in p
+        for p in problems
+    ), f"unmarked `{helper_name}` bare-name call at line {expected_line} must be flagged; got: {problems}"
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        "atomic_write_text_if_changed",
+        "write_text_if_changed",
+        "write_bytes_if_changed",
+    ],
+)
+def test_writer_scan_rejects_canonical_three_in_both_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+) -> None:
+    """DA-013 closure: the canonical three helpers are rejected in BOTH forms.
+
+    The PA-001 widening added the three canonical helpers
+    (``atomic_write_text_if_changed``, ``write_text_if_changed``,
+    ``write_bytes_if_changed``) to BOTH ``_WRITER_WRITE_ATTRS`` and
+    ``_WRITER_WRITE_NAMES``. This regression enforces the dual-form
+    coverage: for each of the three, a fresh attribute call AND a
+    fresh bare-name call must be flagged. The parametrization
+    deliberately does NOT include ``atomic_write_bytes_if_changed``,
+    which is bare-name only.
+    """
+    assert helper_name in audit_module._WRITER_WRITE_ATTRS, (
+        f"canonical helper {helper_name!r} MUST be in _WRITER_WRITE_ATTRS"
+    )
+    assert helper_name in audit_module._WRITER_WRITE_NAMES, (
+        f"canonical helper {helper_name!r} MUST be in _WRITER_WRITE_NAMES"
+    )
+    # Attribute form: ``backend.<helper_name>(...)``
+    attr_body = (
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        f"\n"
+        f"def sync(backend, dest, payload):\n"
+        f"    backend.{helper_name}(dest, payload)\n"
+    )
+    _write_module(tmp_path, "config/new_helper_attr.py", attr_body)
+    # Bare-name form: ``<helper_name>(DEFAULT_FILE_BACKEND, ...)``
+    bare_body = (
+        f"from ralph.mcp.artifacts.idempotent_write import {helper_name}\n"
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        "\n"
+        f"def sync(dest, payload):\n"
+        f"    {helper_name}(DEFAULT_FILE_BACKEND, dest, payload)\n"
+    )
+    _write_module(tmp_path, "config/new_helper_bare.py", bare_body)
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    # Both forms must be flagged.
+    attr_flagged = any(
+        "config/new_helper_attr.py:4" in p and f"`{helper_name}`" in p
+        for p in problems
+    )
+    bare_flagged = any(
+        "config/new_helper_bare.py:5" in p and f"`{helper_name}`" in p
+        for p in problems
+    )
+    assert attr_flagged, (
+        f"canonical helper {helper_name!r} attr-call MUST be flagged; got: {problems}"
+    )
+    assert bare_flagged, (
+        f"canonical helper {helper_name!r} bare-name call MUST be flagged; got: {problems}"
+    )
 
 
 def test_writer_scan_accepts_canonical_helper_with_marker(
