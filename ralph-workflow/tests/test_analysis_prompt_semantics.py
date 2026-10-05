@@ -143,7 +143,14 @@ def test_planning_analysis_prompts_the_revision_loop_contract() -> None:
 
     # The example must model the new contract so renderers copy it.
     assert "[PA-001] Plan-level: Criterion: parallel decomposition." in source
-    assert "Proposed revision: split the work into a shared-contract unit" in source
+
+    # The rendered example's proposed unit split must model the properties
+    # the review contract demands: exact Paths:/Directories: ownership per
+    # unit and a per-unit focused check.
+    rendered = _render_verifier("planning_analysis")
+    rendered_example = rendered[rendered.index("Example for `planning_analysis_decision`") :]
+    assert "Paths:" in rendered_example or "Directories:" in rendered_example
+    assert "focused check" in rendered_example
 
 
 def test_planning_edit_requires_apply_or_rebut_per_finding() -> None:
@@ -191,7 +198,13 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
 def test_planning_analysis_includes_five_substantive_criteria() -> None:
     source = " ".join(TemplateContext.default().registry.get_template("planning_analysis").split())
 
-    for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+    for criterion in (
+        "coverage",
+        "truthfulness",
+        "actionability",
+        "parallel decomposition",
+        "execution conflicts",
+    ):
         assert criterion in source
     assert "Do not grade formatting" in source
     assert "## Criterion Verdicts" in source

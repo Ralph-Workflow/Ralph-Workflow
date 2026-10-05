@@ -116,11 +116,13 @@ any developer action available in the current run. Examples include a
 physical-world action such as unplugging a power cable, an operator-only
 credential or decision, or an external system change outside the developer's
 authority. Difficulty, elapsed time, an exhausted run budget, or ready work
-the developer can still perform does not qualify. After submitting `partial`,
-call `declare_complete` once with `partial_reason` naming that literal
-impossibility and required external action; no second confirmation call is
-required. Use `failed` when no safe actionable continuation exists under
-current evidence or authority.
+the developer can still perform does not qualify; when the remaining work
+includes independent slices, dispatch them in parallel rather than
+completing one piece at a time and handing each back as a partial. After
+submitting `partial`, call `declare_complete` once with `partial_reason`
+naming that literal impossibility and required external action; no second
+confirmation call is required. Use `failed` when no safe actionable
+continuation exists under current evidence or authority.
 
 ## Sections
 
@@ -144,19 +146,22 @@ status decides whether the run ends.
 
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
-- `## Plan Items Proven` — optional section, but proof policy requires one
-  item per usable extracted plan reference. The bracketed ID is
-  shape-independent: a step ID (`S-N`) when the plan declares one, a
-  work-unit bracket ID when the plan uses `## Work Units` / `## Parallel
-  Plan`, the ID `plan` for an accepted prose plan, or a subplan /
-  section heading. The validator never rejects an ID solely for not
-  matching a plan-parsed ID; coverage of the plan's intent is followed
-  through the development-analysis feedback loop. The item text is the
-  proof. Add an indented `Disposition:` field with one of `completed`,
-  `adapted`, `not_applicable`, or `blocked`. Add an indented
-  `Rationale:` for `adapted`, `not_applicable`, and `blocked`. A
-  completed artifact cannot contain `blocked`; necessary blocked work
-  requires `status: partial`.
+- `## Plan Items Proven` — required on a `completed` result once the
+  run's cycle timebox has warned; one item per plan reference the plan
+  actually uses. The bracketed ID is shape-independent: a step ID
+  (`S-N`) when the plan declares one, a work-unit bracket ID when the
+  plan uses `## Work Units` / `## Parallel Plan`, the ID `plan` for an
+  accepted prose plan, or a subplan / section heading. Coverage of the
+  plan's intent is enforced through the development-analysis feedback
+  loop, not by exact ID matching or a hard missing-entry error here:
+  on plan items the validator rejects only duplicate IDs, a missing or
+  unknown `Disposition`, a missing `Rationale` for `adapted`,
+  `not_applicable`, or `blocked`, and `blocked` in a completed result.
+  The item text is the proof. Add an indented `Disposition:` field with
+  one of `completed`, `adapted`, `not_applicable`, or `blocked`. Add an
+  indented `Rationale:` for `adapted`, `not_applicable`, and
+  `blocked`. A completed artifact cannot contain `blocked`; necessary
+  blocked work requires `status: partial`.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## What Came Up Short` finding, using that
   finding's stable ID as the item ID and proof of closure as the text.
@@ -187,8 +192,10 @@ Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
 item; duplicate item IDs; a missing or unknown `Disposition`; a missing
 `Rationale` for `adapted`, `not_applicable`, or `blocked`; `blocked` in a
-completed result; and (at proof validation) duplicate or missing
-plan-item / analysis-item proof entries. The validator never rejects
+completed result; and (at proof validation) duplicate analysis-item
+proof entries and missing or unknown analysis finding IDs — analysis
+finding IDs are validated exactly against the prior analysis's stable
+finding IDs. The validator never rejects
 an ID solely for not matching a plan-parsed ID; coverage of the
 plan's intent is followed through the development-analysis feedback
 loop, not by exact ID matching. The unrecognized-`status` error

@@ -57,10 +57,10 @@ status: request_changes
 - [SUM-1] Parallel decomposition is not met.
 
 ## What Came Up Short
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a shared-contract unit, documentation unit, and test unit, then an integration step that fans the three back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 
 ## Criterion Verdicts
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a shared-contract unit, documentation unit, and test unit, then an integration step that fans the three back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 {% endset %}
 
 ## Criteria and verdicts
