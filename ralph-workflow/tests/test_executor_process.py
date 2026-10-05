@@ -512,3 +512,37 @@ async def test_run_process_async_cleans_up_on_non_timeout_communicate_exception(
     assert len(records) == 1
     assert records[0].status == ProcessStatus.KILLED
     assert fake.terminate_calls == 1
+
+
+# A caller label from another subsystem family (``agents:agy-models`` is the
+# AGY model probe) must still be torn down by run_process's own reaper: the
+# reaper issues teardown under the spawn's label, so the label family check
+# authorizes it instead of refusing and leaving the subtree unreaped.
+_FOREIGN_FAMILY_LABEL = "agents:agy-models"
+
+
+def test_run_process_reaps_child_spawned_under_foreign_family_label(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING", logger="ralph.process.teardown"):
+        result = run_process(
+            PYTHON,
+            ["-c", "print('ok')"],
+            options=ProcessRunOptions(cwd=tmp_path, label=_FOREIGN_FAMILY_LABEL),
+        )
+
+    assert result.stdout.strip() == "ok"
+    assert "refusing process teardown" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_run_process_async_reaps_child_spawned_under_foreign_family_label(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING", logger="ralph.process.teardown"):
+        result = await run_process_async(
+            PYTHON, ["-c", "print('ok')"], cwd=tmp_path, label=_FOREIGN_FAMILY_LABEL
+        )
+
+    assert result.stdout.strip() == "ok"
+    assert "refusing process teardown" not in caplog.text

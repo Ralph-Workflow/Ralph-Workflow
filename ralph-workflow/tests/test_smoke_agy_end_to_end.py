@@ -274,13 +274,13 @@ def test_mock_smoke_invoking_line_uses_single_model_argv_token(tmp_path: Path) -
     invoking_line = " ".join(log_text[invoking_idx : invoking_idx + 2000].split())
 
     canonical_models = (
-        "gemini-3.5-flash-medium",
-        "gemini-3.5-flash-high",
-        "gemini-3.5-flash-low",
+        "gemini-3.7-flash-medium",
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-low",
         "gemini-3.1-pro-low",
         "gemini-3.1-pro-high",
-        "claude-sonnet-4-6",
-        "claude-opus-4-6-thinking",
+        "claude-sonnet-5-5-high",
+        "claude-opus-5-5-high",
         "gpt-oss-120b-medium",
         "gemini-3.6-flash-low",
     )

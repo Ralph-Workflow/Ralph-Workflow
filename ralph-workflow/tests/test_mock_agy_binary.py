@@ -25,7 +25,7 @@ _DEFAULT_ARGS = (
     "--print",
     "--dangerously-skip-permissions",
     "--model",
-    "claude-sonnet-4-6",
+    "claude-sonnet-5-5-high",
     "hello",
 )
 
@@ -148,7 +148,7 @@ def mock_agy_batch(
                 (
                     "--dangerously-skip-permissions",
                     "--model",
-                    "claude-sonnet-4-6",
+                    "claude-sonnet-5-5-high",
                     "hello",
                 ),
                 case_dirs["missing_print"],
@@ -162,7 +162,7 @@ def mock_agy_batch(
                     "--print",
                     "--dangerously-skip-permissions",
                     "--model",
-                    "gemini-3.5-flash-low",
+                    "gemini-3.7-flash-low",
                     "hello",
                 ),
                 case_dirs["gemini_model"],

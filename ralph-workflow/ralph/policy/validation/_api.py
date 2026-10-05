@@ -41,13 +41,11 @@ from ralph.policy.validation._policy_validation_error import PolicyValidationErr
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 _BLOCK_BASED_POLICY_FORMAT_VERSION = 2
-_AGY_ALIAS_HELP = (
-    "Available AGY models: gemini-3.6-flash-high, gemini-3.6-flash-medium, "
-    "gemini-3.6-flash-low, gemini-3.5-flash-high, gemini-3.5-flash-medium, "
-    "gemini-3.5-flash-low, gemini-3.1-pro-high, gemini-3.1-pro-low, "
-    "claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium. "
-    "Accepted effort suffixes: low, medium, high."
-)
+
+
+@runtime_checkable
+class _AgyAliasHelpModule(Protocol):
+    def agy_alias_help(self) -> str: ...
 
 
 @runtime_checkable
@@ -274,7 +272,13 @@ def validate_agent_chains_satisfiable(
     if unknown_agents:
         agy_help = ""
         if any("'agy/" in agent for agent in unknown_agents):
-            agy_help = f" {_AGY_ALIAS_HELP}"
+            # Same probe the registry resolves aliases against, so the listed
+            # vocabulary cannot drift from what ``agy models`` publishes.
+            # Deferred import: the registry transitively imports this module.
+            registry: object = import_module("ralph.agents.registry")
+            if not isinstance(registry, _AgyAliasHelpModule):
+                raise TypeError("ralph.agents.registry lacks agy_alias_help")
+            agy_help = f" {registry.agy_alias_help()}"
         raise PolicyValidationError(
             "Agent chains reference unknown agents (check configuration, not PATH): "
             + "; ".join(unknown_agents)

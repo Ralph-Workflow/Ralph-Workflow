@@ -1,4 +1,4 @@
-"""Measured AGY v1.1.8 model-alias resolution regressions."""
+"""Measured AGY v1.2.17 model-alias resolution regressions."""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ def test_agy_model_resolution_rejects_unknown_or_conflicting_alias(alias: str) -
         "agy/gemini-3.6-flash-low:high",
         "agy/gemini-3.6-flash-medium:medium",
         "agy/gemini-3.6-flash-high:high",
-        "agy/gemini-3.5-flash-low:low",
+        "agy/gemini-3.7-flash-low:low",
         "agy/gemini-3.1-pro-low:low",
         "agy/gpt-oss-120b-medium:medium",
-        "agy/claude-sonnet-4-6:low",
-        "agy/claude-opus-4-6-thinking:high",
+        "agy/claude-sonnet-5-5-high:low",
+        "agy/claude-opus-5-5-high:high",
     ],
 )
 def test_agy_model_resolution_rejects_effort_suffix(alias: str) -> None:
@@ -46,7 +46,7 @@ def test_agy_model_resolution_rejects_effort_suffix(alias: str) -> None:
     [
         # Only bare published model IDs are accepted.
         ("agy/gemini-3.6-flash-low", "--model gemini-3.6-flash-low"),
-        ("agy/claude-sonnet-4-6", "--model claude-sonnet-4-6"),
+        ("agy/claude-sonnet-5-5-high", "--model claude-sonnet-5-5-high"),
     ],
 )
 def test_agy_model_resolution_accepts_observed_model_alias(
@@ -63,7 +63,7 @@ def test_agy_model_resolution_rejection_names_published_models() -> None:
     help_text = agy_alias_help()
 
     assert "gemini-3.6-flash-low" in help_text
-    assert "claude-sonnet-4-6" in help_text
+    assert "claude-sonnet-5-5-high" in help_text
     assert "Effort suffixes are not supported" in help_text
 
 

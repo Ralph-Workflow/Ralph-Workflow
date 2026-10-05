@@ -44,7 +44,7 @@ TIMEOUT_EXIT_CODE = 124
 _DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
 
 
-def _reap_subtree(pid: int | None, pgid: int | None = None) -> None:
+def _reap_subtree(pid: int | None, pgid: int | None = None, *, label: str) -> None:
     """Reap the whole descendant tree of an exec child, transitively.
 
     Runs on EVERY exit path (success, timeout, cancellation, error).
@@ -59,13 +59,17 @@ def _reap_subtree(pid: int | None, pgid: int | None = None) -> None:
     time this runs on the success path, ``communicate()`` has already reaped
     the child, and its PID number carries no authority to kill anything.
 
+    ``label`` is the spawn's own label, used as the teardown issuer so the
+    label-family authorization in ``teardown_subtree`` accepts it even when a
+    caller labels the child under another subsystem (e.g. ``agents:...``).
+
     Best-effort: a teardown failure must never mask the call's own result
     or exception.
     """
     if pid is None:
         return
     with contextlib.suppress(Exception):
-        teardown_subtree(pid, issuer="executor:run-process", pgid=pgid)
+        teardown_subtree(pid, issuer=label, pgid=pgid)
 
 
 def _verified_pgid(pid: int | None) -> int | None:
@@ -202,7 +206,7 @@ async def run_process_async(
         raise
     finally:
         # Every exit path, including the two `return`s above: reap the tree.
-        _reap_subtree(child_pid, child_pgid)
+        _reap_subtree(child_pid, child_pgid, label=effective_label)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
@@ -285,7 +289,7 @@ def run_process(
         raise
     finally:
         # Every exit path, including the timeout `return` above: reap the tree.
-        _reap_subtree(child_pid, child_pgid)
+        _reap_subtree(child_pid, child_pgid, label=effective_label)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(

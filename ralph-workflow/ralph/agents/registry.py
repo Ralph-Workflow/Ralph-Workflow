@@ -116,19 +116,27 @@ _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 _AGY_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
-# Measured from `agy models` v1.1.8; refresh only from a new AGY measurement.
+# Measured from `agy models` v1.2.17 (2026-10-05). Only a fallback for when the
+# live probe fails; every operator-facing list prefers the live probe output.
 _AGY_MODELS = frozenset(
     {
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-low",
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-medium",
+        "gemini-3.7-flash-low",
         "gemini-3.6-flash-high",
         "gemini-3.6-flash-medium",
         "gemini-3.6-flash-low",
-        "gemini-3.5-flash-high",
-        "gemini-3.5-flash-medium",
-        "gemini-3.5-flash-low",
         "gemini-3.1-pro-high",
         "gemini-3.1-pro-low",
-        "claude-sonnet-4-6",
-        "claude-opus-4-6-thinking",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-opus-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "claude-sonnet-5-5-high",
         "gpt-oss-120b-medium",
     }
 )
@@ -165,7 +173,7 @@ _default_agy_models_probe = _make_default_agy_models_probe()
 
 
 def agy_published_models() -> tuple[str, ...]:
-    """Return currently published AGY IDs, falling back to the measured v1.1.8 pin."""
+    """Return currently published AGY IDs, falling back to the measured v1.2.17 pin."""
     try:
         observed = tuple(
             # AGY v1.1.8+ emits ``ID\tDescription`` lines; keep only the ID

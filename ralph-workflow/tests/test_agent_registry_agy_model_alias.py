@@ -15,16 +15,23 @@ from ralph.config.models import UnifiedConfig
 @pytest.mark.parametrize(
     "name",
     [
+        "agy/gemini-3.8-flash-high",
+        "agy/gemini-3.8-flash-medium",
+        "agy/gemini-3.8-flash-low",
         "agy/gemini-3.6-flash-high",
         "agy/gemini-3.6-flash-medium",
         "agy/gemini-3.6-flash-low",
-        "agy/gemini-3.5-flash-high",
-        "agy/gemini-3.5-flash-medium",
-        "agy/gemini-3.5-flash-low",
+        "agy/gemini-3.7-flash-high",
+        "agy/gemini-3.7-flash-medium",
+        "agy/gemini-3.7-flash-low",
         "agy/gemini-3.1-pro-high",
         "agy/gemini-3.1-pro-low",
-        "agy/claude-sonnet-4-6",
-        "agy/claude-opus-4-6-thinking",
+        "agy/claude-opus-5-5-low",
+        "agy/claude-opus-5-5-medium",
+        "agy/claude-opus-5-5-high",
+        "agy/claude-sonnet-5-5-low",
+        "agy/claude-sonnet-5-5-medium",
+        "agy/claude-sonnet-5-5-high",
         "agy/gpt-oss-120b-medium",
     ],
 )
@@ -41,7 +48,7 @@ def test_agy_model_alias_rejects_unknown_names(name: str) -> None:
 
 
 def test_agy_model_alias_preserves_agy_transport() -> None:
-    config = AgentRegistry.from_config(UnifiedConfig()).get("agy/claude-sonnet-4-6")
+    config = AgentRegistry.from_config(UnifiedConfig()).get("agy/claude-sonnet-5-5-high")
 
     assert config is not None
     assert config.transport == AgentTransport.AGY

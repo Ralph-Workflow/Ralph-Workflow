@@ -80,7 +80,33 @@ def test_validate_agent_chains_satisfiable_regression_names_available_agy_models
         validate_agent_chains_satisfiable(bundle, _FakeAgentRegistry(known_agents={"agy"}))
 
     assert "gemini-3.6-flash-low" in str(exc_info.value)
-    assert "low, medium, high" in str(exc_info.value)
+
+
+def test_unknown_model_alias_error_lists_live_published_models_not_a_stale_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model list in the error must track ``agy models``, never a hardcoded copy."""
+    from ralph.agents import registry as registry_module
+
+    measured_stdout = "\n".join(
+        (
+            "gemini-3.8-flash-low\tGemini 3.8 Flash (Low)",
+            "claude-sonnet-5-5-high\tClaude Sonnet 5.5 (High)",
+        )
+    )
+    monkeypatch.setattr(registry_module, "_default_agy_models_probe", lambda: measured_stdout)
+    bundle = _FakeBundle(
+        chains={"development": _FakeChainConfig(agents=["agy/claude-sonnet-5-5-thinking"])},
+        drains={},
+        phases={},
+    )
+
+    with pytest.raises(PolicyValidationError) as exc_info:
+        validate_agent_chains_satisfiable(bundle, AgentRegistry.from_config(UnifiedConfig()))
+
+    message = str(exc_info.value)
+    assert "Available AGY models: claude-sonnet-5-5-high, gemini-3.8-flash-low." in message
+    assert "claude-opus-4-6-thinking" not in message
 
 
 @pytest.mark.parametrize(

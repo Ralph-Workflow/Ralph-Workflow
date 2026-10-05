@@ -67,9 +67,9 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
                 execution_strategy=strategy_for_transport(AgentTransport.AGY),
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
+                    phase="planning",
+                    artifact_type="plan",
+                    artifact_path=".agent/artifacts/plan.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -101,9 +101,9 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
+                    phase="planning",
+                    artifact_type="plan",
+                    artifact_path=".agent/artifacts/plan.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -153,9 +153,9 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
     """
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / "development_result.md").write_text(
+    (artifact_dir / "plan.md").write_text(
         "---\n"
-        "type: development_result\n"
+        "type: plan\n"
         "status: completed\n"
         "---\n\n"
         "## Summary\n\n- [SUM-1] done\n\n"
@@ -168,8 +168,8 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
     run_id = "agy-on-disk-run-id"
     receipt_dir = tmp_path / ".agent" / "receipts" / run_id
     receipt_dir.mkdir(parents=True)
-    (receipt_dir / "development_result.json").write_text(
-        f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+    (receipt_dir / "plan.json").write_text(
+        f'{{"run_id": "{run_id}", "artifact_type": "plan"}}',
         encoding="utf-8",
     )
 
@@ -181,9 +181,9 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
         workspace_path=tmp_path,
         completion_run_id=run_id,
         required_artifact=RequiredArtifact(
-            phase="development",
-            artifact_type="development_result",
-            artifact_path=".agent/artifacts/development_result.md",
+            phase="planning",
+            artifact_type="plan",
+            artifact_path=".agent/artifacts/plan.md",
             markdown_path=None,
             normalizer=None,
         ),
@@ -248,9 +248,9 @@ def test_sentinel_check_fn_true_does_not_replace_required_receipt(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
+                    phase="planning",
+                    artifact_type="plan",
+                    artifact_path=".agent/artifacts/plan.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -274,9 +274,9 @@ def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
+                    phase="planning",
+                    artifact_type="plan",
+                    artifact_path=".agent/artifacts/plan.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -345,9 +345,9 @@ def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
+                    phase="planning",
+                    artifact_type="plan",
+                    artifact_path=".agent/artifacts/plan.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -391,3 +391,28 @@ def test_agy_json_output_does_not_produce_lifecycle_only_watchdog_evidence() -> 
     assert len(suspected) == 1
     evidence = str(suspected[0].diagnostic.get("evidence", ""))
     assert "time_and_lifecycle_only" not in evidence
+
+
+def test_clean_development_exit_without_completion_signal_is_accepted(tmp_path: Path) -> None:
+    """Development is the scoped exception: a clean AGY exit concludes it.
+
+    Evidence-bearing phases (planning above) keep strict enforcement; the
+    development phase accepts a clean exit without an artifact sentinel.
+    """
+    check_process_result(
+        _FakeHandle(returncode=0),
+        "agy",
+        [],
+        CompletionCheckOptions(
+            execution_strategy=strategy_for_transport(AgentTransport.AGY),
+            workspace_path=tmp_path,
+            required_artifact=RequiredArtifact(
+                phase="development",
+                artifact_type="development_result",
+                artifact_path=".agent/artifacts/development_result.md",
+                markdown_path=None,
+                normalizer=None,
+            ),
+            policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+        ),
+    )
