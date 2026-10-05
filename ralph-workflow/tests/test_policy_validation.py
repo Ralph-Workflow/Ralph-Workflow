@@ -32,7 +32,6 @@ Source files (all test_policy_validation_*.py under tests/):
   - test_policy_validation_validate_required_inputs.py
   - test_policy_validation_validate_review_phase_outcome_complete.py
   - test_policy_validation_validate_terminal_failure_phase_required.py
-  - test_policy_validation_validate_work_units_against_policy.py
 """
 
 from __future__ import annotations

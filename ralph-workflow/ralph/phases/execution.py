@@ -633,12 +633,6 @@ def _worker_retry_hint_path(
     return str(artifact_path.parent.parent / "tmp" / f"last_retry_error_{drain}.txt")
 
 
-def _transitions_on_success(phase_def: PhaseDefinition | None) -> str | None:
-    if phase_def is None:
-        return None
-    return phase_def.transitions.on_success
-
-
 def _find_plan_producing_phase(
     pipeline_policy: PipelinePolicy, artifacts_policy: ArtifactsPolicy
 ) -> str:

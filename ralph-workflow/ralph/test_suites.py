@@ -747,30 +747,9 @@ def _fast_test_count(source: str) -> int:
     immediately following test definition, preventing large parametrized
     modules from being assigned a deceptively small weight.
     """
-    lines = source.splitlines()
-    total = 0
-    pending_multiplier = 1
-    in_parametrize = False
-    bracket_depth = 0
-    case_count = 0
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("@pytest.mark.parametrize"):
-            in_parametrize = True
-            bracket_depth = 0
-            case_count = 0
-        if in_parametrize:
-            bracket_depth += line.count("[") + line.count("(") + line.count("{")
-            bracket_depth -= line.count("]") + line.count(")") + line.count("}")
-            if "[" in line:
-                case_count += max(0, line.count(","))
-            if bracket_depth <= 0 and "]" in line:
-                pending_multiplier *= max(1, case_count)
-                in_parametrize = False
-        if _TEST_DEF_PATTERN.match(line):
-            total += pending_multiplier
-            pending_multiplier = 1
-    return total
+    if "parametrize" in source:
+        return estimate_test_file_weight(source)
+    return sum(1 for line in source.splitlines() if _TEST_DEF_PATTERN.match(line))
 
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:

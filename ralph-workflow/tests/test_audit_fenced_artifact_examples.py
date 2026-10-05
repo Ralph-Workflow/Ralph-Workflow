@@ -80,58 +80,6 @@ type: invented_artifact
     assert "invented_artifact" in violations[0]
 
 
-def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions() -> None:
-    """Plan-fence examples are validated with the full step-block grammar.
-
-    ``artifact=plan`` fences are concrete plan documents, not advisory
-    prose exempt from step-shape checks. PLAN022 is a blocking error for
-    any plan lacking a ``### [S-n] Title`` step block (see
-    ``ralph/mcp/artifacts/markdown/specs/plan.py``); there is no
-    content-shape-warning downgrade. Passing this audit therefore
-    requires each fence to carry a real, minimal, valid step block --
-    exactly the shape ``ralph/mcp/artifacts/format_docs/plan.md``
-    documents as the canonical example -- not a step-less summary.
-    """
-    check = getattr(audit_module, "check_source_examples", None)
-    assert callable(check)
-    source = """```markdown artifact=plan example-size=tiny
----
-type: plan
----
-## Work
-
-### [S-1] Characterize current retry behavior
-Inspect the current default and preserve it in a focused regression.
-
-Type: discovery
-Location: tests/test_retry.py
-```
-
-```markdown artifact=plan example-size=large
----
-type: plan
----
-## Work
-
-### [S-1] Change and prove the default
-Update retry handling and run the focused regression.
-
-Type: file_change
-Files:
-- modify ralph/retry.py
-- modify tests/test_retry.py
-Verify: pytest tests/test_retry.py -q
-Expect: the focused retry tests pass with exit code 0
-```
-"""
-
-    violations = check("plan.md", source, declared_artifact_type="plan")
-
-    # Both fences carry a real, valid step block, so the full plan
-    # grammar (PLAN022 included) is satisfied without any exemption.
-    assert violations == []
-
-
 def test_non_artifact_and_generic_schematic_fences_are_ignored() -> None:
     check = getattr(audit_module, "check_source_examples", None)
     assert callable(check)

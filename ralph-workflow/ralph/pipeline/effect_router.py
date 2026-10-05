@@ -169,14 +169,7 @@ def _fan_out_effect(
     work_units: tuple[WorkUnit, ...],
 ) -> Effect:
     phase_para = phase_def.parallelization
-    if phase_para is None:
-        return ExitFailureEffect(
-            reason=(
-                f"Phase {state.phase!r} does not declare parallelization but the plan "
-                f"declares {len(work_units)} work_units; either declare "
-                f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
-            )
-        )
+    assert phase_para is not None
     return FanOutEffect(
         work_units=work_units,
         max_workers=phase_para.max_parallel_workers,

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 import pytest
 
 _MANIFEST_OPTION = "--ralph-shard-manifest"
 _MANIFEST_KEY = pytest.StashKey["ShardManifest"]()
+_ROOT_PATH_KEY = pytest.StashKey[Path]()
 
 
 @dataclass(frozen=True)
@@ -16,19 +17,26 @@ class ShardManifest:
     """Ordered project-relative test-module paths assigned to one shard."""
 
     paths: tuple[str, ...]
+    _path_set: frozenset[str] = field(init=False, repr=False)
+    _path_order: dict[str, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_path_set", frozenset[str](self.paths))
+        object.__setattr__(
+            self,
+            "_path_order",
+            dict[str, int]({path: index for index, path in enumerate(self.paths)}),
+        )
 
     def order_for(self, path: str) -> int:
         """Return the declared position of ``path`` in this manifest."""
-        try:
-            return self.paths.index(path)
-        except ValueError:
-            return len(self.paths)
+        return self._path_order.get(path, len(self.paths))
 
     def should_ignore(self, path: str) -> bool:
         """Reject collectable test modules under ``tests/`` not in the shard."""
         if not _is_collectable_test_module(path):
             return False
-        return path not in self.paths
+        return path not in self._path_set
 
 
 def _is_collectable_test_module(path: str) -> bool:
@@ -74,7 +82,7 @@ def load_shard_manifest(manifest_path: Path) -> ShardManifest:
 
 def _project_relative_path(path: Path, *, root: Path) -> str | None:
     try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
+        return path.resolve().relative_to(root).as_posix()
     except ValueError:
         return None
 
@@ -90,11 +98,15 @@ def pytest_configure(config: pytest.Config) -> None:
     if not isinstance(option, str) or not option:
         raise pytest.UsageError(f"{_MANIFEST_OPTION} is required")
     config.stash[_MANIFEST_KEY] = load_shard_manifest(Path(option))
+    config.stash[_ROOT_PATH_KEY] = config.rootpath.resolve()
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
     """Reject non-selected test modules before pytest imports them."""
-    relative_path = _project_relative_path(collection_path, root=config.rootpath)
+    relative_path = _project_relative_path(
+        collection_path,
+        root=config.stash[_ROOT_PATH_KEY],
+    )
     if relative_path is None:
         return None
     return True if config.stash[_MANIFEST_KEY].should_ignore(relative_path) else None
@@ -105,7 +117,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     manifest = config.stash[_MANIFEST_KEY]
 
     def manifest_order(item: pytest.Item) -> int:
-        relative_path = _project_relative_path(item.path, root=config.rootpath)
+        relative_path = _project_relative_path(item.path, root=config.stash[_ROOT_PATH_KEY])
         if relative_path is None:
             return len(manifest.paths)
         return manifest.order_for(relative_path)

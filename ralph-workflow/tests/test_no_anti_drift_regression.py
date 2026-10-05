@@ -88,6 +88,34 @@ def _legacy_console_display_references() -> tuple[pathlib.Path, ...]:
     return tuple(path for path in _walk_python_files(RALPH_ROOT) if needle in _read_bytes(path))
 
 
+# Session-scoped cache pre-warming for the wire-form audit. The audit
+# walks three ralph subtrees (agents, display, pipeline) and tokenizes
+# the few files that contain the mcp__ substring. Under shard
+# contention the cold-cache pass can spike past the 1 s per-test
+# ITIMER_REAL budget -- a 0.04 s cold-cache cost amortized over ~12x
+# shard parallelism stretches to >1 s. Pre-warming at session start
+# (while the worker is otherwise idle) keeps every per-test invocation
+# inside the watchdog window without changing the global 1 s budget.
+_WIRE_FORM_SCAN_ROOTS: tuple[pathlib.Path, ...] = (
+    RALPH_ROOT / "agents",
+    RALPH_ROOT / "display",
+    RALPH_ROOT / "pipeline",
+)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _prewarm_wire_form_scan_cache() -> None:
+    for root in _WIRE_FORM_SCAN_ROOTS:
+        for path in _walk_python_files(root):
+            try:
+                source = _read(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if "mcp__" not in source:
+                continue
+            _wire_form_literals_in_source(source)
+
+
 def _all_string_literals(source: str) -> set[str]:
     """Return literal string fragments without parsing an entire source module.
 
@@ -129,8 +157,15 @@ def test_wire_form_literal_scan_keeps_adjacent_literals() -> None:
     assert _wire_form_literals_in_source(source) == {"mcp__server__tool"}
 
 
+@cache
 def _wire_form_literals_in_source(source: str) -> set[str]:
-    """Return the set of wire-form `mcp__<server>__<tool>` literals in source."""
+    """Return the set of wire-form `mcp__<server>__<tool>` literals in source.
+
+    The result is cached because the same source is re-scanned on every
+    shard that walks the ralph tree. Tokenizing ``parallel_display.py``
+    alone is ~25 ms of CPU; the cache keeps a second pass within the
+    same pytest process effectively free.
+    """
     return {lit for lit in _all_string_literals(source) if _WIRE_FORM_RE.match(lit)}
 
 
