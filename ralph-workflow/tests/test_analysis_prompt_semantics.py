@@ -269,3 +269,30 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     decision = source.index("## Decision artifact")
     fanout = source.lower().index("reproduce")
     assert intro < fanout < decision
+
+
+def test_planning_analysis_prompts_explain_proposed_revision_enforcement() -> None:
+    """Unit C step 3 (DA-036, DA-037): the planning prompt must explain that
+    ``Proposed revision:`` is enforced on submission (``ANALYSIS019``) and
+    direct the unit split to ``Proposed revision`` (not ``Observation``).
+    """
+    source = TemplateContext.default().registry.get_template("planning_analysis")
+
+    # The validator-enforcement statement is present and surfaces the rule ID.
+    assert "ANALYSIS019" in source
+    assert "enforced on submission" in source
+
+    # The split directive puts the concrete unit split in Proposed revision.
+    assert (
+        "unit split in the finding's `Proposed revision:`" in source
+    )
+
+    # The legacy "in the finding's Observation" split directive is gone.
+    split_in_observation = source.find("in the finding's Observation")
+    if split_in_observation != -1:
+        before_split = source[:split_in_observation]
+        assert "unit split" not in before_split
+
+    # The completed-verdict exemption is acknowledged so the analyzer does not
+    # invent revisions for a completed decision.
+    assert "does not need a revision" in source or "approved as-is" in source

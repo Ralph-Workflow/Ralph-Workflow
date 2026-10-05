@@ -252,3 +252,73 @@ def test_request_changes_mismatched_mirrored_verdict_rejected() -> None:
     _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
     rule_ids = {d.rule_id for d in diagnostics}
     assert "ANALYSIS018" in rule_ids
+
+
+def test_request_changes_with_free_form_plan_reference_only_accepted() -> None:
+    """Unit A step 5: a What Came Up Short item citing only `Plan reference: [WU-1]`
+    (no `Criterion:`) must validate clean. The criterion slot is satisfied by any
+    non-empty bracketed plan reference; this is the new free-form behavior.
+    """
+    finding_plan_ref_only = (
+        "Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
+        "Remaining work: the focused regression test is still missing. "
+        "Plan reference: [WU-1]"
+    )
+    criterion_with_plan_ref = (
+        "Criterion: focused regression test exists. "
+        "Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
+        "Plan reference: [WU-1]"
+    )
+    doc = (
+        "---\n"
+        "type: development_analysis_decision\n"
+        "status: request_changes\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] One criterion is not met.\n\n"
+        "## What Came Up Short\n"
+        f"- [DA-001] {finding_plan_ref_only}\n\n"
+        "## Criterion Verdicts\n"
+        f"- [DA-001] {criterion_with_plan_ref}\n"
+    )
+    content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
+
+
+def test_orphan_plan_reference_only_finding_yields_analysis014() -> None:
+    """Unit A step 5 (PA-003 regression): an orphan `## What Came Up Short` item
+    that cites only `Plan reference: [WU-2]` (no mirrored verdict in the
+    `## Criterion Verdicts` block) must still emit ANALYSIS014. The shared
+    Criterion-or-Plan-reference completeness predicate must apply to both
+    ANALYSIS014 generators, so a Plan-reference-only finding cannot silently
+    bypass the mirror check.
+    """
+    orphan_finding = (
+        "Expected observation: focused regression test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_orphan.py. "
+        "Remaining work: the focused regression test is still missing. "
+        "Plan reference: [WU-2]"
+    )
+    criterion_only = (
+        "Criterion: focused regression test passes. "
+        "Expected observation: focused regression test passes. "
+        "Verdict: met. Evidence: `pytest -q` passes. Location: tests/test_foo.py."
+    )
+    doc = (
+        "---\n"
+        "type: development_analysis_decision\n"
+        "status: request_changes\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] One criterion is not met (orphan mirror).\n\n"
+        "## What Came Up Short\n"
+        f"- [DA-001] {orphan_finding}\n\n"
+        "## Criterion Verdicts\n"
+        f"- [DA-002] {criterion_only}\n"
+    )
+    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
+    rule_ids = {d.rule_id for d in diagnostics}
+    assert "ANALYSIS014" in rule_ids

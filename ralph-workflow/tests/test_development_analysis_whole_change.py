@@ -55,6 +55,11 @@ def _development_analysis_source() -> str:
     return TemplateContext.default().registry.get_template("development_analysis")
 
 
+@cache
+def _planning_analysis_source() -> str:
+    return TemplateContext.default().registry.get_template("planning_analysis")
+
+
 def _format_doc_path(*parts: str) -> Path:
     return Path(__file__).parent.parent.joinpath("ralph", "mcp", "artifacts", *parts)
 
@@ -211,3 +216,83 @@ class TestDevelopmentAnalysisWholeChange:
         assert "describing the leftover development work" in text
         assert "the development phase owns" in text
         assert "`Remaining work:`" in text
+
+    def test_development_template_does_not_pin_s_n_only_reference_rule(self) -> None:
+        """No '[S-n]'-only reference rule in development_analysis.jinja."""
+        source = _development_analysis_source()
+        # The S-n language must appear only as one option, never as a hard rule.
+        assert "S-n` IDs" in source or "S-n IDs" in source
+        # The free-form statement must appear.
+        assert "numeric `S-n` IDs, a named anchor" in source or (
+            "numeric S-n IDs, a named anchor" in source
+        )
+
+    def test_embedded_development_example_does_not_prescribe_a_remedy(self) -> None:
+        """The embedded DA-001 example's ``Remaining work:`` is the outcome
+        that is still missing, not a payload-size recipe. A prescriptive
+        example undercuts an outcome-only rule.
+        """
+        source = _development_analysis_source()
+        # No payload-multiplier recipe.
+        assert ">5x" not in source
+        assert "5x the documented limit" not in source
+        # No "add an oversized-index case ... payload ... asserts" recipe.
+        assert "add an oversized-index case to" not in source
+        # The example still names the unproven outcome.
+        assert "overflow path is unproven" in source or "overflow path" in source
+
+    def test_request_changes_clause_references_free_form_plan_reference(self) -> None:
+        """The `request_changes` clause cites ``Criterion:`` or a
+        ``Plan reference: [<stable id>]`` the plan uses.
+        """
+        source = _development_analysis_source()
+        # The literal pattern must be present in the request_changes clause.
+        assert (
+            "`Criterion:` or a `Plan reference: [<stable id>]` the plan uses" in source
+        )
+
+    def test_remaining_work_phrasing_is_outcome_only(self) -> None:
+        """The template's request_changes paragraph names the leftover
+        outcome (Remaining work), not the implementation route.
+        """
+        source = _development_analysis_source()
+        # The negative directive ("do not prescribe a remedy") is gone.
+        assert "do not prescribe a remedy" not in source
+        # The positive directive ("names the leftover outcome") is present.
+        assert "leftover outcome" in source or "what is still missing or unproven" in source
+        assert "development phase owns how to fix it" in source
+
+    def test_planning_prompt_directs_unit_split_to_proposed_revision(self) -> None:
+        """``planning_analysis.jinja`` must put a concrete unit split in the
+        finding's ``Proposed revision:``, not its ``Observation``.
+        """
+        source = _planning_analysis_source()
+        assert (
+            "unit split in the finding's `Proposed revision:`" in source
+        )
+        # The legacy "in the finding's Observation" split directive is gone.
+        assert (
+            "in the finding's Observation" not in source
+            or "unit split" not in source.split("in the finding's Observation", 1)[0]
+        )
+
+    def test_planning_prompt_explains_submission_enforcement(self) -> None:
+        """``planning_analysis.jinja`` must state that ``Proposed revision:``
+        is enforced on submission (``ANALYSIS019``).
+        """
+        source = _planning_analysis_source()
+        assert "ANALYSIS019" in source
+        # The enforcement statement appears at least twice: once in the
+        # review contract (so the analyzer knows while drafting) and once
+        # in the criteria-and-verdicts block (so the analyzer knows while
+        # assembling the artifact).
+        assert source.count("ANALYSIS019") >= 2
+
+    def test_planning_prompt_explains_completed_verdict_exemption(self) -> None:
+        """A completed planning decision with met verdicts does not need a
+        revision because the plan was approved as-is; the prompt must say so
+        so the analyzer does not invent revisions for a completed decision.
+        """
+        source = _planning_analysis_source()
+        assert "completed decision" in source
+        assert "does not need a revision" in source or "approved as-is" in source

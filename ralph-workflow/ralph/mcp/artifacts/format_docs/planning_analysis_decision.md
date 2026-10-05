@@ -7,10 +7,13 @@ The analyzer assesses substance, not plan shape: a plain prose plan can
 pass. `status` is `completed`, `request_changes`, or `failed`. Its five
 criteria are coverage, truthfulness, actionability, parallel decomposition,
 and execution conflicts. The planner will revise from this feedback, so
-each finding must carry a concrete proposed revision the planner either
-applies or rebuts; do not just grade. For avoidable serialization, return
-`request_changes` and put a concrete proposed unit split in the finding's
-`Proposed revision:`. Do not add a `## How To Fix` section.
+each non-completed verdict and its mirrored finding must carry a concrete
+proposed revision the planner either applies or rebuts; the validator
+enforces this on submission (`ANALYSIS019`), so missing revisions are
+rejected, not just suggested. Do not just grade. For avoidable
+serialization, return `request_changes` and put a concrete proposed unit
+split in the finding's `Proposed revision:`. Do not add a `## How To Fix`
+section.
 
 ## Request-changes example
 
@@ -41,10 +44,16 @@ status: request_changes
   `Observation:`, `Proposed revision:`, `Verdict:`, `Evidence:`,
   `Location:`, and `Cost:`, and records criterion-level evidence. A
   `not evaluable` criterion requires `failed` rather than completion.
+  `Proposed revision:` is the concrete revision the planner applies or
+  rebuts on the next pass; the validator enforces it on every non-completed
+  planning verdict (`ANALYSIS019`), so submissions missing it are rejected.
+  A completed decision with met verdicts does not need a revision because
+  the plan was approved as-is.
 - `## What Came Up Short` is required for `request_changes` and `failed`;
   it mirrors localized non-met verdicts and each mirrored finding carries
   its `Proposed revision:` so the planner can apply or rebut it on the next
-  pass.
+  pass. The validator enforces the field on every finding via
+  `ANALYSIS019`; submissions missing it are rejected.
 - `## How To Fix` is not permitted.
 
 See `.agent/artifact-formats/examples/planning_analysis_decision.md`.
