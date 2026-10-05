@@ -663,6 +663,16 @@ remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 The shared minutes convention means the wrapup notice and the developer
 prompt cannot diverge at the warning boundary.
 
+The force-cut deadline bounds how long the work can take; it is not itself
+an external impossibility that justifies handing work back. When the
+deadline fires, an incomplete artifact still flows to the canonical
+external-impossibility rule in `shared/_no_exemption_for_failures.j2`: a
+partial or failed result is permitted only when no safe developer action
+could advance the plan, not because time has run out. Discovering a huge
+task, decomposing it into independent ready units, and continuing until
+the plan is fully proven is itself a safe developer action that must keep
+going; the deadline never becomes permission to stop.
+
 ## Work Units execution
 
 Plan submission performs only the plan sanity check; a unit count, ownership
@@ -676,3 +686,35 @@ serially; disjoint files in the same directory may run together. Protected
 assignments are removed before worker briefs, and unknown ownership or
 unextractable graphs remain main-session work. Brokered write protections
 continue to enforce filesystem safety.
+
+### Persistence when scope grows or fan-out is unavailable
+
+The developer prompts in `ralph/prompts/templates/` embed a
+`## Scope-size recovery procedure` section ahead of the request and plan
+payloads. That section tells the executing agent:
+
+- **Inventory the remaining references** and pick an immediately
+  actionable, falsifiable increment before prolonged scope analysis.
+- **As a coordinator,** assign disjoint ownership, dispatch independent
+  ready scopes within exposed capacity, and implement its own ready
+  critical-path work while helpers run. Saturated capacity queues later
+  ready work in waves; coupled work or unavailable dispatch continues
+  ready work sequentially within the main session without bypassing
+  permissions.
+- **As a worker,** run the worker loop on the assigned unit until it is
+  fully proven; workers never recursively dispatch, integrate other
+  units, or run the full repository-wide gate (the main session owns
+  that).
+- **After a failed tactic,** diagnose its evidence and try a changed,
+  evidence-backed approach. A failed tactic is not a stop signal while
+  another safe action remains.
+- **Reassess readiness after every result** and keep going until all
+  required references are proven. The canonical external-impossibility
+  rule in `shared/_no_exemption_for_failures.j2` is the only path to a
+  partial or failed artifact, and difficulty, elapsed time, or
+  unavailable sub-agents do not satisfy it.
+
+This section clarifies the existing prompt contract rather than changing
+plan structure, worker ownership, or the brokered write protections
+above. The covered regression lives in
+`tests/test_prompts_no_exemption_for_failures.py`.

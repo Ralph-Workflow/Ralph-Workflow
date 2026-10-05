@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.prompts.developer import (
+    DeveloperPromptInputs,
+    prompt_developer_iteration_xml_with_context,
+)
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
+
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 _PARTIAL = _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2"
 _TEMPLATE_NAMES = (
@@ -107,3 +115,112 @@ def test_partial_results_rule_is_single_sourced() -> None:
         assert "MUST resolve anything that comes up" not in text, (
             f"{name} restates the rule; it should reference the canonical home"
         )
+
+
+_RECOVERY_MARKERS = (
+    "Inventory the remaining references",
+    "falsifiable increment",
+    "changed, evidence-backed approach",
+)
+
+
+def _render_recovery_surface(
+    tmp_path: Path,
+    *,
+    template_name: str,
+    worker: bool = False,
+    context: TemplateContext,
+    continuation: bool = False,
+) -> str:
+    inputs = DeveloperPromptInputs(
+        prompt_content="Implement the requested behavior.",
+        plan_content="### [S-1] Deliver the behavior",
+        work_unit_id="prompt-tests" if worker else "",
+        work_unit_description="Deliver the assigned prompt test changes." if worker else "",
+        work_unit_directories="ralph-workflow/tests" if worker else "",
+        worker_namespace="/tmp/.agent/workers/prompt-tests" if worker else "",
+        is_continuation=(
+            continuation or template_name == "developer_iteration_continuation.jinja"
+        ),
+    )
+    return prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=inputs,
+        workspace=MemoryWorkspace(root=str(tmp_path)),
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        template_name=template_name,
+    )
+
+
+def test_developer_prompt_regression_scope_recovery_is_early_once_and_role_scoped(
+    tmp_path: Path,
+) -> None:
+    context = TemplateContext.default()
+    surfaces = (
+        ("developer_iteration.jinja", False, False),
+        ("developer_iteration_continuation.jinja", False, True),
+        ("developer_iteration_fallback.jinja", False, False),
+        ("worker_developer.jinja", True, False),
+        ("worker_developer.jinja", True, True),
+        ("developer_iteration_fallback.jinja", True, False),
+    )
+    for template_name, worker, continuation in surfaces:
+        rendered = _render_recovery_surface(
+            tmp_path,
+            template_name=template_name,
+            worker=worker,
+            context=context,
+            continuation=continuation,
+        )
+        assert rendered.count("## Scope-size recovery procedure") == 1
+        guidance_at = rendered.index("## Scope-size recovery procedure")
+        payload_at = min(
+            rendered.index(marker)
+            for marker in ("PROMPT:", "ORIGINAL REQUEST:", "EXECUTION PLAN:")
+            if marker in rendered
+        )
+        assert guidance_at < payload_at
+        for marker in _RECOVERY_MARKERS:
+            assert marker in rendered
+        assert "safe concrete continuation requires" not in rendered
+        assert "report partial progress" not in rendered
+        if worker:
+            assert "**Coordinator loop.**" not in rendered
+            assert "Workers never recursively dispatch" in rendered
+            assert "exact assigned ownership" in rendered
+            assert "one-unit result" in rendered
+            assert "full repository-wide gate (" in rendered
+            assert "run its focused proof" in rendered
+            assert "reassess readiness" in rendered
+            assert "until the assigned unit is fully proven" in rendered
+            assert "Coordinators assign disjoint ownership" not in rendered
+            if continuation:
+                assert "Before submitting a continuation" in rendered
+                assert "you MUST NOT submit the artifact or declare completion" in rendered
+        else:
+            assert "**Coordinator loop.**" in rendered
+            assert "assign disjoint ownership" in rendered
+            assert "implement its own ready critical-path work" in rendered
+            assert "queues later work in waves" in rendered
+            assert "continue ready work sequentially" in rendered
+
+
+def test_developer_prompt_regression_rendering_failure_uses_recovery_fallback(
+    tmp_path: Path,
+) -> None:
+    context = TemplateContext.default()
+    context.registry.register_template("broken.jinja", "{% invalid %}")
+    rendered = prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement it.",
+            plan_content="### [S-1] Deliver it",
+        ),
+        workspace=MemoryWorkspace(root=str(tmp_path)),
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        template_name="broken.jinja",
+    )
+
+    assert rendered.count("## Scope-size recovery procedure") == 1
+    assert rendered.index("## Scope-size recovery procedure") < rendered.index("ORIGINAL REQUEST:")
+    assert "continue ready work sequentially" in rendered
