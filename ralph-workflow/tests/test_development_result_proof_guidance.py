@@ -187,3 +187,36 @@ def test_validator_docstring_scopes_rationale_to_non_completed_dispositions() ->
     assert (
         "and (for ``adapted`` / ``not_applicable`` / ``blocked`` items) a missing ``Rationale``"
     ) in text
+
+
+def test_rendered_partial_names_timebox_only_mechanical_gate() -> None:
+    """The rendered partial states the mechanical presence gate: carry the
+    section whenever there is work to prove, while the validator
+    mechanically requires it only for a ``completed`` result once the
+    run's cycle timebox or development timebox has warned — read from the
+    live clock or the declared frontmatter flag."""
+    rendered = _rendered_partial()
+
+    assert "Carry this section whenever there is work to prove" in rendered
+    assert (
+        "the validator mechanically requires it only for a `completed` result"
+        in rendered
+    )
+    assert "cycle timebox or development timebox has warned" in rendered
+    assert "cycle_timebox_warned" in rendered
+    assert "development_timebox_warned" in rendered
+
+
+def test_rendered_partial_keeps_each_proof_rule_in_one_home() -> None:
+    """The plan-item validator-rejection rule and the coverage-enforcement
+    rule each appear exactly once: the ``## Plan Items Proven`` paragraph
+    must not restate the shape-independence paragraph's rules."""
+    rendered = _rendered_partial()
+
+    assert (
+        rendered.count(
+            "never rejects a plan-item ID solely for not matching a plan-parsed ID"
+        )
+        == 1
+    )
+    assert rendered.count("development analysis feedback loop (U-2)") == 1

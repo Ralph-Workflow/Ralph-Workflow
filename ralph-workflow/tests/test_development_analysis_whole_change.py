@@ -302,3 +302,16 @@ class TestDevelopmentAnalysisWholeChange:
         source = _planning_analysis_source()
         assert "completed decision" in source
         assert "does not need a revision" in source or "approved as-is" in source
+
+    def test_planning_prompt_conditions_rejection_on_deficient_units(self) -> None:
+        """``planning_analysis.jinja`` restricts rejection to plans whose
+        proposed units miss one of the three unit properties or serialize
+        independent work without a stated reason. A unit carrying ownership,
+        its own check, and single-agent sizing stays approvable, so the
+        rejection instruction cannot conflict with a compliant plan passing.
+        """
+        source = _planning_analysis_source()
+        assert (
+            "When any proposed unit is missing one of the three properties" in source
+        )
+        assert "parallel decomposition is `met`" in source

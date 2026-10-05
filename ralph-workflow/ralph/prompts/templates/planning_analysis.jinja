@@ -43,13 +43,17 @@ on the next pass, because parallel safety requires them:
 - **Each unit has its own check** — every unit names the focused verify step a worker can run inside its assigned scope. Without a per-unit check the unit cannot be proven independently.
 - **Sized for one agent** — the work inside a unit fits a single agent's slice; a unit that only one large agent can finish defeats the purpose of fan-out.
 
-Reject the plan by marking parallel decomposition `not met` and submitting
-`request_changes` with the concrete unit split in the finding's
-`Proposed revision:`. Absent ownership, an absent check, or a unit sized
-for more than one agent turns the split into a coordination hazard rather
-than a parallel win; a bare "missing ownership" verdict without the split
-does not let the planner recover on the next pass, so the split is the
-action they can apply.
+When any proposed unit is missing one of the three properties above, or
+independent work is serialized without a stated reason, mark parallel
+decomposition `not met` and submit `request_changes` with the concrete
+unit split in the finding's `Proposed revision:`. Absent ownership, an
+absent check, or a unit sized for more than one agent turns the split
+into a coordination hazard rather than a parallel win; a bare "missing
+ownership" verdict without the split does not let the planner recover on
+the next pass, so the split is the action they can apply. When every
+proposed unit carries all three properties and any serialization states
+its reason, parallel decomposition is `met`, and a compliant plan —
+prose or structured — is approved as-is.
 
 {% set planning_decision_example %}
 ---

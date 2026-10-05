@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.webvisit import fetcher
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    import pytest
 
 
 @dataclass(frozen=True)
@@ -170,7 +170,12 @@ _MALFORMED_URLS = (
 )
 
 
-def test_malformed_urls_are_an_outcome_not_an_exception() -> None:
+@pytest.mark.parametrize(
+    ("url", "why"),
+    _MALFORMED_URLS,
+    ids=[why for _, why in _MALFORMED_URLS],
+)
+def test_malformed_urls_are_an_outcome_not_an_exception(url: str, why: str) -> None:
     """``fetch_url`` documents that it never raises; these all made it raise.
 
     ``httpx.InvalidURL`` is declared straight off ``Exception``, so the
@@ -182,18 +187,18 @@ def test_malformed_urls_are_an_outcome_not_an_exception() -> None:
     this entire input class.
 
     No network is touched: every URL here is rejected before a request
-    is issued.
+    is issued. Each URL is its own parametrized case so one slow
+    cold-start call cannot exhaust the per-test budget of the others.
     """
-    for url, why in _MALFORMED_URLS:
-        outcome = fetcher.fetch_url(
-            url,
-            timeout_ms=1000,
-            max_bytes=1024,
-            user_agent="ralph-test",
-            allow_private_networks=False,
-        )
-        assert outcome.status == "invalid_url", f"{why}: got {outcome.status}"
-        assert outcome.error
+    outcome = fetcher.fetch_url(
+        url,
+        timeout_ms=1000,
+        max_bytes=1024,
+        user_agent="ralph-test",
+        allow_private_networks=False,
+    )
+    assert outcome.status == "invalid_url", f"{why}: got {outcome.status}"
+    assert outcome.error
 
 
 def test_a_malformed_redirect_target_is_an_outcome_not_an_exception(
