@@ -30,12 +30,18 @@ abandonment path is even considered:
    surfaced; mark each `completed`, `in_progress`, or `remaining`.
 2. **Choose a falsifiable increment** — the smallest verified slice
    that can ship now and that exercises an unknown part of the work.
+{% if IS_WORKER %}
+3. **Confirm assigned scope and readiness**; keep the increment inside
+   the unit and resolve its dependencies without dispatching sub-agents.
+{% else %}
 3. **Dispatch independent ready scopes** to sub-agents where allowed
    while implementing the owned increment on the critical path.
+{% endif %}
 4. **Implement and verify owned work** with focused checks; record
    the disposition and evidence for every reference touched.
-5. **Recompute readiness** after the increment lands, refill freed
-   dispatch slots, then loop.
+5. **Recompute readiness** after the increment lands{% if IS_WORKER %}, then loop
+   within the assigned unit.{% else %}, refill freed
+   dispatch slots, then loop.{% endif %}
 
 {% if IS_WORKER %}
 When the assigned unit proves far larger than its description — deeper
@@ -117,9 +123,9 @@ session, never to a worker (see `shared/_worker_verification.j2`).
    bar. Record the evidence, the remaining work, and the external
    action required per that rule; never restate the bar here.
 
-The worker returns the unit result only after the assigned unit is
-fully proven, or after recording an evidence-backed external
-blocker per the canonical rule.
+The worker must return that one unit result only after the assigned unit
+is fully proven, or after recording an evidence-backed external blocker
+per the canonical rule.
 {% else %}
 ### Main-session recovery (dispatch, integrate, full-gate)
 

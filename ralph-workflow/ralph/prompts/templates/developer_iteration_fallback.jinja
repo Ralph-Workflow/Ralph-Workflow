@@ -150,7 +150,8 @@ status: completed
 {% if IS_WORKER %}- [{{unit_id}}] Focused verification passed.
 {% else %}- [S-1] Focused verification passed.
 {% endif %}  Disposition: completed
-- [plan-overview] Ran the project-wide verification; observed all checks green.
+{% if not IS_WORKER %}- [plan-overview] Ran the project-wide verification; observed all checks green.
   Disposition: completed
+{% endif %}
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path=(WORKER_FALLBACK_PATH if IS_WORKER else '.agent/tmp/development_result.md')) }}

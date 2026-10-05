@@ -1,39 +1,56 @@
-"""Parallel execution guidance locks safe ownership and conflict handling."""
+"""S-1/S-2: delivered parallel guidance preserves safe dispatch obligations."""
 
 from __future__ import annotations
 
-from pathlib import Path
+import pytest
 
-_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
-
-
-def _source() -> str:
-    return (_ROOT / "shared" / "_parallel_execution.jinja").read_text(encoding="utf-8")
-
-
-def test_parallel_guidance_preserves_safe_dispatch_contract() -> None:
-    source = _source()
-    for text in ("independent units", "concurrently", "Never let two agents edit the same file", "main session"):
-        assert text in source
+from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.prompts.developer import (
+    DeveloperPromptInputs,
+    prompt_developer_iteration_xml_with_context,
+)
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities
+from ralph.workspace.memory import MemoryWorkspace
 
 
-def test_parallel_guidance_names_units_paths_and_directories() -> None:
-    source = _source()
-    for text in ("Paths:", "Directories:", "unit", "main session"):
-        assert text in source
+@pytest.mark.parametrize(
+    "template_name",
+    (
+        "developer_iteration.jinja",
+        "developer_iteration_continuation.jinja",
+        "developer_iteration_fallback.jinja",
+    ),
+)
+def test_s1_s2_delivered_main_guidance_preserves_safe_dispatch(template_name: str) -> None:
+    """REPLACE four source pins with public output, including main fallback."""
+    prompt = prompt_developer_iteration_xml_with_context(
+        TemplateContext.default(),
+        DeveloperPromptInputs(prompt_content="Implement API", plan_content="[S-1] API"),
+        MemoryWorkspace(root="/workspace"),
+        SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        template_name=template_name,
+    )
+    delivered = " ".join(prompt.split())
 
-
-def test_parallel_guidance_serializes_ownership_conflicts_without_broadening() -> None:
-    source = _source()
-    assert "When two ready units claim overlapping paths" in source
-    assert "serialize the conflicting units in dependency order" in source
-    assert "never widen a worker's file scope" in source
-    assert "re-cut the units" in source
-
-
-def test_parallel_guidance_excludes_pipeline_state_paths() -> None:
-    source = _source()
-    assert "Worker scope never includes" in source
-    assert ".agent" in source
-    assert ".git" in source
-    assert ".worktrees" in source
+    for obligation in (
+        "independent units",
+        "concurrently",
+        "Never let two agents edit the same file",
+        "Paths:",
+        "Directories:",
+        "When two ready units claim overlapping paths",
+        "serialize the conflicting units in dependency order",
+        "never widen a worker's file scope",
+        "re-cut the units",
+        "Worker scope never includes `.agent`, `.git`, or `.worktrees`",
+        "A worker cap limits concurrent units, not total units",
+        "queue later ready units",
+        "no active writer",
+        "Wait for all writers",
+        "inability to fan out",
+        "bounded sequential increments",
+        "do not bypass brokered permissions",
+        "main session",
+    ):
+        assert obligation.lower() in delivered.lower(), (template_name, obligation)
