@@ -124,7 +124,6 @@ def _units(document: ParsedDocument, name: str, steps: list[Content]) -> list[Co
                 if separator and key is not None:
                     entry[key] = _values(value)
             entries.append(entry)
-    attach_owned_step_ids(document, entries, steps, section_name=name)
     return entries
 
 
@@ -141,6 +140,8 @@ def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> boo
     }
     for section in document.sections:
         if section.name in {"Work Units", "Parallel Plan"}:
+            if any(line.text.strip() for line in section.lines):
+                return True
             continue
         if section.blocks:
             if any(block.identifier not in unit_step_ids for block in section.blocks):
@@ -160,6 +161,7 @@ def _to_content(document: ParsedDocument) -> Content:
         content["steps"] = steps
     units = _units(document, "Work Units", steps)
     parallel = _units(document, "Parallel Plan", steps)
+    attach_owned_step_ids(document, [*units, *parallel], steps, section_names=("Work Units", "Parallel Plan"))
     if any(
         line.text.startswith("-")
         for section in document.sections

@@ -29,7 +29,7 @@ def attach_owned_step_ids(
     entries: list[Content],
     steps: list[Content],
     *,
-    section_name: str = "Work Units",
+    section_names: tuple[str, ...] = ("Work Units",),
 ) -> None:
     """Attach each nested step to at most one explicit work unit in place."""
     owner_by_step: dict[str, str] = {}
@@ -38,7 +38,7 @@ def attach_owned_step_ids(
     }  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     for index, section in enumerate(document.sections):
-        if section.name == section_name:
+        if section.name in section_names:
             _claim_work_unit_section_steps(
                 _owned_sections(document, index),
                 entry_by_id,
@@ -49,7 +49,7 @@ def attach_owned_step_ids(
     for unit_id in entry_by_id:
         key_to_ids.setdefault(_owner_key(unit_id), []).append(unit_id)
     for index, section in enumerate(document.sections):
-        if section.name == section_name:
+        if section.name in section_names:
             continue
         matching_ids = key_to_ids.get(_owner_key(section.name), [])
         if len(matching_ids) == 1:

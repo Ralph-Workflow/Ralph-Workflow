@@ -114,25 +114,22 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (12, "12"),
-        (16, "12"),
-        (32, "12"),
-        (64, "12"),
+        (12, "8"),
+        (16, "8"),
+        (32, "8"),
+        (64, "8"),
     ),
 )
-def test_auto_worker_count_preserves_headroom_and_caps_at_twelve(
+def test_auto_worker_count_uses_verified_eight_shard_cap(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps the shard count at the verified 12-worker limit.
+    """Auto profile caps shards at the verified eight-worker limit.
 
-    A 12-core host therefore uses twelve shards; larger hosts remain bounded
-    by the same verified cap.
-
-    The 40-core verification host uses 12 shards so Python/pytest startup,
-    collection, and filesystem contention cannot consume the one-second
-    per-test watchdog or the parent deadline.
+    Twelve concurrent pytest processes exhaust the parent deadline on the
+    maintained 12-core host. Eight shards complete the full selected suite
+    within the immutable budget while preserving exact-once selection.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

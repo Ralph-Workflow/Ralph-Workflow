@@ -481,3 +481,27 @@ def test_fanout_keeps_pre_unit_residual_prose_in_main_session(tmp_path: Path) ->
 
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.phase == "development"
+
+
+def test_fanout_keeps_unassigned_work_unit_prose_in_main_session(tmp_path: Path) -> None:
+    _write_plan_artifact(
+        tmp_path,
+        (
+            "## Work Units\n"
+            "- [one] Implement first component\n"
+            "  Paths: src/one.py\n"
+            "- [two] Implement second component\n"
+            "  Paths: src/two.py\n"
+            "Regenerate release/manifest.json before starting either unit.\n"
+        ),
+    )
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _legacy_fan_out_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"

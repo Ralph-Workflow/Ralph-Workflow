@@ -157,3 +157,30 @@ def test_protected_ownership_is_absent_from_rendered_worker_scope() -> None:
     assert '["tests/one.py"]' in prompt
     for forbidden in (".agent/secret", ".git/hooks", ".worktrees/secret.py"):
         assert forbidden not in prompt
+
+
+def test_mixed_unit_sections_preserve_cross_section_step_dependencies() -> None:
+    content, diagnostics, _ = analyze_plan_document("""## Work Units
+- [producer] Implement shared producer
+  Paths: src/producer.py
+
+### [S-1] Build producer
+Files:
+- modify src/producer.py
+
+## Parallel Plan
+- [consumer] Implement independent consumer
+  Paths: src/consumer.py
+
+### [S-2] Build consumer
+Depends on: S-1
+Files:
+- modify src/consumer.py
+""")
+    assert diagnostics == []
+    parsed = parse_work_units_from_artifact(content)
+    assert parsed is not None
+    assert {unit.unit_id: unit.dependencies for unit in parsed.work_units} == {
+        "producer": [],
+        "consumer": ["producer"],
+    }
