@@ -13,6 +13,22 @@ integration step follows fan-in. This proposed split is the sole exception to
 the analysis decision's no-remedies rule; do not add a `## How To Fix` section.
 These decision-artifact requirements do not impose a format on the plan.
 
+## Review criteria
+
+- **Coverage:** every part of the request is addressed.
+- **Truthfulness:** paths, commands, and current-behavior claims match fresh
+  repository evidence.
+- **Actionability:** the executor knows what to change and how to show it works.
+- **Parallel decomposition:** independent work can run concurrently; list order
+  or invented dependencies do not substitute for actual coupling.
+- **Execution conflicts:** concurrent units do not write the same file, and
+  consumers follow their shared-contract producer.
+
+Keep analysis read-only. Delegate independent checks to read-only subagents,
+then reproduce every relied-on lead in the main session. The planner's account
+is not proof. Record evidence for every criterion; the excerpt below illustrates
+one non-met criterion rather than a complete review of a real repository.
+
 ## Request-changes example
 
 ```markdown

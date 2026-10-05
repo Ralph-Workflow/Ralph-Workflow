@@ -92,6 +92,7 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
         "no counterexample found",
         "Correctness outranks a passing proxy",
         "Report only material, localized findings",
+        "Do not change the implementation",
     ):
         assert required in rendered[contract_start:final_action], (template_name, required)
     if template_name == "planning_analysis":
@@ -134,6 +135,13 @@ def test_planning_analysis_includes_five_substantive_criteria() -> None:
 
     for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
         assert criterion in source
+    for expected in (
+        "every part of the request",
+        "Paths, commands, and current-behavior claims",
+        "what to change and how to show it works",
+        "reproduce every relied-on lead",
+    ):
+        assert expected in source
     assert "Do not grade formatting" in source
     assert "## Criterion Verdicts" in source
     assert "## Decision artifact" in source

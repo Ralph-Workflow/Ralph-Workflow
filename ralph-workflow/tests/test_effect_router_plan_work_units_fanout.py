@@ -433,10 +433,8 @@ def test_fanout_keeps_pre_unit_residual_prose_in_main_session(tmp_path: Path) ->
     _write_plan_artifact(
         tmp_path,
         (
-            "Implement all requested components and verify their integration before completion.\n"
-            "\n"
-            "Release preparation: prepare release/manifest.json, tag the release, "
-            "and verify the published artifact.\n"
+            "## Release preparation\n"
+            "Prepare release/manifest.json, tag the release, and verify the published artifact.\n"
             "\n"
             "## Work Units\n"
             "- [one] Implement first component\n"

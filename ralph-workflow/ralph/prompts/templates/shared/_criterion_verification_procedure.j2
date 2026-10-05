@@ -6,7 +6,7 @@
 4. Give every criterion exactly one `met`, `not met`, or `not evaluable` verdict with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Localize every finding to a file/location or output line. Do not report a finding that cannot be localized.
 5. Report only material, localized findings tied to a criterion and exact site. Stop and escalate a criteria/evidence conflict, unsatisfiable or insufficient criterion, or contradictory test; do not weaken or edit a test or narrow a criterion to fit the worktree. If proof cannot complete, use `failed`.
 {% if planning_unit_split_allowed|default(false) %}
-For a planning parallel-decomposition finding, include the proposed unit split in its Observation. Do not propose other remedies in this decision.
+Do not change the implementation. For a planning parallel-decomposition finding, include the proposed unit split in its Observation. Do not propose other remedies in this decision.
 {% else %}
 Do not change the implementation; do not propose remedies in this decision.
 {% endif %}

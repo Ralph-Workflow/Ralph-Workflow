@@ -58,10 +58,7 @@ def attach_owned_step_ids(
 
     _claim_steps_by_target(entries, steps, owner_by_step)
     ordered_step_ids = [
-        block.identifier
-        for section in document.sections
-        for block in section.blocks
-        if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is not None
+        identifier for step in steps if isinstance((identifier := step.get("id")), str)
     ]
     for unit_id, entry in entry_by_id.items():
         owned = sorted(

@@ -128,6 +128,31 @@ def _units(document: ParsedDocument, name: str, steps: list[Content]) -> list[Co
     return entries
 
 
+def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> bool:
+    """Keep prose that extraction cannot safely assign out of fan-out."""
+    metadata_sections = {
+        "Summary",
+        "Scope",
+        "Skills MCP",
+        "Steps",
+        "Critical Files",
+        "Risks",
+        "Verification",
+    }
+    for section in document.sections:
+        if section.name in {"Work Units", "Parallel Plan"}:
+            continue
+        if section.blocks:
+            if any(block.identifier not in unit_step_ids for block in section.blocks):
+                return True
+            continue
+        if section.name not in metadata_sections and (section.lines or section.items):
+            return True
+        if section.name not in metadata_sections and section.lines:
+            return True
+    return False
+
+
 def _to_content(document: ParsedDocument) -> Content:
     content: Content = {}
     steps = _steps(document)
@@ -142,18 +167,17 @@ def _to_content(document: ParsedDocument) -> Content:
         for line in section.lines
     ):
         content["unextractable_work_units"] = True
-    unit_section_seen = False
-    for section in document.sections:
-        if section.name in {"Work Units", "Parallel Plan"}:
-            unit_section_seen = True
-            continue
-        if unit_section_seen and (section.lines or section.items or section.blocks):
-            # Native fan-out advances immediately after worker completion. A
-            # later section is prose work outside every unit, irrespective
-            # of its heading or Markdown shape, so retain it with the main
-            # agent.
-            content["unextractable_work_units"] = True
-            break
+    unit_step_ids: set[str] = set()
+    for unit in (*units, *parallel):
+        raw_step_ids = unit.get("step_ids")
+        if isinstance(raw_step_ids, list):
+            unit_step_ids.update(
+                step_id for step_id in raw_step_ids if isinstance(step_id, str)
+            )
+    if (units or parallel) and _has_residual_work(document, unit_step_ids):
+        # Keep non-unit prose or unowned blocks in the main session instead
+        # of allowing fan-out to silently drop it.
+        content["unextractable_work_units"] = True
     if units:
         content["work_units"] = units
     if parallel:

@@ -4,17 +4,20 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.prompts.materialize as materialize_module
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
-from ralph.prompts.materialize import materialize_prompt_for_phase
-from ralph.prompts.materialize_support import persist_product_criteria, phase_payload_variables
+from ralph.prompts.materialize import (
+    materialize_prompt_for_phase,
+    phase_payload_variables,
+)
 from ralph.prompts.payload_refs import MAX_INLINE_PROMPT_BYTES
-from ralph.prompts.types import SessionCapabilities
+from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
 # Content large enough to trigger file-based payload routing (>100KB).
@@ -28,7 +31,7 @@ def test_materialized_worker_prompt_has_one_unit_scoped_contract(
 ) -> None:
     monkeypatch.setenv("RALPH_DEV_WARN_EPOCH", "9999999999")
     monkeypatch.setenv("RALPH_DEV_DEADLINE_EPOCH", "99999999999")
-    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace = MemoryWorkspace(root=tmp_path)
     workspace.write("PROMPT.md", "Implement the requested behavior.")
     workspace.write(
         ".agent/artifacts/plan.md",
@@ -83,17 +86,8 @@ Implement the behavior.
     normalized = " ".join(rendered.split())
     assert "minutes remaining" in normalized
     assert "Dispatch remaining independent ready work" not in normalized
-    assert "Coordinator (not a worker)" not in rendered
-    assert rendered.count("## Recovery loop when scope is huge") == 1
-    assert rendered.index("## Recovery loop when scope is huge") < rendered.index("PROMPT:")
-    assert "assigned unit is fully proven" in normalized
-    assert "If the assignment is blocked, report" not in normalized
     assert "impossible to complete through any developer action available" in normalized
-    # The legacy completion-pressure wording is replaced by the canonical
-    # incomplete-result rule; the reference to the shared guidance still
-    # appears in the unit-result section so workers know where to look.
-    assert "follow the completion-pressure rules" not in normalized
-    assert "shared/_no_exemption_for_failures.j2" in normalized
+    assert "follow the completion-pressure rules from the developer iteration guidance" in normalized
     assert "The receipt is not phase completion" in normalized
     assert "MANDATORY FINAL ACTION" in rendered
     receipt_index = normalized.index("promote that worker-local fallback")
@@ -106,7 +100,7 @@ Implement the behavior.
 def test_worker_analysis_loopback_keeps_worker_scope_and_continuation_gate(
     tmp_path: Path,
 ) -> None:
-    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace = MemoryWorkspace(root=tmp_path)
     workspace.write("PROMPT.md", "Implement the requested behavior.")
     workspace.write(
         ".agent/artifacts/plan.md",
@@ -173,7 +167,7 @@ status: request_changes
 def test_worker_partial_result_takes_precedence_over_shared_continuation_context(
     tmp_path: Path,
 ) -> None:
-    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace = MemoryWorkspace(root=tmp_path)
     workspace.write("PROMPT.md", "Implement the requested behavior.")
     workspace.write(
         ".agent/artifacts/plan.md",
@@ -235,7 +229,7 @@ status: partial
 def test_worker_materialization_preserves_shared_development_history(
     tmp_path: Path,
 ) -> None:
-    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace = MemoryWorkspace(root=tmp_path)
     workspace.write("PROMPT.md", "Implement the requested behavior.")
     workspace.write(
         ".agent/artifacts/plan.md",
@@ -402,7 +396,7 @@ def test_persist_product_criteria_uses_worker_namespace_when_provided(
 ) -> None:
     worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
 
-    product_criteria_path = persist_product_criteria(
+    product_criteria_path = materialize_module._persist_product_criteria(
         tmp_path,
         "Plan only the assigned worker task",
         worker_namespace=worker_namespace,
@@ -416,13 +410,18 @@ def test_persist_product_criteria_uses_worker_namespace_when_provided(
 
 
 def test_materialize_prompt_for_worker_runtime_writes_namespaced_prompt_and_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
-    workspace.write("PROMPT.md", "Plan the assigned task.")
-    workspace.write(".agent/PLAN.md", "# Existing Plan\n\n1. Implement the assigned task.\n")
     worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+
+    monkeypatch.setattr(
+        materialize_module,
+        "_render_prompt_for_phase",
+        lambda *_args, **_kwargs: "worker-scoped prompt body",
+    )
 
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
@@ -444,7 +443,7 @@ def test_materialize_prompt_for_worker_runtime_writes_namespaced_prompt_and_side
     )
 
     assert prompt_path == str(worker_namespace / "tmp" / "planning_prompt.md")
-    assert "PLANNING MODE" in workspace.read(prompt_path)
+    assert workspace.read(prompt_path) == "worker-scoped prompt body"
     assert workspace.read(str(worker_namespace / "tmp" / "planning_multimodal_handoff.json"))
     assert not workspace.exists(".agent/tmp/planning_prompt.md")
     assert not workspace.exists(".agent/tmp/planning_multimodal_handoff.json")

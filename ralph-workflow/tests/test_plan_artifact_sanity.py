@@ -3,6 +3,51 @@
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 
 
+def test_unit_ownership_only_references_usable_extracted_steps() -> None:
+    oversized_id = "S-" + "9" * 4_301
+    text = (
+        "## Work Units\n- [api] Implement the requested API changes with focused behavior tests.\n"
+        "  Paths: src/api.py\n"
+        f"### [{oversized_id}] Keep this unextractable step as prose\n"
+        "### [S-1] Implement the usable step\n"
+    )
+    content, diagnostics, _ = analyze_plan_document(text)
+    assert diagnostics == []
+    assert content["work_units"] == [{
+        "unit_id": "api",
+        "description": "Implement the requested API changes with focused behavior tests.",
+        "allowed_directories": [],
+        "allowed_paths": ["src/api.py"],
+        "dependencies": [],
+        "step_ids": ["S-1"],
+    }]
+
+
+def test_colon_prefixed_prose_outside_frontmatter_remains_main_session_work() -> None:
+    text = (
+        "---\nnoop: false\n---\n"
+        "Integration: Verify all requested behavior after the independent API changes finish.\n"
+        "## Work Units\n- [api] Implement API changes\n  Paths: src/api.py\n"
+    )
+    content, diagnostics, _ = analyze_plan_document(text)
+    assert diagnostics == []
+    assert content.get("unextractable_work_units") is True
+
+
+
+def test_heading_wrapped_prose_before_work_units_remains_main_session_work() -> None:
+    text = (
+        "## Release preparation\n"
+        "Prepare release/manifest.json and verify the published artifact after both components finish.\n"
+        "## Work Units\n"
+        "- [one] Implement first component\n  Paths: src/one.py\n"
+        "- [two] Implement second component\n  Paths: src/two.py\n"
+    )
+    content, diagnostics, _ = analyze_plan_document(text)
+    assert diagnostics == []
+    assert content["unextractable_work_units"] is True
+
+
 def test_sanity_applies_to_noop_and_invalid_unicode() -> None:
     for text in (
         "---\ntype: plan\nnoop: true\n---",
@@ -136,27 +181,34 @@ def test_unreadable_and_obvious_nonplan_text_is_rejected() -> None:
 
 
 def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
-    """DA-001 regression: actionable prose beginning ``As an aid`` must not
-    be flagged as an AI refusal, while a genuine AI-self-description like
-    ``As an AI, I cannot ...`` remains a refusal. The original detector
-    substring-matched the literal ``as an ai``, which also caught the
-    distinct English word ``as an aid`` (a, i, d) and rejected legitimate
-    prose. The fix anchors each refusal prefix with a following
-    whitespace or sentence boundary so ``as an aid`` is no longer
-    matched.
+    """DA-001 regression: actionable prose beginning ``As an aid`` or
+    ``As an AI engineer`` must not be flagged as an AI refusal. The
+    original detector substring-matched the literal ``as an ai``, which
+    also caught the distinct English word ``as an aid`` (a, i, d) and
+    legitimate self-descriptions like ``As an AI engineer, inspect the
+    parser...``. Per the product criteria, refusal detection is reduced
+    to obvious cases (``I cannot``/``I'm sorry``); the ``as an ai``
+    family is dropped entirely so every readable, on-topic plan
+    receives a receipt.
     """
-    prose = (
+    legitimate_plans = (
         "As an aid to maintainers, document the public API, implement "
-        "regression tests, and verify the resulting behavior thoroughly."
+        "regression tests, and verify the resulting behavior thoroughly.",
+        "As an AI engineer, inspect the parser, implement the fix, and "
+        "verify the resulting public behavior with focused regression tests.",
+        "As an AI language model with access to the repository, here is "
+        "the proposed plan for the parser fix and its verification steps.",
     )
-    _, diagnostics, _ = analyze_plan_document(prose)
-    assert diagnostics == [], [d.rule_id for d in diagnostics]
-    # Genuine AI self-descriptions still must fail the sanity gate.
+    for text in legitimate_plans:
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert diagnostics == [], (
+            f"unexpected PLAN001 for legitimate plan: {text!r}; got {[d.rule_id for d in diagnostics]}"
+        )
+    # Genuine refusals still must fail the sanity gate via the
+    # ``I cannot`` / ``I'm sorry`` prefixes.
     for text in (
-        "As an AI, I cannot complete this request without access to "
-        "the repository's secrets and private configuration files now.",
-        "As an AI language model, I cannot help with this request because "
-        "the action would violate the published safety policy today.",
+        "I cannot complete this request because I cannot access the repository secrets.",
+        "I'm sorry, I cannot help with that request as an AI assistant without more information.",
     ):
         _, diagnostics, _ = analyze_plan_document(text)
         assert [item.rule_id for item in diagnostics] == ["PLAN001"]

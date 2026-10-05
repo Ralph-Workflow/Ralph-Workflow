@@ -15,12 +15,12 @@ _REFUSAL_PREFIXES = (
     "i can not",
     "i'm sorry",
     "im sorry",
-    "as an ai ",
-    "as an ai,",  # honor explicit AI-self-description with comma follow-on
-    "as an ai.",
-    "as an ai\n",
-    "as an ai\t",
 )
+# ponytail: dropped ``as an ai`` family because it catches legitimate
+# self-description like ``As an AI engineer`` while still requiring
+# boundary word logic that the product criteria says to avoid. A
+# submission beginning with that phrase is treated as a usable plan;
+# genuine refusals keep failing through ``I cannot`` / ``I'm sorry``.
 _PLACEHOLDERS = ("plan goes here", "todo: plan", "todo plan", "fixme: plan", "tbd: plan")
 
 

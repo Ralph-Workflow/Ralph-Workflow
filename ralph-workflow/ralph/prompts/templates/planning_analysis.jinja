@@ -18,22 +18,26 @@ Verify that the submitted plan is truthful and executable.
 Read the submitted plan, the request, and cited repository areas. Check claims
 against fresh evidence. Do not grade formatting, headings, field presence, IDs,
 unit syntax, caps, directory disjointness, or the planner's account as proof.
-The analysis does not grade document shape: do not grade document shape, the
-use of frontmatter, the choice between ``## Work Units`` and ``## Parallel
-Plan``, or any other surface convention; verdict on substance, not on shape.
 
 ## Review contract
 
-Return criterion-level verdicts, not a holistic quality score. The five
-substantive criteria are: coverage, truthfulness, actionability, parallel
-decomposition, and execution conflicts. Parallel decomposition is not met when
-independent work is serialized through invented dependencies, list order, or a
-single chain without stated coupling. For avoidable serialization, return
-`request_changes`. Name the independent branches and propose a concrete unit
-split in the finding's Observation, with only evidenced prerequisites. Execution conflicts are not
-met when concurrent writers share a file or a consumer precedes its shared
-contract producer. Delegate independent checks to read-only subagents and
-reconcile their fresh evidence.
+Return criterion-level verdicts, not a holistic quality score. Review these five
+substantive criteria:
+
+1. **coverage** — The plan addresses every part of the request.
+2. **truthfulness** — Paths, commands, and current-behavior claims match the repository.
+3. **actionability** — The executor can tell what to change and how to show it works.
+4. **parallel decomposition** — Independent work can run concurrently. This is
+   not met when invented dependencies, list order, or a single chain without
+   stated coupling serialize independent work. For avoidable serialization,
+   return `request_changes`. Name the independent branches and propose a concrete
+   unit split in the finding's Observation, with only evidenced prerequisites.
+5. **execution conflicts** — Concurrent units do not write the same file, and
+   no consumer precedes its shared-contract producer.
+
+Delegate independent checks to read-only subagents. Treat their output as leads,
+not proof: reproduce every relied-on lead in the main session before recording
+a verdict, then reconcile the fresh evidence.
 
 {% set planning_decision_example %}
 ---
