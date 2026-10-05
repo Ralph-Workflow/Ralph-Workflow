@@ -212,6 +212,14 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # shipped file, so the guard would stop detecting drift entirely. Reading
     # those files is the ONLY thing the test needs exempted.
     "test_visual_verdict_policy_alignment",
+    # Parallel-execution guidance regression guard. Reads the shipped
+    # ``ralph/prompts/templates/shared/_parallel_execution.jinja`` partial
+    # because its literal contents are the regression contract: the test
+    # pins the wave/ownership/protected-path prose, a fixture copy would
+    # assert the fixture's contents, not the shipped file's, and a
+    # ``tmp_path`` rewrite would defeat the drift guard. Reading that one
+    # template is the ONLY thing the test needs exempted.
+    "test_developer_prompt_subagent_guidance",
     # per-file-ignores inventory drift guard. Reads the shipped
     # ``pyproject.toml`` and ``docs/ralph-workflow-policy/linting-policy.md``
     # because the policy document claims to be "the complete inventory of
