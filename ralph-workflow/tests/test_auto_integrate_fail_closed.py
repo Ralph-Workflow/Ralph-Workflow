@@ -19,7 +19,8 @@ repair", so an unreadable repository was left with a possible
 ``MERGE_HEAD`` and no abort attempt. Those callers now read
 ``merge_state`` directly.
 
-Every test here injects git through ``ralph.git.merge.run_git`` and
+Every test here injects git through ``run_git`` in ``ralph.git.merge`` (and
+``ralph.git.merge_obstructions``, which the merge consults first) and
 touches no repository, so the file stays in the DEFAULT (budget-tracked)
 suite: ``worktree_lookup``, ``merge_state`` and ``abort_merge`` pass
 ``repo_root`` to ``run_git`` as ``cwd`` and never open a GitPython
@@ -104,6 +105,7 @@ def _install_git_stub(
         return _result(raw_argv, returncode, stdout)
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
+    monkeypatch.setattr("ralph.git.merge_obstructions.run_git", _fake_run_git)
     return calls
 
 
@@ -412,6 +414,7 @@ def _install_sequenced_git_stub(
         return _result(raw_argv, returncode, stdout)
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
+    monkeypatch.setattr("ralph.git.merge_obstructions.run_git", _fake_run_git)
     return calls
 
 

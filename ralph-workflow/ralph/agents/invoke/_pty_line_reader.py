@@ -1119,24 +1119,61 @@ class PtyLineReader:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
 
-    def _completion_evidence_thread(self) -> None:
-        if self._workspace_path is None or self._completion_run_id is None:
-            return
+    def _completion_evidence_enabled(self) -> bool:
+        return (
+            self._workspace_path is not None
+            and self._completion_run_id is not None
+            and self._evaluate_completion_fn is not None
+        )
+
+    def _durable_completion_is_terminal(self) -> bool:
         evaluate_completion_fn = self._evaluate_completion_fn
-        if evaluate_completion_fn is None:
+        if (
+            evaluate_completion_fn is None
+            or self._workspace_path is None
+            or self._completion_run_id is None
+        ):
+            return False
+        signals = evaluate_completion_fn(
+            self._workspace_path,
+            [],
+            required_artifact=self._required_artifact,
+            run_id=self._completion_run_id,
+            sentinel_secret=_parent_broker_secret(),
+            receipt_secret=_parent_broker_secret(),
+        )
+        return completion_signals_terminal(signals)
+
+    def _completion_evidence_thread(self) -> None:
+        if not self._completion_evidence_enabled():
             return
         while not self._monitor_stop.wait(0.25):
-            signals = evaluate_completion_fn(
-                self._workspace_path,
-                [],
-                required_artifact=self._required_artifact,
-                run_id=self._completion_run_id,
-                sentinel_secret=_parent_broker_secret(),
-                receipt_secret=_parent_broker_secret(),
-            )
-            if completion_signals_terminal(signals):
+            if self._durable_completion_is_terminal():
                 self._request_interactive_exit()
                 return
+
+    def _finish_terminal_completion(self) -> bool:
+        """Stop a session whose completion evidence is already durable.
+
+        Once ``declare_complete`` is durable the session is finished: the
+        parent was told to ``/exit`` and its subtree is reaped here. Waiting
+        on "child work" afterwards only measures unrelated workspace churn,
+        which in the activity-only profile can hold the done path open until
+        the operator ceiling.
+        """
+        terminal = self._completion_exit_sent
+        if not terminal:
+            with contextlib.suppress(Exception):
+                terminal = self._durable_completion_is_terminal()
+        if not terminal:
+            return False
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if pid is not None:
+            with contextlib.suppress(Exception):
+                teardown_subtree(pid, issuer="invoke:pty")
+        return True
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1651,6 +1688,8 @@ class PtyLineReader:
                 overflow.append(line)
 
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        if self._finish_terminal_completion():
+            return
         # A conflict resolver can outlive its foreground PTY parent while a
         # scoped MCP/server child continues to produce recognised activity.
         # An ordinary elapsed drain would cut that work off despite liveness,

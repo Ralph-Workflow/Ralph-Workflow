@@ -1672,6 +1672,127 @@ def _announce_blocked_dispatch(
         )
 
 
+def _is_planning_entry(state: PipelineState, ctx: _LoopContext) -> bool:
+    """Whether ``state`` is about to dispatch a planning phase."""
+    pipeline = ctx.policy_bundle.pipeline
+    phase = str(state.phase)
+    if phase == pipeline.entry_phase:
+        return True
+    definition = pipeline.phases.get(phase)
+    return definition is not None and definition.drain == "planning"
+
+
+def _configured_sync_target(ctx: _LoopContext) -> tuple[Path, str] | None:
+    """The (repo root, integration target) planning must contain, if any."""
+    config: object = getattr(ctx, "config", None)
+    general: object = getattr(config, "general", None)
+    if general is None:
+        return None
+    enabled: object = getattr(general, "auto_integrate_enabled", True)
+    target: object = getattr(general, "auto_integrate_target", None)
+    if not enabled or not isinstance(target, str) or not target:
+        return None
+    root = Path(ctx.workspace_scope.root)
+    # filesystem-read-ok: git metadata probe -- a non-repository context has no branch to sync
+    if not (root / ".git").exists():
+        return None
+    return root, target
+
+
+def _planning_sync_gap(ctx: _LoopContext) -> str | None:
+    """Why HEAD does not provably contain the integration target, or ``None``.
+
+    Ground truth only: ``git merge-base --is-ancestor <target> HEAD``. No
+    integration record, skip reason or stale verdict can stand in for it --
+    a clean tree after an aborted or refused merge is still a stale branch.
+    An unreadable answer is a gap, never "in sync".
+    """
+    from ralph.git.merge import observe_branch_sha
+    from ralph.git.merge_obstructions import ancestry_state
+
+    configured = _configured_sync_target(ctx)
+    if configured is None:
+        return None
+    root, target = configured
+    sha, query_ok = observe_branch_sha(root, target)
+    if query_ok and sha is None:
+        return (
+            f"configured integration target '{target}' does not exist; set"
+            " general.auto_integrate_target to the branch this work integrates into"
+            " (or disable general.auto_integrate_enabled)"
+        )
+    contained = ancestry_state(root, target, "HEAD")
+    if contained is True:
+        return None
+    if contained is False:
+        return f"branch does not contain the tip of '{target}'"
+    return f"cannot prove the branch contains '{target}' (ancestry query failed)"
+
+
+def _ensure_planning_in_sync(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
+    """Planning never starts on a branch that is behind its integration target.
+
+    When HEAD does not contain the target, Ralph integrates it right here --
+    nobody else will. Uncommitted work that would make integration skip is
+    preserved in a commit first; then the integration runs with the
+    configured conflict resolver: rebase, endpoint-merge fallback, and the
+    resolver agent for every conflict (including merges git refused to
+    start because local files were in the way). Ground truth is re-read
+    after every attempt. Only when the resolver's own attempt budget is
+    spent and the branch is still behind does the run stop -- it never
+    plans against a stale branch. Returns the (possibly updated) state and,
+    when blocked, the loop's exit tuple.
+    """
+    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
+
+    if not _is_planning_entry(state, ctx):
+        return state, None
+    gap = _planning_sync_gap(ctx)
+    if gap is None:
+        return state, None
+    configured = _configured_sync_target(ctx)
+    config_obj: object = getattr(ctx, "config", None)
+    attempts = max(1, resolver_attempt_limit(config_obj))
+    for attempt in range(1, attempts + 1):
+        with suppress(Exception):
+            emit_integration_warn_line(
+                ctx.active_display,
+                f"planning held until the branch is in sync ({gap});"
+                f" integrating now (attempt {attempt}/{attempts})",
+            )
+        if configured is not None:
+            _preserve_uncommitted_work(configured[0], configured[1])
+        integrated = _run_startup_integration(ctx, state.rebase)
+        if integrated is not None:
+            state = state.copy_with(rebase=integrated)
+            _save_recovered_rebase_checkpoint(state, ctx)
+        gap = _planning_sync_gap(ctx)
+        if gap is None:
+            return state, None
+    outcome = state.rebase.last_reason or state.rebase.last_action or "no integration outcome"
+    detail = f"{gap}; {attempts} integration attempt(s) with the conflict resolver did not land it"
+    detail += f" (last: {outcome})"
+    state = state.copy_with(last_error=f"planning blocked: {detail}")
+    _save_recovered_rebase_checkpoint(state, ctx)
+    with suppress(Exception):
+        emit_integration_warn_line(ctx.active_display, f"planning blocked: {detail}")
+    return state, (state, prev_phase, 1)
+
+
+def _preserve_uncommitted_work(root: Path, target: str) -> None:
+    """Commit tracked edits so integration does not skip a dirty worktree. Never raises."""
+    from ralph.git.merge_obstructions import preserve_uncommitted_tracked_work
+
+    try:
+        preserve_uncommitted_tracked_work(root, target)
+    except Exception as exc:
+        logger.warning("integration: could not preserve uncommitted work: {}", exc)
+
+
 def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bool:
     """Whether a recorded exhaustion still describes the conflict on disk.
 
@@ -1847,6 +1968,36 @@ def _initialize_loop_timeboxes(state: PipelineState, ctx: _LoopContext) -> Pipel
     )
 
 
+def _resolution_ladder_exhausted(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, str, int] | None:
+    """End the run once the failed route is reached with the ladder spent."""
+    if not (
+        state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
+        and state.rebase.resolution_exhausted
+    ):
+        return None
+    trail = "; ".join(state.rebase.conflict_strategies_tried)
+    state = state.copy_with(last_error=f"resolution strategy ladder exhausted: {trail}")
+    emit_activity_line(
+        ctx.active_display,
+        None,
+        status_text("Pipeline failed", state.last_error or trail, "red"),
+    )
+    return state, prev_phase, 1
+
+
+def _publish_state_snapshot(ctx: _LoopContext, state: PipelineState) -> None:
+    """Publish the step's state to the snapshot registry, when one is attached."""
+    if ctx.snapshot_registry is None:
+        return
+    from ralph.pro_support.state_query import build_pipeline_state_snapshot
+
+    ctx.snapshot_registry.publish(build_pipeline_state_snapshot(state, ctx.workspace_scope.root))
+
+
 def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1882,22 +2033,16 @@ def _run_inner_loop_after_startup(
     # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
-        if (
-            state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
-            and state.rebase.resolution_exhausted
-        ):
-            trail = "; ".join(state.rebase.conflict_strategies_tried)
-            state = state.copy_with(last_error=f"resolution strategy ladder exhausted: {trail}")
-            emit_activity_line(
-                ctx.active_display,
-                None,
-                status_text("Pipeline failed", state.last_error or trail, "red"),
-            )
-            return state, prev_phase, 1
+        ladder_exhausted = _resolution_ladder_exhausted(state, ctx, prev_phase)
+        if ladder_exhausted is not None:
+            return ladder_exhausted
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:
             return blocked_integration
+        state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
+        if blocked_sync is not None:
+            return blocked_sync
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
         ctx.latest_state[:] = [state]
@@ -1940,14 +2085,7 @@ def _run_inner_loop_after_startup(
             ctx.workspace_scope.root,
             last_status_sig,
         )
-        if ctx.snapshot_registry is not None:
-            from ralph.pro_support.state_query import (
-                build_pipeline_state_snapshot,
-            )
-
-            ctx.snapshot_registry.publish(
-                build_pipeline_state_snapshot(state, ctx.workspace_scope.root)
-            )
+        _publish_state_snapshot(ctx, state)
         delay_ms = state.last_retry_delay_ms
         if isinstance(delay_ms, int) and delay_ms > 0:
             # Structured wait-state detection: the controller sets

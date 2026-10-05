@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
+from ralph.git.merge_obstructions import clear_untracked_merge_obstructions
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseFailed,
@@ -188,6 +189,9 @@ def run_rebase_or_merge(
             RebaseNoOp(routing_reason),
             conflict_resolver,
         )
+    # Untracked leftovers identical to the target would make the rebase
+    # refuse its checkout; clear them so the rebase is actually tried.
+    clear_untracked_merge_obstructions(root, target)
     rebase_outcome = rebase_onto(target, repo_root=root)
     if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return RebaseRunResult(
@@ -207,7 +211,11 @@ def run_rebase_or_merge(
         )
         if resolved is not None:
             return resolved
-        return _fallback_to_endpoint_merge(root, target, rebase_outcome, None)
+        # The endpoint merge is a different integration shape (one merge
+        # of the whole branch, not a commit-by-commit replay), and it is
+        # the last way to land the target: it keeps the resolver, or a
+        # conflicted merge would abort and leave the branch behind.
+        return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
 

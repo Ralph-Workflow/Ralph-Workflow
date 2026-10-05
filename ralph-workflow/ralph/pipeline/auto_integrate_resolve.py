@@ -52,6 +52,7 @@ from ralph.git.merge import (
     staged_conflict_marker_paths,
     unmerged_paths,
 )
+from ralph.git.merge_obstructions import preserve_merge_obstructions
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
@@ -83,6 +84,25 @@ RESOLUTION_FAILED = "resolution_failed"
 RESOLUTION_AGENT_FAILURE = "resolution_agent_failure"
 
 
+def _merge_through_obstructions(root: Path, target: str, *, keep_conflicts: bool) -> MergeResult:
+    """Run the endpoint merge, preserving local work git refuses to overwrite.
+
+    When git REFUSES to start (local work in the way) and a resolver will
+    follow, that work is preserved in a commit and the merge runs again:
+    overlaps become real conflicts the resolver reconciles, instead of the
+    branch silently staying behind its target. Raises what git raises.
+    """
+    result = merge_target_into_current(root, target, keep_conflicts=keep_conflicts)
+    if (
+        keep_conflicts
+        and result.outcome == "conflict"
+        and result.blocked_paths
+        and preserve_merge_obstructions(root, result.blocked_paths, target)
+    ):
+        result = merge_target_into_current(root, target, keep_conflicts=keep_conflicts)
+    return result
+
+
 def endpoint_merge_with_resolution(
     root: Path,
     target: str,
@@ -99,7 +119,7 @@ def endpoint_merge_with_resolution(
     """
     keep = resolver is not None
     try:
-        result = merge_target_into_current(root, target, keep_conflicts=keep)
+        result = _merge_through_obstructions(root, target, keep_conflicts=keep)
     except Exception as merge_exc:
         logger.warning("auto_integrate: endpoint merge raised: {}", merge_exc)
         _abort_merge_safely(root)

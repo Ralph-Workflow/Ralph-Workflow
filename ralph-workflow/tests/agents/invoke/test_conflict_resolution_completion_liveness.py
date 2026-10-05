@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
@@ -299,3 +300,81 @@ def test_conflict_resolution_completion_evidence_gates_the_activity_only_reader(
         requires_completion_evidence=requires,
     )
     assert completion_evidence_gates_reader(ctx) is expected
+
+
+class _EndlessActivityClock(FakeClock):
+    """Feeds fresh activity on every wait, like unrelated workspace churn."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watchdog: IdleWatchdog | None = None
+        self.waits = 0
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        self.waits += 1
+        if self.waits > 50:
+            msg = "done path kept waiting after durable completion"
+            raise AssertionError(msg)
+        self.advance(seconds)
+        if self.watchdog is not None:
+            self.watchdog.record_mcp_tool_call()
+        return event.is_set()
+
+
+def _declared_complete(
+    workspace: Path,
+    raw_output: list[str] | None = None,
+    *,
+    required_artifact: object = None,
+    run_id: str | None = None,
+    sentinel_secret: str | None = None,
+    receipt_secret: str | None = None,
+) -> CompletionSignals:
+    del workspace, raw_output, required_artifact, run_id, sentinel_secret, receipt_secret
+    return CompletionSignals(
+        explicit_complete=True,
+        required_artifact_present=False,
+        artifact_types=(),
+        completion_sentinel_present=True,
+    )
+
+
+def test_conflict_resolution_regression_pty_declared_completion_ends_the_done_path(
+    tmp_path: Path,
+) -> None:
+    """A resolver that called ``declare_complete`` and exited is finished.
+
+    Observed with AGY: after ``declare_complete`` the parent was told to
+    ``/exit`` and its subtree was torn down, yet the activity-only done path
+    kept waiting on "child work" for minutes because unrelated workspace
+    events kept the inactivity verdict from ever firing.
+    """
+    read_fd, write_fd = os.pipe()
+    reader: PtyLineReader | None = None
+    clock = _EndlessActivityClock()
+    try:
+        ctx = AgentRunCtx(
+            config=AgentConfig(cmd="resolver", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            show_progress=False,
+            extra_env={"RALPH_MCP_RUN_ID": "run-1"},
+            workspace_path=tmp_path,
+            policy=TimeoutPolicy(
+                idle_timeout_seconds=10.0,
+                profile=TimeoutProfile.ACTIVITY_ONLY,
+                idle_poll_interval_seconds=0.1,
+            ),
+            execution_strategy=_AlwaysScopedChildStrategy(),
+            evaluate_completion_fn=_declared_complete,
+        )
+        reader = PtyLineReader(_PtyParentExitedHandle(read_fd), "resolver", ctx, clock, extras=None)
+        watchdog = IdleWatchdog(ctx.policy, clock)
+        watchdog.record_invocation_start()
+        clock.watchdog = watchdog
+
+        assert list(reader._handle_done_path(watchdog)) == []
+        assert clock.waits == 0
+    finally:
+        os.close(write_fd)
+        if reader is not None:
+            os.close(reader._input_writer_fd)
+            os.close(reader._read_fd)

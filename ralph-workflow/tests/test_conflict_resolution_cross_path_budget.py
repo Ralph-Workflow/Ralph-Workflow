@@ -218,10 +218,17 @@ def test_remote_refresh_failure_still_books_conflict_budget(
     assert result is not None
 
 
-def test_endpoint_merge_does_not_reinvoke_the_same_identity(
+def test_endpoint_merge_fallback_keeps_the_resolver_after_a_failed_rebase_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A failed rebase resolution must not immediately pay the same resolver again."""
+    """The merge fallback is the last way to land the target, so it keeps its resolver.
+
+    It used to be handed ``None`` after a failed commit-by-commit rebase
+    resolution, so any conflicted merge aborted and the branch stayed
+    behind its target -- planning then ran on stale code. One whole-branch
+    merge is a different integration shape from the replay, and the
+    anti-thrash budget still bounds repeated attempts across seams.
+    """
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline import auto_integrate_rebase_merge as merge_module
@@ -265,14 +272,17 @@ def test_endpoint_merge_does_not_reinvoke_the_same_identity(
 
     monkeypatch.setattr(merge_module, "endpoint_merge_with_resolution", _endpoint)
 
+    def _merge_resolver(*_args: object) -> bool:
+        return True
+
     try:
         merge_module.run_rebase_or_merge(
             tmp_path,
             "main",
-            lambda *_args: True,
+            _merge_resolver,
             rebase_stop_resolver=lambda *_args: False,
         )
-        assert endpoint_calls in ([None], [])
+        assert endpoint_calls == [_merge_resolver]
     finally:
         finish_conflict_attempt(identity)
 

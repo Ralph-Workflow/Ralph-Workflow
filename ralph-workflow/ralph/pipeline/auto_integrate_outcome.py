@@ -151,6 +151,10 @@ def _classify_rebase_conflict_outcome(
             if reason
             else "conflict resolution failed; merge aborted"
         )
+    if merge_outcome.outcome == "conflict" and merge_outcome.reason:
+        # git refused to start the merge (it never conflicted): name why,
+        # with the blocking paths, instead of a generic conflict headline.
+        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
     if merge_outcome.outcome == "conflict":
         return ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
     if merge_outcome.outcome in {"success", "noop"}:
@@ -236,6 +240,8 @@ def classify_merge_only_outcome(
         return ACTION_CONFLICT, "conflict resolution failed; merge aborted"
     if merge_outcome.outcome in {"success", "noop"}:
         return ACTION_MERGED, None
+    if merge_outcome.reason:
+        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
     return ACTION_CONFLICT, f"endpoint merge conflicted ({merge_outcome.outcome})"
 
 

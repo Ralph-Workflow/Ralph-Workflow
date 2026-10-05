@@ -112,6 +112,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # One real-git landing journey retains the external Git boundary proof;
     # decision and recovery variants run in the opt-in subprocess profile.
     "tests/test_auto_integrate_end_to_end.py",
+    # Every merge-refusal shape (untracked / uncommitted obstructions) must
+    # end with the branch containing its target -- the guard against
+    # planning on a stale branch. Real git, so it is registered here.
+    "tests/test_integration_obstruction_real_git.py",
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.

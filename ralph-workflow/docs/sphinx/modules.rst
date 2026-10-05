@@ -3003,6 +3003,13 @@ ralph.git.merge
    :members:
    :show-inheritance:
 
+ralph.git.merge_obstructions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.merge_obstructions
+   :members:
+   :show-inheritance:
+
 ralph.git.rebase
 ~~~~~~~~~~~~~~~~
 

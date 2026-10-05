@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
+from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -242,6 +243,11 @@ class MergeResult:
     #: was never attempted, which is the message a stalled run shows
     #: while explaining nothing about why nobody resolved anything.
     reason: str | None = None
+    #: Paths git named when it REFUSED to start the merge (untracked files
+    #: or local changes it would overwrite). Non-empty only for a refusal:
+    #: no merge ran, so there is nothing for a resolver to repair until
+    #: these paths are preserved (see :func:`ralph.git.merge_obstructions.preserve_merge_obstructions`).
+    blocked_paths: tuple[str, ...] = ()
 
 
 def branch_exists(repo_root: Path | str, name: str) -> bool:
@@ -401,6 +407,7 @@ def merge_target_into_current(
     exposure that the prompt's feedback item flagged.
     """
     repo_root_path = Path(repo_root)
+    clear_untracked_merge_obstructions(repo_root_path, target)
     result = run_git(
         (*COMMIT_PIN_CONFIG_ARGS, "merge", "--no-edit", "--", target),
         cwd=repo_root_path,
@@ -408,6 +415,7 @@ def merge_target_into_current(
     )
     if result.returncode == 0:
         return MergeResult(outcome="success")
+    refusal = merge_refusal(f"{result.stdout}\n{result.stderr}")
     # Conflict path. Unless the caller asked to keep the conflicted
     # merge for resolution, abort so the working tree is left clean
     # (the caller can then record the conflict and return;
@@ -426,6 +434,9 @@ def merge_target_into_current(
                 repo_root_path,
                 state,
             )
+    if refusal is not None:
+        reason, blocked = refusal
+        return MergeResult(outcome="conflict", reason=reason, blocked_paths=blocked)
     return MergeResult(outcome="conflict")
 
 
