@@ -46,7 +46,12 @@ the plan actually uses. The validator never rejects a plan-item ID
 solely for not matching a plan-parsed ID; on plan items it only
 rejects duplicate IDs, a missing or unknown `Disposition`, a missing
 `Rationale` for `adapted` / `not_applicable` / `blocked` items, and
-`blocked` in a completed result. `## Analysis Items Addressed` IDs
+`blocked` in a completed result. When a plan item's *proof text* claims
+the UI work, its proof must also cite a criterion 8 design verdict id
+and ralph://media capture handles — a requirement judged from the
+item's proof text, never from the bracketed reference label, so a
+relabeled reference never changes acceptance. `## Analysis Items
+Addressed` IDs
 are not shape-independent: duplicate analysis-item proof entries and
 missing or unknown analysis finding IDs are hard errors, because
 analysis finding IDs are validated exactly against the prior
@@ -162,6 +167,9 @@ status decides whether the run ends.
   on plan items the validator rejects only duplicate IDs, a missing or
   unknown `Disposition`, a missing `Rationale` for `adapted`,
   `not_applicable`, or `blocked`, and `blocked` in a completed result.
+  A completed item whose proof text claims the UI work must also cite a
+  design verdict id and capture handles, judged from the item's proof
+  text, never from the bracketed reference label.
   The item text is the proof. Add an indented `Disposition:` field with
   one of `completed`, `adapted`, `not_applicable`, or `blocked`. Add an
   indented `Rationale:` for `adapted`, `not_applicable`, and
@@ -200,7 +208,9 @@ item; duplicate item IDs; a missing or unknown `Disposition`; a missing
 completed result; and (at proof validation) duplicate analysis-item
 proof entries and missing or unknown analysis finding IDs — analysis
 finding IDs are validated exactly against the prior analysis's stable
-finding IDs. The validator never rejects
+finding IDs. A completed plan item whose proof text claims the UI work
+also requires a design verdict id and capture handles, judged from the
+proof text, never from the reference label. The validator never rejects
 an ID solely for not matching a plan-parsed ID; coverage of the
 plan's intent is followed through the development-analysis feedback
 loop, not by exact ID matching. The unrecognized-`status` error

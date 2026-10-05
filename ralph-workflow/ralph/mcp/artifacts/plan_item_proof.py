@@ -12,9 +12,12 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-# Regex used to identify UI plan items whose proof must cite a
-# criterion 8 design verdict + capture handles (S-14 / criterion 11).
-UI_LABEL_RE = re.compile(
+# Regex identifying plan items whose *text* claims the UI work: the
+# item text, not the bracketed reference label, decides whether the
+# proof must cite a criterion 8 design verdict + capture handles
+# (S-14 / criterion 11). A stable-ID label like ``[design]`` never
+# triggers the gate on its own.
+UI_TEXT_RE = re.compile(
     r"\b(?:ui|ux|visual|design|appearance|layout|screen|component)\b", re.IGNORECASE
 )
 
@@ -22,10 +25,12 @@ UI_LABEL_RE = re.compile(
 class PlanItemProof(RalphBaseModel):
     """Evidence that a plan item was completed.
 
-    For UI plan items (whose ``plan_item`` text matches
-    :data:`UI_LABEL_RE`), the proof MUST cite a criterion 8 verdict
-    id and at least one capture handle. Non-UI plan items keep the
-    pre-criterion-11 contract (just plan_item + proof).
+    Proof validation is shape-independent: the bracketed ``plan_item``
+    reference never changes what is required. When an item's *proof text*
+    claims the UI work (its text matches :data:`UI_TEXT_RE`), the proof
+    must cite a criterion 8 verdict id and at least one capture handle;
+    other plan items keep the pre-criterion-11 contract (just plan_item
+    + proof).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -43,7 +48,9 @@ class PlanItemProof(RalphBaseModel):
             raise ValueError(f"{self.disposition} plan items require a non-empty rationale")
         if self.disposition in {"not_applicable", "blocked"}:
             return self
-        if not UI_LABEL_RE.search(self.plan_item):
+        # The reference label never changes what proof is required;
+        # judging the claim keeps the check independent of plan shape.
+        if not UI_TEXT_RE.search(self.proof):
             return self
         if not self.verdict_id:
             raise ValueError(
@@ -66,9 +73,13 @@ class PlanItemProof(RalphBaseModel):
         return self
 
 
-def is_ui_plan_item(plan_item: str) -> bool:
-    """Return True iff the plan_item text matches :data:`UI_LABEL_RE`."""
-    return bool(UI_LABEL_RE.search(plan_item))
+def is_ui_plan_item(proof_text: str) -> bool:
+    """Return True iff the *proof text* claims the UI work (:data:`UI_TEXT_RE`).
+
+    The plan item's bracketed reference label is never inspected: proof
+    requirements stay independent of plan shape.
+    """
+    return bool(UI_TEXT_RE.search(proof_text))
 
 
 def validate(value: PlanItemProof | Mapping[str, object]) -> list[str]:

@@ -10,6 +10,9 @@ agree with the runtime behavior in ``ralph/phases/execution.py``:
   ``Disposition``, a missing ``Rationale`` for
   ``adapted`` / ``not_applicable`` / ``blocked``, and ``blocked`` in a
   completed result (the artifact grammar gate, not proof validation).
+  The UI design-evidence gate is shape-independent too: an item's
+  *proof text* claiming the UI work triggers it, never the bracketed
+  reference label.
 - Analysis finding IDs are validated exactly: duplicate analysis-item
   proof entries and missing or unknown analysis finding IDs are hard
   errors raised by ``_analysis_proof_errors``.
@@ -108,3 +111,22 @@ def test_rendered_partial_requires_exact_analysis_finding_id_match() -> None:
 
     assert "must match the prior analysis's stable finding ID exactly" in rendered
     assert "missing or unknown analysis finding ID fails proof validation" in rendered
+
+
+def test_format_doc_states_ui_gate_judges_proof_text_not_reference_label() -> None:
+    """The format doc says the UI design-evidence gate keys on proof text
+    that claims the UI work, never on the bracketed reference label, so
+    acceptance does not depend on how a plan reference is spelled."""
+    text = _normalized(_FORMAT_DOC)
+
+    assert "judged from the item's proof text, never from the bracketed" in text
+    assert "reference label" in text
+
+
+def test_rendered_partial_states_ui_gate_judges_proof_text_not_reference_label() -> None:
+    """The rendered partial scopes the design-evidence requirement to
+    proof text that claims the UI work, not the reference label."""
+    rendered = _rendered_partial()
+
+    assert "judged from the item's proof text, never from the bracketed" in rendered
+    assert "reference label" in rendered

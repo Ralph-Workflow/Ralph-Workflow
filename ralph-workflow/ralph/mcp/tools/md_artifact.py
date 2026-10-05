@@ -784,8 +784,10 @@ def _development_result_context_diagnostics(
         for proof in proofs:
             if not isinstance(proof, dict):
                 continue
-            item_id = proof.get("plan_item") if key == "plan_items_proven" else ""
-            if not isinstance(item_id, str) or not is_ui_plan_item(item_id):
+            # Shape independence: judge the proof text, never the
+            # bracketed reference label. (Analysis proofs are never UI.)
+            proof_text = proof.get("proof") if key == "plan_items_proven" else ""
+            if not isinstance(proof_text, str) or not is_ui_plan_item(proof_text):
                 continue
             verdict_id = proof.get("verdict_id")
             handles_value = proof.get("capture_handles")
