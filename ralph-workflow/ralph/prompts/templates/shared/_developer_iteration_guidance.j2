@@ -42,7 +42,9 @@ handback:
 Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress. Follow the
 role-appropriate recovery loop above: small, proven increments are the method,
 not a stopping point. Do not stop and hand back while ready work remains, and
-do not submit while ready required work remains. `status: completed` is
+do not submit while ready required work remains. The artifact's
+`status:
+completed` frontmatter value is
 permitted only when {% if IS_WORKER %}the assigned unit is proven in full{% else %}every required plan reference is proven
 and the whole plan is complete{% endif %}. Treat `partial`, `blocked`, or `failed` as a
 last resort under the canonical rule in

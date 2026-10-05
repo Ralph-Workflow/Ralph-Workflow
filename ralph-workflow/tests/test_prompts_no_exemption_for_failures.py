@@ -11,7 +11,6 @@ must not alone authorize stopping.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -87,7 +86,8 @@ def test_no_template_sentence_starts_lowercase() -> None:
         stripped = "\n".join(
             line for line in source.splitlines() if not line.lstrip().startswith("{%")
         )
-        for raw_sentence in cast("list[str]", re.split(r"(?<=[.!?])\s+", stripped)):
+        for raw_sentence in re.split(r"(?<=[.!?])\s+", stripped):
+            assert isinstance(raw_sentence, str)
             sentence = raw_sentence.strip()
             if not sentence:
                 continue
