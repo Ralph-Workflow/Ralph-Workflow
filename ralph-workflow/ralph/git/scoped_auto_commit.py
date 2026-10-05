@@ -661,40 +661,43 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                     # Commit raised -- rollback the stage and restore the
                     # pre-staged snapshot so the failed attempt leaves no
                     # half-staged debris.
+                    reset_error: str | None = None
                     try:
                         _ = cast(
                             "None",
                             repo.git.reset("HEAD", "--", *stageable),
                         )
                     except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                        logger.debug(
-                            "commit_deterministic_writes: failed-attempt unstage failed "
-                            "(non-fatal): {}",
+                        # wt-012 DA-006: a failed rollback reset can leave
+                        # the newly staged paths in the index. Surface the
+                        # dirty-index state in the FAILED error so callers
+                        # know manual repair may be needed.
+                        reset_error = str(reset_exc)
+                        logger.warning(
+                            "commit_deterministic_writes: failed-attempt unstage failed; "
+                            "newly staged paths may remain in the index: {}",
                             reset_exc,
                         )
                     _restore_pre_staged_index(repo, pre_staged_snapshots)
+                    error_detail = str(inner_exc)
+                    if reset_error is not None:
+                        error_detail = f"{error_detail}; rollback reset failed: {reset_error}"
                     return ScopedCommitResult(
                         status=ScopedCommitStatus.FAILED,
                         skipped_paths=tuple(skipped),
-                        error=str(inner_exc),
+                        error=error_detail,
                     )
             finally:
                 # Always restore the pre-staged snapshot (modulo any
                 # rollback above) so the user's staged state is preserved
                 # byte-for-byte after the deterministic commit succeeds.
+                # wt-012 DA-006: a failed restoration must not be silently
+                # swallowed while the helper still reports CREATED -- the
+                # user's pre-staged state is lost, so the commit cannot be
+                # considered fully successful. Re-raise so the outer guard
+                # converts it to an explicit FAILED outcome.
                 if pre_staged_snapshots:
-                    try:
-                        _restore_pre_staged_index(repo, pre_staged_snapshots)
-                    except (OSError, GitCommandError) as restore_exc:  # pragma: no cover
-                        # wt-012 DA-003: a failed restoration silently loses
-                        # the user's pre-staged state while the helper still
-                        # reports success. Report it at WARNING so the loss
-                        # is visible at normal verbosity.
-                        logger.warning(
-                            "commit_deterministic_writes: failed to restore pre-staged "
-                            "paths (user's staged state may need manual repair): {}",
-                            restore_exc,
-                        )
+                    _restore_pre_staged_index(repo, pre_staged_snapshots)
         finally:
             close = cast("Callable[[], object] | None", getattr(repo, "close", None))
             if callable(close):
