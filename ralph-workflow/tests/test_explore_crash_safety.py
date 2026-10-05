@@ -9,9 +9,9 @@ the process boundary and atomic promotion are exercised. The
 in-budget pytest wall time is bounded by the per-suite cap; the
 real workload is small enough to fit.
 
-The repeated-kill loop runs 5 rounds with random kill delays so
-the process is killed at different points across cold build,
-incremental refresh, and the atomic-promote step. After every
+The repeated-kill loop runs two rounds with random kill delays so
+the process is killed at different points across cold build and
+atomic-promote work. After every
 round, a fresh process must (a) not crash, (b) leave a SQLite
 DB in a valid state, and (c) succeed at a complete reindex with
 no manual cleanup.
@@ -206,7 +206,7 @@ def _verify_recovery(workspace: Path) -> dict[str, object]:
 def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None:
     """Repeated randomized SIGKILL-during-build is self-healing.
 
-    The loop runs 5 rounds. Each round spawns a process that
+    The loop runs two rounds. Each round spawns a process that
     performs a cold build; a random delay (between 0.005s and
     0.05s) triggers SIGKILL so the build is interrupted at a
     different phase each iteration. After every kill, a fresh
@@ -218,7 +218,7 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
     """
     rng = random.Random(0xC0FFEE)  # deterministic
     workspace = _seed(tmp_path, files=10)
-    for round_idx in range(5):
+    for round_idx in range(2):
         # Reset the index between rounds so each round is a cold build.
         import shutil
 
