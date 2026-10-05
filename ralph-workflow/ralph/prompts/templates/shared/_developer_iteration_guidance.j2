@@ -1,12 +1,16 @@
 ## Completion is the default outcome
 
-Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
+Huge scope changes execution strategy, not required outcome. Your mission in
+this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
 {% if IS_WORKER %}Work as a loop: pick the next ready plan reference, implement it, verify it,
 record its disposition, then immediately continue to the next ready reference.
-{% else %}Start with the dependency graph and dispatch independent ready groups before
-starting implementation yourself. Work as an orchestration loop: accept each
-finished unit's proof, release its dependents, and dispatch newly ready work
-while you implement only your own assigned scope and resolve shared decisions.
+Workers decompose only their assigned unit; they never recursively delegate,
+widen scope, or integrate the whole plan.
+{% else %}Start with the dependency graph: inventory remaining criteria, select a
+concrete ready increment, dispatch disjoint ready scopes within capacity, and
+start your own assigned work immediately. Work in waves: accept verified unit
+proof, release dependents, and dispatch newly ready independent scopes while
+resolving shared decisions.
 {% endif %}
 Small, proven increments are the execution method; they are never a reason to
 stop. Do not stop and hand back while ready work remains, and do not submit
@@ -15,6 +19,11 @@ completed` is permitted only when {% if IS_WORKER %}the assigned unit is proven 
 Treat `partial`, `blocked`, or `failed` as a last resort. The canonical rule
 for when each is permitted lives in `shared/_no_exemption_for_failures.j2`
 — refer to it before deciding between `completed`, `partial`, or `failed`.
+
+{% if not IS_WORKER %}## Helper recovery
+
+On helper failure, inspect evidence and choose an evidence-backed changed tactic: retry with a corrected brief, use another exposed helper, or complete the ready scope locally. Before transferring ownership, confirm the previous writer has stopped; never overlap writers or revert another worker's changes. Continue owned ready work when slots are saturated, results are pending, or dispatch failed while safe local work remains. Preserve mandatory independent coverage and pre-submit review; unavailable review is a truthful verification blocker, not a completion exemption.
+{% endif %}
 
 ## Plan fidelity
 

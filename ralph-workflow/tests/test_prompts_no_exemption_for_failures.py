@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.prompts.developer import (
+    DeveloperPromptInputs,
+    prompt_developer_iteration_xml_with_context,
+)
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
+
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 _PARTIAL = _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2"
 _TEMPLATE_NAMES = (
@@ -77,6 +85,54 @@ def test_no_template_sentence_starts_lowercase() -> None:
                 f"sentence starts lowercase in {path.relative_to(_TEMPLATES_DIR)}: "
                 f"{sentence[:80]!r}"
             )
+
+
+def test_rendered_development_prompts_recover_work_without_expanding_workers(tmp_path: Path) -> None:
+    """S-1: coordinator recovery is actionable while workers stay unit-local."""
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    inputs = DeveloperPromptInputs(
+        prompt_content="Implement it",
+        plan_content="### [S-1] Change it",
+    )
+    capabilities = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    coordinator_prompts = tuple(
+        prompt_developer_iteration_xml_with_context(
+            context=TemplateContext.default(),
+            inputs=inputs,
+            workspace=workspace,
+            session_caps=capabilities,
+            template_name=name,
+        )
+        for name in (
+            "developer_iteration.jinja",
+            "developer_iteration_continuation.jinja",
+            "developer_iteration_fallback.jinja",
+        )
+    )
+    worker_prompt = prompt_developer_iteration_xml_with_context(
+        context=TemplateContext.default(),
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement it",
+            plan_content="### [S-1] Change it",
+            work_unit_id="U-1",
+        ),
+        workspace=workspace,
+        session_caps=capabilities,
+        template_name="worker_developer.jinja",
+    )
+
+    required_coordinator_text = (
+        "Huge scope changes execution strategy, not required outcome",
+        "On helper failure, inspect evidence and choose an evidence-backed changed tactic",
+        "Before transferring ownership, confirm the previous writer has stopped",
+        "Continue owned ready work when slots are saturated",
+    )
+    for prompt in coordinator_prompts:
+        for text in required_coordinator_text:
+            assert text in prompt
+    assert "Workers decompose only their assigned unit" in worker_prompt
+    assert "Before transferring ownership" not in worker_prompt
 
 
 def test_partial_results_rule_is_single_sourced() -> None:
