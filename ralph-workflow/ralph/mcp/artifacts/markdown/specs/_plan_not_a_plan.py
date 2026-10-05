@@ -9,7 +9,18 @@ from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 RULE_ID = "PLAN001"
 _MIN_WORDS = 10
 _READABLE_RATIO = 0.9
-_REFUSAL_PREFIXES = ("i cannot", "i can't", "i can not", "i'm sorry", "im sorry", "as an ai")
+_REFUSAL_PREFIXES = (
+    "i cannot",
+    "i can't",
+    "i can not",
+    "i'm sorry",
+    "im sorry",
+    "as an ai ",
+    "as an ai,",  # honor explicit AI-self-description with comma follow-on
+    "as an ai.",
+    "as an ai\n",
+    "as an ai\t",
+)
 _PLACEHOLDERS = ("plan goes here", "todo: plan", "todo plan", "fixme: plan", "tbd: plan")
 
 

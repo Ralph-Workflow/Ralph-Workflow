@@ -414,3 +414,44 @@ def test_fanout_keeps_post_unit_integration_work_in_main_session(tmp_path: Path)
 
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.phase == "development"
+
+
+def test_fanout_keeps_pre_unit_residual_prose_in_main_session(tmp_path: Path) -> None:
+    """DA-004 regression: pre-unit prose outside every declared unit must
+    remain in the main session rather than being silently dropped after
+    native fan-out advances following the worker pool.
+
+    The plan grammar parser silently drops content lines that arrive
+    before the first ``## Heading`` boundary, so a release-preparation
+    paragraph at the top of the plan (and the related
+    ``release/manifest.json`` change it describes) would otherwise
+    disappear alongside the unit dispatch. The plan route must flag
+    that residual work via ``unextractable_work_units`` so the effect
+    router falls back to ``InvokeAgentEffect`` instead of
+    ``FanOutEffect`` and the main agent owns the residual change.
+    """
+    _write_plan_artifact(
+        tmp_path,
+        (
+            "Implement all requested components and verify their integration before completion.\n"
+            "\n"
+            "Release preparation: prepare release/manifest.json, tag the release, "
+            "and verify the published artifact.\n"
+            "\n"
+            "## Work Units\n"
+            "- [one] Implement first component\n"
+            "  Paths: src/one.py\n"
+            "- [two] Implement second component\n"
+            "  Paths: src/two.py\n"
+        ),
+    )
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _legacy_fan_out_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"

@@ -133,7 +133,53 @@ def _parse_plan_sanity_only(text: str, spec: MdArtifactSpec) -> tuple[Content, l
     if size_error is not None:
         return {}, [Diagnostic(1, None, "SPEC010", str(size_error))]
     document, _ = parse_markdown_document(text, allow_nested_headings=True)
-    return spec.normalize_content(spec.to_content(document)), []
+    content = spec.normalize_content(spec.to_content(document))
+    # Pre-section prose that the grammar parser silently drops is part of the
+    # accepted plan. Surface its presence via ``unextractable_work_units``
+    # so the main session retains the residual work rather than letting
+    # native fan-out drop it after workers complete. We do this here,
+    # where the raw text is still available, because the parser drops the
+    # content lines and emits ``MD002`` diagnostics that the plan route
+    # discards.
+    if _plan_has_pre_section_prose(text, document) and isinstance(content, dict):
+        content["unextractable_work_units"] = True
+    return content, []
+
+
+def _plan_has_pre_section_prose(text: str, document: ParsedDocument) -> bool:
+    """Detect content below the first ``## Heading`` when the parser discarded it.
+
+    Returns True when the document contains a ``## Heading`` AND the raw
+    text has at least one non-blank, non-frontmatter line BEFORE that
+    heading. The plan grammar parser treats those lines as MD002
+    diagnostics, but the plan route discards parser diagnostics after the
+    sanity gate, so the residual work must be re-detected from the raw
+    text to keep the main session aware of it.
+    """
+    if not document.sections:
+        return False
+    first_section_line = document.sections[0].line
+    # Walk the raw text up to the first heading line. Anything that is
+    # not blank, not a ``---`` frontmatter fence, and not a ``key: value``
+    # frontmatter field is pre-section prose.
+    lines = text.splitlines()
+    for index in range(first_section_line - 1):
+        line = lines[index]
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == "---":
+            continue
+        if ":" in stripped and not stripped.startswith("#"):
+            # A reasonable proxy for a frontmatter field; precise detection
+            # lives in the parser. We only need to know whether at least one
+            # non-blank line preceded the first heading outside the
+            # frontmatter block.
+            head, _, _ = stripped.partition(":")
+            if head and all(char.isalnum() or char in {"_", "-"} for char in head):
+                continue
+        return True
+    return False
 
 
 def _validate_structure(

@@ -149,8 +149,9 @@ def _to_content(document: ParsedDocument) -> Content:
             continue
         if unit_section_seen and (section.lines or section.items or section.blocks):
             # Native fan-out advances immediately after worker completion. A
-            # later section is prose work outside every unit, irrespective of
-            # its heading or Markdown shape, so retain it with the main agent.
+            # later section is prose work outside every unit, irrespective
+            # of its heading or Markdown shape, so retain it with the main
+            # agent.
             content["unextractable_work_units"] = True
             break
     if units:

@@ -135,6 +135,33 @@ def test_unreadable_and_obvious_nonplan_text_is_rejected() -> None:
         assert content == {}
 
 
+def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
+    """DA-001 regression: actionable prose beginning ``As an aid`` must not
+    be flagged as an AI refusal, while a genuine AI-self-description like
+    ``As an AI, I cannot ...`` remains a refusal. The original detector
+    substring-matched the literal ``as an ai``, which also caught the
+    distinct English word ``as an aid`` (a, i, d) and rejected legitimate
+    prose. The fix anchors each refusal prefix with a following
+    whitespace or sentence boundary so ``as an aid`` is no longer
+    matched.
+    """
+    prose = (
+        "As an aid to maintainers, document the public API, implement "
+        "regression tests, and verify the resulting behavior thoroughly."
+    )
+    _, diagnostics, _ = analyze_plan_document(prose)
+    assert diagnostics == [], [d.rule_id for d in diagnostics]
+    # Genuine AI self-descriptions still must fail the sanity gate.
+    for text in (
+        "As an AI, I cannot complete this request without access to "
+        "the repository's secrets and private configuration files now.",
+        "As an AI language model, I cannot help with this request because "
+        "the action would violate the published safety policy today.",
+    ):
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert [item.rule_id for item in diagnostics] == ["PLAN001"]
+
+
 def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
     """DA-001 regression: a real plan that *discusses* a placeholder
     marker (for example, instructing removal of the obsolete text) must
