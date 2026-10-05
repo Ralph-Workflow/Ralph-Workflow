@@ -63,6 +63,31 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     return [_message(reason)] if reason is not None else []
 
 
+def _is_whole_message_refusal(text: str) -> bool:
+    """Return True only when the entire message is a refusal.
+
+    A multi-line message that opens with a constraint clause ("I cannot
+    implement this request because X" followed by subsequent implementation
+    and verification guidance) is a constrained plan, not a refusal: the
+    first line is a preface and the rest prescribes work. Only single-line
+    refusals, or single-line messages whose refusal prefix is not followed by
+    inline continuation, count as a whole-message inability to plan.
+    """
+    non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not non_empty_lines:
+        return False
+    first_line_cf = non_empty_lines[0].casefold()
+    if not any(first_line_cf.startswith(prefix) for prefix in _REFUSAL_PREFIXES):
+        return False
+    if not _OBVIOUS_REFUSAL.match(first_line_cf):
+        return False
+    if len(non_empty_lines) > 1:
+        # A refusal preface is followed by additional substantive lines;
+        # treat the message as a constrained plan, not a refusal.
+        return False
+    return not _CONSTRAINT_CONTINUATION.search(non_empty_lines[0])
+
+
 def _sanity_failure_reason(text: str) -> str | None:
     """Identify a single explicit sanity failure without interpreting shape."""
     try:
@@ -83,11 +108,7 @@ def _sanity_failure_reason(text: str) -> str | None:
         reason = "text is control-heavy or binary-like"
     elif len(words) < _MIN_WORDS:
         reason = f"text has only {len(words)} words"
-    elif (
-        first_line.startswith(_REFUSAL_PREFIXES)
-        and _OBVIOUS_REFUSAL.match(first_line)
-        and not _CONSTRAINT_CONTINUATION.search(first_line)
-    ):
+    elif _is_whole_message_refusal(text):
         reason = "text is an obvious refusal"
     elif any(first_line.startswith(placeholder) for placeholder in _PLACEHOLDERS):
         # Anchor placeholder detection to the first non-empty line so

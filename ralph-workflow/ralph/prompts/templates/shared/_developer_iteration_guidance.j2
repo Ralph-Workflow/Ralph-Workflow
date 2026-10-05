@@ -1,9 +1,6 @@
 ## Completion is the default outcome
 
 Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
-Task size alone must not produce an assessment-only handoff, refusal, or request to
-split the task without advancing available work. Select and perform the first safe,
-testable increment, verify it, and continue the execution loop.
 {% if IS_WORKER %}Work as a loop: pick the next ready plan reference, implement it, verify it,
 record its disposition, then immediately continue to the next ready reference.
 {% else %}Start with the dependency graph and dispatch independent ready groups before

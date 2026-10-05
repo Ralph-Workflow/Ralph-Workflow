@@ -277,6 +277,50 @@ def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -
         )
 
 
+def test_multiline_constraint_preface_followed_by_plan_is_accepted() -> None:
+    """DA-001 regression: a multi-line submission that opens with an
+    explicit ``I cannot implement this request because X`` constraint
+    preface and follows with concrete implementation, test, and
+    verification work is a constrained plan, not a refusal. The
+    detector must reject refusals only when the entire message is a
+    refusal.
+    """
+    legitimate_plans = (
+        # The exact DA-001 counterexample probed against the public
+        # handler: constraint preface line followed by actionable
+        # implementation guidance.
+        "I cannot implement this request because production credentials are unavailable.\n"
+        "Implement an offline adapter using recorded responses, add deterministic tests, and verify the public interface.",
+        # ``I cannot complete`` preface followed by an explicit
+        # numbered step list on subsequent lines.
+        "I cannot complete this request because the upstream service is unreachable.\n"
+        "1. Stub the upstream calls with deterministic responses.\n"
+        "2. Wire the stub through the public interface.\n"
+        "3. Add a regression test that exercises the stubbed path.",
+        # ``I'm sorry`` preface followed by a separate sentence
+        # prescribing work.
+        "I'm sorry, I cannot run that command without elevated access.\n"
+        "Mock the elevated call, exercise the public surface, and verify the regression coverage.",
+    )
+    for text in legitimate_plans:
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert diagnostics == [], (
+            f"unexpected PLAN001 for legitimate multiline plan: {text!r}; "
+            f"got {[d.rule_id for d in diagnostics]}"
+        )
+    # Single-line refusals still must fail the sanity gate.
+    for text in (
+        "I cannot complete this request because production credentials are unavailable.",
+        "I cannot implement this request because policy blocks me from helping you today.",
+        "I'm sorry, I cannot help with that request as an AI assistant without more information.",
+    ):
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert [item.rule_id for item in diagnostics] == ["PLAN001"], (
+            f"expected PLAN001 for single-line refusal: {text!r}; "
+            f"got {[d.rule_id for d in diagnostics]}"
+        )
+
+
 def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
     """DA-001 regression: a real plan that *discusses* a placeholder
     marker (for example, instructing removal of the obsolete text) must

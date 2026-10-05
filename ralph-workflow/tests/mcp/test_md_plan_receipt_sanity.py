@@ -47,6 +47,7 @@ _CASES = (
     "Inspect code then implement changes and verify all behavior carefully.",
     "I cannot approve changes before inspection, so inspect current callers and carefully compare their observable behavior against the requested contract.",
     "I cannot implement this request because production credentials are unavailable, so implement an offline adapter and verify it with recorded responses.",
+    "I cannot implement this request because production credentials are unavailable.\nImplement an offline adapter using recorded responses, add deterministic tests, and verify the public interface.",
     _PROSE,
     _PROSE + "\n## Steps\n### [S-1] First\n### [S-1] Second",
     _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-99",

@@ -21,8 +21,6 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
-
 {{ render_payload_section("EXECUTION PLAN", PLAN, PLAN_PATH) }}
 
 {% if ANALYSIS_FEEDBACK or ANALYSIS_FEEDBACK_PATH %}
@@ -120,6 +118,7 @@ blocked, submit a truthful `status: partial` result with the concrete blocker
 and one next step.
 {% endif %}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if not IS_WORKER %}

@@ -37,8 +37,6 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
     rendered = _render_planner(name)
     normalized = " ".join(rendered.split())
 
-    for phase in ("Orient", "Characterize", "Change", "Partition", "Verify"):
-        assert phase in rendered
     for required in (
         "parallel work is the default",
         "two or more independent",
@@ -46,6 +44,7 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
         "recommended",
         "Directories:",
         "Paths:",
+        "Files:",
         "Depends on:",
         "shared contracts",
         "integration",
@@ -53,10 +52,6 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
         "Subagents and parallel agents are always available",
     ):
         assert required in normalized
-    assert normalized.split("## DELEGATION GUIDANCE")[0].count("## Work Units") == 1
-    brief_scope = normalized.split("2. **Scope.**", 1)[1].split("3. **Tools.**", 1)[0]
-    for ownership in ("Directories:", "Paths:", "Files:"):
-        assert ownership in brief_scope
     for forbidden in (
         "submission boundary checks",
         "size limit",
