@@ -404,6 +404,90 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
 
 
 # ---------------------------------------------------------------------------
+# 3b. enable_detected_agents through a symlinked config path (wt-012 DA-001)
+# ---------------------------------------------------------------------------
+
+
+def test_enable_detected_agents_commits_via_symlinked_config_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """wt-012 DA-001/DA-007/DA-008/DA-011: ``write_text_if_changed``
+    FOLLOWS the symlink and rewrites ``target.toml``; the chore commit
+    must capture the resolved target, not leave it dirty.
+
+    The pre-fix helper captured only the lexical ``config.toml`` path.
+    The write went through the symlink to ``target.toml``, the lexical
+    path was byte-unchanged (still the same symlink), and the dirty
+    ``target.toml`` was left uncommitted in the working tree -- the
+    exact ``HEAD_UNCHANGED True`` / ``STATUS ' M target.toml'``
+    counterexample from the analysis. The fix captures BOTH the
+    lexical path and the resolved target so the deterministic commit
+    stages whichever entry actually changed.
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    target = tmp_path / "target.toml"
+    target.write_text(
+        "[agents.claude]\n"
+        'cmd = "claude"\n'
+        "\n"
+        "# @AGENT-BLOCK-START: codex\n"
+        "# [agents.codex]\n"
+        '# cmd = "codex exec"\n'
+        "# @AGENT-BLOCK-END\n",
+        encoding="utf-8",
+    )
+    config_link = tmp_path / "config.toml"
+    config_link.symlink_to(target)
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(["target.toml"])
+        repo.index.commit(
+            "seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
+        )
+        repo.index.add(["config.toml"])
+        repo.index.commit(
+            "seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
+        )
+    finally:
+        repo.close()
+
+    monkeypatch.setattr(
+        "ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"]
+    )
+
+    enabled = enable_detected_agents(config_link)
+
+    assert enabled == ["codex"]
+    subjects = _git_log_subjects(tmp_path)
+    assert subjects[0] == "chore(config): update agent configuration", (
+        f"enable must commit with the fixed subject; got: {subjects[0]!r}"
+    )
+    # The lexical entry is still a symlink (the write went THROUGH it)
+    # and the tree is clean -- the resolved target's update is
+    # committed, not left as ' M target.toml'.
+    assert config_link.is_symlink(), (
+        "write_text_if_changed must follow the symlink, leaving the "
+        "lexical config.toml entry a symlink"
+    )
+    assert _git_status_clean(tmp_path), (
+        "tree must be clean after the deterministic commit; the resolved "
+        "target.toml update must NOT be left dirty"
+    )
+    repo = Repo(tmp_path)
+    try:
+        committed_text = (
+            repo.head.commit.tree["target.toml"].data_stream.read().decode()
+        )
+    finally:
+        repo.close()
+    assert "[agents.codex]" in committed_text, (
+        "the committed target.toml must contain the activated agent block"
+    )
+    assert "# @AGENT-BLOCK-START" not in committed_text
+
+
+# ---------------------------------------------------------------------------
 # 4. Global config path -> no commit, no repo created
 # ---------------------------------------------------------------------------
 

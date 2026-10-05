@@ -304,6 +304,7 @@ def _ensure_baseline_capabilities(
                         written_paths=outcome.written_paths,
                         pre_contents=outcome.pre_contents,
                         create_commit_fn=create_commit,
+                        intentional_transitions=outcome.intentional_transitions,
                     )
                     if result.status is ScopedCommitStatus.FAILED:
                         display.emit_warning(

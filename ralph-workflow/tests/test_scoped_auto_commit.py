@@ -22,6 +22,7 @@ combined verify budget.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,7 @@ from ralph.git.operations import create_commit, stage_files
 from ralph.git.scoped_auto_commit import (
     _ANCESTOR_SYMLINK_DIRTY,
     ScopedCommitStatus,
+    _git_blob_sha,
     _has_symlink_ancestor,
     _read_head_blob_sha,
     capture_pre_write_contents,
@@ -160,6 +162,46 @@ def test_has_symlink_ancestor_returns_false_for_leaf_symlink(tmp_path: Path) -> 
 
 
 # ----------------------------------------------------------------------------
+# _git_blob_sha ancestor-guard ordering (wt-012 DA-010)
+# ----------------------------------------------------------------------------
+
+
+def test_git_blob_sha_returns_sentinel_for_symlink_leaf_under_symlink_ancestor(
+    tmp_path: Path,
+) -> None:
+    """wt-012 DA-010: a symlink LEAF under a symlink ancestor hashes to the sentinel.
+
+    Regression test for the guard ordering: the leaf fast path used to
+    run BEFORE the ancestor-symlink guard, so a symlink leaf reachable
+    through a freshly-installed ancestor symlink hashed its link-target
+    bytes. When those bytes accidentally equal the recorded pre-write
+    hash, the producer's byte-exact diff misclassifies the path as
+    "unchanged" and drops it from the written set, letting the
+    ancestor commit silently sweep the user's dirty deletion
+    (wt-012 DA-003/DA-012).
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    canonical = tmp_path / "canonical"
+    canonical.mkdir()
+    (canonical / "alias").symlink_to("dirty")
+    sibling = tmp_path / "sibling"
+    sibling.symlink_to(canonical)
+    repo = Repo(tmp_path)
+    try:
+        # The leaf resolves through a symlink ancestor: sentinel, NOT
+        # the link-target hash the pre-fix ordering produced.
+        assert _git_blob_sha(repo, "sibling/alias") == _ANCESTOR_SYMLINK_DIRTY
+        # The sibling ROOT itself is a plain leaf symlink with no
+        # symlink ancestor: the fast path still hashes its link-target
+        # bytes in git's symlink blob form.
+        target_bytes = str(canonical).encode("utf-8")
+        blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
+        assert _git_blob_sha(repo, "sibling") == hashlib.sha1(blob).hexdigest()
+    finally:
+        repo.close()
+
+
+# ----------------------------------------------------------------------------
 # commit_deterministic_writes — dir→symlink transition
 # ----------------------------------------------------------------------------
 
@@ -241,6 +283,7 @@ def test_commit_dir_to_symlink_transition_removes_old_files_and_adds_new_link(
         subject="chore(skills): sync baseline bundle",
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=frozenset({".claude/skills/foo"}),
     )
 
     assert result.status is ScopedCommitStatus.CREATED, (
@@ -333,6 +376,7 @@ def test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index(
         subject="chore(skills): sync baseline bundle",
         create_commit_fn=_failing_create_commit,
         stage_fn=stage_files,
+        intentional_transitions=frozenset({".claude/skills/foo"}),
     )
 
     assert result.status is ScopedCommitStatus.FAILED, (
@@ -445,6 +489,7 @@ def test_commit_dir_to_symlink_failed_attempt_byte_identical_pre_staged_index(
         subject="chore(skills): sync baseline bundle",
         create_commit_fn=_failing_create_commit,
         stage_fn=stage_files,
+        intentional_transitions=frozenset({".claude/skills/foo"}),
     )
 
     assert result.status is ScopedCommitStatus.FAILED, (

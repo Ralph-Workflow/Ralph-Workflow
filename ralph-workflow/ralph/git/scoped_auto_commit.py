@@ -46,6 +46,12 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git._dirty_paths import (
+    _list_dirty_paths,
+    list_dirty_paths,
+    path_in_scope,
+    snapshot_dirty_paths_strict,
+)
 from ralph.git._index_snapshots import (
     _GIT_LS_FILES_META_FIELDS,
     _GIT_LS_FILES_PATH_PARTS,
@@ -65,11 +71,6 @@ if TYPE_CHECKING:
             self, repo_root: Path | str, message: str, *, expected_head: str
         ) -> CommitCreationResult: ...
 
-
-# ``git status --porcelain`` lines start with a 2-char status code followed
-# by a single space -- so a valid line has at least 4 characters of prefix
-# before the path body begins. Lines shorter than this are noise.
-_GIT_PORCELAIN_PREFIX_LEN: int = 4
 
 class ScopedCommitStatus(Enum):
     """Outcome category returned by :func:`commit_scoped_updates` and friends.
@@ -108,87 +109,6 @@ class ScopedCommitResult:
     sha: str | None = None
     skipped_paths: tuple[str, ...] = ()
     error: str | None = None
-
-
-def path_in_scope(path: str, scopes: tuple[str, ...]) -> bool:
-    """True when ``path`` falls under any scope (dir prefix or exact file)."""
-    return any(path.startswith(scope) if scope.endswith("/") else path == scope for scope in scopes)
-
-
-def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
-    """Return sorted repo-relative dirty paths under one scope.
-
-    ``--untracked-files=all`` is required so nested untracked files are
-    reported individually rather than collapsed to the parent directory.
-    """
-    raw = cast(
-        "str", repo.git.status("--porcelain", "--untracked-files=all", "--", scope)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    dirty: list[str] = []
-    for line in raw.splitlines():
-        if len(line) < _GIT_PORCELAIN_PREFIX_LEN:
-            continue
-        path = line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
-        if path_in_scope(path, (scope,)):
-            dirty.append(path)
-    return sorted(set(dirty))
-
-
-def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
-    """Return every dirty repo-relative path in the working tree.
-
-    Used to snapshot the working tree BEFORE an agent runs, so a later call can
-    attribute the newly-dirty paths to that agent and commit only those. A path
-    the user had already modified is never swept into an automated commit.
-
-    Returns an empty set for a non-git workspace or on any git error: a failure
-    to read the tree must degrade to "attribute nothing", never to "attribute
-    everything".
-    """
-    try:
-        repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
-    except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
-        logger.debug("could not snapshot the working tree ({}); assuming clean", exc)
-        return frozenset()
-    if not isinstance(raw, str):
-        return frozenset()
-    return frozenset(
-        line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
-        for line in raw.splitlines()
-        if len(line) >= _GIT_PORCELAIN_PREFIX_LEN
-    )
-
-
-def snapshot_dirty_paths_strict(repo_root: Path | str) -> frozenset[str] | None:
-    """Snapshot the working tree, distinguishing clean from unreadable.
-
-    Returns:
-
-    * ``frozenset()`` when the working tree is clean (no dirty paths).
-    * ``frozenset({...})`` listing the dirty paths.
-    * ``None`` when the tree could not be read (non-git workspace, git
-      error, OSError). Callers use ``None`` to skip a deterministic
-      chore commit with a visible warning, instead of the legacy
-      "degrade to empty" path that conflated clean with broken.
-
-    Mirrors :func:`list_dirty_paths` on the read path; the difference is
-    the return type (``None`` vs empty ``frozenset``) so callers can
-    decide whether to skip with a warning.
-    """
-    try:
-        repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
-    except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
-        logger.debug("could not snapshot the working tree strictly ({}); reporting None", exc)
-        return None
-    if not isinstance(raw, str):
-        return None
-    return frozenset(
-        line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
-        for line in raw.splitlines()
-        if len(line) >= _GIT_PORCELAIN_PREFIX_LEN
-    )
 
 
 # Sentinel returned by :func:`_read_head_blob_sha` when the HEAD metadata
@@ -360,6 +280,23 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
     if not working_dir:
         return None
     abs_path = Path(working_dir) / rel_path
+    # Ancestor-symlink safety (wt-012 PA-002 / DA-010): if any parent
+    # directory of ``rel_path`` is a symlink, the lexical path no longer
+    # exists as its own directory entry, so ANY content reachable
+    # through it -- a regular file OR a symlink leaf -- belongs to the
+    # link target's tree, not to this path. The guard MUST run before
+    # the leaf fast path below: otherwise a symlink leaf under a
+    # freshly-installed ancestor symlink (e.g. a replaced sibling dir
+    # whose canonical ships a same-named symlink) would hash its link
+    # target bytes and -- when those bytes accidentally equal the
+    # recorded pre-write hash -- be misclassified as "unchanged", which
+    # drops the path from the producer's written set and lets the
+    # ancestor commit silently sweep its deletion (wt-012 DA-003/DA-012).
+    # Refuse the comparison instead: return a non-None sentinel the
+    # consumer treats as "real change" so the path is always staged
+    # through its nearest symlink ancestor.
+    if _has_symlink_ancestor(abs_path):
+        return _ANCESTOR_SYMLINK_DIRTY
     # Directory-symlink fast path: ``git hash-object`` cannot open a
     # directory symlink because it would have to read the directory
     # contents. Git itself stores symlink blobs as
@@ -377,23 +314,56 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
             return None
         blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
         return hashlib.sha1(blob).hexdigest()
-    # Ancestor-symlink safety (wt-012 PA-002): if any parent directory of
-    # ``rel_path`` is a symlink, ``git hash-object <rel_path>`` would
-    # resolve through the symlink and hash bytes that no longer belong
-    # to the lexical path -- e.g. a deleted sibling dir replaced by a
-    # symlink to a target that happens to contain a same-named file
-    # with the same content. The on-disk ``hash-object`` value would
-    # accidentally equal ``head_sha`` and the path would be
-    # misclassified as "no diff since HEAD", leaving the deletion
-    # uncommitted. Refuse the comparison instead: return a non-None
-    # sentinel the consumer treats as "real change" so the path is
-    # always staged. The caller's HEAD-vs-on-disk equality check then
-    # short-circuits safely.
-    if _has_symlink_ancestor(abs_path):
-        return _ANCESTOR_SYMLINK_DIRTY
     try:
         hashed: object = repo.git.hash_object(abs_path)
     except (GitCommandError, OSError):
+        return None
+    if not isinstance(hashed, str):
+        return None
+    return hashed.strip() or None
+
+
+def _resolved_descendant_sha(repo: Repo, rel_path: str) -> str | None:
+    """Return the on-disk blob SHA of ``rel_path`` resolved through any ancestor symlink.
+
+    Used by :func:`commit_deterministic_writes` to detect a
+    pre-write-dirty descendant under a freshly-installed symlink
+    ancestor (wt-012 DA-003/DA-008/DA-010/DA-012). The producer
+    captures the pre-write content hash BEFORE the install runs, so
+    a user change that lands BETWEEN the capture and the install
+    makes the recorded pre-write hash stale. The on-disk state at
+    commit time resolves THROUGH the new symlink to whatever the
+    install's canonical target now contains -- a state the producer
+    did not author and cannot be sure belongs to the deterministic
+    chore commit. When that resolved state also differs from
+    ``head_sha`` (the originally committed blob), the user must
+    have dirtied the path after the capture, and the transition
+    must be SKIPPED to keep the chore commit isolated.
+
+    The helper resolves ``rel_path`` through the filesystem, hashes
+    the resolved file's bytes, and returns the git-blob SHA. Returns
+    ``None`` for missing / unreadable / non-regular resolved paths
+    so the caller can treat the result as "indeterminate" rather
+    than "equal to HEAD".
+
+    Args:
+        repo: An open :class:`git.Repo` for the working tree.
+        rel_path: Repo-relative path of the descendant whose
+            resolved on-disk state we want to inspect.
+
+    Returns:
+        A 40-char hex git blob SHA, or ``None`` when the path
+        cannot be resolved to a readable regular file.
+    """
+    try:
+        working_dir = repo.working_dir
+        if not working_dir:
+            return None
+        resolved = (Path(working_dir) / rel_path).resolve(strict=False)
+        if not resolved.is_file():
+            return None
+        hashed: object = repo.git.hash_object(resolved)
+    except (GitCommandError, OSError, ValueError):
         return None
     if not isinstance(hashed, str):
         return None
@@ -459,6 +429,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
     create_commit_fn: CreateCommitFn,
     stage_fn: Callable[[Path | str, list[str]], None],
     body_builder: Callable[[list[str]], str] | None = None,
+    intentional_transitions: frozenset[str] | None = None,
 ) -> ScopedCommitResult:
     """Commit EXACTLY the given paths, but only those whose HEAD blob hash
     equals the caller-recorded pre-write content hash.
@@ -482,6 +453,19 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
       ``chore(skills): sync baseline bundle``).
     * ``create_commit_fn`` and ``stage_fn`` are the production
       dependencies. Tests inject stubs / spies.
+    * ``intentional_transitions`` (optional) is the set of paths
+      whose ancestor-symlink transition the caller has AUTHORED
+      (e.g. the install code's sibling-root symlink). When a path's
+      ancestor is a symlink (the ``_ANCESTOR_SYMLINK_DIRTY``
+      shape) the on-disk state cannot be cheaply compared against
+      HEAD, and the resolved state may legitimately differ from
+      HEAD because the install set the canonical's content
+      intentionally. Listing the transition's root path here
+      bypasses the wt-012 DA-003/DA-010/DA-012 user-dirty
+      descendant check for that path -- the caller has confirmed
+      the transition is intentional, so a non-matching resolved
+      state is the install's content, not a user edit. The
+      bypass is per-transition-root, not per-descendant.
 
     Outcomes:
 
@@ -661,6 +645,42 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         # ``pathspec ... is beyond a symbolic link``.
                         ancestor_path = _symlink_ancestor_path(repo, path)
                         if ancestor_path is not None:
+                            # wt-012 DA-003/DA-010/DA-012: a user change
+                            # that lands BETWEEN the producer's pre-write
+                            # capture and the install makes the recorded
+                            # ``pre_sha`` stale, and the cheap
+                            # HEAD-vs-pre-sha equality check above does
+                            # not catch it. When the resolved on-disk
+                            # state (the file the symlink target now
+                            # exposes) also differs from ``head_sha``,
+                            # the user must have dirtied the descendant
+                            # AFTER the capture, and committing the
+                            # ancestor transition would sweep the user's
+                            # deletion into the chore commit. Mark the
+                            # descendant as SKIPPED so
+                            # ``drop_transition_conflicts`` drops the
+                            # ancestor too. The caller can opt out via
+                            # ``intentional_transitions`` when the
+                            # transition's resolved content is the
+                            # install's own canonical target.
+                            if (
+                                intentional_transitions is None
+                                or ancestor_path not in intentional_transitions
+                            ):
+                                resolved_sha = _resolved_descendant_sha(repo, path)
+                                if resolved_sha is not None and resolved_sha != head_sha:
+                                    logger.warning(
+                                        "commit_deterministic_writes: path {} "
+                                        "resolves through a new symlink ancestor to "
+                                        "a state that differs from HEAD; the user "
+                                        "dirtied this descendant after the "
+                                        "pre-write snapshot, skipping to keep the "
+                                        "chore commit isolated",
+                                        path,
+                                    )
+                                    skipped.append(path)
+                                    del on_disk_sha
+                                    continue
                             logger.debug(
                                 "commit_deterministic_writes: path {} is beyond a symlink; "
                                 "rewriting to ancestor {} for atomic staging",

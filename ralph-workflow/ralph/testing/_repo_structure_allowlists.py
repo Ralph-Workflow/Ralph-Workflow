@@ -1306,16 +1306,20 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # PLR0911/PLR0912/PLR0915 markers opt the explicit-outcome
         # state machine out of the project complexity caps; the
         # rationale is documented inline on each marker.
-        ("ralph/git/scoped_auto_commit.py", 328),
-        ("ralph/git/scoped_auto_commit.py", 446),
+        # wt-012 (Bug A/B rework): the dirty-path snapshot helpers
+        # moved to ``ralph.git._dirty_paths`` to keep this module
+        # under the 1000-line cap, shifting the surviving markers;
+        # the allowlist pins the post-extraction line numbers.
+        ("ralph/git/scoped_auto_commit.py", 248),
+        ("ralph/git/scoped_auto_commit.py", 416),
         # wt-012 (DA-007/DA-012): the brand-new-path beyond a symlink
         # branch in ``commit_deterministic_writes`` extended the
         # function by ~25 lines, shifting the downstream
-        # ``commit_scoped_updates`` marker from 778 to 802. The PLR0912
+        # ``commit_scoped_updates`` marker. The PLR0912
         # marker itself is unchanged (the explicit-outcome state
         # machine still needs the complexity-cap opt-out); only the
         # line number moves.
-        ("ralph/git/scoped_auto_commit.py", 802),
+        ("ralph/git/scoped_auto_commit.py", 822),
         ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/_auto_commit_integration.py", 69),
         ("ralph/project_policy/_auto_commit_integration.py", 142),
@@ -1349,8 +1353,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),
         ("ralph/skills/manager.py", 218),
-        ("ralph/skills/manager.py", 240),
-        ("ralph/skills/manager.py", 247),
+        ("ralph/skills/manager.py", 241),
+        ("ralph/skills/manager.py", 248),
         ("ralph/testing/audit_skill_auto_commit.py", 363),
         ("ralph/testing/audit_skill_auto_commit.py", 460),
 

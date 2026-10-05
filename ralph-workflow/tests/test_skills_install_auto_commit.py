@@ -196,6 +196,7 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
         pre_contents=outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
     )
 
     assert result.status is ScopedCommitStatus.CREATED, (
@@ -356,6 +357,7 @@ def test_install_prunes_managed_skill_commits_deletions_and_sibling_symlink(
         pre_contents=outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
     )
     assert result.status is ScopedCommitStatus.CREATED, (
         f"U2: prune MUST commit them; got: {result!r}"
@@ -453,6 +455,7 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
         pre_contents=outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
     )
     # The deletion MUST land in the commit (CREATED, not NOOP). If the
     # byte-equal trap misclassified the descendant, the helper would
@@ -530,6 +533,7 @@ def test_install_unrelated_dirty_file_preserved(tmp_path: Path) -> None:
             pre_contents=outcome.pre_contents,
             create_commit_fn=create_commit,
             stage_fn=stage_files,
+            intentional_transitions=outcome.intentional_transitions,
         )
 
     # Inspect the chore commit (if any). The chore commit may succeed
@@ -588,6 +592,7 @@ def test_install_repeat_run_is_noop(tmp_path: Path) -> None:
         pre_contents=first_outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=first_outcome.intentional_transitions,
     )
     assert first_result.status is ScopedCommitStatus.CREATED, (
         f"first install MUST commit; got: {first_result!r}"
@@ -615,6 +620,7 @@ def test_install_repeat_run_is_noop(tmp_path: Path) -> None:
         pre_contents=second_outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=second_outcome.intentional_transitions,
     )
     assert second_result.status is ScopedCommitStatus.NOOP, (
         f"second install MUST report NOOP (no spurious chore commit); "
@@ -712,6 +718,7 @@ def test_install_symlink_unavailable_fallback_commits_materialized_leaves(
         pre_contents=outcome.pre_contents,
         create_commit_fn=create_commit,
         stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
     )
     assert result.status is ScopedCommitStatus.CREATED, (
         f"fallback materialization MUST commit; got: {result!r}"
@@ -739,5 +746,125 @@ def test_install_symlink_unavailable_fallback_commits_materialized_leaves(
             f"untracked lines: {untracked_sibling_lines!r}; full status: {porcelain!r}"
         )
         _ = _Actor  # narrow the import to the test scope
+    finally:
+        repo.close()
+
+
+def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
+    tmp_path: Path,
+) -> None:
+    """wt-012 DA-003/DA-010/DA-012: a pre-write-dirty tracked symlink
+    descendant under a sibling root SKIPs that root's transition.
+
+    Setup: a tracked sibling dir ``.claude/skills/brainstorming/``
+    containing a tracked SYMLINK descendant ``alias -> original``. The
+    user retargets the symlink to ``dirty`` (uncommitted) before the
+    install runs. The install replaces the dir with a symlink to the
+    canonical.
+
+    Pre-fix, the producer's byte-exact diff hashed the post-install
+    symlink leaf's target bytes, which could equal the recorded
+    pre-write hash, silently dropping the dirty descendant from
+    ``written_paths``; the ancestor then committed alone and swept
+    ``D .claude/skills/brainstorming/alias`` into the chore commit.
+
+    Post-fix the install boundary detects the pre-write-dirty
+    descendant via one porcelain snapshot, excludes the root from
+    ``intentional_transitions``, the primitive SKIPs the dirty
+    descendant, and ``drop_transition_conflicts`` drops the ancestor:
+    HEAD keeps the user's original symlink blob, the chore commit
+    records no deletion for it, and the user's change stays an
+    uncommitted working-tree state.
+    """
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    sibling_dir = tmp_path / ".claude" / "skills" / "brainstorming"
+    sibling_dir.mkdir(parents=True)
+    (sibling_dir / "alias").symlink_to("original")
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add([".claude/skills/brainstorming/alias"])
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.commit(
+            "seed tracked symlink descendant", author=actor, committer=actor
+        )
+        seed_head = repo.head.commit.hexsha
+        # User retargets the tracked symlink descendant AFTER the seed
+        # commit but BEFORE the install. The change stays UNCOMMITTED.
+        (sibling_dir / "alias").unlink()
+        (sibling_dir / "alias").symlink_to("dirty")
+    finally:
+        repo.close()
+
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    with patch("pathlib.Path.home", return_value=home):
+        outcome = install_project_baseline_skills_with_diff(tmp_path)
+
+    # The dirty descendant MUST survive the producer's byte-exact diff
+    # (the pre-fix bug dropped it here), and the transition root MUST
+    # be excluded from the intentional set.
+    assert ".claude/skills/brainstorming/alias" in outcome.written_paths, (
+        f"DA-010: the dirty symlink descendant must stay in written_paths; "
+        f"got: {sorted(outcome.written_paths)}"
+    )
+    assert ".claude/skills/brainstorming" not in outcome.intentional_transitions, (
+        f"DA-003: a root with a pre-write-dirty descendant must NOT be an "
+        f"intentional transition; got: {sorted(outcome.intentional_transitions)}"
+    )
+
+    result = commit_skill_writes(
+        tmp_path,
+        written_paths=outcome.written_paths,
+        pre_contents=outcome.pre_contents,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
+    )
+
+    # The dirty descendant and its transition root are SKIPPED; the
+    # rest of the install (other roots, canonical) may still commit.
+    assert ".claude/skills/brainstorming/alias" in result.skipped_paths, (
+        f"dirty descendant MUST be skipped; got: {result!r}"
+    )
+    assert ".claude/skills/brainstorming" in result.skipped_paths, (
+        f"conflicting transition root MUST be skipped; got: {result!r}"
+    )
+
+    repo = Repo(tmp_path)
+    try:
+        # HEAD still carries the user's ORIGINAL symlink blob ...
+        tree_paths = _head_tree_blob_paths(repo)
+        assert ".claude/skills/brainstorming/alias" in tree_paths, (
+            f"user's original symlink descendant MUST stay tracked at HEAD; "
+            f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
+        )
+        # ... and NOT the new sibling symlink entry (transition skipped).
+        assert ".claude/skills/brainstorming" not in tree_paths, (
+            f"skipped transition MUST NOT land the new symlink at HEAD; "
+            f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
+        )
+        # No commit since the seed recorded the descendant's deletion.
+        for commit in repo.iter_commits():
+            if commit.hexsha == seed_head:
+                break
+            deleted = {
+                diff.a_path
+                for diff in commit.diff(commit.parents[0])
+                if diff.deleted_file
+            }
+            assert ".claude/skills/brainstorming/alias" not in deleted, (
+                f"chore commit {commit.hexsha[:8]} MUST NOT sweep the dirty "
+                f"descendant's deletion; deleted={sorted(deleted)}"
+            )
+        # The user's change remains an uncommitted working-tree state.
+        porcelain = repo.git.status("--porcelain")
+        assert any(
+            ".claude/skills/brainstorming/alias" in line
+            for line in porcelain.splitlines()
+        ), (
+            f"user's dirty descendant MUST remain uncommitted; status: {porcelain!r}"
+        )
     finally:
         repo.close()

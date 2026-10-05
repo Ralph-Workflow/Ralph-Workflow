@@ -126,19 +126,6 @@ def _commit_deterministic_config_write(
         write_fn()
         return None
     resolved_config = config_path.resolve()
-    # Capture the LEXICAL path the writer actually writes to. A symlinked
-    # ``config_path`` (e.g. ``config.toml`` -> ``target.toml``) is replaced
-    # in place by ``atomic_write_text_if_changed`` (it stages to a temp
-    # file in the same directory and ``Path.replace``s the temp onto the
-    # lexical destination, which removes the symlink and leaves a regular
-    # file at the lexical path -- the symlink target is untouched and may
-    # end up dangling). The repo-relative path the chore commit must
-    # reference is therefore the LEXICAL path, not the resolved one:
-    # using the resolved path would capture the pre-write hash of the
-    # symlink target (unchanged) and skip the deterministic commit
-    # because the on-disk hash of the (still unchanged) target equals
-    # the recorded pre-write hash, leaving the lexical config entry
-    # uncommitted.
     abs_config = config_path if config_path.is_absolute() else (Path.cwd() / config_path)
     try:
         rel_path = abs_config.relative_to(repo_root).as_posix()
@@ -150,11 +137,37 @@ def _commit_deterministic_config_write(
         )
         write_fn()
         return None
-    pre_contents = capture_pre_write_contents(repo_root, [rel_path])
+    # wt-012 DA-001/DA-008/DA-011: when ``config_path`` is a symlink, the
+    # actual file the write mutates depends on the backend primitive:
+    # ``atomic_write_text_if_changed`` (loader migration) uses
+    # ``Path.replace`` to swap the symlink for a regular file, so the
+    # change lands at the LEXICAL ``rel_path``; ``write_text_if_changed``
+    # (autowire / enable_detected_agents) opens the path with
+    # ``path.open("w")`` which FOLLOWS the symlink and writes through
+    # to the RESOLVED target. We cannot tell at compile time which
+    # primitive the caller's ``write_fn`` uses, so capture BOTH the
+    # lexical and the resolved paths in ``pre_contents`` and pass them
+    # to the deterministic commit helper. The helper dedupes and
+    # stages whichever path actually changed -- the lexical for the
+    # atomic case (replacement), the resolved for the through-link
+    # case (target rewrite). The single-path writers
+    # (non-symlinked config_path) capture only the lexical path as
+    # before; the extra entry is no-op.
+    candidate_rel: list[str] = [rel_path]
+    resolved_rel: str | None = None
+    if abs_config.is_symlink():
+        try:
+            resolved_abs = abs_config.resolve()
+            resolved_rel = resolved_abs.relative_to(repo_root).as_posix()
+        except (OSError, ValueError):
+            resolved_rel = None
+        if resolved_rel is not None and resolved_rel != rel_path:
+            candidate_rel.append(resolved_rel)
+    pre_contents = capture_pre_write_contents(repo_root, candidate_rel)
     write_fn()
     result = commit_deterministic_writes(
         repo_root,
-        paths=(rel_path,),
+        paths=tuple(candidate_rel),
         pre_contents=pre_contents,
         subject=subject,
         create_commit_fn=cc,

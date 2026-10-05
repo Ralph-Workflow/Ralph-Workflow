@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from ralph.git.scoped_auto_commit import capture_pre_write_contents
+from ralph.git.scoped_auto_commit import (
+    capture_pre_write_contents,
+    snapshot_dirty_paths_strict,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._agent_paths import (
@@ -66,6 +69,7 @@ class ProjectSkillInstallOutcome:
     failures: list[str]
     written_paths: list[str] = field(default_factory=list)
     pre_contents: dict[str, str | None] = field(default_factory=dict)
+    intentional_transitions: frozenset[str] = field(default_factory=frozenset)
 
 
 def install_project_baseline_skills_with_diff(
@@ -86,17 +90,93 @@ def install_project_baseline_skills_with_diff(
     still records an empty written set (the install did not touch
     anything), so the deterministic commit at the call site is a
     safe no-op.
+
+    ``intentional_transitions`` (wt-012 DA-003/DA-010/DA-012) is
+    the set of sibling-root paths whose dir→symlink transition the
+    install has authored WITHOUT a pre-write-dirty tracked
+    descendant. The deterministic commit helper uses this set to
+    opt those roots out of the post-install user-dirty descendant
+    guard -- the install's own canonical content legitimately
+    differs from the original tracked descendants, and the chore
+    commit must include the transition. Sibling roots that DO have
+    a pre-write-dirty tracked descendant are NOT in the set: the
+    chore commit must SKIP the transition there so the user's
+    dirty descendant is preserved (a deterministic chore commit
+    must never sweep user or agent changes).
     """
     candidates = _candidate_skill_paths(workspace_root)
     pre_contents = capture_pre_write_contents(workspace_root, candidates)
+    user_dirty_descendants = _detect_user_dirty_tracked_descendants(
+        workspace_root, candidates
+    )
     entry, failures = install_project_baseline_skills(workspace_root)
     written = _diff_written_paths(workspace_root, candidates, pre_contents)
+    # A "transition root" is a candidate X such that at least one
+    # other candidate starts with "X/" -- i.e. X is a sibling-root
+    # directory the install is about to replace with a symlink.
+    # A transition root that has a pre-write-dirty tracked
+    # descendant is excluded from the intentional set so the
+    # primitive's user-dirty descendant guard fires and the
+    # transition (and the dirty descendant's deletion) is
+    # skipped from the chore commit.
+    transition_roots = {
+        path
+        for path in candidates
+        if any(other != path and other.startswith(f"{path}/") for other in candidates)
+    }
+    intentional = frozenset(
+        root
+        for root in transition_roots
+        if not any(
+            descendant in user_dirty_descendants
+            for descendant in candidates
+            if descendant != root and descendant.startswith(f"{root}/")
+        )
+    )
     return ProjectSkillInstallOutcome(
         entry=entry,
         failures=failures,
         written_paths=written,
         pre_contents={path: pre_contents[path] for path in written},
+        intentional_transitions=intentional,
     )
+
+
+def _detect_user_dirty_tracked_descendants(
+    workspace_root: Path,
+    candidates: list[str],
+) -> frozenset[str]:
+    """Return the candidate paths that are pre-write-dirty on disk.
+
+    A candidate is "pre-write-dirty" when its on-disk state at the
+    install boundary (BEFORE the install mutates anything) differs
+    from the HEAD blob hash. This catches the wt-012
+    DA-003/DA-010/DA-012 case where the user edits a tracked
+    descendant BETWEEN the producer's pre-write capture and the
+    install's dir→symlink replacement: the recorded ``pre_sha`` is
+    the pre-user-edit state, so the cheap HEAD-vs-pre-sha check in
+    :func:`commit_deterministic_writes` does not see the dirty
+    state. Detecting it here at the producer boundary lets the
+    install code exclude the affected transition root from
+    ``intentional_transitions``, which the commit primitive's
+    user-dirty descendant guard then picks up.
+
+    Implemented as ONE ``git status --porcelain`` snapshot (via
+    :func:`ralph.git.scoped_auto_commit.snapshot_dirty_paths_strict`)
+    intersected with the candidate set, so the check costs a single
+    git call per install and also covers user DELETIONS of tracked
+    descendants (a per-path hash probe cannot distinguish
+    "user deleted" from "never existed"). When the snapshot itself
+    fails (``None``), every candidate is conservatively reported as
+    dirty so no transition is whitelisted on unverifiable state.
+    """
+    dirty = snapshot_dirty_paths_strict(workspace_root)
+    if dirty is None:
+        # Cannot prove clean: report every candidate as dirty (safe
+        # default -- the install's transitions are then never
+        # whitelisted, and the commit primitive SKIPs them loudly).
+        return frozenset(candidates)
+    return frozenset(path for path in candidates if path in dirty)
 
 
 def _now_iso() -> str:

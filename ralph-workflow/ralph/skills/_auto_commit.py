@@ -141,6 +141,7 @@ def commit_skill_writes(
     pre_contents: Mapping[str, str | None],
     create_commit_fn: _CreateCommitFn,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
+    intentional_transitions: frozenset[str] | None = None,
 ) -> ScopedCommitResult:
     """Producer-level deterministic auto-commit for the skill install.
 
@@ -153,6 +154,17 @@ def commit_skill_writes(
     is SKIPPED with a warning so the user or agent flow owns it --
     the deterministic chore commit can never sweep their work into
     a fixed-message commit.
+
+    ``intentional_transitions`` (optional) is the set of sibling-root
+    paths whose dir→symlink transition the install code has authored.
+    The shared primitive's user-dirty descendant guard
+    (wt-012 DA-003/DA-010/DA-012) bypasses these roots so the
+    install's own canonical content -- which legitimately differs
+    from the original tracked descendants -- can land in the chore
+    commit without being mistaken for a user edit. The install code
+    is responsible for excluding any sibling root that has a
+    pre-write-dirty tracked descendant (see
+    :func:`ralph.skills._installer.install_project_baseline_skills_with_diff`).
 
     No-op (``NOOP`` or ``SKIPPED``) when ``written_paths`` is empty.
     Returns a :class:`ScopedCommitResult`; ``result.sha`` is the
@@ -168,6 +180,7 @@ def commit_skill_writes(
         create_commit_fn=create_commit_fn,
         stage_fn=stage_fn,
         body_builder=_build_body,
+        intentional_transitions=intentional_transitions,
     )
 
 

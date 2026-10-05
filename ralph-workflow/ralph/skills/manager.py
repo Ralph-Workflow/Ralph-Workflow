@@ -235,6 +235,7 @@ class SkillManager:
                         written_paths=project_outcome.written_paths,
                         pre_contents=project_outcome.pre_contents,
                         create_commit_fn=create_commit,
+                        intentional_transitions=project_outcome.intentional_transitions,
                     )
                     if result.status is ScopedCommitStatus.FAILED:
                         from loguru import logger as _logger  # noqa: PLC0415
