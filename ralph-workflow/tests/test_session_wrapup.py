@@ -173,6 +173,65 @@ def test_development_wrapup_notice_keeps_static_text_without_epochs(
     assert "literally impossible" in notice
 
 
+def test_development_wrapup_notice_static_text_is_worker_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-027/WU-A: without published epochs, the static fallback
+    notice is returned for both coordinator and worker roles. The
+    static text is a single role-agnostic string so it MUST NOT
+    direct any reader to dispatch sub-agents or fan out remaining
+    work, regardless of which role invoked it. A worker render of
+    the static fallback must still carry the partial-is-a-last-
+    resort guidance, the worker-safe language, the
+    difficulty/elapsed-time/exhausted-budget list, the truthful-
+    evidence line, and the ``declare_complete`` close \u2014 without a
+    dispatch directive. Without this regression defence a worker who
+    races the warning point with no published deadline would still
+    receive the dispatch instruction in its surface output,
+    contradicting the role contract."""
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
+    monkeypatch.delenv(DEV_DEADLINE_EPOCH_ENV, raising=False)
+
+    notice = development_wrapup_notice(is_worker=True)
+    flat = " ".join(notice.split())
+
+    # The static fallback is the role-agnostic string regardless of
+    # ``is_worker``. It must not branch on role \u2014 only the dynamic
+    # branch does that.
+    assert "minutes remaining" not in flat, (
+        "worker static fallback must not advertise a remaining "
+        "minutes figure when no deadline epoch was published"
+    )
+    assert "independent ready group" not in flat, (
+        "worker static fallback must not mention an independent "
+        "ready group"
+    )
+    # The static fallback must NOT direct any reader to dispatch.
+    assert "dispatch it in parallel" not in flat, (
+        "worker static fallback must not carry the dispatch directive"
+    )
+    assert "dispatch an independent ready group" not in flat, (
+        "worker static fallback must not carry the ready-group "
+        "dispatch directive"
+    )
+    # The canonical phrases that existing tests pin remain in the
+    # static fallback so a worker who sees it without a published
+    # deadline still has the partial-is-a-last-resort guidance,
+    # the worker-safe language, the truthful-evidence line, and the
+    # ``declare_complete`` close.
+    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+    assert "literally impossible" in notice
+    assert "exhausted budget never qualify" in flat
+    assert "use declare_complete" in flat
+    assert "Workers" in flat and "never" in flat
+    # The piecemeal handback warning is preserved as a guidance
+    # phrase (not as a dispatch instruction).
+    assert "piecemeal handbacks waste the cycle" in flat
+
+
 # ---------------------------------------------------------------------------
 # U-6: parallel-dispatch warning in the wrap-up notice's partial branch.
 # ---------------------------------------------------------------------------

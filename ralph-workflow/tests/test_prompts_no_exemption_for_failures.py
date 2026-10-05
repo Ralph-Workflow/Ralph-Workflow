@@ -204,40 +204,55 @@ def test_no_exemption_names_remaining_work_size() -> None:
 
 
 def test_no_exemption_partial_carries_parallel_dispatch_warning() -> None:
-    """U-6: the partial-is-a-last-resort section warns that remaining
-    independent work should be dispatched in parallel rather than
-    handed back piecemeal as ``partial`` (piecemeal handbacks waste
-    the cycle). The warning is role-aware: the dispatch sentence is
-    wrapped in a Jinja conditional keyed on ``IS_WORKER`` so a worker
-    render does not carry the dispatch instruction, while the main
-    session keeps it. Both branches keep the canonical partial-is-a-
-    last-resort phrasing intact."""
+    """U-6/WU-A: the partial-is-a-last-resort section warns that
+    remaining independent work should be dispatched in parallel
+    rather than handed back piecemeal as ``partial`` (piecemeal
+    handbacks waste the cycle). The warning is role-aware: a
+    ``IS_WORKER=False`` render keeps the dispatch instruction while
+    a ``IS_WORKER=True`` render does NOT carry it. Both branches
+    keep the canonical partial-is-a-last-resort phrasing intact.
+
+    The test pins rendered behaviour rather than template control-
+    flow syntax so an equivalent worker-safe rewording
+    (``{% if not IS_WORKER %}``, ``{% if not IS_WORKER|default(None) %}``,
+    or any future role-aware mechanism) still passes as long as the
+    observable contract holds. This is the regression defence
+    DA-033 mandated: a worker render that picks up the dispatch
+    instruction would violate the role contract even if the
+    implementation chose a different conditional keyword."""
     source = _PARTIAL.read_text(encoding="utf-8")
-    # The warning lives inside the "## Partial is a last resort" section.
-    start = source.find("## Partial is a last resort")
-    assert start >= 0
-    # The role-aware conditional that gates the dispatch sentence must
-    # be present in the source.
-    assert "{% if not IS_WORKER|default(false) %}" in source, (
-        "partial source must gate the dispatch sentence on IS_WORKER"
+    template = Environment().from_string(source)
+    main_rendered = template.render(IS_WORKER=False)
+    worker_rendered = template.render(IS_WORKER=True)
+
+    main_section = _partial_warning_section(main_rendered)
+    worker_section = _partial_warning_section(worker_rendered)
+
+    # The dispatch sentence is preserved for the main-session render
+    # so the orchestrator keeps fanning out independent work.
+    assert "dispatch it in parallel" in main_section, (
+        "main-session render must keep the dispatch instruction"
     )
-    # Normalize whitespace so line-wrapped phrases match the literals
-    # the contract pins. The template wraps long sentences for source
-    # readability, so a literal "each increment back as `partial`"
-    # substring may be split across lines.
-    partial_section = " ".join(source[start:].split())
-    # The dispatch sentence is preserved for the main-session branch
-    # (the conditional keeps the literal text inside its if-block).
-    assert "dispatch it in parallel" in partial_section
-    assert "piecemeal handbacks waste the cycle" in partial_section
-    assert "each increment back as `partial`" in partial_section
-    # The worker-safe alternative is preserved in the else-branch of
-    # the conditional so workers do not receive a dispatch instruction.
+    assert "piecemeal handbacks waste the cycle" in main_section, (
+        "main-session render must keep the piecemeal handback warning"
+    )
+    assert "each increment back as `partial`" in main_section, (
+        "main-session render must keep the piecemeal handback phrasing"
+    )
+    # The worker render omits the dispatch instruction so workers do
+    # not receive a directive that contradicts their no-dispatch
+    # contract.
+    assert "dispatch it in parallel" not in worker_section, (
+        "worker render must NOT carry the dispatch instruction"
+    )
+    # The worker-safe alternative is preserved in the worker branch so
+    # workers still see a warning against piecemeal handbacks without
+    # being told to dispatch.
     assert (
         "Workers must not dispatch sub-agents or coordinate other units"
-        in partial_section
+        in worker_section
     ), (
-        "partial source must carry a worker-safe alternative that "
+        "worker render must carry the worker-safe alternative that "
         "warns against piecemeal handbacks without directing dispatch"
     )
 
