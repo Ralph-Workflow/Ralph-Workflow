@@ -24,8 +24,7 @@ directory disjointness, or the planner's account as proof.
 
 The planner will revise from this feedback, so each finding must give it
 something to apply — a concrete proposed revision, not a verdict in isolation.
-`Proposed revision:` is enforced on submission (`ANALYSIS019`), so a verdict or
-finding missing the field is rejected, not suggested. Return criterion-level verdicts, not a holistic quality score. The five substantive criteria are:
+Return criterion-level verdicts, not a holistic quality score. The five substantive criteria are:
 coverage, truthfulness, actionability, parallel decomposition, and execution
 conflicts. Parallel decomposition is not met when independent work is
 serialized through invented dependencies, list order, or a single chain
@@ -80,10 +79,10 @@ with met verdicts does not need a revision because the plan was approved
 as-is. For `request_changes` or `failed`, mirror each localized non-met
 verdict in `## What Came Up Short`; each mirrored finding carries its
 `Proposed revision:` so the planner can apply it on the next pass, or rebut
-it with evidence. `Proposed revision:` is enforced on submission
-(`ANALYSIS019`): a verdict or finding missing the field is rejected, not
-just suggested. Do not add a `## How To Fix` section. A `not evaluable`
-criterion requires `failed`.
+it with evidence. `Proposed revision:` is enforced on submission for
+non-completed decisions (`ANALYSIS019`): a verdict or finding missing the
+field is rejected, not just suggested. Do not add a `## How To Fix` section.
+A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 

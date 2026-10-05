@@ -277,16 +277,22 @@ class TestDevelopmentAnalysisWholeChange:
         )
 
     def test_planning_prompt_explains_submission_enforcement(self) -> None:
-        """``planning_analysis.jinja`` must state that ``Proposed revision:``
-        is enforced on submission (``ANALYSIS019``).
+        """``planning_analysis.jinja`` states ``Proposed revision:`` is enforced
+        on submission (``ANALYSIS019``) for non-completed decisions.
+
+        The rule has one authoritative home (the criteria-and-verdicts block);
+        the review contract section explains why revisions matter, while the
+        criteria-and-verdicts block surfaces the validator rule and its
+        non-completed exemption. Locking the count prevents the rule from
+        drifting back into two duplicate enforcement statements.
         """
         source = _planning_analysis_source()
         assert "ANALYSIS019" in source
-        # The enforcement statement appears at least twice: once in the
-        # review contract (so the analyzer knows while drafting) and once
-        # in the criteria-and-verdicts block (so the analyzer knows while
-        # assembling the artifact).
-        assert source.count("ANALYSIS019") >= 2
+        # Exactly one home for the rule.
+        assert source.count("ANALYSIS019") == 1
+        # The kept mention names the non-completed exemption so the analyzer
+        # does not invent revisions for a completed decision.
+        assert "non-completed decisions" in source
 
     def test_planning_prompt_explains_completed_verdict_exemption(self) -> None:
         """A completed planning decision with met verdicts does not need a
