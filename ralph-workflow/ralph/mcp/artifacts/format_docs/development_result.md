@@ -37,6 +37,21 @@ status: completed
 - [DA-001] Added the missing edge-case regression test.
 ```
 
+Proof IDs in `## Plan Items Proven` must exactly match the proof set
+derived from the accepted plan: usable step IDs (`S-N`) for serial work; for
+an explicit Work Units plan, every usable unit ID plus every unowned global
+step ID; exactly the assigned unit ID for an isolated worker; or the single
+fallback ID `plan` when extraction yields no usable references. Missing,
+unknown, and duplicate plan-item IDs fail proof validation. When a plan
+item's *proof text* claims the UI work, its proof must also cite a criterion
+8 design verdict id and ralph://media capture handles — a requirement judged
+from the item's proof text, never from the bracketed reference label, so a
+relabeled reference never changes acceptance. `## Analysis Items Addressed`
+IDs are checked the same way: duplicate analysis-item proof entries and
+missing or unknown analysis finding IDs are hard errors, because analysis
+finding IDs are validated exactly against the prior analysis's stable
+finding IDs.
+
 ## Prose-plan proof example
 
 When the accepted plan has no usable extracted step or unit IDs, replace the
@@ -119,11 +134,17 @@ any developer action available in the current run. Examples include a
 physical-world action such as unplugging a power cable, an operator-only
 credential or decision, or an external system change outside the developer's
 authority. Difficulty, elapsed time, an exhausted run budget, or ready work
-the developer can still perform does not qualify. After submitting `partial`,
-call `declare_complete` once with `partial_reason` naming that literal
-impossibility and required external action; no second confirmation call is
-required. Use `failed` when no safe actionable continuation exists under
-current evidence or authority.
+the developer can still perform does not qualify. The `partial` decision
+itself is role-aware: a coordinator who still owns independent ready
+slices dispatches them in parallel rather than handing each one back as
+a separate `partial`; a worker continues in-scope recovery within the
+assigned unit per `shared/_no_exemption_for_failures.j2` (the worker
+contract forbids dispatch, so the same "dispatch in parallel" rule does
+not apply to a worker reading this format doc). After
+submitting `partial`, call `declare_complete` once with `partial_reason`
+naming that literal impossibility and required external action; no second
+confirmation call is required. Use `failed` when no safe actionable
+continuation exists under current evidence or authority.
 
 ## Sections
 
@@ -132,7 +153,8 @@ completion claim is the one thing this artifact can fully check. With
 `status: partial` or `status: failed` the document is otherwise free-form below
 the frontmatter, with two exceptions that are always enforced: `## Summary`
 with at least one item is required, so the reason for the outcome is never
-silently omitted; and once the run's cycle timebox has warned, `## Incomplete
+silently omitted; and once the run's cycle timebox or development timebox
+has warned, `## Incomplete
 Work` is required, with a stable-ID bracket, a `Reason:` field, and an
 `Evidence:` field on every item. The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
 
@@ -147,18 +169,23 @@ status decides whether the run ends.
 
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
-- `## Plan Items Proven` — optional section, but proof policy requires one
-  item per usable extracted plan reference. Use canonical step IDs when usable
-  steps exist, including serial execution of a Work Units plan. Alternatively,
-  for an explicit Work Units plan, prove every usable unit ID plus every unowned
+- `## Plan Items Proven` — required on a `completed` result once the
+  run's cycle timebox or development timebox has warned, and proof policy
+  requires one item per usable extracted plan reference whenever the result
+  claims completion. Use canonical step IDs when usable steps exist,
+  including serial execution of a Work Units plan. Alternatively, for an
+  explicit Work Units plan, prove every usable unit ID plus every unowned
   global step ID (including integration steps). Unit proof covers its owned
-  steps; do not additionally submit their step IDs. An isolated worker proves
-  exactly its assigned unit ID. When extraction yields no usable IDs, provide
-  exactly one item with ID `plan` to
-  prove the accepted prose plan. The item text is the proof. Add an indented
-  `Disposition:` field with one of `completed`, `adapted`, `not_applicable`,
-  or `blocked`. Add an indented `Rationale:` for `adapted`, `not_applicable`,
-  and `blocked`. A completed artifact cannot contain `blocked`; necessary
+  steps; do not additionally submit their step IDs. An isolated worker
+  proves exactly its assigned unit ID. When extraction yields no usable IDs,
+  provide exactly one item with ID `plan` to prove the accepted prose plan.
+  A completed item whose proof text claims the UI work must also cite a
+  design verdict id and capture handles, judged from the item's proof
+  text, never from the bracketed reference label.
+  The item text is the proof. Add an indented `Disposition:` field with
+  one of `completed`, `adapted`, `not_applicable`, or `blocked`. Add an
+  indented `Rationale:` for `adapted`, `not_applicable`, and
+  `blocked`. A completed artifact cannot contain `blocked`; necessary
   blocked work requires `status: partial`.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## What Came Up Short` finding, using that
@@ -181,17 +208,25 @@ status decides whether the run ends.
 ## Hard errors vs warnings
 
 Hard errors at any status: an unrecognized `status`; a missing `## Summary`;
-and, once the cycle timebox has warned, a missing or malformed `## Incomplete
-Work` on a `partial`/`failed` result or a missing `## Plan Items Proven` on a
-`completed` one. Whether the cycle warned is read from the run's own clock, not
-from anything the document declares.
+and, once the cycle timebox or the development timebox has warned, a missing
+or malformed `## Incomplete Work` on a `partial`/`failed` result or a
+missing `## Plan Items Proven` on a `completed` one. Whether the timebox
+warned is read from the run's own published clock for the relevant timer
+(cycle or development), with a matching declared frontmatter flag —
+`cycle_timebox_warned: true` or `development_timebox_warned: true` — also
+honoured, so a result validated outside the warned invocation (a replay
+or a hand-written report) keeps its stricter reading.
 
 Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
 item; duplicate item IDs; a missing or unknown `Disposition`; a missing
 `Rationale` for `adapted`, `not_applicable`, or `blocked`; `blocked` in a
-completed result; and (at proof validation) plan-item IDs that
-do not exactly match a usable plan step ID, work-unit ID, or the `plan`
-fallback when no IDs are usable; missing proofs; or
-duplicates. The unrecognized-`status` error reports the valid
-`completed` / `partial` / `failed` vocabulary.
+completed result; and (at proof validation) plan-item IDs that do not
+exactly match a usable plan step ID, work-unit ID, or the `plan` fallback
+when no IDs are usable, missing plan-item proofs, duplicate analysis-item
+proof entries, and missing or unknown analysis finding IDs — analysis
+finding IDs are validated exactly against the prior analysis's stable
+finding IDs. A completed plan item whose proof text claims the UI work
+also requires a design verdict id and capture handles, judged from the
+proof text, never from the reference label. The unrecognized-`status`
+error reports the valid `completed` / `partial` / `failed` vocabulary.

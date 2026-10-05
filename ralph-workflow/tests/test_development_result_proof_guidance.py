@@ -5,14 +5,13 @@ and the shared prompt partial
 ``ralph/prompts/templates/shared/_development_result_proof.jinja`` must
 agree with the runtime behavior in ``ralph/phases/execution.py``:
 
-- Plan-item proof IDs are shape-independent: on plan items the
-  validator rejects only duplicate IDs, a missing or unknown
+- Plan-item proof IDs must exactly match the proof set derived from the
+  accepted plan (enforced at proof validation in ``execution.py``); the
+  markdown grammar gate only rejects duplicate IDs, a missing or unknown
   ``Disposition``, a missing ``Rationale`` for
   ``adapted`` / ``not_applicable`` / ``blocked``, and ``blocked`` in a
-  completed result (the artifact grammar gate, not proof validation).
-  The UI design-evidence gate is shape-independent too: an item's
-  *proof text* claiming the UI work triggers it, never the bracketed
-  reference label.
+  completed result. The UI design-evidence gate keys on an item's
+  *proof text* claiming the UI work, never the bracketed reference label.
 - Analysis finding IDs are validated exactly: duplicate analysis-item
   proof entries and missing or unknown analysis finding IDs are hard
   errors raised by ``_analysis_proof_errors``.
@@ -49,14 +48,6 @@ def _normalized(path: Path) -> str:
     return " ".join(path.read_text(encoding="utf-8").split())
 
 
-def test_format_doc_drops_stale_plan_item_proof_gate_claims() -> None:
-    """The stale proof-gate claims are gone: neither the "one item per
-    usable extracted plan reference" requirement nor a "missing
-    plan-item" hard error appears anywhere in the format doc."""
-    text = _normalized(_FORMAT_DOC)
-
-    assert "proof policy requires one item per usable extracted plan reference" not in text
-    assert "missing plan-item" not in text
 
 
 def test_format_doc_states_analysis_finding_ids_are_validated_exactly() -> None:
@@ -71,16 +62,6 @@ def test_format_doc_states_analysis_finding_ids_are_validated_exactly() -> None:
     assert "analysis finding IDs are validated exactly" in text
 
 
-def test_format_doc_scopes_plan_item_proof_to_actual_plan_references() -> None:
-    """Plan-item proof asks for one item per plan reference the plan
-    actually uses; coverage of the plan's intent is enforced through the
-    development-analysis feedback loop, not by exact ID matching or a
-    hard missing-entry error."""
-    text = _normalized(_FORMAT_DOC)
-
-    assert "one item per plan reference the plan actually uses" in text
-    assert "not by exact ID matching or a hard missing-entry error" in text
-    assert "not matching a plan-parsed ID; it only rejects duplicate IDs" not in text
 
 
 def test_format_doc_partial_guidance_names_parallel_dispatch() -> None:
@@ -119,15 +100,6 @@ def _rendered_partial() -> str:
     return " ".join(template.render().split())
 
 
-def test_rendered_partial_scopes_shape_independence_to_plan_references() -> None:
-    """The rendered partial scopes shape independence to ``## Plan Items
-    Proven`` and carries no unscoped shape-independence claim or "only
-    rejects duplicate IDs" understatement."""
-    rendered = _rendered_partial()
-
-    assert "Proof IDs in `## Plan Items Proven` are shape-independent" in rendered
-    assert "**Proof IDs are shape-independent.**" not in rendered
-    assert "not matching a plan-parsed ID; it only rejects duplicate IDs" not in rendered
 
 
 def test_rendered_partial_requires_exact_analysis_finding_id_match() -> None:
@@ -233,19 +205,6 @@ def test_rendered_partial_names_timebox_only_mechanical_gate() -> None:
     assert "development_timebox_warned" in rendered
 
 
-def test_rendered_partial_keeps_each_proof_rule_in_one_home() -> None:
-    """The plan-item validator-rejection rule and the coverage-enforcement
-    rule each appear exactly once: the ``## Plan Items Proven`` paragraph
-    must not restate the shape-independence paragraph's rules."""
-    rendered = _rendered_partial()
-
-    assert (
-        rendered.count(
-            "never rejects a plan-item ID solely for not matching a plan-parsed ID"
-        )
-        == 1
-    )
-    assert rendered.count("development analysis feedback loop (U-2)") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -316,15 +275,11 @@ def test_format_doc_partial_guidance_is_role_aware() -> None:
 
 
 # ---------------------------------------------------------------------------
-# U-3E: the canonical example models the free-form plan-reference contract.
+# U-3E: the bundled example models the prose-plan ``plan`` fallback.
 #
-# The format doc documents that ``## Plan Items Proven`` accepts
-# shape-independent references (step ID, work-unit bracket ID,
-# prose-plan ID, subplan / section heading, or any other stable
-# reference the plan actually uses). A renderer that copies the
-# example sees a ``S-1..S-N`` synthetic scheme and reads the plan as
-# one that demands numeric step IDs; the example therefore must NOT
-# use that shape as its only shape.
+# The format doc's own examples show step IDs; the bundled example covers
+# the case where extraction yields no usable references, so it proves the
+# plan with exactly one ``plan`` entry and never mixes in invented IDs.
 # ---------------------------------------------------------------------------
 
 
@@ -338,55 +293,20 @@ def _example_plan_item_ids() -> list[str]:
     return re.findall(r"^- \[([^\]]+)\]", section, flags=re.MULTILINE)
 
 
-def test_format_doc_example_uses_free_form_plan_references() -> None:
-    """U-3E: the canonical example must model the free-form plan-reference
-    contract documented in the format doc.
+def test_format_doc_example_models_single_plan_fallback() -> None:
+    """The bundled example proves a prose plan with exactly one ``plan``
+    entry, because the fallback cannot be combined with step or unit IDs."""
+    assert _example_plan_item_ids() == ["plan"]
 
-    The format doc accepts step IDs, work-unit bracket IDs,
-    prose-plan IDs, subplan / section headings, and any other stable
-    reference the plan actually uses. A renderer that copies the
-    example sees a ``S-1..S-N`` synthetic scheme and reads the plan
-    as one that demands numeric step IDs; the example therefore must
-    not use that shape as its only shape.
 
-    The check is "the example must use at least one non-``S-n`` plan
-    reference" so a renderer sees a free-form anchor to copy when it
-    has no numeric steps. A regression that reverts the example to
-    ``S-1..S-6`` only (no prose heading, no work-unit ID) would
-    tell a renderer the contract requires numeric IDs.
+def test_format_doc_still_demonstrates_diverse_dispositions() -> None:
+    """The format doc demonstrates ``completed``, ``adapted``, and
+    ``not_applicable`` dispositions in one place. The bundled example
+    models the single ``plan`` fallback, so the disposition coverage
+    lives in the format doc's examples.
     """
-    plan_ids = _example_plan_item_ids()
-    assert plan_ids, "example is missing `## Plan Items Proven` bullets"
-
-    # No S-n synthetic scheme: a renderer that sees [S-1], [S-2] ...
-    # reads the plan as one that demands numeric step IDs.
-    synthetic_ids = [pid for pid in plan_ids if re.fullmatch(r"S-\d+", pid)]
-    assert not synthetic_ids, (
-        f"example still uses synthetic step IDs {synthetic_ids!r}; "
-        "the format doc documents free-form references (work-unit IDs, "
-        "prose headings) so the example must model that shape"
-    )
-
-    # At least one non-numeric free-form ID is required to make the
-    # contract visible to renderers that copy the example verbatim.
-    free_form_ids = [pid for pid in plan_ids if not re.fullmatch(r"S-\d+", pid)]
-    assert free_form_ids, (
-        "example has only synthetic step IDs; the format doc accepts "
-        "free-form references, so the example must model at least one"
-    )
-
-
-def test_format_doc_example_still_demonstrates_diverse_dispositions() -> None:
-    """U-3E: the example demonstrates ``completed``, ``adapted``, and
-    ``not_applicable`` dispositions. Switching the IDs from synthetic
-    step numbers to free-form plan references must not accidentally
-    drop the disposition coverage — the example is the place readers
-    see all three in one place.
-    """
-    text = _FORMAT_DOC_EXAMPLE.read_text(encoding="utf-8")
+    text = _FORMAT_DOC.read_text(encoding="utf-8")
     for disposition in ("completed", "adapted", "not_applicable"):
-        assert disposition in text, (
-            f"example lost the {disposition!r} disposition; the example "
-            "must demonstrate all three so renderers see how to mark "
-            "each kind of plan reference"
+        assert f"Disposition: {disposition}" in text, (
+            f"format doc lost the {disposition!r} disposition example"
         )

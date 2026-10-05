@@ -21,7 +21,8 @@ not edit workspace files, install dependencies, or run state-changing commands.
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
-Verify feedback against the request and repository. Repair each supported
-finding. When the analyzer identifies avoidable serialization, apply its
+Verify feedback against the request and repository. For each finding in
+`## What Came Up Short`, apply its `Proposed revision:` or rebut it with
+evidence; do not silently drop findings. Repair each supported finding. When the analyzer identifies avoidable serialization, apply its
 supported proposed unit split: restructure the plan into independent units with
 real prerequisites and an integration step after fan-in.

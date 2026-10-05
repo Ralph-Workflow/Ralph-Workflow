@@ -647,7 +647,7 @@ def test_subplan_main_result_requires_every_step_not_only_synthetic_unit_ids() -
         workspace,
         plan_items=[
             {"plan_item": "S-1", "proof": "Completed API subplan."},
-            {"plan_item": "S-3", "proof": "Completed UI subplan."},
+            {"plan_item": "S-3", "proof": "Completed web subplan."},
         ],
     )
 
@@ -670,7 +670,7 @@ def test_subplan_main_result_rejects_complete_synthetic_worker_unit_proof() -> N
             },
             {
                 "plan_item": "subplan-s-3",
-                "proof": "Completed the UI subplan.",
+                "proof": "Completed the web subplan.",
             },
         ],
     )

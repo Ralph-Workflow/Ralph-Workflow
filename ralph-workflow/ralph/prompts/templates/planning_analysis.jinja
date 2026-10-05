@@ -31,7 +31,10 @@ Return criterion-level verdicts, not a holistic quality score. Review coverage, 
    not met when invented dependencies, list order, or a single chain without
    stated coupling serialize independent work. For avoidable serialization,
    return `request_changes`. Name the independent branches and propose a concrete
-   unit split in the finding's Observation, with only evidenced prerequisites.
+   unit split in the finding's `Proposed revision:`, with only evidenced
+   prerequisites. Each proposed unit names the files or directories it owns
+   (literal `Paths:` / `Directories:` fields or unambiguous prose), its own
+   focused check, and is sized for one agent.
 5. **execution conflicts** — Concurrent units do not write the same file, and
    no consumer precedes its shared-contract producer.
 
@@ -49,10 +52,10 @@ status: request_changes
 - [SUM-1] Parallel decomposition is not met.
 
 ## What Came Up Short
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling; split into independent documentation and test units, then integration after both finish. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 
 ## Criterion Verdicts
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling; split into independent documentation and test units, then integration after both finish. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 {% endset %}
 
 ## Criteria and verdicts
@@ -61,12 +64,19 @@ status: request_changes
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
 Use one stable `PA-###` item per criterion in `## Criterion Verdicts`.
-Include `Plan-level:` or a step reference, then `Criterion:`, `Expected
-observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`,
-and `Cost:`. `completed` requires every criterion to be `met` with
-evidence and no counterexample found. For `request_changes` or `failed`,
-mirror each localized non-met verdict in `## What Came Up Short`; do not add
-`How To Fix`. A `not evaluable` criterion requires `failed`.
+Include `Plan-level:` or a plan reference — `Step: [S-n]` when the plan
+numbers its steps, or a `Plan reference: [<stable id>]` when it does not —
+then `Criterion:`, `Expected observation:`, `Observation:`,
+`Proposed revision:`, `Verdict:`, `Evidence:`, `Location:`, and `Cost:`.
+`completed` requires every criterion to be `met` with evidence and no
+counterexample found; a completed decision does not need a revision because
+the plan was approved as-is. For `request_changes` or `failed`, every
+criterion verdict carries a `Proposed revision:` (write `none` for a met
+criterion), and each localized non-met verdict is mirrored in
+`## What Came Up Short` with its revision so the planner can apply or rebut
+it. `Proposed revision:` is enforced on submission for non-completed
+decisions (`ANALYSIS019`). Do not add `How To Fix`. A `not evaluable`
+criterion requires `failed`.
 
 ## Decision artifact
 

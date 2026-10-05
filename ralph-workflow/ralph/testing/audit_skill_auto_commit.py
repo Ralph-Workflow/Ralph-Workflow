@@ -190,8 +190,14 @@ _INVARIANTS: tuple[Invariant, ...] = (
             "commit_deterministic_writes",
             "snapshot_dirty_paths_strict",
             "capture_pre_write_contents",
-            "STAGED_DELETION_SENTINEL",
         ),
+    ),
+    # wt-012: the staged-index snapshot/restore helpers split out of
+    # ``scoped_auto_commit`` keep the staged-deletion sentinel so a
+    # rollback re-stages deletions instead of resurrecting files.
+    Invariant(
+        rel_path="git/_index_snapshots.py",
+        present=("STAGED_DELETION_SENTINEL",),
     ),
     # wt-012: the policy preflight routes its own writes through the
     # producer-level ``commit_policy_writes`` helper at the
