@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -16,6 +17,7 @@ from ralph.config.enums import (
     AgentTransport,
     JsonParserType,
 )
+from ralph.config.general_config import GeneralConfig
 from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -135,7 +137,10 @@ class TestExecuteAgentEffectA:
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
-        config.general.verbosity = verbosity
+        defaults = GeneralConfig(verbosity=verbosity)
+        config.general = SimpleNamespace(
+            **{field_name: getattr(defaults, field_name) for field_name in GeneralConfig.model_fields}
+        )
         config.agents = {}
         config.ccs = CcsConfig()
         config.ccs_aliases = {"mm": "ccs mm"}

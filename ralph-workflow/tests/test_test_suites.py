@@ -338,6 +338,30 @@ def test_values(value: int) -> None:
     assert value
 """
     assert test_suites_module._fast_test_count(parametrized) == 5
+    multiline_parametrized = """
+import pytest
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        1,
+        2,
+        3,
+        4,
+    ],
+)
+def test_multiline_values(value: int) -> None:
+    assert value
+"""
+    assert test_suites_module._fast_test_count(multiline_parametrized) == 4
+    tuple_cases = """
+import pytest
+
+@pytest.mark.parametrize("value, expected", [(1, "one"), (2, "two")])
+def test_tuple_cases(value: int, expected: str) -> None:
+    assert value
+"""
+    assert test_suites_module._fast_test_count(tuple_cases) == 2
     assert test_suites_module._fast_test_count("# helper only\n") == 0
     # Defensive minimum: even empty sources get weight 1 for shard placement.
     assert test_suites_module._fast_test_count("") == 0
