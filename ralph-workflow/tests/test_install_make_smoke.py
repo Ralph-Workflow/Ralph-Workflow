@@ -98,7 +98,9 @@ def _copy_install_fixture(source: Path, destination: Path) -> None:
     def ignore(_directory: str, names: list[str]) -> set[str]:
         return set(names) & excluded
 
-    shutil.copytree(source, destination, ignore=ignore, symlinks=True)
+    shutil.copytree(
+        source, destination, ignore=ignore, symlinks=True, copy_function=shutil.copyfile
+    )
 
 
 def _environment(home: Path, fake_bin: Path) -> dict[str, str]:

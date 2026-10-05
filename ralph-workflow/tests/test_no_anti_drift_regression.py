@@ -52,7 +52,7 @@ TESTS_ROOT = pathlib.Path(__file__).parent
 
 @cache
 def _read(path: pathlib.Path) -> str:
-    return path.read_text(encoding="utf-8")
+    return _read_bytes(path).decode("utf-8")
 
 
 @cache
@@ -168,10 +168,7 @@ class TestDisplayIsOnlyParallelDisplay:
 
     def test_no_isinstance_check_against_legacy_console_display(self) -> None:
         """No production code may use `isinstance(x, LegacyConsoleDisplay)`."""
-        for path in _walk_python_files(RALPH_ROOT):
-            source = _read(path)
-            if "LegacyConsoleDisplay" not in source:
-                continue
+        for path in _legacy_console_display_references():
             tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):

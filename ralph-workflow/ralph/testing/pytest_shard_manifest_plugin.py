@@ -103,12 +103,15 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Restore manifest module order after pytest collection."""
     manifest = config.stash[_MANIFEST_KEY]
+    orders: dict[Path, int] = {}
 
     def manifest_order(item: pytest.Item) -> int:
+        if item.path in orders:
+            return orders[item.path]
         relative_path = _project_relative_path(item.path, root=config.rootpath)
-        if relative_path is None:
-            return len(manifest.paths)
-        return manifest.order_for(relative_path)
+        order = len(manifest.paths) if relative_path is None else manifest.order_for(relative_path)
+        orders[item.path] = order
+        return order
 
     items.sort(key=manifest_order)
 

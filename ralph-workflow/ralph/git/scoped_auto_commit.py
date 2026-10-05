@@ -278,7 +278,9 @@ def capture_pre_write_contents(
         # Non-git workspace -- record every path as None so the
         # downstream commit helper will skip them all (NOT_REPO at
         # the commit step will return a NOOP / NOT_REPO result).
-        return {p: None for p in paths}  # noqa: C420  # ruff prefers dict.fromkeys; mypy loses the literal type on it
+        for path in paths:
+            recorded[path] = None
+        return recorded
     try:
         for path in paths:
             recorded[path] = _git_blob_sha(repo, path)

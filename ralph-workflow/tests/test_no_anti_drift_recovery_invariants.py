@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import time
+from functools import cache
 
 import pytest
 
@@ -24,12 +25,14 @@ from ralph.interrupt.controller import INTERRUPT_EXIT_CODE, InterruptController
 RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 
 
+@cache
 def _read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
-    return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+@cache
+def _walk_python_files(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    return tuple(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 # ---------------------------------------------------------------------------

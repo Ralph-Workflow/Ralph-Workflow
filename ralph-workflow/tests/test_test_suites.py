@@ -353,6 +353,25 @@ def test_static_discovery_populates_weight_cache_for_retained_files(
     assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_two.py") == 2
 
 
+def test_static_discovery_weights_multiline_parameter_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_cases.py").write_text(
+        'import pytest\n@pytest.mark.parametrize("value", [\n'
+        '    "first",\n    "second",\n    "third",\n])\n'
+        "def test_value(value): pass\n",
+        encoding="utf-8",
+    )
+    test_suites_module.reset_discovery_cache()
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+
+    test_suites_module.discover_test_files(tmp_path)
+
+    assert test_suites_module._test_file_weight(tmp_path, "tests/test_cases.py") == 3
+
+
 def test_static_discovery_keeps_required_real_git_weight_unmultiplied(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

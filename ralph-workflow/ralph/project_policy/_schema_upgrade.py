@@ -14,12 +14,16 @@ stays under the 1000-line repository cap.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.operations import create_commit
+from ralph.git.scoped_auto_commit import ScopedCommitStatus, capture_pre_write_contents
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import markers as policy_markers
+from ralph.project_policy._auto_commit import commit_policy_writes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -207,15 +211,6 @@ def _freeze_policy_files(
     flow; a commit failure is reported (never silent, never a
     half-staged index) and never blocks the run.
     """
-    from pathlib import Path  # noqa: PLC0415
-
-    from ralph.git.operations import create_commit  # noqa: PLC0415
-    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415
-        ScopedCommitStatus,
-        capture_pre_write_contents,
-    )
-    from ralph.project_policy._auto_commit import commit_policy_writes  # noqa: PLC0415
-
     root: object = getattr(workspace, "root", None)
     candidate_paths = [path for path, _marker, _version in outdated]
     pre_contents: dict[str, str | None]
