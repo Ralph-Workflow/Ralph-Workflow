@@ -648,10 +648,13 @@ or the development wrapup notice, both surfaces use the same minutes
 remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 
 - The developer prompt includes a remaining-minutes warning and a force-cut
-  sentence in `shared/_run_budget.j2` so the agent drives the current task
-  to a verifiable state (a green suite, a passing focused test, or an
-  explicit partial report) before the deadline and does not start new work
-  it cannot finish.
+  sentence in `shared/_run_budget.j2` so the agent reserves time for
+  integration, verification, and submission before the deadline. A tight
+  deadline or hard cut does not itself establish external impossibility
+  or authorize an incomplete result: the canonical rule in
+  `shared/_no_exemption_for_failures.j2` requires continued safe developer
+  action while any remains. Runtime time limits still apply; the prompt
+  neither extends them nor guarantees completion.
 - The development wrapup notice
   (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
   the same remaining minutes, suggests dispatching an independent ready
@@ -670,9 +673,38 @@ shape, dependency graph, and overlap do not reject an otherwise accepted plan.
 `max_parallel_workers` is a concurrency limit, not a plan-size limit.
 Additional ready units run in queued waves.
 
+When scope turns out to be much larger than expected, development prompts
+instruct the coordinator to inventory required references and acceptance
+criteria, identify dependencies, and select a small increment with an
+observable pass/fail check. The coordinator assigns disjoint ownership to
+independent ready work within exposed agent capacity and advances its own
+critical-path work while helpers run. Saturated slots queue further waves;
+unavailable delegation or coupled ownership means continuing sequentially
+within current permissions, not dropping required work or bypassing tool
+restrictions.
+
+A failed tactic calls for diagnosis from its evidence and a changed,
+evidence-backed approach while safe actions remain. After each increment,
+the coordinator reproduces returned proof, reassesses readiness, and releases
+dependents. Workers repeat implementation and focused verification only
+within their assigned unit until it is proven; they do not widen ownership,
+recursively dispatch, integrate other units, or run the repository-wide gate.
+The main session owns integration and full verification. These instructions
+reduce assessment-only handbacks; they do not guarantee that an external
+model will obey them or remove runtime limits.
+
 The executor derives ownership from `Paths:`, `Directories:`, or step
 `Files:` when available. Conflicting files and directory containment run
 serially; disjoint files in the same directory may run together. Protected
 assignments are removed before worker briefs, and unknown ownership or
 unextractable graphs remain main-session work. Brokered write protections
 continue to enforce filesystem safety.
+
+<!-- Documentation rubric review: docs/code-style/documentation-rubric.md.
+Clarified large-scope execution and timebox limits on the existing operator
+configuration surface. Replaced the ambiguous deadline/partial-report route;
+left configuration defaults and runtime enforcement unchanged. Kept recovery
+explanation here rather than duplicating template instructions or adding a
+page, and pointed incomplete-result decisions at their canonical rule so
+operators can distinguish execution guidance from actual runtime limits.
+-->

@@ -1,32 +1,19 @@
 ## Completion is the default outcome
 
-Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
-{% if IS_WORKER %}Work as a loop: pick the next ready plan reference, implement it, verify it,
-record its disposition, then immediately continue to the next ready reference.
-{% else %}Start with the dependency graph and dispatch independent ready groups before
-starting implementation yourself. Work as an orchestration loop: accept each
-finished unit's proof, release its dependents, and dispatch newly ready work
-while you implement only your own assigned scope and resolve shared decisions.
-{% endif %}
-Small, proven increments are the execution method; they are never a reason to
-stop. Do not stop and hand back while ready work remains, and do not submit
-while any required ready work remains. `status:
+Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress. Small, proven increments are the execution method, never a stopping point. Do not hand back while ready work remains or submit while required work remains. `status:
 completed` is permitted only when {% if IS_WORKER %}the assigned unit is proven in full{% else %}every required plan reference is proven and the whole plan is complete{% endif %}.
-Treat `partial`, `blocked`, or `failed` as a last resort. The canonical rule
-for when each is permitted lives in `shared/_no_exemption_for_failures.j2`
-— refer to it before deciding between `completed`, `partial`, or `failed`.
+
+## Scope-size recovery procedure
+
+Discovering a large or underestimated scope is a signal to decompose and implement, never an assessment-only handback. Inventory the remaining references and acceptance criteria before prolonged scope analysis, identify actual dependencies, and select an immediately actionable, falsifiable increment. Implement it, run its focused proof, record its disposition, and reassess readiness.
+
+{% if IS_WORKER %}Workers never recursively dispatch, expand beyond exact assigned ownership, integrate other units, or run the full repository-wide gate. Confirm the assigned unit's dependencies are ready, then repeat the implement, focused-verify, evidence, and reassessment loop until the assigned unit is fully proven. Submit exactly one-unit result only after that work is complete.{% else %}Coordinators assign disjoint ownership and dispatch independent ready work within exposed capacity. While helpers work, implement its own ready critical-path work. Saturated capacity must queue later work in waves; coupled work or unavailable dispatch means continue ready work sequentially within current authority, never bypass permissions or abandon implementation. Reproduce returned proof before accepting it, recompute readiness, and release the next work.{% endif %}
+
+After a failed tactic, diagnose its evidence and use a changed, evidence-backed approach. Partial or failed results are a last resort. A failed tactic, difficulty, underestimated scope, unavailable delegation, saturated slots, or a deadline does not authorize stopping while another safe action remains. Follow the canonical incomplete-result rule in `shared/_no_exemption_for_failures.j2` only when no safe developer action remains.
 
 ## Plan fidelity
 
-Treat the request and its acceptance criteria as authoritative. Follow the
-execution plan's steps, files, dependencies, and verification. Planning already
-performed broad exploration, so check only assumptions needed for the next
-ready item. Depart from a plan item only when fresh evidence proves its route
-inaccurate, already satisfied, or not applicable.
-
-Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result. Report exactly one disposition for each: `completed` when followed as written, `adapted` when a different route achieves the same intended outcome, `not_applicable` when omission does not weaken any request criterion, or `blocked` when necessary work cannot proceed. An `adapted` rationale explains the route change and proves the intended outcome. A `not_applicable` rationale states the plan assumption, cites fresh contradictory or satisfying evidence at a reproducible location or command, and explains why affected request criteria remain covered. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation never justifies `not_applicable`. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
-
-Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready. Select the first ready reference, make its specified change, run focused verification, and record its disposition and evidence. Then return the unit result.{% else %}inventory the plan references and dependencies, then dispatch independent ready groups concurrently by default. Assign disjoint ownership before implementing your own ready reference while other units and read-only helpers run. Run focused verification on stable inputs and record each reference's disposition and evidence. Reassess the remaining dependency graph after each result and dispatch newly ready work.{% endif %} After a failed approach, retry only with a new evidence-based hypothesis or report partial progress. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
+Follow the plan's steps, dependencies, files, and verification. Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result with exactly one disposition: `completed`, `adapted`, `not_applicable`, or `blocked`. An adapted or not-applicable disposition requires reproducible evidence and rationale; difficulty or elapsed time never justifies either. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy its verification commitments.
 
 ## Visual review (when the change touches the UI)
 
