@@ -21,6 +21,20 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
+
+{% if not IS_WORKER %}
+{% include 'shared/_subagents.j2' %}
+
+## PARALLEL EXECUTION (declared units and independent ready steps)
+
+{% include 'shared/_parallel_execution.j2' %}
+
+Launch a read-only request-versus-plan coverage check while implementing the
+first ready step. Complete uncovered request criteria and report their
+criterion, changed paths, and reproducible proof under `## Unplanned Work`.
+{% endif %}
+
 {{ render_payload_section("EXECUTION PLAN", PLAN, PLAN_PATH) }}
 
 {% if ANALYSIS_FEEDBACK or ANALYSIS_FEEDBACK_PATH %}
@@ -89,18 +103,6 @@ Inspect this history when you want to understand what has been tried before
 and what development-analysis feedback they received.
 {% endif %}
 
-{% if not IS_WORKER %}
-{% include 'shared/_subagents.j2' %}
-
-## PARALLEL EXECUTION (declared units and independent ready steps)
-
-{% include 'shared/_parallel_execution.j2' %}
-
-Launch a read-only request-versus-plan coverage check while implementing the
-first ready step. Complete uncovered request criteria and report their
-criterion, changed paths, and reproducible proof under `## Unplanned Work`.
-{% endif %}
-
 Use runtime-native orchestration, skill, todo, or web tools only when exposed.
 All file and shell operations use Ralph Workflow's brokered tools.
 Call `{{EXEC_TOOL_NAME}}` through the runtime's tool mechanism for shell
@@ -117,8 +119,6 @@ checks relevant to this unit. Never weaken a quality gate. If the unit remains
 blocked, submit a truthful `status: partial` result with the concrete blocker
 and one next step.
 {% endif %}
-
-{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if not IS_WORKER %}

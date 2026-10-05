@@ -26,13 +26,7 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
-{{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
-
-{% include 'shared/_analysis_context.j2' %}
-
-{% include 'shared/_artifact_history.j2' %}
-
-{% include 'shared/_subagents.j2' %}
+{% include 'shared/_developer_iteration_guidance.j2' %}
 
 ## PARALLEL EXECUTION (declared units and independent ready steps)
 
@@ -59,7 +53,13 @@ Only a concrete external blocker justifies a continuation gap or `Next steps:`;
 the missing plan step alone does not justify deferring required work.
 {% endif %}
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
+{{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
+
+{% include 'shared/_analysis_context.j2' %}
+
+{% include 'shared/_artifact_history.j2' %}
+
+{% include 'shared/_subagents.j2' %}
 
 Before submitting, run the cheap independent pre-submit review against the
 plan and proof contract — an open gap must close before the artifact is

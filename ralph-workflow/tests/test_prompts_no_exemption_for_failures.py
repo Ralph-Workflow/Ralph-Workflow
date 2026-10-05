@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.prompts.developer import (
+    DeveloperPromptInputs,
+    prompt_developer_iteration_xml_with_context,
+)
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
+
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 _PARTIAL = _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2"
 _TEMPLATE_NAMES = (
@@ -182,7 +190,7 @@ def test_rendered_development_prompts_recover_work_without_expanding_workers(tmp
         assert prompt.count(recovery_opening) == 1
         assert prompt.index(recovery_opening) < prompt.index("EXECUTION PLAN")
         assert "Workers decompose only their assigned unit" in prompt
-        assert "continue until the full unit is proven" in prompt
+        assert "the assigned unit is proven in full" in prompt
         assert "Before transferring ownership" not in prompt
         assert "dispatch disjoint ready scopes" not in prompt
         assert prompt.count(shared_size_only_clause) == 1, (
