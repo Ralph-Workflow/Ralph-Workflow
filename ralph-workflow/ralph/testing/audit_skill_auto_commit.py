@@ -284,7 +284,18 @@ _INVARIANTS: tuple[Invariant, ...] = (
             "commit_deterministic_writes",
             "snapshot_dirty_paths_strict",
             "capture_pre_write_contents",
+        ),
+    ),
+    # wt-012: the pre-staged index snapshot/restore helpers (including
+    # the staged-deletion sentinel) moved to ``git/_index_snapshots.py``
+    # to keep ``scoped_auto_commit.py`` under the 1000-line cap; the
+    # invariant tracks the new home of the literal.
+    Invariant(
+        rel_path="git/_index_snapshots.py",
+        present=(
             "STAGED_DELETION_SENTINEL",
+            "_snapshot_pre_staged_index",
+            "_restore_pre_staged_index",
         ),
     ),
     # wt-012: the policy preflight routes its own writes through the

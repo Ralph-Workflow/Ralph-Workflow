@@ -366,6 +366,162 @@ def test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index(
 
 
 # ----------------------------------------------------------------------------
+# Transition isolation: SKIPPED descendants stay uncommitted (DA-003/DA-008)
+# ----------------------------------------------------------------------------
+
+
+def test_dir_to_symlink_transition_does_not_commit_skipped_dirty_descendant(
+    tmp_path: Path,
+) -> None:
+    """wt-012 DA-003/DA-008: a pre-write-dirty descendant stays uncommitted.
+
+    Setup: tracked ``old/clean`` and ``old/wip``; the user modifies
+    ``old/wip`` BEFORE the producer captures pre-write contents, so the
+    helper must SKIP it. The install then replaces ``old`` with a
+    symlink. Staging the ancestor would sweep the skipped descendant's
+    deletion into the commit (the DA-003 counterexample: result CREATED
+    with ``skipped_paths=('old/wip',)`` yet ``git diff HEAD~1 HEAD``
+    recorded ``D old/wip``), and git cannot hold the new symlink and
+    the kept descendant in one tree. The helper must therefore refuse
+    the transition stage entirely: no commit, HEAD unchanged, the
+    skipped descendant still tracked at HEAD, and every transition path
+    reported in ``skipped_paths``.
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "clean").write_text("clean\n", encoding="utf-8")
+    (old / "wip").write_text("orig\n", encoding="utf-8")
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "clean").write_text("clean\n", encoding="utf-8")
+
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(["old/clean", "old/wip"])
+        repo.index.commit("seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        seed_head = repo.head.commit.hexsha
+    finally:
+        repo.close()
+
+    # The user dirties old/wip BEFORE the producer captures pre-write
+    # contents (capture sees the dirty bytes; HEAD still has "orig\n").
+    (old / "wip").write_text("user wip\n", encoding="utf-8")
+    pre_contents = capture_pre_write_contents(
+        tmp_path, ["old", "old/clean", "old/wip"]
+    )
+
+    # Install: replace the dir with a symlink.
+    shutil.rmtree(old)
+    old.symlink_to(target)
+
+    result = commit_deterministic_writes(
+        tmp_path,
+        paths=["old", "old/clean", "old/wip"],
+        pre_contents=pre_contents,
+        subject="chore(skills): sync baseline bundle",
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+
+    assert result.status is ScopedCommitStatus.SKIPPED, (
+        f"transition sweeping a skipped dirty descendant must not commit; got: {result!r}"
+    )
+    # The dirty descendant is reported skipped, and the ancestor plus
+    # the eligible descendant that could only stage through it join it.
+    assert "old/wip" in result.skipped_paths
+    assert "old" in result.skipped_paths
+
+    repo = Repo(tmp_path)
+    try:
+        # HEAD did not advance: no commit was created.
+        assert repo.head.commit.hexsha == seed_head
+        # The skipped descendant is still tracked at HEAD -- its
+        # deletion was NOT committed.
+        head_paths = {entry.path for entry in repo.head.commit.tree.traverse()}
+        assert "old/wip" in head_paths
+        assert "old/clean" in head_paths
+        # The transition stays visibly uncommitted: the skipped user's
+        # deletion is an unstaged working-tree change, never swept into
+        # a fixed-message commit.
+        porcelain = repo.git.status("--porcelain")
+        assert "old/wip" in porcelain
+    finally:
+        repo.close()
+
+
+def test_transition_conflict_skips_only_the_conflicting_ancestor(
+    tmp_path: Path,
+) -> None:
+    """wt-012 DA-008: unrelated eligible writes still commit; only the
+    conflicting transition is skipped.
+
+    Same dirty-descendant transition as above, plus a brand-new file
+    the deterministic writer authored (absent at capture, written
+    after). The commit must contain EXACTLY the new file -- the
+    transition paths stay uncommitted and the user's dirty descendant
+    remains tracked at HEAD.
+    """
+    _init_repo_with_initial_commit(tmp_path)
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "clean").write_text("clean\n", encoding="utf-8")
+    (old / "wip").write_text("orig\n", encoding="utf-8")
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "clean").write_text("clean\n", encoding="utf-8")
+
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(["old/clean", "old/wip"])
+        repo.index.commit("seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        seed_head = repo.head.commit.hexsha
+    finally:
+        repo.close()
+
+    (old / "wip").write_text("user wip\n", encoding="utf-8")
+    # new.txt does not exist at capture time -> recorded as None
+    # (brand-new path the writer authors below).
+    pre_contents = capture_pre_write_contents(
+        tmp_path, ["old", "old/clean", "old/wip", "new.txt"]
+    )
+    assert pre_contents["new.txt"] is None
+
+    shutil.rmtree(old)
+    old.symlink_to(target)
+    (tmp_path / "new.txt").write_text("new\n", encoding="utf-8")
+
+    result = commit_deterministic_writes(
+        tmp_path,
+        paths=["old", "old/clean", "old/wip", "new.txt"],
+        pre_contents=pre_contents,
+        subject="chore(skills): sync baseline bundle",
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+
+    assert result.status is ScopedCommitStatus.CREATED, (
+        f"the unrelated eligible write must still commit; got: {result!r}"
+    )
+    assert "old/wip" in result.skipped_paths
+    assert "old" in result.skipped_paths
+    assert "new.txt" not in result.skipped_paths
+
+    repo = Repo(tmp_path)
+    try:
+        assert repo.head.commit.hexsha != seed_head
+        # The commit contains EXACTLY the new file -- no transition
+        # deletions, and crucially not the skipped dirty descendant.
+        diff = repo.git.diff(seed_head, "HEAD", "--name-status")
+        assert diff == "A\tnew.txt"
+        head_paths = {entry.path for entry in repo.head.commit.tree.traverse()}
+        assert "old/wip" in head_paths
+        assert "old/clean" in head_paths
+    finally:
+        repo.close()
+
+
+# ----------------------------------------------------------------------------
 # Ancestor-symlink safety: same-content trap (PA-002 byte-equal case)
 # ----------------------------------------------------------------------------
 

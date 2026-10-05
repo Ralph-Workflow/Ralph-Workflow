@@ -46,6 +46,14 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git._index_snapshots import (
+    _GIT_LS_FILES_META_FIELDS,
+    _GIT_LS_FILES_PATH_PARTS,
+    _capture_staged_paths,
+    _restore_pre_staged_index,
+    _snapshot_pre_staged_index,
+)
+from ralph.git._transition_guard import drop_transition_conflicts
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 
 if TYPE_CHECKING:
@@ -63,15 +71,6 @@ if TYPE_CHECKING:
 # before the path body begins. Lines shorter than this are noise.
 _GIT_PORCELAIN_PREFIX_LEN: int = 4
 
-# ``git ls-files --stage`` returns ``<mode> <blob-sha> <stage>\t<path>``.
-_GIT_LS_FILES_META_FIELDS: int = 3
-_GIT_LS_FILES_PATH_PARTS: int = 2
-
-# Stage-0 means "fully merged in the index". Anything else indicates an
-# unmerged conflict state which the chore commit MUST NOT touch.
-_GIT_INDEX_STAGE_MERGED: str = "0"
-
-
 class ScopedCommitStatus(Enum):
     """Outcome category returned by :func:`commit_scoped_updates` and friends.
 
@@ -86,7 +85,7 @@ class ScopedCommitStatus(Enum):
     NOOP = "noop"  # No dirty in-scope paths; nothing to commit.
     NOT_REPO = "not_repo"  # ``repo_root`` is not inside a git working tree.
     FAILED = "failed"  # Any ``OSError`` / ``GitCommandError`` from the attempt.
-    SKIPPED = "skipped"  # Caller asked to commit, but every in-scope path was already dirty at HEAD.
+    SKIPPED = "skipped"  # Every in-scope path was already dirty at HEAD, or its staging would sweep a dirty skipped descendant (wt-012 DA-003/DA-008).
 
 
 @dataclass(frozen=True)
@@ -96,10 +95,11 @@ class ScopedCommitResult:
     Attributes:
         status: Outcome category (CREATED / NOOP / NOT_REPO / FAILED / SKIPPED).
         sha: The commit SHA on ``CREATED``, else ``None``.
-        skipped_paths: Paths the caller asked to commit whose pre-write
-            content hash did not match HEAD (they were already dirty
-            before the deterministic writer touched them and so were
-            left for the agent flow). Empty on every non-SKIPPED status.
+        skipped_paths: Paths left uncommitted: those already dirty at
+            HEAD (HEAD != pre-write hash) and any ancestor-transition
+            entries whose staging would have swept such a path's
+            deletion into the commit (wt-012 DA-003/DA-008).
+            Empty on every non-SKIPPED status.
         error: Human-readable failure detail for ``FAILED``; ``None``
             otherwise.
     """
@@ -147,9 +147,11 @@ def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
     """
     try:
         repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw = cast("str", repo.git.status("--porcelain", "--untracked-files=all"))
+        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
     except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
         logger.debug("could not snapshot the working tree ({}); assuming clean", exc)
+        return frozenset()
+    if not isinstance(raw, str):
         return frozenset()
     return frozenset(
         line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
@@ -176,9 +178,11 @@ def snapshot_dirty_paths_strict(repo_root: Path | str) -> frozenset[str] | None:
     """
     try:
         repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw = cast("str", repo.git.status("--porcelain", "--untracked-files=all"))
+        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
     except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
         logger.debug("could not snapshot the working tree strictly ({}); reporting None", exc)
+        return None
+    if not isinstance(raw, str):
         return None
     return frozenset(
         line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
@@ -288,8 +292,12 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     "absent at HEAD" (wt-012 DA-006/DA-011).
     """
     try:
-        raw = cast("str", repo.git.ls_files("--stage", "--", path))
+        raw: object = repo.git.ls_files("--stage", "--", path)
     except GitCommandError:
+        return _HEAD_PROBE_FAILED
+    if not isinstance(raw, str):
+        # Non-string output means the probe itself is broken; fail closed
+        # rather than treating the path as absent at HEAD (wt-012 DA-006).
         return _HEAD_PROBE_FAILED
     if not raw.strip():
         return None
@@ -313,7 +321,7 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
         if len(meta) < _GIT_LS_FILES_META_FIELDS:
             continue
         if parts[1] == path:
-            return cast("str | None", meta[1])
+            return meta[1]
     return None
 
 
@@ -384,9 +392,12 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
     if _has_symlink_ancestor(abs_path):
         return _ANCESTOR_SYMLINK_DIRTY
     try:
-        return cast("str", repo.git.hash_object(abs_path)).strip() or None
+        hashed: object = repo.git.hash_object(abs_path)
     except (GitCommandError, OSError):
         return None
+    if not isinstance(hashed, str):
+        return None
+    return hashed.strip() or None
 
 
 def capture_pre_write_contents(
@@ -427,99 +438,6 @@ def capture_pre_write_contents(
         if callable(close):
             close()
     return recorded
-
-
-# ---- Pre-staged index snapshot / restore (handles staged deletions) ---------
-
-# Sentinel: a path was in ``git diff --cached --name-only`` but absent
-# from ``git ls-files --stage`` -> the user staged a deletion. Restore
-# by ``git update-index --force-remove <path>`` to keep the index and
-# the file in sync with the pre-staged state.
-_STAGED_DELETION_SENTINEL: str = "__STAGED_DELETION__"
-
-# Sentinel: a path was in the index at pre-staged snapshot time. We
-# must record its mode + blob to restore the byte-exact index entry.
-# No marker in particular -- any non-sentinel value is fine.
-_STAGED_ENTRY_NONE: str | None = None
-
-
-def _snapshot_pre_staged_index(
-    repo: Repo, paths: list[str]
-) -> dict[str, str | None]:
-    """Capture each pre-staged path's index entry, including staged deletions.
-
-    A path the user pre-staged for a modification has an index entry
-    ``<mode> <blob> <stage>\t<path>`` -- we record ``"<mode>,<blob>"``
-    so the restore can replay it with ``git update-index --cacheinfo``.
-
-    A path the user pre-staged for a deletion appears in
-    ``git diff --cached --name-only`` but NOT in
-    ``git ls-files --stage``. We record the
-    :data:`_STAGED_DELETION_SENTINEL` so the restore knows to call
-    ``git update-index --force-remove <path>`` -- without that call,
-    the user's staged deletion would silently revert to the
-    pre-deletion index entry after the chore commit.
-
-    Unmerged (non-stage-0) entries are skipped defensively (a chore
-    commit MUST NOT touch an unmerged index).
-    """
-    snapshots: dict[str, str | None] = {}
-    if not paths:
-        return snapshots
-    ls_files_raw = cast(
-        "str", repo.git.ls_files("--stage", "--", *paths)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    indexed: set[str] = set()
-    for ls_line in ls_files_raw.splitlines():
-        parts = ls_line.split("\t", 1)
-        if len(parts) != _GIT_LS_FILES_PATH_PARTS:
-            continue
-        meta = parts[0].split()
-        if len(meta) < _GIT_LS_FILES_META_FIELDS:
-            continue
-        mode, blob_sha, stage = meta[0], meta[1], meta[2]
-        if stage != _GIT_INDEX_STAGE_MERGED:
-            continue
-        snapshots[parts[1]] = f"{mode},{blob_sha}"
-        indexed.add(parts[1])
-    # Any pre-staged path NOT in the index is a staged deletion.
-    for path in paths:
-        if path not in indexed:
-            snapshots[path] = _STAGED_DELETION_SENTINEL
-    return snapshots
-
-
-def _restore_pre_staged_index(repo: Repo, snapshots: dict[str, str | None]) -> None:
-    """Restore each pre-staged path's exact index state, including staged deletions.
-
-    For an existing index entry, replay it via
-    ``git update-index --add --cacheinfo <mode>,<blob>,<path>``. For a
-    staged deletion (the :data:`_STAGED_DELETION_SENTINEL` value), force
-    the path out of the index with ``git update-index --force-remove``.
-    """
-    for path, entry in snapshots.items():
-        if entry == _STAGED_DELETION_SENTINEL:
-            _ = cast("None", repo.git.update_index("--force-remove", path))
-            continue
-        if entry is None:
-            continue
-        mode, blob_sha = entry.split(",", 1)
-        _ = cast(
-            "None",
-            repo.git.update_index(
-                "--add",
-                "--cacheinfo",
-                f"{mode},{blob_sha},{path}",
-            ),
-        )
-
-
-def _capture_staged_paths(repo: Repo) -> list[str]:
-    """Return the list of pre-staged paths (``git diff --cached --name-only``)."""
-    diff_output: object = repo.git.diff("--cached", "--name-only")
-    if not isinstance(diff_output, str):
-        return []
-    return [path for path in diff_output.splitlines() if path]
 
 
 # ---- commit_deterministic_writes --------------------------------------------
@@ -573,10 +491,14 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
       HEAD (nothing changed since the writer ran, or the writer's
       write was a no-op idempotent rewrite of the existing blob).
     * ``SKIPPED`` -- at least one in-scope path was already dirty at
-      HEAD (HEAD != pre-write hash) so the caller's fixed-message
-      commit would have swept in unrelated work. Those paths are
-      SKIPPED and left dirty for the agent flow. Other in-scope paths
-      are still committed; ``skipped_paths`` lists the SKIPPED ones.
+      HEAD (HEAD != pre-write hash), or an ancestor transition stage
+      (dir→symlink replacement) would sweep such a skipped
+      descendant's deletion into the commit; git cannot hold the new
+      symlink and the kept descendant in one tree, so the ancestor and
+      every stageable entry beneath it join ``skipped_paths`` instead
+      (wt-012 DA-003/DA-008, see ``ralph.git._transition_guard``).
+      Skipped paths are left dirty for the agent flow. Other in-scope
+      paths are still committed.
     * ``NOT_REPO`` -- ``repo_root`` is not a git working tree.
     * ``FAILED`` -- any ``OSError`` / ``GitCommandError`` from the
       attempt. The pre-attempt index state is restored byte-for-byte
@@ -729,6 +651,14 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                         continue
                     stageable.append(path)
                     del on_disk_sha  # narrow explicit type for the next iter
+
+                # Dedupe (a dir→symlink rewrite can append the same
+                # ancestor once per descendant plus once for the root).
+                # wt-012 DA-003/DA-008: drop ancestors whose stage would
+                # sweep a SKIPPED dirty descendant's deletion.
+                stageable = sorted(set(stageable))
+                if skipped and stageable:
+                    stageable = drop_transition_conflicts(stageable, skipped)
 
                 if not stageable:
                     return ScopedCommitResult(
