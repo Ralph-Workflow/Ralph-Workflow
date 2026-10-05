@@ -35,7 +35,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: developer decides how to close this finding in the next iteration.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add an oversized-index case to tests/test_foo.py that exercises the indexer with a payload >5x the documented limit and asserts the overflow path is covered.
 
 ## Criterion Verdicts
 

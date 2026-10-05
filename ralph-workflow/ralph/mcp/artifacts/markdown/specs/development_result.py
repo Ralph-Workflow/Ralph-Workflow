@@ -18,9 +18,9 @@ under items. The bracketed IDs in ``Plan Items Proven`` are
 shape-independent: a step ID (``S-N``), a work-unit bracket ID, a
 prose-plan ID (``plan``), a subplan / section heading, or any other
 stable reference the plan actually uses. The validator only rejects
-duplicate IDs, missing ``Disposition`` / ``Rationale`` fields, and
-(for ``adapted`` / ``not_applicable`` / ``blocked`` items) a missing
-``Rationale``; coverage of the plan's intent is followed through the
+duplicate IDs, a missing ``Disposition``, and (for ``adapted`` /
+``not_applicable`` / ``blocked`` items) a missing ``Rationale``;
+coverage of the plan's intent is followed through the
 development-analysis feedback loop, not by exact ID matching here
 (see U-3).
 """

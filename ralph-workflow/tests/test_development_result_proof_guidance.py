@@ -33,6 +33,7 @@ _FORMAT_DOC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "deve
 _JINJA_PARTIAL = (
     _REPO_ROOT / "ralph" / "prompts" / "templates" / "shared" / "_development_result_proof.jinja"
 )
+_VALIDATOR_SPEC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "markdown" / "specs" / "development_result.py"
 
 
 def _normalized(path: Path) -> str:
@@ -159,4 +160,24 @@ def test_format_doc_states_cycle_warning_runtime_clock_plus_declared_flag() -> N
     assert (
         "a result validated outside the warned invocation (a replay or a "
         "hand-written report) keeps its stricter reading"
+    ) in text
+
+
+def test_validator_docstring_scopes_rationale_to_non_completed_dispositions() -> None:
+    """DA-015: the development-result validator docstring agrees with the
+    shared proof partial on which dispositions require ``Rationale``.
+
+    The shared partial correctly scopes ``Rationale`` rejection to
+    ``adapted`` / ``not_applicable`` / ``blocked`` items. The validator
+    docstring must agree — a blanket "missing Disposition / Rationale
+    fields" claim contradicts the partial and misrepresents the
+    runtime, so the docstring is rewritten to mirror the partial's
+    scoped wording.
+    """
+    text = " ".join(_VALIDATOR_SPEC.read_text(encoding="utf-8").split())
+
+    assert "missing Disposition / Rationale fields" not in text
+    assert "a missing ``Disposition``" in text
+    assert (
+        "and (for ``adapted`` / ``not_applicable`` / ``blocked`` items) a missing ``Rationale``"
     ) in text

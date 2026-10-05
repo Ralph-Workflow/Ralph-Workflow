@@ -163,3 +163,48 @@ class TestDevelopmentAnalysisWholeChange:
         assert "[DA-002]" in text
         # The whole-change example item must read as a parallel-piece finding.
         assert "parallel" in text.lower() or "integration" in text.lower()
+
+    def test_embedded_example_names_concrete_remaining_work(self) -> None:
+        """DA-015 / DA-016: the embedded example names concrete leftover work.
+
+        The format doc rule (development_analysis_decision.md) requires
+        every ``## What Came Up Short`` finding to carry a non-empty
+        ``Remaining work:`` statement naming concrete leftover
+        development work. The embedded example in
+        ``development_analysis.jinja`` must model that rule rather than
+        defer the choice back to the developer with a vague sentence
+        like "developer decides how to close this finding in the next
+        iteration".
+        """
+        source = _development_analysis_source()
+        # The vague deferred-choice phrase is what DA-015 / DA-016
+        # explicitly flagged: the example identified no outstanding
+        # development work.
+        assert "developer decides how to close this finding in the next iteration" not in source
+        # The example must still carry a Remaining work statement.
+        assert "Remaining work:" in source
+        # And it must name a concrete action the developer can perform
+        # (a specific test file plus a behavior the next change
+        # exercises).
+        assert "tests/test_foo.py" in source
+
+    def test_format_doc_request_changes_example_names_concrete_remaining_work(self) -> None:
+        """The format doc's own request-changes example mirrors the rule."""
+        text = _format_doc_path("format_docs", "development_analysis_decision.md").read_text(encoding="utf-8")
+        assert "developer decides how to close this finding in the next iteration" not in text
+        assert "Remaining work:" in text
+        assert "tests/test_foo.py" in text
+
+    def test_format_doc_rule_requires_concrete_remaining_work(self) -> None:
+        """The Sections rule must continue to require concrete leftover
+        development work so the rule and the example agree. Locking the
+        rule prevents a regression where the rule drifts to a vague
+        "developer decides" placeholder and the example then mirrors it.
+        """
+        text = " ".join(
+            _format_doc_path("format_docs", "development_analysis_decision.md")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+        assert "naming concrete leftover development work" in text
+        assert "`Remaining work:`" in text
