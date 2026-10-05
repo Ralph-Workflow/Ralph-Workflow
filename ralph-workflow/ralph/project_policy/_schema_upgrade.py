@@ -218,11 +218,12 @@ def _freeze_policy_files(
 
     root: object = getattr(workspace, "root", None)
     candidate_paths = [path for path, _marker, _version in outdated]
-    pre_contents: dict[str, str | None] = (
-        capture_pre_write_contents(root, candidate_paths)
-        if isinstance(root, Path)
-        else {path: None for path in candidate_paths}
-    )
+    pre_contents: dict[str, str | None] = {}
+    if isinstance(root, Path):
+        pre_contents = capture_pre_write_contents(root, candidate_paths)
+    else:
+        for path in candidate_paths:
+            pre_contents[path] = None
     frozen: list[str] = []
     for path, marker, installed_version in outdated:
         content = workspace.read(path)

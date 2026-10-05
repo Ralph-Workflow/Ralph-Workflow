@@ -350,6 +350,11 @@ The development phase supports a proof policy block:
 require_analysis_proof = true
 ```
 
+Older pipeline files may also contain `require_plan_proof = true` or `false`.
+Ralph Workflow accepts and discards this retired boolean setting; remove it when updating
+your configuration. It no longer controls plan coverage. Other unknown proof
+policy fields are still rejected, and `require_analysis_proof` remains active.
+
 Each phase can declare a `display_style` override to control its banner colour. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
 
 ## `artifacts.toml` in plain language
