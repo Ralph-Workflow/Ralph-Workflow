@@ -675,6 +675,13 @@ shape, dependency graph, and overlap do not reject an otherwise accepted plan.
 `max_parallel_workers` is a concurrency limit, not a plan-size limit.
 Additional ready units run in queued waves.
 
+Large scope does not justify an assessment-only response or a request to split
+the work without advancing it. The coordinator starts a safe, testable
+increment while dispatching disjoint ready scopes within capacity; an
+isolated worker does the same only within its assignment. These are prompt
+instructions, not a guarantee of model behavior or a change to runtime
+deadlines, review, or result eligibility.
+
 The executor derives ownership from `Paths:`, `Directories:`, or step
 `Files:` when available. Conflicting files and directory containment run
 serially; disjoint files in the same directory may run together. Protected
