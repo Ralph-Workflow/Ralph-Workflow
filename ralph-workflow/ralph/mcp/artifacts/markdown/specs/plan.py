@@ -127,29 +127,35 @@ def _units(document: ParsedDocument, name: str, steps: list[Content]) -> list[Co
     return entries
 
 
+def _is_step_metadata_line(text: str) -> bool:
+    """Return whether a step-body line is safely represented in extraction."""
+    stripped = text.strip()
+    return (
+        _TARGET.match(stripped) is not None
+        or stripped.casefold().startswith(
+            ("files:", "depends on:", "satisfies:", "verify:", "expect:")
+        )
+    )
+
+
 def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> bool:
     """Keep prose that extraction cannot safely assign out of fan-out."""
-    metadata_sections = {
-        "Summary",
-        "Scope",
-        "Skills MCP",
-        "Steps",
-        "Critical Files",
-        "Risks",
-        "Verification",
-    }
     for section in document.sections:
-        if section.name in {"Work Units", "Parallel Plan"}:
-            if any(line.text.strip() for line in section.lines):
-                return True
-            continue
+        is_unit_section = section.name in {"Work Units", "Parallel Plan"}
+        if section.lines:
+            return True
         if section.blocks:
             if any(block.identifier not in unit_step_ids for block in section.blocks):
                 return True
+            if any(
+                not _is_step_metadata_line(line.text)
+                and (not is_unit_section or "/" in line.text)
+                for block in section.blocks
+                for line in block.lines
+            ):
+                return True
             continue
-        if section.name == "Scope" and section.lines:
-            return True
-        if section.name not in metadata_sections and (section.lines or section.items):
+        if section.items and not is_unit_section:
             return True
     return False
 

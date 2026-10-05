@@ -290,3 +290,78 @@ def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
     ):
         _, diagnostics, _ = analyze_plan_document(text)
         assert diagnostics == [], f"{text!r} unexpectedly rejected"
+
+
+def test_steps_section_prose_outside_owned_blocks_remains_main_session_work() -> None:
+    text = """## Work Units
+- [api] Implement the API change
+  Paths: src/api.py
+- [tests] Implement the API tests
+  Paths: tests/api_test.py
+## Steps
+### [S-1] Implement the API change
+Files:
+- modify src/api.py
+### [S-2] Implement the API tests
+Files:
+- modify tests/api_test.py
+Prepare release/manifest.json after both units are complete.
+"""
+    content, diagnostics, _ = analyze_plan_document(text)
+
+    assert diagnostics == []
+    assert content["unextractable_work_units"] is True
+
+
+def test_metadata_section_prose_without_steps_remains_main_session_work() -> None:
+    for section_name in ("Summary", "Steps", "Verification"):
+        text = f"""## {section_name}
+Prepare release/manifest.json after both units finish and verify publication.
+## Work Units
+- [one] Implement the first component
+  Paths: src/one.py
+- [two] Implement the second component
+  Paths: src/two.py
+"""
+        content, diagnostics, _ = analyze_plan_document(text)
+
+        assert diagnostics == []
+        assert content["unextractable_work_units"] is True
+
+
+def test_prose_before_owned_step_blocks_remains_main_session_work() -> None:
+    text = """## Work Units
+- [one] Implement the first component
+  Paths: src/one.py
+- [two] Implement the second component
+  Paths: src/two.py
+## Steps
+Prepare release/manifest.json after both units finish and verify publication.
+### [S-1] Implement the first component
+Files:
+- modify src/one.py
+### [S-2] Implement the second component
+Files:
+- modify src/two.py
+"""
+    content, diagnostics, _ = analyze_plan_document(text)
+
+    assert diagnostics == []
+    assert content["unextractable_work_units"] is True
+
+
+def test_prose_in_owned_work_unit_step_block_remains_main_session_work() -> None:
+    text = """## Work Units
+- [one] Implement the first component
+  Paths: src/one.py
+### [S-1] Implement the first component
+Files:
+- modify src/one.py
+Prepare release/manifest.json after the first component is complete.
+- [two] Implement the second component
+  Paths: src/two.py
+"""
+    content, diagnostics, _ = analyze_plan_document(text)
+
+    assert diagnostics == []
+    assert content["unextractable_work_units"] is True

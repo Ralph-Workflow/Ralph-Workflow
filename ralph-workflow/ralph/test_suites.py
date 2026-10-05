@@ -73,13 +73,16 @@ _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-# Explicit overrides may use at most this many plain-pytest shards. Raising
-# this cap does NOT raise the combined 60-second budget tracked upstream in
-# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
-_MAX_PYTEST_WORKERS = 12
-# Automatic resolution deliberately uses a lower cap so the verifier retains
-# CPU and filesystem capacity for its own deadline tracking and later steps.
-_AUTO_PYTEST_WORKER_CAP = 8
+# Hard cap on the number of plain-pytest shards; raising this cap does NOT
+# raise the combined 60-second budget tracked upstream in
+# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
+# host, 8 plain shards keep concurrent pytest startup, collection, and
+# filesystem work below the per-test watchdog contention threshold.
+_MAX_PYTEST_WORKERS = 8
+_HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
+# The maintained 12-core host completes the suite faster with eight shards;
+# additional shard startup and filesystem contention consume smoke headroom.
+_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
@@ -332,20 +335,29 @@ def validate_exact_file_assignment(
 def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
-    The auto profile is bounded by ``_AUTO_PYTEST_WORKER_CAP = 8``. Explicit
-    overrides remain capped at ``available_cores - 2`` and
-    ``_MAX_PYTEST_WORKERS = 12`` to reserve parent and OS/I/O capacity.
+    The auto profile is bounded by ``_MAX_PYTEST_WORKERS = 8``. Explicit
+    overrides remain capped at ``available_cores - 2`` to reserve the parent
+    and OS/I/O capacity. The maintained 12-core host completes fastest with
+    eight auto shards; larger hosts remain bounded there to avoid startup and
+    filesystem contention.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2
+    # On the maintained 12-core host, eight shards preserve budget for later
+    # smoke suites by avoiding excess startup and filesystem contention.
+    worker_cap = (
+        _PERFORMANCE_CORE_PYTEST_WORKER_CAP
+        if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES
+        else _MAX_PYTEST_WORKERS
+    )
     if raw == "auto":
         auto_cores = 1 if available_cores <= _MINIMUM_MULTI_SHARD_CORES else available_cores
-        return str(min(_AUTO_PYTEST_WORKER_CAP, auto_cores))
+        return str(min(worker_cap, auto_cores))
     try:
         requested = int(raw)
     except ValueError:
         return raw
-    explicit_max = max(1, min(_MAX_PYTEST_WORKERS, available_cores - 2))
+    explicit_max = max(1, available_cores - 2)
     return str(max(1, min(requested, explicit_max)))
 
 

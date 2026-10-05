@@ -127,9 +127,8 @@ def test_auto_worker_count_uses_verified_eight_shard_cap(
 ) -> None:
     """Auto profile caps shards at the verified eight-worker limit.
 
-    Twelve concurrent pytest processes exhaust the parent deadline on the
-    maintained 12-core host. Eight shards complete the full selected suite
-    within the immutable budget while preserving exact-once selection.
+    Eight shards keep the maintained 12-core host's full selected suite within
+    the immutable budget while preserving exact-once selection.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

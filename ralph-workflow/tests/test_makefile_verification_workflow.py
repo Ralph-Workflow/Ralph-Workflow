@@ -173,7 +173,7 @@ def test_multimodal_smoke_uses_configurable_bounded_parallel_workers() -> None:
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
-    assert "MULTIMODAL_SMOKE_WORKERS ?= 4" in makefile_text
+    assert "MULTIMODAL_SMOKE_WORKERS ?= 8" in makefile_text
     assert "-n $(MULTIMODAL_SMOKE_WORKERS) --dist worksteal" in body[0]
     assert '"smoke and subprocess_e2e"' in body[0]
 

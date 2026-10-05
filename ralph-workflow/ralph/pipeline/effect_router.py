@@ -53,7 +53,13 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.effects.empty_commit_effect import EmptyCommitPhaseRole
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
+    from ralph.policy.models import (
+        AgentsPolicy,
+        PhaseDefinition,
+        PhaseParallelization,
+        PipelinePolicy,
+        PolicyBundle,
+    )
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -131,13 +137,13 @@ def _parallel_or_agent_effect(
         scope = workspace_scope or resolve_workspace_scope()
         work_units = _work_units_from_plan_artifact(scope.root)
     dispatchable_units = dispatchable_work_units(work_units)
+    phase_parallelization = phase_def.parallelization
     if (
-        phase_def.parallelization is not None
+        phase_parallelization is not None
         and len(dispatchable_units) == len(work_units)
         and len(dispatchable_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION
     ):
-        phase_para = phase_def.parallelization
-        if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
+        if phase_parallelization.dispatch_mode == "agent_subagents":
             logger.warning(
                 "Ralph-managed fan-out is dormant in this build; the executing AI agent is "
                 "expected to dispatch its own sub-agents per the plan. The declared "
@@ -151,7 +157,7 @@ def _parallel_or_agent_effect(
                 count=len(work_units),
             )
         else:
-            return _fan_out_effect(state, phase_def, dispatchable_units)
+            return _fan_out_effect(state, phase_parallelization, dispatchable_units)
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
@@ -165,15 +171,13 @@ def _parallel_or_agent_effect(
 
 def _fan_out_effect(
     state: PipelineState,
-    phase_def: PhaseDefinition,
+    phase_parallelization: PhaseParallelization,
     work_units: tuple[WorkUnit, ...],
 ) -> Effect:
-    phase_para = phase_def.parallelization
-    assert phase_para is not None
     return FanOutEffect(
         work_units=work_units,
-        max_workers=phase_para.max_parallel_workers,
-        run_post_fanout_verification=phase_para.post_fanout_verification,
+        max_workers=phase_parallelization.max_parallel_workers,
+        run_post_fanout_verification=phase_parallelization.post_fanout_verification,
         phase=str(state.phase),
     )
 
