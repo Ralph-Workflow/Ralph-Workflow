@@ -24,12 +24,16 @@ against the fixture, not the shipped guidance.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from jinja2 import Environment
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FORMAT_DOC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "development_result.md"
+_FORMAT_DOC_EXAMPLE = (
+    _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "examples" / "development_result.md"
+)
 _JINJA_PARTIAL = (
     _REPO_ROOT / "ralph" / "prompts" / "templates" / "shared" / "_development_result_proof.jinja"
 )
@@ -80,11 +84,33 @@ def test_format_doc_scopes_plan_item_proof_to_actual_plan_references() -> None:
 
 
 def test_format_doc_partial_guidance_names_parallel_dispatch() -> None:
-    """The partial-outcome guidance directs remaining independent slices
-    to parallel dispatch rather than piecemeal partial handbacks."""
+    """The partial-outcome guidance is role-aware: a coordinator with
+    remaining independent ready slices dispatches them in parallel
+    rather than handing each one back as a separate ``partial``; a
+    worker continues in-scope recovery per
+    ``shared/_no_exemption_for_failures.j2`` (the worker contract
+    forbids dispatch, so the dispatch-in-parallel rule does not
+    apply to a worker reading the format doc).
+
+    The previous text instructed *any* reader to "dispatch them in
+    parallel", which contradicted the worker's no-dispatch contract.
+    The lock here keeps the role-aware contract from regressing to
+    a role-agnostic dispatch instruction.
+    """
     text = _normalized(_FORMAT_DOC)
 
-    assert "dispatch them in parallel" in text
+    # Coordinator-side dispatch guidance survives the rewrite.
+    assert "coordinator who still owns independent ready" in text
+    assert "slices dispatches them in parallel" in text
+    # Worker-side guidance points at the canonical role-correct rule
+    # so workers are not told to dispatch.
+    assert "shared/_no_exemption_for_failures.j2" in text
+    # The unqualified "dispatch them in parallel" sentence is gone so
+    # the format doc does not contradict the worker no-dispatch
+    # contract when it is read via the submission macro in
+    # ``worker_developer.jinja``.
+    assert "dispatch them in parallel rather than" not in text
+    assert "dispatch them in parallel rather than completing" not in text
 
 
 def _rendered_partial() -> str:
@@ -220,3 +246,147 @@ def test_rendered_partial_keeps_each_proof_rule_in_one_home() -> None:
         == 1
     )
     assert rendered.count("development analysis feedback loop (U-2)") == 1
+
+
+# ---------------------------------------------------------------------------
+# U-3R: role agreement between the format doc and the worker template.
+#
+# The format doc is read by workers via the submission macro in
+# ``worker_developer.jinja``. The previous text instructed *any* reader
+# to "dispatch them in parallel", which contradicted the worker's
+# no-dispatch contract from ``_worker_verification.jinja``. The dispatch
+# sentence is now qualified as coordinator-only; workers continue
+# in-scope recovery per ``shared/_no_exemption_for_failures.j2``.
+# These tests pin that role-aware contract from regressing.
+# ---------------------------------------------------------------------------
+
+
+def test_format_doc_does_not_direct_workers_to_dispatch() -> None:
+    """The format doc must not direct every reader to dispatch in parallel.
+
+    Workers read this format doc via the submission macro in
+    ``worker_developer.jinja``. A worker receiving a "dispatch them
+    in parallel" instruction is sent straight into a contract
+    contradiction: ``_worker_verification.jinja`` forbids dispatch,
+    while the format doc tells it to dispatch. The lock here keeps the
+    role agreement between the format doc and the worker template.
+    """
+    text = _normalized(_FORMAT_DOC)
+
+    # The unqualified "dispatch them in parallel" sentence is gone so
+    # a worker reader does not receive a directive that contradicts
+    # the worker contract.
+    assert "dispatch them in parallel" not in text, (
+        "format doc still tells every reader to dispatch; the worker "
+        "contract forbids dispatch — qualify the sentence as "
+        "coordinator-only or drop it"
+    )
+
+
+def test_format_doc_partial_guidance_is_role_aware() -> None:
+    """The partial-outcome guidance keeps the canonical partial
+    rule intact AND qualifies the dispatch instruction as
+    coordinator-only with a worker-side pointer to the canonical
+    role-correct rule.
+
+    Both halves of the role-aware contract are pinned: the
+    coordinator-side dispatch guidance survives, and the worker-side
+    pointer directs a worker reader to the canonical role-correct
+    partial rule rather than contradicting it.
+    """
+    text = _normalized(_FORMAT_DOC)
+
+    # Coordinator-side dispatch guidance survives the rewrite.
+    assert "coordinator who still owns independent ready" in text
+    assert "slices dispatches them in parallel" in text
+    # Worker-side guidance points at the canonical role-correct rule
+    # so a worker reader is told to continue in-scope recovery rather
+    # than dispatch.
+    assert "shared/_no_exemption_for_failures.j2" in text
+    # Canonical partial-rule phrases remain intact so the role-aware
+    # rewrite does not accidentally drop the partial/failed landmarks.
+    for phrase in (
+        "Use `partial` only when",
+        "physical-world action",
+        "operator-only credential or decision",
+        "After submitting `partial`, call `declare_complete`",
+        "Use `failed` when no safe actionable continuation",
+    ):
+        assert phrase in text, f"format doc lost canonical phrase: {phrase!r}"
+
+
+# ---------------------------------------------------------------------------
+# U-3E: the canonical example models the free-form plan-reference contract.
+#
+# The format doc documents that ``## Plan Items Proven`` accepts
+# shape-independent references (step ID, work-unit bracket ID,
+# prose-plan ID, subplan / section heading, or any other stable
+# reference the plan actually uses). A renderer that copies the
+# example sees a ``S-1..S-N`` synthetic scheme and reads the plan as
+# one that demands numeric step IDs; the example therefore must NOT
+# use that shape as its only shape.
+# ---------------------------------------------------------------------------
+
+
+def _example_plan_item_ids() -> list[str]:
+    """Return every bracketed ID under the example's ``## Plan Items Proven`` section."""
+    text = _FORMAT_DOC_EXAMPLE.read_text(encoding="utf-8")
+    section_start = text.index("## Plan Items Proven")
+    after_start = section_start + len("## Plan Items Proven")
+    next_heading = text.find("\n## ", after_start)
+    section = text[after_start:next_heading] if next_heading >= 0 else text[after_start:]
+    return re.findall(r"^- \[([^\]]+)\]", section, flags=re.MULTILINE)
+
+
+def test_format_doc_example_uses_free_form_plan_references() -> None:
+    """U-3E: the canonical example must model the free-form plan-reference
+    contract documented in the format doc.
+
+    The format doc accepts step IDs, work-unit bracket IDs,
+    prose-plan IDs, subplan / section headings, and any other stable
+    reference the plan actually uses. A renderer that copies the
+    example sees a ``S-1..S-N`` synthetic scheme and reads the plan
+    as one that demands numeric step IDs; the example therefore must
+    not use that shape as its only shape.
+
+    The check is "the example must use at least one non-``S-n`` plan
+    reference" so a renderer sees a free-form anchor to copy when it
+    has no numeric steps. A regression that reverts the example to
+    ``S-1..S-6`` only (no prose heading, no work-unit ID) would
+    tell a renderer the contract requires numeric IDs.
+    """
+    plan_ids = _example_plan_item_ids()
+    assert plan_ids, "example is missing `## Plan Items Proven` bullets"
+
+    # No S-n synthetic scheme: a renderer that sees [S-1], [S-2] ...
+    # reads the plan as one that demands numeric step IDs.
+    synthetic_ids = [pid for pid in plan_ids if re.fullmatch(r"S-\d+", pid)]
+    assert not synthetic_ids, (
+        f"example still uses synthetic step IDs {synthetic_ids!r}; "
+        "the format doc documents free-form references (work-unit IDs, "
+        "prose headings) so the example must model that shape"
+    )
+
+    # At least one non-numeric free-form ID is required to make the
+    # contract visible to renderers that copy the example verbatim.
+    free_form_ids = [pid for pid in plan_ids if not re.fullmatch(r"S-\d+", pid)]
+    assert free_form_ids, (
+        "example has only synthetic step IDs; the format doc accepts "
+        "free-form references, so the example must model at least one"
+    )
+
+
+def test_format_doc_example_still_demonstrates_diverse_dispositions() -> None:
+    """U-3E: the example demonstrates ``completed``, ``adapted``, and
+    ``not_applicable`` dispositions. Switching the IDs from synthetic
+    step numbers to free-form plan references must not accidentally
+    drop the disposition coverage — the example is the place readers
+    see all three in one place.
+    """
+    text = _FORMAT_DOC_EXAMPLE.read_text(encoding="utf-8")
+    for disposition in ("completed", "adapted", "not_applicable"):
+        assert disposition in text, (
+            f"example lost the {disposition!r} disposition; the example "
+            "must demonstrate all three so renderers see how to mark "
+            "each kind of plan reference"
+        )
