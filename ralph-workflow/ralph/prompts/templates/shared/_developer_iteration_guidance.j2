@@ -22,6 +22,21 @@ canonical condition can support a terminal incomplete result.
 
 ## Large scope is a dispatch signal, not a stop signal
 
+When the task looks huge — at first read, after a read-only sweep, or
+mid-iteration — the same five-step initial action applies before any
+abandonment path is even considered:
+
+1. **Inventory the references** that remain and the gaps that just
+   surfaced; mark each `completed`, `in_progress`, or `remaining`.
+2. **Choose a falsifiable increment** — the smallest verified slice
+   that can ship now and that exercises an unknown part of the work.
+3. **Dispatch independent ready scopes** to sub-agents where allowed
+   while implementing the owned increment on the critical path.
+4. **Implement and verify owned work** with focused checks; record
+   the disposition and evidence for every reference touched.
+5. **Recompute readiness** after the increment lands, refill freed
+   dispatch slots, then loop.
+
 {% if IS_WORKER %}
 When the assigned unit proves far larger than its description — deeper
 coupling, more files, bigger diffs — keep working the ready-reference loop in

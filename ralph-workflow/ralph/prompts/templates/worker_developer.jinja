@@ -23,6 +23,8 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {% include 'shared/_worker_verification.j2' %}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
+
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
@@ -70,10 +72,13 @@ Your submitted result is persisted at
 `{{ WORKER_NAMESPACE }}/artifacts/development_result.md`, with its downstream
 handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 
-Implement and verify only `{{ unit_id }}`, then return that one unit result. If the assignment is blocked, report
-the concrete blocker in the result instead of expanding scope.
+Implement and verify only `{{ unit_id }}`, then return that one unit
+result. Continue in-scope recovery per the canonical external-blocker rule
+in ``shared/_no_exemption_for_failures.j2``; a free ``status: partial`` for
+any focused difficulty is not an exit. Return the unit result only when
+the assigned unit is fully verified, or with the permitted evidenced
+blocker, instead of broadening scope or expanding into other units.
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}

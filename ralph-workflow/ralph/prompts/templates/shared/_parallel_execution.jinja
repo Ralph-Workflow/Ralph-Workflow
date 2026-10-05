@@ -6,6 +6,8 @@ Drive development as an orchestrator: delegate independent implementation, explo
 
 Even when the plan is declared as a single linear thread, an **independent ready group** can form: ready units for which all dependencies are satisfied, with no `Depends on:` path between any pair AND pairwise disjoint ownership. Dispatch two or more ready units concurrently by default. Estimate sequential duration against the remaining budget; when it **cannot fit**, dispatch independent work **concurrently rather than trimming scope**. Keep shared-contract changes and dependent work in dependency order.
 
+Exact ownership, worker limits, and conflict serialization are defined below in **Ownership**; excluded paths are defined in **Scope exclusions**.
+
 When the plan declares `## Work Units` or `## Parallel Plan`, dispatch all ready independent units within the active worker limit. For step plans, inspect all remaining steps for readiness rather than stopping at the first dependent step. As each result arrives, inspect its diff and focused proof, accept completed outputs, and release dependent work without waiting for unrelated writers. Perform any integration edits only on paths with no active writer. Wait for all writers before final reconciliation of shared tests and interfaces and repository-wide verification. Run cross-unit checks and the full gate once in the main session after integration; rerun affected verification after any integration repair. Serialize checks that share build directories, ports, fixtures, or the host test budget.
 
 ### Ownership

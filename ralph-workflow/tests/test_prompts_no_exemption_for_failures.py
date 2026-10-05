@@ -10,6 +10,8 @@ an exit condition. The wording is single-sourced in the
 
 from __future__ import annotations
 
+import tempfile
+
 from pathlib import Path
 
 import pytest
@@ -158,6 +160,13 @@ def test_large_scope_guidance_splits_main_and_worker_roles() -> None:
         worker, "## Large scope is a dispatch signal", "## Scope-size recovery procedure"
     )
 
+    # S-2: the large-scope section now leads with a five-step initial
+    # action sequence that applies to BOTH main and worker before
+    # branching on the role. The role-specific branch must keep the
+    # distinct scheduling signals that follow.
+    assert "five-step initial action" in main_large_scope
+    assert "five-step initial action" in worker_large_scope
+    # The re-cut scheduling signal stays on the main branch.
     assert "re-cut the remainder" in main_large_scope
     assert "re-cut the remainder" not in worker_large_scope
     assert "verified increments" in worker_large_scope
@@ -285,7 +294,6 @@ def test_rendered_developer_prompt_carries_large_scope_contract() -> None:
     """The materialized developer prompt carries the large-scope contract
     end-to-end: the main-session guidance section and the parallel-execution
     scope-size escalation both reach the rendered text."""
-    import tempfile
 
     from ralph.prompts.developer import (
         DeveloperPromptInputs,
@@ -308,6 +316,307 @@ def test_rendered_developer_prompt_carries_large_scope_contract() -> None:
 
     assert "Large scope is a dispatch signal" in prompt
     assert "Scope-size escalation" in prompt
+
+
+# ---------------------------------------------------------------------------
+# S-1: Delivered-prompt ordering and matrix contract.
+#
+# Every shipped developer surface (initial, continuation, direct fallback,
+# worker, worker continuation) must put the recovery mandate (the shared
+# guidance partial) before the request/plan payload, once, so a
+# payload-heavy plan cannot drown the persistence rules. The matrix also
+# asserts that the worker fallback path keeps its no-dispatch, scope,
+# focused-check, and worker-local artifact path; the main fallback must
+# carry the scope-size recovery procedure; and the render-failure
+# fallback path must still produce a usable prompt.
+# ---------------------------------------------------------------------------
+
+
+# Five rendered surfaces cover every prompt a developer session can
+# receive from the bundled renderer. The matrix is the single source of
+# truth for the persisted/dispatched/oversized contract: any future
+# change to guidance, the parallel partial, or any one of these five
+# templates must keep the assertions true for every surface. Declared
+# here so the S-1 ordering tests can parameterize over them without
+# depending on later module-level definitions.
+_S1_SURFACE_NAMES: tuple[str, ...] = (
+    "developer_iteration.jinja",  # initial main
+    "developer_iteration_continuation.jinja",  # continuation main
+    "developer_iteration_fallback.jinja",  # direct fallback (main)
+    "worker_developer.jinja",  # dedicated worker (initial)
+    "worker_developer.jinja#continuation",  # dedicated worker (continuation)
+)
+
+
+_RECOVERY_MARKERS = (
+    "## Completion is the default outcome",
+    "## Large scope is a dispatch signal",
+    "## Scope-size recovery procedure",
+)
+# Recognizable request/plan payload markers. The templates use
+# ``render_payload_section`` so the rendered text wraps each section in a
+# recognisable heading like ``## PROMPT`` (initial, worker) or
+# ``## ORIGINAL REQUEST`` (fallback). The plan payload is rendered as
+# ``## EXECUTION PLAN``. Any of these counts as a payload marker.
+_PAYLOAD_MARKERS = (
+    "PROMPT:",
+    "ORIGINAL REQUEST:",
+    "EXECUTION PLAN:",
+)
+
+
+def _first_marker(text: str, markers: tuple[str, ...]) -> int:
+    positions = [text.find(m) for m in markers if text.find(m) >= 0]
+    return min(positions) if positions else -1
+
+
+def _guidance_appears_once(text: str) -> int:
+    """Count the distinct occurrences of the recovery mandate heading."""
+    return text.count("## Completion is the default outcome")
+
+
+@pytest.mark.parametrize("surface", _S1_SURFACE_NAMES, ids=_S1_SURFACE_NAMES)
+def test_s1_recovery_mandate_precedes_payload_markers(surface: str) -> None:
+    """S-1: the recovery mandate must reach the rendered prompt BEFORE
+    the request/plan payload markers on every shipped developer
+    surface. Putting the persistence rules after a large payload lets
+    a heavy plan bury them; the agent must see the persistence
+    language first.
+    """
+    rendered = _render_surface(surface)
+
+    guidance_pos = _first_marker(rendered, _RECOVERY_MARKERS)
+    payload_pos = _first_marker(rendered, _PAYLOAD_MARKERS)
+    assert guidance_pos >= 0, (
+        f"{surface}: rendered prompt is missing the recovery mandate "
+        "(Completion / Large scope / Scope-size recovery)"
+    )
+    assert payload_pos >= 0, (
+        f"{surface}: rendered prompt is missing a recognizable payload marker"
+    )
+    assert guidance_pos < payload_pos, (
+        f"{surface}: recovery mandate must precede the request/plan payload "
+        f"(guidance at {guidance_pos}, payload at {payload_pos})"
+    )
+
+
+@pytest.mark.parametrize("surface", _S1_SURFACE_NAMES, ids=_S1_SURFACE_NAMES)
+def test_s1_recovery_mandate_occurs_exactly_once(surface: str) -> None:
+    """S-1: every shipped developer surface includes the recovery
+    mandate exactly once. Duplication would mean the templates include
+    the guidance partial twice; absence would mean a future edit
+    silently dropped the contract.
+    """
+    rendered = _render_surface(surface)
+    count = _guidance_appears_once(rendered)
+    assert count == 1, (
+        f"{surface}: recovery mandate must occur exactly once, got {count}"
+    )
+
+
+def test_s1_main_fallback_carries_scope_size_recovery_procedure() -> None:
+    """S-1: the main-session direct fallback must carry the
+    scope-size recovery procedure. A render failure that drops the
+    developer onto the fallback must still show the main-session
+    dispatch, integrate, and full-gate checklist; the worker branch
+    must stay scoped to the assigned unit.
+    """
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "developer_iteration_fallback.jinja",
+        is_worker=False,
+        is_continuation=False,
+    )
+    template = context.registry.get_template("developer_iteration_fallback.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    for phrase in (
+        "Scope-size recovery procedure",
+        "Inventory the remaining references",
+        "Dispatch within the available native capacity",
+        "Work the critical path",
+        "Continue owned ready work",
+        "Integrate and verify",
+    ):
+        assert phrase in rendered, (
+            f"main fallback is missing scope-size recovery phrase {phrase!r}"
+        )
+    # The worker-only directives must NOT appear on the main fallback.
+    for phrase in (
+        "Workers never dispatch sub-agents",
+        "WORKER-SCOPED VERIFICATION",
+    ):
+        assert phrase not in rendered, (
+            f"main fallback must not carry worker-only phrase {phrase!r}"
+        )
+
+
+def test_s1_worker_fallback_retains_no_dispatch_scope_focus_and_local_paths() -> None:
+    """S-1: the worker-fallback surface (``developer_iteration_fallback.jinja``
+    with ``IS_WORKER=1``) must keep the worker contract: no recursive
+    dispatch, the assigned unit's allowed directories, the focused
+    ``Verify`` command, and the worker-local artifact path. Without
+    these, a render-failure fallback would let a worker broaden scope
+    into another unit's namespace or run the full repository gate.
+    """
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "developer_iteration_fallback.jinja",
+        is_worker=True,
+        is_continuation=False,
+    )
+    template = context.registry.get_template("developer_iteration_fallback.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    # No recursive dispatch.
+    assert "Workers never dispatch sub-agents" in rendered
+    assert "WORKER DO-NOT-DISPATCH" in rendered
+    # Assigned unit scope is named.
+    assert "WORKER SCOPE" in rendered
+    assert "Allowed directories" in rendered
+    # Focused (not full-gate) verification.
+    assert "WORKER-SCOPED VERIFICATION" in rendered
+    # Worker-local artifact path.
+    assert ".agent/workers/api/artifacts/development_result.md" in rendered
+    # The main-session full gate must NOT appear in the worker branch.
+    assert "full `make verify`" not in rendered, (
+        "worker fallback must not tell the worker to run the full "
+        "repository-wide gate"
+    )
+
+
+def test_s1_worker_fallback_replaces_loose_blocked_sentence_with_canonical_rule() -> None:
+    """S-1: the worker's loose "If the unit remains blocked, submit a
+    truthful ``status: partial``" sentence weakens the canonical
+    external-blocker rule (it would let any unfocused difficulty end
+    the unit). The worker fallback must defer to the canonical rule
+    instead and keep the loop-until-verified contract.
+    """
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "developer_iteration_fallback.jinja",
+        is_worker=True,
+        is_continuation=False,
+    )
+    template = context.registry.get_template("developer_iteration_fallback.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    # The loose, unconditional "submit a truthful `status: partial`"
+    # must be gone; the canonical external-blocker rule is the only
+    # partial/failed source.
+    assert "submit a truthful `status: partial`" not in rendered, (
+        "worker fallback must not carry a loose unconditional partial-result sentence"
+    )
+    # The canonical rule must still be present (sourced from
+    # ``_no_exemption_for_failures.j2``).
+    assert "no such thing as a pre-existing issue" in rendered
+    # The loop-until-verified wording must still reach the worker.
+    assert "until the entire assigned unit is verified" in rendered
+
+
+def test_s1_worker_developer_replaces_loose_blocked_sentence_with_canonical_rule() -> None:
+    """S-1 (sibling surface): the dedicated ``worker_developer.jinja``
+    template also carries the loose "If the assignment is blocked,
+    report the concrete blocker" sentence. It must defer to the
+    canonical external-blocker rule, not grant a free partial path
+    for any assignment-side difficulty.
+    """
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "worker_developer.jinja", is_worker=True, is_continuation=False
+    )
+    template = context.registry.get_template("worker_developer.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    assert "If the assignment is blocked, report" not in rendered, (
+        "worker_developer.jinja must not carry a loose unconditional "
+        "blocked-result sentence"
+    )
+    # Canonical rule still sourced from the shared partial.
+    assert "no such thing as a pre-existing issue" in rendered
+    # Loop-until-verified contract still reaches the dedicated worker.
+    assert "until the entire assigned unit is verified" in rendered
+
+
+def test_s1_render_failure_fallback_still_carries_persistence_contract() -> None:
+    """S-1: when the public developer renderer hits a template
+    rendering error, it must hand the agent a usable prompt that
+    still carries the canonical external-blocker rule, the
+    scope-size recovery procedure, and the no-recursive-dispatch
+    worker language. A render failure cannot drop the persistence
+    contract.
+    """
+    from ralph.prompts.developer import (
+        DeveloperPromptInputs,
+        prompt_developer_iteration_xml_with_context,
+    )
+    from ralph.prompts.types import SessionCapabilities, SessionDrain
+    from ralph.workspace.memory import MemoryWorkspace
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        workspace = MemoryWorkspace(root=str(tmp_path))
+        # A template that renders Jinja but contains an undefined
+        # variable: Jinja raises ``UndefinedError`` which the renderer
+        # turns into ``TemplateRenderingError`` and falls back to the
+        # static fallback template.
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=TemplateContext.default(),
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement it", plan_content="### [S-1] Change it"
+            ),
+            workspace=workspace,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            template_name="developer_iteration.jinja",
+        )
+        # Force a render failure by overriding the template to one that
+        # references a missing variable. Use a tiny inline template
+        # via the public fallback path: ``_render_static_fallback``
+        # is reached whenever ``render_template`` raises
+        # ``TemplateRenderingError``. We exercise that path by calling
+        # the developer renderer with a context whose template raises.
+        class _BrokenTemplate:
+            def render(self, *args, **kwargs):  # noqa: D401 - test seam
+                from ralph.prompts.template_rendering_error import (
+                    TemplateRenderingError,
+                )
+
+                raise TemplateRenderingError("forced render failure for test")
+
+        broken_registry = TemplateContext.default().registry
+        original_get = broken_registry.get_template
+
+        def _force_broken(name):
+            if name == "developer_iteration.jinja":
+                return _BrokenTemplate()
+            return original_get(name)
+
+        broken_registry.get_template = _force_broken  # type: ignore[assignment]
+        try:
+            prompt = prompt_developer_iteration_xml_with_context(
+                context=TemplateContext.default(),
+                inputs=DeveloperPromptInputs(
+                    prompt_content="Implement it",
+                    plan_content="### [S-1] Change it",
+                ),
+                workspace=workspace,
+                session_caps=SessionCapabilities.defaults_for_drain(
+                    SessionDrain.DEVELOPMENT
+                ),
+            )
+        finally:
+            broken_registry.get_template = original_get  # type: ignore[assignment]
+
+    for phrase in (
+        "## Completion is the default outcome",
+        "## Scope-size recovery procedure",
+        "no such thing as a pre-existing issue",
+        "MUST resolve anything that comes up",
+    ):
+        assert phrase in prompt, (
+            f"render-failure fallback is missing the persistence contract "
+            f"phrase {phrase!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
