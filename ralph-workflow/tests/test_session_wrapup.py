@@ -178,14 +178,16 @@ def test_development_wrapup_notice_keeps_static_text_without_epochs(
 # ---------------------------------------------------------------------------
 
 
-def test_development_wrapup_notice_warns_parallel_dispatch_in_partial_branch(
+def test_development_wrapup_notice_coordinator_branch_warns_parallel_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """U-6: the dynamic wrap-up notice (epochs published) carries the
-    parallel-dispatch warning inside its partial branch: remaining
-    independent work should be dispatched in parallel rather than
-    handed back piecemeal as partial; piecemeal handbacks waste the
-    cycle."""
+    """U-6/WU-A: the dynamic wrap-up notice's coordinator branch
+    (``is_worker=False``) carries the parallel-dispatch warning inside
+    its partial branch: remaining independent work should be
+    dispatched in parallel rather than handed back piecemeal as
+    partial; piecemeal handbacks waste the cycle. The worker branch
+    has its own separate contract (see
+    ``test_development_wrapup_notice_worker_branch_omits_parallel_dispatch``)."""
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
     from ralph.mcp.server._session_wrapup import development_wrapup_notice
 
@@ -193,36 +195,110 @@ def test_development_wrapup_notice_warns_parallel_dispatch_in_partial_branch(
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
     monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
 
-    for is_worker in (False, True):
-        notice = development_wrapup_notice(is_worker=is_worker)
-        # The warning sits in the partial branch (the "Use partial only"
-        # paragraph), regardless of worker scope.
-        partial_idx = notice.find("Use partial only")
-        assert partial_idx >= 0, f"partial branch missing for is_worker={is_worker}"
-        # Slice the partial paragraph through the next sentence break so
-        # unrelated guidance text does not mask a regression.
-        end = notice.find("Difficulty,", partial_idx)
-        partial_branch = notice[partial_idx:end] if end >= 0 else notice[partial_idx:]
-        assert "dispatch it in parallel" in partial_branch, (
-            f"parallel-dispatch warning missing for is_worker={is_worker}: "
-            f"{partial_branch!r}"
-        )
-        assert "piecemeal handbacks waste the cycle" in partial_branch, (
-            f"warning reason missing for is_worker={is_worker}: "
-            f"{partial_branch!r}"
-        )
-        assert "each increment back as partial" in partial_branch, (
-            f"piecemeal handback phrasing missing for is_worker={is_worker}: "
-            f"{partial_branch!r}"
-        )
+    notice = development_wrapup_notice(is_worker=False)
+    # The warning sits in the partial branch (the "Use partial only"
+    # paragraph). Slice through the next sentence break so unrelated
+    # guidance text does not mask a regression.
+    partial_idx = notice.find("Use partial only")
+    assert partial_idx >= 0, "partial branch missing for is_worker=False"
+    end = notice.find("Difficulty,", partial_idx)
+    partial_branch = notice[partial_idx:end] if end >= 0 else notice[partial_idx:]
+    assert "dispatch it in parallel" in partial_branch, partial_branch
+    assert "piecemeal handbacks waste the cycle" in partial_branch, partial_branch
+    assert "each increment back as partial" in partial_branch, partial_branch
 
 
-def test_development_wrapup_notice_static_text_warns_parallel_dispatch(
+def test_development_wrapup_notice_worker_branch_omits_parallel_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """U-6: the static fallback notice (no epochs) also carries the
-    parallel-dispatch warning in its partial branch so the guidance is
-    consistent across both delivery paths."""
+    """WU-A: the dynamic wrap-up notice's worker branch
+    (``is_worker=True``) MUST NOT carry a parallel-dispatch instruction.
+    Workers do not dispatch sub-agents; the worker ``parallel_note``
+    only mentions the worker-safe "if your unit is blocked, return
+    truthful partial" instruction. The coordinator branch keeps the
+    dispatch instruction; that is a separate contract."""
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    now = time.time()
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
+    monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
+
+    notice = development_wrapup_notice(is_worker=True)
+    assert "dispatch it in parallel" not in notice, (
+        "worker notice must not carry a parallel-dispatch instruction: "
+        f"{notice!r}"
+    )
+    assert "dispatch an independent ready group" not in notice, (
+        "worker notice must not carry a ready-group dispatch instruction: "
+        f"{notice!r}"
+    )
+    # The worker-safe instruction is still present so a blocked worker
+    # knows what to do.
+    assert "If your unit is blocked, return truthful partial" in notice, notice
+    # The worker-scope language survives.
+    assert "Do not spawn sub-agents" in notice, notice
+    assert "only your assigned work unit" in notice, notice
+
+
+def test_development_wrapup_notice_coordinator_branch_uses_syntax_agnostic_ready_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WU-A: the dynamic coordinator branch must describe a ready
+    group using plan-agnostic language. The previous wording pinned the
+    ready-group definition to literal ``Depends on:`` / ``Directories:``
+    / ``Paths:`` syntax, which is one convenient way to express the
+    graph but not the only one. The new wording describes the ready
+    group as units whose independence and pairwise-disjoint ownership
+    are evident from the plan however the plan states it, while
+    keeping the explicit "dispatch an independent ready group
+    concurrently rather than trimming scope" instruction."""
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    now = time.time()
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
+    monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
+
+    notice = development_wrapup_notice(is_worker=False)
+    flat = " ".join(notice.split())
+
+    # The coordinator branch still carries a ready-group / dispatch
+    # instruction, but the wording is syntax-agnostic.
+    assert "independent ready group" in flat, (
+        "coordinator branch must still carry a ready-group dispatch "
+        "instruction"
+    )
+    # The literal syntax tokens are no longer required as the
+    # definition; the wording now describes the group however the
+    # plan states it.
+    assert "Depends on:" not in flat, (
+        "coordinator branch must not pin ready-group syntax to "
+        "literal 'Depends on:'"
+    )
+    assert "Directories:" not in flat, (
+        "coordinator branch must not pin ready-group syntax to "
+        "literal 'Directories:'"
+    )
+    assert "Paths:" not in flat, (
+        "coordinator branch must not pin ready-group syntax to "
+        "literal 'Paths:'"
+    )
+
+
+def test_development_wrapup_notice_static_text_omits_dispatch_directive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WU-A: the static fallback notice (no epochs) is role-agnostic
+    so it must NOT direct any reader to dispatch sub-agents or to
+    fan out remaining work. The previous static text carried the
+    same dispatch instruction as the dynamic coordinator branch,
+    which leaked a main-session directive into a role-agnostic
+    surface. The reworded static text keeps the partial-is-last-
+    resort guidance, the difficulty/elapsed-time/exhausted-budget
+    list, the "Never submit completed unless every reported item and
+    piece of evidence is truthful" line, and the "use declare_complete"
+    close — without a dispatch instruction."""
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
     from ralph.mcp.server._session_wrapup import development_wrapup_notice
 
@@ -230,10 +306,26 @@ def test_development_wrapup_notice_static_text_warns_parallel_dispatch(
     monkeypatch.delenv(DEV_DEADLINE_EPOCH_ENV, raising=False)
 
     notice = development_wrapup_notice()
-    partial_idx = notice.find("Use partial only")
-    assert partial_idx >= 0
-    end = notice.find("Difficulty,", partial_idx)
-    partial_branch = notice[partial_idx:end] if end >= 0 else notice[partial_idx:]
-    assert "dispatch it in parallel" in partial_branch, partial_branch
-    assert "piecemeal handbacks waste the cycle" in partial_branch, partial_branch
-    assert "each increment back as partial" in partial_branch, partial_branch
+    flat = " ".join(notice.split())
+
+    # The static text must NOT carry a dispatch instruction. It is
+    # role-agnostic, so neither main-session nor worker readers
+    # should be told to dispatch.
+    assert "dispatch it in parallel" not in flat, (
+        "static text must not carry 'dispatch it in parallel'; "
+        "the static fallback is role-agnostic"
+    )
+    assert "dispatch an independent ready group" not in flat, (
+        "static text must not carry a ready-group dispatch instruction"
+    )
+    # The canonical phrases that existing tests pin must still be
+    # present in the static text.
+    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+    assert "literally impossible" in notice
+    assert "exhausted budget never qualify" in flat
+    assert "use declare_complete" in flat
+    # The piecemeal handback warning is preserved as a guidance
+    # phrase (not as a dispatch instruction).
+    assert "piecemeal handbacks waste the cycle" in flat
+    # Worker-safe language is preserved.
+    assert "Workers" in flat and "never" in flat

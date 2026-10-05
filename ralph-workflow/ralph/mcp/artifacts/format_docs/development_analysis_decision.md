@@ -69,10 +69,47 @@ status: request_changes
 - `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
   stable finding ID as its closure reference, not a remedy authored by the
   verifier.
+- The bundled validator lives at
+  `ralph/mcp/artifacts/markdown/specs/analysis_decision.py` and is
+  registered via `ANALYSIS_DECISION_SPECS`; every diagnostic rule this doc
+  describes (`ANALYSIS002`–`ANALYSIS019`) is emitted from that module. The
+  shared spec is the source of truth — if this format doc and the spec ever
+  drift, the spec wins.
 
 ## Plan reference coverage
 
-The `Plan reference:` line in each `DA-###` item covers whatever references the plan actually uses. A prose plan without numeric IDs is judged on whether its requests are covered, not on whether a specific identifier matches; `Plan reference:` is omitted or rewritten to cite the prose anchor in that case.
+The `Plan reference:` line in each `DA-###` plan-reference item covers
+whatever references the plan actually uses (numeric `S-n` IDs, named
+anchors, or, for a prose plan, the prose anchor being judged). A prose
+plan is judged on whether its requests are covered, not on whether a
+specific identifier matches; the analyst writes whatever stable label
+the plan itself uses inside the brackets.
+
+`Plan reference:` and `Disposition:` are required for every separate
+plan-reference item the analyst chooses to emit. Emit one additional
+`DA-###` item per plan reference the plan actually uses, pairing
+`Plan reference: [<stable id>]` with
+`Disposition: completed|adapted|not_applicable|blocked` in the same item.
+The shared validator's subject slot already accepts any free-form
+`Plan reference: [<stable id>]` — see
+`ralph/mcp/artifacts/markdown/specs/analysis_decision.py` at
+`_PLAN_REFERENCE_PATTERN` (line 84) and `_finding_fields_complete` (lines
+53-58) — so a prose plan is judged on whether its requests are covered,
+not on whether a specific identifier matches; the analyst writes whatever
+stable label the plan itself uses (a numeric `S-n`, a named anchor, or
+the prose anchor text) inside the brackets.
+
+Ordinary request-criterion findings (e.g. `Criterion: oversized indexes
+are handled safely.`) are NOT plan references and do not require
+`Plan reference:` or `Disposition:`. That pair is mandatory only for the
+additional plan-reference items the analyst chooses to emit, and only
+those items must carry both fields — every other `DA-###` finding is
+scoped to a request criterion and keeps the standard
+`Criterion:`/`Expected observation:`/`Verdict:`/`Evidence:`/`Location:`
+shape. The bundled example mirrors this contract in both
+`## What Came Up Short` and `## Criterion Verdicts` so the same `DA-###`
+carries its criterion finding and the paired `Plan reference:` +
+`Disposition:` together.
 
 `status` is `completed`, `request_changes`, or `failed`. `met` means no
 counterexample was found. `not evaluable` requires `failed` rather than

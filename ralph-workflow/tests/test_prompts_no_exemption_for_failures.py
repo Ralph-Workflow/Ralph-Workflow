@@ -207,34 +207,58 @@ def test_no_exemption_partial_carries_parallel_dispatch_warning() -> None:
     """U-6: the partial-is-a-last-resort section warns that remaining
     independent work should be dispatched in parallel rather than
     handed back piecemeal as ``partial`` (piecemeal handbacks waste
-    the cycle)."""
+    the cycle). The warning is role-aware: the dispatch sentence is
+    wrapped in a Jinja conditional keyed on ``IS_WORKER`` so a worker
+    render does not carry the dispatch instruction, while the main
+    session keeps it. Both branches keep the canonical partial-is-a-
+    last-resort phrasing intact."""
     source = _PARTIAL.read_text(encoding="utf-8")
     # The warning lives inside the "## Partial is a last resort" section.
     start = source.find("## Partial is a last resort")
     assert start >= 0
+    # The role-aware conditional that gates the dispatch sentence must
+    # be present in the source.
+    assert "{% if not IS_WORKER|default(false) %}" in source, (
+        "partial source must gate the dispatch sentence on IS_WORKER"
+    )
     # Normalize whitespace so line-wrapped phrases match the literals
     # the contract pins. The template wraps long sentences for source
     # readability, so a literal "each increment back as `partial`"
     # substring may be split across lines.
     partial_section = " ".join(source[start:].split())
+    # The dispatch sentence is preserved for the main-session branch
+    # (the conditional keeps the literal text inside its if-block).
     assert "dispatch it in parallel" in partial_section
     assert "piecemeal handbacks waste the cycle" in partial_section
     assert "each increment back as `partial`" in partial_section
+    # The worker-safe alternative is preserved in the else-branch of
+    # the conditional so workers do not receive a dispatch instruction.
+    assert (
+        "Workers must not dispatch sub-agents or coordinate other units"
+        in partial_section
+    ), (
+        "partial source must carry a worker-safe alternative that "
+        "warns against piecemeal handbacks without directing dispatch"
+    )
 
 
-def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> None:
-    """U-6: the ``Prior development result \u2014 partial`` block in
-    ``developer_iteration_continuation.jinja`` carries the parallel-
-    dispatch warning so a continuation session handed back a partial
-    result knows the remaining independent work should be fanned out
-    rather than completed piecemeal."""
+def test_continuation_template_prior_result_block_does_not_duplicate_warning() -> None:
+    """U-6/WU-A: the ``Prior development result \\u2014 partial`` block in
+    ``developer_iteration_continuation.jinja`` MUST NOT restate the
+    parallel-dispatch warning. The shared
+    ``_no_exemption_for_failures.j2`` partial is the single source of
+    the warning, included later in the same template. The prior-result
+    block keeps the heading, the new-session handoff sentence, and
+    the Summary / Next steps / Continuation reference lines; it no
+    longer carries the inline dispatch warning."""
     context = TemplateContext.default()
     variables = _surface_variables(
         "developer_iteration_continuation.jinja",
         is_worker=False,
         is_continuation=True,
     )
-    # Populate the prior-result block so the warning is reachable.
+    # Populate the prior-result block so the warning would be reachable
+    # if it were still inline.
     variables.update(
         {
             "PRIOR_RESULT_STATUS": "partial",
@@ -248,12 +272,9 @@ def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> N
 
     prior_block_start = rendered.find("Prior development result")
     assert prior_block_start >= 0, "Prior development result block missing"
-    # The prior-result block ends just before the "## PARALLEL
-    # EXECUTION" section. We slice the relevant range so unrelated
-    # guidance text and the included ``_no_exemption_for_failures.j2``
-    # partial cannot mask a regression (the canonical partial also
-    # carries the same warning, but that inclusion is a separate
-    # contract, not the prior-result block).
+    # Slice the prior-result block so unrelated guidance text and the
+    # included ``_no_exemption_for_failures.j2`` partial (which
+    # legitimately carries the warning) cannot mask a regression.
     next_heading = rendered.find("## PARALLEL EXECUTION", prior_block_start)
     prior_block_raw = (
         rendered[prior_block_start:next_heading]
@@ -265,9 +286,84 @@ def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> N
     # readability, so a literal "dispatch it in parallel" substring
     # may be split across lines.
     prior_block = " ".join(prior_block_raw.split())
-    assert "dispatch it in parallel" in prior_block
-    assert "piecemeal handbacks waste the cycle" in prior_block
-    assert "each increment back as `partial`" in prior_block
+    assert "dispatch it in parallel" not in prior_block, (
+        "prior-result block must NOT carry the dispatch warning; "
+        "it lives in the included _no_exemption_for_failures.j2 partial"
+    )
+    assert "piecemeal handbacks waste the cycle" not in prior_block, (
+        "prior-result block must NOT carry the piecemeal warning; "
+        "it lives in the included _no_exemption_for_failures.j2 partial"
+    )
+    assert "each increment back as `partial`" not in prior_block, (
+        "prior-result block must NOT carry the piecemeal handback phrasing; "
+        "it lives in the included _no_exemption_for_failures.j2 partial"
+    )
+    # The retained prior-result block content is still present.
+    assert "This invocation is a genuinely new agent session" in prior_block
+    assert "Continuation reference:" in prior_block
+
+
+def test_partial_warning_text_omits_dispatch_for_worker_renders() -> None:
+    """WU-A: the shared ``_no_exemption_for_failures.j2`` partial is
+    role-aware. A worker render of the partial must NOT carry the
+    dispatch instruction; a main-session render must still carry it
+    so the orchestrator continues to fan out independent ready work
+    rather than hand back piecemeal partials."""
+    source = _PARTIAL.read_text(encoding="utf-8")
+    template = Environment().from_string(source)
+
+    main_rendered = template.render(IS_WORKER=False)
+    worker_rendered = template.render(IS_WORKER=True)
+
+    main_section = _partial_warning_section(main_rendered)
+    worker_section = _partial_warning_section(worker_rendered)
+
+    # Main session: dispatch instruction present.
+    assert "dispatch it in parallel" in main_section, (
+        "main-session render of the partial must keep the dispatch "
+        "instruction so the orchestrator fans out independent work"
+    )
+    # Worker: dispatch instruction removed; worker-safe text kept.
+    assert "dispatch it in parallel" not in worker_section, (
+        "worker render of the partial must NOT carry the dispatch "
+        "instruction; workers do not dispatch sub-agents"
+    )
+
+
+def test_partial_warning_text_keeps_canonical_phrases_for_both_roles() -> None:
+    """WU-A: the role-aware branch only swaps the dispatch sentence;
+    the canonical phrases (no such thing as a pre-existing issue,
+    Resolve anything that comes up) are role-agnostic and must remain
+    on both main and worker renders."""
+    source = _PARTIAL.read_text(encoding="utf-8")
+    template = Environment().from_string(source)
+
+    main_rendered = template.render(IS_WORKER=False)
+    worker_rendered = template.render(IS_WORKER=True)
+
+    for label, rendered in (("main", main_rendered), ("worker", worker_rendered)):
+        assert "no such thing as a pre-existing issue" in rendered, (
+            f"{label} render of the partial lost the canonical phrase "
+            "'no such thing as a pre-existing issue'"
+        )
+        assert "Resolve anything that comes up" in rendered, (
+            f"{label} render of the partial lost the canonical phrase "
+            "'Resolve anything that comes up'"
+        )
+
+
+def _partial_warning_section(rendered: str) -> str:
+    """Return the text of the "## Partial is a last resort" section.
+
+    The section opens with the heading and closes at the next ``##``
+    heading (or the end of the document). Whitespace is normalized so
+    line-wrapped phrases match the literals the contract pins.
+    """
+    start = rendered.find("## Partial is a last resort")
+    assert start >= 0, "## Partial is a last resort heading missing"
+    after = rendered.find("\n## ", start + 1)
+    section = rendered[start:after] if after >= 0 else rendered[start:]
+    return " ".join(section.split())
 
 
 def test_continuation_template_parallel_dispatch_warning_absent_without_prior_result() -> None:

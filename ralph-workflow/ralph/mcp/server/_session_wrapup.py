@@ -72,17 +72,14 @@ def development_wrapup_notice(*, is_worker: bool = False) -> str:
             "or integrate the whole plan."
         )
         parallel_note = (
-            "If your unit is blocked, return truthful partial with the blocker and one next "
-            "step. The orchestrator should dispatch it in parallel rather than completing one "
-            "piece at a time and handing each increment back as partial; piecemeal handbacks "
-            "waste the cycle."
+            "If your unit is blocked, return truthful partial with the blocker and one next step."
         )
     else:
         guidance = (
             "if actionable plan work remains, dispatch an independent ready group "
-            "(units with no `Depends on:` path between any pair and pairwise disjoint "
-            "`Directories:` / `Paths:` ownership) concurrently rather than trimming scope, "
-            "then submit the development result before the cut"
+            "(units whose independence and pairwise-disjoint ownership are evident "
+            "from the plan however the plan states it) concurrently rather than "
+            "trimming scope, then submit the development result before the cut"
         )
         parallel_note = (
             "When the remaining scope still contains independent work, dispatch it in parallel "
@@ -110,9 +107,10 @@ _STATIC_DEVELOPMENT_WRAPUP_NOTICE = (
     "it immediately. Use partial only as an exceptional last resort, when the remaining "
     "work is literally impossible through any developer action available in this run and "
     "requires a physical-world, operator-only, or externally controlled action. When the "
-    "remaining scope still contains independent work, dispatch it in parallel rather than "
-    "completing one piece at a time and handing each increment back as partial; piecemeal "
-    "handbacks waste the cycle. Difficulty, "
+    "remaining scope still contains independent work, treat it as parallelizable rather "
+    "than completing one piece at a time; piecemeal handbacks waste the cycle. Workers "
+    "continue in-scope recovery within their assigned unit and never coordinate other "
+    "units. Difficulty, "
     "elapsed time, and exhausted budget never qualify. Never submit completed unless every "
     "reported item and piece of evidence is "
     "truthful. When genuinely complete, use declare_complete."
