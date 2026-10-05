@@ -415,6 +415,52 @@ def capture_pre_write_contents(
 TargetCommitClass = Literal["tracked", "untracked_ignored", "untracked_new", "not_repo"]
 
 
+# ---- classify_target_for_commit ----------------------------------------------
+
+
+def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass | None:
+    """Classify a target that is not in the index (the untracked probe).
+
+    Returns the classification, or ``None`` when a probe failed closed:
+    a genuine git error from ``ls-files`` / ``check-ignore`` means the
+    target's index or ignore state is unprovable, so the caller must not
+    trust the commit helper to stage only the right paths and treats the
+    site as ``not_repo`` (skip silently).
+    """
+    try:
+        repo.git.ls_files("--error-unmatch", "--", rel_path)
+        return "tracked"
+    except GitCommandError as exc:
+        if exc.status != 1:
+            logger.debug(
+                "classify_target_for_commit: ls-files failed for {} ({}); "
+                "treating as not_repo",
+                rel_path,
+                exc.status,
+            )
+            return None
+    try:
+        # ``--quiet`` suppresses output; the exit status carries the
+        # answer (0 = ignored, 1 = not ignored, 128 = error).
+        repo.git.check_ignore("--quiet", rel_path)
+        return "untracked_ignored"
+    except GitCommandError as exc:
+        if exc.status == 1:
+            # Not ignored -- a brand-new untracked path that the
+            # deterministic writer is wholly authoring.
+            return "untracked_new"
+        # Any other status (128 = error) is fail-closed: an unprovable
+        # ignore status cannot be trusted to commit on. Skip silently
+        # rather than misclassifying a broken repo as ``untracked_new``.
+        logger.debug(
+            "classify_target_for_commit: check-ignore failed for {} ({}); "
+            "treating as not_repo",
+            rel_path,
+            exc.status,
+        )
+    return None
+
+
 def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> TargetCommitClass:
     """Classify a filesystem target BEFORE a deterministic writer touches it.
 
@@ -437,13 +483,32 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
       succeeds);
     * ``untracked_new`` -- untracked and not ignored (a brand-new path a
       deterministic writer is wholly authoring);
-    * ``not_repo`` -- the path is not inside a git working tree (the caller
-      skips commit handling silently; no warning).
+    * ``not_repo`` -- the path is not inside a git working tree, the
+      containing repo could not be discovered, or any classification
+      probe (``ls-files`` / ``check-ignore``) returned a git error.
+      The caller skips commit handling silently (no commit, no warning).
+
+    Repository discovery uses the closest existing ancestor of
+    ``path`` -- never ``path`` itself when it does not exist yet
+    (the canonical first-creation case). ``Repo(nonexistent, ...)``
+    raises ``NoSuchPathError`` even with
+    ``search_parent_directories=True``, so a brand-new
+    ``.agent/ralph-workflow.toml`` would otherwise misclassify as
+    ``not_repo`` and the deterministic commit routing would skip
+    it (DA-001 / DA-007 / DA-008 / DA-010 wt-12).
     """
     del repo_root  # the containing repo is discovered from ``path`` itself
     target = Path(path).resolve(strict=False)
+    # Find the closest existing ancestor for the Repo() probe. Without
+    # this, ``Repo(target, search_parent_directories=True)`` raises
+    # ``NoSuchPathError`` when ``target`` itself does not exist on disk
+    # yet -- the canonical first-creation shape -- and we wrongly
+    # classify the path as ``not_repo``.
+    repo_anchor = target if target.exists() else target.parent  # filesystem-read-ok: git boundary probe -- the repo root must be found before FileBackend seams are importable
+    while not repo_anchor.exists():  # filesystem-read-ok: same git-discovery probe, closest existing ancestor walk
+        repo_anchor = repo_anchor.parent
     try:
-        repo = Repo(target, search_parent_directories=True)
+        repo = Repo(repo_anchor, search_parent_directories=True)
     except (InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError):
         return "not_repo"
     try:
@@ -454,25 +519,12 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
             rel_path = target.relative_to(Path(working_dir)).as_posix()
         except ValueError:
             return "not_repo"
-        try:
-            repo.git.ls_files("--error-unmatch", "--", rel_path)
-            return "tracked"
-        except GitCommandError:
-            pass
-        try:
-            # ``--quiet`` suppresses output; the exit status carries the
-            # answer (0 = ignored, 1 = not ignored, 128 = error).
-            repo.git.check_ignore("--quiet", rel_path)
-            return "untracked_ignored"
-        except GitCommandError as exc:
-            if exc.status != 1:
-                logger.debug(
-                    "classify_target_for_commit: check-ignore failed for {} ({}); "
-                    "treating as untracked_new",
-                    rel_path,
-                    exc.status,
-                )
-        return "untracked_new"
+        # ``None`` means the untracked probes failed closed (unprovable
+        # index/ignore state) -- skip silently as ``not_repo``.
+        untracked_class = _classify_untracked_target(repo, rel_path)
+        if untracked_class is not None:
+            return untracked_class
+        return "not_repo"
     finally:
         close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):

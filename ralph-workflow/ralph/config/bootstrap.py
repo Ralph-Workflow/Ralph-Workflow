@@ -879,7 +879,16 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
     if commit_routing != "not_repo":
         from ralph.git.scoped_auto_commit import capture_pre_write_contents
 
-        repo_root = Path(Repo(target, search_parent_directories=True).working_dir)
+        # Use the closest existing ancestor for the Repo() probe: a
+        # first-creation target does not exist on disk yet, and
+        # ``Repo(target, search_parent_directories=True)`` raises
+        # ``NoSuchPathError`` even with the parent-search fallback. The
+        # containing repo is the same one ``classify_target_for_commit``
+        # just discovered (wt-12 DA-001 / DA-010).
+        repo_anchor = target if target.exists() else target.parent
+        while not repo_anchor.exists():
+            repo_anchor = repo_anchor.parent
+        repo_root = Path(Repo(repo_anchor, search_parent_directories=True).working_dir)
         pre_contents = capture_pre_write_contents(
             repo_root, [_repo_rel_path(target, repo_root)]
         )
@@ -888,14 +897,16 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
-        # deterministic-writer-ok: the forced-regeneration backup move is
-        # part of the Ralph-authored config write routed through
-        # commit_deterministic_writes below (wt-12).
-        # filesystem-write-ok: deliberately timestamped backup of the previous config before regeneration (wt-12)
-        shutil.move(str(target), str(backup))
+        # The forced-regeneration backup move is part of the Ralph-authored
+        # config write routed through commit_deterministic_writes below
+        # (wt-12). The audit's helper-following check accepts the write
+        # as routed.
+        shutil.move(str(target), str(backup))  # filesystem-write-ok: deliberately timestamped backup of the previous config before regeneration (wt-12)
 
-    # filesystem-write-ok: shipped-template install write, committed by the routing below (wt-12)
-    shutil.copy2(str(source), str(target))
+    # Shipped-template install write, committed by the routing below
+    # (wt-12). The audit's helper-following check accepts the write as
+    # routed.
+    shutil.copy2(str(source), str(target))  # filesystem-write-ok: shipped-template install write, committed by the routing below (wt-12)
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )

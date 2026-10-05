@@ -152,6 +152,45 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
     assert not any(".bak" in line for line in tracked.splitlines())
 
 
+def test_nonignored_first_creation_commits_dedicated_chore(tmp_path: Path) -> None:
+    """First creation of a NONIGNORED config: dedicated commit lands.
+
+    Regression for wt-12 DA-001 / DA-007 / DA-008 / DA-010: the previous
+    ``classify_target_for_commit`` raised ``NoSuchPathError`` on
+    ``Repo(target, search_parent_directories=True)`` when ``target`` did
+    not yet exist on disk, so the first-creation of an untracked,
+    nonignored config misclassified as ``not_repo`` and the deterministic
+    commit routing bypassed it. The file was written, the working tree
+    stayed dirty, and no dedicated ``chore(config): update <filename>``
+    commit was ever created.
+    """
+    repo_root = tmp_path
+    _init_repo_with_initial_commit(repo_root)
+    agent_dir = repo_root / ".agent"
+    subjects_before = set(_commit_subjects(repo_root))
+
+    results = ensure_local_configs(agent_dir, force=True)
+
+    config_path = agent_dir / "ralph-workflow.toml"
+    created = [r for r in results if r.path == config_path]
+    assert created and created[0].action == "created", (
+        f"First-creation must report 'created'; got {[r.action for r in results]!r}"
+    )
+    # The whole point: a dedicated chore(config) commit for the
+    # first-created nonignored config must exist (DA-008).
+    new_subjects = _non_gitignore_new_subjects(repo_root, subjects_before)
+    assert "chore(config): update ralph-workflow.toml" in new_subjects, (
+        f"Expected a dedicated chore(config) commit for ralph-workflow.toml; "
+        f"new commits: {new_subjects!r}"
+    )
+    # Working tree must be clean for the ralph-workflow.toml path
+    # (DA-007): no `?? new.toml` style leftovers.
+    porcelain = _git(repo_root, "status", "--porcelain", "--", str(config_path))
+    assert porcelain.strip() == "", (
+        f"First-created nonignored config must be clean; got {porcelain!r}"
+    )
+
+
 def test_ignored_first_creation_commits_nothing_and_warns_not(tmp_path: Path) -> None:
     """First creation under an ignored path: no commit, no warning."""
     repo_root = tmp_path

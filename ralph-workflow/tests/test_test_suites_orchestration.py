@@ -59,6 +59,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # end-to-end) but must stay on the default ``make test`` profile
     # so the config-write isolation / rollback contract cannot rot
     # silently.
+    "tests/test_config_auto_commit.py",
     # wt-12: the bootstrap config-write isolation cases (Unit 1) and
     # the parameterized clean-tree acceptance cases for the
     # non-bootstrap deterministic writers (skill sync, skill install,

@@ -1322,7 +1322,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # under the 1000-line cap, shifting the surviving markers;
         # the allowlist pins the post-extraction line numbers.
         ("ralph/git/scoped_auto_commit.py", 248),
-        ("ralph/git/scoped_auto_commit.py", 485),
+        # wt-12: the untracked-probe extraction for the fail-closed
+        # ls-files/check-ignore error handling moved the
+        # ``commit_deterministic_writes`` and ``commit_scoped_updates``
+        # complexity-cap markers down; only line numbers moved.
+        ("ralph/git/scoped_auto_commit.py", 537),
         # wt-012 (DA-007/DA-012): the brand-new-path beyond a symlink
         # branch in ``commit_deterministic_writes`` extended the
         # function by ~25 lines, shifting the downstream
@@ -1330,7 +1334,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # marker itself is unchanged (the explicit-outcome state
         # machine still needs the complexity-cap opt-out); only the
         # line number moves.
-        ("ralph/git/scoped_auto_commit.py", 891),
+        ("ralph/git/scoped_auto_commit.py", 943),
         ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/_auto_commit_integration.py", 69),
         ("ralph/project_policy/_auto_commit_integration.py", 142),
