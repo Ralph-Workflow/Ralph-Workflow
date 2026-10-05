@@ -226,7 +226,7 @@ def test_planning_analysis_includes_five_substantive_criteria() -> None:
     assert "Do not grade formatting" in source
     assert "## Criterion Verdicts" in source
     assert "## Decision artifact" in source
-    assert "propose a concrete unit split" in source
+    assert "put a concrete unit split" in source
 
 
 def test_development_analysis_prescribes_concrete_verification_fanout() -> None:

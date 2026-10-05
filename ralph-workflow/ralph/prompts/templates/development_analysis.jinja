@@ -45,7 +45,7 @@ Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met, every required plan
   item has been individually proven, and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
+- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or a `Plan reference: [<stable id>]` the plan uses.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
 `failed` records stronger or not-evaluable evidence for explicit resolution; the label itself never fails the pipeline.
@@ -60,7 +60,7 @@ status: request_changes
 - [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add an oversized-index case to tests/test_foo.py that exercises the indexer with a payload >5x the documented limit and asserts the overflow path is covered.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: tests/test_foo.py still lacks an oversized-index case, so the overflow path is unproven.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
@@ -70,7 +70,7 @@ status: request_changes
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for whatever references the plan actually uses, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`. A prose plan without IDs is judged on whether its requests are covered, not on whether a numeric identifier matches. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not prescribe a remedy. A `not evaluable` criterion requires `failed`.
+Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for whatever references the plan actually uses, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`; the reference is whatever stable identifier the plan itself uses — numeric `S-n` IDs, a named anchor, or, for a prose plan with no IDs, the prose anchor being judged. A prose plan is judged on whether its requests are covered, not on whether a numeric identifier matches. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not prescribe a remedy. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 

@@ -29,7 +29,7 @@ substantive criteria are: coverage, truthfulness, actionability, parallel
 decomposition, and execution conflicts. Parallel decomposition is not met when
 independent work is serialized through invented dependencies, list order, or a
 single chain without stated coupling; name the independent branches and
-propose a concrete unit split in the finding's Observation. Execution conflicts
+put a concrete unit split in the finding's `Proposed revision:`. Execution conflicts
 are not met when concurrent writers share a file or a consumer precedes its
 shared contract producer. Request changes whenever independent work is
 serialized without a reason. The planner applies or rebuts each proposed
@@ -68,7 +68,10 @@ status: request_changes
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
 Use one stable `PA-###` item per criterion in `## Criterion Verdicts`.
-Include `Plan-level:` or a step reference, then `Criterion:`, `Expected
+Include `Plan-level:` or a plan reference — whatever stable identifier the
+plan itself uses: `Step: [S-n]` when the plan numbers its steps, or a
+`Plan reference: [<stable id>]` / prose anchor when it does not — then
+`Criterion:`, `Expected
 observation:`, `Observation:`, `Proposed revision:`, `Verdict:`,
 `Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion
 to be `met` with evidence and no counterexample found. For `request_changes`

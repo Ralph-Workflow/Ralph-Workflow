@@ -196,15 +196,18 @@ class TestDevelopmentAnalysisWholeChange:
         assert "tests/test_foo.py" in text
 
     def test_format_doc_rule_requires_concrete_remaining_work(self) -> None:
-        """The Sections rule must continue to require concrete leftover
-        development work so the rule and the example agree. Locking the
-        rule prevents a regression where the rule drifts to a vague
-        "developer decides" placeholder and the example then mirrors it.
+        """The Sections rule must continue to require a non-empty
+        ``Remaining work:`` statement describing the leftover development
+        work so the rule and the example agree. Locking the rule prevents
+        a regression where the rule drifts to a vague "developer decides"
+        placeholder and the example then mirrors it. The analyzer states
+        what is missing; the development phase owns how to fix it.
         """
         text = " ".join(
             _format_doc_path("format_docs", "development_analysis_decision.md")
             .read_text(encoding="utf-8")
             .split()
         )
-        assert "naming concrete leftover development work" in text
+        assert "describing the leftover development work" in text
+        assert "the development phase owns" in text
         assert "`Remaining work:`" in text

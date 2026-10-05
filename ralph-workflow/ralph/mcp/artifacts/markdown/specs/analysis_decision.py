@@ -35,6 +35,30 @@ _REQUIRED_VERDICT_FIELDS = (
     "Location:",
 )
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
+_REQUIRED_FINDING_FIELDS = tuple(
+    field for field in _REQUIRED_VERDICT_FIELDS if field != "Criterion:"
+)
+
+
+def _finding_fields_complete(text: str) -> bool:
+    """Return True when a What Came Up Short item identifies its subject and
+    carries every required finding field.
+
+    The subject slot accepts ``Criterion:`` or any ``Plan reference: [<id>]``
+    the plan actually uses; free-form plans are not required to use ``S-n``
+    identifiers, so the plan-reference check is deliberately non-specific.
+    """
+    has_subject = "Criterion:" in text or _PLAN_REFERENCE_PATTERN.search(text) is not None
+    return has_subject and all(field in text for field in _REQUIRED_FINDING_FIELDS)
+
+
+def _has_finding_target(text: str) -> bool:
+    """A finding targets the plan via a step, plan-level scope, or any stable
+    plan reference identifier (free-form plans need not use S-n step IDs)."""
+    return (
+        _FINDING_TARGET_PATTERN.search(text) is not None
+        or _PLAN_REFERENCE_PATTERN.search(text) is not None
+    )
 
 
 def _extract_verdict(text: str) -> str | None:
@@ -49,7 +73,7 @@ def _extract_verdict(text: str) -> str | None:
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
 _LOCATION_PATTERN = re.compile(r"Location:\s*(.*?)\s*$", re.IGNORECASE)
 _REMAINING_WORK_PATTERN = re.compile(r"Remaining work:\s*(.+)", re.IGNORECASE)
-_PLAN_REFERENCE_PATTERN = re.compile(r"Plan reference:\s*\[S-[1-9][0-9]*\]", re.IGNORECASE)
+_PLAN_REFERENCE_PATTERN = re.compile(r"Plan reference:\s*\[[^\]]+\]", re.IGNORECASE)
 _PLACEHOLDER_LOCATIONS = frozenset({"unknown", "n/a", "none", "tbd", "not provided", ""})
 _VERIFICATION_ID_PATTERNS = {
     "planning_analysis_decision": re.compile(r"PA-[0-9]+"),
@@ -205,7 +229,7 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     "a 'not evaluable' criterion verdict requires status 'failed'",
                 )
             )
-        if artifact_type == "planning_analysis_decision" and not _FINDING_TARGET_PATTERN.search(
+        if artifact_type == "planning_analysis_decision" and not _has_finding_target(
             item.text
         ):
             diagnostics.append(
@@ -213,7 +237,18 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     item.line,
                     "Criterion Verdicts",
                     "ANALYSIS004",
-                    "planning criterion verdict must identify 'Step: [S-n]' or 'Plan-level:'",
+                    "planning criterion verdict must identify 'Step: [S-n]', 'Plan-level:', or a 'Plan reference: [<stable id>]'",
+                )
+            )
+        if artifact_type == "planning_analysis_decision" and status != "completed" and (
+            "Proposed revision:" not in item.text
+        ):
+            diagnostics.append(
+                _validation_diagnostic(
+                    item.line,
+                    "Criterion Verdicts",
+                    "ANALYSIS019",
+                    "planning criterion verdict must include a concrete 'Proposed revision:' the planner can apply or rebut",
                 )
             )
     return diagnostics
@@ -271,7 +306,7 @@ def _validate_request_changes_predicate(
                     item.line,
                     "What Came Up Short",
                     "ANALYSIS017",
-                    "request_changes finding must identify 'Criterion:' or 'Plan reference: [S-n]'",
+                    "request_changes finding must identify 'Criterion:' or a 'Plan reference: [<stable id>]' the plan uses",
                 )
             )
     return diagnostics
@@ -338,10 +373,10 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
                 item.line,
                 "What Came Up Short",
                 "ANALYSIS005",
-                "verification finding must include Criterion:, Expected observation:, Verdict:, Evidence:, and Location:",
+                "verification finding must identify Criterion: (or a Plan reference:) and include Expected observation:, Verdict:, Evidence:, and Location:",
             )
             for item in what_items
-            if any(field not in item.text for field in _REQUIRED_VERDICT_FIELDS)
+            if not _finding_fields_complete(item.text)
         )
         diagnostics.extend(
             _validation_diagnostic(
@@ -359,10 +394,20 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
                 item.line,
                 "What Came Up Short",
                 "ANALYSIS004",
-                "planning request_changes finding must identify its affected target as 'Step: [S-n]' or 'Plan-level:'",
+                "planning request_changes finding must identify its affected target as 'Step: [S-n]', 'Plan-level:', or a 'Plan reference: [<stable id>]'",
             )
             for item in what_items
-            if not _FINDING_TARGET_PATTERN.search(item.text)
+            if not _has_finding_target(item.text)
+        )
+        diagnostics.extend(
+            _validation_diagnostic(
+                item.line,
+                "What Came Up Short",
+                "ANALYSIS019",
+                "planning finding must include a concrete 'Proposed revision:' the planner can apply or rebut",
+            )
+            for item in what_items
+            if "Proposed revision:" not in item.text
         )
     if artifact_type in _VERIFICATION_TYPES:
         verdict_section = document.section("Criterion Verdicts")
@@ -391,7 +436,7 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
                 "each What Came Up Short item must mirror a non-met criterion verdict",
             )
             for item in what_items
-            if all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
+            if _finding_fields_complete(item.text)
             and item.identifier not in verdict_by_id
         )
         shortfall_item_by_id = {item.identifier: item for item in what_items}

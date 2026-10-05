@@ -33,9 +33,14 @@ def _markdown(artifact_type: str, verdict: str, evidence: str, location: str) ->
     }[artifact_type]
     status = "completed" if verdict == "met" else "request_changes"
     target = "Step: [S-1] " if artifact_type == "planning_analysis_decision" else ""
+    revision = (
+        "Proposed revision: name the runnable focused check. "
+        if artifact_type == "planning_analysis_decision" and verdict != "met"
+        else ""
+    )
     verdict_item = (
         f"- [{prefix}-001] {target}Criterion: behavior holds. Expected observation: focused evidence observes it. "
-        f"Verdict: {verdict}. Evidence: {evidence} Location: {location}."
+        f"{revision}Verdict: {verdict}. Evidence: {evidence} Location: {location}."
     )
     if verdict != "met" and artifact_type == "development_analysis_decision":
         shortfall_item = f"{verdict_item} Remaining work: fix the failing behavior."

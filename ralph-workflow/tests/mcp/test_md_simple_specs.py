@@ -14,9 +14,9 @@ status: request_changes
 ## Summary
 - [SUM-1] The plan needs correction.
 ## What Came Up Short
-- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
+- [PA-001] {shortfall} Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step.
 ## Criterion Verdicts
-- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.
+- [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step.
 """
 
 
@@ -60,16 +60,19 @@ def test_request_changes_preserves_exact_finding_binding() -> None:
 
 def test_verification_decision_rejects_a_finding_without_evidence_fields() -> None:
     document = _decision("Step: [S-2] lacks evidence.").replace(
-        " Criterion: verification is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command output. Location: plan step.",
+        " Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command in the step. Verdict: not met. Evidence: command output. Location: plan step.",
         "",
     )
 
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
+    # Both planning items also lack the required Proposed revision:, so
+    # ANALYSIS019 fires alongside the two ANALYSIS005 field-completeness errors.
     assert [(item.rule_id, item.severity) for item in diagnostics] == [
         ("ANALYSIS005", "error"),
         ("ANALYSIS005", "error"),
+        ("ANALYSIS019", "error"),
     ]
 
 
@@ -201,10 +204,10 @@ status: request_changes
 - [SUM-1] Evidence is unavailable.
 
 ## What Came Up Short
-- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not met. Evidence: command unavailable. Location: plan.
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command unavailable. Location: plan.
 
 ## Criterion Verdicts
-- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Verdict: not evaluable. Evidence: command unavailable. Location: plan.
+- [PA-001] Plan-level: Criterion: the plan is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not evaluable. Evidence: command unavailable. Location: plan.
 """
 
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
@@ -277,3 +280,53 @@ def test_request_changes_allows_explicit_plan_level_target() -> None:
 
     assert diagnostics == []
     assert content["finding_targets"] == {"PA-001": "plan-level"}
+
+
+def test_request_changes_accepts_free_form_plan_reference() -> None:
+    """Plans without S-n step IDs may still be referenced by stable identifier."""
+    content, diagnostics = parse_and_validate(
+        _decision("Plan reference: [install-flow] skips the retry path."),
+        get_spec("planning_analysis_decision"),
+    )
+
+    assert diagnostics == []
+    assert content["finding_ids"] == ["PA-001"]
+
+
+def test_planning_findings_require_a_proposed_revision() -> None:
+    """ANALYSIS019: planning findings must state a concrete proposed revision."""
+    document = _decision("The rollout risk is unaddressed.").replace(
+        " Proposed revision: name the runnable command in the step.", ""
+    )
+
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
+
+    assert content == {}
+    # Two What Came Up Short items (ANALYSIS019 twice) plus one verdict item.
+    assert [item.rule_id for item in diagnostics] == [
+        "ANALYSIS019",
+        "ANALYSIS004",
+        "ANALYSIS019",
+    ]
+
+
+def test_development_findings_do_not_require_a_proposed_revision() -> None:
+    """ANALYSIS019 is planning-only; development findings keep Remaining work:."""
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] One criterion is not met.
+
+## What Came Up Short
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10. Remaining work: implement the missing behavior.
+
+## Criterion Verdicts
+- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
+"""
+
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+
+    assert diagnostics == []
+    assert content["finding_ids"] == ["DA-001"]

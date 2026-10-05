@@ -35,7 +35,7 @@ status: request_changes
 
 ## What Came Up Short
 
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add an oversized-index case to tests/test_foo.py that exercises the indexer with a payload >5x the documented limit and asserts the overflow path is covered.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: tests/test_foo.py still lacks an oversized-index case, so the overflow path is unproven.
 
 ## Criterion Verdicts
 
@@ -52,9 +52,11 @@ status: request_changes
 - `## What Came Up Short` is required and non-empty for `request_changes` and
   `failed`; it mirrors localized non-met criterion verdicts and is omitted for
   `completed`. For `request_changes`, every finding must independently include
-  a non-empty `Remaining work:` statement naming concrete leftover development
-  work, a concrete repository `Location:` (not `unknown`/`N/A`/`none`), and
-  identify `Criterion:` or `Plan reference: [S-n]`. A single well-formed finding
+  a non-empty `Remaining work:` statement describing the leftover development
+  work (state what is still missing or unproven — the development phase owns
+  how to fix it), a concrete repository `Location:` (not `unknown`/`N/A`/`none`), and
+  identify `Criterion:` or a `Plan reference: [<stable id>]` the plan uses. A
+  single well-formed finding
   does not excuse a sibling that lacks any of the three.
 - Whole-change findings reuse the same `DA-###` shape and the same
   `## Criterion Verdicts` block. There is no separate integration section;
