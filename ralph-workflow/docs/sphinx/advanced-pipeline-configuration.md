@@ -293,7 +293,7 @@ Use this when you want a planning artifact to split work into multiple developme
 
 ### What changed
 
-Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, etc.). When AGY is selected for two or more work units, routing follows the same supported agent_subagents path: `agy agents` reported no sub-agents on the measured stock v1.1.8 install, but that is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). AGY parallel runs fail observably only when the measured subagent dispatch or result evidence is missing or uncorrelated, never merely because `agy agents` lists nothing. Subagents and parallel agents are always available; the planning prompt never falls back to a sequential capability branch.
+Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, etc.). When AGY is selected for two or more work units, routing follows the same supported agent_subagents path: `agy agents` reported no sub-agents on the measured stock v1.1.8 install, but that is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). AGY parallel runs fail observably only when the measured subagent dispatch or result evidence is missing or uncorrelated, never merely because `agy agents` lists nothing. The planning prompt assumes sub-agent capability rather than choosing a sequential capability branch; development guidance separately handles an unavailable dispatch tool without abandoning ready work.
 
 The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and produces the matching `plan_items_proven` evidence. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
 
@@ -319,6 +319,49 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). The bundled dispatch path is `agent_subagents`; Ralph-managed fan-out is dormant and must be re-armed explicitly per phase. There is no linear capability fallback in the planning prompt: every configured agent is treated as supporting sub-agents and parallel agents.
 
 The planning prompts recommend work units for independent responsibilities, shared contracts before consumers, and integration after fan-in. This is execution guidance, not a required plan format. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance. The shared `shared/_parallel_execution.jinja` partial codifies the same wave / ownership / sanitization rules for the executing agent.
+
+### Persistence under huge scope
+
+Development prompts instruct the agent to turn unexpectedly large scope
+into ready, verifiable increments rather than return only an assessment.
+This is a prompt contract, not a guarantee of model compliance or unlimited
+execution:
+
+- **Huge scope triggers ready-work decomposition.** The coordinator
+  inventories required references, picks the smallest falsifiable
+  increment whose focused verification can run in this session, and
+  treats the rest as a queue of further increments. Workers apply the
+  same rule inside their assigned unit: pick the next ready reference,
+  implement it, run focused verification, record the disposition, and
+  continue the loop until the unit is fully proven.
+- **Coordinator dispatch uses ownership and capacity.** Independent
+  ready units with disjoint ownership are dispatched as sub-agents in
+  waves. The `max_parallel_workers` cap limits concurrent units in a
+  wave, not the total unit count; saturation queues later waves while the
+  coordinator implements its own ready critical-path work. Conflicting
+  ownership runs serially under the rules above.
+- **Absent delegation does not erase required work.** When the runtime
+  does not expose a sub-agent tool, the coordinator continues ready
+  work sequentially within its existing authority instead of stopping.
+  Coupled work also runs sequentially; neither case broadens worker
+  ownership or bypasses tool permissions.
+- **Failed tactics lead to evidence-backed recovery.** A failed tactic
+  is not a stop signal while another safe action remains. The agent
+  performs an evidence-based diagnosis, tries a changed approach, and
+  reassesses readiness after reproducing returned evidence. Incomplete
+  results require the canonical external-impossibility rule in
+  `ralph/prompts/templates/shared/_no_exemption_for_failures.j2`, not
+  merely a failed attempt.
+- **Workers stay local.** Workers never dispatch sub-agents, integrate
+  the whole plan, or run the full repository gate. They implement and
+  verify only their assigned unit, return that one unit result, and
+  leave cross-unit integration to the main session.
+- **Deadline pressure is not an external blocker.** A tight
+  development-timebox or cycle-timebox deadline is a pacing signal,
+  not a stop signal. The agent uses the remaining-minutes figure to
+  finish ready work in a verifiable state and submit before the cut;
+  it does not stop with an assessment-only handback solely because
+  the budget is shrinking.
 
 ### Re-arming Ralph-managed fan-out (dormant)
 
@@ -650,8 +693,12 @@ remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 - The developer prompt includes a remaining-minutes warning and a force-cut
   sentence in `shared/_run_budget.j2` so the agent drives the current task
   to a verifiable state (a green suite, a passing focused test, or an
-  explicit partial report) before the deadline and does not start new work
-  it cannot finish.
+  explicit partial report when the canonical incomplete-result rule in
+  `ralph/prompts/templates/shared/_no_exemption_for_failures.j2` authorizes
+  one) before the deadline and does not start new work it cannot finish.
+  A tight deadline is a pacing signal, not a stop signal; only a genuine
+  external impossibility authorizes `partial` or `failed`, and a shrinking
+  budget alone never does.
 - The development wrapup notice
   (`ralph.mcp.server._session_wrapup.development_wrapup_notice`) renders
   the same remaining minutes, suggests dispatching an independent ready
@@ -661,7 +708,12 @@ remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
   is published.
 
 The shared minutes convention means the wrapup notice and the developer
-prompt cannot diverge at the warning boundary.
+prompt cannot diverge at the warning boundary. The force-cut itself is
+unchanged: the runtime still redirects at the hard deadline, and an
+unsubmitted artifact is still lost at the cut. The minutes figure helps
+the agent finish ready work in a verifiable state and submit before that
+cut; it does not extend the deadline or guarantee that the agent will
+comply.
 
 ## Work Units execution
 
@@ -676,3 +728,13 @@ serially; disjoint files in the same directory may run together. Protected
 assignments are removed before worker briefs, and unknown ownership or
 unextractable graphs remain main-session work. Brokered write protections
 continue to enforce filesystem safety.
+
+<!-- Documentation review (docs/code-style/documentation-rubric.md, S-3):
+This operator reference owns the scope-recovery explanation beside dispatch
+configuration. It removes the absolute tool-availability claim and ambiguous
+partial-handback wording, distinguishes prompt intent from hard deadlines,
+and reuses the existing ownership rules and canonical incomplete-result rule
+rather than duplicating their contracts. Operators can now find unavailable-
+delegation recovery and timebox limits on the same page. Configuration tables,
+planning guidance, and external references are unchanged.
+-->
