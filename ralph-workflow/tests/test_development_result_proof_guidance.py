@@ -130,3 +130,33 @@ def test_rendered_partial_states_ui_gate_judges_proof_text_not_reference_label()
 
     assert "judged from the item's proof text, never from the bracketed" in rendered
     assert "reference label" in rendered
+
+
+def test_rendered_partial_scopes_rationale_to_non_completed_dispositions() -> None:
+    """The rendered partial scopes the Rationale requirement to adapted,
+    not_applicable, and blocked items: completed items must not require
+    one. The shared partial must not claim Rationale is rejected for
+    completed plan items.
+    """
+    rendered = _rendered_partial()
+
+    assert (
+        "A missing `Rationale` is rejected only for `adapted` / "
+        "`not_applicable` / `blocked` items"
+    ) in rendered
+    assert "completed items do not" in rendered
+    assert "missing Disposition / Rationale fields" not in rendered
+
+
+def test_format_doc_states_cycle_warning_runtime_clock_plus_declared_flag() -> None:
+    """The format doc names both sources the spec consults: the run's
+    own clock, and a declared ``cycle_timebox_warned: true`` frontmatter
+    flag honoured for replays and hand-written reports."""
+    text = _normalized(_FORMAT_DOC)
+
+    assert "Whether the cycle warned is read from the run's own clock." in text
+    assert "A declared `cycle_timebox_warned: true` frontmatter flag is also honoured" in text
+    assert (
+        "a result validated outside the warned invocation (a replay or a "
+        "hand-written report) keeps its stricter reading"
+    ) in text

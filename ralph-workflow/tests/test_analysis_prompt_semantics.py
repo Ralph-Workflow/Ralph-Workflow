@@ -153,6 +153,23 @@ def test_planning_analysis_prompts_the_revision_loop_contract() -> None:
     assert "focused check" in rendered_example
 
 
+def test_planning_analysis_clear_ownership_accepts_prose() -> None:
+    """The review contract's Clear-ownership property must not demand
+    literal ``Directories:`` / ``Paths:`` fields when ownership is
+    unambiguous from prose; a plain prose plan with clear ownership
+    must still pass. The test locks both the prompt contract and the
+    embedded example so the rule lives in one place per plan family.
+    """
+    source = TemplateContext.default().registry.get_template("planning_analysis")
+    normalized = " ".join(source.split())
+
+    # The contract rule itself: ownership stated unambiguously in prose
+    # satisfies the property; literal fields are a convenience, not a
+    # requirement.
+    assert "ownership stated unambiguously in prose" in normalized
+    assert "are a convenience" in normalized
+
+
 def test_planning_edit_requires_apply_or_rebut_per_finding() -> None:
     """planning_edit.jinja makes the revision loop explicit.
 

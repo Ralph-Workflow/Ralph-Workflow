@@ -39,7 +39,7 @@ checks to read-only subagents and reconcile their fresh evidence.
 Each proposed unit split must also name three properties the planner can verify
 on the next pass, because parallel safety requires them:
 
-- **Clear ownership** — each unit declares its exact `Directories:` and/or `Paths:`; a broader scope than the unit actually needs is the same execution defect as a missing declaration. Overlapping parents do not grant ownership of other files.
+- **Clear ownership** — each unit names the files or directories it owns so two units never claim the same path. Literal `Directories:` and/or `Paths:` fields are a convenience; ownership stated unambiguously in prose satisfies this property. A broader scope than the unit actually needs is the same execution defect as a missing declaration. Overlapping parents do not grant ownership of other files.
 - **Each unit has its own check** — every unit names the focused verify step a worker can run inside its assigned scope. Without a per-unit check the unit cannot be proven independently.
 - **Sized for one agent** — the work inside a unit fits a single agent's slice; a unit that only one large agent can finish defeats the purpose of fan-out.
 

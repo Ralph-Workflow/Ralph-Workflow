@@ -198,8 +198,10 @@ status decides whether the run ends.
 Hard errors at any status: an unrecognized `status`; a missing `## Summary`;
 and, once the cycle timebox has warned, a missing or malformed `## Incomplete
 Work` on a `partial`/`failed` result or a missing `## Plan Items Proven` on a
-`completed` one. Whether the cycle warned is read from the run's own clock, not
-from anything the document declares.
+`completed` one. Whether the cycle warned is read from the run's own clock.
+A declared `cycle_timebox_warned: true` frontmatter flag is also honoured, so
+a result validated outside the warned invocation (a replay or a hand-written
+report) keeps its stricter reading.
 
 Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
