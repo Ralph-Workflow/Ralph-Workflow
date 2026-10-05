@@ -135,6 +135,23 @@ def test_partial_results_rule_is_single_sourced() -> None:
         )
 
 
+def test_parallel_execution_ownership_contract_accepts_prose_plans() -> None:
+    """Free-form plans state ownership in prose; planning analysis (and the
+    coordinator wrapup) accept that, so the execution ownership contract in
+    ``shared/_parallel_execution.jinja`` must too. Literal
+    ``Directories:``/``Paths:`` fields are conveniences, not requirements.
+    """
+    source = _PARALLEL_PARTIAL.read_text(encoding="utf-8")
+    assert "stated unambiguously in prose satisfies" in source, (
+        "ownership contract must accept unambiguous prose ownership"
+    )
+    # The contract must not require field syntax: no sentence may say
+    # ownership comes *from* the fields or that fieldless units cannot
+    # claim exact files.
+    assert "ownership is the unit's exact `Directories:`" not in source
+    assert "verbatim from a declared unit's `Directories:`" not in source
+
+
 # ---------------------------------------------------------------------------
 # Large-scope contract: a development iteration whose work proves far larger
 # than the plan indicated is a scheduling signal, never an exit condition.
