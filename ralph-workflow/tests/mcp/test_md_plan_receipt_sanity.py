@@ -45,6 +45,8 @@ class Utf8Backend(MemoryBackend):
 _PROSE = "Inspect code then implement independent changes and verify all behavior carefully."
 _CASES = (
     "Inspect code then implement changes and verify all behavior carefully.",
+    "I cannot approve changes before inspection, so inspect current callers and carefully compare their observable behavior against the requested contract.",
+    "I cannot implement this request because production credentials are unavailable, so implement an offline adapter and verify it with recorded responses.",
     _PROSE,
     _PROSE + "\n## Steps\n### [S-1] First\n### [S-1] Second",
     _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-99",
@@ -121,7 +123,8 @@ def test_stage_finalize_edit_and_fallback_preserve_prose_and_receipts() -> None:
 @pytest.mark.parametrize(
     "document",
     ("", "one two three four five six seven eight nine", "\x00ID3" + _PROSE,
-     "\ud800" + _PROSE, "I cannot complete this request because policy prevents me from helping you today."),
+     "\ud800" + _PROSE, "I cannot complete this request because policy prevents me from helping you today.",
+     "I cannot implement this request because I cannot access any repository files today."),
 )
 def test_bad_plan_never_receives_submit_or_fallback_receipt(document: str) -> None:
     workspace = MemoryWorkspace()

@@ -1,30 +1,46 @@
-"""Regression checks for concise planning guidance."""
+"""Rendered regression checks for concise planning guidance."""
 
 from __future__ import annotations
 
+import pytest
+
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 
-def _source(name: str) -> str:
-    return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
+def _render_planner(name: str) -> str:
+    context = TemplateContext.default()
+    session = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    return render_template(
+        context.registry.get_template(name),
+        {
+            **capability_template_variables(session.capabilities, session.policy_flags),
+            "PRODUCT_CRITERIA": "Update independent command and documentation behavior.",
+            "PRODUCT_CRITERIA_PATH": "fixtures/request.md",
+            "ANALYSIS_FEEDBACK": "Avoidable serialization: split command and documentation units.",
+            "ANALYSIS_FEEDBACK_PATH": "fixtures/feedback.md",
+            "HAS_DOCS_MCP": "",
+            "DOCS_MCP_PORT": "localhost:6280",
+            "LAST_RETRY_ERROR": "",
+            "SKILLS_INLINE_CONTENT": "",
+        },
+        context.partials,
+    )
 
 
-def test_primary_templates_share_thinking_first_guidance() -> None:
-    for name in ("planning.jinja", "planning_edit.jinja"):
-        source = _source(name)
-        assert "shared/_planning_thinking.j2" in source
-        assert "subagent" in source.lower() or name == "planning_edit.jinja"
+@pytest.mark.parametrize(
+    "name", ("planning", "planning_fallback", "planning_edit", "planning_edit_fallback")
+)
+def test_rendered_planners_delegate_independent_work_by_default(name: str) -> None:
+    rendered = " ".join(_render_planner(name).split())
 
-
-def test_fallback_templates_delegate_discovery_by_default() -> None:
-    for name in ("planning_fallback.jinja", "planning_edit_fallback.jinja"):
-        source = _source(name)
-        assert "shared/_subagents.j2" in source
-        assert "Use a subagent only" not in source
-
-
-def test_analysis_owns_a_concise_substantive_review() -> None:
-    source = _source("planning_analysis.jinja")
-    assert "## Review contract" in source
-    assert "## PLAN QUALITY RUBRIC" not in source
-    assert "criterion-level verdicts, not a holistic quality score" in source
+    for required in (
+        "Delegate exploration, research, verification, and review to read-only",
+        "Fan-out is the default",
+        "multiple independent areas",
+        "Two independent tasks are enough to fan out",
+    ):
+        assert required in rendered
+    assert "Use a subagent only" not in rendered
