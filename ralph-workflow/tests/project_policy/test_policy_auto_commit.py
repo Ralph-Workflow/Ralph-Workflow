@@ -396,3 +396,119 @@ def test_commit_policy_writes_noop_when_no_writes(
     )
     assert result.status is ScopedCommitStatus.NOOP
     fake_create_commit.assert_not_called()
+
+
+# --- wt-012: truthful real-git regression (replaces the fabricated-SHA case) ---
+
+
+@pytest.mark.timeout_seconds(5)
+def test_commit_policy_writes_real_git_end_to_end(tmp_git_repo: Path) -> None:
+    """wt-012 truthful test: real ``create_commit`` against a real ``Repo``.
+
+    Replaces the previous fabricated-SHA clean-path assertion. Drives
+    the same producer-level contract but with the production
+    ``create_commit`` / ``stage_files`` wiring so a real HEAD advance
+    is observable. Asserts:
+
+    * the post-commit tree carries the deterministic-writer content,
+    * the post-commit ``git log`` shows a commit with the
+      ``POLICY_AUTO_COMMIT_SUBJECT`` subject at HEAD,
+    * unrelated agent / user edits staged before the commit stay out
+      of the chore commit (the isolation contract),
+    * a second identical write produces no commit (NOOP / SKIPPED).
+    """
+    from git import Repo
+
+    from ralph.git.operations import create_commit, stage_files
+
+    # Seed HEAD with the deterministic-writer content at its pre-write
+    # state (the writer is about to overwrite this file).
+    initial = tmp_git_repo / AGENTS_MD
+    initial.write_text("# AGENTS.md -- pre-write\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        from git import Actor
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.add([AGENTS_MD])
+        repo.index.commit("seed", author=actor, committer=actor)
+    finally:
+        repo.close()
+
+    # Stage an unrelated agent edit that the deterministic writer must
+    # NOT sweep in.
+    wip = tmp_git_repo / "agent_wip.py"
+    wip.write_text("# agent WIP\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["agent_wip.py"])
+    finally:
+        repo.close()
+
+    # Pre-write snapshot for the deterministic writer -- the writer
+    # captures what was on disk at HEAD for AGENTS.md BEFORE the
+    # overwrite. ``git_wip.py`` is intentionally NOT in the pre-write
+    # map so the chore commit cannot capture it.
+    pre_contents = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
+
+    # The deterministic writer overwrites AGENTS.md (its real-world
+    # work).
+    (tmp_git_repo / AGENTS_MD).write_text(
+        "# AGENTS.md -- deterministic writer output\n", encoding="utf-8"
+    )
+
+    result = commit_policy_writes(
+        tmp_git_repo,
+        written_paths=[AGENTS_MD],
+        pre_contents=pre_contents,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+
+    # Real-git CREATED with a real SHA.
+    assert result.status is ScopedCommitStatus.CREATED, (
+        f"real-git commit must land; got: {result!r}"
+    )
+    assert result.sha is not None
+    assert len(result.sha) == 40  # real git SHA-1
+
+    # HEAD advanced: the deterministic-writer content is at HEAD; the
+    # unrelated agent WIP is left dirty.
+    repo = Repo(tmp_git_repo)
+    try:
+        head = repo.head.commit
+        assert head.hexsha == result.sha
+        assert (tmp_git_repo / AGENTS_MD).read_text(encoding="utf-8") in {
+            entry.data_stream.read().decode("utf-8")
+            for entry in head.tree
+            if entry.path == AGENTS_MD
+        } or (tmp_git_repo / AGENTS_MD).read_text(encoding="utf-8") == (
+            head.tree / AGENTS_MD
+        ).data_stream.read().decode("utf-8")
+        # Subject is the pinned literal (commit_message is the message
+        # body, first line is the subject).
+        assert head.message.splitlines()[0] == POLICY_AUTO_COMMIT_SUBJECT
+        # The agent WIP is NOT in the chore commit tree.
+        head_tree_paths = {entry.path for entry in head.tree}
+        assert "agent_wip.py" not in head_tree_paths
+        # The agent WIP is still in the working tree (pre-staged,
+        # left for the agent / user commit flow).
+        index_paths = {path for path, _ in repo.index.entries}
+        assert "agent_wip.py" in index_paths
+    finally:
+        repo.close()
+
+    # Second identical write: NOOP, no second commit.
+    pre_contents_2 = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
+    (tmp_git_repo / AGENTS_MD).write_text(
+        "# AGENTS.md -- deterministic writer output\n", encoding="utf-8"
+    )
+    result_2 = commit_policy_writes(
+        tmp_git_repo,
+        written_paths=[AGENTS_MD],
+        pre_contents=pre_contents_2,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+    assert result_2.status is ScopedCommitStatus.NOOP, (
+        f"second identical write must be NOOP; got: {result_2!r}"
+    )

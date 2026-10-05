@@ -237,6 +237,7 @@ def _write_legacy_sentinel_fallback(workspace_root: Path, run_id: str, payload: 
     """
     sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     try:
+        # filesystem-write-ok: coordination state lockfile, runtime mutex not tracked
         sentinel_path.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, sentinel_path, payload, encoding="utf-8")
     except OSError:

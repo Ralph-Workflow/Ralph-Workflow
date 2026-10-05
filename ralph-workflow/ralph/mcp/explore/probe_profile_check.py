@@ -119,6 +119,7 @@ def _build_indexed_workspace(tmp: Path) -> tuple[Path, Path, ExploreIndex]:
         if any(part.startswith(".") or part == "__pycache__" for part in rel.parts):
             continue
         dest = workspace_copy / rel
+        # filesystem-write-ok: probe profile cache under .agent/explore, runtime profile state not tracked
         dest.parent.mkdir(parents=True, exist_ok=True)
         write_bytes_if_changed(DEFAULT_FILE_BACKEND, dest, src.read_bytes())
     index_dir = tmp / DEFAULT_INDEX_ROOT
@@ -299,6 +300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "metadata": [
                 {"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows
             ],
+        # filesystem-write-ok: probe profile cache under .agent/explore, runtime profile state not tracked
         }
         write_text_if_changed(
             DEFAULT_FILE_BACKEND, out_path, json.dumps(payload, indent=2, sort_keys=True)

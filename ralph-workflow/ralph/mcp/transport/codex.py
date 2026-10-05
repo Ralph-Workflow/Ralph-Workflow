@@ -364,6 +364,7 @@ def prepare_codex_home_with_upstreams(
             "never configured -- flatten that file to run with it."
         )
         raise CodexConfigError(msg) from exc
+    # filesystem-write-ok: per-process codex transport config under user-global config dir, NOT_REPO silent no-op for repo scope
     write_text_if_changed(DEFAULT_FILE_BACKEND, config_path, config_text, encoding="utf-8")
     return str(codex_root), upstreams
 

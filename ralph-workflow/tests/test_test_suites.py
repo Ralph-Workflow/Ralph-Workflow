@@ -40,6 +40,20 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # silently.
     "tests/test_skills_auto_commit.py",
     "tests/project_policy/test_policy_auto_commit.py",
+    # wt-012: the shared primitive's own real-git regression cases
+    # (exact-path HEAD lookup, dir→symlink transition, FAILED
+    # rollback, ancestor-symlink safety). Real-git boundary
+    # required for the prefix-collision and dir→symlink shapes; the
+    # default ``make test`` profile is the only way the contract
+    # cannot rot silently.
+    "tests/test_scoped_auto_commit.py",
+    # wt-012: the deterministic auto-commit acceptance cases for the
+    # config write sites (migration, autowire, enable, init
+    # PROMPT.md). subprocess_e2e (real-git boundary exercised
+    # end-to-end) but must stay on the default ``make test`` profile
+    # so the config-write isolation / rollback contract cannot rot
+    # silently.
+    "tests/test_config_auto_commit.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

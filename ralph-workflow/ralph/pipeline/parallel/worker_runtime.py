@@ -151,6 +151,7 @@ def _write_worker_prompt(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
+    # filesystem-write-ok: parallel worker runtime state under .agent/worker_runtime, runtime worker metadata not tracked
     """Persist a rendered worker prompt without rewriting identical content."""
     write_text_if_changed(
         backend,

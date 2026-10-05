@@ -69,6 +69,7 @@ def persist_validation_retry_hint(
     if path is None:
         return
     backend.mkdir(path.parent, parents=True, exist_ok=True)
+    # filesystem-write-ok: validation retry-hint cache, runtime diagnostic not tracked
     prior_hint = backend.read_text(path) if backend.exists(path) else ""
     write_text_if_changed(
         backend,

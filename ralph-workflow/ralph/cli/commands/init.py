@@ -25,6 +25,7 @@ from loguru import logger
 
 from ralph.agents.agent_install_links import install_url_for
 from ralph.config.agent_detection import (
+    _commit_deterministic_config_write,
     autowire_chains_to_detected_agent,
     detect_installed_agents,
     enable_detected_agents,
@@ -128,7 +129,24 @@ def init_command(
         except ValueError as exc:
             display.emit_warning(str(exc))
             raise typer.Exit(code=1) from exc
-        write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_path, prompt, encoding="utf-8")
+        # wt-012: route the project-local PROMPT.md creation through
+        # the shared deterministic auto-commit primitive so a chore
+        # commit with the fixed
+        # ``chore(config): update agent configuration`` subject
+        # captures the starter template, never leaking it into a
+        # later agent's commit. When ``ralph --init`` runs outside
+        # a git repo (e.g. an operator's first-time config setup in
+        # an uninitialized directory), the path is the documented
+        # silent-NOOP branch -- the file is still created on disk
+        # and no commit is attempted, so ``ralph --init`` never
+        # silently creates a repo.
+        _commit_deterministic_config_write(
+            prompt_path,
+            subject="chore(config): update agent configuration",
+            write_fn=lambda: write_text_if_changed(
+                DEFAULT_FILE_BACKEND, prompt_path, prompt, encoding="utf-8"
+            ),
+        )
         display.emit_status(f"Created: {prompt_path}")
     elif template:
         # PROMPT.md already exists. An explicit `--init <label>` is NEVER

@@ -162,6 +162,7 @@ def _load_prompt_with_master(
 
 def _materialize_prompt_file(text: str, dest_path: Path) -> str:
     """Write ``text`` once and return its stable file-path argv value."""
+    # filesystem-write-ok: per-invocation command-builder draft under tmp, not a repo-tracked deliverable
     DEFAULT_FILE_BACKEND.mkdir(dest_path.parent, parents=True, exist_ok=True)
     write_text_if_changed(DEFAULT_FILE_BACKEND, dest_path, text, encoding="utf-8")
     return str(dest_path)

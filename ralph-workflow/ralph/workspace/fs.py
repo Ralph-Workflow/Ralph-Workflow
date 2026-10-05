@@ -185,6 +185,7 @@ class FsWorkspace:
             path: Relative path to the file.
             content: Content to write.
         """
+        # filesystem-write-ok: workspace fs helper, low-level write gated by caller (see commit-bearing callers)
         p = self._abs(path)
         write_text_if_changed(
             self._backend,

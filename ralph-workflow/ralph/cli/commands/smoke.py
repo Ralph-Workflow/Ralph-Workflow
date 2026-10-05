@@ -438,6 +438,7 @@ def smoke_harness_agent_command(
             # wrappers manage their own cwd.
             os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
 
+    # filesystem-write-ok: smoke test fixture write to tmp workspace, not a repo-tracked deliverable
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

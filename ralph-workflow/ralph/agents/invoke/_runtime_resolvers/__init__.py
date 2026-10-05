@@ -298,6 +298,7 @@ def _is_valid_cursor_auth_file(source: Path) -> bool:
 
 def _replace_private_cursor_auth(destination: Path, payload: dict[str, object]) -> None:
     """Materialize auth beneath the invocation-owned home without following links."""
+    # filesystem-write-ok: per-invocation runtime resolver cache, not a repo-tracked deliverable
     destination.unlink(missing_ok=True)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

@@ -79,6 +79,7 @@ def write_payload_to_directory(
             byte-identical re-emit skip.
     """
     destination = output_dir / Path(relative_path).name
+    # filesystem-write-ok: payload-ref metadata under .agent/prompts, runtime prompt ref cache not tracked
     backend.mkdir(destination.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, destination, sanitize_surrogates(content), encoding="utf-8")
     return str(destination)

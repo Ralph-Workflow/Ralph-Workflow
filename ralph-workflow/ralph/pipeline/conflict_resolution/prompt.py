@@ -148,6 +148,7 @@ def render_conflict_prompt(
 
     prompt_path = root / prompt_dump_path(PHASE_RESOLUTION)
     try:
+        # filesystem-write-ok: conflict-resolution prompt under .agent/, agent-authored prompt not committed by chore
         backend.mkdir(prompt_path.parent, parents=True, exist_ok=True)
         write_text_if_changed(backend, prompt_path, rendered, encoding="utf-8")
     except OSError as write_exc:

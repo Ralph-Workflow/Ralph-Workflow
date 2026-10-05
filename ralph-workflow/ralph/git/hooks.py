@@ -292,6 +292,7 @@ def _backup_existing_hook(hook_path: Path) -> None:
 
 
 def _orig_hook_path(hooks_dir: Path, hook_name: str) -> Path:
+    # filesystem-write-ok: git hook script install under .git/hooks/, runtime install path not tracked by repo
     return hooks_dir / f"{hook_name}.ralph.orig"
 
 
@@ -300,6 +301,7 @@ def _write_hook_file(hook_path: Path, content: str) -> None:
         _make_writable(hook_path)
         with contextlib.suppress(OSError):
             hook_path.unlink()
+    # filesystem-write-ok: git hook install writes the selected hook script under .git/hooks/, runtime install path not tracked by repo
     write_text_if_changed(DEFAULT_FILE_BACKEND, hook_path, content)
     _make_executable(hook_path)
 

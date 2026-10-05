@@ -71,6 +71,7 @@ def save_state(
         document: dict[str, object] = {
             "last_checked": state.last_checked,
             "latest_version": state.latest_version,
+        # filesystem-write-ok: update-check state cache under .agent/update_check, runtime cache not tracked
         }
         write_text_if_changed(
             backend,

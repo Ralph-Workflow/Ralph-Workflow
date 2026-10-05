@@ -291,6 +291,7 @@ def _swap_staged_index(
         raise _ReindexTimeoutError("deadline exceeded before main-DB swap")
     if cancel is not None and cancel():
         store.reopen()
+        # filesystem-write-ok: explore pipeline staged index bytes, runtime cache not a repo deliverable
         raise _ReindexCancelledError("cancelled before main-DB swap")
     # Atomic main-DB swap. The temp file lives in the same
     # directory as the main DB so ``os.replace`` is atomic on
@@ -298,6 +299,7 @@ def _swap_staged_index(
     # until ``os.replace`` succeeds; a failure mid-swap leaves
     # the prior committed database on disk.
     try:
+        # filesystem-write-ok: explore pipeline staged index bytes, runtime cache not a repo deliverable
         atomic_write_bytes_if_changed(
             backend,
             main_db,
@@ -342,10 +344,12 @@ def _swap_staged_index(
             break
         if cancel is not None and cancel():
             break
+            # filesystem-write-ok: explore pipeline staged index bytes, runtime cache not a repo deliverable
         tmp_aux = swap_dir / (dst.name + ".swap")
         try:
             if tmp_aux.exists():
                 tmp_aux.unlink()
+            # filesystem-write-ok: explore pipeline staged index bytes, runtime cache not a repo deliverable
             atomic_write_bytes_if_changed(
                 backend,
                 dst,

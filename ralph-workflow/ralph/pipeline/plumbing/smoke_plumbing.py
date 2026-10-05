@@ -829,6 +829,7 @@ def record_conformance_matrix(
     json_payload = {
         row_transport: {fact: _evidence_to_json(ev) for fact, ev in row.items()}
         for row_transport, row in updated.items()
+    # filesystem-write-ok: smoke plumbing fixture under tmp, not a repo-tracked deliverable
     }
     write_text_if_changed(
         backend,
@@ -837,6 +838,7 @@ def record_conformance_matrix(
         encoding="utf-8",
         prepare_write=lambda: backend.mkdir(json_path.parent, parents=True, exist_ok=True),
     )
+    # filesystem-write-ok: smoke plumbing fixture under tmp, not a repo-tracked deliverable
     md_body = render_conformance_matrix_markdown(updated) + render_capability_matrix_markdown()
     write_text_if_changed(
         backend,
@@ -2645,6 +2647,7 @@ def run_smoke_plumbing(
             )
         )
         mcp_toml_path = workspace_root / ".agent" / "mcp.toml"
+        # filesystem-write-ok: smoke plumbing fixture under tmp, not a repo-tracked deliverable
         mcp_toml_path.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,

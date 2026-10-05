@@ -37,6 +37,7 @@ def _merge_external_skills(target: Path) -> None:
             source = skill_dir / "SKILL.md"
             if not source.is_file():
                 continue
+            # filesystem-write-ok: skill process-view state under .agent/skills state store, runtime metadata not tracked
             write_text_if_changed(
                 DEFAULT_FILE_BACKEND,
                 target / f"{skill_dir.name}.md",

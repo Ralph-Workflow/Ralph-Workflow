@@ -1816,6 +1816,7 @@ def _write_terminal_missing_artifact_hint(
             str(ctx.effect.phase),
             pipeline_policy=ctx.policy_bundle.pipeline if ctx.policy_bundle is not None else None,
         )
+        # filesystem-write-ok: effect-executor hint file under .agent/effect_executor, runtime hint metadata not tracked
         hint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
     except Exception:

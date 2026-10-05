@@ -112,6 +112,7 @@ def save(
     """
     state = _normalize_recovery_state(state)
     serialized = state.model_dump_json(indent=2)
+        # filesystem-write-ok: pipeline checkpoint state under .agent/ or worktree-local path, runtime recovery metadata not tracked
     tmp_path = path.with_suffix(".tmp")
     try:
         atomic_write_text_if_changed(

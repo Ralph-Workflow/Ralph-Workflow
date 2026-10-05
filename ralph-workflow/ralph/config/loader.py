@@ -121,13 +121,39 @@ def load_toml(path: Path) -> dict[str, object]:
     logger.debug("Loaded config from {}", path)
     migrated_source = remove_retired_agent_can_commit_assignments(source)
     if migrated_source != source:
-        atomic_write_text_if_changed(
-            DEFAULT_FILE_BACKEND,
+        # wt-012: route the retired-key migration write through the
+        # shared deterministic auto-commit primitive so a chore
+        # commit with the fixed
+        # ``chore(config): migrate retired agent_can_commit assignments``
+        # subject captures the migration, never leaking it into a
+        # later agent's commit. The project-local config path that
+        # is the canonical ``.agent/ralph-workflow.toml`` lives
+        # inside the repo and lands in a chore commit; the global
+        # ``~/.config/ralph-workflow*.toml`` path lives outside any
+        # repo and is the documented silent-NOOP path -- the write
+        # still lands on disk and no commit is attempted.
+        # The helper is imported lazily to break a circular import:
+        # ``ralph.config.agent_detection`` is the canonical home of
+        # the helper, but importing it at module load triggers the
+        # ``ralph.agents.*`` -> ``ralph.prompts.*`` ->
+        # ``ralph.config.mcp_loader`` -> ``ralph.config.loader``
+        # cycle. The helper is only needed when a migration actually
+        # triggers, so a function-local import is the right place.
+        from ralph.config.agent_detection import (
+            _commit_deterministic_config_write,
+        )
+
+        _commit_deterministic_config_write(
             path,
-            migrated_source,
-            tmp_path=path.with_name(f".{path.name}.migration"),
-            encoding="utf-8",
-            sync_directory=True,
+            subject="chore(config): migrate retired agent_can_commit assignments",
+            write_fn=lambda: atomic_write_text_if_changed(
+                DEFAULT_FILE_BACKEND,
+                path,
+                migrated_source,
+                tmp_path=path.with_name(f".{path.name}.migration"),
+                encoding="utf-8",
+                sync_directory=True,
+            ),
         )
         data = tomllib.loads(migrated_source)
     return data

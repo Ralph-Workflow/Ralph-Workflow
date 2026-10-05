@@ -217,6 +217,7 @@ def _write_legacy_receipt_fallback(
     if hmac_hex is not None:
         payload["hmac"] = hmac_hex
     if normalization_audit is not None:
+        # filesystem-write-ok: artifact completion receipt under .agent/, runtime metadata not tracked
         payload["normalization_audit"] = normalization_audit
     try:
         write_text_if_changed(

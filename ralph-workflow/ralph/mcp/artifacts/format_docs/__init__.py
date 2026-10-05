@@ -75,6 +75,7 @@ def materialize_example(
     content = load_bundled_example(artifact_type)
     if content is None:
         return None
+    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / EXAMPLES_WORKSPACE_DIR / f"{artifact_type}.md"
     write_text_if_changed(
         backend,
@@ -114,6 +115,7 @@ def materialize_format_doc(
     content = load_bundled_format_doc(artifact_type)
     if content is None:
         return None
+    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{artifact_type}.md"
     write_text_if_changed(
         backend,
@@ -135,6 +137,7 @@ def materialize_format_index(
     Returns the relative path to the materialized index file.
     """
     content = load_bundled_format_index()
+    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
     write_text_if_changed(
         backend,

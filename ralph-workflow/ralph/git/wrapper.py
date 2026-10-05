@@ -286,14 +286,17 @@ def _ensure_ralph_dir(repo: Repo) -> Path:
 
 
 def _ralph_dir_from_repo(repo: Repo) -> Path:
+    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     return Path(repo.git_dir) / "ralph"
 
 
 def _write_marker(ralph_dir: Path) -> None:
+    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / MARKER_FILENAME, "")
 
 
 def _write_track_file(ralph_dir: Path) -> None:
+    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / TRACK_FILENAME, str(ralph_dir))
 
 
@@ -303,6 +306,7 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
     except (ValueError, GitCommandError):
         return
 
+    # filesystem-write-ok: ralph runtime state file (HEAD OID tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / HEAD_OID_FILENAME, f"{oid}\n")
 
 
@@ -331,8 +335,10 @@ def _store_previous_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     if state_path.exists():
         return
 
+        # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     hooks_value = _read_hooks_path(repo)
     if hooks_value is None:
+        # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
         write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, "missing\n")
     else:
         write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, f"value\n{hooks_value}\n")

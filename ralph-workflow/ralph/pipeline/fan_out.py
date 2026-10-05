@@ -194,6 +194,7 @@ def write_parallel_development_summary(
     markdown = _render_parallel_summary_markdown(summary)
     agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
     summary_path = agent_artifacts / "parallel_development_summary.md"
+    # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_if_changed(DEFAULT_FILE_BACKEND, summary_path, markdown, encoding="utf-8")
     logger.debug(
@@ -221,6 +222,7 @@ def write_parallel_summary_handoff(
     relative_path = handoff_path_for_artifact("parallel_development_summary")
     if relative_path is None:
         return None
+    # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
     destination = workspace_root / relative_path
     write_text_if_changed(
         backend,
@@ -468,6 +470,7 @@ def _persist_parallel_worker_manifests(
             prompt_file=str(runtime_paths.prompt_dump_path),
             workspace_root=str(repo_root),
         )
+        # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
         manifest_path = worker_namespace / "worker-manifest.json"
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,

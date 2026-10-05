@@ -116,6 +116,7 @@ def write_record(
         backend: Persistence boundary; injectable for in-memory contract tests.
     """
     record_file = record_path(workspace_root)
+    # filesystem-write-ok: auto-integrate binary record under .agent/auto_integrate, runtime state not tracked
     payload = record.model_dump_json().encode("utf-8")
     atomic_write_bytes_if_changed(
         backend,

@@ -113,6 +113,7 @@ def archive_artifact_before_overwrite(
         ".md",
         backend=backend,
         now_iso=now_iso,
+    # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     )
     write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
@@ -128,6 +129,7 @@ def archive_artifact_before_overwrite(
                 ".md",
                 backend=backend,
                 now_iso=now_iso,
+            # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
             )
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
@@ -166,6 +168,7 @@ def snapshot_current_artifact(
         ".md",
         backend=backend,
         now_iso=now_iso,
+    # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     )
     write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
@@ -180,6 +183,7 @@ def snapshot_current_artifact(
                 ".md",
                 backend=backend,
                 now_iso=now_iso,
+            # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
             )
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
@@ -253,6 +257,7 @@ def rebuild_history_index(
         lines.append(f"- Markdown: `{markdown_path.name}`")
         lines.append("")
 
+    # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     index_path = hist_dir / "index.md"
     write_text_if_changed(backend, index_path, "\n".join(lines))
 

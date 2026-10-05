@@ -39,6 +39,7 @@ def save_capability_state(
 ) -> None:
     """Persist capability state to JSON file."""
     resolved = path if path is not None else default_state_path()
+    # filesystem-write-ok: skill state store under .agent/skills_state, runtime state metadata not tracked
     backend.mkdir(resolved.parent, parents=True, exist_ok=True)
     write_text_if_changed(
         backend,

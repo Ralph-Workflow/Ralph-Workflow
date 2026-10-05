@@ -194,6 +194,7 @@ def write_build_flavor(
     updated_content = _replace_build_metadata(content, "BUILD_FLAVOR", flavor)
     updated_content = _replace_build_metadata(updated_content, "BUILD_SOURCE_COMMIT", source_commit)
     updated_content = _replace_build_metadata(updated_content, "BUILD_SOURCE_PATH", source_path)
+    # deterministic-writer-ok: build_meta runtime cache under ralph install dir, not a repo-tracked deliverable
     updated_content = _replace_build_metadata(updated_content, "BUILD_INSTALLED_AT", installed_at)
     write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
 

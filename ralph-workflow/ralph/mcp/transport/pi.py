@@ -39,6 +39,7 @@ def write_pi_mcp_extension(
         extension_path = pi_mcp_extension_path(workspace_path)
         cleanup = None
 
+    # filesystem-write-ok: per-process pi transport config under user-global config dir, NOT_REPO silent no-op for repo scope
     extension_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

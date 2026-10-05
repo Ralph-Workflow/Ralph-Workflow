@@ -49,6 +49,7 @@ def write_cycle_baseline(
     baseline_path = workspace_root / _BASELINE_FILENAME
     if not force and backend.exists(baseline_path):
         return
+    # filesystem-write-ok: cycle baseline snapshot under .agent/cycle_baseline, runtime baseline metadata not tracked
     write_text_if_changed(
         backend,
         baseline_path,

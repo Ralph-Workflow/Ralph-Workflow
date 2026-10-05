@@ -91,6 +91,7 @@ def _persist_review_baseline(
     file contains ``sha``" still holds because the fail-open
     ``write_text_if_changed`` guard falls through to a real write
     on any read uncertainty or content mismatch.
+        # filesystem-write-ok: review phase output under .agent/tmp, runtime phase output not tracked
     """
     try:
         write_text_if_changed(

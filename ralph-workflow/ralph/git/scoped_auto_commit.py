@@ -194,6 +194,84 @@ def snapshot_dirty_paths_strict(repo_root: Path | str) -> frozenset[str] | None:
 _HEAD_PROBE_FAILED: str = "__HEAD_PROBE_FAILED__"
 
 
+def _symlink_ancestor_path(repo: Repo, rel_path: str) -> str | None:
+    """Return the repo-relative path of the first symlink ancestor of ``rel_path``.
+
+    Used by :func:`commit_deterministic_writes` to rewrite a
+    lexically-unreachable path (its parent is a symlink) to the
+    nearest symlink ancestor so ``git add --all`` can stage both the
+    new symlink AND the tracked-descendant deletions atomically. wt-012
+    PA-002. Walks the parent directories from the closest to the
+    repo root; returns the first symlink encountered as a
+    repo-relative POSIX path, or ``None`` if no ancestor is a symlink.
+
+    The repo-relative form is computed by stripping the repo's
+    working directory from the resolved absolute path of the
+    symlink ancestor.
+    """
+    try:
+        working_dir = repo.working_dir
+    except (OSError, ValueError):
+        return None
+    if not working_dir:
+        return None
+    abs_path = Path(working_dir) / rel_path
+    for parent in abs_path.parents:
+        try:
+            if parent.is_symlink():
+                resolved_parent = parent.resolve()
+                return resolved_parent.relative_to(working_dir).as_posix()
+        except (OSError, ValueError):
+            return None
+    return None
+
+
+def _has_symlink_ancestor(abs_path: Path) -> bool:
+    """Return True when any parent directory of ``abs_path`` is a symlink.
+
+    Used by :func:`_git_blob_sha` to detect the dir→symlink transition
+    shape (wt-012 PA-002): ``git hash-object <rel_path>`` follows
+    ancestor symlinks on the filesystem, so a deleted sibling dir
+    replaced by a symlink to a target that contains a same-named file
+    would hash bytes that no longer belong to the lexical path. The
+    consumer (the post-write HEAD-vs-on-disk equality check) treats
+    ``_ANCESTOR_SYMLINK_DIRTY`` as a real change so the deletion is
+    always staged.
+
+    Walks the path's parents from the closest to the root; stops at
+    the first symlink. ``abs_path`` itself is NOT inspected (a leaf
+    symlink is the expected leaf-blob case handled above).
+    """
+    try:
+        parents = list(abs_path.parents)
+    except OSError:
+        return False
+    for parent in parents:
+        # ``parent == abs_path`` can never be a symlink for a relative
+        # path; the loop terminates on the root ancestor. ``is_symlink``
+        # returns False for nonexistent parents, so a deleted file under
+        # a non-symlink ancestor is correctly classified as "no
+        # symlink ancestor" (the file is just missing, which
+        # ``git hash-object`` will surface as an error / None result).
+        try:
+            if parent.is_symlink():
+                return True
+        except OSError:
+            return True
+    return False
+
+
+# Sentinel returned by :func:`_git_blob_sha` when the path's on-disk
+# content CANNOT be safely compared against HEAD because an ancestor
+# directory is a symlink. The consumer in :func:`commit_deterministic_writes`
+# treats this as a real change (forces staging) so a dir→symlink
+# transition cannot be silently misclassified as a no-op. MUST be
+# distinguishable from ``None`` ("path is missing or unreadable") so the
+# no-op short-circuit ``on_disk_sha is not None and on_disk_sha == head_sha``
+# never accidentally matches.
+_ANCESTOR_SYMLINK_DIRTY: str = "__ANCESTOR_SYMLINK_DIRTY__"
+
+
 def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     """Return the HEAD blob SHA for ``path`` or ``None`` if not tracked / absent.
 
@@ -215,6 +293,18 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
         return _HEAD_PROBE_FAILED
     if not raw.strip():
         return None
+    # CRITICAL (wt-012 PA-002): parse the path field and only return the SHA
+    # when the returned pathname equals the requested path EXACTLY. The
+    # ``git ls-files --stage -- <path>`` output is path-relative, but a
+    # path argument of ``a`` will return every tracked entry whose name
+    # STARTS WITH ``a/`` (e.g. ``a/b``, ``a/c.txt``). The previous
+    # implementation returned the FIRST line's blob, which silently
+    # attributed a descendant's blob to the ancestor path -- so a
+    # directory root replaced by a symlink captured ``pre_sha = None``
+    # (directory is un-hashable) while ``head_sha`` was the blob of a
+    # tracked descendant, putting the caller in the
+    # ``pre_sha is None and head_sha is not None`` SKIP branch and
+    # preventing the new symlink root from ever being committed.
     for line in raw.splitlines():
         parts = line.split("\t", 1)
         if len(parts) != _GIT_LS_FILES_PATH_PARTS:
@@ -222,7 +312,8 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
         meta = parts[0].split()
         if len(meta) < _GIT_LS_FILES_META_FIELDS:
             continue
-        return cast("str | None", meta[1])
+        if parts[1] == path:
+            return cast("str | None", meta[1])
     return None
 
 
@@ -278,6 +369,20 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
             return None
         blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
         return hashlib.sha1(blob).hexdigest()
+    # Ancestor-symlink safety (wt-012 PA-002): if any parent directory of
+    # ``rel_path`` is a symlink, ``git hash-object <rel_path>`` would
+    # resolve through the symlink and hash bytes that no longer belong
+    # to the lexical path -- e.g. a deleted sibling dir replaced by a
+    # symlink to a target that happens to contain a same-named file
+    # with the same content. The on-disk ``hash-object`` value would
+    # accidentally equal ``head_sha`` and the path would be
+    # misclassified as "no diff since HEAD", leaving the deletion
+    # uncommitted. Refuse the comparison instead: return a non-None
+    # sentinel the consumer treats as "real change" so the path is
+    # always staged. The caller's HEAD-vs-on-disk equality check then
+    # short-circuits safely.
+    if _has_symlink_ancestor(abs_path):
+        return _ANCESTOR_SYMLINK_DIRTY
     try:
         return cast("str", repo.git.hash_object(abs_path)).strip() or None
     except (GitCommandError, OSError):
@@ -589,8 +694,36 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                     # content the writer just produced is the only diff
                     # for this path since HEAD. Confirm the on-disk
                     # content also differs from HEAD (otherwise nothing
-                    # to commit).
+                    # to commit). wt-012 PA-002: an ancestor-symlink
+                    # shape (a deleted sibling dir replaced by a
+                    # symlink that resolves to a same-named same-content
+                    # file) makes ``git hash-object`` return a value
+                    # that the cheap ``== head_sha`` comparison cannot
+                    # distinguish from "no real change" -- the
+                    # ``_ANCESTOR_SYMLINK_DIRTY`` sentinel forces the
+                    # path into ``stageable`` instead.
                     on_disk_sha = _git_blob_sha(repo, path)
+                    if on_disk_sha == _ANCESTOR_SYMLINK_DIRTY:
+                        # The path is lexically unreachable from HEAD
+                        # (an ancestor is a symlink to a target that no
+                        # longer contains this file). Replacing the
+                        # descendant with its nearest symlink ancestor
+                        # in the stageable set lets ``git add --all``
+                        # pick up both the new symlink and the
+                        # descendant deletions atomically -- without
+                        # this rewrite ``git add`` would fatal with
+                        # ``pathspec ... is beyond a symbolic link``.
+                        ancestor_path = _symlink_ancestor_path(repo, path)
+                        if ancestor_path is not None:
+                            logger.debug(
+                                "commit_deterministic_writes: path {} is beyond a symlink; "
+                                "rewriting to ancestor {} for atomic staging",
+                                path,
+                                ancestor_path,
+                            )
+                            stageable.append(ancestor_path)
+                            del on_disk_sha  # narrow explicit type for the next iter
+                            continue
                     if on_disk_sha is not None and on_disk_sha == head_sha:
                         # No actual change since HEAD -- skip.
                         continue

@@ -404,3 +404,102 @@ def test_no_direct_chore_commit_respects_allowlist(
     monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
 
     assert _check_no_direct_chore_commit() == []
+
+
+# --- wt-012 PA-001: widened scan sets must include the canonical helpers -----
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        "atomic_write_text_if_changed",
+        "write_text_if_changed",
+        "write_bytes_if_changed",
+        "atomic_write_bytes_if_changed",
+    ],
+)
+def test_writer_scan_flags_unmarked_canonical_helper_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+) -> None:
+    """PA-001: a fresh ``<helper_name>`` call without a marker or commit helper is flagged.
+
+    Mirrors the existing ``test_writer_scan_flags_unmarked_write_in_*`` cases
+    for the new helper names added by the PA-001 fix. One regression test
+    per helper name, covering both attribute-call and bare-name forms.
+    """
+    # The audit's ``_iter_write_callsites`` distinguishes attribute-call from
+    # bare-name by AST shape; both must be flagged when the helper appears
+    # in the appropriate scan set. The bare-name form needs an extra import
+    # line so the call lands on line 5 instead of 4; the attribute form
+    # is on line 4.
+    if helper_name in audit_module._WRITER_WRITE_ATTRS:
+        body = (
+            "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+            f"\n"
+            f"def sync(backend, dest, payload):\n"
+            f"    backend.{helper_name}(dest, payload)\n"
+        )
+        expected_line = "4"
+    else:
+        body = (
+            f"from ralph.mcp.artifacts.idempotent_write import {helper_name}\n"
+            "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+            "\n"
+            f"def sync(dest, payload):\n"
+            f"    {helper_name}(DEFAULT_FILE_BACKEND, dest, payload)\n"
+        )
+        expected_line = "5"
+    _write_module(tmp_path, "config/new_helper.py", body)
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    problems = _check_production_writer_scan()
+
+    assert any(
+        f"config/new_helper.py:{expected_line}" in p and f"`{helper_name}`" in p
+        for p in problems
+    ), f"unmarked `{helper_name}` call at line {expected_line} must be flagged; got: {problems}"
+
+
+def test_writer_scan_accepts_canonical_helper_with_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PA-001: a canonical-helper call carrying a marker is accepted."""
+    _write_module(
+        tmp_path,
+        "config/new_helper.py",
+        "from ralph.mcp.artifacts.idempotent_write import write_text_if_changed\n"
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        "\n"
+        "def sync(dest, payload):\n"
+        "    # filesystem-write-ok: runtime cache, not a repo deliverable\n"
+        "    write_text_if_changed(DEFAULT_FILE_BACKEND, dest, payload)\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_production_writer_scan() == []
+
+
+def test_writer_scan_accepts_canonical_helper_in_function_routed_to_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PA-001: a canonical-helper call inside a function that calls a commit helper passes."""
+    _write_module(
+        tmp_path,
+        "config/new_helper.py",
+        "from ralph.git.scoped_auto_commit import commit_deterministic_writes\n"
+        "from ralph.mcp.artifacts.idempotent_write import write_text_if_changed\n"
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        "\n"
+        "def sync(root, dest, payload):\n"
+        "    pre = {}\n"
+        "    write_text_if_changed(DEFAULT_FILE_BACKEND, dest, payload)\n"
+        "    commit_deterministic_writes(\n"
+        "        root, paths=['cfg'], pre_contents=pre,\n"
+        "        subject='chore: x', create_commit_fn=None,\n"
+        "    )\n",
+    )
+    monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
+
+    assert _check_production_writer_scan() == []

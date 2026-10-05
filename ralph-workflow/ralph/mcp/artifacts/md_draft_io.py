@@ -132,6 +132,7 @@ def save_md_draft(
 ) -> None:
     """Atomically persist the staged draft (temp write + replace)."""
     draft_path = md_draft_path(artifact_dir, artifact_type)
+    # filesystem-write-ok: markdown draft IO under tmp / .agent/tmp, agent-authored draft not committed by chore
     tmp_path = draft_path.with_suffix(".md.tmp")
     changed = atomic_write_text_if_changed(
         backend,
@@ -145,6 +146,7 @@ def save_md_draft(
     # An identical replay did not author a new draft. Preserve seeded provenance
     # and avoid its otherwise redundant deletion mutation; a changed publication
     # becomes authored content and must clear the marker as before.
+        # filesystem-write-ok: markdown draft IO under tmp / .agent/tmp, agent-authored draft not committed by chore
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
     if changed:
         write_text_if_changed(
@@ -163,6 +165,7 @@ def mark_md_draft_seeded(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
+    # filesystem-write-ok: markdown draft IO under tmp / .agent/tmp, agent-authored draft not committed by chore
     """Mark a draft copied from canonical content rather than authored incrementally."""
     write_text_if_changed(
         backend,

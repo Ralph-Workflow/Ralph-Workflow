@@ -71,25 +71,65 @@ _SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
 #: shared scoped-auto-commit helper (wt-012 S-7). Every other production
 #: filesystem write must either route through one of these helpers or carry
 #: an inline ``deterministic-writer-ok: <reason>`` classification marker.
+#:
+#: wt-012: ``_commit_deterministic_config_write`` is the config-writer
+#: wrapper added in U1 that captures the pre-write hash, performs the
+#: ``atomic_write_text_if_changed`` / ``write_text_if_changed`` call, and
+#: routes the byte-exact diff through ``commit_deterministic_writes``.
+#: Functions that call it are routed -- the audit recognizes the call
+#: and skips the per-callsite marker requirement.
 _WRITER_COMMIT_HELPERS: frozenset[str] = frozenset(
     {
         "commit_deterministic_writes",
         "commit_scoped_updates",
         "commit_policy_writes",
         "commit_skill_writes",
+        "_commit_deterministic_config_write",
     }
 )
 
 #: Filesystem-mutation attribute calls scanned by the production-writer scan
 #: (wt-012 S-7, DA-004): the broader mutation-method class the pre-wt-012
 #: scan enforced, restored after the policy-commit move dropped it.
+#:
+#: wt-012 PA-001 (fix): the canonical idempotent mutation helpers exported
+#: by ``ralph/mcp/artifacts/idempotent_write.py`` (``__all__``,
+#: ``atomic_write_text_if_changed``, ``write_text_if_changed``,
+#: ``write_bytes_if_changed``) are also filesystem mutations and MUST
+#: appear in BOTH scan sets. The pre-fix scan missed these helpers, so
+#: every new site calling them was invisible to the audit. The audit
+#: module itself and the other canonical-write primitives
+#: (``mcp/artifacts/file_backend.py``, ``mcp/artifacts/_path_file_backend.py``)
+#: are excluded via ``_WRITER_SCAN_EXCLUDED_FILES``.
 _WRITER_WRITE_ATTRS: frozenset[str] = frozenset(
-    {"write_text", "write_bytes", "copytree", "copy2", "symlink_to"}
+    {
+        "write_text",
+        "write_bytes",
+        "copytree",
+        "copy2",
+        "symlink_to",
+        "atomic_write_text_if_changed",
+        "write_text_if_changed",
+        "write_bytes_if_changed",
+    }
 )
 
 #: Bare-name mutation calls scanned by the production-writer scan.
+#: wt-012 PA-001 (fix): the same canonical helpers (and
+#: ``atomic_write_bytes_if_changed``) are added in bare-name form.
 _WRITER_WRITE_NAMES: frozenset[str] = frozenset(
-    {"write_text", "write_bytes", "copytree", "copy2", "mkdir", "_create_symlink"}
+    {
+        "write_text",
+        "write_bytes",
+        "copytree",
+        "copy2",
+        "mkdir",
+        "_create_symlink",
+        "atomic_write_text_if_changed",
+        "atomic_write_bytes_if_changed",
+        "write_text_if_changed",
+        "write_bytes_if_changed",
+    }
 )
 
 #: Inline classification markers accepted by the production-writer scan.

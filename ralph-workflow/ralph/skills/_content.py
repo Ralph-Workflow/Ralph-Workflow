@@ -96,6 +96,7 @@ def materialize_skills_to_dir(
     """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
+        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     metadata = get_skill_metadata()
     for name in BASELINE_SKILL_NAMES:
         write_text_if_changed(
@@ -105,6 +106,7 @@ def materialize_skills_to_dir(
             encoding="utf-8",
         )
         written_names.append(name)
+    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     write_text_if_changed(
         backend,
         target / "metadata.json",
@@ -154,8 +156,10 @@ def materialize_skills_to_claude_dir(
                 current_sha = hashlib.sha256(skill_file.read_bytes()).hexdigest()
                 if current_sha != stored_sha:
                     continue  # user manually edited; preserve
+        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
         content = get_skill_content(name)
         write_text_if_changed(backend, skill_file, content, encoding="utf-8")
+        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
         content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
         write_text_if_changed(
             backend,
@@ -164,6 +168,7 @@ def materialize_skills_to_claude_dir(
             encoding="utf-8",
         )
         written_names.append(name)
+    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     write_text_if_changed(
         backend,
         target / "metadata.json",

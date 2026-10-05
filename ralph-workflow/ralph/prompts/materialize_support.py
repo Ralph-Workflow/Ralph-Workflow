@@ -64,6 +64,7 @@ def persist_product_criteria(
     )
     if prompt_content is None and backend.exists(product_criteria_path):
         return str(product_criteria_path)
+    # filesystem-write-ok: prompt materialization under .agent/prompts (agent-authored), runtime prompt scaffold not committed by chore
     write_text_if_changed(
         backend,
         product_criteria_path,

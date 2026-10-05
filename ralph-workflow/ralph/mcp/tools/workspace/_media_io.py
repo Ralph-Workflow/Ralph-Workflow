@@ -118,6 +118,7 @@ def write_durable_media_cache(
         return ""
     cache_path = media_cache_artifact_path(artifact_id)
     try:
+        # filesystem-write-ok: workspace media bytes write, runtime asset cache not tracked
         abs_path = Path(workspace.absolute_path(cache_path))
         write_bytes_if_changed(
             backend,

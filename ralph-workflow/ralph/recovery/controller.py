@@ -1193,6 +1193,7 @@ class RecoveryController:
             )
         )
         try:
+            # filesystem-write-ok: recovery controller state under .agent/recovery, runtime recovery metadata not tracked
             backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
             write_text_if_changed(backend, hint_file, hint_content, encoding="utf-8")
         except OSError:
