@@ -161,11 +161,11 @@ def _finalize_ready_state(
                 "(agent edit?)"
             )
         elif result.status.value == "failed":
-            logger.debug(
+            logger.warning(
                 "project-policy auto-commit failed (non-fatal): {}", result.error
             )
     except Exception as exc:
-        logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
+        logger.warning("project-policy auto-commit failed (non-fatal): {}", exc)
     try:
         policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
     except Exception as exc:

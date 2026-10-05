@@ -361,27 +361,45 @@ def test_s1_recovery_mandate_occurs_once_before_retained_payloads(surface: str) 
         "Recompute readiness",
     ):
         assert action in rendered, (surface, action)
-    # Worker-only contracts: worker scope payloads and the worker-
-    # verification partial render only on worker surfaces; main-session
-    # surfaces legitimately carry the worker rules by reference to the
-    # partial instead of inlining them.
-    if surface in _WORKER_SURFACE_NAMES:
+    if "worker" in surface:
+        # Worker-isolation phrases belong ONLY in worker surfaces -- a
+        # main-session surface legitimately dispatches sub-agents, so
+        # asserting these there would pin the wrong behavior.
         for phrase in (
             "Workers never dispatch sub-agents",
             "WORKER DO-NOT-DISPATCH",
             "WORKER-SCOPED VERIFICATION",
+            "src/api",
+            "tests/test_api.py",
+            ".agent/workers/api/artifacts/development_result.md",
+            ".agent/workers/api/tmp/development_result.md",
+            "- [api]",
             "until the entire assigned unit is verified",
         ):
             assert phrase in rendered, (surface, phrase)
+    if "worker" in surface:
+        # Worker-only phrases are forbidden on worker surfaces (they are
+        # main-session instructions); main-only phrases are forbidden on
+        # main surfaces (they are worker instructions).
+        main_only_forbidden = (
+            "Dispatch independent ready scopes",
+            "refill freed dispatch slots",
+            "- [plan-overview]",
+            "Ran the project-wide verification",
+        )
+        for phrase in main_only_forbidden:
+            assert phrase not in " ".join(rendered.split()), (surface, phrase)
     else:
-        # Main-session surfaces name the worker rules by reference
-        # rather than inlining the worker partial's worker contracts.
-        assert "Workers never dispatch sub-agents" not in rendered, surface
-    for phrase in (
-        "submit a truthful `status: partial`",
-        "If the assignment is blocked, report",
-    ):
-        assert phrase not in " ".join(rendered.split()), (surface, phrase)
+        worker_only_forbidden = (
+            "until the entire assigned unit is verified",
+            "If the assignment is blocked, report",
+            "submit a truthful `status: partial`",
+            "- [api]",
+            ".agent/workers/api/artifacts/development_result.md",
+            ".agent/workers/api/tmp/development_result.md",
+        )
+        for phrase in worker_only_forbidden:
+            assert phrase not in " ".join(rendered.split()), (surface, phrase)
 
 
 @pytest.mark.parametrize(

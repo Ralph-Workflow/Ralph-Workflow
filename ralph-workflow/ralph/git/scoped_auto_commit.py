@@ -459,6 +459,24 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             )
             return ScopedCommitResult(status=ScopedCommitStatus.NOT_REPO)
 
+        # wt-012 DA-006: an unborn HEAD (no commits yet) makes every
+        # HEAD probe raise ValueError mid-attempt -- after staging -- and
+        # the guards below catch only OSError/GitCommandError, so the
+        # failure escaped as an unhandled exception with a half-staged
+        # index. Fail closed HERE, before any snapshot or staging, so
+        # the index is untouched and the caller gets an explicit FAILED.
+        try:
+            _ = repo.head.commit
+        except ValueError as unborn_exc:
+            logger.warning(
+                "commit_deterministic_writes: {} has an unborn HEAD "
+                "(no commits yet); refusing the deterministic commit",
+                repo_root_path,
+            )
+            return ScopedCommitResult(
+                status=ScopedCommitStatus.FAILED, error=str(unborn_exc)
+            )
+
         try:
             # Snapshot the FULL pre-staged state (in-scope and out-of-scope)
             # so the failed-attempt rollback can restore byte-for-byte. We
@@ -644,8 +662,10 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
             close = cast("Callable[[], object] | None", getattr(repo, "close", None))
             if callable(close):
                 close()
-    except (OSError, GitCommandError) as exc:
-        logger.debug("commit_deterministic_writes: outer guard caught (non-fatal): {}", exc)
+    except (OSError, GitCommandError, ValueError) as exc:
+        logger.warning(
+            "commit_deterministic_writes: outer guard caught (non-fatal): {}", exc
+        )
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 
@@ -653,8 +673,8 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
 
 
 def commit_scoped_updates(  # noqa: PLR0912
-    # The complexity guard (PLR0912) is opted out: the explicit-outcome
-    # contract (CREATED / NOOP / NOT_REPO / FAILED) plus the
+    # The complexity guards (PLR0911/PLR0912) are opted out: the
+    # explicit-outcome contract (CREATED / NOOP / NOT_REPO / FAILED) plus the
     # staged-state preservation requires more branches than the cap.
     # Splitting the helper would scatter the snapshot / restore
     # discipline across files; a single function is the contract.
@@ -696,6 +716,10 @@ def commit_scoped_updates(  # noqa: PLR0912
                 repo_root_path,
             )
             return ScopedCommitResult(status=ScopedCommitStatus.NOT_REPO)
+
+        # wt-012 DA-006: an unborn HEAD raises ValueError from the HEAD
+        # probe AFTER staging; the inner rollback below unstages the set
+        # and the outer guard (ValueError included) reports FAILED.
 
         try:
             all_dirty: list[str] = []
@@ -746,6 +770,21 @@ def commit_scoped_updates(  # noqa: PLR0912
                         error=scope_error_message,
                     )
                 return ScopedCommitResult(status=ScopedCommitStatus.CREATED, sha=result.sha)
+            except (OSError, GitCommandError, ValueError):
+                # wt-012 DA-006: a raised commit failure (including the
+                # unborn-HEAD ValueError) must unstage the
+                # freshly staged set before the finally below restores the
+                # pre-staged snapshot -- otherwise the failure leaves the
+                # deterministic paths half-staged for a later agent commit.
+                try:
+                    _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
+                except (OSError, GitCommandError, ValueError) as reset_exc:  # pragma: no cover
+                    logger.warning(
+                        "commit_scoped_updates: failed-attempt unstage failed "
+                        "(index may need manual repair): {}",
+                        reset_exc,
+                    )
+                raise
             finally:
                 # Best-effort restore -- a broken git state MUST NOT block
                 # the pipeline. Worst case the user re-runs ``git add``.
@@ -763,14 +802,16 @@ def commit_scoped_updates(  # noqa: PLR0912
                             restore_exc,
                         )
         except (OSError, GitCommandError) as exc:
-            logger.debug("commit_scoped_updates: auto-commit failed (non-fatal): {}", exc)
+            logger.warning("commit_scoped_updates: auto-commit failed (non-fatal): {}", exc)
             return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
         finally:
             close = cast("Callable[[], object] | None", getattr(repo, "close", None))
             if callable(close):
                 close()
-    except (OSError, GitCommandError) as exc:
-        logger.debug("commit_scoped_updates: outer guard caught (non-fatal): {}", exc)
+    except (OSError, GitCommandError, ValueError) as exc:
+        logger.warning(
+            "commit_scoped_updates: outer guard caught (non-fatal): {}", exc
+        )
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 

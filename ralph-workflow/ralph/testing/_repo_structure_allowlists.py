@@ -1295,7 +1295,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # state machine out of the project complexity caps; the
         # rationale is documented inline on each marker.
         ("ralph/git/scoped_auto_commit.py", 390),
-        ("ralph/git/scoped_auto_commit.py", 655),
+        ("ralph/git/scoped_auto_commit.py", 675),
         ("ralph/project_policy/_auto_commit_integration.py", 69),
         ("ralph/project_policy/_auto_commit_integration.py", 142),
 

@@ -915,3 +915,85 @@ def test_skill_writes_probe_failure_returns_failed(
         assert not staged, "probe failure MUST leave nothing staged"
     finally:
         repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_skill_writes_unborn_head_returns_failed_nothing_staged(tmp_path: Path) -> None:
+    """wt-012 DA-006: an unborn HEAD (no commits yet) must return FAILED with
+    an untouched index instead of escaping a ValueError mid-attempt."""
+    Repo.init(tmp_path)  # no initial commit -- HEAD is unborn
+
+    new_file = ".opencode/skills/unborn/SKILL.md"
+    pre = capture_pre_write_contents(tmp_path, [new_file])
+    skill_dir = tmp_path / ".opencode" / "skills" / "unborn"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.joinpath("SKILL.md").write_text("# unborn\n", encoding="utf-8")
+
+    create_spy = MagicMock()
+    result = commit_skill_writes(
+        tmp_path,
+        written_paths=[new_file],
+        pre_contents=pre,
+        create_commit_fn=create_spy,
+        stage_fn=stage_files,
+    )
+
+    assert result.status is ScopedCommitStatus.FAILED, (
+        f"unborn HEAD MUST report FAILED; got: {result!r}"
+    )
+    assert result.error is not None
+    create_spy.assert_not_called()
+    repo = Repo(tmp_path)
+    try:
+        assert not repo.index.diff(None, paths=[new_file]), (
+            "unborn-HEAD failure MUST leave nothing staged"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_scoped_updates_unborn_head_returns_failed(tmp_path: Path) -> None:
+    """wt-012 DA-006: the legacy scoped helper must also fail closed on an
+    unborn HEAD instead of raising ValueError from the HEAD probe."""
+    Repo.init(tmp_path)
+    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("SKILL.md").write_text("# b\n", encoding="utf-8")
+
+    create_spy = MagicMock()
+    result = commit_skill_updates(tmp_path, create_spy)
+
+    assert result.status is ScopedCommitStatus.FAILED, (
+        f"unborn HEAD MUST report FAILED; got: {result!r}"
+    )
+    create_spy.assert_not_called()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_scoped_updates_raised_commit_failure_rolls_back_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wt-012 DA-006: a raised commit failure in the legacy helper must
+    unstage the freshly staged set -- no half-staged deterministic paths."""
+    Repo.init(tmp_path)
+    _track_initial_commit(tmp_path)
+    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("SKILL.md").write_text("# b\n", encoding="utf-8")
+
+    def exploding_commit(*args: object, **kwargs: object) -> CommitCreationResult:
+        raise OSError("commit exploded")
+
+    result = commit_skill_updates(tmp_path, exploding_commit)
+
+    assert result.status is ScopedCommitStatus.FAILED
+    repo = Repo(tmp_path)
+    try:
+        staged = repo.index.diff("HEAD")
+        assert not staged, (
+            "raised commit failure MUST unstage the deterministic paths; "
+            f"got staged: {[d.a_path for d in staged]}"
+        )
+    finally:
+        repo.close()
