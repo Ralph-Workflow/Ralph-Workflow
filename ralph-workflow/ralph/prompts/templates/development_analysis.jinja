@@ -24,15 +24,6 @@ Fan out read-only verification across independent criterion groups, one subagent
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any `## Criterion Verdicts` entry is written.
 
-### Whole-change review
-
-Item-level verdicts catch the per-piece work; they miss the change as a whole. The change is also a unit, and whole-change findings are required, not optional. Emit a fresh `DA-###` finding whenever a problem only shows up across pieces — there is no separate integration section, and the next free ID is reused. Look for:
-
-- **Parallel pieces fit together at the integration seam.** Pieces the plan declared independent must share a consistent contract and must not overlap on edits. Cross-check caller/callee types, shared file ownership, and any duplicated behavior between fan-out branches.
-- **Nothing outside the plan regressed.** A clean per-item verdict is not proof. Run the project fast path and the applicable full gate in this session and cite the observed result. Fresh worktree evidence, not an implementer summary, rationale, or completion claim, decides this.
-- **No unrelated scope.** Edits that drift past the plan's request — unrequested refactors, drive-by cleanups, new product behavior — are findings. Cite the unexpected file or symbol.
-- **Repository policy compliance.** Check `AGENTS.md` and `docs/ralph-workflow-policy/` (testing, type-checking, lint, security, and the rest). A policy violation is itself a finding, even when the per-item tests pass.
-
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
 
 - `adapted`: fresh evidence required a different route and the intended outcome still holds.
@@ -45,7 +36,7 @@ Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met, every required plan
   item has been individually proven, and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or a `Plan reference: [<stable id>]` the plan uses.
+- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
 `failed` records stronger or not-evaluable evidence for explicit resolution; the label itself never fails the pipeline.
@@ -60,7 +51,7 @@ status: request_changes
 - [SUM-1] One fixed criterion is not met.
 
 ## What Came Up Short
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: tests/test_foo.py still lacks an oversized-index case, so the overflow path is unproven.
+- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add a parametrized oversized-index test case to tests/test_foo.py.
 
 ## Criterion Verdicts
 - [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
@@ -70,7 +61,7 @@ status: request_changes
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for whatever references the plan actually uses, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`; the reference is whatever stable identifier the plan itself uses — numeric `S-n` IDs, a named anchor, or, for a prose plan with no IDs, the prose anchor being judged. A prose plan is judged on whether its requests are covered, not on whether a numeric identifier matches. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; the `Remaining work:` statement names the leftover outcome (what is still missing or unproven), not the implementation route — the development phase owns how to fix it. A `not evaluable` criterion requires `failed`.
+Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for every required plan reference, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not prescribe a remedy. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 

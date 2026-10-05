@@ -90,8 +90,6 @@ def _rewrite(workspace: Workspace, path: str, changed: list[str]) -> None:
     content = workspace.read(path)
     updated = _strip_migrated_markers(_strip_opt_out(_strip_managed_block(content)))
     if updated != content:
-        # deterministic-writer-ok: user-invoked policy reset; the user's own
-        # commit flow owns the change
         workspace.write(path, updated)
         changed.append(path)
 

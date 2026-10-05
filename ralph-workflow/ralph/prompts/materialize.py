@@ -1203,8 +1203,6 @@ def _snapshot_partial_execution_result(
     if content is None:
         return
     if content.get("status") == "partial":
-        # deterministic-writer-ok: .agent/ partial-result context --
-        # non-committable runtime state
         workspace.write(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH, markdown)
     elif workspace.exists(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH):
         workspace.remove(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)

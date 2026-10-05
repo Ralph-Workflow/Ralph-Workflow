@@ -90,33 +90,15 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("scoped_auto_commit", "PLR0911"),  # wt-012 -- the explicit-outcome state machine returns CREATED/NOOP/NOT_REPO/FAILED/SKIPPED plus the rollback branch
     ("scoped_auto_commit", "PLR0912"),  # wt-012 -- commit_scoped_updates has more branches than the cap because of staged-state preservation
     ("scoped_auto_commit", "PLR0915"),  # wt-012 -- commit_deterministic_writes needs more statements for the producer-level state machine + rollback
-    (
-        "scoped_auto_commit",
-        "PLR0911",
-    ),  # wt-012 -- _git_blob_sha maps each failure mode (working_dir unreadable, empty, symlink target unreadable, symlink target unencodable, hash-object failure) plus the symlink fast-path's success return; folding into a sentinel would lose the fail-closed boundary each guard enforces
     ("scoped_auto_commit", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("preflight", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("_run_start_setup", "PLC0415"),
-    (
-        "_run_start_setup",
-        "PLR0912",
-    ),  # wt-012 -- the run-start flow has explicit per-stage gates (user-global, project install, gitignore seed, auto-commit + diff, retention sweep) each with its own non-fatal warning surface; flattening into a single branch would lose the per-stage boundary
     ("init", "PLC0415"),  # wt-012 -- lazy import in --init helper to avoid init<->operations cycle
     ("manager", "PLC0415"),  # wt-012 -- lazy import in --force-init-skills to avoid manager<->operations cycle
     ("bootstrap", "PLC0415"),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle
     ("preflight", "PLC0415"),  # wt-012 -- lazy import in preflight commit path
     ("cli_integration", "PLC0415"),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
-    (
-        "_schema_upgrade",
-        "PLC0415",
-    ),  # wt-012 -- lazy imports in _freeze_policy_files keep the module importable in non-git environments (mirrors cli_integration / scoped_auto_commit / _auto_commit lazy-import precedent; the freeze rewrite commits deterministically when git is available and stays a no-op when it is not)
-    (
-        "_auto_commit_integration",
-        "PLC0415",
-    ),  # wt-012 -- extracted from cli_integration to keep it under the 1000-line cap; preserves the function-scope lazy imports the original file relied on (pathlib.Path for the opt-out isinstance guard, markers.AGENTS_MD for the post-condense producer-level commit).
     ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
-    ("_installer_candidates", "PLC0415"),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
-    ("_schema_upgrade", "PLC0415"),  # wt-012 -- lazy import in _freeze_policy_files to avoid module-load cycle with ralph.git.operations / ralph.git.scoped_auto_commit
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators

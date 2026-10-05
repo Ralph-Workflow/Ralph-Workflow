@@ -16,6 +16,20 @@ if TYPE_CHECKING:
 
 _STEP_ID = re.compile(r"^S-([1-9][0-9]*)$")
 _TARGET = re.compile(r"^-\s+(?:(modify|create|delete|read|run|test|verify)\s+)?(`?)(\S+?)\2$")
+# Python's int() rejects integer strings longer than 4300 digits by default;
+# tolerate that boundary during best-effort extraction rather than raising
+# the whole submission.
+_MAX_INT_DIGITS = 4300
+
+
+def _safe_int(value: str) -> int | None:
+    """Parse a small positive integer; return None on size or value errors."""
+    if not value or len(value) > _MAX_INT_DIGITS:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def analyze_plan_document(text: str) -> tuple[Content, list[Diagnostic], list[object]]:
@@ -33,10 +47,15 @@ def _steps(document: ParsedDocument) -> list[Content]:
             if match is None or block.identifier in seen:
                 continue
             seen.add(block.identifier)
+            number = _safe_int(match[1])
+            if number is None:
+                # Oversized numeric token: keep the prose block but skip the
+                # numeric step entry so we never raise on extraction.
+                continue
             lines = [line.text for line in block.lines]
             step: Content = {
                 "id": block.identifier,
-                "number": int(match[1]),
+                "number": number,
                 "title": block.title,
                 "content": "\n".join(lines).strip(),
                 "depends_on": [],
@@ -51,9 +70,10 @@ def _steps(document: ParsedDocument) -> list[Content]:
                     in_files = label.casefold() == "files"
                     if label.casefold() == "depends on":
                         dependencies.extend(
-                            int(ref[1])
+                            ref_number
                             for token in _values(value)
                             if (ref := _STEP_ID.fullmatch(token)) is not None
+                            and (ref_number := _safe_int(ref[1])) is not None
                         )
                     elif label.casefold() in {"type", "verify", "expect", "location"}:
                         key = {

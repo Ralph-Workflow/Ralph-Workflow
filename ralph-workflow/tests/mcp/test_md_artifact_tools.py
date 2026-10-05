@@ -196,17 +196,9 @@ def test_commit_message_validation_failure_requires_rewriting_the_message(tmp_pa
     assert "do not change code" in action
 
 
-def test_development_result_prose_plan_accepts_shape_independent_proof(
+def test_development_result_missing_work_requires_completion_verification_and_evidence(
     tmp_path,
 ) -> None:
-    """U-3: a completed result with a proof entry is accepted for any bracket ID.
-
-    Pre-U-3 this test asserted the result was rejected for missing
-    proof coverage (DEV015); the development phase no longer keys proof
-    validation on plan shape, so the result is accepted for the
-    shape-independent proof the agent wrote. Coverage of the plan's
-    intent is followed through the development-analysis feedback loop.
-    """
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -221,15 +213,21 @@ def test_development_result_prose_plan_accepts_shape_independent_proof(
             "artifact_type": "development_result",
             "content": "---\ntype: development_result\nstatus: completed\n---\n"
             "## Summary\n- [SUM-1] Completed the requested work.\n"
-            "## Files Changed\n- [F-1] ralph/example.py\n"
-            "## Plan Items Proven\n"
-            "- [prose-section-overview] Ran the focused verification; all checks passed.\n"
-            "  Disposition: completed\n",
+            "## Files Changed\n- [F-1] ralph/example.py\n",
         },
         deps=ArtifactHandlerDeps(backend=backend),
     )
 
-    assert result.is_error is False
+    assert result.is_error is True
+    payload = _payload(result)
+    assert payload["status"] == "validation_failed"
+    assert payload["severity"] == "error"
+    assert payload["diagnostics"]
+    assert "corrective_action" in payload
+    action = str(payload["corrective_action"]).lower()
+    assert "complete the underlying work" in action
+    assert "verification" in action
+    assert "proof" in action or "evidence" in action
 
 
 def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(

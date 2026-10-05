@@ -24,7 +24,7 @@ def test_developer_prompt_includes_plan_and_submission_contract(tmp_path: Path) 
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
     )
 
-    assert "implementation mode" in prompt
+    assert "IMPLEMENTATION MODE" in prompt
     assert "### [S-1] Change it" in prompt
     assert "development_result" in prompt
     assert "ralph_submit_md_artifact" in prompt
@@ -44,7 +44,7 @@ def test_planning_prompt_uses_concise_artifact_workflow(tmp_path: Path) -> None:
     assert "Characterize" in prompt
     assert "Change" in prompt
     assert "Verify" in prompt
-    assert "recommended shape" in prompt
+    assert "executor guidance, not a required document shape" in prompt
     assert "parallel" in prompt
     assert 'artifact_type="plan"' in prompt
     assert "ralph_edit_md_artifact" in prompt
@@ -63,7 +63,7 @@ def test_planning_edit_treats_analysis_as_advice(tmp_path: Path) -> None:
         template_name="planning_edit.jinja",
     )
 
-    assert "Planning edit mode" in prompt
+    assert "PLANNING EDIT MODE" in prompt
     assert "fresh repository evidence" in prompt
     assert "ralph_edit_md_plan_step" not in prompt
 

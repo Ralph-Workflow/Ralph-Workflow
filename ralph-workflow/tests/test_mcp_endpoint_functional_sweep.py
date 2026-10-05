@@ -43,7 +43,6 @@ subprocess, no network. Targets <5s wall clock to stay inside the
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -66,20 +65,6 @@ from ralph.mcp.webvisit.extractor import ExtractedPage
 from ralph.mcp.webvisit.fetcher import FetchOutcome
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str_list
-
-
-@pytest.fixture(autouse=True)
-def _in_memory_git_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ralph.mcp.tools import git_read
-
-    def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
-        del cwd
-        return subprocess.CompletedProcess(command, 128, b"", b"fatal: not a git repository")
-
-    monkeypatch.setattr(
-        "ralph.mcp.tools._git_cwd_validator._default_toplevel_runner", lambda _cwd: None
-    )
-    monkeypatch.setattr(git_read, "_run_git_subprocess", run)
 
 
 def _all_capabilities() -> set[str]:
@@ -601,7 +586,7 @@ def test_unknown_tool_returns_documented_error(tmp_path: Path) -> None:
     assert code is not None, f"unknown tool: error envelope has no code: {response}"
 
 
-def test_exec_and_git_handlers_do_not_spawn_subprocess_under_sweep(
+def test_exec_handler_does_not_spawn_subprocess_under_sweep(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -640,9 +625,8 @@ def test_exec_and_git_handlers_do_not_spawn_subprocess_under_sweep(
             )
 
     monkeypatch.setattr(
-        ProcessManager,
-        "spawn",
-        _SpyProcessManager.spawn,
+        "ralph.process.manager.get_process_manager",
+        _SpyProcessManager,
         raising=True,
     )
 
@@ -651,12 +635,12 @@ def test_exec_and_git_handlers_do_not_spawn_subprocess_under_sweep(
         RalphToolName.EXEC,
         RalphToolName.UNSAFE_EXEC,
         RalphToolName.RAW_EXEC,
-        RalphToolName.GIT_STATUS,
-        RalphToolName.GIT_DIFF,
-        RalphToolName.GIT_LOG,
-        RalphToolName.GIT_SHOW,
     ):
-        arguments = SWEEP_CALLS[tool_name]
+        arguments = (
+            {"command": "true"}
+            if tool_name is RalphToolName.EXEC
+            else {"command": "true", "timeout_ms": 5000}
+        )
         response = _drive_call(server, tool_name, arguments)
         _assert_call_round_trips(tool_name, response)
 

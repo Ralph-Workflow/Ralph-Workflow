@@ -2,35 +2,74 @@
 
 from __future__ import annotations
 
+import pytest
+
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 
-def _source(name: str) -> str:
-    return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
+def _render_planner(name: str) -> str:
+    context = TemplateContext.default()
+    session = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    return render_template(
+        context.registry.get_template(name),
+        {
+            **capability_template_variables(session.capabilities, session.policy_flags),
+            "PRODUCT_CRITERIA": "Update independent command and documentation behavior.",
+            "PRODUCT_CRITERIA_PATH": "fixtures/request.md",
+            "ANALYSIS_FEEDBACK": "Avoidable serialization: split command and documentation units.",
+            "ANALYSIS_FEEDBACK_PATH": "fixtures/feedback.md",
+            "HAS_DOCS_MCP": "",
+            "DOCS_MCP_PORT": "localhost:6280",
+            "LAST_RETRY_ERROR": "",
+            "SKILLS_INLINE_CONTENT": "",
+        },
+        context.partials,
+    )
 
 
-def test_variants_share_planning_guidance() -> None:
-    for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
-        source = _source(name)
-        assert "shared/_planning_thinking.j2" in source
-        assert "shared/_planning_submission_mechanics.j2" in source
+@pytest.mark.parametrize(
+    "name", ("planning", "planning_fallback", "planning_edit", "planning_edit_fallback")
+)
+def test_rendered_planners_recommend_parallel_work_without_format_rules(name: str) -> None:
+    rendered = _render_planner(name)
+    normalized = " ".join(rendered.split())
 
-
-def test_thinking_makes_parallel_the_default_without_a_shape_rule() -> None:
-    source = _source("shared/_planning_thinking.jinja")
     for phase in ("Orient", "Characterize", "Change", "Partition", "Verify"):
-        assert phase in source
-    assert "parallel work is the default" in source
-    assert "real coupling" in source
-
-
-def test_submission_guidance_describes_only_sanity_boundary() -> None:
-    source = _source("shared/_planning_submission_mechanics.j2")
-    assert "recommended shape" in source
-    assert "not a submission format rule" in source
-    assert "readable, non-empty" in source
-    for forbidden in ("max_work_units", "Validation Overrides", "schema_version", "cycles"):
-        assert forbidden not in source
+        assert phase in rendered
+    for required in (
+        "parallel work is the default",
+        "two or more independent",
+        "real coupling",
+        "recommended",
+        "Directories:",
+        "Paths:",
+        "Depends on:",
+        "shared contracts",
+        "integration",
+        "fan-in",
+        "Subagents and parallel agents are always available",
+    ):
+        assert required in normalized
+    assert normalized.split("## DELEGATION GUIDANCE")[0].count("## Work Units") == 1
+    for forbidden in (
+        "submission boundary checks",
+        "size limit",
+        "at least ten words",
+        "max_work_units",
+        "Validation Overrides",
+        "schema_version",
+        "HAS_SUBAGENTS",
+        "required fields",
+        "repair validation",
+        "## Skills MCP",
+    ):
+        assert forbidden not in normalized
+    if "edit" in name:
+        assert "avoidable serialization" in normalized
+        assert "proposed unit split" in normalized
 
 
 def test_plan_format_doc_teaches_optional_ownership() -> None:

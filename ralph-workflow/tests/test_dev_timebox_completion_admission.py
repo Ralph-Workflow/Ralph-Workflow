@@ -11,6 +11,7 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
+from ralph.mcp.tools._development_result_session_gate import development_result_session_diagnostics
 from ralph.mcp.tools.bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
@@ -99,6 +100,21 @@ def test_missing_or_future_development_warning_completes_immediately(
     )
 
     assert "Task declared complete" in _declare(_server(tmp_path), warning)
+
+
+def test_partial_result_is_accepted_before_or_after_development_warning(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = {"status": "partial"}
+    session = AgentSession(
+        session_id="dev014-session", run_id="dev014-run", drain="development", capabilities=set()
+    )
+    workspace = FsWorkspace(tmp_path)
+
+    monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
+    assert development_result_session_diagnostics(session, workspace, content) == []
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
+    assert development_result_session_diagnostics(session, workspace, content) == []
 
 
 def test_reset_keeps_epoch_warning_active_without_requiring_confirmation(

@@ -18,9 +18,9 @@ def test_planning_prompt_delegates_read_only_discovery() -> None:
 
 def test_submission_shape_is_optional() -> None:
     source = _source("shared/_planning_submission_mechanics.j2")
-    assert "recommended shape" in source
-    assert "not a submission format rule" in source
-    assert "at\nleast ten words" in source
+    assert "executor-ready Markdown plan" in source
+    assert "actual prose authoritative" in source
+    assert "at\nleast ten words" not in source
 
 
 def test_analysis_reviews_substance() -> None:

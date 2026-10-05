@@ -4,7 +4,6 @@ from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
 from ralph.mcp.artifacts.plan._section_registry import (
     PLAN_ARTIFACT_PATH,
     PLAN_ARTIFACT_TYPE,
-    SectionMode,
 )
 from ralph.mcp.artifacts.plan._size_limits import (
     PLAN_SIZE_LIMITS,
@@ -15,7 +14,6 @@ from ralph.mcp.artifacts.plan._size_limits import (
 from ralph.mcp.artifacts.plan._validation import (
     is_noop_plan,
     normalize_plan_artifact_content,
-    validate_plan_section,
 )
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
 
@@ -27,9 +25,7 @@ __all__ = [
     "PlanArtifactSizeError",
     "PlanArtifactValidationError",
     "PlanSizeLimits",
-    "SectionMode",
     "check_plan_size",
     "is_noop_plan",
     "normalize_plan_artifact_content",
-    "validate_plan_section",
 ]

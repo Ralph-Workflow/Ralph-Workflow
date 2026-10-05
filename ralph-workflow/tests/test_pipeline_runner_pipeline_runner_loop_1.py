@@ -272,7 +272,7 @@ class TestPipelineRunnerLoop:
         )
 
         assert isinstance(result, PipelineState)
-        assert "Planning edit mode" in seen["prompt"]
+        assert "PLANNING EDIT MODE" in seen["prompt"]
         assert "You are in PLANNING MODE" not in seen["prompt"]
 
     def test_save_checkpoint_effect_triggers_checkpoint_and_returns_success(

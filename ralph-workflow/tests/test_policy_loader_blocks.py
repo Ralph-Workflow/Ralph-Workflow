@@ -94,9 +94,6 @@ def test_load_policy_compiles_group_and_individual_blocks_into_runtime_phases(
             drain = "development"
             role = "execution"
             prompt_template = "developer_iteration.jinja"
-            [blocks.development.phase.artifact_proof_policy]
-            require_plan_proof = true
-            require_analysis_proof = true
             [blocks.development.phase.transitions]
             on_success = "development_analysis"
             on_loopback = "development"

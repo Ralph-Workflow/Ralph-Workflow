@@ -81,9 +81,7 @@ def _parse_non_plan(
         # Spec-level text validators run after the parser so the document
         # state is available, but before structure validation so a
         # text-level rejection short-circuits before any other check
-        # fires. The plan spec uses this hook for the closed-list
-        # not-a-plan detector; other specs leave it unset so this
-        # branch is a no-op for them.
+        # fires. Plans use their separate raw-text sanity boundary.
         diagnostics.extend(spec.validate_text(text))
     _teach_duplicate_closed_frontmatter_vocabulary(diagnostics, spec)
     structured_body = spec.structured_body is None or spec.structured_body(document)
@@ -375,30 +373,8 @@ def _normalizer_diagnostic(
 
 
 def _spec010_message(message: str, artifact_type: str) -> str:
-    """Wrap a pydantic / size / normalizer rejection in the consumer convention.
-
-    A spec normalizer can fail in three ways: a pydantic schema rejection,
-    a ``plan size violation`` from the canonical plan payload bound, or any
-    other TypeError/ValueError surfaced by the normalizer callable. Each one
-    ends with ``; blocking because <consumer>; resolve by <fix>`` so the
-    diagnostic matches the convention every other blocking finding follows.
-    The consumer clause names the artifact type that actually rejected the
-    document: attributing every artifact's rejection to the plan pydantic
-    schema sends the agent to read a validator that never saw its payload.
-    """
+    """Name the non-plan normalizer that rejected the document."""
     what = message.strip() or "canonical validation failed"
-    if what.lower().startswith("plan size violation"):
-        return (
-            f"{what}; blocking because the plan is carried through MCP tool result "
-            "payloads and unbounded documents exceed the bounded payload contract; "
-            "resolve by reducing the plan to its essential steps and verification"
-        )
-    if artifact_type == "plan":
-        return (
-            f"{what}; blocking because ralph/mcp/artifacts/plan/_validation.py "
-            "enforces pydantic field schemas on the canonical plan content dict; "
-            "resolve by correcting the rejected field against its pydantic schema"
-        )
     return (
         f"{what}; blocking because the canonical {artifact_type} normalizer rejects "
         "the document before it is stored, so the artifact was not accepted; "

@@ -42,8 +42,9 @@ class Utf8Backend(MemoryBackend):
         super().write_text(path, content, encoding=encoding)
 
 
-_PROSE = "Inspect the repository then implement independent changes and verify their combined behavior."
+_PROSE = "Inspect code then implement independent changes and verify all behavior carefully."
 _CASES = (
+    "Inspect code then implement changes and verify all behavior carefully.",
     _PROSE,
     _PROSE + "\n### [S-1] First\n### [S-1] Second",
     _PROSE + "\n### [S-1] First\nDepends on: S-99",
@@ -167,16 +168,7 @@ def test_unencodable_plan_returns_sanity_diagnostic_before_persistence(operation
     assert json.loads(result.content[0].text)["diagnostics"][0]["rule_id"] == "PLAN001"
 
 
-def test_prose_plan_accepts_shape_independent_development_proof() -> None:
-    """A development_result under a prose plan is accepted for any bracket ID.
-
-    The pre-existing DEV015 exact-coverage gate was removed by U-3: the
-    development phase no longer rejects a completed result for using an ID
-    that does not match a plan-parsed reference, so a prose plan (which
-    yields zero canonical step refs) accepts both the ``[plan]`` proof
-    (the original prose-plan ID) and a free-form ``[S-999]`` proof whose
-    only obligation is to cite reproducible evidence for the work done.
-    """
+def test_prose_plan_requires_exactly_one_plan_level_development_proof() -> None:
     workspace = MemoryWorkspace()
     session = MockSession()
     session.run_id = "proof-parity"
@@ -197,12 +189,13 @@ status: completed
 - [plan] Ran the focused verification and observed all assertions passing.
   Disposition: completed
 """
-    free_form = handle_submit_md_artifact(
+    bad = handle_submit_md_artifact(
         session, workspace,
         {"artifact_type": "development_result", "content": development.replace("[plan]", "[S-999]")},
         deps=deps,
     )
-    assert not free_form.is_error
+    assert bad.is_error
+    assert any(item["rule_id"] == "DEV015" for item in json.loads(bad.content[0].text)["diagnostics"])
     good = handle_submit_md_artifact(
         session, workspace, {"artifact_type": "development_result", "content": development},
         deps=deps,
@@ -219,7 +212,8 @@ def test_oversized_plan_returns_same_sanity_failure_without_a_receipt() -> None:
     session.run_id = "oversized"
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
-    document = _PROSE + ("x" * 4_000_000)
+    document = _PROSE + ("界" * 1_333_334)
+    assert len(document) < 4_000_000 < len(document.encode("utf-8"))
     params: dict[str, object] = {"artifact_type": "plan", "content": document}
     verified = handle_verify_md_artifact(session, workspace, params)
     submitted = handle_submit_md_artifact(session, workspace, params, deps=deps)
@@ -237,7 +231,11 @@ def test_submit_regression_accepts_oversized_numeric_step_token() -> None:
     workspace = MemoryWorkspace()
     session = MockSession("planning")
     backend = MemoryBackend()
-    document = _PROSE + "\n### [S-" + ("9" * 4_301) + "] Structural token remains prose"
+    # Use a real parent section so the parser actually attaches the block to a
+    # section; without that, extraction is a no-op and the int() overflow
+    # path is never exercised. The oversized step ID lives inside the section
+    # where the plan mapper would convert it to an int.
+    document = _PROSE + "\n\n## Steps\n\n### [S-" + ("9" * 4_301) + "] Structural token remains prose"
 
     result = handle_submit_md_artifact(
         session,

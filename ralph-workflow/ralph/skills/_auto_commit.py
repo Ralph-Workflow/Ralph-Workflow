@@ -38,6 +38,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import (
     ScopedCommitResult,
@@ -104,7 +106,7 @@ def commit_skill_updates(
     create_commit_fn: _CreateCommitFn,
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
-) -> ScopedCommitResult:
+) -> str | None:
     """Create a deterministic auto-commit for project-scope skill-tree changes.
 
     Legacy dirty-discovery wrapper. Scans the FIVE ``_SKILL_ROOT_PREFIXES``
@@ -117,14 +119,14 @@ def commit_skill_updates(
     only have dirty-tree visibility (e.g. legacy tests that simulate a
     pre-existing dirty state without going through the install boundary).
 
-    Returns the :class:`ScopedCommitResult` from the shared scoped helper
-    verbatim (wt-012 DA-012): callers MUST inspect ``result.status`` --
-    ``CREATED`` carries ``result.sha``; ``FAILED``/``SKIPPED`` carry the
-    explicit outcome and must be surfaced, never silently dropped.
+    Returns the commit SHA on ``CREATED``, else ``None``. The explicit
+    result type used internally is :class:`ScopedCommitResult`; this
+    legacy signature keeps the ``str | None`` return for the existing
+    call sites and tests.
     """
     if stage_fn is None:
         stage_fn = stage_files
-    return commit_scoped_updates(
+    result = commit_scoped_updates(
         repo_root,
         scopes=tuple(sorted(_SKILL_ROOT_PREFIXES)),
         subject=SKILL_AUTO_COMMIT_SUBJECT,
@@ -132,6 +134,13 @@ def commit_skill_updates(
         create_commit_fn=create_commit_fn,
         stage_fn=stage_fn,
     )
+    if result.status is ScopedCommitStatus.CREATED:
+        return result.sha
+    if result.status is ScopedCommitStatus.FAILED:
+        # Surface failure as a DEBUG log; the legacy contract is
+        # ``None`` for every non-CREATED outcome (best-effort).
+        logger.debug("commit_skill_updates: failed ({}); returning None", result.error)
+    return None
 
 
 def commit_skill_writes(

@@ -53,49 +53,34 @@ def session_warning_scope(before_warning: bool) -> Iterator[None]:
 
 def development_wrapup_notice(*, is_worker: bool = False) -> str:
     """Return the phase-wide development-timebox wind-down notice."""
-    # When the pipeline has published the development timebox, surface the
-    # concrete remaining minutes, role-correct guidance (a worker must
-    # finish its own unit; an orchestrator may still dispatch an
-    # independent ready group), and instruct the developer to submit the
-    # development result before the cut. Without epochs, the notice stays
-    # the existing static text — a graceful fallback.
+    # S-6: when the pipeline has published the development timebox, surface
+    # the concrete remaining minutes, suggest dispatching an independent
+    # ready group (instead of trimming scope), and instruct the developer
+    # to submit the development result before the cut. Without epochs, the
+    # notice stays the existing static text — a graceful fallback.
     deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV, _os.environ.get)
     if deadline_epoch is None:
         return _STATIC_DEVELOPMENT_WRAPUP_NOTICE
 
     remaining_minutes = max(0, int((deadline_epoch - _time.time()) // 60))
-    if is_worker:
-        guidance = (
-            "complete and verify only your assigned work unit within its allowed paths, "
-            "then submit the development result before the cut. Submit your worker-local "
-            "result from this unit only. Do not spawn sub-agents, coordinate other units, "
-            "or integrate the whole plan."
-        )
-        parallel_note = (
-            "If your unit is blocked, return truthful partial with the blocker and one next step."
-        )
-    else:
-        guidance = (
-            "if actionable plan work remains, dispatch an independent ready group "
-            "(units whose independence and pairwise-disjoint ownership are evident "
-            "from the plan however the plan states it) concurrently rather than "
-            "trimming scope, then submit the development result before the cut"
-        )
-        parallel_note = (
-            "When the remaining scope still contains independent work, dispatch it in parallel "
-            "rather than completing one piece at a time and handing each increment back as "
-            "partial; piecemeal handbacks waste the cycle."
-        )
+    action = (
+        "complete and verify only your assigned work unit within its allowed paths. "
+        "Do not spawn sub-agents, coordinate other units, or integrate the whole plan; "
+        if is_worker
+        else "if actionable plan work remains, dispatch an **independent ready group** "
+        "(steps with no `Depends on:` path between any pair and pairwise disjoint "
+        "`Files:` lists) concurrently rather than trimming scope, then "
+    )
     return (
         "⚠️ DEVELOPMENT-TIMEBOX WARNING — The uninterrupted development phase has passed "
         f"its configured warning point. Approximately **{remaining_minutes} minutes remaining** "
         "before the session is force-cut. Do everything reasonably possible to complete the "
-        f"assigned task before submitting any artifact: {guidance}, then submit the development result before the cut. Use partial only "
+        f"assigned task before submitting any artifact: {action}"
+        "**submit the development result before the cut** rather than after it. Use partial only "
         "as an exceptional last resort, when the remaining work is literally impossible through "
         "any developer action available in this run and requires a physical-world, operator-only, "
-        f"or externally controlled action. {parallel_note} Difficulty, "
-        "elapsed time, and exhausted budget never qualify. "
-        "Never submit completed unless every reported item and piece of evidence is "
+        "or externally controlled action. Difficulty, elapsed time, and exhausted budget never "
+        "qualify. Never submit completed unless every reported item and piece of evidence is "
         "truthful. When genuinely complete, use declare_complete."
     )
 
@@ -106,11 +91,7 @@ _STATIC_DEVELOPMENT_WRAPUP_NOTICE = (
     "assigned task before submitting any artifact. If actionable work remains, return to "
     "it immediately. Use partial only as an exceptional last resort, when the remaining "
     "work is literally impossible through any developer action available in this run and "
-    "requires a physical-world, operator-only, or externally controlled action. When the "
-    "remaining scope still contains independent work, treat it as parallelizable rather "
-    "than completing one piece at a time; piecemeal handbacks waste the cycle. Workers "
-    "continue in-scope recovery within their assigned unit and never coordinate other "
-    "units. Difficulty, "
+    "requires a physical-world, operator-only, or externally controlled action. Difficulty, "
     "elapsed time, and exhausted budget never qualify. Never submit completed unless every "
     "reported item and piece of evidence is "
     "truthful. When genuinely complete, use declare_complete."

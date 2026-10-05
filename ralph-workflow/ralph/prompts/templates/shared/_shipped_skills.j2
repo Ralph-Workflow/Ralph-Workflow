@@ -16,6 +16,6 @@ Invoke each plan-named skill that is available; continue without unavailable ski
 {% endif %}
 {% if shipped_skills_mode|default('') == 'planning' %}
 
-Record only task-relevant available skill names in `## Skills MCP`; omit the
-section when none are available.
+Mention task-relevant available skills when they help the executor; do not
+invent unavailable skills.
 {% endif %}

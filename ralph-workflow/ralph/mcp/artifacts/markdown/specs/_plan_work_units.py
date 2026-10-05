@@ -146,6 +146,16 @@ def _claim_steps_by_target(
         ]
         for entry in entries
     }
+    paths_by_unit = {
+        str(entry["unit_id"]): {
+            PurePosixPath(path)
+            for path in cast(
+                "list[object]", entry.get("allowed_paths", [])
+            )  # cast-policy: seam: optional extracted plan ownership metadata
+            if isinstance(path, str)
+        }
+        for entry in entries
+    }
     for step in steps:
         number = step.get("number")
         targets = step.get("targets")
@@ -164,7 +174,10 @@ def _claim_steps_by_target(
         candidates = [
             unit_id
             for unit_id, directories in directories_by_unit.items()
-            if paths and all(_path_is_owned(path, directories) for path in paths)
+            if paths and all(
+                _path_is_owned(path, directories) or PurePosixPath(path) in paths_by_unit[unit_id]
+                for path in paths
+            )
         ]
         if len(candidates) == 1:
             owner_by_step[step_id] = candidates[0]

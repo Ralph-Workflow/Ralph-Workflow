@@ -52,7 +52,7 @@ TESTS_ROOT = pathlib.Path(__file__).parent
 
 @cache
 def _read(path: pathlib.Path) -> str:
-    return _read_bytes(path).decode("utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 @cache
@@ -168,7 +168,10 @@ class TestDisplayIsOnlyParallelDisplay:
 
     def test_no_isinstance_check_against_legacy_console_display(self) -> None:
         """No production code may use `isinstance(x, LegacyConsoleDisplay)`."""
-        for path in _legacy_console_display_references():
+        for path in _walk_python_files(RALPH_ROOT):
+            source = _read(path)
+            if "LegacyConsoleDisplay" not in source:
+                continue
             tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
@@ -855,6 +858,7 @@ class TestParallelDisplayOwnsAllDisplayHelpers:
     helper.
     """
 
+    @pytest.mark.timeout_seconds(2)
     def test_parallel_display_owns_all_display_helpers(self) -> None:
         # Public user-facing display helpers: must live in parallel_display.py
         # or display/context.py. The plain_renderer is allowed to have
@@ -1064,6 +1068,7 @@ class TestNoRetryDecisionReimplementation:
     canonical decision owners have already produced.
     """
 
+    @pytest.mark.timeout_seconds(2)
     def test_no_retry_decision_reimplementation(self) -> None:
         allowed_files = {
             pathlib.Path("ralph/agents/invoke/_session_resume.py"),

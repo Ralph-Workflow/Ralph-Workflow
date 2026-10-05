@@ -315,8 +315,6 @@ def handle_download_url(
     content_str = body_bytes.decode("utf-8", errors="replace")
 
     try:
-        # deterministic-writer-ok: agent-brokered tool write; the agent's own
-        # commit flow owns the change
         workspace.write(output_path, content_str)
     except OSError as exc:
         # A write failure (disk full, permission, read-only fs) is an operational

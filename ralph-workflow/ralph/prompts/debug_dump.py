@@ -95,8 +95,6 @@ def write_multimodal_sidecar(
         "phase": phase,
         "artifacts": [entry.to_dict() for entry in entries],
     }
-    # deterministic-writer-ok: .agent/ debug-dump state -- non-committable
-    # runtime state
     workspace.write(path, json.dumps(payload, indent=2))
 
 
@@ -194,7 +192,5 @@ def dump_rendered_prompt(
         if worker_namespace is not None
         else Path(prompt_dump_path(phase))
     )
-    # deterministic-writer-ok: .agent/ prompt-dump state -- non-committable
-    # runtime state
     workspace.write(str(path), prompt)
     return str(path)

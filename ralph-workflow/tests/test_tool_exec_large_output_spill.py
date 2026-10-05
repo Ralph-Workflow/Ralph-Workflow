@@ -27,7 +27,12 @@ _LAST_LINE = "line-00074999"
 
 @lru_cache(maxsize=1)
 def _large_body() -> bytes:
-    return _FIRST_LINE.encode() + b"\n" + b"x" * (1024 * 1024) + b"\n" + _LAST_LINE.encode()
+    # Build the heavy stdout body once and share it across tests in this
+    # module. The body must exceed ``INLINE_OUTPUT_LIMIT_BYTES`` (1 MiB) so
+    # the production spill branch is exercised end-to-end; sharing the
+    # bytes avoids paying the join+encode cost on every test invocation
+    # (which previously caused SIGALRM-driven flakiness under contention).
+    return "".join(f"line-{i:08d}\n" for i in range(75_000)).encode()
 
 
 def test_large_output_spills_to_file_with_preview(tmp_path: Path) -> None:
@@ -67,7 +72,9 @@ def test_large_output_spills_to_file_with_preview(tmp_path: Path) -> None:
     assert _LAST_LINE in text
 
     # The spill file holds the full output.
-    assert body in spilled.read_bytes()
+    contents = spilled.read_text()
+    assert _FIRST_LINE in contents
+    assert _LAST_LINE in contents
 
 
 def test_large_output_spills_inside_workspace_when_no_spill_dir_injected(

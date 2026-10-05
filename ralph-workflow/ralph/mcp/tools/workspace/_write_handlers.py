@@ -558,8 +558,6 @@ def handle_edit_file(
         )
 
     try:
-        # deterministic-writer-ok: agent-brokered tool write; the agent's own
-        # commit flow owns the change
         workspace.write(normalized, current_content)
     except Exception as exc:
         raise ToolError(f"Failed to write file '{path}': {exc}") from exc

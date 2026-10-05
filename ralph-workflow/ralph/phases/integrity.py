@@ -131,8 +131,6 @@ def ensure_prompt_integrity(
             ),
         )
 
-    # deterministic-writer-ok: .agent/ prompt restore from backup --
-    # non-committable runtime state
     workspace.write(prompt_path, workspace.read(backup_path))
     return IntegrityResult(
         ok=True,

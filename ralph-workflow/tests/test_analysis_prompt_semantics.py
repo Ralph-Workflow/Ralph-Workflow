@@ -94,96 +94,13 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
         "Report only material, localized findings",
     ):
         assert required in rendered[contract_start:final_action], (template_name, required)
-
-
-def test_no_remedies_rule_lives_only_in_policy_remediation_analysis() -> None:
-    """The 'do not propose remedies' rule is phase-local to policy_remediation_analysis.
-
-    The planning-analysis phase requires the analyzer to surface concrete
-    proposed revisions the planner applies or rebuts, so the no-remedies
-    rule must not leak into the shared verification procedure or into the
-    planning-analysis template. The development-analysis template uses the
-    shared procedure, so it inherits whatever the shared partial says and
-    must therefore not assert the no-remedies phrase either.
-    """
-    needle = "do not propose remedies"
-    context = TemplateContext.default()
-    shared = context.partials["shared/_criterion_verification_procedure"]
-
-    assert needle not in shared
-
-    for template_name in ("planning_analysis", "development_analysis"):
-        source = context.registry.get_template(template_name)
-        assert needle not in source, template_name
-
-    policy_remediation = context.registry.get_template("policy_remediation_analysis")
-    assert needle in policy_remediation.lower()
-
-
-def test_planning_analysis_prompts_the_revision_loop_contract() -> None:
-    """planning_analysis.jinja requires each finding carry a proposed revision.
-
-    PRODUCT_CRITERIA §1 requires feedback to help the planner produce a
-    better plan. Every ``## What Came Up Short`` finding must surface a
-    concrete ``Proposed revision:`` the planner either applies or rebuts.
-    The lock here keeps the contract one place per rule: the prompt is
-    authoritative; the format doc references it.
-    """
-    source = TemplateContext.default().registry.get_template("planning_analysis")
-    lowered = source.lower()
-
-    for required in (
-        "concrete proposed revision",
-        "applies or rebuts",
-        "proposed revision:",
-        "plain prose plan can pass",
-        "serialized without a reason",
-    ):
-        assert required in lowered, required
-
-    # The example must model the new contract so renderers copy it.
-    assert "[PA-001] Plan-level: Criterion: parallel decomposition." in source
-
-    # The rendered example's proposed unit split must model the properties
-    # the review contract demands: exact Paths:/Directories: ownership per
-    # unit and a per-unit focused check.
-    rendered = _render_verifier("planning_analysis")
-    rendered_example = rendered[rendered.index("Example for `planning_analysis_decision`") :]
-    assert "Paths:" in rendered_example or "Directories:" in rendered_example
-    assert "focused check" in rendered_example
-
-
-def test_planning_analysis_clear_ownership_accepts_prose() -> None:
-    """The review contract's Clear-ownership property must not demand
-    literal ``Directories:`` / ``Paths:`` fields when ownership is
-    unambiguous from prose; a plain prose plan with clear ownership
-    must still pass. The test locks both the prompt contract and the
-    embedded example so the rule lives in one place per plan family.
-    """
-    source = TemplateContext.default().registry.get_template("planning_analysis")
-    normalized = " ".join(source.split())
-
-    # The contract rule itself: ownership stated unambiguously in prose
-    # satisfies the property; literal fields are a convenience, not a
-    # requirement.
-    assert "ownership stated unambiguously in prose" in normalized
-    assert "are a convenience" in normalized
-
-
-def test_planning_edit_requires_apply_or_rebut_per_finding() -> None:
-    """planning_edit.jinja makes the revision loop explicit.
-
-    The planner must apply or rebut every finding, not silently drop it.
-    Lock both the main and the fallback template so the rule lives in one
-    place per template (each has its own reviewer surface).
-    """
-    context = TemplateContext.default()
-
-    for template_name in ("planning_edit", "planning_edit_fallback"):
-        source = context.registry.get_template(template_name)
-        assert "apply the proposed revision or rebut it" in source, template_name
-        assert "do not silently drop findings" in source, template_name
-        assert "Repair every supported finding" in source, template_name
+    if template_name == "planning_analysis":
+        assert "do not propose remedies in this decision" not in rendered
+        assert "proposed unit split" in rendered[contract_start:final_action]
+        assert "Do not propose other remedies" in rendered[contract_start:final_action]
+    else:
+        assert "do not propose remedies in this decision" in rendered[contract_start:final_action]
+        assert "proposed unit split" not in rendered[contract_start:final_action]
 
 
 def test_planning_and_development_share_the_verification_only_procedure() -> None:
@@ -213,20 +130,17 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
 
 
 def test_planning_analysis_includes_five_substantive_criteria() -> None:
-    source = " ".join(TemplateContext.default().registry.get_template("planning_analysis").split())
+    source = " ".join(_render_verifier("planning_analysis").split())
 
-    for criterion in (
-        "coverage",
-        "truthfulness",
-        "actionability",
-        "parallel decomposition",
-        "execution conflicts",
-    ):
+    for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
         assert criterion in source
     assert "Do not grade formatting" in source
     assert "## Criterion Verdicts" in source
     assert "## Decision artifact" in source
-    assert "put a concrete unit split" in source
+    assert "propose a concrete unit split" in source
+    assert "Name the independent branches" in source
+    assert "return `request_changes`" in source
+    assert "read-only subagents" in source
 
 
 def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
@@ -269,30 +183,3 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     decision = source.index("## Decision artifact")
     fanout = source.lower().index("reproduce")
     assert intro < fanout < decision
-
-
-def test_planning_analysis_prompts_explain_proposed_revision_enforcement() -> None:
-    """Unit C step 3 (DA-036, DA-037): the planning prompt must explain that
-    ``Proposed revision:`` is enforced on submission (``ANALYSIS019``) and
-    direct the unit split to ``Proposed revision`` (not ``Observation``).
-    """
-    source = TemplateContext.default().registry.get_template("planning_analysis")
-
-    # The validator-enforcement statement is present and surfaces the rule ID.
-    assert "ANALYSIS019" in source
-    assert "enforced on submission" in source
-
-    # The split directive puts the concrete unit split in Proposed revision.
-    assert (
-        "unit split in the finding's `Proposed revision:`" in source
-    )
-
-    # The legacy "in the finding's Observation" split directive is gone.
-    split_in_observation = source.find("in the finding's Observation")
-    if split_in_observation != -1:
-        before_split = source[:split_in_observation]
-        assert "unit split" not in before_split
-
-    # The completed-verdict exemption is acknowledged so the analyzer does not
-    # invent revisions for a completed decision.
-    assert "does not need a revision" in source or "approved as-is" in source

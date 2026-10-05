@@ -83,8 +83,6 @@ def point_current(current: Path, generation: Path) -> None:
         return
     staging = current.with_name(f".{current.name}.next")
     staging.unlink(missing_ok=True)
-    # deterministic-writer-ok: install staging symlink under the managed
-    # generations dir -- non-committable runtime state
     staging.symlink_to(generation, target_is_directory=True)
     staging.replace(current)  # filesystem-write-ok: atomically refresh the compatibility generation pointer.
 

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
-    from ralph.mcp.artifacts.plan._section_registry import SectionMode
 
 
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
@@ -23,14 +22,8 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
     return dict(content)
 
 
-def validate_plan_section(section: str, payload: object, mode: SectionMode = "replace") -> object:
-    """Retain section edit payloads without imposing schema requirements."""
-    return payload
-
-
 __all__ = [
     "PlanArtifactValidationError",
     "is_noop_plan",
     "normalize_plan_artifact_content",
-    "validate_plan_section",
 ]

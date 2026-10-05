@@ -25,7 +25,7 @@ linear plan states its real coupling.
    genuine restart.
 5. After a receipt, call `declare_complete` as the final action.
 
-Submission checks only readable, non-empty, sufficiently substantive,
-size-bounded text with recognizable plan intent. It does not enforce headings,
+Submission checks only readable, non-empty text with at least ten words,
+no more than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. It does not enforce headings,
 IDs, fields, graphs, ownership, or a worker/unit cap. Extraction is best effort,
 so useful prose is never replaced by partial structure.

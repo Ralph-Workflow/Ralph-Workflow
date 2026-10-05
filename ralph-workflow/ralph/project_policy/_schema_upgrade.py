@@ -14,16 +14,12 @@ stays under the 1000-line repository cap.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.operations import create_commit
-from ralph.git.scoped_auto_commit import ScopedCommitStatus, capture_pre_write_contents
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import markers as policy_markers
-from ralph.project_policy._auto_commit import commit_policy_writes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -200,25 +196,7 @@ def _freeze_policy_files(
     emit: EmitFn,
     outdated: Sequence[tuple[str, str, int]],
 ) -> None:
-    """Pin every outdated policy file at its installed schema version.
-
-    The freeze rewrite is a deterministic engine-owned write, so it is
-    committed immediately after the write with the fixed policy chore
-    subject (wt-012 DA-007/DA-008/DA-013): without the commit the frozen
-    files linger as uncommitted background dirt and leak into a later
-    agent commit. A file already dirty at HEAD before the freeze is
-    SKIPPED by the shared isolation primitive and stays in the user's
-    flow; a commit failure is reported (never silent, never a
-    half-staged index) and never blocks the run.
-    """
-    root: object = getattr(workspace, "root", None)
-    candidate_paths = [path for path, _marker, _version in outdated]
-    pre_contents: dict[str, str | None]
-    if isinstance(root, Path):
-        pre_contents = capture_pre_write_contents(root, candidate_paths)
-    else:
-        fromkeys_contents: dict[str, str | None] = dict.fromkeys(candidate_paths, None)
-        pre_contents = fromkeys_contents
+    """Pin every outdated policy file at its installed schema version."""
     frozen: list[str] = []
     for path, marker, installed_version in outdated:
         content = workspace.read(path)
@@ -231,31 +209,6 @@ def _freeze_policy_files(
             ),
         )
         frozen.append(path)
-    if frozen and isinstance(root, Path):
-        try:
-            result = commit_policy_writes(
-                root,
-                written_paths=frozen,
-                pre_contents=pre_contents,
-                create_commit_fn=create_commit,
-            )
-        except Exception as exc:  # defensive: the commit must never block the run
-            logger.warning("policy schema freeze auto-commit raised (non-fatal): {}", exc)
-        else:
-            if result.status is ScopedCommitStatus.CREATED:
-                logger.info(
-                    "policy schema freeze: committed frozen file(s) ({})",
-                    (result.sha or "")[:12],
-                )
-            elif result.status is ScopedCommitStatus.FAILED:
-                logger.warning(
-                    "policy schema freeze: auto-commit failed (non-fatal): {}", result.error
-                )
-            elif result.status is ScopedCommitStatus.SKIPPED:
-                logger.warning(
-                    "policy schema freeze: auto-commit skipped dirty path(s): {}",
-                    ", ".join(result.skipped_paths),
-                )
     frozen_list = "\n".join(f"  \u2022 {path}" for path in frozen)
     emit(
         f"Froze {len(frozen)} policy file(s) at their current schema \u2014 Ralph "

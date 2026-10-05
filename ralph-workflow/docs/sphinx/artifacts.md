@@ -5,13 +5,13 @@ This page documents the artifacts Ralph Workflow produces and the contract each 
 
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it walks you through the full pipeline before these internals make sense.
 
-Artifacts are the structured files Ralph Workflow leaves behind so later phases — and you — can understand what happened in a run. Instead of relying on terminal output alone, each phase submits a complete markdown document that Ralph Workflow validates against a per-type spec and stores as-is. The artifact **is** the readable markdown file — there is no separate machine-readable JSON envelope.
+Artifacts are the structured files Ralph Workflow leaves behind so later phases — and you — can understand what happened in a run. Instead of relying on terminal output alone, each phase submits a complete markdown document that Ralph Workflow checks against its per-type boundary and stores as-is. Plans receive only a text sanity check; other types retain their structural contracts. The artifact **is** the readable markdown file — there is no separate machine-readable JSON envelope.
 
 ## Artifact types
 
 | Artifact type | Submitted by | Purpose | Required? |
 |---|---|---|---|
-| `plan` | planning agent | Implementation plan with steps and work units | yes |
+| `plan` | planning agent | Implementation plan; steps and work units are optional | yes |
 | `development_result` | development agent | Summary of changes made (context for analysis) | policy-controlled |
 | `issues` | review agent | List of issues found in the development output | yes |
 | `fix_result` | fix agent | Summary of fixes applied | yes |
@@ -23,7 +23,7 @@ Artifacts are the structured files Ralph Workflow leaves behind so later phases 
 | `smoke_test_result` | smoke-test agent | Structured result of a smoke-test run | no |
 | `product_spec` | planning/product-spec agent | Structured product spec | no |
 
-> **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. A submitted artifact is still fully validated against its schema. `development_result` is policy-controlled: whether a phase requires it is set by `pipeline.toml` on the phase definition. Artifact contracts in `artifacts.toml` only describe the artifact itself.
+> **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. Required submission does not imply required structure: plans receive only the sanity check described below, while other artifacts retain their per-type validation. `development_result` is policy-controlled: whether a phase requires it is set by `pipeline.toml` on the phase definition. Artifact contracts in `artifacts.toml` only describe the artifact itself.
 
 Each type's markdown grammar is declared as an `MdArtifactSpec` in `ralph/mcp/artifacts/markdown/specs/` and registered in `ralph.mcp.artifacts.markdown.registry`.
 
@@ -86,11 +86,13 @@ The development phase can also enforce proof requirements through `[phases.devel
 
 ```toml
 [phases.development.artifact_proof_policy]
+require_plan_proof = true
 require_analysis_proof = true
 ```
 
-The bundled default enables analysis-finding coverage. Omitting the block in a project-local policy inherits the bundled default; to disable the check, set the field to `false` explicitly in `.agent/pipeline.toml`.
+The bundled defaults enable both checks. Omitting the block in a project-local policy inherits the bundled defaults; to disable proof enforcement, set both fields to `false` explicitly in `.agent/pipeline.toml`.
 
+- `require_plan_proof` requires `plan_items_proven` to cover all usable step IDs for serial execution, or usable unit IDs plus unowned steps for unit-based integration. Unit proof covers its owned steps; an isolated worker proves its assigned unit. When no usable IDs are extracted, exactly one `[plan]` proof covers the prose plan.
 - `require_analysis_proof` controls whether `analysis_items_addressed` must cover prior `how_to_fix` items when analysis feedback exists.
 
 ## Validation
@@ -98,8 +100,8 @@ The bundled default enables analysis-finding coverage. Omitting the block in a p
 `ralph_submit_md_artifact` and `ralph_verify_md_artifact` use the same
 artifact-specific boundary. Most artifact types have a structural markdown
 contract and return line-anchored diagnostics for invalid content. A `plan` is
-different: it accepts any readable, non-empty, sufficiently substantive,
-size-bounded text that is recognizably a plan. Plan headings, frontmatter,
+different: it accepts readable, non-empty text with at least ten words,
+no more than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. Plan headings, frontmatter,
 step IDs, fields, dependencies, ownership, and unit counts never cause
 rejection. Its extraction is best effort, so submitted prose is retained
 unchanged even if little or no structure can be recovered.
@@ -250,8 +252,9 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 ## Work Units in the plan artifact
 
 A `plan` may use `## Work Units` as a recommended convention for
-independent work. A unit can name `Directories:`, exact `Paths:`, and real
-`Depends on:` prerequisites. The executor uses this extracted information
+independent work. A unit can combine `Directories:` and exact `Paths:`, with real
+`Depends on:` prerequisites. When neither ownership field is present, the
+executor infers ownership from that unit's steps' `Files:` targets. The executor uses this extracted information
 best-effort: missing or inconsistent structure does not reject the plan.
 
 `max_parallel_workers` limits simultaneous workers, so additional ready work

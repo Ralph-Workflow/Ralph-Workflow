@@ -2,7 +2,7 @@
 {% if IS_WORKER %}Complete the entire assigned work unit.{% else %}Complete the entire assigned plan.{% endif %}
 Use small, proven increments as the method, not as a stopping point.
 
-## Implementation mode{% if IS_WORKER %} (isolated worker){% endif %}
+IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -19,8 +19,6 @@ Use small, proven increments as the method, not as a stopping point.
 {% endif %}
 {% include 'shared/_run_budget.j2' %}
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
-
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
 {{ render_payload_section("EXECUTION PLAN", PLAN, PLAN_PATH) }}
@@ -33,10 +31,10 @@ Use small, proven increments as the method, not as a stopping point.
 ) }}
 {% endif %}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
-Failure resolution mandate: inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
 {% endif %}
 {% if PRIOR_RESULT_STATUS %}
-Prior {% if IS_WORKER %}worker{% else %}development{% endif %} result — partial — not complete:
+PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 
@@ -115,13 +113,12 @@ YOUR TASK
 Complete only the assigned unit `{{unit_id}}`. Follow neighboring project
 patterns, keep changes inside the allowed directories, add or update focused
 tests for behavior changes, and run the narrow formatter/linter/type/test
-checks relevant to this unit. Never weaken a quality gate. Continue
-in-scope recovery per the canonical external-blocker rule in
-``shared/_no_exemption_for_failures.j2``; a free ``status: partial`` for any
-focused difficulty is not an exit. Return the unit result only when the
-assigned unit is fully verified, or with the permitted evidenced blocker.
+checks relevant to this unit. Never weaken a quality gate. If the unit remains
+blocked, submit a truthful `status: partial` result with the concrete blocker
+and one next step.
 {% endif %}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if not IS_WORKER %}
@@ -150,8 +147,5 @@ status: completed
 {% if IS_WORKER %}- [{{unit_id}}] Focused verification passed.
 {% else %}- [S-1] Focused verification passed.
 {% endif %}  Disposition: completed
-{% if not IS_WORKER %}- [plan-overview] Ran the project-wide verification; observed all checks green.
-  Disposition: completed
-{% endif %}
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path=(WORKER_FALLBACK_PATH if IS_WORKER else '.agent/tmp/development_result.md')) }}

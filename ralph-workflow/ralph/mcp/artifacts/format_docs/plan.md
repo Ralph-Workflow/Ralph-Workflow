@@ -3,17 +3,30 @@
 A plan is the executor's instruction set. Submit it with
 `ralph_submit_md_artifact` using `artifact_type: plan`.
 
-The only submission requirements are readable text, non-empty content, at least
-ten words, the raw UTF-8 size limit, and recognizable plan intent. The boundary
+The only submission requirements are readable text (valid UTF-8, no NUL bytes,
+mostly printable characters), non-empty content, at least ten words, no more
+than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. The boundary
 does not require headings, IDs, fields, dependencies, ownership, or a unit
-count. Prose remains authoritative; extraction is best effort.
+count. There are no structural errors or advisories. Prose remains
+authoritative; extraction is best effort. The planning analyzer judges coverage,
+truthfulness, actionability, parallel decomposition and execution conflicts.
 
 Parallel work is recommended by default. When independent work exists, use
 `## Work Units` as a helpful convention. Units may name `Directories:` and/or
 exact `Paths:`, real prerequisites, shared contracts before their consumers,
 and integration after fan-in. A wholly linear plan explains the coupling.
 
+At execution, ownership combines `Paths:` and `Directories:`; if neither is
+declared, the unit's steps' `Files:` supply the scope. Conflicting scopes run
+sequentially, and units beyond worker capacity run in waves. Protected paths
+are dropped from worker briefs. Unknown scope and unextractable work stay
+with the main session; none of these execution safeguards rejects the plan.
+
 ## Recommended parallel example
+
+This illustrative shape is optional, not a submission template. For a worked
+example using repository paths and check commands, read
+`.agent/artifact-formats/examples/plan.md`.
 
 ```markdown
 ---

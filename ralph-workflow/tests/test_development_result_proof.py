@@ -1,12 +1,4 @@
-"""Tests for development_result proof validation in execution phases.
-
-The development phase no longer keys proof validation on plan shape
-(step IDs / work-unit IDs) — see U-3. The plan-shape coverage was
-removed because the development-analysis feedback loop (U-2) is now
-the place where the plan's intent is followed. The surviving
-``require_analysis_proof`` field still rejects duplicates, unknown
-IDs, and missing analysis findings when analysis feedback exists.
-"""
+"""Tests for development_result proof validation in execution phases."""
 
 from __future__ import annotations
 
@@ -14,6 +6,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.tools import artifact
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -24,6 +22,8 @@ from ralph.policy.loader import load_policy
 from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.memory import MemoryWorkspace
+from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
+from tests._tool_artifact_2_helper_mocksession import MockSession
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -153,6 +153,67 @@ Location: src/example.py
     )
 
 
+def _write_work_units_with_main_fan_in(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: discovery
+Location: src/api/routes.py
+
+## Work Units
+- [web] Implement the web unit
+  Directories: src/web
+
+### [S-2] Implement web
+Change the web component.
+
+Type: discovery
+Location: src/web/client.py
+
+## Integration and Verification
+
+### [S-3] Integrate and verify
+Integrate both unit results in the main session.
+
+Type: discovery
+Location: reports/integration-proof.json
+Depends on: S-1, S-2
+""",
+    )
+
+
+def _write_work_unit_with_nested_criterion(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement and prove the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: discovery
+Location: reports/api-proof.json
+
+- [AC-01] The API report proves completion
+  Satisfied by: S-1
+  Evidence: reports/api-proof.json
+""",
+    )
+
+
 def _write_subplan_plan(workspace: MemoryWorkspace) -> None:
     workspace.write(
         ".agent/artifacts/plan.md",
@@ -273,14 +334,7 @@ def test_schema_invalid_development_result_returns_phase_failure() -> None:
     assert failure_events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
 
 
-def test_analysis_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
-    """The only surviving artifact_proof_policy field is ``require_analysis_proof``.
-
-    U-3 removed ``require_plan_proof``; the development phase no longer
-    keys proof validation on plan shape. Disabling
-    ``require_analysis_proof`` keeps a result that omits a known analysis
-    finding from failing proof validation; the plan-shape proof is gone.
-    """
+def test_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     default_pipeline = (
@@ -288,14 +342,14 @@ def test_analysis_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> Non
     )
     agent_dir.joinpath("pipeline.toml").write_text(
         default_pipeline.read_text(encoding="utf-8")
+        .replace("require_plan_proof = true", "require_plan_proof = false")
         .replace("require_analysis_proof = true", "require_analysis_proof = false"),
         encoding="utf-8",
     )
     policy = load_policy(agent_dir)
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
-    _write_analysis_feedback(workspace)
-    _write_dev_result(workspace)  # no analysis_items_addressed, no matching step ID
+    _write_dev_result(workspace)
     ctx = _make_context(workspace, policy=policy)
 
     events = handle_execution_phase(_invoke(), ctx)
@@ -316,60 +370,69 @@ def test_planning_phase_keeps_accepted_prose_active() -> None:
     assert events == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_prose_plan_accepts_any_plan_item_id_without_matching_a_step() -> None:
-    """A development_result is accepted with any bracketed ID under a prose plan.
-
-    The pre-U-3 gate required an exact ``[plan]`` proof entry for an
-    accepted prose plan; the developer is now free to use any stable
-    reference the work actually has (a prose heading, a section anchor,
-    or the canonical ``plan`` ID), and the validator never rejects an ID
-    solely for not matching a plan-parsed reference.
-    """
+def test_prose_plan_requires_exactly_one_plan_level_proof() -> None:
     workspace = MemoryWorkspace()
     workspace.write(
         ".agent/artifacts/plan.md",
         "Implement the requested behavior and demonstrate correctness with focused tests and full verification.",
     )
-    for plan_item in ("plan", "plan-overview", "prose-section-overview"):
-        result_workspace = MemoryWorkspace()
-        result_workspace.write(
-            ".agent/artifacts/plan.md",
-            "Implement the requested behavior and demonstrate correctness with focused tests and full verification.",
-        )
-        _write_dev_result(
-            result_workspace,
-            plan_items=[{"plan_item": plan_item, "proof": "Verified requested behavior."}],
-        )
-        events = handle_execution_phase(_invoke(), _make_context(result_workspace))
-        assert events == [ExecutionResultEvent(phase="development", status="completed")], plan_item
+    _write_dev_result(workspace)
+    assert any(
+        isinstance(event, PhaseFailureEvent)
+        for event in handle_execution_phase(_invoke(), _make_context(workspace))
+    )
+    _write_dev_result(
+        workspace, plan_items=[{"plan_item": "plan", "proof": "Verified requested behavior."}]
+    )
+    assert handle_execution_phase(_invoke(), _make_context(workspace)) == [
+        ExecutionResultEvent(phase="development", status="completed")
+    ]
 
 
-def test_steps_plan_accepts_any_plan_item_id() -> None:
-    """A development_result is accepted for any bracketed ID under a steps plan.
-
-    Pre-U-3 this test asserted ``PROOF INCOMPLETE``; the development
-    phase no longer keys proof validation on plan shape, so the result
-    is accepted regardless of the bracket ID the developer chose.
-    """
+def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
-    _write_dev_result(
-        workspace,
-        plan_items=[{"plan_item": "free-form-section", "proof": "Implemented and verified."}],
-    )
+    _write_dev_result(workspace)
     ctx = _make_context(workspace)
 
     events = handle_execution_phase(_invoke(), ctx)
 
-    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+    failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
+    assert failure_events
+    assert failure_events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert "PROOF INCOMPLETE" in failure_events[0].reason
+    hint = workspace.read(".agent/tmp/last_retry_error_development.txt")
+    assert hint.splitlines()[0] == "VALIDATION FAILURE"
+    assert "PREVIOUS ATTEMPT FAILED: proof entries are incomplete or invalid" in hint
 
 
-def test_plan_proof_rejects_duplicate_plan_item_entries() -> None:
-    """Duplicate proof IDs are still rejected — they remain a structural fault.
+def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_dev_result(workspace)
+    ctx = _make_context(workspace)
 
-    The structural duplication check predates U-3 and still rejects two
-    plan_items_proven bullets that share the same bracketed ID.
-    """
+    events = handle_execution_phase(_invoke(), ctx)
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+
+    state = PipelineState(
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=["dev"], current_index=0, retries=0)},
+        last_agent_session_id="sess-proof-123",
+    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+
+    new_state, _ = reducer_reduce(state, failure_event, recovery=controller)
+
+    assert new_state.agent_retry_intent.action == "resume"
+    assert new_state.agent_retry_intent.session_id == "sess-proof-123"
+    assert new_state.last_agent_session_id == "sess-proof-123"
+    assert new_state.last_failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert new_state.last_error is not None
+    assert "Artifact validation fault" in new_state.last_error
+
+
+def test_steps_plan_rejects_duplicate_plan_item_entries() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_dev_result(
@@ -388,16 +451,59 @@ def test_plan_proof_rejects_duplicate_plan_item_entries() -> None:
     assert "duplicate" in failure_events[0].reason.lower()
 
 
-def test_nested_criterion_does_not_create_a_global_step_proof_obligation() -> None:
-    """A work-unit plan is accepted with a single proof entry keyed to a unit ID.
+def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "S-99", "proof": "Implemented."}],
+    )
+    ctx = _make_context(workspace)
 
-    The pre-U-3 test asserted the result is accepted because nested
-    criteria do not create a global step proof obligation. With U-3, the
-    validator no longer reads plan shape at all, so the result is
-    accepted for the same reason and any other shape too.
-    """
+    events = handle_execution_phase(_invoke(), ctx)
+
+    failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
+    assert failure_events
+    assert "PROOF INVALID" in failure_events[0].reason
+    assert "Unknown plan_item reference" in failure_events[0].reason
+
+
+def test_main_work_unit_result_rejects_one_of_five_unit_proofs() -> None:
     workspace = MemoryWorkspace()
     _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "api", "proof": "Completed api."}],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "contract" in failure_event.reason
+    assert "integration" in failure_event.reason
+    assert "web" in failure_event.reason
+
+
+def test_main_work_unit_result_accepts_all_five_unit_proofs() -> None:
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": unit_id, "proof": f"Completed {unit_id}."}
+            for unit_id in ("api", "web", "docs", "contract", "integration")
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_nested_criterion_does_not_create_a_global_step_proof_obligation() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_unit_with_nested_criterion(workspace)
     _write_dev_result(
         workspace,
         plan_items=[{"plan_item": "api", "proof": "Implemented and proved the API."}],
@@ -408,20 +514,33 @@ def test_nested_criterion_does_not_create_a_global_step_proof_obligation() -> No
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
-def test_work_unit_plan_accepts_any_proof_entry() -> None:
-    """A work-unit plan is accepted for any single proof entry.
-
-    The pre-U-3 test asserted the result is accepted for the canonical
-    step IDs the plan declares. With U-3, any bracketed ID is fine, and
-    the test re-models the same plan under a free-form reference to
-    prove the validator no longer keys on plan shape.
-    """
+def test_main_work_unit_result_requires_unowned_fan_in_step_proof() -> None:
     workspace = MemoryWorkspace()
-    _write_nested_work_unit_plan(workspace)
+    _write_work_units_with_main_fan_in(workspace)
     _write_dev_result(
         workspace,
         plan_items=[
-            {"plan_item": "free-form-overview", "proof": "All work units completed."}
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-3" in failure_event.reason
+
+
+def test_main_work_unit_result_accepts_units_plus_unowned_fan_in_steps() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_units_with_main_fan_in(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+            {"plan_item": "S-3", "proof": "Integrated both units and ran the final checks."},
         ],
     )
 
@@ -430,20 +549,63 @@ def test_work_unit_plan_accepts_any_proof_entry() -> None:
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
-def test_isolated_worker_accepts_any_proof_entry() -> None:
-    """An isolated worker result is accepted for any bracketed ID.
+def test_isolated_worker_accepts_exactly_its_assigned_unit_proof() -> None:
+    """Each worker proves one assigned unit while the main result proves all units."""
+    for unit_id in ("api", "web", "docs", "contract", "integration"):
+        workspace = MemoryWorkspace()
+        _write_nested_work_unit_plan(workspace)
+        worker_artifact_path = f".agent/workers/{unit_id}/artifacts/development_result.md"
+        _write_dev_result(
+            workspace,
+            plan_items=[{"plan_item": unit_id, "proof": f"Completed {unit_id}."}],
+            artifact_path=worker_artifact_path,
+        )
 
-    Pre-U-3 the worker had to cite the assigned unit ID and only that
-    ID. The proof-shape constraint is gone: the worker is still bound by
-    ``output_artifact_path`` and the analysis-finding coverage check,
-    but the plan-shape proof check no longer runs.
-    """
+        events = handle_execution_phase(
+            _invoke(),
+            _make_context(workspace),
+            output_artifact_path=worker_artifact_path,
+            assigned_work_unit_id=unit_id,
+        )
+
+        assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_assignment_is_authoritative_for_linear_plan_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    worker_artifact_path = ".agent/workers/runtime-unit/artifacts/development_result.md"
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "runtime-unit",
+                "proof": "Completed the runtime-assigned unit.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="runtime-unit",
+    )
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_rejects_an_extra_unit_proof() -> None:
     workspace = MemoryWorkspace()
     _write_nested_work_unit_plan(workspace)
     worker_artifact_path = ".agent/workers/api/artifacts/development_result.md"
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "any-free-form-id", "proof": "Completed the API work."}],
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed api."},
+            {"plan_item": "web", "proof": "Also changed web."},
+        ],
         artifact_path=worker_artifact_path,
     )
 
@@ -454,26 +616,96 @@ def test_isolated_worker_accepts_any_proof_entry() -> None:
         assigned_work_unit_id="api",
     )
 
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "exactly one proof" in failure_event.reason
+    assert "web" in failure_event.reason
+    assert workspace.exists(".agent/workers/api/tmp/last_retry_error_development.txt")
+    assert not workspace.exists(".agent/tmp/last_retry_error_development.txt")
+
+
+def test_work_unit_plan_preserves_complete_global_step_proof_for_serial_execution() -> None:
+    """Preservation pin: accepted mixed plans may still prove all global step IDs."""
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": f"S-{number}", "proof": f"Completed step {number}."}
+            for number in range(1, 6)
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
-def test_subplan_plan_accepts_any_proof_entry() -> None:
-    """A subplan plan is accepted for any bracketed ID.
-
-    Pre-U-3 the test asserted the result was rejected for not covering
-    every subplan step. With U-3, the proof-shape check is gone, and
-    the result is accepted regardless of the bracket ID.
-    """
+def test_subplan_main_result_requires_every_step_not_only_synthetic_unit_ids() -> None:
     workspace = MemoryWorkspace()
     _write_subplan_plan(workspace)
     _write_dev_result(
         workspace,
         plan_items=[
-            {"plan_item": "subplan-overview", "proof": "All subplans completed."},
+            {"plan_item": "S-1", "proof": "Completed API subplan."},
+            {"plan_item": "S-3", "proof": "Completed UI subplan."},
         ],
     )
 
     events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-2" in failure_event.reason
+
+
+def test_subplan_main_result_rejects_complete_synthetic_worker_unit_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            },
+            {
+                "plan_item": "subplan-s-3",
+                "proof": "Completed the UI subplan.",
+            },
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-1" in failure_event.reason
+    assert "S-2" in failure_event.reason
+    assert "S-3" in failure_event.reason
+    assert "subplan-s-1" in failure_event.reason
+
+
+def test_subplan_isolated_worker_uses_synthetic_unit_id_not_every_owned_step() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    worker_artifact_path = ".agent/workers/subplan-s-1/artifacts/development_result.md"
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="subplan-s-1",
+    )
 
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
@@ -563,53 +795,63 @@ def test_analysis_feedback_passes_with_exact_finding_id() -> None:
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
-def test_analysis_feedback_passes_with_any_plan_item_id_and_exact_finding_id() -> None:
-    """Plan shape is gone; only the analysis-finding ID is enforced.
+@pytest.mark.parametrize("proof_refs", [("plan",), ("api", "web", "S-3"), ("S-1", "S-2", "S-3")])
+def test_receipted_plan_reaches_development_with_supported_proof(
+    proof_refs: tuple[str, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unavailable(_path: Path) -> None:
+        raise OSError("No optional history policy in the memory workspace")
 
-    Combines the U-3 contract: any bracket in ``plan_items_proven`` is
-    fine, but ``analysis_items_addressed`` must still cover the prior
-    ``What Came Up Short`` finding with its exact stable ID.
-    """
+    monkeypatch.setattr(artifact, "load_policy", unavailable)
     workspace = MemoryWorkspace()
-    _write_plan_steps(workspace)
-    _write_analysis_feedback(workspace)
+    if proof_refs == ("plan",):
+        document = (
+            "Inspect code then implement independent changes and verify all behavior carefully."
+        )
+    else:
+        _write_work_units_with_main_fan_in(workspace)
+        document = workspace.read(".agent/artifacts/plan.md")
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+    session = MockSession("planning")
+    session.run_id = "receipt-to-development"
+    submitted = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": document}, deps=deps
+    )
+    assert not submitted.is_error
+    assert artifact_receipt_present(workspace.root, session.run_id, "plan", backend=backend)
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        backend.read_text(workspace.root / ".agent/artifacts/plan.md"),
+    )
+    assert handle_execution_phase(
+        InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="plan.txt"),
+        _make_context(workspace),
+    ) == [PipelineEvent.AGENT_SUCCESS]
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "free-form-overview", "proof": "Implemented."}],
-        analysis_items=[
-            {"how_to_fix_item": "DA-001", "proof": "Added the missing test."},
+        plan_items=[
+            {"plan_item": ref, "proof": "Focused verification passed."} for ref in proof_refs
         ],
     )
-    ctx = _make_context(workspace)
-
-    events = handle_execution_phase(_invoke(), ctx)
-
-    assert events == [ExecutionResultEvent(phase="development", status="completed")]
-
-
-def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
-    """The recovery-controller flow still uses an analysis-feedback failure."""
-    workspace = MemoryWorkspace()
-    _write_plan_steps(workspace)
-    _write_analysis_feedback(workspace)
-    _write_dev_result(workspace)  # missing the analysis finding entirely
-    ctx = _make_context(workspace)
-
-    events = handle_execution_phase(_invoke(), ctx)
-    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
-
-    state = PipelineState(
-        phase="development",
-        phase_chains={"development": AgentChainState(agents=["dev"], current_index=0, retries=0)},
-        last_agent_session_id="sess-proof-123",
+    session.drain = "development"
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {
+            "artifact_type": "development_result",
+            "content": workspace.read(".agent/artifacts/development_result.md"),
+        },
+        deps=deps,
     )
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
-
-    new_state, _ = reducer_reduce(state, failure_event, recovery=controller)
-
-    assert new_state.agent_retry_intent.action == "resume"
-    assert new_state.agent_retry_intent.session_id == "sess-proof-123"
-    assert new_state.last_agent_session_id == "sess-proof-123"
-    assert new_state.last_failure_category == FailureCategory.ARTIFACT_VALIDATION
-    assert new_state.last_error is not None
-    assert "Artifact validation fault" in new_state.last_error
+    assert not result.is_error
+    assert artifact_receipt_present(
+        workspace.root, session.run_id, "development_result", backend=backend
+    )
+    workspace.write(
+        ".agent/artifacts/development_result.md",
+        backend.read_text(workspace.root / ".agent/artifacts/development_result.md"),
+    )
+    assert handle_execution_phase(_invoke(), _make_context(workspace)) == [
+        ExecutionResultEvent(phase="development", status="completed")
+    ]

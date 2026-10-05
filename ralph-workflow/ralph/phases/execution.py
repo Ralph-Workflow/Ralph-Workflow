@@ -3,10 +3,10 @@
 Handles any phase with role='execution'. Behavior is determined by the drain's
 artifact contract:
 
-- Drain produces artifact_type='plan': plan validation, noop detection, plan draft
-  management (PreparePromptEffect clears stale drafts).
-- Drain produces artifact_type='development_result': plan INPUT validation (noop
-  short-circuit + work-unit policy check) before validating the output artifact.
+- Drain produces artifact_type='plan': artifact integrity, noop detection, plan
+  draft management (PreparePromptEffect clears stale drafts).
+- Drain produces artifact_type='development_result': plan input integrity and noop
+  routing before validating the output artifact. Accepted plan shape is not gated.
 - All other drains: validate the configured output artifact contract only.
 
 On PreparePromptEffect: clears a stale plan draft when the phase produces a plan.
@@ -58,6 +58,7 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
+from ralph.pipeline.work_units import canonical_plan_references
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -285,8 +286,6 @@ def _validate_plan_input(
         detail = f"Missing planning artifact at {PLAN_ARTIFACT_PATH}"
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
-            # deterministic-writer-ok: .agent/ retry-hint state --
-            # non-committable runtime state
             ctx.workspace.write(
                 retry_hint_path_override
                 or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy),
@@ -421,8 +420,6 @@ def _write_retry_hint(
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
                 hint = f"{existing}\n\n{hint}"
-        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
-        # runtime state
         ctx.workspace.write(hint_path, hint)
 
 
@@ -440,9 +437,68 @@ def _write_proof_failure_hint(
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
                 hint = f"{existing}\n\n{hint}"
-        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
-        # runtime state
         ctx.workspace.write(hint_path, hint)
+
+
+def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    errors: list[str] = []
+    submitted_set = frozenset(submitted_list)
+    if len(submitted_set) < len(submitted_list):
+        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
+    missing = required_refs - submitted_set
+    extra = submitted_set - required_refs
+    if missing:
+        errors.append(
+            "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
+            f"{sorted(missing)}. Each plan_item must exactly match a stable S-id."
+        )
+    if extra:
+        errors.append(
+            "PROOF INVALID: Unknown plan_item reference(s) not matching any plan step: "
+            f"{sorted(extra)}."
+        )
+    return errors
+
+
+def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    errors: list[str] = []
+    submitted_set = frozenset(submitted_list)
+    if len(submitted_set) < len(submitted_list):
+        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
+    missing = required_refs - submitted_set
+    if missing:
+        errors.append(
+            "PROOF INCOMPLETE: The following work-unit or main-session plan reference(s) "
+            f"have no proof entry: {sorted(missing)}. The main integration result must "
+            "prove every work_unit unit_id and every global step not owned by a work unit."
+        )
+    extra = submitted_set - required_refs
+    if extra:
+        errors.append(
+            "PROOF INVALID: Unknown plan_item reference(s) not matching a required work-unit "
+            f"or main-session step reference: {sorted(extra)}. "
+            f"Valid references: {sorted(required_refs)}."
+        )
+    return errors
+
+
+def _assigned_work_unit_proof_errors(
+    required_refs: frozenset[str],
+    submitted_list: list[str],
+    assigned_work_unit_id: str,
+) -> list[str]:
+    if required_refs and assigned_work_unit_id not in required_refs:
+        return [
+            "PROOF INVALID: Assigned worker unit "
+            f"{assigned_work_unit_id!r} is not a canonical work_unit unit_id. "
+            f"Valid unit_ids: {sorted(required_refs)}."
+        ]
+    if submitted_list == [assigned_work_unit_id]:
+        return []
+    return [
+        "PROOF INVALID: An isolated worker must submit exactly one proof for its "
+        f"assigned unit {assigned_work_unit_id!r}; received {submitted_list!r}."
+    ]
 
 
 def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
@@ -462,6 +518,54 @@ def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[s
     if extra:
         errors.append(f"PROOF INVALID: Unknown analysis finding ID(s): {sorted(extra)}.")
     return errors
+
+
+def _plan_proof_errors(
+    ctx: PhaseContext,
+    dev_result: DevelopmentResult,
+    *,
+    assigned_work_unit_id: str | None = None,
+) -> list[str]:
+    submitted = [proof.plan_item for proof in dev_result.plan_items_proven]
+    work_unit_ids, owned_step_refs = _get_canonical_work_unit_refs(ctx)
+    if assigned_work_unit_id is not None:
+        return _assigned_work_unit_proof_errors(
+            work_unit_ids,
+            submitted,
+            assigned_work_unit_id,
+        )
+    step_refs = _get_canonical_step_refs(ctx)
+    submitted_set = frozenset(submitted)
+    if work_unit_ids and not (submitted_set and submitted_set <= step_refs):
+        required_refs = work_unit_ids | (step_refs - owned_step_refs)
+        return _work_unit_proof_errors(required_refs, submitted)
+    if step_refs:
+        return _step_proof_errors(step_refs, submitted)
+    if work_unit_ids:
+        return _work_unit_proof_errors(work_unit_ids, submitted)
+    return _step_proof_errors(frozenset({"plan"}), submitted)
+
+
+def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
+    return _get_plan_references(ctx)[0]
+
+
+def _get_canonical_work_unit_refs(
+    ctx: PhaseContext,
+) -> tuple[frozenset[str], frozenset[str]]:
+    _, units, owned = _get_plan_references(ctx)
+    return units, owned
+
+
+def _get_plan_references(
+    ctx: PhaseContext,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    try:
+        wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+        content = unwrap_phase_artifact_content(wrapper, expected_type="plan")
+        return canonical_plan_references(content)
+    except (PhaseArtifactError, ValueError):
+        return frozenset(), frozenset(), frozenset()
 
 
 def _get_canonical_analysis_finding_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
@@ -495,8 +599,15 @@ def _validate_development_result_proof(
     assigned_work_unit_id: str | None = None,
     retry_hint_path_override: str | None = None,
 ) -> list[Event] | None:
-    del assigned_work_unit_id  # proof gating no longer keys on plan shape; see U-3
     errors: list[str] = []
+    if proof_policy.require_plan_proof:
+        errors.extend(
+            _plan_proof_errors(
+                ctx,
+                dev_result,
+                assigned_work_unit_id=assigned_work_unit_id,
+            )
+        )
     if proof_policy.require_analysis_proof:
         required_refs = _get_canonical_analysis_finding_refs(ctx, phase)
         if required_refs:

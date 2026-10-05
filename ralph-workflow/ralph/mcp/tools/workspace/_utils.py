@@ -155,8 +155,6 @@ def check_edit_area_restriction(session: object, path: str) -> None:
 
 def _write_file_to_workspace(workspace: Workspace, path: str, content: str) -> None:
     try:
-        # deterministic-writer-ok: agent-brokered tool write; the agent's own
-        # commit flow owns the change
         workspace.write(path, content)
     except Exception as exc:
         raise ToolError(f"Failed to write file '{path}': {exc}") from exc

@@ -157,8 +157,6 @@ def _write_prompt(workspace: Workspace, prompt_text: str) -> str:
     parent_dir = "/".join(path.split("/")[:-1])
     if parent_dir:
         workspace.mkdirs(parent_dir)
-    # deterministic-writer-ok: .agent/ remediation-prompt materialization --
-    # non-committable runtime state
     workspace.write(path, prompt_text)
     return path
 

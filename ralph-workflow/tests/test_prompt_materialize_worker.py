@@ -168,7 +168,7 @@ status: request_changes
     assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
     assert "Workers never dispatch sub-agents" in rendered
     assert "unit's focused verification" in rendered
-    assert "you must not submit the artifact or declare completion" in rendered
+    assert "you MUST NOT submit the artifact or declare completion" in rendered
 
 
 def test_worker_partial_result_takes_precedence_over_shared_continuation_context(
@@ -224,7 +224,7 @@ status: partial
     )
     rendered = workspace.read(path)
 
-    assert "Prior worker result \u2014 partial \u2014 not complete" in rendered
+    assert "PRIOR WORKER RESULT — PARTIAL — NOT COMPLETE" in rendered
     assert "Worker-local implementation is incomplete." in rendered
     assert "Finish the worker-local API test." in rendered
     assert "worker-session-7" in rendered

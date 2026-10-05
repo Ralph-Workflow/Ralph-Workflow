@@ -579,9 +579,9 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     ``_FILE_SOURCE_CACHE`` so ``_test_file_weight`` does not re-read the same
     file from disk during shard weight computation. Per-file weights are
     also populated into ``_FILE_WEIGHT_CACHE`` during the same single pass:
-    the common non-E2E path counts ``test_`` function definitions and parses
-    only parametrization decorators to include their literal case counts,
-    while files already requiring
+    the common non-E2E path uses a lightweight regex over the source to
+    count ``test_`` function definitions (parametrize multipliers are not
+    material to LPT placement), while files already requiring
     ``ast.parse`` for E2E classification get an exact AST-derived weight
     for free. On a 1300-file tree this saves ~5s of redundant ``ast.parse``
     work in the parent process, which directly lowers the slowest-shard
@@ -740,22 +740,33 @@ _TEST_DEF_PATTERN = re.compile(r"^(?:\s*)(?:async )?def test_")
 
 
 def _fast_test_count(source: str) -> int:
+    """Count test definitions and literal parametrized collection cases.
+
+    This AST-free estimate is used during static discovery for LPT shard
+    placement. A decorator's literal case list is multiplied into the
+    immediately following test definition, preventing large parametrized
+    modules from being assigned a deceptively small weight.
+    """
+    lines = source.splitlines()
     total = 0
     pending_multiplier = 1
-    decorator_lines: list[str] = []
-    for line in source.splitlines():
+    in_parametrize = False
+    bracket_depth = 0
+    case_count = 0
+    for line in lines:
         stripped = line.strip()
         if stripped.startswith("@pytest.mark.parametrize"):
-            decorator_lines = [stripped[1:]]
-        elif decorator_lines:
-            decorator_lines.append(stripped)
-        if decorator_lines:
-            try:
-                decorator = ast.parse("\n".join(decorator_lines), mode="eval").body
-            except SyntaxError:
-                continue
-            pending_multiplier *= _literal_parametrize_case_count(decorator)
-            decorator_lines.clear()
+            in_parametrize = True
+            bracket_depth = 0
+            case_count = 0
+        if in_parametrize:
+            bracket_depth += line.count("[") + line.count("(") + line.count("{")
+            bracket_depth -= line.count("]") + line.count(")") + line.count("}")
+            if "[" in line:
+                case_count += max(0, line.count(","))
+            if bracket_depth <= 0 and "]" in line:
+                pending_multiplier *= max(1, case_count)
+                in_parametrize = False
         if _TEST_DEF_PATTERN.match(line):
             total += pending_multiplier
             pending_multiplier = 1

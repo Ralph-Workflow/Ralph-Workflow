@@ -24,6 +24,7 @@ from ralph.mcp.artifacts.format_docs import (
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.mcp.artifacts.markdown.specs import ANALYSIS_DECISION_SPECS
+from ralph.skills import get_skill_content
 from tests._artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
@@ -268,6 +269,14 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
 
 
 def test_plan_doc_teaches_sanity_only_parallel_guidance() -> None:
+    index = " ".join(load_bundled_format_index().split())
+    skill = " ".join(get_skill_content("submit-plan-artifact").split())
+    assert "Plans are exempt from the shared grammar" in index
+    assert "no structural errors or advisories" in index
+    assert "at least ten words" in index
+    assert "only `PLAN001`" not in index
+    assert "at least ten words" in skill
+    assert "sufficiently substantive" not in skill
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for phrase in (

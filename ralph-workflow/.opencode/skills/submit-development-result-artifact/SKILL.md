@@ -1,7 +1,7 @@
 ---
 name: submit-development-result-artifact
 description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a completed result was rejected for a missing section or an unproven plan or analysis item
-version: 2.3.0
+version: 2.1.0
 ---
 
 # submit-development-result-artifact
@@ -52,18 +52,12 @@ status decides whether the run ends.
 Proof entries reference other artifacts by their stable item IDs — the ID
 goes in the `[ID]` slot and the proof is the item text:
 
-- `## Plan Items Proven`: the bracketed ID is **shape-independent** — a
-  step ID (`S-1`, `S-2`, …) when the plan declares one, a work-unit
-  bracket ID when the plan uses `## Work Units` / `## Parallel Plan`,
-  the ID `plan` for an accepted prose plan, or a subplan / section
-  heading. The validator never rejects an ID solely for not matching a
-  plan-parsed ID; the proof is the item text, which must cite concrete,
-  reproducible evidence. Add an indented
+- `## Plan Items Proven`: the item ID is the plan step's stable ID
+  (`S-1`, `S-2`, …) exactly as it appears in the plan's `## Steps`
+  section. The text states concrete evidence. Add an indented
   `Disposition: completed|adapted|not_applicable|blocked` field. Add an
   indented `Rationale:` for adapted, not-applicable, or blocked items. A
   completed result cannot contain blocked work; submit a partial result.
-  Coverage of the plan's intent is followed through the
-  development-analysis feedback loop, not by exact ID matching here.
 - `## Analysis Items Addressed`: the item ID is the stable ID of the
   `## What Came Up Short` finding in the analysis-decision artifact you are
   answering. The text states concrete evidence that the finding is closed.

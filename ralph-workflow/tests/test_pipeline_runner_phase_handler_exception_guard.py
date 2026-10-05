@@ -139,7 +139,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     workspace.write("PROMPT.md", "Create a fresh plan")
     workspace.write(
         ".agent/tmp/planning_prompt.md",
-        "You are in Planning edit mode. Revise the existing execution plan.",
+        "You are in PLANNING EDIT MODE. Revise the existing execution plan.",
     )
     effect = InvokeAgentEffect(
         agent_name="claude",
@@ -162,7 +162,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
 
     rendered = workspace.read(".agent/tmp/planning_prompt.md")
     assert "You are in PLANNING MODE" in rendered
-    assert "Planning edit mode" not in rendered
+    assert "PLANNING EDIT MODE" not in rendered
 
 
 def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_analysis_loopback(
@@ -206,7 +206,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     )
 
     rendered = workspace.read(".agent/tmp/planning_prompt.md")
-    assert "Planning edit mode" in rendered
+    assert "PLANNING EDIT MODE" in rendered
     assert "You are in PLANNING MODE" not in rendered
 
 
@@ -227,7 +227,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     )
     workspace.write(
         ".agent/tmp/development_prompt.md",
-        "You are in implementation mode. Execute the plan and make progress.",
+        "You are in IMPLEMENTATION MODE. Execute the plan and make progress.",
     )
     effect = InvokeAgentEffect(
         agent_name="claude",
@@ -253,8 +253,8 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     )
 
     rendered = workspace.read(".agent/tmp/development_prompt.md")
-    assert "continuing a development iteration" in rendered
-    assert "You are in implementation mode" not in rendered
+    assert "continuing a DEVELOPMENT iteration" in rendered
+    assert "You are in IMPLEMENTATION MODE" not in rendered
 
 
 class TestPhaseHandlerExceptionGuard:

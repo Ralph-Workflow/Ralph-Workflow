@@ -2,12 +2,12 @@
 Complete the entire current plan. Use small, proven increments as the method,
 not as a stopping point.
 
-You are in implementation mode.
+You are in IMPLEMENTATION MODE.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 {% if LAST_RETRY_ERROR %}
-Important: the previous attempt did not complete successfully.
+IMPORTANT: The previous attempt did not complete successfully.
 
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
@@ -23,8 +23,6 @@ Important: the previous attempt did not complete successfully.
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 {% include 'shared/_run_budget.j2' %}
-
-{% include 'shared/_developer_iteration_guidance.j2' %}
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
@@ -61,11 +59,13 @@ Only a concrete external blocker justifies a continuation gap or `Next steps:`;
 the missing plan step alone does not justify deferring required work.
 {% endif %}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
+
 Before submitting, run the cheap independent pre-submit review against the
 plan and proof contract — an open gap must close before the artifact is
 submitted or completion is declared. Run the review as an independent
 read-only sub-agent with fresh context on every iteration. Until that
-review closes the remaining gap, you must not submit the artifact or
+review closes the remaining gap, you MUST NOT submit the artifact or
 declare completion.
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
@@ -75,7 +75,7 @@ declare completion.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
-## Development result artifact — proof requirements
+## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
 {% include 'shared/_development_result_proof.j2' %}
 
@@ -93,8 +93,6 @@ status: completed
 
 ## Plan Items Proven
 - [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
-  Disposition: completed
-- [plan-section-api] Ran pytest tests/api -q; all assertions passed.
   Disposition: completed
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

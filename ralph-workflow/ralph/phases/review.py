@@ -139,8 +139,6 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
                 hint = f"{existing}\n\n{hint}"
-        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
-        # runtime state
         ctx.workspace.write(hint_path, hint)
 
 

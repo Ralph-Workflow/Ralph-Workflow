@@ -347,19 +347,15 @@ The development phase supports a proof policy block:
 
 ```toml
 [phases.development.artifact_proof_policy]
+require_plan_proof = true
 require_analysis_proof = true
 ```
-
-Older pipeline files may also contain `require_plan_proof = true` or `false`.
-Ralph Workflow accepts and discards this retired boolean setting; remove it when updating
-your configuration. It no longer controls plan coverage. Other unknown proof
-policy fields are still rejected, and `require_analysis_proof` remains active.
 
 Each phase can declare a `display_style` override to control its banner colour. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
 
 ## `artifacts.toml` in plain language
 
-`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`). Canonical artifacts are validated markdown documents stored at `.agent/artifacts/<artifact_type>.md`. See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
+`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`). Canonical artifacts are markdown documents stored at `.agent/artifacts/<artifact_type>.md`. Plans receive only a sanity check: readable, non-empty text with at least ten words, no more than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. Other artifact types retain their structural validation. Plan quality is assessed by the planning analyzer, not configuration rules. See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
 
 ## `mcp.toml` in plain language
 

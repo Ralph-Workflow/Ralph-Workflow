@@ -118,8 +118,6 @@ def seed_starter_into(workspace: Workspace, name: str) -> bool:
     if workspace.exists(target_path):
         return False
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
-    # deterministic-writer-ok: starter seed write; committed by the preflight
-    # via commit_policy_writes (preflight.run_policy_readiness_preflight)
     workspace.write(target_path, read_starter(name))
     return True
 

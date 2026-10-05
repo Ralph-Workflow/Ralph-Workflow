@@ -134,17 +134,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # capture/compare logic here so a second split would scatter
         # the metric block across modules with no testable boundary.
         "ralph/mcp/explore/_bench_r6_metrics.py",
-        # wt-12: ``classify_target_for_commit`` (72 lines incl. its
-        # contract docstring) pushed the module four lines past the
-        # 1000-line cap; the extraction boundary (``_dirty_paths``) is
-        # already taken, and splitting the classifier into its own
-        # module would scatter the explicit-outcome commit contract.
-        "ralph/git/scoped_auto_commit.py",
-        # wt-12: the test-suite registry gained the two new deterministic-
-        # writer audit/isolation files, pushing this pinned-tuple guard
-        # four lines past the cap; the pinned-tuple assertions are
-        # interdependent and cannot split without losing the invariant.
-        "tests/test_test_suites_orchestration.py",
     }
 )
 
@@ -1142,18 +1131,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._installer",
             ("_prune_removed_baseline_skills",),
         ),
-        # wt-12 U2: the install + auto-commit boundary test split from
-        # ``test_skills_auto_commit`` (which the 1000-line audit cap
-        # requires) reaches the same private ``_MANAGED_MARKER`` seam
-        # the ``test_skills_installer_project`` precedent uses -- the
-        # installer's own prune / sibling fan-out is the documented
-        # owner of that constant, and the boundary test pins the
-        # byte-exact set the helper stages against it.
-        (
-            "tests/test_skills_install_auto_commit.py",
-            "ralph.skills._content",
-            ("_MANAGED_MARKER",),
-        ),
         (
             "tests/test_submit_artifact_writes_receipt.py",
             "ralph.agents.completion_signals",
@@ -1317,28 +1294,12 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # PLR0911/PLR0912/PLR0915 markers opt the explicit-outcome
         # state machine out of the project complexity caps; the
         # rationale is documented inline on each marker.
-        # wt-012 (Bug A/B rework): the dirty-path snapshot helpers
-        # moved to ``ralph.git._dirty_paths`` to keep this module
-        # under the 1000-line cap, shifting the surviving markers;
-        # the allowlist pins the post-extraction line numbers.
-        ("ralph/git/scoped_auto_commit.py", 248),
-        # wt-12: the untracked-probe extraction for the fail-closed
-        # ls-files/check-ignore error handling moved the
-        # ``commit_deterministic_writes`` and ``commit_scoped_updates``
-        # complexity-cap markers down; only line numbers moved.
-        ("ralph/git/scoped_auto_commit.py", 537),
-        # wt-012 (DA-007/DA-012): the brand-new-path beyond a symlink
-        # branch in ``commit_deterministic_writes`` extended the
-        # function by ~25 lines, shifting the downstream
-        # ``commit_scoped_updates`` marker. The PLR0912
-        # marker itself is unchanged (the explicit-outcome state
-        # machine still needs the complexity-cap opt-out); only the
-        # line number moves.
-        ("ralph/git/scoped_auto_commit.py", 943),
-        ("ralph/cli/commands/_run_start_setup.py", 41),
-        ("ralph/project_policy/_auto_commit_integration.py", 69),
-        ("ralph/project_policy/_auto_commit_integration.py", 142),
-
+        ("ralph/git/scoped_auto_commit.py", 269),
+        ("ralph/git/scoped_auto_commit.py", 376),
+        ("ralph/git/scoped_auto_commit.py", 608),
+        ("ralph/project_policy/cli_integration.py", 555),
+        ("ralph/project_policy/cli_integration.py", 558),
+        ("ralph/project_policy/cli_integration.py", 559),
         ("ralph/project_policy/preflight.py", 185),
         ("ralph/project_policy/preflight.py", 191),
         ("ralph/project_policy/preflight.py", 223),
@@ -1349,30 +1310,16 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/preflight.py", 254),
         ("ralph/project_policy/preflight.py", 262),
         ("ralph/project_policy/preflight.py", 269),
-        # wt-12: the candidate-set + diff helpers extracted from
-        # ``_installer.py`` carry the same PLC0415 lazy-import markers
-        # for ``git`` (optional seam) and ``_git_blob_sha`` (producer-side
-        # diff helper). The rationale is identical to the precedent
-        # entries at ``_installer.py:124-126`` -- the candidate set is
-        # best-effort on non-git workspaces, so the lazy import is the
-        # honest seam rather than a module-load-time dependency.
-        # wt-012 (DA-007/DA-012): the candidate-set expansion added a
-        # ``_canonical_skill_leaf_names`` helper for the copytree
-        # fallback capture, shifting the existing PLC0415 markers
-        # downward. The allowlist pins the post-shift line numbers.
-        ("ralph/skills/_installer_candidates.py", 153),
-        ("ralph/skills/_installer_candidates.py", 221),
-        ("ralph/skills/_installer_candidates.py", 323),
-        ("ralph/skills/_installer_candidates.py", 325),
+        ("ralph/skills/_installer.py", 112),
+        ("ralph/skills/_installer.py", 114),
         ("ralph/skills/manager.py", 213),
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),
         ("ralph/skills/manager.py", 218),
-        ("ralph/skills/manager.py", 241),
-        ("ralph/skills/manager.py", 248),
-        ("ralph/testing/audit_skill_auto_commit.py", 370),
-        ("ralph/testing/audit_skill_auto_commit.py", 467),
-
+        ("ralph/skills/manager.py", 240),
+        ("ralph/skills/manager.py", 247),
+        ("ralph/testing/audit_skill_auto_commit.py", 255),
+        ("ralph/testing/audit_skill_auto_commit.py", 352),
         ("ralph/agents/__init__.py", 44),
         ("ralph/agents/catalog.py", 216),
         ("ralph/agents/catalog.py", 217),

@@ -157,8 +157,6 @@ def _mirror_cursor_home(source_cursor_root: Path, private_cursor_root: Path) -> 
         destination = private_cursor_root / entry.name
         try:
             target_is_directory = entry.is_dir()
-            # deterministic-writer-ok: MCP client config install under user
-            # config dirs -- outside the repo commit flow
             destination.symlink_to(entry, target_is_directory=target_is_directory)
         except FileNotFoundError:
             continue

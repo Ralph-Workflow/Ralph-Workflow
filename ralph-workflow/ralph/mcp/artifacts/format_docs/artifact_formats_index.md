@@ -1,8 +1,8 @@
 # Artifact Formats Index
 
-Ralph artifacts are single markdown documents with a small core grammar and
-type-specific consumed fields. Write the document directly as readable
-frontmatter, sections, and stable-ID items.
+Ralph artifacts are single markdown documents. Most types use a small shared
+grammar and type-specific consumed fields. Plans are exempt from the shared
+grammar: readable prose is accepted without frontmatter, headings, or IDs.
 
 ## How to submit
 
@@ -36,6 +36,9 @@ similar to the draft — edit in place instead.
 
 ## Shared grammar
 
+The rules below apply to non-plan artifacts. For plans, see the sanity-only
+boundary under Errors vs warnings and the optional guidance in `plan.md`.
+
 ```markdown
 ---
 type: <artifact_type>
@@ -55,8 +58,6 @@ key: value
 - Named sections commonly use list items shaped `- [ID] text` (checkbox form
   `- [ ] [ID] text` is also accepted). The per-type document says which known
   sections require items and which accept descriptive body prose.
-- `plan.md` describes an optional planning shape. A plan remains valid unless
-  it triggers that type's sole not-a-plan error (`PLAN001`).
 - IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within each consumed
   section that validates list items.
 - Blank lines are ignored. Content outside a section, malformed frontmatter,
@@ -67,8 +68,12 @@ key: value
 
 ## Errors vs warnings
 
-Each type defines its own errors and advisory findings. For `plan`, only
-`PLAN001` rejects a submission; warnings and info remain visible but valid.
+Non-plan types retain their per-type errors and advisory findings. A plan has
+no structural errors or advisories. It is rejected only for unreadable or
+binary content, empty content, fewer than ten words, more than 4,000,000 raw
+UTF-8 bytes, or obviously non-plan text such as a refusal or placeholder.
+Readable plan prose with at least ten words is accepted within that size limit;
+extraction is best effort and the planning analyzer judges quality.
 Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 
 ## Supported artifact types
@@ -88,10 +93,11 @@ Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 | `smoke_test_result` | Manual runtime smoke-test outcome | `.agent/artifact-formats/smoke_test_result.md` |
 | `run_time_report` | Runtime-generated comparable time report | `.agent/artifact-formats/run_time_report.md` |
 | `product_spec` | Product specification | `.agent/artifact-formats/product_spec.md` |
-| `plan` | Structured execution plan | `.agent/artifact-formats/plan.md` |
+| `plan` | Execution plan with optional structure | `.agent/artifact-formats/plan.md` |
 
-Use the exact `artifact_type` string from the table and set the same value
-in the document's `type:` frontmatter field.
+Use the exact `artifact_type` string from the table. For non-plan artifacts,
+set the same value in the document's `type:` frontmatter field; plan
+frontmatter is optional.
 
 ## Sample artifacts
 

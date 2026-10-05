@@ -470,8 +470,6 @@ def _read_identity_state(ctx: PhaseContext) -> tuple[str, str, int] | None:
 def _write_identity_state(ctx: PhaseContext, phase_name: str, fingerprint: str, count: int) -> None:
     payload = {"phase": phase_name, "fingerprint": fingerprint, "count": count}
     try:
-        # deterministic-writer-ok: .agent/ identity-state write --
-        # non-committable runtime state
         ctx.workspace.write(_IDENTITY_STATE_PATH, json.dumps(payload))
     except Exception as exc:
         logger.warning("Failed to persist commit-cleanup identity state: {}", exc)
@@ -487,8 +485,6 @@ def _persist_unapplied_hint(
     if not hint:
         return
     try:
-        # deterministic-writer-ok: .agent/ retry-hint state -- non-committable
-        # runtime state
         ctx.workspace.write(
             retry_hint_path(
                 phase_name,

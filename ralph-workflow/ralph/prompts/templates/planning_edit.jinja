@@ -1,7 +1,7 @@
 {% include 'shared/_validation_failure.j2' -%}
 Revise the current plan using fresh repository evidence and analysis feedback.
 
-## Planning edit mode
+PLANNING EDIT MODE
 
 This revision is read-only: inspect the repository and current draft, but do
 not edit workspace files, install dependencies, or run state-changing commands.
@@ -21,8 +21,7 @@ not edit workspace files, install dependencies, or run state-changing commands.
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
-Verify feedback against the request and repository. For each finding in
-`## What Came Up Short`, apply the proposed revision or rebut it with
-evidence; do not silently drop findings. Repair every supported finding.
-When the analyzer identifies avoidable serialization, restructure the plan
-into independent units with real prerequisites and an integration step.
+Verify feedback against the request and repository. Repair each supported
+finding. When the analyzer identifies avoidable serialization, apply its
+supported proposed unit split: restructure the plan into independent units with
+real prerequisites and an integration step after fan-in.

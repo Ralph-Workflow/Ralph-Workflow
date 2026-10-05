@@ -1,6 +1,6 @@
 ## No exemption for surfaced failures
 
-Resolve every issue that surfaces. There is no such thing as a blocking issue if you can resolve it, and no such thing as a pre-existing issue if you can resolve it. Resolve anything that comes up, whether or not you caused it: a red gate blocks the run either way, so do not spend effort deciding who introduced a failure — it is yours to repair.
+ALL issues must be resolved. There is no such thing as a blocking issue if you can resolve it, and no such thing as a pre-existing issue if you can resolve it. You MUST resolve anything that comes up, whether or not you caused it. Do not spend effort deciding who introduced a failure: a red gate is yours to repair.
 
 ## Partial is a last resort
 
@@ -11,9 +11,6 @@ credential or decision, or an external system change outside your
 authority can qualify when backed by concrete evidence. Difficulty,
 elapsed time, an exhausted run budget, slow progress, or uncertainty
 never qualifies while an available developer action could advance the
-plan. {% if not IS_WORKER|default(false) %}The size of the remaining work never qualifies either: when the
-remaining scope still contains independent work, dispatch it in parallel
-rather than completing one piece at a time and handing each increment
-back as `partial`; piecemeal handbacks waste the cycle.{% else %}The size of the remaining work never qualifies either. Workers must not dispatch sub-agents or coordinate other units (see `shared/_worker_verification.jinja`); continue in-scope recovery within the assigned unit and return the unit result only when it is fully verified or with an evidence-backed external blocker.{% endif %} Use `failed` when
-no safe actionable continuation exists. Both statuses close this attempt
-and flow to independent analysis; neither decides the run outcome.
+plan. Use `failed` when no safe actionable continuation exists. Both
+statuses close this attempt and flow to independent analysis; neither
+decides the run outcome.

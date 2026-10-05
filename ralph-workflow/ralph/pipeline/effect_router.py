@@ -190,9 +190,9 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
     """Best-effort read of work_units from the on-disk plan artifact.
 
     Returns an empty tuple when the plan is absent, a no-op, declares no
-    work_units, or fails to parse. Planning-phase validation already gated
-    validity, so a routing-time failure means corrupted on-disk state — the
-    serial single-agent fallback preserves prior behavior in that case.
+    usable work_units, or cannot be read. Accepted plans need not have structure;
+    incomplete extraction and unsafe dispatch graphs stay with the main agent,
+    as do ordinary missing or corrupt artifact integrity failures.
     """
     workspace = FsWorkspace(workspace_root)
     try:

@@ -1,81 +1,66 @@
-# Development prompt recovery contract
+# Prompt surface change record
 
-This contributor reference explains how development prompts address large or
-underestimated tasks without relaxing scope, worker isolation, or verification.
-It describes instructions delivered to agents, not measured live-agent behaviour.
-For verification commands and the full gate, see the repository-root
-`docs/agents/verification.md`.
+This is the focused record for the speed-of-verified-delivery increment: commits
+`a92a31941` through `cf800b26f`, plus the planning-template order correction.
+The stated (S) and recorded (R) criteria are complete and verified. The baseline
+(B) is frozen. The observed (O) criteria are staged but unrun: they require the
+operator-owned measurement campaign defined by the baseline and are not claimed
+by this unattended in-repository pass.
 
-## Start with actionable work
+## Scope, effect, and proof
 
-The initial, continuation, fallback, and worker templates include the shared
-`_developer_iteration_guidance.j2` recovery guidance once, before variable
-request/plan payloads. Fallback applies to both main and worker roles, including
-continuations and fallback after a primary-template render failure.
+| Surface | Criteria | Expected effect | Evidence and actual outcome |
+| --- | --- | --- | --- |
+| `shared/_verification_commitments.j2` and the templates that include it | S1, S2, S6, S10, S11, S15, S28 | Keep the verified-delivery goal, precedence rule, and four commitments salient in each phase without phase-local variants. | `audit_prompt_single_sourcing` literal-checks the three deliberate cross-surface statements. The shared block names workflow-owned phase order, waits, and grants rather than claiming the templates configure them. |
+| `shared/_developer_iteration_guidance.j2`, `_run_budget.j2`, and development templates | S3–S5, S7–S9, S12–S21 | Reach a cheap falsifiable increment first, honour the applicable gate, bound exploration and retries, and report an honest partial outcome when the run budget is spent. | Template render-integrity validates included templates; the fenced-artifact example audit checks the retained submission examples. The guidance records independent work, avoids re-fetching held material, and sets the sync point at one proven increment. |
+| `development_analysis.jinja` | S22, S26 | Add fresh evidence, test assumptions, and return criterion-level findings. | Render-integrity and artifact-example audits keep the prompt and validator-facing artifact grammar aligned. |
+| `planning.jinja` | S23, S24 | Put the work framing before planning mechanics while keeping stable instructions before the volatile request payload. | `tests/test_planning_prompt_thinking_first.py` checks request framing before `PLANNING MODE`, stable thinking before submission mechanics, and the payload last. |
+| `docs/ralph-workflow-policy/verification-policy.md` and `ralph/project_policy/starters/verification-policy.md` | S1–S3, S6–S10, S13, S28 | Make fast, complete verification a durable project obligation: 10-second fast path, recorded full-gate figure, recurring-cost ownership, actionable failures, and durable orientation. | `audit_prompt_single_sourcing` checks shared wording; `make verify` exercises the documented gate and policy checks. The starter preserves the same obligations for projects that adopt it. |
+| `ralph/testing/audit_prompt_single_sourcing.py` and `ralph/verify.py` wiring | R1, R2, S27 | Prevent the goal, precedence rule, and four commitment names from drifting between the two surfaces. | The audit is a mandatory `make verify` step and fails if either surface lacks a canonical statement. |
+| `ralph/pipeline/run_time_report.py` and its markdown artifact contract | O9 reporting surface | Leave a bounded, comparable report of elapsed time, phases, signals, and slowest steps. | `tests/pipeline/test_run_time_report.py` covers the generated report and its bounds. This is reporting machinery, not an additional standard-setting surface. |
 
-The recovery sequence applies even when the task looks huge before implementation:
+## Instruction funding and retention (R1–R3)
 
-1. Inventory the plan references and acceptance criteria without reducing scope.
-2. Choose an immediately actionable, falsifiable increment before prolonged scope
-   analysis.
-3. In a main session, dispatch independent ready scopes within exposed capacity;
-   workers stay within their assignment and never recursively dispatch.
-4. Implement owned work and run its focused verification.
-5. Recompute readiness after each result and continue with the next safe action.
+Method: count distinct obligation-style bullets and standalone imperatives at a
+rendered include site; shared partials count once at each site. The retained
+instructions change agent or project behaviour: the shared commitments select a
+fast path and require the full gate; developer guidance bounds retrieval,
+retries, and waits; review guidance requires independent evidence; policy text
+makes gate cost actionable.
 
-A verified increment is a progress checkpoint, not permission to stop after one
-slice. Size, uncertainty, underestimated scope, or a failed tactic calls for
-scheduling or diagnosis. Retries require a changed, evidence-backed approach.
+The additions were funded by consolidation rather than new phase-specific
+copies. `_verification_commitments.j2` replaced separate goal/precedence and
+commitment wording in review, analysis, development, and fix prompts.
+`_developer_iteration_guidance.j2` replaced scattered execution directions in
+iteration templates. Planning submission mechanics remains one shared block
+rather than being copied into variants. Superseded duplicated wording was
+removed from those templates as the shared blocks landed; no new template,
+phase, output grammar, dependency, or verification check was added.
 
-## Parallel waves and sequential recovery
+The planning-order correction adds no instruction: it moves the existing
+request framing before mechanics and keeps the existing payload at the volatile
+tail. The focused regression test retains that ordering. The shared block's
+workflow-boundary sentence is intentionally retained because removing it would
+make templates imply control over phase order, wait permissions, or phase grants
+that belongs to runtime machinery.
 
-`shared/_parallel_execution.jinja` defines exact path ownership and conflict
-serialization in **Ownership**, and excluded coordination paths in **Scope
-exclusions**. Its **Independent ready group (for linear plans too)** section
-requires dependency-ready, pairwise-disjoint work to run concurrently within the
-active worker limit. A full worker pool queues later work; it does not shrink the
-request. The main session continues its own ready work, refills freed slots, and
-reproduces verdict-bearing worker evidence before relying on it.
+## Sampling and boundaries
 
-Coupled work or unavailable delegation requires sequential recovery on the
-critical path, with focused proof and a new readiness check after each increment.
-The agent must not invent tools or bypass brokered permissions to obtain
-parallelism. Main sessions retain integration, shared decisions, and the full
-repository-wide verification gate after all writers finish.
+Sampled consumers for retained output shape: `_artifact_submission.j2` routes
+submitted Markdown through its validator and completion gate; analysis templates feed their decision
+formats and validators. Render-integrity and fenced-artifact-example audits
+cover these rendered relationships.
 
-Dedicated and fallback worker prompts retain assigned scope, no recursive
-dispatch, focused `Verify` commands, and worker-local artifact paths. Workers do
-not take over whole-plan proof, another unit's files, or repository-wide checks.
+No check was removed or weakened; the full gate's proof inventory is unchanged.
+Phase existence and order, wait permissions, and per-phase capability or
+thinking grants remain runtime-owned and are explicitly described as such in the
+shared commitments and policy. This record does not claim the brief's baseline
+or observed measurements, which need the separately agreed task-set harness.
 
-## Incomplete outcomes and runtime limits
+## Verification
 
-`shared/_no_exemption_for_failures.j2` is the canonical incomplete-result rule.
-Difficulty, elapsed time, an exhausted budget, and scope size are not reasons to
-submit `partial` while an available developer action can advance required work.
-A claimed external blocker needs concrete evidence that the remaining work
-cannot be completed through available developer actions; it is not a synonym for
-a failed tactic. Completion and partial/failed artifacts must remain truthful.
-
-These instructions do not override runtime deadlines or force cuts. If the
-runtime actually ends the attempt, completed work and remaining obligations must
-be reported accurately, never relabelled complete. Earlier descriptions of a
-budget-spent partial result or a one-increment stopping point are superseded by
-this contract. Historical timing figures are not evidence for the current tree;
-rerun the checks for current measurements.
-
-## Verification and evidence limits
-
-`tests/test_prompts_no_exemption_for_failures.py` is the regression entry point
-for delivered recovery guidance, ordering, and role boundaries.
-`tests/test_developer_prompt_subagent_guidance.py` covers parallel ownership and
-dispatch obligations. A template-source assertion checks source text only; it is
-not evidence that a renderer delivered that instruction. Delivered-output tests
-must exercise the relevant role and render path, including fallback, to support
-claims about that surface.
-
-Run the focused prompt tests and render-integrity audit when changing these
-surfaces, then run `make verify` from `ralph-workflow/` after integration. The
-full gate retains its immutable 60-second combined test budget. Passing tests
-establish the asserted prompt contract, not universal drift detection, live-agent
-obedience, or improved completion rates. Those outcomes require a separately
-authorised live-agent evaluation; none is claimed here.
+Expected: prompt ordering makes the work legible before mechanics, shared
+statements stay identical, and the docs build has no warning. Actual: `make
+verify` passed; it ran Sphinx, lint, type checking, render-integrity,
+artifact-example, prompt-single-sourcing, and the remaining mandatory audits.
+Its combined test elapsed time was 37.90 seconds of the 60-second budget.

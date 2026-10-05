@@ -172,7 +172,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     )
 
     rendered = workspace.read(".agent/tmp/planning_prompt.md")
-    assert "Planning edit mode" in rendered
+    assert "PLANNING EDIT MODE" in rendered
     assert "You are in PLANNING MODE" not in rendered
 
 

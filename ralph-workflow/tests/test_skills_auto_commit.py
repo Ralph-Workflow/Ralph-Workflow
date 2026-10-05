@@ -30,13 +30,10 @@ from git import Actor, Repo
 from ralph.git.commit_result import CommitCreationResult
 from ralph.git.errors import GitOperationError
 from ralph.git.operations import create_commit, stage_files
-from ralph.git.scoped_auto_commit import capture_pre_write_contents
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._auto_commit import (
     SKILL_AUTO_COMMIT_SUBJECT,
-    ScopedCommitStatus,
     commit_skill_updates,
-    commit_skill_writes,
 )
 from ralph.skills._installer import install_project_baseline_skills
 
@@ -139,9 +136,7 @@ def test_auto_commit_no_commit_when_skill_tree_clean(
     # No skill-tree mutations
     result = commit_skill_updates(tmp_path, fake_create_commit)
 
-    assert result.status is ScopedCommitStatus.NOOP, (
-        f"Clean skill tree must return NOOP; got: {result!r}"
-    )
+    assert result is None, f"Clean skill tree must return None; got: {result!r}"
     fake_create_commit.assert_not_called()
 
 
@@ -155,9 +150,7 @@ def test_auto_commit_no_commit_on_non_git_workspace(
 
     result = commit_skill_updates(tmp_path, fake_create_commit)
 
-    assert result.status is ScopedCommitStatus.NOT_REPO, (
-        f"Non-git workspace must return NOT_REPO; got: {result!r}"
-    )
+    assert result is None, f"Non-git workspace must return None; got: {result!r}"
     fake_create_commit.assert_not_called()
 
 
@@ -259,17 +252,14 @@ def test_auto_commit_fails_closed_on_git_lock(
 
     # Either the lock was recovered transparently (commit succeeded with
     # fake_create_commit called) OR the helper returned None fail-closed.
-    # The contract is: never raise, never block the pipeline. wt-012
-    # DA-012: the explicit ScopedCommitResult MUST distinguish the
-    # fail-closed branch (FAILED) from the recovered branch (CREATED).
-    if result.status is ScopedCommitStatus.FAILED:
+    # The contract is: never raise, never block the pipeline.
+    if result is None:
         # Fail-closed branch -- the helper detected unrecoverable git state
         fake_create_commit.assert_not_called()
     else:
         # Lock was recovered -- commit succeeded
-        assert result.status is ScopedCommitStatus.CREATED
         fake_create_commit.assert_called_once()
-        assert result.sha == "f" * 40
+        assert result == "f" * 40
 
 
 @pytest.mark.timeout_seconds(5)
@@ -330,8 +320,8 @@ def test_auto_commit_fails_closed_on_oserror(
 
     result = commit_skill_updates(tmp_path, _raising_create_commit, stage_fn=MagicMock())
 
-    assert result.status is ScopedCommitStatus.FAILED, (
-        f"OSError in create_commit must be caught and reported FAILED; got: {result!r}"
+    assert result is None, (
+        f"OSError in create_commit must be caught and return None; got: {result!r}"
     )
 
 
@@ -357,7 +347,7 @@ def test_auto_commit_fails_closed_when_git_rejects_ignored_skill_paths(
         stage_fn=_reject_ignored_paths,
     )
 
-    assert result.status is ScopedCommitStatus.FAILED
+    assert result is None
     fake_create_commit.assert_not_called()
 
 
@@ -589,11 +579,8 @@ def test_auto_commit_excludes_pre_staged_non_skill_paths(
 
     # 4. Run the REAL production path: ``stage_files`` + ``create_commit``
     #    from ``ralph.git.operations``.
-    result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert result.status is ScopedCommitStatus.CREATED, (
-        "auto-commit MUST report CREATED when the skill tree is dirty"
-    )
-    assert result.sha is not None
+    sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert sha is not None, "auto-commit MUST return a SHA when the skill tree is dirty"
 
     # 5. Inspect HEAD -- it MUST be the deterministic chore subject, AND
     #    it MUST NOT contain the pre-staged ``src/main.py``.
@@ -738,11 +725,8 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
 
     # 5. Run the REAL production path: ``stage_files`` + ``create_commit``
     #    from ``ralph.git.operations`` (NOT a MagicMock).
-    result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert result.status is ScopedCommitStatus.CREATED, (
-        "PA-fix-2: auto-commit MUST report CREATED when the skill tree is dirty"
-    )
-    assert result.sha is not None
+    sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert sha is not None, "PA-fix-2: auto-commit MUST return a SHA when the skill tree is dirty"
 
     # 6. PA-fix-2 invariant: the cached diff for src/main.py MUST be
     #    byte-identical before and after -- partial staging MUST survive
@@ -819,181 +803,12 @@ def test_auto_commit_noop_after_relative_symlink_install(tmp_path: Path) -> None
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
 
-    first_result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert first_result.status is ScopedCommitStatus.CREATED, (
-        "First run MUST commit the initial relative-symlink install"
-    )
+    first_sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert first_sha is not None, "First run MUST commit the initial relative-symlink install"
 
     second_result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert second_result.status is ScopedCommitStatus.NOOP, (
-        "Second run MUST report NOOP (no spurious chore commit on a clean "
+    assert second_result is None, (
+        "Second run MUST return None (no spurious chore commit on a clean "
         "relative-symlink install); got: "
         f"{second_result!r}"
     )
-
-
-@pytest.mark.timeout_seconds(5)
-def test_skill_writes_commits_brand_new_file(tmp_path: Path) -> None:
-    """wt-012 DA-006 / D-2/D-3: a brand-new deterministic write (absent at
-    pre-write capture AND absent at HEAD) MUST be committed -- the pre-fix
-    ``pre_sha is None -> SKIP`` branch silently left every new file dirty.
-    """
-    Repo.init(tmp_path)
-    _track_initial_commit(tmp_path)
-
-    new_file = ".opencode/skills/brand-new/SKILL.md"
-    pre = capture_pre_write_contents(tmp_path, [new_file])
-    assert pre[new_file] is None, "pre-write capture must record None for an absent path"
-
-    skill_dir = tmp_path / ".opencode" / "skills" / "brand-new"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_dir.joinpath("SKILL.md").write_text("# brand new\n", encoding="utf-8")
-
-    result = commit_skill_writes(
-        tmp_path,
-        written_paths=[new_file],
-        pre_contents=pre,
-        create_commit_fn=create_commit,
-        stage_fn=stage_files,
-    )
-
-    assert result.status is ScopedCommitStatus.CREATED, (
-        f"brand-new deterministic write MUST be committed; got: {result!r}"
-    )
-    assert result.sha is not None
-    repo = Repo(tmp_path)
-    try:
-        assert repo.head.commit.message.splitlines()[0] == SKILL_AUTO_COMMIT_SUBJECT
-        committed_files = set(repo.head.commit.stats.files)
-        assert new_file in committed_files, (
-            f"the brand-new file MUST be in the chore commit; got: {sorted(committed_files)}"
-        )
-        assert not repo.is_dirty(untracked_files=True), "git status must be clean after the write"
-    finally:
-        repo.close()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_skill_writes_probe_failure_returns_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """wt-012 DA-011: a HEAD-metadata probe failure MUST fail closed (FAILED,
-    nothing staged) instead of being misread as 'absent at HEAD'."""
-    Repo.init(tmp_path)
-    _track_initial_commit(tmp_path)
-
-    new_file = ".opencode/skills/probe-me/SKILL.md"
-    pre = capture_pre_write_contents(tmp_path, [new_file])
-    skill_dir = tmp_path / ".opencode" / "skills" / "probe-me"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_dir.joinpath("SKILL.md").write_text("# probe me\n", encoding="utf-8")
-
-    import ralph.git.scoped_auto_commit as scoped_module
-
-    monkeypatch.setattr(
-        scoped_module,
-        "_read_head_blob_sha",
-        lambda repo, path: scoped_module._HEAD_PROBE_FAILED,
-    )
-    create_spy = MagicMock()
-
-    result = commit_skill_writes(
-        tmp_path,
-        written_paths=[new_file],
-        pre_contents=pre,
-        create_commit_fn=create_spy,
-        stage_fn=stage_files,
-    )
-
-    assert result.status is ScopedCommitStatus.FAILED, (
-        f"probe failure MUST report FAILED; got: {result!r}"
-    )
-    create_spy.assert_not_called()
-    repo = Repo(tmp_path)
-    try:
-        staged = repo.index.diff("HEAD")
-        assert not staged, "probe failure MUST leave nothing staged"
-    finally:
-        repo.close()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_skill_writes_unborn_head_returns_failed_nothing_staged(tmp_path: Path) -> None:
-    """wt-012 DA-006: an unborn HEAD (no commits yet) must return FAILED with
-    an untouched index instead of escaping a ValueError mid-attempt."""
-    Repo.init(tmp_path)  # no initial commit -- HEAD is unborn
-
-    new_file = ".opencode/skills/unborn/SKILL.md"
-    pre = capture_pre_write_contents(tmp_path, [new_file])
-    skill_dir = tmp_path / ".opencode" / "skills" / "unborn"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_dir.joinpath("SKILL.md").write_text("# unborn\n", encoding="utf-8")
-
-    create_spy = MagicMock()
-    result = commit_skill_writes(
-        tmp_path,
-        written_paths=[new_file],
-        pre_contents=pre,
-        create_commit_fn=create_spy,
-        stage_fn=stage_files,
-    )
-
-    assert result.status is ScopedCommitStatus.FAILED, (
-        f"unborn HEAD MUST report FAILED; got: {result!r}"
-    )
-    assert result.error is not None
-    create_spy.assert_not_called()
-    repo = Repo(tmp_path)
-    try:
-        assert not repo.index.diff(None, paths=[new_file]), (
-            "unborn-HEAD failure MUST leave nothing staged"
-        )
-    finally:
-        repo.close()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_scoped_updates_unborn_head_returns_failed(tmp_path: Path) -> None:
-    """wt-012 DA-006: the legacy scoped helper must also fail closed on an
-    unborn HEAD instead of raising ValueError from the HEAD probe."""
-    Repo.init(tmp_path)
-    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
-    skill_dir.mkdir(parents=True)
-    skill_dir.joinpath("SKILL.md").write_text("# b\n", encoding="utf-8")
-
-    create_spy = MagicMock()
-    result = commit_skill_updates(tmp_path, create_spy)
-
-    assert result.status is ScopedCommitStatus.FAILED, (
-        f"unborn HEAD MUST report FAILED; got: {result!r}"
-    )
-    create_spy.assert_not_called()
-
-
-@pytest.mark.timeout_seconds(5)
-def test_scoped_updates_raised_commit_failure_rolls_back_stage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """wt-012 DA-006: a raised commit failure in the legacy helper must
-    unstage the freshly staged set -- no half-staged deterministic paths."""
-    Repo.init(tmp_path)
-    _track_initial_commit(tmp_path)
-    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
-    skill_dir.mkdir(parents=True)
-    skill_dir.joinpath("SKILL.md").write_text("# b\n", encoding="utf-8")
-
-    def exploding_commit(*args: object, **kwargs: object) -> CommitCreationResult:
-        raise OSError("commit exploded")
-
-    result = commit_skill_updates(tmp_path, exploding_commit)
-
-    assert result.status is ScopedCommitStatus.FAILED
-    repo = Repo(tmp_path)
-    try:
-        staged = repo.index.diff("HEAD")
-        assert not staged, (
-            "raised commit failure MUST unstage the deterministic paths; "
-            f"got staged: {[d.a_path for d in staged]}"
-        )
-    finally:
-        repo.close()

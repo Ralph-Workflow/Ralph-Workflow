@@ -25,7 +25,7 @@ The terms below help explain how Ralph Workflow does that.
 - **Agent chain** — an ordered fallback list of agents for one kind of work. If the first agent fails or exhausts its retries, Ralph Workflow can move to the next one instead of stopping immediately.
 - **Drain** — the routing label between a phase and an agent chain. The practical takeaway: a phase is not hard-wired to one specific agent. You can change routing in config without rewriting the workflow.
 - **Policy** — the configuration that defines how Ralph Workflow behaves. The main files live under `.agent/`: `.agent/pipeline.toml` (workflow phases and routing), `.agent/artifacts.toml` (artifact expectations), `.agent/ralph-workflow.toml` (optional project-local overrides for agent chains and main settings), `.agent/mcp.toml` (MCP server configuration).
-- **Artifact** — a structured output produced during a phase. Each artifact is a validated markdown document — the same readable file Ralph Workflow routes on is the file you inspect; handoff copies under `.agent/` (like `.agent/PLAN.md`) put the latest artifact at a stable path for humans and downstream agents.
+- **Artifact** — a structured output produced during a phase. Each artifact is a markdown document checked against its type's boundary (sanity-only for plans) — the same readable file Ralph Workflow routes on is the file you inspect; handoff copies under `.agent/` (like `.agent/PLAN.md`) put the latest artifact at a stable path for humans and downstream agents.
 - **Review output** — Ralph Workflow can record review output during the run, depending on the active policy. The important distinction: **agents** can review work while the run is in progress; **humans** inspect the completed work, logs, and artifacts afterward in their normal git workflow.
 - **MCP** — **Model Context Protocol**. In day-to-day use, this is the tool layer Ralph Workflow exposes to agents so they can read files, write outputs, submit artifacts, and use other approved capabilities.
 - **Checkpoint** — Ralph Workflow's saved resume state. From the human operator shell: `ralph --inspect-checkpoint` shows what would be resumed; `ralph --no-resume` ignores the saved checkpoint and starts fresh.
@@ -196,17 +196,19 @@ A chat transcript shows what the agent *said*. An artifact shows what the agent 
 
 ### The artifact format
 
-Every artifact in Ralph Workflow is a markdown document — the artifact file **is** the readable source of truth, validated against a closed per-type grammar:
+Every artifact in Ralph Workflow is a markdown document — the artifact file **is** the readable source of truth. Most types have a structural grammar; plans require only readable, non-empty text with at least ten words, no more than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. Headings, IDs, ownership and dependencies are optional best-effort extraction hints, not acceptance rules. The planning analyzer judges quality, including whether independent work can run in parallel.
+
+The contract and implementation live in:
 
 - `ralph/mcp/artifacts/format_docs/<type>.md` — per-type format docs
 - `ralph/mcp/artifacts/canonical_submit.py` — the canonical persistence path
-- `ralph/mcp/artifacts/markdown/specs/` — the per-type markdown specs that enforce the grammar
+- `ralph/mcp/artifacts/markdown/specs/` — the per-type submission boundaries and extraction rules
 
 The submission contract is verified by `tests/test_audit_artifact_submission_canonical_path.py` and audited by `ralph.testing.audit_artifact_submission_canonical_path`.
 
 ### The submission path
 
-Every artifact is submitted via the `ralph_submit_md_artifact` MCP tool, which validates the markdown against its registered spec and persists it through `submit_artifact_canonical` in `ralph/mcp/artifacts/canonical_submit.py`. This is the **only** supported submission path; ad-hoc writes to the artifact store are not permitted. The path: validates the document against the per-type markdown spec (line-anchored diagnostics; any error rejects it), writes the artifact to `.agent/artifacts/<type>.md`, writes the matching handoff copy under `.agent/` when the type has one, and stamps a submission receipt keyed on the run ID.
+Every artifact is submitted via the `ralph_submit_md_artifact` MCP tool, which applies the artifact type's submission boundary and persists it through `submit_artifact_canonical` in `ralph/mcp/artifacts/canonical_submit.py`. This is the **only** supported submission path; ad-hoc writes to the artifact store are not permitted. The path: checks the document (sanity-only for plans; structural diagnostics for other types), writes the artifact to `.agent/artifacts/<type>.md`, writes the matching handoff copy under `.agent/` when the type has one, and stamps a submission receipt keyed on the run ID.
 
 The runtime then consults the artifact contract for the current phase and decides whether the artifact satisfies it.
 
@@ -241,7 +243,7 @@ The terminal is the **only** signal the runtime hands back. There is no "trust t
 
 ### Why the canonical path matters
 
-The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact is validated against its registered markdown spec, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
+The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact passes its type's boundary, including the sanity-only plan check, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
 
 ---
 

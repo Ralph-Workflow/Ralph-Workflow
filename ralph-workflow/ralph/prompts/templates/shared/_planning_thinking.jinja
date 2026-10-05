@@ -6,11 +6,15 @@ Plan in this order:
 2. **Characterize** — establish current behavior from repository evidence.
 3. **Change** — name concrete edits and real prerequisites.
 4. **Partition** — parallel work is the default. Split two or more independent
-   areas into `## Work Units`; a wholly linear plan explains the real coupling.
-   Each unit may name `Directories:` and/or exact `Paths:` it owns. Put shared
-   contracts before their consumers, use dependencies only for genuine
-   prerequisites, and plan one integration check after fan-in.
+   areas or files into units. A wholly linear plan explains the real coupling:
+   each step consumes the previous step's output.
 5. **Verify** — name runnable proof for the outcome.
+
+The recommended convention is `## Work Units`: each unit names its responsibility
+and owned `Directories:` and/or exact `Paths:`, with `Depends on:` only for a real
+prerequisite. Put shared contracts in a producer unit before their consumers,
+and plan one integration step after fan-in. Steps name touched files and how to
+check them. This is executor guidance, not a required document shape.
 
 Subagents and parallel agents are always available. Inspect the repository before
 naming paths or commands; use discovery work for an honest unknown.
