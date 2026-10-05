@@ -893,6 +893,7 @@ def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     "forbidden_literal",
     ("?1049l", "?1047l", "?47l", "[2J", "[3J", "[H", "[1;1H", "tcflush"),
 )
+@pytest.mark.timeout_seconds(5)
 def test_terminal_restore_audit_regression_rejects_destructive_parent_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
