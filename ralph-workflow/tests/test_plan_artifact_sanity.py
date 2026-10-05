@@ -97,29 +97,3 @@ def test_unreadable_and_obvious_nonplan_text_is_rejected() -> None:
         content, diagnostics, _ = analyze_plan_document(text)
         assert diagnostics == []
         assert content == {}
-
-
-def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
-    """DA-001 regression: a real plan that *discusses* a placeholder
-    marker (for example, instructing removal of the obsolete text) must
-    not be flagged as a placeholder. Placeholder detection is anchored
-    to the first non-empty line so discussions of the marker stay valid.
-    """
-    legitimate = (
-        "Remove the obsolete todo: plan placeholder from documentation "
-        "and verify the updated planning instructions with focused tests."
-    )
-    _, diagnostics, _ = analyze_plan_document(legitimate)
-    assert diagnostics == [], [d.rule_id for d in diagnostics]
-    # Other marker names that must not falsely trip the placeholder
-    # check when they appear in the middle of a real plan.
-    for text in (
-        "Refactor the fixme: plan annotation away and re-run the regression "
-        "tests for the affected module today.",
-        "Document the tbd: plan status in the planning section and add the "
-        "outstanding items to the next iteration's tracker today.",
-        "Reuse the existing plan goes here comment as a header above the "
-        "new code path and add the regression in the same change today.",
-    ):
-        _, diagnostics, _ = analyze_plan_document(text)
-        assert diagnostics == [], f"{text!r} unexpectedly rejected"

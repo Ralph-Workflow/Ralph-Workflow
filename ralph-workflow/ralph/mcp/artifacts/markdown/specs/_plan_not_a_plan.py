@@ -49,6 +49,7 @@ def _sanity_failure_reason(text: str) -> str | None:
         utf8_error = True
     readable = len(text) if text.isprintable() else sum(_is_readable(character) for character in text)
     words = text.split(maxsplit=_MIN_WORDS)
+    normalized = text.strip().casefold()
     first_line = next((line.strip().casefold() for line in text.splitlines() if line.strip()), "")
     if utf8_error:
         reason = "text is not valid UTF-8"
@@ -62,12 +63,7 @@ def _sanity_failure_reason(text: str) -> str | None:
         reason = f"text has only {len(words)} words"
     elif first_line.startswith(_REFUSAL_PREFIXES):
         reason = "text is an obvious refusal"
-    elif any(first_line.startswith(placeholder) for placeholder in _PLACEHOLDERS):
-        # Anchor placeholder detection to the first non-empty line so
-        # a plan that *mentions* a placeholder ("remove the obsolete
-        # todo: plan placeholder") is not itself flagged as one. A real
-        # placeholder text starts with the marker; a discussion of the
-        # marker appears later in the line and is left alone.
+    elif any(placeholder in normalized for placeholder in _PLACEHOLDERS):
         reason = "text is an obvious placeholder"
     else:
         reason = None
