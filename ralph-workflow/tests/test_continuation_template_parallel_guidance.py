@@ -93,4 +93,4 @@ def test_continuation_template_requires_fresh_review_before_submission() -> None
     source = _read_continuation_template()
     assert "independent read-only sub-agent" in source
     assert "fresh-context" in source
-    assert "you MUST NOT submit the artifact or declare completion" in source
+    assert "you must not submit the artifact or declare completion" in source

@@ -83,7 +83,7 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
 
     rendered = workspace.read(prompt_path)
     assert rendered.startswith("VALIDATION FAILURE")
-    assert "PLANNING EDIT MODE" in rendered
+    assert "Planning edit mode" in rendered
     assert diagnostic["rule_id"] in rendered
     assert f"line {diagnostic['line']}" in rendered
     assert "ralph_edit_md_artifact" in rendered
@@ -300,7 +300,7 @@ def test_planning_retry_prompt_omits_artifact_history_path_when_history_exists(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "PLANNING EDIT MODE" in rendered
+    assert "Planning edit mode" in rendered
     assert "PREVIOUS ATTEMPT FAILED: validation error during planning retry" in rendered
     assert str(plan_history_file) not in rendered
     assert str(development_history_file) not in rendered
@@ -340,7 +340,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     )
 
     rendered = workspace.read(prompt_path)
-    assert "PLANNING EDIT MODE" in rendered
+    assert "Planning edit mode" in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
     assert "ANALYSIS FEEDBACK:" in rendered
     assert "ralph_edit_md_artifact" in rendered
@@ -638,8 +638,8 @@ def test_repeated_development_loopback_never_renders_fresh_template(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "continuing a DEVELOPMENT iteration" in rendered
-    assert "You are in IMPLEMENTATION MODE" not in rendered
+    assert "continuing a development iteration" in rendered
+    assert "You are in implementation mode" not in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
 
 

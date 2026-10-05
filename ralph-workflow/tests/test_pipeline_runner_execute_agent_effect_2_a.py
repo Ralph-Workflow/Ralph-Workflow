@@ -954,7 +954,7 @@ class TestExecuteAgentEffectA:
         )
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
-        assert "PLANNING EDIT MODE" in rendered
+        assert "Planning edit mode" in rendered
         assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
         assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
@@ -994,7 +994,7 @@ class TestExecuteAgentEffectA:
         )
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
-        assert "PLANNING EDIT MODE" in rendered
+        assert "Planning edit mode" in rendered
         assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
         assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
@@ -1040,7 +1040,7 @@ class TestExecuteAgentEffectA:
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING MODE" in rendered
-        assert "PLANNING EDIT MODE" not in rendered
+        assert "Planning edit mode" not in rendered
         assert (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == (
             "Replace the plan with a different task"
         )

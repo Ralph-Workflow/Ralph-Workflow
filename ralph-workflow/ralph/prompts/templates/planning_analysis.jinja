@@ -36,6 +36,17 @@ serialized without a reason. The planner applies or rebuts each proposed
 revision on the next pass; do not grade document shape; do not grade in isolation. Delegate independent
 checks to read-only subagents and reconcile their fresh evidence.
 
+Each proposed unit split must also name three properties the planner can verify
+on the next pass, because parallel safety requires them:
+
+- **Clear ownership** — each unit declares its exact `Directories:` and/or `Paths:`; a broader scope than the unit actually needs is the same execution defect as a missing declaration. Overlapping parents do not grant ownership of other files.
+- **Each unit has its own check** — every unit names the focused verify step a worker can run inside its assigned scope. Without a per-unit check the unit cannot be proven independently.
+- **Sized for one agent** — the work inside a unit fits a single agent's slice; a unit that only one large agent can finish defeats the purpose of fan-out.
+
+Reject the plan when any of the three properties is missing from a proposed unit,
+because absent ownership, an absent check, or a unit sized for more than one agent
+turns the split into a coordination hazard rather than a parallel win.
+
 {% set planning_decision_example %}
 ---
 type: planning_analysis_decision

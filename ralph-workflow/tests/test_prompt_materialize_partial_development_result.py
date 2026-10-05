@@ -255,9 +255,9 @@ status: partial
 """,
     )
 
-    assert "continuing a DEVELOPMENT iteration" in rendered
+    assert "continuing a development iteration" in rendered
     assert "genuinely new agent session" in rendered
-    assert "PARTIAL — NOT COMPLETE" in rendered
+    assert "partial \u2014 not complete" in rendered
     assert "Implemented the parser but the prompt integration remains." in rendered
     assert "Wire the partial result into the continuation prompt." in rendered
     assert "prior-session-42" in rendered
@@ -290,9 +290,9 @@ status: partial
 """,
     )
 
-    assert "You are in IMPLEMENTATION MODE" in rendered
-    assert "continuing a DEVELOPMENT iteration" not in rendered
-    assert "PRIOR DEVELOPMENT RESULT" not in rendered
+    assert "implementation mode" in rendered
+    assert "continuing a development iteration" not in rendered
+    assert "partial \u2014 not complete" not in rendered
     assert "Finished the implementation." not in rendered
     assert "Stale incomplete work." not in rendered
 
@@ -444,7 +444,7 @@ status: completed
     assert development_calls[0][0] is None
     assert development_calls[1][0] is None
     continuation_prompt = development_calls[1][1]
-    assert "PARTIAL — NOT COMPLETE" in continuation_prompt
+    assert "partial — not complete" in continuation_prompt
     assert "Implemented the parser but the prompt integration remains." in continuation_prompt
     assert "Wire the partial result into the continuation prompt." in continuation_prompt
     assert "prior-session-42" in continuation_prompt

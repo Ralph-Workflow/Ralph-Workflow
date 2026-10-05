@@ -53,37 +53,52 @@ def session_warning_scope(before_warning: bool) -> Iterator[None]:
 
 def development_wrapup_notice(*, is_worker: bool = False) -> str:
     """Return the phase-wide development-timebox wind-down notice."""
-    # S-6: when the pipeline has published the development timebox, surface
-    # the concrete remaining minutes, suggest dispatching an independent
-    # ready group (instead of trimming scope), and instruct the developer
-    # to submit the development result before the cut. Without epochs, the
-    # notice stays the existing static text — a graceful fallback.
+    # When the pipeline has published the development timebox, surface the
+    # concrete remaining minutes, role-correct guidance (a worker must
+    # finish its own unit; an orchestrator may still dispatch an
+    # independent ready group), and instruct the developer to submit the
+    # development result before the cut. Without epochs, the notice stays
+    # the existing static text — a graceful fallback.
     deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV, _os.environ.get)
     if deadline_epoch is None:
         return _STATIC_DEVELOPMENT_WRAPUP_NOTICE
 
     remaining_minutes = max(0, int((deadline_epoch - _time.time()) // 60))
-    action = (
-        "complete and verify only your assigned work unit within its allowed paths. "
-        "Do not spawn sub-agents, coordinate other units, or integrate the whole plan; "
-        if is_worker
-        else "if actionable plan work remains, dispatch an **independent ready group** "
-        "(steps with no `Depends on:` path between any pair and pairwise disjoint "
-        "`Files:` lists) concurrently rather than trimming scope, then "
-    )
+    if is_worker:
+        guidance = (
+            "complete and verify only your assigned work unit within its allowed paths, "
+            "then submit the development result before the cut. Submit your worker-local "
+            "result from this unit only. Do not spawn sub-agents, coordinate other units, "
+            "or integrate the whole plan."
+        )
+        parallel_note = (
+            "If your unit is blocked, return truthful partial with the blocker and one next "
+            "step. The orchestrator should dispatch it in parallel rather than completing one "
+            "piece at a time and handing each increment back as partial; piecemeal handbacks "
+            "waste the cycle."
+        )
+    else:
+        guidance = (
+            "if actionable plan work remains, dispatch an independent ready group "
+            "(units with no `Depends on:` path between any pair and pairwise disjoint "
+            "`Directories:` / `Paths:` ownership) concurrently rather than trimming scope, "
+            "then submit the development result before the cut"
+        )
+        parallel_note = (
+            "When the remaining scope still contains independent work, dispatch it in parallel "
+            "rather than completing one piece at a time and handing each increment back as "
+            "partial; piecemeal handbacks waste the cycle."
+        )
     return (
         "⚠️ DEVELOPMENT-TIMEBOX WARNING — The uninterrupted development phase has passed "
         f"its configured warning point. Approximately **{remaining_minutes} minutes remaining** "
         "before the session is force-cut. Do everything reasonably possible to complete the "
-        f"assigned task before submitting any artifact: {action}"
-        "**submit the development result before the cut** rather than after it. Use partial only "
+        f"assigned task before submitting any artifact: {guidance}, then submit the development result before the cut. Use partial only "
         "as an exceptional last resort, when the remaining work is literally impossible through "
         "any developer action available in this run and requires a physical-world, operator-only, "
-        "or externally controlled action. When the remaining scope still contains independent "
-        "work, dispatch it in parallel rather than completing one piece at a time and handing "
-        "each increment back as partial; piecemeal handbacks waste the cycle. Difficulty, "
-        "elapsed time, and exhausted budget never "
-        "qualify. Never submit completed unless every reported item and piece of evidence is "
+        f"or externally controlled action. {parallel_note} Difficulty, "
+        "elapsed time, and exhausted budget never qualify. "
+        "Never submit completed unless every reported item and piece of evidence is "
         "truthful. When genuinely complete, use declare_complete."
     )
 

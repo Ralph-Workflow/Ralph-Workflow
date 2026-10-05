@@ -209,7 +209,7 @@ def test_no_exemption_partial_carries_parallel_dispatch_warning() -> None:
 
 
 def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> None:
-    """U-6: the ``PRIOR DEVELOPMENT RESULT — PARTIAL`` block in
+    """U-6: the ``Prior development result \u2014 partial`` block in
     ``developer_iteration_continuation.jinja`` carries the parallel-
     dispatch warning so a continuation session handed back a partial
     result knows the remaining independent work should be fanned out
@@ -232,8 +232,8 @@ def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> N
     template = context.registry.get_template("developer_iteration_continuation.jinja")
     rendered = render_template(template, variables, context.partials)
 
-    prior_block_start = rendered.find("PRIOR DEVELOPMENT RESULT")
-    assert prior_block_start >= 0, "PRIOR DEVELOPMENT RESULT block missing"
+    prior_block_start = rendered.find("Prior development result")
+    assert prior_block_start >= 0, "Prior development result block missing"
     # The prior-result block ends just before the "## PARALLEL
     # EXECUTION" section. We slice the relevant range so unrelated
     # guidance text and the included ``_no_exemption_for_failures.j2``
@@ -260,7 +260,7 @@ def test_continuation_template_parallel_dispatch_warning_absent_without_prior_re
     """U-6: the prior-result block (and its inline parallel-dispatch
     warning) must be gated on a non-empty ``PRIOR_RESULT_STATUS``.
     A fresh continuation session with no prior result does not render
-    the ``PRIOR DEVELOPMENT RESULT`` block at all. The parallel-
+    the ``Prior development result`` block at all. The parallel-
     dispatch warning is still surfaced via the included
     ``_no_exemption_for_failures.j2`` partial, which is a separate,
     always-on contract."""
@@ -277,7 +277,7 @@ def test_continuation_template_parallel_dispatch_warning_absent_without_prior_re
     template = context.registry.get_template("developer_iteration_continuation.jinja")
     rendered = render_template(template, variables, context.partials)
 
-    assert "PRIOR DEVELOPMENT RESULT" not in rendered
+    assert "Prior development result" not in rendered
     assert "Continuation reference:" not in rendered
 
 

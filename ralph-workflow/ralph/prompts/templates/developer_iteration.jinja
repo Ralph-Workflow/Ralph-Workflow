@@ -2,12 +2,12 @@
 Complete the entire current plan. Use small, proven increments as the method,
 not as a stopping point.
 
-You are in IMPLEMENTATION MODE.
+You are in implementation mode.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 {% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not complete successfully.
+Important: the previous attempt did not complete successfully.
 
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
@@ -63,7 +63,7 @@ Before submitting, run the cheap independent pre-submit review against the
 plan and proof contract — an open gap must close before the artifact is
 submitted or completion is declared. Run the review as an independent
 read-only sub-agent with fresh context on every iteration. Until that
-review closes the remaining gap, you MUST NOT submit the artifact or
+review closes the remaining gap, you must not submit the artifact or
 declare completion.
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
@@ -73,7 +73,7 @@ declare completion.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
-## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
+## Development result artifact — proof requirements
 
 {% include 'shared/_development_result_proof.j2' %}
 

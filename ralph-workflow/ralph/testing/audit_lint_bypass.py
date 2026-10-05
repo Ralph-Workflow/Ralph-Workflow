@@ -99,6 +99,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("preflight", "PLC0415"),  # wt-012 -- lazy import in preflight commit path
     ("cli_integration", "PLC0415"),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
     ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
+    ("_schema_upgrade", "PLC0415"),  # wt-012 -- lazy import in _freeze_policy_files to avoid module-load cycle with ralph.git.operations / ralph.git.scoped_auto_commit
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators

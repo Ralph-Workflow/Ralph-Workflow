@@ -1,8 +1,8 @@
 {% include 'shared/_validation_failure.j2' -%}
 Complete every remaining item in the plan and prove the entire result; you are
-continuing a DEVELOPMENT iteration.
+continuing a development iteration.
 
-IMPLEMENTATION MODE — CONTINUATION
+## Implementation mode (continuation)
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -31,11 +31,11 @@ IMPLEMENTATION MODE — CONTINUATION
 {% endif %}
 
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
-FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+Failure resolution mandate: inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
 {% endif %}
 
 {% if PRIOR_RESULT_STATUS %}
-PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
+Prior development result — partial — not complete:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 
@@ -67,9 +67,9 @@ Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
 Before submitting, check remaining work against the plan, continuation context,
 and proof contract. Run a fresh-context review as an independent read-only sub-agent
 on every iteration. Do not submit with an open gap. Until that review closes the remaining gap,
-you MUST NOT submit the artifact or declare completion.
+you must not submit the artifact or declare completion.
 
-## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
+## Development result artifact — proof requirements
 
 {% include 'shared/_development_result_proof.j2' %}
 

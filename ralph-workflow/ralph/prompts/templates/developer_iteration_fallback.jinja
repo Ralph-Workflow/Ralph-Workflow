@@ -2,7 +2,7 @@
 {% if IS_WORKER %}Complete the entire assigned work unit.{% else %}Complete the entire assigned plan.{% endif %}
 Use small, proven increments as the method, not as a stopping point.
 
-IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
+## Implementation mode{% if IS_WORKER %} (isolated worker){% endif %}
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -31,10 +31,10 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 ) }}
 {% endif %}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
-FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
+Failure resolution mandate: inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
 {% endif %}
 {% if PRIOR_RESULT_STATUS %}
-PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
+Prior {% if IS_WORKER %}worker{% else %}development{% endif %} result — partial — not complete:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 

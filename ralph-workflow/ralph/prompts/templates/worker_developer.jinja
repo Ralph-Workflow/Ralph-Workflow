@@ -30,7 +30,7 @@ IMPORTANT: The previous attempt did not complete successfully.
 {% include 'shared/_analysis_context.j2' %}
 
 {% if PRIOR_RESULT_STATUS %}
-PRIOR WORKER RESULT — PARTIAL — NOT COMPLETE:
+Prior worker result — partial — not complete:
 This is a new invocation for the same assigned unit. Treat the continuation
 reference as handoff metadata; do not try to resume a transport session.
 
@@ -80,7 +80,7 @@ the concrete blocker in the result instead of expanding scope.
 Before submitting a continuation, check the unit against its assignment and
 proof contract. Workers never dispatch sub-agents (see WORKER DO-NOT-DISPATCH
 above), so perform the same review sequentially in this session. Until the
-gap is closed, you MUST NOT submit the artifact or declare completion.
+gap is closed, you must not submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}
