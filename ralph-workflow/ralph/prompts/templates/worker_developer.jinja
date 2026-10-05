@@ -20,7 +20,6 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {% include 'shared/_development_skills.j2' %}
 {% include 'shared/_run_budget.j2' %}
-{% include 'shared/_developer_iteration_guidance.j2' %}
 
 {% include 'shared/_worker_verification.j2' %}
 
@@ -74,6 +73,7 @@ handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 Implement and verify only `{{ unit_id }}`, then return that one unit result. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}
@@ -106,25 +106,15 @@ For `status: completed`, submit exactly one proof item under
 `## Plan Items Proven`: `- [{{ unit_id }}]`, citing the files changed and the
 focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
-Add `Disposition: completed|adapted|not_applicable|blocked`. Adapted and
-not-applicable assignments require reproducible evidence and a rationale
-showing the request criteria remain covered. Continue the worker loop on
-the assigned unit until it is fully proven; a `blocked` disposition that has
-a safe worker-local continuation remaining is not actually blocked — keep
-working on the assigned unit. Only the canonical external-impossibility
-rule in `shared/_no_exemption_for_failures.j2` permits a `status: partial`
-or `status: failed` worker result, and only when no remaining work is
-achievable by any safe developer action currently available to this
-worker.
+Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
-When the assigned unit is impossible to advance through any safe
-worker-local action, follow the completion-pressure rules from the
-developer iteration guidance included above and emit the worker-specific
-shape: include `## Next Steps` plus `## Continuation` naming the external
-action required, then call `declare_complete` once with `partial_reason=`
-naming that literal impossibility. Use `failed` when no safe worker-local
-continuation exists; report the blocker and evidence without promising
-another iteration. Neither status decides the run outcome.
+When the assigned unit cannot be completed, follow the completion-pressure
+rules from the developer iteration guidance included above and emit the
+worker-specific shape: include `## Next Steps` plus `## Continuation` naming
+the external action required, then call `declare_complete` once with
+`partial_reason=` naming that literal impossibility. Use `failed` when no
+safe worker-local continuation exists; report the blocker and evidence
+without promising another iteration. Neither status decides the run outcome.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
 

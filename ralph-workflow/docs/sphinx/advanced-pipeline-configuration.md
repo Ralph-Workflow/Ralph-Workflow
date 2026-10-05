@@ -261,8 +261,7 @@ post_fanout_verification = false
 
 `dispatch_mode = "agent_subagents"` is the bundled default: under this value
 the executing agent dispatches its own sub-agents per the plan's `work_units`
-or `parallel_plan` (see the [planning prompt](../prompts/planning.jinja)
-`## Agent-Driven Parallel Execution` guidance and the
+or `parallel_plan` (see the [planning prompt](../prompts/planning.jinja)'s shared planning guidance and the
 [Parallel execution (agent-driven)](#parallel-execution-agent-driven) section
 below for the long-form contract). When AGY is selected with two or more work
 units, routing uses the same supported agent_subagents path as other
@@ -663,16 +662,6 @@ remaining convention (integer seconds `// 60`, clamped to `≥ 0`):
 The shared minutes convention means the wrapup notice and the developer
 prompt cannot diverge at the warning boundary.
 
-The force-cut deadline bounds how long the work can take; it is not itself
-an external impossibility that justifies handing work back. When the
-deadline fires, an incomplete artifact still flows to the canonical
-external-impossibility rule in `shared/_no_exemption_for_failures.j2`: a
-partial or failed result is permitted only when no safe developer action
-could advance the plan, not because time has run out. Discovering a huge
-task, decomposing it into independent ready units, and continuing until
-the plan is fully proven is itself a safe developer action that must keep
-going; the deadline never becomes permission to stop.
-
 ## Work Units execution
 
 Plan submission performs only the plan sanity check; a unit count, ownership
@@ -686,48 +675,3 @@ serially; disjoint files in the same directory may run together. Protected
 assignments are removed before worker briefs, and unknown ownership or
 unextractable graphs remain main-session work. Brokered write protections
 continue to enforce filesystem safety.
-
-### Persistence when scope grows or fan-out is unavailable
-
-The developer prompts in `ralph/prompts/templates/` embed a
-`## Scope-size recovery procedure` section ahead of the request and plan
-payloads. That section tells the executing agent:
-
-- **Inventory the remaining references** and pick an immediately
-  actionable, falsifiable increment before prolonged scope analysis.
-- **As a coordinator,** assign disjoint ownership, dispatch independent
-  ready scopes within exposed capacity, and immediately implement its own
-  ready critical-path work while helpers run. Saturated capacity queues
-  later ready work in waves. Coupled work or unavailable dispatch continues
-  sequentially within the main session without bypassing permissions;
-  pending helpers or failed dispatch must not idle safe local work.
-- **After a helper fails,** inspect its evidence and change tactics: retry
-  with a corrected brief, use another exposed helper, or finish the ready
-  scope locally. Before transferring ownership, confirm the previous
-  writer has stopped. Never overlap writers or revert another agent's
-  changes, and do not repeat unsuccessful dispatch attempts instead of
-  doing available safe work.
-- **As a worker,** decompose and verify only the assigned unit until it is
-  fully proven. Workers never recursively dispatch, widen ownership,
-  integrate other units, or run the full repository-wide gate (the main
-  session owns that).
-- **After a failed tactic,** diagnose its evidence and try a changed,
-  evidence-backed approach. A failed tactic is not a stop signal while
-  another safe action remains within the agent's role and ownership.
-- **Reassess readiness after every result** and keep going until all
-  required references are proven. Difficulty, elapsed time, or unavailable
-  helpers do not by themselves justify an incomplete outcome; the
-  canonical rule remains in `shared/_no_exemption_for_failures.j2`.
-
-Recovery does not waive required verification, independent coverage, or
-pre-submit review. When exposed, mandatory review helpers remain mandatory;
-if review stays unavailable, report the verification blocker accurately
-rather than claiming review happened or declaring completion. Continue safe
-implementation work while attempting recovery, and report any remaining
-incompleteness honestly under the canonical rule.
-
-These are prompt instructions, not a guarantee that every model completes
-arbitrary work. They do not change plan structure, worker ownership,
-brokered write protections, runtime deadlines, or Ralph Workflow's fan-out settings.
-The covered regression lives in
-`tests/test_prompts_no_exemption_for_failures.py`.

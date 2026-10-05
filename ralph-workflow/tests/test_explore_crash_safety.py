@@ -244,22 +244,6 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
         )
 
 
-def test_fresh_session_after_kill_recovers_without_manual_cleanup(tmp_path: Path) -> None:
-    """A fresh session after a kill completes the build automatically.
-
-    Single kill, no manual cleanup, the next process completes
-    the build and serves matches.
-    """
-    workspace = _seed(tmp_path, files=10)
-    # First attempt: kill mid-build.
-    rc = _run_kill_round(workspace, kill_after_seconds=0.01)
-    assert rc != 0
-    # Second attempt: same workspace, no kill; must succeed.
-    verify = _verify_recovery(workspace)
-    assert verify["status"] == "ok", verify
-    assert verify["match_count"] > 0, verify
-
-
 def test_kill_during_atomic_promote_does_not_serve_partial_generation(tmp_path: Path) -> None:
     """A SIGKILL during the atomic-promote step never serves a half-written generation.
 

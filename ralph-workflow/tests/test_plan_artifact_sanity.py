@@ -214,6 +214,58 @@ def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
         assert [item.rule_id for item in diagnostics] == ["PLAN001"]
 
 
+def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -> None:
+    """DA-001 regression: actionable prose that *opens* with a constraint
+    clause (``I cannot change X, so implement Y and verify Z``) must
+    receive a receipt. The original detector prefix-matched the
+    literal ``I cannot`` and rejected the whole message, even when
+    the rest of the text prescribes concrete implementation and
+    verification work. A real refusal (``I cannot access the
+    repository secrets``) describes no action and remains a refusal.
+    """
+    legitimate_plans = (
+        # The demonstrated DA-001 counterexample: opens with a
+        # constraint clause, then prescribes implementation and
+        # regression verification.
+        "I cannot change the public API without breaking "
+        "compatibility, so implement the fix internally and verify "
+        "existing callers with regression tests.",
+        # ``I cannot`` constraint followed by an action chain
+        # ``build, run, verify``.
+        "I cannot extend the legacy adapter to support the new "
+        "field, so add a small translator, run the regression "
+        "suite, and verify the resulting public behavior is "
+        "unchanged for existing callers.",
+        # ``I'm sorry`` opening with a follow-up implementation
+        # sentence is also an actionable plan, not a refusal.
+        "I'm sorry, I cannot make that change, but I can refactor "
+        "the helper to keep the public contract and add a focused "
+        "regression test for the affected branch.",
+    )
+    for text in legitimate_plans:
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert diagnostics == [], (
+            f"unexpected PLAN001 for legitimate plan: {text!r}; "
+            f"got {[d.rule_id for d in diagnostics]}"
+        )
+    # Genuine refusals still must fail the sanity gate: every
+    # ``I cannot`` / ``I'm sorry`` line that does not prescribe
+    # any implementation, verification, or test work is a refusal.
+    for text in (
+        "I cannot complete this request because I cannot access "
+        "any repository files.",
+        "I cannot complete this request because policy prevents me "
+        "from helping you today.",
+        "I'm sorry, I cannot help with that request as an AI "
+        "assistant without more information.",
+    ):
+        _, diagnostics, _ = analyze_plan_document(text)
+        assert [item.rule_id for item in diagnostics] == ["PLAN001"], (
+            f"expected PLAN001 for refusal: {text!r}; "
+            f"got {[d.rule_id for d in diagnostics]}"
+        )
+
+
 def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
     """DA-001 regression: a real plan that *discusses* a placeholder
     marker (for example, instructing removal of the obsolete text) must
