@@ -55,7 +55,6 @@ _EXCLUDED: dict[str, str] = {
     "mcp.artifacts.analysis_item_proof": "internal artifact type, not public API",
     "mcp.artifacts.development_result_continuation": "internal artifact type, not public API",
     "mcp.artifacts.development_result_validation_error": "internal artifact type, not public API",
-    "mcp.artifacts.plan.plan_artifact_validation_error": "internal artifact type, not public API",
     "mcp.artifacts.plan_item_proof": "internal artifact type, not public API",
     "mcp.artifacts.smoke_test_result_validation_error": "internal artifact type, not public API",
     "mcp.upstream.upstream_config_error": "internal upstream type, not public API",

@@ -15,7 +15,6 @@ from ralph.mcp.artifacts.plan._validation import (
     is_noop_plan,
     normalize_plan_artifact_content,
 )
-from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
 
 __all__ = [
     "PLAN_ARTIFACT_PATH",
@@ -23,7 +22,6 @@ __all__ = [
     "PLAN_SIZE_LIMITS",
     "PlanArtifactDict",
     "PlanArtifactSizeError",
-    "PlanArtifactValidationError",
     "PlanSizeLimits",
     "check_plan_size",
     "is_noop_plan",

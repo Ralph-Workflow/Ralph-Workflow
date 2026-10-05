@@ -752,40 +752,20 @@ def _fast_test_count(source: str) -> int:
     pending_multiplier = 1
     in_parametrize = False
     bracket_depth = 0
-    case_list_depth: int | None = None
     case_count = 0
-    trailing_case_comma = False
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("@pytest.mark.parametrize"):
             in_parametrize = True
             bracket_depth = 0
-            case_list_depth = None
             case_count = 0
-            trailing_case_comma = False
         if in_parametrize:
-            for character in line:
-                if character in "([{":
-                    if bracket_depth == case_list_depth:
-                        trailing_case_comma = False
-                    bracket_depth += 1
-                    if character == "[" and case_list_depth is None:
-                        case_list_depth = bracket_depth
-                    continue
-                if character == "," and bracket_depth == case_list_depth:
-                    case_count += 1
-                    trailing_case_comma = True
-                    continue
-                if character in ")]}":
-                    if character == "]" and bracket_depth == case_list_depth and trailing_case_comma:
-                        case_count -= 1
-                    bracket_depth -= 1
-                    continue
-                if bracket_depth == case_list_depth and not character.isspace():
-                    trailing_case_comma = False
-            if bracket_depth <= 0:
-                if case_list_depth is not None:
-                    pending_multiplier *= max(1, case_count + 1)
+            bracket_depth += line.count("[") + line.count("(") + line.count("{")
+            bracket_depth -= line.count("]") + line.count(")") + line.count("}")
+            if "[" in line:
+                case_count += max(0, line.count(","))
+            if bracket_depth <= 0 and "]" in line:
+                pending_multiplier *= max(1, case_count)
                 in_parametrize = False
         if _TEST_DEF_PATTERN.match(line):
             total += pending_multiplier

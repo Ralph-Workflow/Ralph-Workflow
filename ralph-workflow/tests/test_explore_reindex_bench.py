@@ -275,6 +275,7 @@ def test_parse_implementations_rejects_unknown_name() -> None:
 # --- Snapshot parity: scalar / accelerated produce identical store rows --
 
 
+@pytest.mark.timeout_seconds(10)
 def test_snapshot_helper_returns_byte_equal_rows(tmp_path: Path) -> None:
     """The end-to-end snapshot helper agrees across implementations."""
     # Use a small corpus so the test stays well inside the

@@ -3,12 +3,12 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import pytest
+
 import ralph.prompts.materialize as materialize_module
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -25,6 +25,7 @@ from ralph.workspace.memory import MemoryWorkspace
 _LARGE_CONTENT = "x" * (MAX_INLINE_PROMPT_BYTES + 1)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_materialized_worker_prompt_has_one_unit_scoped_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

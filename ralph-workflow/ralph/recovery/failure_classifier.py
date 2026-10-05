@@ -249,7 +249,6 @@ _CONTEXT_EXHAUSTED_SUBSTRINGS: tuple[str, ...] = (
 # and ralph.mcp/ralph.pipeline.
 _ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
     {
-        "PlanArtifactValidationError",
         "DevelopmentResultValidationError",
         "TypedArtifactValidationError",
         "SmokeTestResultValidationError",

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -23,7 +21,6 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
 
 
 __all__ = [
-    "PlanArtifactValidationError",
     "is_noop_plan",
     "normalize_plan_artifact_content",
 ]

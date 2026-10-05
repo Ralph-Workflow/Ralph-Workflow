@@ -110,6 +110,11 @@ class TemplateRenderer:
             raise
         except TemplateError as exc:
             raise TemplateRenderingError(str(exc)) from exc
+        except TimeoutError:
+            # A timeout (e.g. an async SIGALRM test-timeout interrupting a
+            # cold render) is not a template defect; converting it here would
+            # silently downgrade the caller to the static fallback template.
+            raise
         except Exception as exc:  # pragma: no cover - defensive wrapper
             raise TemplateRenderingError(str(exc)) from exc
 

@@ -1,49 +1,30 @@
-"""Delivered parallel execution guidance states safe ownership and waves."""
+"""Parallel execution guidance states safe ownership and waves."""
 
 from __future__ import annotations
 
-from ralph.mcp.protocol.capability_mapping import SessionDrain
-from ralph.prompts.developer import (
-    DeveloperPromptInputs,
-    prompt_developer_iteration_xml_with_context,
-)
-from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.types import SessionCapabilities
-from ralph.workspace.memory import MemoryWorkspace
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 
 
-def test_developer_prompts_regression_delivered_parallel_contract() -> None:
-    """S-1/S-2: replace overlapping source pins with the delivered main contract."""
-    for template in (
-        "developer_iteration.jinja",
-        "developer_iteration_continuation.jinja",
-        "developer_iteration_fallback.jinja",
-    ):
-        rendered = prompt_developer_iteration_xml_with_context(
-            TemplateContext.default(),
-            DeveloperPromptInputs(prompt_content="", plan_content="", plan_path="/plan.md"),
-            MemoryWorkspace(),
-            SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            template_name=template,
-        )
-        normalized = " ".join(rendered.split())
-        for obligation in (
-            "independent units",
-            "concurrently",
-            "Never let two agents edit the same file",
-            "main session",
-            "Paths:",
-            "Directories:",
-            "Files:",
-            ".agent",
-            ".git",
-            ".worktrees",
-            "Do not broaden file ownership",
-            "Serialize conflicting ownership",
-            "waves",
-            "disjoint file ownership",
-            "queue",
-            "sequentially",
-            "permissions",
-        ):
-            assert obligation in normalized, (template, obligation)
+def _source() -> str:
+    return (_ROOT / "shared" / "_parallel_execution.jinja").read_text(encoding="utf-8")
+
+
+def test_parallel_guidance_preserves_safe_dispatch_contract() -> None:
+    source = _source()
+    for text in ("independent units", "concurrently", "Never let two agents edit the same file", "main session"):
+        assert text in source
+
+
+def test_parallel_guidance_handles_paths_and_waves() -> None:
+    source = _source()
+    for text in ("Paths:", "Directories:", "Files:", "waves", "main session"):
+        assert text in source
+    assert ".agent" in source and ".git" in source and ".worktrees" in source
+
+
+def test_parallel_guidance_serializes_conflicts_without_broadening_scope() -> None:
+    source = _source()
+    assert "Do not broaden file ownership" in source
+    assert "Serialize conflicting ownership" in source

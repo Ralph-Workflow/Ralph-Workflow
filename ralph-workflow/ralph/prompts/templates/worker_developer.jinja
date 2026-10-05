@@ -22,7 +22,6 @@ IMPORTANT: The previous attempt did not complete successfully.
 {% include 'shared/_run_budget.j2' %}
 
 {% include 'shared/_worker_verification.j2' %}
-{% include 'shared/_developer_iteration_guidance.j2' %}
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
@@ -74,6 +73,7 @@ handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 Implement and verify only `{{ unit_id }}`, then return that one unit result. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}
@@ -106,7 +106,7 @@ For `status: completed`, submit exactly one proof item under
 `## Plan Items Proven`: `- [{{ unit_id }}]`, citing the files changed and the
 focused verification result. Do not submit another plan-step or work-unit ID.
 Do not invent files or verification results.
-Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment follows the canonical incomplete-result rule. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
+Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
 
 When the assigned unit cannot be completed, follow the completion-pressure
 rules from the developer iteration guidance included above and emit the

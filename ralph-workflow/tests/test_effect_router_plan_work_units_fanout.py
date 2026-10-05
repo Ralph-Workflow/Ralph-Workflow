@@ -387,3 +387,30 @@ def test_fanout_regression_retains_unextractable_unit_work_in_main_session(tmp_p
 
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.phase == "development"
+
+
+def test_fanout_keeps_post_unit_integration_work_in_main_session(tmp_path: Path) -> None:
+    _write_plan_artifact(
+        tmp_path,
+        (
+            "Implement all requested components and verify their integration before completion.\n"
+            "## Work Units\n"
+            "- [one] Implement first component\n"
+            "  Paths: src/one.py\n"
+            "- [two] Implement second component\n"
+            "  Paths: src/two.py\n"
+            "\n"
+            "## Final release\n"
+            "- [release] Create release/manifest.json after both components are complete.\n"
+        ),
+    )
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _legacy_fan_out_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"

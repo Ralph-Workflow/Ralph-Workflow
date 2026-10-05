@@ -142,6 +142,17 @@ def _to_content(document: ParsedDocument) -> Content:
         for line in section.lines
     ):
         content["unextractable_work_units"] = True
+    unit_section_seen = False
+    for section in document.sections:
+        if section.name in {"Work Units", "Parallel Plan"}:
+            unit_section_seen = True
+            continue
+        if unit_section_seen and (section.lines or section.items or section.blocks):
+            # Native fan-out advances immediately after worker completion. A
+            # later section is prose work outside every unit, irrespective of
+            # its heading or Markdown shape, so retain it with the main agent.
+            content["unextractable_work_units"] = True
+            break
     if units:
         content["work_units"] = units
     if parallel:

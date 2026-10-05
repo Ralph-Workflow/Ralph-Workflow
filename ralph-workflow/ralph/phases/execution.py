@@ -30,10 +30,7 @@ from ralph.mcp.artifacts.md_draft_io import (
     unsubmitted_draft_divergence,
 )
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
-from ralph.mcp.artifacts.plan._validation import (
-    PlanArtifactValidationError,
-    is_noop_plan,
-)
+from ralph.mcp.artifacts.plan._validation import is_noop_plan
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,
@@ -254,10 +251,7 @@ def _validate_plan_output(
         if is_noop_plan(raw_content):
             logger.info("Planning produced a no-op plan — skipping development iteration")
             return [PipelineEvent.AGENT_SUCCESS]
-    except (
-        PlanArtifactValidationError,
-        ValueError,
-    ) as exc:
+    except ValueError as exc:
         logger.warning("Invalid plan artifact: {}", exc)
         _write_retry_hint(ctx, phase, str(exc))
         return [
@@ -297,11 +291,7 @@ def _validate_plan_input(
         artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(artifact_content):
             return []
-    except (
-        PlanArtifactValidationError,
-        PhaseArtifactError,
-        ValueError,
-    ) as exc:
+    except (PhaseArtifactError, ValueError) as exc:
         logger.warning("Invalid development phase evidence: {}", exc)
         _write_retry_hint(
             ctx,

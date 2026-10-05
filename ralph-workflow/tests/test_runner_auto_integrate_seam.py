@@ -31,6 +31,11 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
 
+# The runner-loop drives below cold-import the real pipeline runner and default
+# policy bundle; under a fully loaded 12-shard parallel run that exceeds the
+# default 1s per-test budget without indicating any defect.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 @lru_cache(maxsize=1)
 def _load_default_policy_bundle() -> PolicyBundle:

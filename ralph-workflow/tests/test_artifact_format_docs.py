@@ -268,6 +268,18 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         )
 
 
+def test_shared_submission_skill_exempts_plans_from_structural_grammar() -> None:
+    skill = " ".join(get_skill_content("submit-artifact").split())
+
+    assert "Plans are exempt from the shared grammar" in skill
+    assert "frontmatter is optional" in skill
+    assert "at least ten words" in skill
+    assert "no structural errors or advisories" in skill
+    assert "Non-plan artifacts retain their per-type contracts" in skill
+    assert "Every type requires at least" not in skill
+    assert "only their consumed anchors and keywords remain strict" not in skill
+
+
 def test_plan_doc_teaches_sanity_only_parallel_guidance() -> None:
     index = " ".join(load_bundled_format_index().split())
     skill = " ".join(get_skill_content("submit-plan-artifact").split())

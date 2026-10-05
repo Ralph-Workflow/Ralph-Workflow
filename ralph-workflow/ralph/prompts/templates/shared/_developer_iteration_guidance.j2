@@ -1,6 +1,13 @@
 ## Completion is the default outcome
 
 Your mission in this invocation is to COMPLETE {% if IS_WORKER %}the entire assigned work unit{% else %}the entire execution plan{% endif %}, not merely make incremental progress.
+{% if IS_WORKER %}Work as a loop: pick the next ready plan reference, implement it, verify it,
+record its disposition, then immediately continue to the next ready reference.
+{% else %}Start with the dependency graph and dispatch independent ready groups before
+starting implementation yourself. Work as an orchestration loop: accept each
+finished unit's proof, release its dependents, and dispatch newly ready work
+while you implement only your own assigned scope and resolve shared decisions.
+{% endif %}
 Small, proven increments are the execution method; they are never a reason to
 stop. Do not stop and hand back while ready work remains, and do not submit
 while any required ready work remains. `status:
@@ -17,33 +24,9 @@ performed broad exploration, so check only assumptions needed for the next
 ready item. Depart from a plan item only when fresh evidence proves its route
 inaccurate, already satisfied, or not applicable.
 
-Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result. Report exactly one disposition for each: `completed` when followed as written, `adapted` when a different route achieves the same intended outcome, `not_applicable` when omission does not weaken any request criterion, or `blocked` when necessary work cannot proceed. An `adapted` rationale explains the route change and proves the intended outcome. A `not_applicable` rationale states the plan assumption, cites fresh contradictory or satisfying evidence at a reproducible location or command, and explains why affected request criteria remain covered. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation never justifies `not_applicable`. A `blocked` disposition never permits a completion claim or overrides the canonical incomplete-result rule.
+Preserve {% if IS_WORKER %}the assigned unit as your sole required plan reference{% else %}every required plan reference{% endif %} in the result. Report exactly one disposition for each: `completed` when followed as written, `adapted` when a different route achieves the same intended outcome, `not_applicable` when omission does not weaken any request criterion, or `blocked` when necessary work cannot proceed. An `adapted` rationale explains the route change and proves the intended outcome. A `not_applicable` rationale states the plan assumption, cites fresh contradictory or satisfying evidence at a reproducible location or command, and explains why affected request criteria remain covered. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation never justifies `not_applicable`. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
 
-## Scope recovery
-
-Task size, uncertainty, an underestimated plan, failed tactics, and unavailable
-delegation are scheduling and diagnosis inputs, not reasons to stop while safe
-work remains. Apply this sequence even when the task looks huge before any implementation:
-before prolonged scope analysis, inventory {% if IS_WORKER %}only the assigned unit's references{% else %}all required references{% endif %}
-and dependencies, preserve IDs and acceptance criteria, and choose an immediately
-actionable, falsifiable increment.
-
-{% if IS_WORKER %}Confirm dependency readiness; implement and verify the next increment within
-your assignment using focused checks. Record its disposition and evidence,
-recompute readiness, and continue until the whole assigned unit is proven.
-Never expand ownership, recursively dispatch, or run the repository-wide gate.
-{% else %}Assign disjoint ownership and dispatch independent ready groups; dispatch independent ready scopes within exposed capacity.
-Implement and verify your own ready critical-path work while workers run.
-Reproduce returned proof before accepting it, record dispositions, and recompute readiness.
-Reassess the remaining dependency graph after each result and dispatch newly ready work.
-Saturated slots queue work in waves; they never reduce scope.
-When coupling or unavailable delegation prevents dispatch, continue sequentially
-without bypassing permissions.
-{% endif %}After a failed tactic, diagnose the evidence and retry only with a changed, evidence-backed approach.
-If no safe action remains, use only the canonical incomplete-result rule above;
-never substitute an assessment-only handback for available implementation.
-Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %}
-exactly once and satisfy the verification commitments.
+Before editing, {% if IS_WORKER %}confirm the assigned unit's dependencies are ready. Select the first ready reference, make its specified change, run focused verification, and record its disposition and evidence. Then return the unit result.{% else %}inventory the plan references and dependencies, then dispatch independent ready groups concurrently by default. Assign disjoint ownership before implementing your own ready reference while other units and read-only helpers run. Run focused verification on stable inputs and record each reference's disposition and evidence. Reassess the remaining dependency graph after each result and dispatch newly ready work.{% endif %} After a failed approach, retry only with a new evidence-based hypothesis or report partial progress. Before completion, account for {% if IS_WORKER %}the assigned unit{% else %}every required reference{% endif %} exactly once and satisfy the verification commitments.
 
 ## Visual review (when the change touches the UI)
 

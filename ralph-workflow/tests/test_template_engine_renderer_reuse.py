@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from ralph.prompts.template_engine import render_template
 
 _PARTIALS = {"greeting": "Hello {{ name }}"}
@@ -22,6 +24,29 @@ _INCLUDING_TEMPLATE = "{% include 'greeting.j2' %}"
 
 def _render(name: str, items: str) -> str:
     return render_template(_TEMPLATE, {"name": name, "items": items}, _PARTIALS)
+
+
+def test_timeout_propagates_instead_of_becoming_template_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An async TimeoutError interrupting a render must surface, not degrade.
+
+    The per-test SIGALRM timeout raises ``TimeoutError`` asynchronously inside
+    ``TemplateRenderer.render`` under heavy parallel load. The defensive
+    ``except Exception`` used to convert it into ``TemplateRenderingError``, so
+    callers silently rendered the static fallback template and tests failed on
+    missing template-specific phrases. A timeout is not a template defect.
+    """
+    from ralph.prompts.template_engine import TemplateRenderer
+
+    def raise_timeout(text: str) -> str:
+        raise TimeoutError("simulated async timeout mid-render")
+
+    renderer = TemplateRenderer(_PARTIALS)
+    monkeypatch.setattr(renderer, "_compiled_template", raise_timeout)
+
+    with pytest.raises(TimeoutError):
+        renderer.render(_TEMPLATE, {"name": "alice", "items": "a"})
 
 
 def test_repeated_renders_are_independent() -> None:

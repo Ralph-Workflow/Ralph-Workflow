@@ -18,7 +18,6 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 {% include 'shared/_verification_commitments.j2' %}
 {% endif %}
 {% include 'shared/_run_budget.j2' %}
-{% include 'shared/_developer_iteration_guidance.j2' %}
 
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
@@ -114,12 +113,12 @@ YOUR TASK
 Complete only the assigned unit `{{unit_id}}`. Follow neighboring project
 patterns, keep changes inside the allowed directories, add or update focused
 tests for behavior changes, and run the narrow formatter/linter/type/test
-checks relevant to this unit. Never weaken a quality gate. Continue in-scope
-recovery while safe actions remain. Any incomplete result must satisfy the
-canonical rule in `shared/_no_exemption_for_failures.j2`; a difficult or
-blocked tactic alone does not authorize submission.
+checks relevant to this unit. Never weaken a quality gate. If the unit remains
+blocked, submit a truthful `status: partial` result with the concrete blocker
+and one next step.
 {% endif %}
 
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if not IS_WORKER %}

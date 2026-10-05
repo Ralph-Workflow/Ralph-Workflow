@@ -14,7 +14,6 @@ from ralph.mcp.artifacts.commit_message import (
 )
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.plan._validation import (
-    PlanArtifactValidationError,
     is_noop_plan,
     normalize_plan_artifact_content,
 )
@@ -206,11 +205,7 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
             else normalize_plan_artifact_content(content)
         )
         parsed = parse_work_units_from_artifact(artifact)
-    except (
-        PhaseArtifactError,
-        PlanArtifactValidationError,
-        ValueError,
-    ) as exc:
+    except (PhaseArtifactError, ValueError) as exc:
         logger.warning(
             "Could not derive work_units from plan artifact at {}: {} — "
             "falling back to serial execution",
