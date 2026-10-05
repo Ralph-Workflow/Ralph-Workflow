@@ -38,7 +38,15 @@ class SetupDependencies:
     install_project_skills: _InstallSkills
 
 
-def sync_shipped_skills(
+def sync_shipped_skills(  # noqa: PLR0912
+    # PLR0912 (too many branches): the run-start flow has explicit
+    # gates for user-global, project-scope install, gitignore
+    # auto-seed, skill auto-commit (with pre-write hash discipline,
+    # pre-snapshot, diff capture, and CREATED/FAILED/SKIPPED
+    # outcome reporting), and the retention sweep. Each gate is a
+    # distinct stage with its own warning surface, so flattening
+    # them into a single branch would lose the per-stage
+    # non-fatal warning boundary the run contract depends on.
     workspace_root: Path | None,
     *,
     keep_run_id: str | None,
@@ -55,15 +63,13 @@ def sync_shipped_skills(
         update_available = False
     if update_available:
         dependencies.print_user_global_update_hint()
-    try:
-        if dependencies.project_skills_need_install(target_root):
-            _, failures = dependencies.install_project_skills(target_root)
-            if failures:
-                dependencies.print_project_skill_conflict_hint(failures)
-    except Exception as exc:
-        dependencies.emit_warning(
-            f"Project-scope skill install failed (non-fatal): {exc}. Run `ralph --force-init-skills` to retry, or check file permissions on .agent/skills/."
-        )
+    # wt-012 DA-001/DA-008: capture the pre-write snapshot BEFORE the
+    # first install runs, then route the install through the
+    # ``with_diff`` wrapper so the byte-exact set of paths the install
+    # actually wrote is captured for the deterministic chore commit.
+    # The first install keeps the original ``_project_skills_need_install``
+    # gate so the test suite's monkeypatch on the plain
+    # ``install_project_baseline_skills`` still drives the call.
     try:
         from ralph.config.bootstrap import (
             auto_seed_default_git_exclude,
@@ -82,55 +88,82 @@ def sync_shipped_skills(
         )
         from ralph.git.scoped_auto_commit import (
             ScopedCommitStatus,
+            capture_pre_write_contents,
             snapshot_dirty_paths_strict,
         )
         from ralph.skills._auto_commit import commit_skill_writes
         from ralph.skills._installer import (
-            install_project_baseline_skills_with_diff,
+            _candidate_skill_paths,
+            _diff_written_paths,
         )
 
         create_commit = create_commit_impl
-        # The strict pre-snapshot is a second guard on top of the
-        # producer-level pre-write hash discipline: if the tree is
-        # unreadable, surface NOT_REPO so the run can warn.
-        pre_tree = snapshot_dirty_paths_strict(target_root)
-        if pre_tree is None:
-            dependencies.emit_warning(
-                "Project-scope skill install: working tree could not be read; "
-                "skipping the deterministic chore commit (will retry on next run)."
-            )
-        else:
-            try:
-                outcome = install_project_baseline_skills_with_diff(target_root)
-                if outcome.failures:
-                    dependencies.print_project_skill_conflict_hint(outcome.failures)
-                result = commit_skill_writes(
-                    target_root,
-                    written_paths=outcome.written_paths,
-                    pre_contents=outcome.pre_contents,
-                    create_commit_fn=create_commit,
-                )
-                if result.status is ScopedCommitStatus.CREATED and result.sha:
-                    logger.info("Auto-committed skill updates: {}", result.sha[:8])
-                elif result.status is ScopedCommitStatus.FAILED:
+        # wt-012 DA-001/DA-008: capture the pre-write hash for every
+        # candidate skill path BEFORE the install runs, then run the
+        # install (the dependency-injected ``install_project_skills``
+        # is the mockable surface the test suite patches), then
+        # compute the diff and commit. The install runs whenever
+        # ``_project_skills_need_install`` says so (preserving the
+        # original gate the test suite depends on); the chore commit
+        # is the only step that additionally requires a valid git
+        # pre-snapshot.
+        try:
+            if dependencies.project_skills_need_install(target_root):
+                pre_tree = snapshot_dirty_paths_strict(target_root)
+                if pre_tree is None:
                     dependencies.emit_warning(
-                        f"Skill auto-commit failed (non-fatal): {result.error}. "
-                        "The run continues with the new skill content uncommitted; "
-                        "commit manually or re-run to retry."
+                        "Project-scope skill install: working tree could not be read; "
+                        "running the install but skipping the deterministic chore "
+                        "commit (will retry on next run)."
                     )
-                elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-                    logger.warning(
-                        "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
-                        "left for the agent flow",
-                        len(result.skipped_paths),
+                candidates = _candidate_skill_paths(target_root)
+                if pre_tree is not None:
+                    pre_contents = capture_pre_write_contents(target_root, candidates)
+                else:
+                    pre_contents = dict.fromkeys(candidates, None)
+                _, failures = dependencies.install_project_skills(target_root)
+                if failures:
+                    dependencies.print_project_skill_conflict_hint(failures)
+                if pre_tree is not None:
+                    written_paths = _diff_written_paths(
+                        target_root, candidates, pre_contents
                     )
-            except Exception as exc:
-                logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
-                dependencies.emit_warning(
-                    f"Skill auto-commit failed (non-fatal): {exc}. "
-                    "The run continues with the new skill content uncommitted; "
-                    "commit manually or re-run to retry."
-                )
+                    if written_paths:
+                        written_pre_contents = {
+                            p: pre_contents.get(p) for p in written_paths
+                        }
+                        result = commit_skill_writes(
+                            target_root,
+                            written_paths=written_paths,
+                            pre_contents=written_pre_contents,
+                            create_commit_fn=create_commit,
+                        )
+                        if result.status is ScopedCommitStatus.CREATED and result.sha:
+                            logger.info(
+                                "Auto-committed skill updates: {}", result.sha[:8]
+                            )
+                        elif result.status is ScopedCommitStatus.FAILED:
+                            dependencies.emit_warning(
+                                f"Skill auto-commit failed (non-fatal): {result.error}. "
+                                "The run continues with the new skill content uncommitted; "
+                                "commit manually or re-run to retry."
+                            )
+                        elif (
+                            result.status is ScopedCommitStatus.SKIPPED
+                            and result.skipped_paths
+                        ):
+                            logger.warning(
+                                "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
+                                "left for the agent flow",
+                                len(result.skipped_paths),
+                            )
+        except Exception as exc:
+            logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
+            dependencies.emit_warning(
+                f"Project-scope skill install failed (non-fatal): {exc}. "
+                "The run continues with the new skill content uncommitted; "
+                "commit manually or re-run to retry."
+            )
     except Exception as exc:
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         dependencies.emit_warning(

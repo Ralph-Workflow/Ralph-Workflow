@@ -1294,8 +1294,10 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # PLR0911/PLR0912/PLR0915 markers opt the explicit-outcome
         # state machine out of the project complexity caps; the
         # rationale is documented inline on each marker.
-        ("ralph/git/scoped_auto_commit.py", 390),
-        ("ralph/git/scoped_auto_commit.py", 675),
+        ("ralph/git/scoped_auto_commit.py", 229),
+        ("ralph/git/scoped_auto_commit.py", 423),
+        ("ralph/git/scoped_auto_commit.py", 712),
+        ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/_auto_commit_integration.py", 69),
         ("ralph/project_policy/_auto_commit_integration.py", 142),
 

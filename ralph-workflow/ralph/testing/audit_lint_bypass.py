@@ -90,9 +90,17 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("scoped_auto_commit", "PLR0911"),  # wt-012 -- the explicit-outcome state machine returns CREATED/NOOP/NOT_REPO/FAILED/SKIPPED plus the rollback branch
     ("scoped_auto_commit", "PLR0912"),  # wt-012 -- commit_scoped_updates has more branches than the cap because of staged-state preservation
     ("scoped_auto_commit", "PLR0915"),  # wt-012 -- commit_deterministic_writes needs more statements for the producer-level state machine + rollback
+    (
+        "scoped_auto_commit",
+        "PLR0911",
+    ),  # wt-012 -- _git_blob_sha maps each failure mode (working_dir unreadable, empty, symlink target unreadable, symlink target unencodable, hash-object failure) plus the symlink fast-path's success return; folding into a sentinel would lose the fail-closed boundary each guard enforces
     ("scoped_auto_commit", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("preflight", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("_run_start_setup", "PLC0415"),
+    (
+        "_run_start_setup",
+        "PLR0912",
+    ),  # wt-012 -- the run-start flow has explicit per-stage gates (user-global, project install, gitignore seed, auto-commit + diff, retention sweep) each with its own non-fatal warning surface; flattening into a single branch would lose the per-stage boundary
     ("init", "PLC0415"),  # wt-012 -- lazy import in --init helper to avoid init<->operations cycle
     ("manager", "PLC0415"),  # wt-012 -- lazy import in --force-init-skills to avoid manager<->operations cycle
     ("bootstrap", "PLC0415"),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle

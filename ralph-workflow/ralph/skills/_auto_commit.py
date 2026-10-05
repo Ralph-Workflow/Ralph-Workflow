@@ -167,6 +167,7 @@ def commit_skill_writes(
         subject=SKILL_AUTO_COMMIT_SUBJECT,
         create_commit_fn=create_commit_fn,
         stage_fn=stage_fn,
+        body_builder=_build_body,
     )
 
 
