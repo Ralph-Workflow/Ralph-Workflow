@@ -166,7 +166,15 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # but must stay on the default ``make test`` profile so the
     # config-write isolation / rollback contract cannot rot silently.
     # In-budget on the 60s combined verify budget.
-    "tests/test_config_auto_commit.py",
+    # wt-12: the bootstrap config-write isolation cases (Unit 1) and
+    # the parameterized clean-tree acceptance cases for the
+    # non-bootstrap deterministic writers (skill sync, skill install,
+    # policy preflight, gitignore seed, config autowire). Real-git
+    # subprocess_e2e surfaces that MUST stay on the default ``make
+    # test`` profile so the clean-tree / fixed-subject contract cannot
+    # rot silently. In-budget on the 60s combined verify budget.
+    "tests/test_config_bootstrap_git_isolation.py",
+    "tests/test_deterministic_writers_clean_tree.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

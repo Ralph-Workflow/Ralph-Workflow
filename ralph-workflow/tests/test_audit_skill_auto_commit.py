@@ -17,6 +17,7 @@ labeled violation.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -612,3 +613,108 @@ def test_writer_scan_accepts_canonical_helper_in_function_routed_to_commit(
     monkeypatch.setattr(audit_module, "_PACKAGE_ROOT", tmp_path)
 
     assert _check_production_writer_scan() == []
+
+
+# --- wt-12: fail-closed structural ``_enclosing_calls_helper`` unit tests -------
+
+
+def _helper_check(source: str, write_lineno: int) -> bool:
+    """Parse ``source`` and run the structural helper check at ``write_lineno``."""
+    return audit_module._enclosing_calls_helper(ast.parse(source), write_lineno)
+
+
+@pytest.mark.parametrize(
+    ("source", "write_lineno"),
+    [
+        # helper-before-write
+        (
+            "def f():\n"
+            "    commit_deterministic_writes(root, [], {}, 's', None)\n"
+            "    path.write_text('x')\n",
+            2,
+        ),
+        # helper only in a sibling ``else`` arm
+        (
+            "def f():\n"
+            "    if cond:\n"
+            "        path.write_text('x')\n"
+            "    else:\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # ``return`` between the write and the helper
+        (
+            "def f():\n"
+            "    path.write_text('x')\n"
+            "    if bail:\n"
+            "        return\n"
+            "    commit_deterministic_writes(root, [], {}, 's', None)\n",
+            2,
+        ),
+        # helper only inside a nested ``def``
+        (
+            "def f():\n"
+            "    path.write_text('x')\n"
+            "    def g():\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            2,
+        ),
+        # unmarked write with no helper at all
+        ("def f():\n    path.write_text('x')\n", 2),
+    ],
+)
+def test_enclosing_calls_helper_rejects_ambiguous_routing(
+    source: str, write_lineno: int
+) -> None:
+    """Fail closed: ambiguous routing (before-write, sibling arm, barrier,
+    nested def, no helper) is a violation."""
+    assert _helper_check(source, write_lineno) is False
+
+
+@pytest.mark.parametrize(
+    ("source", "write_lineno"),
+    [
+        # legit post-write helper in the same block
+        (
+            "def f():\n"
+            "    path.write_text('x')\n"
+            "    commit_deterministic_writes(root, [], {}, 's', None)\n",
+            2,
+        ),
+        # helper in an enclosing ``try`` block (write in the ``try`` body)
+        (
+            "def f():\n"
+            "    try:\n"
+            "        path.write_text('x')\n"
+            "    finally:\n"
+            "        commit_deterministic_writes(root, [], {}, 's', None)\n",
+            3,
+        ),
+        # write inside a ``write_fn=`` lambda argument of the helper call
+        (
+            "def f():\n"
+            "    _commit_deterministic_config_write(\n"
+            "        path,\n"
+            "        write_fn=lambda: path.write_text('x'),\n"
+            "    )\n",
+            4,
+        ),
+    ],
+)
+def test_enclosing_calls_helper_accepts_provable_routing(
+    source: str, write_lineno: int
+) -> None:
+    """Accept only provable same-path post-write helper routing."""
+    assert _helper_check(source, write_lineno) is True
+
+
+def test_source_has_marker_within_window() -> None:
+    """An inline ``deterministic-writer-ok`` marker up to 3 lines above the
+    write line justifies the site even without helper routing."""
+    source = (
+        "def f():\n"
+        "    # deterministic-writer-ok: runtime cache, non-committable\n"
+        "    path.write_text('x')\n"
+    )
+    assert audit_module._source_has_marker(source, 3) is True
+    assert audit_module._source_has_marker(source, 1) is False

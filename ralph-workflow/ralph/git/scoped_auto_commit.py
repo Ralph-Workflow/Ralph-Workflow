@@ -41,9 +41,9 @@ import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
-from git import GitCommandError, InvalidGitRepositoryError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
 from ralph.git._dirty_paths import (
@@ -408,6 +408,75 @@ def capture_pre_write_contents(
         if callable(close):
             close()
     return recorded
+
+
+# ---- classify_target_for_commit ---------------------------------------------
+
+TargetCommitClass = Literal["tracked", "untracked_ignored", "untracked_new", "not_repo"]
+
+
+def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> TargetCommitClass:
+    """Classify a filesystem target BEFORE a deterministic writer touches it.
+
+    wt-12: ``config/bootstrap.py::_copy_with_backup`` needs to know, per
+    config write, whether the target is tracked at HEAD, a new untracked
+    path, an ignored path, or outside any repository -- so only
+    Ralph-authored writes to tracked or genuinely-new paths route through
+    :func:`commit_deterministic_writes`, while ignored targets and non-repo
+    targets bypass commit handling silently.
+
+    The containing repository is discovered from ``path`` itself (with
+    ``search_parent_directories=True``) -- NEVER from the process CWD, which
+    may be a different worktree.
+
+    Classification:
+
+    * ``tracked`` -- the path is tracked in the index (``git ls-files
+      --error-unmatch`` succeeds);
+    * ``untracked_ignored`` -- untracked AND ignored (``git check-ignore``
+      succeeds);
+    * ``untracked_new`` -- untracked and not ignored (a brand-new path a
+      deterministic writer is wholly authoring);
+    * ``not_repo`` -- the path is not inside a git working tree (the caller
+      skips commit handling silently; no warning).
+    """
+    del repo_root  # the containing repo is discovered from ``path`` itself
+    target = Path(path).resolve(strict=False)
+    try:
+        repo = Repo(target, search_parent_directories=True)
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError):
+        return "not_repo"
+    try:
+        working_dir = repo.working_dir
+        if not working_dir:
+            return "not_repo"
+        try:
+            rel_path = target.relative_to(Path(working_dir)).as_posix()
+        except ValueError:
+            return "not_repo"
+        try:
+            repo.git.ls_files("--error-unmatch", "--", rel_path)
+            return "tracked"
+        except GitCommandError:
+            pass
+        try:
+            # ``--quiet`` suppresses output; the exit status carries the
+            # answer (0 = ignored, 1 = not ignored, 128 = error).
+            repo.git.check_ignore("--quiet", rel_path)
+            return "untracked_ignored"
+        except GitCommandError as exc:
+            if exc.status != 1:
+                logger.debug(
+                    "classify_target_for_commit: check-ignore failed for {} ({}); "
+                    "treating as untracked_new",
+                    rel_path,
+                    exc.status,
+                )
+        return "untracked_new"
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
 
 
 # ---- commit_deterministic_writes --------------------------------------------
@@ -964,6 +1033,7 @@ def commit_scoped_updates(  # noqa: PLR0912
 
 __all__ = ["CreateCommitFn", "ScopedCommitResult",
     "ScopedCommitStatus",
+    "TargetCommitClass",
     "capture_pre_write_contents",
     "commit_deterministic_writes",
     "commit_scoped_updates",

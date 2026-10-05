@@ -39,7 +39,12 @@ from loguru import logger
 
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.loader import load_toml
-from ralph.git.operations import _atomic_append_text
+from ralph.git.operations import _atomic_append_text, create_commit, stage_files
+from ralph.git.scoped_auto_commit import (
+    ScopedCommitStatus,
+    classify_target_for_commit,
+    commit_deterministic_writes,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
@@ -866,16 +871,82 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         return BootstrapResult(target, "skipped", None)
 
     backup: Path | None = None
+    # wt-12: classify the target BEFORE any write so the commit routing
+    # decision uses the pre-write state.
+    commit_routing = classify_target_for_commit(target, target)
+    pre_contents: dict[str, str | None] = {}
+    repo_root: Path | None = None
+    if commit_routing != "not_repo":
+        from ralph.git.scoped_auto_commit import capture_pre_write_contents
+
+        repo_root = Path(Repo(target, search_parent_directories=True).working_dir)
+        pre_contents = capture_pre_write_contents(
+            repo_root, [_repo_rel_path(target, repo_root)]
+        )
+
     if pre_existed and force:
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
-        # filesystem-write-ok: forced migration moves the existing user configuration into its backup
+        # deterministic-writer-ok: the forced-regeneration backup move is
+        # part of the Ralph-authored config write routed through
+        # commit_deterministic_writes below (wt-12).
+        # filesystem-write-ok: deliberately timestamped backup of the previous config before regeneration (wt-12)
         shutil.move(str(target), str(backup))
 
-    # filesystem-write-ok: bootstrap copies the bundled template for a first-run or forced user configuration
+    # filesystem-write-ok: shipped-template install write, committed by the routing below (wt-12)
     shutil.copy2(str(source), str(target))
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )
+    # wt-12 commit routing. ``tracked`` and ``untracked_new`` targets are
+    # wholly Ralph-authored at this point, so they are committed under the
+    # fixed subject below. ``untracked_ignored`` and ``not_repo`` targets
+    # bypass commit handling SILENTLY (debug log only, never a warning):
+    # an ignored path is not Ralph's place to commit into, and a non-repo
+    # tree has nothing to commit into. This is expressed as an empty
+    # ``paths`` list, for which ``commit_deterministic_writes`` is a
+    # guaranteed silent NOOP -- the call itself stays on the unconditional
+    # statement path after the write.
+    commit_paths: list[str] = []
+    subject = "chore(config): noop"
+    commit_repo_root = target.parent
+    if commit_routing in ("tracked", "untracked_new"):
+        assert repo_root is not None  # guaranteed by commit_routing != "not_repo"
+        commit_repo_root = repo_root
+        commit_paths = [_repo_rel_path(target, repo_root)]
+        subject = f"chore(config): update {target.name}"
+    else:
+        logger.debug(
+            "config bootstrap: {} classified {}; bypassing deterministic commit",
+            target,
+            commit_routing,
+        )
+    # Empty ``paths`` short-circuits to a NOOP before any git access, so
+    # the placeholder root below is never touched for bypass classes.
+    try:
+        result = commit_deterministic_writes(
+            commit_repo_root,
+            paths=commit_paths,
+            pre_contents=pre_contents,
+            subject=subject,
+            create_commit_fn=create_commit,
+            stage_fn=stage_files,
+        )
+        if result.status is ScopedCommitStatus.CREATED and result.sha:
+            logger.debug("config bootstrap commit created: {}", result.sha[:8])
+        elif result.status is ScopedCommitStatus.SKIPPED:
+            logger.warning(
+                "config bootstrap: {} was already dirty at HEAD; left for the user flow",
+                target,
+            )
+        elif result.status is ScopedCommitStatus.FAILED:
+            logger.warning("config bootstrap commit failed (non-fatal): {}", result.error)
+    except Exception as exc:  # pragma: no cover - defensive, non-fatal
+        logger.warning("config bootstrap commit failed (non-fatal): {}", exc)
     return BootstrapResult(target, action, backup)
+
+
+def _repo_rel_path(target: Path, working_dir: Path) -> str:
+    """Return the repo-relative POSIX path of ``target`` inside ``working_dir``."""
+    return target.resolve(strict=False).relative_to(working_dir).as_posix()

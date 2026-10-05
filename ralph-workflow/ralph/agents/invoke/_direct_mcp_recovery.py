@@ -142,14 +142,13 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
         f"{consecutive_failures} identical failure signatures; try the next eligible agent."
     )
     if isinstance(exc, AgentInvocationError):
-        return AgentInvocationError(
-            exc.agent_name,
-            exc.returncode,
-            exc.stderr,
-            parsed_output=[*_exception_parsed_output(exc), diagnostic],
-            failure_origin=exc.failure_origin,
-            issuer=exc.issuer,
-        )
+        # Enrich in place: rebuilding a base AgentInvocationError here
+        # would erase the typed subclass (OpenCodeResumableExitError,
+        # AgyIncompleteExitError, ...) that retry scoping and callers'
+        # ``pytest.raises`` key on. ``parsed_output`` is a mutable list
+        # (same contract as ``_invocation_error_with_output``).
+        exc.parsed_output = [*_exception_parsed_output(exc), diagnostic]
+        return exc
     return RuntimeError(f"{diagnostic} Original failure: {exc}")
 
 

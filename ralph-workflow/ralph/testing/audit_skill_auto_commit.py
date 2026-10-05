@@ -78,6 +78,12 @@ _SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
 #: routes the byte-exact diff through ``commit_deterministic_writes``.
 #: Functions that call it are routed -- the audit recognizes the call
 #: and skips the per-callsite marker requirement.
+#:
+#: wt-12: ``_commit_config_write`` (config/bootstrap.py) is the
+#: bootstrap-side routing wrapper: it classifies the target
+#: (``classify_target_for_commit``), captures the pre-write hashes, and
+#: routes the deterministic diff through ``commit_deterministic_writes``.
+#: Sites whose write is followed by this wrapper call are routed.
 _WRITER_COMMIT_HELPERS: frozenset[str] = frozenset(
     {
         "commit_deterministic_writes",
@@ -85,6 +91,7 @@ _WRITER_COMMIT_HELPERS: frozenset[str] = frozenset(
         "commit_policy_writes",
         "commit_skill_writes",
         "_commit_deterministic_config_write",
+        "_commit_config_write",
     }
 )
 
@@ -565,8 +572,199 @@ def _iter_write_callsites(tree: ast.AST) -> list[tuple[int, str]]:
     return calls
 
 
+def _has_commit_helper_call(node: ast.AST) -> bool:
+    """True when ``node``'s subtree contains a commit-helper call.
+
+    Nested function/lambda bodies are NOT descended into: a helper call
+    inside a nested ``def`` does not route the enclosing write site --
+    the helper must run on the write's own statement path.
+    """
+    stack: list[ast.AST] = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            # A helper inside a nested ``def``/``lambda`` body never runs on
+            # the write's statement path -- do not descend.
+            continue
+        if (
+            isinstance(current, ast.Call)
+            and (
+                (
+                    isinstance(current.func, ast.Name)
+                    and current.func.id in _WRITER_COMMIT_HELPERS
+                )
+                or (
+                    isinstance(current.func, ast.Attribute)
+                    and current.func.attr in _WRITER_COMMIT_HELPERS
+                )
+            )
+        ):
+            return True
+        stack.extend(ast.iter_child_nodes(current))
+    return False
+
+
+def _stmt_contains_lineno(stmt: ast.stmt, lineno: int) -> bool:
+    end = stmt.end_lineno
+    return stmt.lineno <= lineno and (end is None or lineno <= end)
+
+
+def _sub_blocks(stmt: ast.stmt) -> list[list[ast.stmt]]:
+    """The statement lists of ``stmt``'s branch arms, in lexical order."""
+    blocks: list[list[ast.stmt]] = []
+    for field in ("body", "orelse", "finalbody"):
+        block: list[ast.stmt] | None = getattr(stmt, field, None)
+        if isinstance(block, list):
+            blocks.append(block)
+    handlers_obj: object = getattr(stmt, "handlers", ())
+    handlers: list[ast.ExceptHandler] = (
+        list(handlers_obj) if isinstance(handlers_obj, tuple) else []
+    )
+    blocks.extend(handler.body for handler in handlers)
+    return blocks
+
+
+def _within_helper_call_argument(stmt: ast.stmt, lineno: int) -> bool:
+    """True when the write sits inside an argument of a commit-helper call.
+
+    The canonical ``write_fn=lambda: write(...)`` shape: the helper itself
+    invokes the lambda, so the write is provably routed. Only lambdas are
+    descended into (a nested ``def`` argument body is not executed here).
+    """
+
+    def visit(node: ast.AST, in_arg: bool) -> bool:
+        if in_arg and _covers(node, lineno) and _subtree_has_write_at(node, lineno):
+            # The write lives inside a commit-helper call argument: the
+            # helper itself invokes it, so the write is provably routed.
+            return True
+        if isinstance(node, ast.Call):
+            is_helper = (
+                isinstance(node.func, ast.Name) and node.func.id in _WRITER_COMMIT_HELPERS
+            ) or (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in _WRITER_COMMIT_HELPERS
+            )
+            return any(
+                _covers(arg, lineno) and visit(arg, in_arg or is_helper)
+                for arg in (*node.args, *(keyword.value for keyword in node.keywords))
+            )
+        if isinstance(node, ast.Lambda) and _covers(node, lineno):
+            return in_arg or visit(node.body, in_arg)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        return any(
+            _covers(child, lineno) and visit(child, in_arg)
+            for child in ast.iter_child_nodes(node)
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+
+    def _covers(node: ast.AST, line: int) -> bool:
+        end: int | None = getattr(node, "end_lineno", None)
+        start: int = getattr(node, "lineno", line + 1)
+        return start <= line and (end is None or line <= end)
+
+    def _subtree_has_write_at(node: ast.AST, line: int) -> bool:
+        return any(
+            call_lineno == line
+            for call_lineno, _kind in _iter_write_callsites(node)
+        )
+
+    return visit(stmt, False)
+
+
+def _followed_by_helper_in_block(body: list[ast.stmt], lineno: int) -> bool:
+    """Fail-closed statement-path check for a write at ``lineno``.
+
+    True ONLY when a commit-helper call provably executes after the write
+    on the same statement path: a helper call in a LATER statement of this
+    block (or deeper, along the nested-block chain from the write
+    outward), with no intervening ``return`` / ``raise`` and no ``if`` /
+    ``elif`` sibling-arm separation. Helper-before-write, helper-only-in
+    a sibling branch, helper after an early return, and helper inside a
+    nested function are all violations (False).
+    """
+    after_write = False
+    for stmt in body:
+        if not after_write:
+            if not _stmt_contains_lineno(stmt, lineno):
+                continue
+            if _within_helper_call_argument(stmt, lineno):
+                return True
+            # The write is inside this statement. Look deeper along the
+            # nested-block chain first; a helper found there is followed.
+            if _followed_by_helper_within_stmt(stmt, lineno):
+                return True
+            after_write = True
+            continue
+        # Statements AFTER the write's statement in this block: the first
+        # helper call wins, but a return/raise before it is a barrier
+        # (fail closed -- the helper might never execute).
+        if isinstance(stmt, (ast.Return, ast.Raise)):
+            return False
+        if _has_commit_helper_call(stmt) or _within_helper_call_argument(stmt, lineno):
+            return True
+        if _contains_terminator(stmt):
+            # A conditionally-executed return/raise nested inside an
+            # intervening statement is ambiguous routing -- fail closed.
+            return False
+    return False
+
+
+def _contains_terminator(stmt: ast.stmt) -> bool:
+    """True when ``stmt``'s (non-nested-def) subtree contains return/raise."""
+    for child in ast.walk(stmt):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        if isinstance(child, (ast.Return, ast.Raise)):
+            return True
+    return False
+
+
+def _followed_by_helper_within_stmt(stmt: ast.stmt, lineno: int) -> bool:
+    """Search the branch arm of ``stmt`` that contains ``lineno``.
+
+    Only the arm actually containing the write is walked (sibling arms are
+    mutually exclusive -- a helper there never executes with the write).
+    A ``return`` / ``raise`` between the write and the arm's end is a
+    fail-closed barrier even when an enclosing block has a later helper.
+    """
+    for block in _sub_blocks(stmt):
+        if not any(_stmt_contains_lineno(s, lineno) for s in block):
+            continue
+        if _followed_by_helper_in_block(block, lineno):
+            return True
+        # ``finally`` always executes after the write's arm, so a helper
+        # there is provable routing even without one in the arm itself.
+        if isinstance(stmt, ast.Try) and any(
+            _has_commit_helper_call(inner) for inner in stmt.finalbody
+        ):
+            return True
+        # No helper found deeper in the containing arm. Fail closed when a
+        # return/raise sits between the write and the arm's end: an outer
+        # later helper would then be ambiguous.
+        seen_write = False
+        for inner in block:
+            if not seen_write:
+                if _stmt_contains_lineno(inner, lineno):
+                    seen_write = True
+                continue
+            if isinstance(inner, (ast.Return, ast.Raise)):
+                return True  # barrier -> definitive violation for this write
+        return False
+    return False
+
+
 def _enclosing_calls_helper(tree: ast.AST, lineno: int) -> bool:
-    """True when the innermost function enclosing ``lineno`` calls a commit helper."""
+    """True when the innermost function enclosing ``lineno`` provably runs a
+    commit-helper call AFTER the write on the same statement path.
+
+    wt-012 audit strengthening: the previous "helper anywhere in the
+    enclosing function" check accepted unreachable routing (helper in a
+    sibling ``else`` arm, after an early ``return``, inside a nested
+    ``def``, or before the write). The structural check walks the block
+    chain from the write outward and accepts only a helper at a later
+    statement position on the same path with no intervening terminator.
+    """
     best: ast.AST | None = None
     best_size: int | None = None
     for node in ast.walk(tree):
@@ -578,19 +776,9 @@ def _enclosing_calls_helper(tree: ast.AST, lineno: int) -> bool:
         size = end - node.lineno
         if best_size is None or size < best_size:
             best, best_size = node, size
-    if best is None:
+    if best is None or not isinstance(best, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
-    return any(
-        isinstance(child, ast.Call)
-        and (
-            (isinstance(child.func, ast.Name) and child.func.id in _WRITER_COMMIT_HELPERS)
-            or (
-                isinstance(child.func, ast.Attribute)
-                and child.func.attr in _WRITER_COMMIT_HELPERS
-            )
-        )
-        for child in ast.walk(best)
-    )
+    return _followed_by_helper_in_block(list(best.body), lineno)
 
 
 def _source_has_marker(source: str, lineno: int) -> bool:
