@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from graphlib import CycleError, TopologicalSorter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -117,13 +118,36 @@ def dispatchable_work_units(units: tuple[WorkUnit, ...]) -> tuple[WorkUnit, ...]
     return tuple(candidates[unit.unit_id] for unit in units if unit.unit_id in reachable)
 
 
+def _has_unsafe_step_graph(artifact: Mapping[str, object]) -> bool:
+    raw_steps = artifact.get("steps")
+    graph: dict[str, set[str]] = {}
+    for step in raw_steps if _is_list(raw_steps) else []:
+        if not _is_mapping(step) or (ref := _step_ref(step)) is None:
+            continue
+        raw_dependencies = step.get("depends_on")
+        graph[ref] = (
+            {f"S-{number}" for number in raw_dependencies if type(number) is int}
+            if _is_list(raw_dependencies)
+            else set()
+        )
+    if any(
+        dependency not in graph for dependencies in graph.values() for dependency in dependencies
+    ):
+        return True
+    try:
+        tuple(TopologicalSorter(graph).static_order())
+    except CycleError:
+        return True
+    return False
+
+
 def has_unextractable_work_units(artifact: Mapping[str, object]) -> bool:
     """Report whether raw plan units include any work unsafe for worker dispatch.
 
     Invalid or omitted unit metadata must retain the plan in the main session;
     returning true prevents partial native fan-out from discarding that work.
     """
-    if artifact.get("unextractable_work_units") is True:
+    if artifact.get("unextractable_work_units") is True or _has_unsafe_step_graph(artifact):
         return True
     parsed = parse_work_units_from_artifact(artifact)
     parsed_ids = {unit.unit_id for unit in parsed.work_units} if parsed is not None else set()

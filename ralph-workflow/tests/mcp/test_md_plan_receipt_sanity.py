@@ -46,14 +46,14 @@ _PROSE = "Inspect code then implement independent changes and verify all behavio
 _CASES = (
     "Inspect code then implement changes and verify all behavior carefully.",
     _PROSE,
-    _PROSE + "\n### [S-1] First\n### [S-1] Second",
-    _PROSE + "\n### [S-1] First\nDepends on: S-99",
-    _PROSE + "\n### [S-1] First\nDepends on: S-2\n### [S-2] Second\nDepends on: S-1",
+    _PROSE + "\n## Steps\n### [S-1] First\n### [S-1] Second",
+    _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-99",
+    _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-2] Second\nDepends on: S-1",
     _PROSE + "\n## Work Units\n- [U-1] First\n  Directories: src\n- [U-2] Second\n  Directories: src",
     _PROSE + "\n## Work Units\n- [U-1] First\n- [U-2] Second",
     _PROSE + "\n## Work Units\n" + "\n".join(f"- [U-{i}] Work on file {i}" for i in range(1, 66)),
     _PROSE + "\n## Work Units\n- [U-1] First\n## Parallel Plan\n- [U-2] Second",
-    _PROSE + "\n### [S-1] Change the implementation",
+    _PROSE + "\n## Steps\n### [S-1] Change the implementation",
     "---\ntype: plan\ntype: other\nbroken metadata\n---\n" + _PROSE,
 )
 
@@ -92,7 +92,7 @@ def test_stage_finalize_edit_and_fallback_preserve_prose_and_receipts() -> None:
     assert not handle_finalize_md_artifact(
         session, workspace, {"artifact_type": "plan"}, deps=deps
     ).is_error
-    edited = _PROSE + "\n### [S-1] First\nDepends on: S-999"
+    edited = _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-999"
     result = handle_edit_md_artifact(
         session, workspace,
         {"artifact_type": "plan", "edits": [{"oldText": _PROSE, "newText": edited}]},

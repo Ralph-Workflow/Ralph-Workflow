@@ -25,8 +25,6 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {{ render_payload_section('PROMPT', PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
 
-{% include 'shared/_developer_iteration_guidance.j2' %}
-
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
 {% include 'shared/_analysis_context.j2' %}
@@ -74,6 +72,8 @@ handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 
 Implement and verify only `{{ unit_id }}`, then return that one unit result. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
+
+{% include 'shared/_developer_iteration_guidance.j2' %}
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 {% if IS_CONTINUATION %}

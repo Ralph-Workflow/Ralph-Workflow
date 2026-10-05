@@ -134,13 +134,11 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         assert "## Completion is the default outcome" in prompt
         assert "last resort" in prompt
         expected_scope = (
-            "the assigned unit is proven in full"
+            "the assigned unit is proven"
             if is_worker
             else "every required plan reference is proven"
         )
         assert expected_scope in prompt
-        if is_worker:
-            assert "then continue to the next ready reference until the unit is proven" in prompt
 
 
 def test_development_analyzer_separates_request_criteria_from_plan_routes() -> None:

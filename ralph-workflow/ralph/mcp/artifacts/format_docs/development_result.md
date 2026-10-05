@@ -37,6 +37,21 @@ status: completed
 - [DA-001] Added the missing edge-case regression test.
 ```
 
+## Prose-plan proof example
+
+When the accepted plan has no usable extracted step or unit IDs, replace the
+step entries above with exactly one plan-level entry:
+
+```markdown
+## Plan Items Proven
+
+- [plan] Fixed token refresh in src/auth/refresh.py and added tests/test_refresh.py; `pytest tests/test_refresh.py -q` exits 0 and proves concurrent refresh preserves token validity.
+  Disposition: completed
+```
+
+Do not add invented step or unit IDs alongside this fallback. The bundled
+example demonstrates a complete result for this case.
+
 ## Unplanned Work example (optional, any status)
 
 Append a top-level `## Unplanned Work` section for work required by the

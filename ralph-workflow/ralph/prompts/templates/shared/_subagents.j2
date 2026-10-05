@@ -77,10 +77,10 @@ Every sub-agent brief must carry these five fields. They are the contract the
 main session relies on; repair a brief missing any field before dispatch.
 
 1. **Objective.** One sentence naming the outcome the sub-agent owns.
-2. **Scope.** Allowed paths (for read-only helpers) or the unit's
-   `Directories:` set (for unit implementers), or exact files and step IDs
-   (for step-group implementers without declared units). Anything outside scope is the
-   main session's responsibility.
+2. **Scope.** Allowed paths for read-only helpers; exact effective ownership
+   for implementers, from the unit's `Directories:` and/or `Paths:`, or its
+   steps' `Files:` when neither is declared. Include assigned step IDs if
+   present. Anything outside scope is the main session's responsibility.
 3. **Tools.** The Ralph Workflow brokered MCP tools only. Native shell,
    native write tools, and editor commands are prohibited. State this
    explicitly in the brief.

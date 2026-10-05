@@ -675,30 +675,3 @@ serially; disjoint files in the same directory may run together. Protected
 assignments are removed before worker briefs, and unknown ownership or
 unextractable graphs remain main-session work. Brokered write protections
 continue to enforce filesystem safety.
-The development prompts direct the coordinator to treat huge scope as a
-reason to change execution strategy, not to return only an assessment. Task
-size alone does not justify a refusal or an assessment-only handoff; the
-coordinator begins the first safe, testable increment, inventories remaining
-criteria and dependencies, dispatches independent ready units within exposed
-capacity, and immediately starts its own ready work. Decomposition is an
-execution tactic, not a request to abandon the remaining deliverables. While
-helpers are busy or dispatch is unsuccessful, safe local work continues.
-Isolated workers apply the first-increment rule only within their assigned
-unit; they apply the implement–verify loop to that unit, never recursively
-delegating, widening ownership, or integrating the whole plan.
-
-A failed helper or unusable result calls for an evidence-backed changed tactic:
-correct the brief, use another exposed helper, or finish the ready scope
-locally. Before transferring ownership, the coordinator must confirm that the
-previous writer has stopped. It must not overlap writers or revert another
-worker's changes. Unit results remain leads for the coordinator to verify
-before integrating them, releasing dependent work, and running the full gate.
-
-Persistence does not waive required verification, independent coverage, or
-pre-submit review. If required review remains unavailable, that is a
-verification blocker, not permission to report completion. Incomplete outcomes
-must accurately identify remaining work and evidence under the existing
-artifact rules; difficulty or helper failure alone does not justify abandoning
-safe executable work. These are role-specific prompt instructions, not a
-guarantee that an agent completes arbitrary tasks. They do not change runtime
-deadlines, result eligibility, or the dormant Ralph-managed fan-out path.

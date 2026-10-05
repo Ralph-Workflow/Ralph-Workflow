@@ -3,40 +3,33 @@ type: development_result
 status: completed
 ---
 
+## Example context
+
+This illustrative result answers a prose plan with no usable step or unit IDs:
+"Fix the token refresh race, add regression coverage, and document the behavior."
+The paths and results below demonstrate reporting, not evidence of a real run.
+Use the format guide's step-ID examples when the accepted plan has usable IDs.
+
 ## Summary
 
-- [SUM-1] Serialized token refresh per token key to eliminate the expiry race; the new concurrency regression test failed before the fix and passes after, and the full auth module is green.
+- [SUM-1] Serialized token refresh per token key, added regression coverage, and updated the behavior guide; focused tests and documentation checks passed.
 
 ## Files Changed
 
 - [F-1] src/auth/refresh.py
 - [F-2] tests/auth/test_refresh_race.py
+- [F-3] docs/auth/refresh.md
 
 ## Plan Items Proven
 
-- [plan-section-reproduce-race] Created tests/auth/test_refresh_race.py; ran it before the fix and recorded the failure (AssertionError: token invalidated while in use).
+- [plan] Added the per-token-key lock in src/auth/refresh.py and the regression in tests/auth/test_refresh_race.py; the regression failed before the fix and passed after it. Updated docs/auth/refresh.md to describe same-key serialization and independent refreshes for different keys. Ran `pytest tests/auth -q` and `make docs`; both exited 0 without warnings.
   Disposition: completed
-- [plan-section-add-per-key-lock] Added the per-token-key lock in src/auth/refresh.py; refresh_token() signature unchanged after reading the current file, where only the function body differs.
-  Disposition: completed
-- [plan-section-focused-pytest] pytest tests/auth/test_refresh_race.py -q passed on three consecutive runs (exit 0 each time).
-  Disposition: completed
-- [plan-section-full-auth-pytest] pytest tests/auth -q passed: 47 passed in 8.2s, zero failures, no new warnings.
-  Disposition: completed
-- [plan-section-adapted-existing-owner] Used src/auth/refresh.py after fresh inspection showed the planned src/auth/token_refresh.py route does not exist; pytest tests/auth/test_refresh_race.py -q passes.
-  Disposition: adapted
-  Rationale: The planned module premise was false, but the existing refresh owner implements and proves the same token-expiry outcome.
-- [plan-section-no-schema-migration] No schema migration was needed because db/schema.sql:42 already contains the requested indexed token key and pytest tests/auth/test_schema.py -q passes.
-  Disposition: not_applicable
-  Rationale: The plan assumed the index was absent; the cited schema and focused check contradict that premise without weakening the request.
 
 ## Analysis Items Addressed
 
-- [FIX-1] Bounded the lock dictionary: entries are dropped when a refresh completes with no waiters; asserted in test_concurrent_refresh_keeps_token_valid.
+- [FIX-1] Bounded the lock dictionary: entries are dropped when a refresh completes with no waiters; test_concurrent_refresh_keeps_token_valid passes.
 
 ## Unplanned Work
 
-- [UW-1] src/auth/refresh.py:78 — lock contention surfaced during the refresh-token test; reproduced by `pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid` on the pre-fix tree before the per-token-key lock landed.
-- [UW-2] docs/auth/refresh.md — the design doc still described the global
-  lock. Updated the doc to describe per-key serialization; proof:
-  the rendered refresh page now names per-key serialization, verified by
-  re-reading docs/auth/refresh.md after the change.
+- [UW-1] Request criterion: preserve token validity during same-key refreshes. Replaced the global lock at src/auth/refresh.py:78 with per-key serialization and added tests/auth/test_refresh_race.py. Proof: `pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid` exits 0 and confirms the token remains valid.
+- [UW-2] Request criterion: document the new refresh behavior. Updated docs/auth/refresh.md:12 to replace the global-lock description with same-key serialization and independent refreshes for different keys. Proof: `make docs` exits 0; the rendered refresh page describes both cases.

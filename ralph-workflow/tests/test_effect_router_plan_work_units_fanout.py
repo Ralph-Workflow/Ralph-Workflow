@@ -8,15 +8,15 @@ multiple agent CLI instances actually run in parallel.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
+from ralph.config.models import UnifiedConfig
+from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
-from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.work_units import WorkUnit, has_unextractable_work_units
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -25,11 +25,9 @@ from tests._support.typed_accessors import (
 )
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
     from ralph.policy.models import PolicyBundle
 
 
-@lru_cache(maxsize=1)
 def _default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
@@ -58,10 +56,9 @@ def _legacy_fan_out_policy_bundle() -> PolicyBundle:
 
 
 def _config_with_development_agent() -> UnifiedConfig:
-    config = MagicMock()
-    config.agent_chains = {"developer": ["claude"]}
-    config.agent_drains = {"development": "developer"}
-    return config
+    return UnifiedConfig.model_validate(
+        {"agent_chains": {"developer": ["claude"]}, "agent_drains": {"development": "developer"}}
+    )
 
 
 def _plan_document(work_units: list[dict[str, object]]) -> str:
@@ -155,6 +152,20 @@ Expect: the focused {name} tests pass with exit code 0
 
 
 def test_native_router_keeps_cyclic_and_unowned_work_in_main_session() -> None:
+    for dependencies in ("S-99", "S-1", "S-2"):
+        content, diagnostics, _ = analyze_plan_document(
+            "## Work Units\n"
+            "- [A] producer\n"
+            "  Paths: src/a.py\n"
+            "### [S-1] produce\n"
+            f"Depends on: {dependencies}\n"
+            "- [B] consumer\n"
+            "  Paths: src/b.py\n"
+            "### [S-2] consume\n"
+            "Depends on: S-1\n"
+        )
+        assert diagnostics == []
+        assert has_unextractable_work_units(content)
     units = (
         WorkUnit(unit_id="A", description="A", paths=["src/a.py"], dependencies=["B"]),
         WorkUnit(unit_id="B", description="B", paths=["src/b.py"], dependencies=["A"]),
@@ -304,9 +315,9 @@ def test_preseeded_single_unit_state_ignores_plan_artifact(tmp_path: Path) -> No
 def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
     _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(phase="planning")
-    config = MagicMock()
-    config.agent_chains = {"planner": ["claude"]}
-    config.agent_drains = {"planning": "planner"}
+    config = UnifiedConfig.model_validate(
+        {"agent_chains": {"planner": ["claude"]}, "agent_drains": {"planning": "planner"}}
+    )
 
     effect = determine_effect_from_policy(
         state,
@@ -344,13 +355,7 @@ def test_overlapping_units_are_dispatched_for_serialized_execution(tmp_path: Pat
     """Overlapping ownership is serialized by the scheduler, never rejected."""
     _write_plan_artifact(
         tmp_path,
-        (
-            "## Work Units\n"
-            "- [unit-a] A\n"
-            "  Directories: src\n"
-            "- [unit-b] B\n"
-            "  Directories: src/sub\n"
-        ),
+        ("## Work Units\n- [unit-a] A\n  Directories: src\n- [unit-b] B\n  Directories: src/sub\n"),
     )
     state = PipelineState(phase="development")
 

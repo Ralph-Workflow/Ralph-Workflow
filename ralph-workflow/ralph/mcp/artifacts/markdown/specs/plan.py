@@ -95,7 +95,7 @@ def _values(value: str) -> list[str]:
     return [part.strip().strip("`") for part in value.replace(",", " ").split() if part.strip()]
 
 
-def _units(document: ParsedDocument, name: str, steps: list[Content]) -> list[Content]:
+def _units(document: ParsedDocument, name: str) -> list[Content]:
     entries: list[Content] = []
     seen: set[str] = set()
     for section in document.sections:
@@ -140,8 +140,13 @@ def _is_step_metadata_line(text: str) -> bool:
 
 def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> bool:
     """Keep prose that extraction cannot safely assign out of fan-out."""
+    seen_step_ids: set[str] = set()
     for section in document.sections:
         is_unit_section = section.name in {"Work Units", "Parallel Plan"}
+        for block in section.blocks:
+            if _STEP_ID.fullmatch(block.identifier) and block.identifier in seen_step_ids:
+                return True
+            seen_step_ids.add(block.identifier)
         if section.lines:
             return True
         if section.blocks:
@@ -165,9 +170,22 @@ def _to_content(document: ParsedDocument) -> Content:
     steps = _steps(document)
     if steps:
         content["steps"] = steps
-    units = _units(document, "Work Units", steps)
-    parallel = _units(document, "Parallel Plan", steps)
-    attach_owned_step_ids(document, [*units, *parallel], steps, section_names=("Work Units", "Parallel Plan"))
+    units = _units(document, "Work Units")
+    parallel = _units(document, "Parallel Plan")
+    seen_unit_ids: set[str] = set()
+    ambiguous_unit_ids: set[str] = set()
+    for section in document.sections:
+        if section.name in {"Work Units", "Parallel Plan"}:
+            for item in section.items:
+                if item.identifier in seen_unit_ids:
+                    ambiguous_unit_ids.add(item.identifier)
+                seen_unit_ids.add(item.identifier)
+    if ambiguous_unit_ids:
+        content["unextractable_work_units"] = True
+    else:
+        attach_owned_step_ids(
+            document, [*units, *parallel], steps, section_names=("Work Units", "Parallel Plan")
+        )
     if any(
         line.text.startswith("-")
         for section in document.sections

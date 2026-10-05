@@ -135,6 +135,19 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
     import_module("ralph.mcp.artifacts.markdown.specs")
     example = load_bundled_example(artifact_type)
     assert example is not None
+    if artifact_type == "development_result":
+        proof_section = example.split("## Plan Items Proven\n", 1)[1].split("\n## ", 1)[0]
+        assert proof_section.count("- [") == 1
+        assert "- [plan]" in proof_section
+        assert "Disposition: completed" in proof_section
+        assert "follow-up plan" not in example
+        skill = get_skill_content("submit-development-result-artifact")
+        assert "exactly one `[plan]`" in skill
+        assert "usable unit IDs plus unowned step IDs" in skill
+    elif artifact_type == "planning_analysis_decision":
+        for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+            assert f"Criterion: {criterion}." in example
+        assert "split into independent" in example
     _, diagnostics = parse_and_validate(example, get_spec(artifact_type))
     assert [item for item in diagnostics if item.severity == "error"] == []
 

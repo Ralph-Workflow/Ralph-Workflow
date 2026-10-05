@@ -1,7 +1,7 @@
 ---
 name: submit-development-result-artifact
 description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a completed result was rejected for a missing section or an unproven plan or analysis item
-version: 2.1.0
+version: 2.2.0
 ---
 
 # submit-development-result-artifact
@@ -42,7 +42,7 @@ status decides whether the run ends.
 |---|---|---|
 | `## Summary` | yes | exactly 1 |
 | `## Files Changed` | yes | 1+ (one file per item) |
-| `## Plan Items Proven` | no (required once the cycle timebox has warned) | one per plan step proven |
+| `## Plan Items Proven` | proof-policy controlled; required once the cycle timebox has warned | usable extracted references, or one `plan` entry |
 | `## Next Steps` | no | exactly 1 |
 | `## Continuation` | no | exactly 1: the prior session ID |
 | `## Analysis Items Addressed` | no | one per analysis finding addressed |
@@ -52,9 +52,13 @@ status decides whether the run ends.
 Proof entries reference other artifacts by their stable item IDs — the ID
 goes in the `[ID]` slot and the proof is the item text:
 
-- `## Plan Items Proven`: the item ID is the plan step's stable ID
-  (`S-1`, `S-2`, …) exactly as it appears in the plan's `## Steps`
-  section. The text states concrete evidence. Add an indented
+- `## Plan Items Proven`: use the accepted plan's usable extracted step IDs,
+  or, for an explicit Work Units plan, usable unit IDs plus unowned step IDs
+  (including integration). Unit proof covers its owned steps; do not also
+  submit their step IDs. An isolated worker proves its assigned unit ID.
+  When no usable IDs are extracted, use exactly one `[plan]` entry proving
+  the accepted prose plan instead of inventing IDs. The text states concrete
+  evidence. Add an indented
   `Disposition: completed|adapted|not_applicable|blocked` field. Add an
   indented `Rationale:` for adapted, not-applicable, or blocked items. A
   completed result cannot contain blocked work; submit a partial result.
@@ -62,7 +66,9 @@ goes in the `[ID]` slot and the proof is the item text:
   `## What Came Up Short` finding in the analysis-decision artifact you are
   answering. The text states concrete evidence that the finding is closed.
 
-Copy the IDs from the source artifact — do not invent or renumber them.
+Copy usable IDs from the source artifact — do not invent or renumber them.
+The single `plan` fallback is for accepted plans without usable IDs only.
+See `.agent/artifact-formats/examples/development_result.md` for that case.
 
 ## Core Flow
 

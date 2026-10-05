@@ -365,3 +365,62 @@ Prepare release/manifest.json after the first component is complete.
 
     assert diagnostics == []
     assert content["unextractable_work_units"] is True
+
+
+def test_plan_regression_duplicate_units_cannot_reassign_nested_steps() -> None:
+    """U-1: ambiguous identifiers retain prose without inventing a worker owner."""
+    for second_section in ("Work Units", "Parallel Plan"):
+        text = f"""## Work Units
+- [api] Implement the first API component
+  Paths: src/first.py
+### [S-1] Implement the first API behavior
+Files:
+- modify src/first.py
+## {second_section}
+- [api] Implement the second API component
+  Paths: src/second.py
+### [S-2] Implement the second API behavior
+Files:
+- modify src/second.py
+"""
+        content, diagnostics, overrides = analyze_plan_document(text)
+
+        assert diagnostics == []
+        assert overrides == []
+        assert content["unextractable_work_units"] is True
+        assert content["work_units"] == [{
+            "unit_id": "api",
+            "description": "Implement the first API component",
+            "allowed_directories": [],
+            "allowed_paths": ["src/first.py"],
+            "dependencies": [],
+            "step_ids": [],
+        }]
+        if second_section == "Parallel Plan":
+            assert content["parallel_plan"] == [{
+                "id": "api",
+                "description": "Implement the second API component",
+                "edit_area": {"directories": [], "paths": ["src/second.py"]},
+                "depends_on": [],
+                "step_ids": [],
+            }]
+
+
+def test_plan_regression_duplicate_steps_make_worker_ownership_unextractable() -> None:
+    """Ambiguous duplicate steps never permit unsafe native fan-out."""
+    text = """## Work Units
+- [api] First API component
+  Paths: src/first.py
+### [S-1] First behavior
+## Parallel Plan
+- [web] Second web component
+  Paths: src/second.py
+### [S-1] Second behavior
+Depends on: S-99
+"""
+
+    content, diagnostics, overrides = analyze_plan_document(text)
+
+    assert diagnostics == []
+    assert overrides == []
+    assert content["unextractable_work_units"] is True
