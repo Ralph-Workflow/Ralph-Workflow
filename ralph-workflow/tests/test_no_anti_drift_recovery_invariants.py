@@ -11,6 +11,7 @@ time.sleep, no os.system). The tests use the project's
 from __future__ import annotations
 
 import ast
+import os
 import pathlib
 import time
 
@@ -29,7 +30,13 @@ def _read(path: pathlib.Path) -> str:
 
 
 def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
-    return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+    python_files: list[pathlib.Path] = []
+    for directory, subdirectories, filenames in os.walk(root):
+        subdirectories[:] = [name for name in subdirectories if name != "__pycache__"]
+        python_files.extend(
+            pathlib.Path(directory, filename) for filename in filenames if filename.endswith(".py")
+        )
+    return python_files
 
 
 # ---------------------------------------------------------------------------

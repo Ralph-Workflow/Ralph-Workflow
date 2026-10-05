@@ -162,6 +162,15 @@ def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities
     )
 
 
+def test_branch_scenarios_include_realistic_planning_unit_split_value() -> None:
+    scenarios = dict(_branch_scenarios({"planning_unit_split_allowed"}))
+
+    assert scenarios["baseline"] == {"planning_unit_split_allowed": ""}
+    assert scenarios["planning_unit_split_allowed=on"] == {
+        "planning_unit_split_allowed": "true"
+    }
+
+
 def test_branch_scenarios_cross_nested_paths_with_independent_call_gates() -> None:
     scenarios = dict(
         _branch_scenarios(

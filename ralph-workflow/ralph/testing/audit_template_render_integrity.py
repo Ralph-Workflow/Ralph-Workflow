@@ -139,6 +139,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),
     "analysis_feedback_status": ("failed",),
+    "planning_unit_split_allowed": ("true",),
     "replaying_commit_sha": ("0123456789abcdef",),
     "shipped_skills_mode": ("planning", "development"),
     "show_plan_edit_guidance": ("true",),

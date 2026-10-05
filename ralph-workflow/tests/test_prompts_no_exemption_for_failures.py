@@ -107,3 +107,94 @@ def test_partial_results_rule_is_single_sourced() -> None:
         assert "MUST resolve anything that comes up" not in text, (
             f"{name} restates the rule; it should reference the canonical home"
         )
+
+
+def test_developer_prompts_regression_early_scope_recovery_matrix() -> None:
+    """S-1/S-2: every delivered role recovers before request/plan payloads."""
+    from ralph.mcp.protocol.capability_mapping import SessionDrain
+    from ralph.prompts.developer import (
+        DeveloperPromptInputs,
+        prompt_developer_iteration_xml_with_context,
+    )
+    from ralph.prompts.template_context import TemplateContext
+    from ralph.prompts.types import SessionCapabilities
+    from ralph.workspace.memory import MemoryWorkspace
+
+    surfaces = (
+        ("developer_iteration.jinja", False, False, False),
+        ("developer_iteration_continuation.jinja", False, True, False),
+        ("developer_iteration_fallback.jinja", False, False, False),
+        ("worker_developer.jinja", True, False, False),
+        ("worker_developer.jinja", True, True, False),
+        ("developer_iteration_fallback.jinja", True, False, False),
+        ("developer_iteration_fallback.jinja", True, True, False),
+        ("developer_iteration.jinja", False, False, True),
+        ("worker_developer.jinja", True, True, True),
+    )
+    for template, worker, continuation, render_failure in surfaces:
+        context = TemplateContext.default()
+        if render_failure:
+            context.registry.register_template(template, "{% invalid_tag %}")
+        rendered = prompt_developer_iteration_xml_with_context(
+            context,
+            DeveloperPromptInputs(
+                prompt_content="",
+                plan_content="",
+                product_criteria_path="/request-payload-marker.md",
+                plan_path="/plan-payload-marker.md",
+                is_continuation=continuation,
+                work_unit_id="U-1" if worker else "",
+                work_unit_description="Implement assigned recovery changes.",
+                work_unit_paths="src/recovery.py" if worker else "",
+                worker_namespace=".agent/workers/U-1" if worker else "",
+            ),
+            MemoryWorkspace(),
+            SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            template_name=template,
+        )
+        normalized = " ".join(rendered.split())
+        label = (template, worker, continuation, render_failure)
+        mandate = "## Scope recovery"
+        assert rendered.count(mandate) == 1, label
+        assert rendered.index(mandate) < rendered.index("/request-payload-marker.md"), label
+        assert rendered.index(mandate) < rendered.index("/plan-payload-marker.md"), label
+        for action in (
+            "before any implementation",
+            "inventory",
+            "falsifiable increment",
+            "implement",
+            "verify",
+            "recompute readiness",
+            "changed, evidence-backed approach",
+            "safe work remains",
+            "shared/_no_exemption_for_failures.j2",
+        ):
+            assert action in normalized, (label, action)
+        for forbidden in (
+            "or report partial progress",
+            "Then return the unit result.",
+            "If the unit remains blocked, submit",
+            "A blocked item with a safe concrete continuation requires",
+            "a blocked assignment requires a partial result",
+        ):
+            assert forbidden not in normalized, (label, forbidden)
+        if worker:
+            for obligation in (
+                "Workers never dispatch sub-agents",
+                "focused verification",
+                "only the assigned",
+                "src/recovery.py",
+                ".agent/workers/U-1/artifacts/development_result.md",
+                ".agent/workers/U-1/tmp/development_result.md",
+            ):
+                assert obligation in normalized, (label, obligation)
+            assert "dispatch independent ready scopes" not in normalized, label
+        else:
+            for obligation in (
+                "dispatch independent ready scopes",
+                "sequentially",
+                "permissions",
+                "exposed capacity",
+                "acceptance criteria",
+            ):
+                assert obligation in normalized, (label, obligation)
