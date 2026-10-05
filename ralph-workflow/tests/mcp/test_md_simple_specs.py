@@ -341,8 +341,9 @@ status: request_changes
     assert content["finding_ids"] == ["DA-001"]
 
 
-def test_planning_verdict_must_carry_cost() -> None:
-    """ANALYSIS005: planning verdicts must include ``Cost:``.
+def test_planning_verdict_cost_omission_regression() -> None:
+    """Unit A step 2 (Cost: enforcement regression): a planning verdict that
+    omits ``Cost:`` must be rejected with ANALYSIS005.
 
     The planning contract treats the cost of the missed split as part of
     the verdict, so the validator rejects a planning verdict that omits
