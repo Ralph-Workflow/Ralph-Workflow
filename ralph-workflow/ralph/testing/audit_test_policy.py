@@ -238,6 +238,24 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # file, so the locks would stop detecting drift. Reading the files is
     # the ONLY thing the test needs exempted.
     "test_development_analysis_whole_change",
+    # Development-result proof-guidance lock. Reads the shipped
+    # ``ralph/mcp/artifacts/format_docs/development_result.md`` and the
+    # shared prompt partial
+    # ``ralph/prompts/templates/shared/_development_result_proof.jinja``
+    # because their literal contents are the regression contract: each
+    # assertion guards one sentence of the proof guidance and would fail
+    # if that sentence drifted. A tmp_path copy would assert against the
+    # fixture, not the shipped documents. Reading those files is the ONLY
+    # thing the test needs exempted.
+    "test_development_result_proof_guidance",
+    # Planning-analysis example lock. Reads the shipped
+    # ``ralph/mcp/artifacts/format_docs/planning_analysis_decision.md``
+    # and its standalone example mirror because their literal contents
+    # are the regression contract: each assertion guards one required
+    # unit property (ownership, per-unit check) in the example guidance.
+    # A tmp_path copy would assert against the fixture. Reading those
+    # files is the ONLY thing the test needs exempted.
+    "test_planning_analysis_example_lock",
 }
 
 # Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.

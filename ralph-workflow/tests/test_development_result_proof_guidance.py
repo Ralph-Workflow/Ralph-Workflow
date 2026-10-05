@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jinja2 import Environment
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FORMAT_DOC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "development_result.md"
 _JINJA_PARTIAL = (
@@ -70,6 +72,7 @@ def test_format_doc_scopes_plan_item_proof_to_actual_plan_references() -> None:
 
     assert "one item per plan reference the plan actually uses" in text
     assert "not by exact ID matching or a hard missing-entry error" in text
+    assert "not matching a plan-parsed ID; it only rejects duplicate IDs" not in text
 
 
 def test_format_doc_partial_guidance_names_parallel_dispatch() -> None:
@@ -80,23 +83,28 @@ def test_format_doc_partial_guidance_names_parallel_dispatch() -> None:
     assert "dispatch them in parallel" in text
 
 
-def test_jinja_partial_scopes_shape_independence_to_plan_references() -> None:
-    """The bare "only rejects duplicate IDs" understatement is gone: the
-    shape-independence claim is scoped to ``## Plan Items Proven``, so
-    the unscoped heading and the unscoped validator sentence no longer
-    appear."""
-    text = _normalized(_JINJA_PARTIAL)
-
-    assert "**Proof IDs are shape-independent.**" not in text
-    assert "## Plan Items Proven` are shape-independent.**" in text
-    assert "solely for not matching a plan-parsed ID; it only rejects duplicate IDs" not in text
+def _rendered_partial() -> str:
+    """Render the shipped jinja partial exactly as the prompt engine does."""
+    template = Environment().from_string(_JINJA_PARTIAL.read_text(encoding="utf-8"))
+    return " ".join(template.render().split())
 
 
-def test_jinja_partial_requires_exact_analysis_finding_id_match() -> None:
-    """``## Analysis Items Addressed`` IDs must exactly match the prior
-    analysis's stable finding IDs: a missing or unknown analysis finding
-    ID fails proof validation."""
-    text = _normalized(_JINJA_PARTIAL)
+def test_rendered_partial_scopes_shape_independence_to_plan_references() -> None:
+    """The rendered partial scopes shape independence to ``## Plan Items
+    Proven`` and carries no unscoped shape-independence claim or "only
+    rejects duplicate IDs" understatement."""
+    rendered = _rendered_partial()
 
-    assert "must EXACTLY match the prior analysis's stable finding ID" in text
-    assert "missing or unknown analysis finding ID fails proof validation" in text
+    assert "Proof IDs in `## Plan Items Proven` are shape-independent" in rendered
+    assert "**Proof IDs are shape-independent.**" not in rendered
+    assert "not matching a plan-parsed ID; it only rejects duplicate IDs" not in rendered
+
+
+def test_rendered_partial_requires_exact_analysis_finding_id_match() -> None:
+    """The rendered partial states that ``## Analysis Items Addressed``
+    IDs must match the prior analysis's stable finding IDs and that a
+    missing or unknown analysis finding ID fails proof validation."""
+    rendered = _rendered_partial()
+
+    assert "must match the prior analysis's stable finding ID exactly" in rendered
+    assert "missing or unknown analysis finding ID fails proof validation" in rendered

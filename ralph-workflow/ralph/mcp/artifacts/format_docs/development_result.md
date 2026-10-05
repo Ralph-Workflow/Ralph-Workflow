@@ -39,15 +39,20 @@ status: completed
 - [DA-001] Added the missing edge-case regression test.
 ```
 
-Proof IDs are shape-independent: a bracketed ID may be a step ID
-(`S-N`), a work-unit bracket ID, a prose-plan ID (`plan`), a subplan /
-section heading, or any other stable reference the plan actually uses.
-The validator never rejects an ID solely for not matching a plan-parsed
-ID; it only rejects duplicate IDs, missing `Disposition` / `Rationale`
-fields, and (for `adapted` / `not_applicable` / `blocked` items) a
-missing `Rationale`. Coverage of the plan's intent is now followed
-through the development-analysis feedback loop, not by exact ID
-matching here.
+Proof IDs in `## Plan Items Proven` are shape-independent: a bracketed
+ID may be a step ID (`S-N`), a work-unit bracket ID, a prose-plan ID
+(`plan`), a subplan / section heading, or any other stable reference
+the plan actually uses. The validator never rejects a plan-item ID
+solely for not matching a plan-parsed ID; on plan items it only
+rejects duplicate IDs, a missing or unknown `Disposition`, a missing
+`Rationale` for `adapted` / `not_applicable` / `blocked` items, and
+`blocked` in a completed result. `## Analysis Items Addressed` IDs
+are not shape-independent: duplicate analysis-item proof entries and
+missing or unknown analysis finding IDs are hard errors, because
+analysis finding IDs are validated exactly against the prior
+analysis's stable finding IDs. Coverage of the plan's intent is
+followed through the development-analysis feedback loop, not by exact
+ID matching here.
 
 ## Unplanned Work example (optional, any status)
 

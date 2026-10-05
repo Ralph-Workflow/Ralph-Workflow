@@ -36,4 +36,7 @@ status: completed
 ## Unplanned Work
 
 - [UW-1] src/auth/refresh.py:78 — lock contention surfaced during the refresh-token test; reproduced by `pytest tests/auth/test_refresh_race.py::test_concurrent_refresh_keeps_token_valid` on the pre-fix tree before the per-token-key lock landed.
-- [UW-2] docs/auth/refresh.md — the design doc still describes a global lock; the per-token-key change above means the doc is now misleading and should be updated in a follow-up plan rather than silently rewritten under this development.
+- [UW-2] docs/auth/refresh.md — the design doc still described the global
+  lock. Updated the doc to describe per-key serialization; proof:
+  the rendered refresh page now names per-key serialization, verified by
+  re-reading docs/auth/refresh.md after the change.
