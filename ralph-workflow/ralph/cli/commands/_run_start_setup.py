@@ -92,7 +92,7 @@ def sync_shipped_skills(  # noqa: PLR0912
             snapshot_dirty_paths_strict,
         )
         from ralph.skills._auto_commit import commit_skill_writes
-        from ralph.skills._installer import (
+        from ralph.skills._installer_candidates import (
             _candidate_skill_paths,
             _diff_written_paths,
         )

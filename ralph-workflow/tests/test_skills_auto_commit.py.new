@@ -38,7 +38,11 @@ from ralph.skills._auto_commit import (
     commit_skill_updates,
     commit_skill_writes,
 )
-from ralph.skills._installer import install_project_baseline_skills
+from ralph.skills._content import _MANAGED_MARKER, get_skill_content
+from ralph.skills._installer import (
+    install_project_baseline_skills,
+    install_project_baseline_skills_with_diff,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -994,6 +998,3 @@ def test_scoped_updates_raised_commit_failure_rolls_back_stage(
         assert not staged, (
             "raised commit failure MUST unstage the deterministic paths; "
             f"got staged: {[d.a_path for d in staged]}"
-        )
-    finally:
-        repo.close()

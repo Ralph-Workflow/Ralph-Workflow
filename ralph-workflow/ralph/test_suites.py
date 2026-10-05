@@ -144,6 +144,14 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # profile so the isolation / rollback contract cannot rot
     # silently. In-budget on the 60s combined verify budget.
     "tests/test_skills_auto_commit.py",
+    # wt-12: the producer-level install + auto-commit boundary cases
+    # (dir-to-symlink transition, byte-equal trap, prune +
+    # sibling-symlink, unrelated-dirty-file guard, no-op second
+    # run) are split from test_skills_auto_commit to keep the
+    # shared-primitive test under the audit's 1000-line cap. The
+    # split file runs in the same default make test profile so the
+    # boundary regression coverage cannot rot silently.
+    "tests/test_skills_install_auto_commit.py",
     "tests/project_policy/test_policy_auto_commit.py",
     # wt-12: the shared primitive's own real-git regression cases
     # (exact-path HEAD lookup, dir→symlink transition, FAILED

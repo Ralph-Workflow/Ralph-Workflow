@@ -100,18 +100,24 @@ def _commit_deterministic_config_write(
     """
     cc = create_commit_fn if create_commit_fn is not None else create_commit
     sf = stage_fn if stage_fn is not None else stage_files
+    # When ``config_path`` does not exist yet (a fresh starter file on
+    # first ``ralph --init``), ``Repo(path)`` raises ``NoSuchPathError``
+    # even with ``search_parent_directories=True``. Fall back to the
+    # parent directory so the producer can locate the owning repo via
+    # the parent search rather than the (non-existent) file path. If
+    # the parent itself is not in a repo, ``find_repo_root`` raises and
+    # the documented silent-NOOP branch below runs.
+    repo_root_search_anchor = (
+        config_path if config_path.exists() else config_path.parent
+    )
     try:
-        repo_root = find_repo_root(config_path)
+        repo_root = find_repo_root(repo_root_search_anchor)
     except (GitOperationError, OSError) as exc:
         # GitOperationError is the documented ``find_repo_root`` failure
-        # when ``config_path`` is not inside a git working tree. OSError
-        # covers the secondary case where ``config_path`` does not exist
-        # on disk yet (a fresh starter-prompt file on first ``ralph --init``):
-        # ``git.Repo`` raises ``NoSuchPathError`` (an ``OSError``) when
-        # the start path itself does not exist, even with
-        # ``search_parent_directories=True``. Both branches collapse to
-        # the documented silent-NOOP contract: write the file, skip the
-        # commit, do not raise.
+        # when neither ``config_path`` nor its parent is inside a git
+        # working tree. OSError is the secondary guard for broken
+        # filesystem access. Both collapse to the documented silent-NOOP
+        # contract: write the file, skip the commit, do not raise.
         logger.debug(
             "config write at {} not eligible for auto-commit ({}); skipping",
             config_path,

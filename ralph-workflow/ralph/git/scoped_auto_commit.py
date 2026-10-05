@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from typing import Protocol
 
-    class _CreateCommitFn(Protocol):
+    class CreateCommitFn(Protocol):
         def __call__(
             self, repo_root: Path | str, message: str, *, expected_head: str
         ) -> CommitCreationResult: ...
@@ -205,9 +205,10 @@ def _symlink_ancestor_path(repo: Repo, rel_path: str) -> str | None:
     repo root; returns the first symlink encountered as a
     repo-relative POSIX path, or ``None`` if no ancestor is a symlink.
 
-    The repo-relative form is computed by stripping the repo's
-    working directory from the resolved absolute path of the
-    symlink ancestor.
+    The repo-relative form is the LEXICAL path of the symlink itself
+    (wt-012 DA-003/DA-010: resolving it returned the canonical target
+    directory, sweeping unrelated user-dirty files into the chore
+    commit); the lexical path scopes staging to the symlink entry.
     """
     try:
         working_dir = repo.working_dir
@@ -219,8 +220,7 @@ def _symlink_ancestor_path(repo: Repo, rel_path: str) -> str | None:
     for parent in abs_path.parents:
         try:
             if parent.is_symlink():
-                resolved_parent = parent.resolve()
-                return resolved_parent.relative_to(working_dir).as_posix()
+                return parent.relative_to(working_dir).as_posix()
         except (OSError, ValueError):
             return None
     return None
@@ -538,7 +538,7 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
     paths: tuple[str, ...] | list[str],
     pre_contents: Mapping[str, str | None],
     subject: str,
-    create_commit_fn: _CreateCommitFn,
+    create_commit_fn: CreateCommitFn,
     stage_fn: Callable[[Path | str, list[str]], None],
     body_builder: Callable[[list[str]], str] | None = None,
 ) -> ScopedCommitResult:
@@ -856,7 +856,7 @@ def commit_scoped_updates(  # noqa: PLR0912
     scopes: tuple[str, ...],
     subject: str,
     body_builder: Callable[[list[str]], str],
-    create_commit_fn: _CreateCommitFn,
+    create_commit_fn: CreateCommitFn,
     stage_fn: Callable[[Path | str, list[str]], None],
     path_filter: Callable[[str], bool] | None = None,
     exclude: frozenset[str] = frozenset(),
@@ -988,8 +988,7 @@ def commit_scoped_updates(  # noqa: PLR0912
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 
-__all__ = [
-    "ScopedCommitResult",
+__all__ = ["CreateCommitFn", "ScopedCommitResult",
     "ScopedCommitStatus",
     "capture_pre_write_contents",
     "commit_deterministic_writes",

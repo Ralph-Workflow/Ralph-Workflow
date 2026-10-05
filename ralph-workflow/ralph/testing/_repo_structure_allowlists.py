@@ -1146,6 +1146,18 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._installer",
             ("_prune_removed_baseline_skills",),
         ),
+        # wt-12 U2: the install + auto-commit boundary test split from
+        # ``test_skills_auto_commit`` (which the 1000-line audit cap
+        # requires) reaches the same private ``_MANAGED_MARKER`` seam
+        # the ``test_skills_installer_project`` precedent uses -- the
+        # installer's own prune / sibling fan-out is the documented
+        # owner of that constant, and the boundary test pins the
+        # byte-exact set the helper stages against it.
+        (
+            "tests/test_skills_install_auto_commit.py",
+            "ralph.skills._content",
+            ("_MANAGED_MARKER",),
+        ),
         (
             "tests/test_submit_artifact_writes_receipt.py",
             "ralph.agents.completion_signals",
@@ -1326,9 +1338,16 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/preflight.py", 254),
         ("ralph/project_policy/preflight.py", 262),
         ("ralph/project_policy/preflight.py", 269),
-        ("ralph/skills/_installer.py", 174),
-        ("ralph/skills/_installer.py", 276),
-        ("ralph/skills/_installer.py", 278),
+        # wt-12: the candidate-set + diff helpers extracted from
+        # ``_installer.py`` carry the same PLC0415 lazy-import markers
+        # for ``git`` (optional seam) and ``_git_blob_sha`` (producer-side
+        # diff helper). The rationale is identical to the precedent
+        # entries at ``_installer.py:124-126`` -- the candidate set is
+        # best-effort on non-git workspaces, so the lazy import is the
+        # honest seam rather than a module-load-time dependency.
+        ("ralph/skills/_installer_candidates.py", 153),
+        ("ralph/skills/_installer_candidates.py", 255),
+        ("ralph/skills/_installer_candidates.py", 257),
         ("ralph/skills/manager.py", 213),
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),

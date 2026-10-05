@@ -42,6 +42,9 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # profile so the isolation / rollback contract cannot rot
     # silently.
     "tests/test_skills_auto_commit.py",
+    # wt-012: the producer-level install + auto-commit boundary cases
+    # are split from test_skills_auto_commit; same registry contract.
+    "tests/test_skills_install_auto_commit.py",
     "tests/project_policy/test_policy_auto_commit.py",
     # wt-012: the shared primitive's own real-git regression cases
     # (exact-path HEAD lookup, dir→symlink transition, FAILED

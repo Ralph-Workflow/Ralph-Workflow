@@ -115,6 +115,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
         "PLC0415",
     ),  # wt-012 -- extracted from cli_integration to keep it under the 1000-line cap; preserves the function-scope lazy imports the original file relied on (pathlib.Path for the opt-out isinstance guard, markers.AGENTS_MD for the post-condense producer-level commit).
     ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
+    ("_installer_candidates", "PLC0415"),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
     ("_schema_upgrade", "PLC0415"),  # wt-012 -- lazy import in _freeze_policy_files to avoid module-load cycle with ralph.git.operations / ralph.git.scoped_auto_commit
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),

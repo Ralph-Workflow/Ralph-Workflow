@@ -76,7 +76,7 @@ def test_read_head_blob_sha_returns_sha_for_tracked_file(tmp_path: Path) -> None
     try:
         repo.index.add(["tracked.txt"])
         repo.index.commit("add tracked", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
-        expected_sha: str = repo.head.commit.tree["tracked.txt"].hexsha
+        expected_sha = repo.head.commit.tree["tracked.txt"].hexsha
     finally:
         repo.close()
     repo2 = Repo(tmp_path)
@@ -122,7 +122,7 @@ def test_read_head_blob_sha_rejects_prefix_collision(tmp_path: Path) -> None:
         # implementation returned a/b's blob here.
         assert _read_head_blob_sha(repo2, "a") is None
         # Sanity: the descendant still returns its real blob.
-        nested_sha: str = repo2.head.commit.tree["a/b"].hexsha
+        nested_sha = repo2.head.commit.tree["a/b"].hexsha
         assert _read_head_blob_sha(repo2, "a/b") == nested_sha
     finally:
         repo2.close()

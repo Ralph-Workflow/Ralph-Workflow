@@ -80,7 +80,7 @@ def _git_log_subjects(repo_root: Path) -> list[str]:
     """Return ``git log`` subject lines (newest first) for the test repo."""
     repo = Repo(repo_root)
     try:
-        return [str(c.message).splitlines()[0] for c in repo.iter_commits()]
+        return [c.message.splitlines()[0] for c in repo.iter_commits()]
     finally:
         repo.close()
 
@@ -267,7 +267,9 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
     # The committed content must contain the activated block (uncommented).
     repo = Repo(tmp_path)
     try:
-        committed_text: str = repo.head.commit.tree["ralph-workflow-agents.toml"].data_stream.read().decode()
+        committed_text = repo.head.commit.tree[
+            "ralph-workflow-agents.toml"
+        ].data_stream.read().decode()
     finally:
         repo.close()
     assert "[agents.codex]" in committed_text
