@@ -675,9 +675,51 @@ shape, dependency graph, and overlap do not reject an otherwise accepted plan.
 `max_parallel_workers` is a concurrency limit, not a plan-size limit.
 Additional ready units run in queued waves.
 
-The executor derives ownership from `Paths:`, `Directories:`, or step
-`Files:` when available. Conflicting files and directory containment run
-serially; disjoint files in the same directory may run together. Protected
-assignments are removed before worker briefs, and unknown ownership or
-unextractable graphs remain main-session work. Brokered write protections
-continue to enforce filesystem safety.
+Large scope does not justify an assessment-only response or a request to split
+the work without advancing it. The coordinator starts a safe, testable
+increment while dispatching disjoint ready scopes within capacity; an
+isolated worker does the same only within its assignment. These are prompt
+instructions, not a guarantee of model behavior or a change to runtime
+deadlines, review, or result eligibility.
+
+When a step fails, the executor does not treat a local failure as a global
+stop signal. The recovery loop is: inspect the concrete evidence, choose a
+materially different hypothesis, pick a narrower increment, or take a
+permitted reassignment, and continue the next independent ready reference.
+Repeating an unchanged failing action indefinitely is forbidden; reporting
+partial progress requires the canonical `partial` and `failed` rule, where
+difficulty, elapsed time, and an exhausted iteration budget do not on their
+own authorize either status.
+
+Coordinators dispatch independent ready groups even when the plan does not
+declare a `## Work Units` block: a plan that names a dependency graph with
+exact authorized ownership (or step `Files:` ownership that resolves to
+disjoint file sets) is dispatchable, and the executor may treat it as the
+same ready group. Unknown ownership, malformed dependency graphs, and
+unextractable unit IDs stay in the main session; the executor never invents
+broad worker writes to bypass ownership uncertainty.
+
+The executor uses only the orchestration tools actually exposed by the
+running runtime. A full dispatch slot is a queued wave plus useful local
+work on the next safe increment, not idle abandonment. When no native
+sub-agent or task tool is exposed for an attempt, the executor falls back
+to bounded sequential progress on the same dependency graph: pick the next
+ready reference, implement it, verify it, and continue. Sequencing is not
+permission to give up; it is the same plan executed step at a time.
+
+Before transferring ownership from one writer to another, the executor
+confirms the former writer has actually stopped — the assignment is closed,
+the result is persisted, and no new work is in flight on the same path. Two
+writers on the same file are never allowed; dependent steps release only
+after the upstream writer's evidence is validated, not on a self-declared
+completion. The shared `## PARALLEL EXECUTION` partial codifies these
+ownership, wave, and ownership-transfer rules.
+
+The executor derives ownership from `Paths:`, `Directories:` (the declared
+directory limits), or step `Files:` when neither is declared. Conflicting
+files and directory containment run serially; disjoint files in the same
+directory may run together. Protected assignments (`.agent`, `.git`,
+`.worktrees` and their descendants) are removed before worker briefs, and
+unknown ownership or unextractable graphs remain main-session work. Brokered
+write protections continue to enforce filesystem safety regardless of the
+dispatch mode.
