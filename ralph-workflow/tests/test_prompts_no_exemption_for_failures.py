@@ -38,10 +38,10 @@ _TEMPLATE_NAMES = (
 )
 _INCLUDE = "{% include 'shared/_no_exemption_for_failures.j2' %}"
 _REQUIRED_PHRASES = (
-    "ALL issues must be resolved",
+    "Resolve every issue that surfaces",
     "no such thing as a blocking issue",
     "no such thing as a pre-existing issue",
-    "MUST resolve anything that comes up",
+    "Resolve anything that comes up",
     "whether or not you caused it",
 )
 
@@ -122,7 +122,7 @@ def test_partial_results_rule_is_single_sourced() -> None:
     # The canonical home keeps the full rule.
     canonical = sources["_no_exemption_for_failures.j2"]
     assert "no such thing as a pre-existing issue" in canonical
-    assert "MUST resolve anything that comes up" in canonical
+    assert "Resolve anything that comes up" in canonical
 
     # The other partials do not restate the rule in full - they reference it.
     for name, text in sources.items():
@@ -131,7 +131,7 @@ def test_partial_results_rule_is_single_sourced() -> None:
         assert "no such thing as a pre-existing issue" not in text, (
             f"{name} restates the rule; it should reference the canonical home"
         )
-        assert "MUST resolve anything that comes up" not in text, (
+        assert "Resolve anything that comes up" not in text, (
             f"{name} restates the rule; it should reference the canonical home"
         )
 
@@ -592,7 +592,7 @@ def test_rendered_prompts_preserve_outer_constraints(surface: str) -> None:
 
     # Canonical external-blocker rule is single-sourced.
     assert "no such thing as a pre-existing issue" in rendered, surface
-    assert "MUST resolve anything that comes up" in rendered, surface
+    assert "Resolve anything that comes up" in rendered, surface
     # No recursive worker dispatch lives on the dedicated worker
     # template's ``_worker_verification.jinja`` partial. The main-session
     # surfaces (initial, continuation, direct fallback) never render

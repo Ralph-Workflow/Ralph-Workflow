@@ -168,14 +168,13 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     f"criterion verdict IDs for {artifact_type} must use its numeric phase ID pattern",
                 )
             )
-        if any(field not in item.text for field in _REQUIRED_VERDICT_FIELDS) or (
-            artifact_type == "planning_analysis_decision"
-            and "Cost:" not in item.text
-        ):
-            missing_cost = (
-                artifact_type == "planning_analysis_decision"
-                and "Cost:" not in item.text
-            )
+        required_fields = (
+            _PLANNING_VERDICT_FIELDS
+            if artifact_type == "planning_analysis_decision"
+            else _REQUIRED_VERDICT_FIELDS
+        )
+        if any(field not in item.text for field in required_fields):
+            missing_cost = "Cost:" in required_fields and "Cost:" not in item.text
             diagnostics.append(
                 _validation_diagnostic(
                     item.line,
