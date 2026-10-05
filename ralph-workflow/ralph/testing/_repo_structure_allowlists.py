@@ -56,13 +56,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_internal_skills_mcp_prompts.py",
         "ralph/recovery/failure_classifier.py",
         "tests/test_artifact_format_docs.py",
-        "tests/test_skills_auto_commit.py",
-        # wt-13 auto-integrated sibling commits pushed ralph/skills/_installer.py
-        # (1035 lines) past the cap. The installer is one producer-side seam
-        # (baseline manifest + prune + install) whose sections share the
-        # managed-marker contract; splitting would scatter that contract
-        # with no testable boundary.
-        "ralph/skills/_installer.py",
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         "ralph/agents/invoke/_process_reader.py",
         "ralph/mcp/explore/structure.py",
@@ -1130,14 +1123,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         # importing the private helper and the managed-marker constant.
         (
             "tests/test_skills_installer_project.py",
-            "ralph.skills._content",
-            ("_MANAGED_MARKER",),
-        ),
-        # wt-13: the consolidated auto-commit suite pins the managed-skill
-        # marker contract directly; the constant is the private seam under
-        # test, mirroring the test_skills_installer_project.py grant above.
-        (
-            "tests/test_skills_auto_commit.py",
             "ralph.skills._content",
             ("_MANAGED_MARKER",),
         ),

@@ -147,8 +147,10 @@ def _free_form_content(document: ParsedDocument) -> Content:
         "plan_items_proven": [],
         "analysis_items_addressed": [],
     }
-    # When the cycle timebox fired a warning before the partial/failed
-    # outcome, require an Incomplete Work section listing what remains.
+    # When the cycle or development timebox fired a warning before the
+    # partial/failed outcome, require an Incomplete Work section listing
+    # what remains. Either trigger gates the section, so the message
+    # names both rather than pointing at the one the agent did not see.
     if _cycle_timebox_warned(document) or _development_timebox_warned(document):
         incomplete_items = _optional_items(document, "Incomplete Work")
         if not incomplete_items:
@@ -162,8 +164,9 @@ def _free_form_content(document: ParsedDocument) -> Content:
                 "section is present but no entry is"
                 if present
                 else "Incomplete Work section with at least one stable-ID item "
-                "is required after the cycle timebox warning; each item must "
-                "be a top-level '-' bullet with a 'Reason:' and 'Evidence:' field"
+                "is required after a cycle or development timebox warning; each "
+                "item must be a top-level '-' bullet with a 'Reason:' and "
+                "'Evidence:' field"
             )
         _validate_warned_incomplete_items(incomplete_items)
         _reject_unbracketed_incomplete_bullets(document)
@@ -373,12 +376,16 @@ def _to_content(document: ParsedDocument) -> Content:
         # keyed on the single word the reporting agent chooses: under a live
         # deadline warning the honest partial was rejected while a bare
         # `completed` — no proof section at all — was accepted. A completion
-        # claim made under warning has to name what it proved.
+        # claim made under warning has to name what it proved. The gate fires
+        # for either the cycle or the independent development timebox, so the
+        # diagnostic names both triggers rather than the one the agent did
+        # not see.
         raise ValueError(
             "Plan Items Proven with at least one item is required for a "
-            "'completed' development result submitted after the cycle timebox "
-            "warning; report unfinished work as 'partial' or 'failed' with an "
-            "Incomplete Work section instead of claiming completion"
+            "'completed' development result submitted after a cycle or "
+            "development timebox warning; report unfinished work as 'partial' "
+            "or 'failed' with an Incomplete Work section instead of claiming "
+            "completion"
         )
     content: Content = {
         "status": document.frontmatter["status"],

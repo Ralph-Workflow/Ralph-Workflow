@@ -90,14 +90,17 @@ session, never to a worker (see `shared/_worker_verification.j2`).
    the assigned unit step by step; mark each reference `completed`,
    `in_progress`, or `remaining`, and append the new criterion or
    discovered scope item to the same inventory. Keep the unit's
-   original `S-N` references and the request criteria intact; they
+   original reference IDs and the request criteria intact; they
    are the contract the unit must account for, not suggestions.
+   The plan's IDs are shape-independent — a step ID, a work-unit
+   bracket ID, a prose-plan ID, or a subplan / section anchor —
+   so this contract is whatever stable anchor the plan actually uses.
 2. **Preserve the unit's IDs and criteria.** Re-cut the inventory
    into the smallest verified increments the worker can finish one
    at a time, but do not rename, drop, or weaken the original
-   `S-N` references or the request criteria the unit must cover. A
-   smaller slice that still maps back to a `S-N` reference is the
-   only acceptable substitute.
+   reference IDs or the request criteria the unit must cover. A
+   smaller slice that still maps back to one of the plan's actual
+   references is the only acceptable substitute.
 3. **Loop the ready-reference walk inside the unit.** Select the
    first ready reference inside the unit, make its specified
    change, run focused verification, record its disposition and
@@ -143,9 +146,9 @@ past the in-flight increment:
    the result must account for, not suggestions.
 2. **Preserve IDs and criteria.** Re-cut the inventory into smaller
    independent slices, but do not rename, drop, or weaken the original
-   `S-N` references or the request criteria the result must cover. A
-   smaller slice that still maps back to a `S-N` reference is the only
-   acceptable substitute.
+   reference IDs or the request criteria the result must cover. A
+   smaller slice that still maps back to one of the plan's actual
+   references is the only acceptable substitute.
 3. **Separate coupled changes from independent scopes.** Edits that
    share a file, a contract, or a fixture land on the critical path in
    the main session. Edits with disjoint `Files:` lists, disjoint

@@ -311,7 +311,16 @@ def test_planning_findings_require_a_proposed_revision() -> None:
 
 
 def test_development_findings_do_not_require_a_proposed_revision() -> None:
-    """ANALYSIS019 is planning-only; development findings keep Remaining work:."""
+    """ANALYSIS019 is planning-only; development findings keep Remaining work:.
+
+    The same document also pins that ``Cost:`` is planning-only
+    (ANALYSIS005) — development verdicts never duplicate the cost.
+    Consolidating the two formerly-duplicate scenarios keeps the test
+    portfolio distinct on fault sensitivity: a regression that required
+    ``Proposed revision:`` on a development finding (ANALYSIS019) or
+    ``Cost:`` on a development verdict (ANALYSIS005) would fail here,
+    while a planning-only regression would not move this test at all.
+    """
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -366,35 +375,6 @@ status: request_changes
     analysis_005 = [d for d in diagnostics if d.rule_id == "ANALYSIS005"]
     assert len(analysis_005) == 1
     assert "Cost:" in analysis_005[0].message
-
-
-def test_development_verdict_does_not_require_cost() -> None:
-    """``Cost:`` is planning-only; development verdicts stay valid without it.
-
-    Development decisions document the remaining work via ``Remaining
-    work:`` and do not duplicate the cost on every verdict, so removing
-    ``Cost:`` from a development verdict must not add an ANALYSIS005.
-    """
-    document = """---
-type: development_analysis_decision
-status: request_changes
----
-## Summary
-- [SUM-1] One criterion is not met.
-
-## What Came Up Short
-- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10. Remaining work: implement the missing behavior.
-
-## Criterion Verdicts
-- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
-"""
-
-    content, diagnostics = parse_and_validate(
-        document, get_spec("development_analysis_decision")
-    )
-
-    assert diagnostics == []
-    assert content["finding_ids"] == ["DA-001"]
 
 
 def test_policy_remediation_verdict_does_not_require_cost() -> None:
