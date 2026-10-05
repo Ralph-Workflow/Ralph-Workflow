@@ -19,7 +19,7 @@ def test_commit_message_failure_requires_rewriting_the_message() -> None:
 def test_development_result_missing_evidence_requires_completing_the_work() -> None:
     hint = build_validation_retry_hint(
         "development_result",
-        [Diagnostic(1, "Plan Items Proven", "DEV015", "missing=['S-2']")],
+        [Diagnostic(1, "Plan Items Proven", "DEV012", "missing evidence for UI proof")],
     )
     lowered = hint.lower()
 

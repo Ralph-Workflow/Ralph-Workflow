@@ -16,23 +16,25 @@ Verify that the submitted plan is truthful and executable.
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
 Read the submitted plan, the request, and cited repository areas. Check claims
-against fresh evidence. Do not grade formatting, headings, field presence,
-IDs, unit syntax, caps, directory disjointness, or the planner's account as
-proof. In particular, do not grade document shape either: the analysis
-verdicts are about coverage, truthfulness, actionability, parallel
-decomposition, and execution conflicts, not the cosmetic layout of the plan.
+against fresh evidence. Substance, not format: a plain prose plan can pass.
+Do not grade formatting, headings, field presence, IDs, unit syntax, caps,
+directory disjointness, or the planner's account as proof.
 
 ## Review contract
 
+The planner will revise from this feedback, so each finding must give it
+something to apply — a concrete proposed revision, not a verdict in isolation.
 Return criterion-level verdicts, not a holistic quality score. The five
 substantive criteria are: coverage, truthfulness, actionability, parallel
 decomposition, and execution conflicts. Parallel decomposition is not met when
 independent work is serialized through invented dependencies, list order, or a
-single chain without stated coupling. Name the independent branches and propose
-a concrete unit split in the finding's Observation. Execution conflicts are not
-met when concurrent writers share a file or a consumer precedes its shared
-contract producer. Delegate independent checks to read-only subagents and
-reconcile their fresh evidence.
+single chain without stated coupling; name the independent branches and
+propose a concrete unit split in the finding's Observation. Execution conflicts
+are not met when concurrent writers share a file or a consumer precedes its
+shared contract producer. Request changes whenever independent work is
+serialized without a reason. The planner applies or rebuts each proposed
+revision on the next pass; do not grade document shape; do not grade in isolation. Delegate independent
+checks to read-only subagents and reconcile their fresh evidence.
 
 {% set planning_decision_example %}
 ---
@@ -44,10 +46,10 @@ status: request_changes
 - [SUM-1] Parallel decomposition is not met.
 
 ## What Came Up Short
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling; split into a shared-contract unit, documentation unit, test unit, then integration. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a shared-contract unit, documentation unit, and test unit, then an integration step that fans the three back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 
 ## Criterion Verdicts
-- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling; split into a shared-contract unit, documentation unit, test unit, then integration. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
+- [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a shared-contract unit, documentation unit, and test unit, then an integration step that fans the three back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 {% endset %}
 
 ## Criteria and verdicts
@@ -56,11 +58,14 @@ status: request_changes
 
 Use one stable `PA-###` item per criterion in `## Criterion Verdicts`.
 Include `Plan-level:` or a step reference, then `Criterion:`, `Expected
-observation:`, `Observation:`, `Verdict:`, `Evidence:`, `Location:`,
-and `Cost:`. `completed` requires every criterion to be `met` with
-evidence and no counterexample found. For `request_changes` or `failed`,
-mirror each localized non-met verdict in `## What Came Up Short`; do not add
-`How To Fix`. A `not evaluable` criterion requires `failed`.
+observation:`, `Observation:`, `Proposed revision:`, `Verdict:`,
+`Evidence:`, `Location:`, and `Cost:`. `completed` requires every criterion
+to be `met` with evidence and no counterexample found. For `request_changes`
+or `failed`, mirror each localized non-met verdict in `## What Came Up
+Short`; each mirrored finding carries its `Proposed revision:` so the
+planner can apply it on the next pass, or rebut it with evidence. Do not
+add a `## How To Fix` section. A `not evaluable` criterion requires
+`failed`.
 
 ## Decision artifact
 

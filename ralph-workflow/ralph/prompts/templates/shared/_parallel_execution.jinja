@@ -90,6 +90,19 @@ sequential recovery that ends with zero verified work delivered is the same
 execution defect as a parallel one that ended the same way; see
 `shared/_no_exemption_for_failures.j2` for the canonical external-blocker rule.
 
+### Ownership conflicts
+
+When two ready units claim overlapping paths, serialize the conflicting units in dependency order. Each worker's ownership must stay exact: never widen a worker's file scope to absorb a conflict, and re-cut the units into disjoint path sets instead. Ownership breadth is what makes concurrent dispatch safe; it is not a negotiation lever for fitting one more unit into the active worker limit.
+
+### Scope exclusions
+
+Worker scope never includes `.agent`, `.git`, or `.worktrees`. Those
+paths hold machine-managed pipeline state — the dispatch harness, source
+control, and parallel-agent worktrees. A worker that writes into them
+corrupts the run. Keep them out of every unit's `Directories:` and
+`Paths:` fields; if a task appears to need one of them, that is a
+signal the unit belongs in the main session, not a worker.
+
 ### Per-unit subagent brief (when units exist)
 
 For every unit or step group dispatched to a sub-agent, include these fields. Repair an incomplete brief before dispatch so the worker has clear allowed directories or exact file ownership and cannot write outside scope.

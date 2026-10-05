@@ -219,15 +219,25 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # assert the fixture's completeness, not the shipped files'. Reading
     # those two files is the ONLY thing the test needs exempted.
     "test_linting_policy_inventory",
-    # Parallel-execution guidance contract guard. Reads the shipped
-    # ``shared/_parallel_execution.jinja`` template because its literal
-    # wording on paths, waves, ownership serialization, and main-session
-    # integration is the regression contract: the test detects drift
-    # between the rendered prompt and the per-unit subagent brief. A
-    # ``tmp_path`` copy would assert against the fixture, not the shipped
-    # file, so the guard would stop detecting drift entirely. Reading
-    # that template is the ONLY thing the test needs exempted.
+    # Parallel-execution guidance lock. Reads the shipped
+    # ``ralph/prompts/templates/shared/_parallel_execution.jinja`` because
+    # the file's literal contents are the regression contract: each
+    # assertion guards one sentence of the parallel-dispatch guidance and
+    # would fail if that sentence were removed. A tmp_path copy would
+    # assert against the fixture, not the shipped file, so the locks would
+    # stop detecting drift in the guidance. Reading the file is the ONLY
+    # thing the test needs exempted.
     "test_developer_prompt_subagent_guidance",
+    # Development-analysis whole-change review lock. Reads the shipped
+    # ``ralph/mcp/artifacts/format_docs/development_analysis_decision.md``
+    # and its example mirror because each doc's literal contents are the
+    # regression contract: every assertion guards one piece of the
+    # whole-change review rule (DA-### reuse, AGENTS.md / policy
+    # compliance, prose-plan coverage) and would fail if the doc drifted.
+    # A tmp_path copy would assert against the fixture, not the shipped
+    # file, so the locks would stop detecting drift. Reading the files is
+    # the ONLY thing the test needs exempted.
+    "test_development_analysis_whole_change",
 }
 
 # Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.

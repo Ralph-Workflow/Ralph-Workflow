@@ -39,6 +39,10 @@ PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 
+If the remaining scope still contains independent work, dispatch it in
+parallel rather than completing one piece at a time and handing each
+increment back as `partial`; piecemeal handbacks waste the cycle.
+
 Summary: {{ PRIOR_RESULT_SUMMARY }}
 Next steps: {{ PRIOR_RESULT_NEXT_STEPS }}
 Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}

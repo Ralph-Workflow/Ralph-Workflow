@@ -167,7 +167,16 @@ def test_unencodable_plan_returns_sanity_diagnostic_before_persistence(operation
     assert json.loads(result.content[0].text)["diagnostics"][0]["rule_id"] == "PLAN001"
 
 
-def test_prose_plan_requires_exactly_one_plan_level_development_proof() -> None:
+def test_prose_plan_accepts_shape_independent_development_proof() -> None:
+    """A development_result under a prose plan is accepted for any bracket ID.
+
+    The pre-existing DEV015 exact-coverage gate was removed by U-3: the
+    development phase no longer rejects a completed result for using an ID
+    that does not match a plan-parsed reference, so a prose plan (which
+    yields zero canonical step refs) accepts both the ``[plan]`` proof
+    (the original prose-plan ID) and a free-form ``[S-999]`` proof whose
+    only obligation is to cite reproducible evidence for the work done.
+    """
     workspace = MemoryWorkspace()
     session = MockSession()
     session.run_id = "proof-parity"
@@ -188,13 +197,12 @@ status: completed
 - [plan] Ran the focused verification and observed all assertions passing.
   Disposition: completed
 """
-    bad = handle_submit_md_artifact(
+    free_form = handle_submit_md_artifact(
         session, workspace,
         {"artifact_type": "development_result", "content": development.replace("[plan]", "[S-999]")},
         deps=deps,
     )
-    assert bad.is_error
-    assert any(item["rule_id"] == "DEV015" for item in json.loads(bad.content[0].text)["diagnostics"])
+    assert not free_form.is_error
     good = handle_submit_md_artifact(
         session, workspace, {"artifact_type": "development_result", "content": development},
         deps=deps,

@@ -202,18 +202,40 @@ status: completed
   Disposition: completed
 - [S-2] Ran pytest tests/test_artifact_retry_contract.py -q successfully.
   Disposition: completed
+
+## Analysis Items Addressed
+- [DA-001] Inspected the focused command output; the fixed plan criteria hold.
 """
 
 _VALID_DEV_ANALYSIS_MARKDOWN = """\
 ---
 type: development_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] Issues found.
+
+## What Came Up Short
+- [DA-001] Plan-level: Criterion: the fixed plan criteria hold. Expected observation: focused command output observes them. Verdict: not met. Evidence: focused command output was not inspected. Location: tests/test_artifact_retry_contract.py. Remaining work: inspect the focused command output.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the fixed plan criteria hold. Expected observation: focused command output observes them. Verdict: not met. Evidence: focused command output was not inspected. Location: tests/test_artifact_retry_contract.py.
+"""
+
+_VALID_DEV_RESULT_WITH_MISSING_ANALYSIS_MARKDOWN = """\
+---
+type: development_result
 status: completed
 ---
 ## Summary
-- [SUM-1] No counterexample found for the fixed plan criteria. Evidence: focused command output was inspected.
+- [SUM-1] Done.
 
-## Criterion Verdicts
-- [DA-001] Criterion: the fixed plan criteria hold. Expected observation: focused command output observes them. Verdict: met. Evidence: focused command output was inspected. Location: tests/test_artifact_retry_contract.py.
+## Files Changed
+- [F-1] src/a.py
+
+## Plan Items Proven
+- [free-form-overview] Implemented the test change in src/a.py and ran the focused suite.
+  Disposition: completed
 """
 
 _PHASE_VALID_ARTIFACT: dict[str, str] = {
@@ -616,11 +638,27 @@ def test_worker_generic_prompt_retains_only_worker_validation_retry_hint(
 def test_development_proof_failure_uses_retry_hint_contract(
     tmp_path: Path,
 ) -> None:
+    """U-3: plan-shape proof coverage is gone, so a missing-proof result is accepted.
+
+    The development phase no longer keys proof validation on plan shape
+    (the ``require_plan_proof`` field was removed), so a result with no
+    ``## Plan Items Proven`` section now passes. The only surviving
+    proof-shape check is the analysis-finding coverage check, so the
+    retry-hint flow is exercised through a missing analysis finding
+    instead.
+    """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "fix the proof failure without restarting")
     _setup_phase_prerequisites(workspace, "development", full_plan=True)
-    workspace.write(".agent/artifacts/development_result.md", _VALID_DEV_RESULT_MARKDOWN)
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.md",
+        _VALID_DEV_ANALYSIS_MARKDOWN,
+    )
+    workspace.write(
+        ".agent/artifacts/development_result.md",
+        _VALID_DEV_RESULT_WITH_MISSING_ANALYSIS_MARKDOWN,
+    )
 
     ctx = _make_ctx(workspace, policy)
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
@@ -645,7 +683,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
 
     rendered = workspace.read(prompt_path)
     assert rendered.startswith("VALIDATION FAILURE")
-    assert "proof entries are incomplete or invalid" in rendered
+    assert "analysis finding ID" in rendered
     assert workspace.exists(retry_hint_path("development"))
 
     workspace.write(

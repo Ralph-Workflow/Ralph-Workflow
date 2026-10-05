@@ -56,9 +56,21 @@ status: request_changes
   work, a concrete repository `Location:` (not `unknown`/`N/A`/`none`), and
   identify `Criterion:` or `Plan reference: [S-n]`. A single well-formed finding
   does not excuse a sibling that lacks any of the three.
+- Whole-change findings reuse the same `DA-###` shape and the same
+  `## Criterion Verdicts` block. There is no separate integration section;
+  emit a `DA-###` item when a problem only shows up when the change is
+  reviewed as a whole (parallel pieces that do not fit together, regressions
+  outside the plan, unrelated scope drift, or a `AGENTS.md` /
+  `docs/ralph-workflow-policy/` violation). Non-met whole-change findings
+  still mirror into `## What Came Up Short` with the same `Remaining work:`
+  contract.
 - `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
   stable finding ID as its closure reference, not a remedy authored by the
   verifier.
+
+## Plan reference coverage
+
+The `Plan reference:` line in each `DA-###` item covers whatever references the plan actually uses. A prose plan without numeric IDs is judged on whether its requests are covered, not on whether a specific identifier matches; `Plan reference:` is omitted or rewritten to cite the prose anchor in that case.
 
 `status` is `completed`, `request_changes`, or `failed`. `met` means no
 counterexample was found. `not evaluable` requires `failed` rather than

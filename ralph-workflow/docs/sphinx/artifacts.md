@@ -86,13 +86,11 @@ The development phase can also enforce proof requirements through `[phases.devel
 
 ```toml
 [phases.development.artifact_proof_policy]
-require_plan_proof = true
 require_analysis_proof = true
 ```
 
-The bundled defaults enable both checks. Omitting the block in a project-local policy inherits the bundled defaults; to disable proof enforcement, set both fields to `false` explicitly in `.agent/pipeline.toml`.
+The bundled default enables analysis-finding coverage. Omitting the block in a project-local policy inherits the bundled default; to disable the check, set the field to `false` explicitly in `.agent/pipeline.toml`.
 
-- `require_plan_proof` controls whether `plan_items_proven` must cover the plan's canonical step refs or assigned work unit ids.
 - `require_analysis_proof` controls whether `analysis_items_addressed` must cover prior `how_to_fix` items when analysis feedback exists.
 
 ## Validation

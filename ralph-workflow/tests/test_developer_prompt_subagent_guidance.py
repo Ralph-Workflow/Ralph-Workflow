@@ -1,4 +1,4 @@
-"""Parallel execution guidance states safe ownership and waves."""
+"""Parallel execution guidance locks safe ownership and conflict handling."""
 
 from __future__ import annotations
 
@@ -17,14 +17,23 @@ def test_parallel_guidance_preserves_safe_dispatch_contract() -> None:
         assert text in source
 
 
-def test_parallel_guidance_handles_paths_and_waves() -> None:
+def test_parallel_guidance_names_units_paths_and_directories() -> None:
     source = _source()
-    for text in ("Paths:", "Directories:", "Files:", "waves", "main session"):
+    for text in ("Paths:", "Directories:", "unit", "main session"):
         assert text in source
-    assert ".agent" in source and ".git" in source and ".worktrees" in source
 
 
-def test_parallel_guidance_serializes_conflicts_without_broadening_scope() -> None:
+def test_parallel_guidance_serializes_ownership_conflicts_without_broadening() -> None:
     source = _source()
-    assert "Do not broaden file ownership" in source
-    assert "Serialize conflicting ownership" in source
+    assert "When two ready units claim overlapping paths" in source
+    assert "serialize the conflicting units in dependency order" in source
+    assert "never widen a worker's file scope" in source
+    assert "re-cut the units" in source
+
+
+def test_parallel_guidance_excludes_pipeline_state_paths() -> None:
+    source = _source()
+    assert "Worker scope never includes" in source
+    assert ".agent" in source
+    assert ".git" in source
+    assert ".worktrees" in source

@@ -69,7 +69,6 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "fast path",
         "full gate",
         "## Criterion Verdicts",
-        "do not propose remedies",
         "Report only material, localized findings",
     ):
         assert required in source, (template_name, required)
@@ -92,10 +91,75 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
         "implementer summary, rationale, or completion claim",
         "no counterexample found",
         "Correctness outranks a passing proxy",
-        "do not propose remedies",
         "Report only material, localized findings",
     ):
         assert required in rendered[contract_start:final_action], (template_name, required)
+
+
+def test_no_remedies_rule_lives_only_in_policy_remediation_analysis() -> None:
+    """The 'do not propose remedies' rule is phase-local to policy_remediation_analysis.
+
+    The planning-analysis phase requires the analyzer to surface concrete
+    proposed revisions the planner applies or rebuts, so the no-remedies
+    rule must not leak into the shared verification procedure or into the
+    planning-analysis template. The development-analysis template uses the
+    shared procedure, so it inherits whatever the shared partial says and
+    must therefore not assert the no-remedies phrase either.
+    """
+    needle = "do not propose remedies"
+    context = TemplateContext.default()
+    shared = context.partials["shared/_criterion_verification_procedure"]
+
+    assert needle not in shared
+
+    for template_name in ("planning_analysis", "development_analysis"):
+        source = context.registry.get_template(template_name)
+        assert needle not in source, template_name
+
+    policy_remediation = context.registry.get_template("policy_remediation_analysis")
+    assert needle in policy_remediation.lower()
+
+
+def test_planning_analysis_prompts_the_revision_loop_contract() -> None:
+    """planning_analysis.jinja requires each finding carry a proposed revision.
+
+    PRODUCT_CRITERIA §1 requires feedback to help the planner produce a
+    better plan. Every ``## What Came Up Short`` finding must surface a
+    concrete ``Proposed revision:`` the planner either applies or rebuts.
+    The lock here keeps the contract one place per rule: the prompt is
+    authoritative; the format doc references it.
+    """
+    source = TemplateContext.default().registry.get_template("planning_analysis")
+    lowered = source.lower()
+
+    for required in (
+        "concrete proposed revision",
+        "applies or rebuts",
+        "proposed revision:",
+        "plain prose plan can pass",
+        "serialized without a reason",
+    ):
+        assert required in lowered, required
+
+    # The example must model the new contract so renderers copy it.
+    assert "[PA-001] Plan-level: Criterion: parallel decomposition." in source
+    assert "Proposed revision: split the work into a shared-contract unit" in source
+
+
+def test_planning_edit_requires_apply_or_rebut_per_finding() -> None:
+    """planning_edit.jinja makes the revision loop explicit.
+
+    The planner must apply or rebut every finding, not silently drop it.
+    Lock both the main and the fallback template so the rule lives in one
+    place per template (each has its own reviewer surface).
+    """
+    context = TemplateContext.default()
+
+    for template_name in ("planning_edit", "planning_edit_fallback"):
+        source = context.registry.get_template(template_name)
+        assert "apply the proposed revision or rebut it" in source, template_name
+        assert "do not silently drop findings" in source, template_name
+        assert "Repair every supported finding" in source, template_name
 
 
 def test_planning_and_development_share_the_verification_only_procedure() -> None:

@@ -31,11 +31,23 @@ status: completed
   Disposition: completed
 - [S-2] Ran make verify; exit 0.
   Disposition: completed
+- [plan-section-overview] Final integration check passed; see reports/integration.md.
+  Disposition: completed
 
 ## Analysis Items Addressed
 
 - [DA-001] Added the missing edge-case regression test.
 ```
+
+Proof IDs are shape-independent: a bracketed ID may be a step ID
+(`S-N`), a work-unit bracket ID, a prose-plan ID (`plan`), a subplan /
+section heading, or any other stable reference the plan actually uses.
+The validator never rejects an ID solely for not matching a plan-parsed
+ID; it only rejects duplicate IDs, missing `Disposition` / `Rationale`
+fields, and (for `adapted` / `not_applicable` / `blocked` items) a
+missing `Rationale`. Coverage of the plan's intent is now followed
+through the development-analysis feedback loop, not by exact ID
+matching here.
 
 ## Unplanned Work example (optional, any status)
 
@@ -133,14 +145,18 @@ status decides whether the run ends.
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
 - `## Plan Items Proven` — optional section, but proof policy requires one
-  item per usable extracted plan reference. Use canonical step IDs when usable
-  steps exist; for an explicit Work Units plan use its usable unit IDs. When
-  extraction yields no usable IDs, provide exactly one item with ID `plan` to
-  prove the accepted prose plan. The item text is the proof. Add an indented
-  `Disposition:` field with one of `completed`, `adapted`, `not_applicable`,
-  or `blocked`. Add an indented `Rationale:` for `adapted`, `not_applicable`,
-  and `blocked`. A completed artifact cannot contain `blocked`; necessary
-  blocked work requires `status: partial`.
+  item per usable extracted plan reference. The bracketed ID is
+  shape-independent: a step ID (`S-N`) when the plan declares one, a
+  work-unit bracket ID when the plan uses `## Work Units` / `## Parallel
+  Plan`, the ID `plan` for an accepted prose plan, or a subplan /
+  section heading. The validator never rejects an ID solely for not
+  matching a plan-parsed ID; coverage of the plan's intent is followed
+  through the development-analysis feedback loop. The item text is the
+  proof. Add an indented `Disposition:` field with one of `completed`,
+  `adapted`, `not_applicable`, or `blocked`. Add an indented
+  `Rationale:` for `adapted`, `not_applicable`, and `blocked`. A
+  completed artifact cannot contain `blocked`; necessary blocked work
+  requires `status: partial`.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## What Came Up Short` finding, using that
   finding's stable ID as the item ID and proof of closure as the text.
@@ -171,7 +187,9 @@ Hard errors for `status: completed` only: missing Summary
 or Files Changed; more than one Summary, Next Steps, or Continuation
 item; duplicate item IDs; a missing or unknown `Disposition`; a missing
 `Rationale` for `adapted`, `not_applicable`, or `blocked`; `blocked` in a
-completed result; and (at proof validation) plan-item IDs that
-do not exactly match a plan step ID or work-unit id, missing proofs, or
-duplicates. The unrecognized-`status` error reports the valid
-`completed` / `partial` / `failed` vocabulary.
+completed result; and (at proof validation) duplicate or missing
+plan-item / analysis-item proof entries. The validator never rejects
+an ID solely for not matching a plan-parsed ID; coverage of the
+plan's intent is followed through the development-analysis feedback
+loop, not by exact ID matching. The unrecognized-`status` error
+reports the valid `completed` / `partial` / `failed` vocabulary.

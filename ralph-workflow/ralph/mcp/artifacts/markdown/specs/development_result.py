@@ -5,16 +5,24 @@ Frontmatter ``status`` always has the closed vocabulary ``completed`` |
 such as ``done`` is a hard error naming the valid values). Everything
 below the frontmatter is validated only for a ``completed`` result,
 because only a completion claim is checkable: the required-section
-skeleton, the ``Plan Items Proven`` / ``Analysis Items Addressed`` item
-IDs (proof gating cross-references them) and the ``Continuation``
-session ID. A non-``completed`` result requires at minimum a ``Summary``
-section (the concise reason for the outcome) so silent omission is
-rejected mechanically; the rest of the body is mapped best-effort so
-the next iteration can read whatever the agent managed to write.
+skeleton, the ``Analysis Items Addressed`` stable IDs (proof gating
+cross-references them) and the ``Continuation`` session ID. A
+non-``completed`` result requires at minimum a ``Summary`` section (the
+concise reason for the outcome) so silent omission is rejected
+mechanically; the rest of the body is mapped best-effort so the next
+iteration can read whatever the agent managed to write.
 
 Within a ``completed`` body the rest stays descriptive: sections
 tolerate multi-line prose and unknown ``Key: value`` continuation lines
-under items.
+under items. The bracketed IDs in ``Plan Items Proven`` are
+shape-independent: a step ID (``S-N``), a work-unit bracket ID, a
+prose-plan ID (``plan``), a subplan / section heading, or any other
+stable reference the plan actually uses. The validator only rejects
+duplicate IDs, missing ``Disposition`` / ``Rationale`` fields, and
+(for ``adapted`` / ``not_applicable`` / ``blocked`` items) a missing
+``Rationale``; coverage of the plan's intent is followed through the
+development-analysis feedback loop, not by exact ID matching here
+(see U-3).
 """
 
 from __future__ import annotations

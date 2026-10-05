@@ -181,7 +181,6 @@ max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
 [blocks.development.phase.artifact_proof_policy]
-require_plan_proof = true
 require_analysis_proof = true
 
 [blocks.development_commit_cleanup]

@@ -171,3 +171,69 @@ def test_development_wrapup_notice_keeps_static_text_without_epochs(
     assert "minutes remaining" not in flat
     assert "independent ready group" not in flat
     assert "literally impossible" in notice
+
+
+# ---------------------------------------------------------------------------
+# U-6: parallel-dispatch warning in the wrap-up notice's partial branch.
+# ---------------------------------------------------------------------------
+
+
+def test_development_wrapup_notice_warns_parallel_dispatch_in_partial_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """U-6: the dynamic wrap-up notice (epochs published) carries the
+    parallel-dispatch warning inside its partial branch: remaining
+    independent work should be dispatched in parallel rather than
+    handed back piecemeal as partial; piecemeal handbacks waste the
+    cycle."""
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    now = time.time()
+    monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
+    monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
+
+    for is_worker in (False, True):
+        notice = development_wrapup_notice(is_worker=is_worker)
+        # The warning sits in the partial branch (the "Use partial only"
+        # paragraph), regardless of worker scope.
+        partial_idx = notice.find("Use partial only")
+        assert partial_idx >= 0, f"partial branch missing for is_worker={is_worker}"
+        # Slice the partial paragraph through the next sentence break so
+        # unrelated guidance text does not mask a regression.
+        end = notice.find("Difficulty,", partial_idx)
+        partial_branch = notice[partial_idx:end] if end >= 0 else notice[partial_idx:]
+        assert "dispatch it in parallel" in partial_branch, (
+            f"parallel-dispatch warning missing for is_worker={is_worker}: "
+            f"{partial_branch!r}"
+        )
+        assert "piecemeal handbacks waste the cycle" in partial_branch, (
+            f"warning reason missing for is_worker={is_worker}: "
+            f"{partial_branch!r}"
+        )
+        assert "each increment back as partial" in partial_branch, (
+            f"piecemeal handback phrasing missing for is_worker={is_worker}: "
+            f"{partial_branch!r}"
+        )
+
+
+def test_development_wrapup_notice_static_text_warns_parallel_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """U-6: the static fallback notice (no epochs) also carries the
+    parallel-dispatch warning in its partial branch so the guidance is
+    consistent across both delivery paths."""
+    from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV, DEV_WARN_EPOCH_ENV
+    from ralph.mcp.server._session_wrapup import development_wrapup_notice
+
+    monkeypatch.delenv(DEV_WARN_EPOCH_ENV, raising=False)
+    monkeypatch.delenv(DEV_DEADLINE_EPOCH_ENV, raising=False)
+
+    notice = development_wrapup_notice()
+    partial_idx = notice.find("Use partial only")
+    assert partial_idx >= 0
+    end = notice.find("Difficulty,", partial_idx)
+    partial_branch = notice[partial_idx:end] if end >= 0 else notice[partial_idx:]
+    assert "dispatch it in parallel" in partial_branch, partial_branch
+    assert "piecemeal handbacks waste the cycle" in partial_branch, partial_branch
+    assert "each increment back as partial" in partial_branch, partial_branch

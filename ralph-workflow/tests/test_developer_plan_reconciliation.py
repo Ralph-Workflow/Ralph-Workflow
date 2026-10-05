@@ -163,7 +163,7 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
     assert "adapted" in prompt
     assert "not applicable" in prompt
     assert "Do not reject a correct implementation only because" in prompt
-    assert "every required plan reference" in prompt
+    assert "whatever references the plan actually uses" in prompt
     assert "Choose the outcome from fresh evidence" in prompt
     assert "localized unmet work is actionable" in prompt
     assert "`failed` records stronger or not-evaluable evidence" in prompt

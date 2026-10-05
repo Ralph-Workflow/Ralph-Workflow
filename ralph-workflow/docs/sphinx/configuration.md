@@ -347,7 +347,6 @@ The development phase supports a proof policy block:
 
 ```toml
 [phases.development.artifact_proof_policy]
-require_plan_proof = true
 require_analysis_proof = true
 ```
 

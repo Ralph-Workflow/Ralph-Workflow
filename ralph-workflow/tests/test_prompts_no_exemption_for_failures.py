@@ -189,6 +189,98 @@ def test_no_exemption_names_remaining_work_size() -> None:
     assert "size of the remaining work never qualifies" in source
 
 
+def test_no_exemption_partial_carries_parallel_dispatch_warning() -> None:
+    """U-6: the partial-is-a-last-resort section warns that remaining
+    independent work should be dispatched in parallel rather than
+    handed back piecemeal as ``partial`` (piecemeal handbacks waste
+    the cycle)."""
+    source = _PARTIAL.read_text(encoding="utf-8")
+    # The warning lives inside the "## Partial is a last resort" section.
+    start = source.find("## Partial is a last resort")
+    assert start >= 0
+    # Normalize whitespace so line-wrapped phrases match the literals
+    # the contract pins. The template wraps long sentences for source
+    # readability, so a literal "each increment back as `partial`"
+    # substring may be split across lines.
+    partial_section = " ".join(source[start:].split())
+    assert "dispatch it in parallel" in partial_section
+    assert "piecemeal handbacks waste the cycle" in partial_section
+    assert "each increment back as `partial`" in partial_section
+
+
+def test_continuation_template_prior_result_block_warns_parallel_dispatch() -> None:
+    """U-6: the ``PRIOR DEVELOPMENT RESULT — PARTIAL`` block in
+    ``developer_iteration_continuation.jinja`` carries the parallel-
+    dispatch warning so a continuation session handed back a partial
+    result knows the remaining independent work should be fanned out
+    rather than completed piecemeal."""
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "developer_iteration_continuation.jinja",
+        is_worker=False,
+        is_continuation=True,
+    )
+    # Populate the prior-result block so the warning is reachable.
+    variables.update(
+        {
+            "PRIOR_RESULT_STATUS": "partial",
+            "PRIOR_RESULT_SUMMARY": "Implemented step 1; steps 2-3 remain.",
+            "PRIOR_RESULT_NEXT_STEPS": "Implement steps 2 and 3.",
+            "PRIOR_RESULT_CONTINUATION": "agent-session-1",
+        }
+    )
+    template = context.registry.get_template("developer_iteration_continuation.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    prior_block_start = rendered.find("PRIOR DEVELOPMENT RESULT")
+    assert prior_block_start >= 0, "PRIOR DEVELOPMENT RESULT block missing"
+    # The prior-result block ends just before the "## PARALLEL
+    # EXECUTION" section. We slice the relevant range so unrelated
+    # guidance text and the included ``_no_exemption_for_failures.j2``
+    # partial cannot mask a regression (the canonical partial also
+    # carries the same warning, but that inclusion is a separate
+    # contract, not the prior-result block).
+    next_heading = rendered.find("## PARALLEL EXECUTION", prior_block_start)
+    prior_block_raw = (
+        rendered[prior_block_start:next_heading]
+        if next_heading >= 0
+        else rendered[prior_block_start:]
+    )
+    # Normalize whitespace so line-wrapped phrases match the literals
+    # the contract pins. The template wraps long sentences for source
+    # readability, so a literal "dispatch it in parallel" substring
+    # may be split across lines.
+    prior_block = " ".join(prior_block_raw.split())
+    assert "dispatch it in parallel" in prior_block
+    assert "piecemeal handbacks waste the cycle" in prior_block
+    assert "each increment back as `partial`" in prior_block
+
+
+def test_continuation_template_parallel_dispatch_warning_absent_without_prior_result() -> None:
+    """U-6: the prior-result block (and its inline parallel-dispatch
+    warning) must be gated on a non-empty ``PRIOR_RESULT_STATUS``.
+    A fresh continuation session with no prior result does not render
+    the ``PRIOR DEVELOPMENT RESULT`` block at all. The parallel-
+    dispatch warning is still surfaced via the included
+    ``_no_exemption_for_failures.j2`` partial, which is a separate,
+    always-on contract."""
+    context = TemplateContext.default()
+    variables = _surface_variables(
+        "developer_iteration_continuation.jinja",
+        is_worker=False,
+        is_continuation=True,
+    )
+    # PRIOR_RESULT_STATUS is left empty by `_surface_variables`; the
+    # prior-result block must not render. Note the parallel-dispatch
+    # warning itself is still expected because the
+    # ``_no_exemption_for_failures.j2`` partial always includes it.
+    template = context.registry.get_template("developer_iteration_continuation.jinja")
+    rendered = render_template(template, variables, context.partials)
+
+    assert "PRIOR DEVELOPMENT RESULT" not in rendered
+    assert "Continuation reference:" not in rendered
+
+
 def test_rendered_developer_prompt_carries_large_scope_contract() -> None:
     """The materialized developer prompt carries the large-scope contract
     end-to-end: the main-session guidance section and the parallel-execution
