@@ -143,11 +143,17 @@ def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> boo
     seen_step_ids: set[str] = set()
     for section in document.sections:
         is_unit_section = section.name in {"Work Units", "Parallel Plan"}
+        # A non-unit heading can itself name work. Extraction has no safe
+        # ownership for its text, including a heading that contains a unit
+        # section, so retain it for the main agent rather than omit it.
+        unrepresented_heading = (
+            not is_unit_section and not (section.lines or section.items or section.blocks)
+        )
         for block in section.blocks:
             if _STEP_ID.fullmatch(block.identifier) and block.identifier in seen_step_ids:
                 return True
             seen_step_ids.add(block.identifier)
-        if section.lines:
+        if section.lines or unrepresented_heading:
             return True
         if section.blocks:
             if any(block.identifier not in unit_step_ids for block in section.blocks):

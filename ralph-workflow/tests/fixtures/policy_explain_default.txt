@@ -17,7 +17,7 @@
     >> RE-ENTRY at planning
     |
     v
->>> FAN_OUT (max_workers=8, max_units=50, post_fanout_verify=no) >>>
+>>> FAN_OUT (max_workers=8, waves=queued, post_fanout_verify=no) >>>
 +----------------+
 |  development   |
 | role=execution |

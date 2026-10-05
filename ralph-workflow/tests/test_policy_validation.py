@@ -18,7 +18,6 @@ Source files (all test_policy_validation_*.py under tests/):
   - test_policy_validation_shared_drain_history_consistency.py
   - test_policy_validation_strict_cli_counter_overrides.py
   - test_policy_validation_strict_legacy_fields_rejected.py
-  - test_policy_validation_strict_parallelization_consistency.py
   - test_policy_validation_strict_skip_invocation_has_on_success.py
   - test_policy_validation_validate_chain_exists.py
   - test_policy_validation_validate_checkpoint_compatible.py
@@ -162,40 +161,6 @@ def _strict_legacy_fields_rejected_minimal_bundle_with_phases(
 ) -> PolicyBundle:
     drains = list(phases.keys())
     agents = _strict_legacy_fields_rejected_minimal_agents(drains)
-    pipeline = PipelinePolicy(
-        phases=phases,
-        entry_phase=drains[0],
-        terminal_phase="complete",
-        recovery=RecoveryPolicy(failed_route="complete"),
-    )
-    return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={}))
-
-
-# === Helper for test_policy_validation_strict_parallelization_consistency.py ===
-def _strict_parallelization_consist_minimal_agents(drains: list[str]) -> AgentsPolicy:
-    chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
-    agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
-    return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
-
-
-# === Helper for test_policy_validation_strict_parallelization_consistency.py ===
-def _strict_parallelization_consist_terminal_phase(
-    drain: str = "complete", outcome: str = "success"
-) -> PhaseDefinition:
-    return PhaseDefinition(
-        drain=drain,
-        role="terminal",
-        terminal_outcome=outcome,
-        transitions=PhaseTransition(on_success=drain, on_loopback=drain),
-    )
-
-
-# === Helper for test_policy_validation_strict_parallelization_consistency.py ===
-def _strict_parallelization_consist_minimal_bundle_with_phases(
-    phases: dict[str, PhaseDefinition],
-) -> PolicyBundle:
-    drains = list(phases.keys())
-    agents = _strict_parallelization_consist_minimal_agents(drains)
     pipeline = PipelinePolicy(
         phases=phases,
         entry_phase=drains[0],
@@ -378,14 +343,32 @@ class TestDefaultPolicyLoading:
 
         assert bundle.pipeline.terminal_phase == "complete"
 
-    def test_default_pipeline_parallel_execution_max_work_units(self) -> None:
-        """Test that default pipeline loads the work unit cap from TOML."""
+    def test_parallel_policy_roundtrip_retains_legacy_settings_without_capping_workers(self) -> None:
+        """Legacy unit settings do not constrain the concurrent worker policy."""
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
 
         assert bundle.pipeline.phases["development"].parallelization is not None
         dev_para = bundle.pipeline.phases["development"].parallelization
         assert dev_para.max_work_units == DEFAULT_MAX_WORK_UNITS
+
+        phases = dict(bundle.pipeline.phases)
+        phases["development"] = phases["development"].model_copy(
+            update={
+                "parallelization": PhaseParallelization(
+                    max_parallel_workers=8, max_work_units=1, require_allowed_directories=True,
+                )
+            }
+        )
+        configured = bundle.model_copy(
+            update={"pipeline": bundle.pipeline.model_copy(update={"phases": phases})}
+        )
+        restored = PolicyBundle.model_validate_json(configured.model_dump_json())
+        validate_policy_completeness(restored)
+        parallelization = restored.pipeline.phases["development"].parallelization
+        assert parallelization is not None
+        assert parallelization.max_parallel_workers == 8
+        assert parallelization.max_work_units == 1
 
     def test_all_pipeline_drains_are_bound(self) -> None:
         """Test that every drain used in pipeline.phases is bound in agents.agent_drains.
@@ -1216,75 +1199,6 @@ class TestLegacyFieldsRejected:
                 embeds_analysis=True,
                 transitions=PhaseTransition(on_success="done"),
             )
-
-
-# === consolidated from test_policy_validation_strict_parallelization_consistency.py ===
-class TestParallelizationConsistency:
-    """parallelization.max_work_units must be >= max_parallel_workers."""
-
-    def test_max_work_units_less_than_max_parallel_workers_raises(self) -> None:
-        phases = {
-            "work": PhaseDefinition(
-                drain="work",
-                role="execution",
-                transitions=PhaseTransition(on_success="complete"),
-                parallelization=PhaseParallelization(
-                    max_parallel_workers=5,
-                    max_work_units=3,
-                ),
-            ),
-            "complete": _strict_parallelization_consist_terminal_phase(),
-        }
-        bundle = _strict_parallelization_consist_minimal_bundle_with_phases(phases)
-        with pytest.raises(
-            PolicyValidationError,
-            match=r"max_work_units.*must be >=.*max_parallel_workers",
-        ):
-            validate_policy_completeness(bundle)
-
-    def test_max_work_units_equal_to_max_parallel_workers_passes(self) -> None:
-        phases = {
-            "work": PhaseDefinition(
-                drain="work",
-                role="execution",
-                transitions=PhaseTransition(on_success="complete"),
-                parallelization=PhaseParallelization(
-                    max_parallel_workers=4,
-                    max_work_units=4,
-                ),
-            ),
-            "complete": _strict_parallelization_consist_terminal_phase(),
-        }
-        bundle = _strict_parallelization_consist_minimal_bundle_with_phases(phases)
-        validate_policy_completeness(bundle)  # must not raise
-
-    def test_max_work_units_greater_than_max_parallel_workers_passes(self) -> None:
-        phases = {
-            "work": PhaseDefinition(
-                drain="work",
-                role="execution",
-                transitions=PhaseTransition(on_success="complete"),
-                parallelization=PhaseParallelization(
-                    max_parallel_workers=2,
-                    max_work_units=10,
-                ),
-            ),
-            "complete": _strict_parallelization_consist_terminal_phase(),
-        }
-        bundle = _strict_parallelization_consist_minimal_bundle_with_phases(phases)
-        validate_policy_completeness(bundle)  # must not raise
-
-    def test_phase_without_parallelization_is_not_checked(self) -> None:
-        phases = {
-            "work": PhaseDefinition(
-                drain="work",
-                role="execution",
-                transitions=PhaseTransition(on_success="complete"),
-            ),
-            "complete": _strict_parallelization_consist_terminal_phase(),
-        }
-        bundle = _strict_parallelization_consist_minimal_bundle_with_phases(phases)
-        validate_policy_completeness(bundle)  # must not raise
 
 
 # === consolidated from test_policy_validation_strict_skip_invocation_has_on_success.py ===

@@ -252,6 +252,7 @@ def test_explicit_xdist_worker_count_overrides_auto_resolution(
 def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "0")
@@ -265,10 +266,12 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
         _FakeShardProcess([0], stdout=b"bravo passed\n"),
     ]
     spawner = _StubSpawner(processes)
+    clock = _FakeClock()
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
         spawner=spawner,
+        monotonic=clock,
         file_discoverer=lambda _cwd: (
             "tests/test_bravo.py",
             "tests/test_alpha.py",
@@ -278,6 +281,12 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     )
 
     assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "pytest preparation: 2 files, 2 shards in 0.00s" in output
+    assert "pytest shard 0: 1 files, xdist=0, started at 0.00s" in output
+    assert "pytest shard 1: 1 files, xdist=0, started at 0.00s" in output
+    assert "pytest shard 0: exit=0, elapsed=0.00s" in output
+    assert "pytest shard 1: exit=0, elapsed=0.00s" in output
     assert [command[3] for command, _cwd, _env in spawner.calls] == ["tests", "tests"]
     assert spawner.manifest_files == [
         ("tests/test_alpha.py",),

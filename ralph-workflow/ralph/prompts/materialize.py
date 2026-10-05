@@ -469,18 +469,6 @@ def _render_planning_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
-    # S-8: thread the development phase's worker cap from the pipeline policy
-    # into the planning prompt so the planner plans around the actual limit
-    # rather than a hard-coded default.
-    development_phase = context.pipeline_policy.phases.get("development")
-    development_parallelization = (
-        development_phase.parallelization if development_phase is not None else None
-    )
-    max_parallel_workers = (
-        development_parallelization.max_work_units
-        if development_parallelization is not None
-        else None
-    )
     rendered = prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -503,7 +491,6 @@ def _render_planning_prompt(
             last_retry_error=last_retry_error,
             skills_inline_content=skills_inline_content,
             has_docs_mcp=has_docs_mcp,
-            max_parallel_workers=max_parallel_workers,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -700,10 +687,6 @@ def _render_template_based_prompt(
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
-    development_phase = pipeline_policy.phases.get("development")
-    parallelization = development_phase.parallelization if development_phase is not None else None
-    if parallelization is not None:
-        variables["WORK_UNITS_MAX_CAP"] = str(parallelization.max_work_units)
     rendered = render_template(
         template,
         _merged_variables(variables, session_caps),

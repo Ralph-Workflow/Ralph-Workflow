@@ -217,24 +217,6 @@ def _validate_skip_invocation_has_on_success(
         )
 
 
-def _validate_parallelization_consistency(
-    phase_name: str, phase_def: object, errors: list[str]
-) -> None:
-    if not isinstance(phase_def, PhaseDefinition):
-        return
-    para = phase_def.parallelization
-    if para is None:
-        return
-    if para.max_work_units < para.max_parallel_workers:
-        errors.append(
-            f"phases.{phase_name}: parallelization.max_work_units ({para.max_work_units}) "
-            f"must be >= parallelization.max_parallel_workers ({para.max_parallel_workers}). "
-            f"The runtime caps workers to max_work_units, so declaring more workers than "
-            f"work units makes the policy misleading. "
-            f"Increase max_work_units or decrease max_parallel_workers."
-        )
-
-
 def _validate_commit_cleanup_phase(
     phase_name: str,
     phase_def: object,

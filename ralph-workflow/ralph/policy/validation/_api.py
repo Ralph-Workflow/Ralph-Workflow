@@ -22,7 +22,6 @@ from ralph.policy.validation._phase_validators import (
     _validate_commit_phase_loop_resets,
     _validate_commit_phase_post_commit_routes,
     _validate_loop_policy_role,
-    _validate_parallelization_consistency,
     _validate_review_phase,
     _validate_skip_invocation_has_on_success,
     _validate_terminal_phase,
@@ -221,7 +220,6 @@ def validate_policy_completeness(
 
         _validate_loop_policy_role(phase_name, phase_def, errors)
         _validate_skip_invocation_has_on_success(phase_name, phase_def, errors)
-        _validate_parallelization_consistency(phase_name, phase_def, errors)
 
     _validate_recovery_failed_route(policy, errors)
     _validate_no_legacy_phase_constants(policy, errors)

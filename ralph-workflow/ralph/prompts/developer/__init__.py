@@ -45,11 +45,6 @@ class PlanningPromptInputs:
     last_retry_error: str = ""
     skills_inline_content: str = ""
     has_docs_mcp: bool = False
-    # S-8: the policy-derived cap on concurrent development-phase workers.
-    # Rendered into the planning submission mechanics as ``WORK_UNITS_MAX_CAP``
-    # so the planner plans around the actual limit rather than a hard-coded
-    # default. ``None`` falls back to the default 8 in the template.
-    max_parallel_workers: int | None = None
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -175,9 +170,6 @@ def prompt_planning_xml_with_context(
         "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
-        "WORK_UNITS_MAX_CAP": str(inputs.max_parallel_workers)
-        if inputs.max_parallel_workers is not None
-        else "",
     }
     base_vars.update(
         _product_criteria_variables(

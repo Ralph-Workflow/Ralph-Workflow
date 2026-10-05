@@ -47,15 +47,15 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 
 | File | Purpose |
 |------|---------|
-| `markdown/` | Closed markdown artifact grammar: `MdArtifactSpec`, `parse_and_validate`, `Diagnostic`, per-type specs under `markdown/specs/`, spec registry |
+| `markdown/` | Per-type markdown boundaries (sanity-only for plans): `MdArtifactSpec`, `parse_and_validate`, `Diagnostic`, per-type specs under `markdown/specs/`, spec registry |
 | `canonical_submit.py` | `submit_artifact_canonical` — the transactional writer for `.agent/artifacts/<type>.md`, handoff copies, and receipts; receipt failure restores prior canonical state, and completion remains a separate `declare_complete` operation |
 | `completion_receipts.py` | DB-first run-scoped artifact receipts with a durable legacy-file fallback |
 | `state_db.py` | `RunStateDB` — the SQLite persistence boundary for receipts and completion sentinels |
 | `file_backend.py` | `FileBackend`, `PathFileBackend`, `DEFAULT_FILE_BACKEND` |
-| `plan/` | Normalized plan models and cross-reference validation used by the markdown spec |
+| `plan/` | Best-effort plan metadata extraction and permissive normalization; prose remains authoritative |
 | `commit_message.py` | Commit message artifact helpers |
 | `development_result.py` | Development result validation |
-| `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per non-plan artifact type loaded via `importlib.resources` |
+| `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per artifact type loaded via `importlib.resources` |
 | `policy_outcomes.py` | `is_policy_approved` — shared policy interpretation |
 | `audit_adapter.py` | `RalphAuditSinkAdapter`, audit record translation |
 
@@ -358,8 +358,8 @@ ralph/mcp/
 │   │   ├── artifact_formats_index.md
 │   │   ├── <type>.md    # One per registered artifact type (plan, issues, ...)
 │   │   └── examples/    # Validator-backed example documents
-│   ├── markdown/        # Closed markdown grammar, per-type specs, spec registry
-│   ├── plan/            # Normalized plan models and cross-reference validation
+│   ├── markdown/        # Per-type boundaries; sanity-only plan spec
+│   ├── plan/            # Best-effort metadata and permissive normalization
 │   └── policy_outcomes.py
 ├── explore/             # Phase 0-4 indexed exploration substrate (SQLite + FTS5 + graph)
 │   ├── __init__.py

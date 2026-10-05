@@ -936,6 +936,11 @@ def _run_shards(
                 "".join(f"{path}\n" for path in shard),
                 encoding="utf-8",
             )
+            print(
+                f"pytest shard {shard_index}: {len(shard)} files, "
+                f"xdist={shard_xdist_workers}, started at {monotonic() - started_at:.2f}s",
+                flush=True,
+            )
             processes.append(
                 spawner(
                     _shard_command(
@@ -987,6 +992,11 @@ def _run_shards(
                     process,
                     timeout_seconds=_remaining_seconds(deadline, monotonic),
                 )
+            print(
+                f"pytest shard {index}: exit={returncode}, "
+                f"elapsed={monotonic() - started_at:.2f}s",
+                flush=True,
+            )
             if returncode not in successful_returncodes:
                 siblings = [
                     sibling
@@ -1169,6 +1179,11 @@ def run_test_suites(
         validate_exact_file_assignment((*selected_files, *required_e2e_shard), (*shards, required_e2e_shard))
     else:
         validate_exact_file_assignment(selected_files, shards)
+    print(
+        f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
+        f"{len(shards) + bool(required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
+        flush=True,
+    )
     temp_directory_prefix: str
     if profile is not None:
         temp_directory_prefix = profile

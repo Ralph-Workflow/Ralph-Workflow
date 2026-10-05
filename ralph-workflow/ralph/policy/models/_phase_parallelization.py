@@ -32,16 +32,18 @@ class PhaseParallelization(_FrozenPolicyModel):
     max_parallel_workers: int = Field(
         default=8,
         ge=1,
-        description="Maximum allowed concurrent work units",
+        description="Maximum concurrent workers; additional work units queue in waves",
     )
     max_work_units: int = Field(
         default=50,
         ge=1,
-        description="Maximum allowed total work units from planning artifact",
+        description="Legacy compatibility setting; does not cap total work units or workers",
     )
     require_allowed_directories: bool = Field(
         default=True,
-        description="Require each work unit to declare allowed_directories",
+        description=(
+            "Legacy compatibility setting; ownership may use Paths, Directories, or step Files"
+        ),
     )
     post_fanout_verification: bool = Field(
         default=False,

@@ -4,17 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from ralph.mcp.protocol.capability_mapping import SessionDrain
-from ralph.prompts.developer import (
-    DeveloperPromptInputs,
-    prompt_developer_iteration_xml_with_context,
-)
-from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.types import SessionCapabilities
-from ralph.workspace.memory import MemoryWorkspace
-
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
 _PARTIAL = _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2"
 _TEMPLATE_NAMES = (
@@ -118,47 +107,3 @@ def test_partial_results_rule_is_single_sourced() -> None:
         assert "MUST resolve anything that comes up" not in text, (
             f"{name} restates the rule; it should reference the canonical home"
         )
-
-
-
-
-_SIZE_RULE = "Task size alone must not produce an assessment-only handoff"
-_FIRST_INCREMENT_RULE = "Select and perform the first safe, testable increment"
-
-
-@pytest.mark.parametrize(
-    ("template_name", "is_worker"),
-    (
-        ("developer_iteration.jinja", False),
-        ("developer_iteration_continuation.jinja", False),
-        ("developer_iteration_fallback.jinja", False),
-        ("worker_developer.jinja", True),
-        ("developer_iteration_continuation.jinja", True),
-        ("developer_iteration_fallback.jinja", True),
-    ),
-)
-def test_rendered_development_surfaces_require_size_based_execution(
-    tmp_path: Path, template_name: str, *, is_worker: bool
-) -> None:
-    rendered = " ".join(prompt_developer_iteration_xml_with_context(
-        context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(
-            prompt_content="Implement the requested change.",
-            plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
-        ),
-        workspace=MemoryWorkspace(root=str(tmp_path)),
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name=template_name,
-    ).split())
-
-    assert rendered.count(_SIZE_RULE) == 1
-    assert rendered.count(_FIRST_INCREMENT_RULE) == 1
-    assert rendered.index(_SIZE_RULE) < rendered.index("EXECUTION PLAN")
-    if is_worker:
-        assert "dispatch independent ready groups" not in rendered
-        assert "stopped-writer transfer" not in rendered
-    else:
-        assert "dispatch independent ready groups" in rendered

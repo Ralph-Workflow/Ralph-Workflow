@@ -105,7 +105,7 @@ class TestRenderExplanationAscii:
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Fanout annotation format: >>> FAN_OUT (max_workers=N, max_units=M) >>>
+        # Fanout annotation describes bounded concurrency and queued waves.
         assert ">>> FAN_OUT" in output
         # Should mention development phase in context of fanout
         assert "development" in output
@@ -304,7 +304,13 @@ class TestRenderExplanationAscii:
 
         assert ">>> FAN_OUT" in output
         assert "max_workers=" in output
-        assert "max_units=" in output
+        assert "waves=queued" in output
+        assert "max_units=" not in output
+        text = render_explanation_text(explanation)
+        assert "waves" in text
+        assert "Paths" in text
+        assert "Max work units:" not in text
+        assert "Require allowed_directories:" not in text
         assert "<<< REJOIN" in output
 
         fanout_pos = output.index(">>> FAN_OUT")

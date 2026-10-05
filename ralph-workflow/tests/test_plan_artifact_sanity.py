@@ -35,17 +35,28 @@ def test_colon_prefixed_prose_outside_frontmatter_remains_main_session_work() ->
 
 
 
-def test_heading_wrapped_prose_before_work_units_remains_main_session_work() -> None:
-    text = (
-        "## Release preparation\n"
-        "Prepare release/manifest.json and verify the published artifact after both components finish.\n"
+def test_plan_regression_heading_only_tasks_remain_main_session_work() -> None:
+    """DA-016: retain residual tasks expressed in headings, not only body prose."""
+    units = (
         "## Work Units\n"
         "- [one] Implement first component\n  Paths: src/one.py\n"
         "- [two] Implement second component\n  Paths: src/two.py\n"
     )
-    content, diagnostics, _ = analyze_plan_document(text)
+    task = "Prepare release/manifest.json after both components finish"
+    for text in (
+        "## Release preparation\n" + task + "\n" + units,
+        units + "## " + task + "\n",
+        "## " + task + "\n" + units,
+        units + "### " + task + "\n",
+        "## " + task + "\n### Work Units\n" + units.removeprefix("## Work Units\n"),
+    ):
+        content, diagnostics, _ = analyze_plan_document(text)
+        assert diagnostics == []
+        assert content.get("unextractable_work_units") is True
+
+    content, diagnostics, _ = analyze_plan_document("# Implementation plan\n" + units)
     assert diagnostics == []
-    assert content["unextractable_work_units"] is True
+    assert content.get("unextractable_work_units") is True
 
 
 def test_sanity_applies_to_noop_and_invalid_unicode() -> None:

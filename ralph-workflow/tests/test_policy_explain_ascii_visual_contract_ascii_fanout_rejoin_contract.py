@@ -20,7 +20,7 @@ from ralph.policy.explain import (
     RecoveryExplanation,
     TerminalOutcomeExplanation,
 )
-from ralph.policy.render import render_explanation_ascii
+from ralph.policy.render import render_explanation_ascii, render_explanation_text
 
 _ASCII_MAX = 127
 
@@ -68,7 +68,7 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiFanoutRejoinContract:
-    """Fan-out / rejoin markers: >>> FAN_OUT (max_workers=N, max_units=M) >>>, <<< REJOIN."""
+    """Fan-out / rejoin markers expose concurrency and queued waves."""
 
     def _fanout_explanation(self) -> PolicyExplanation:
         work = _make_phase("work", on_success="done", is_entry=True)
@@ -94,7 +94,7 @@ class TestAsciiFanoutRejoinContract:
         )
 
     def test_fanout_annotation_present(self) -> None:
-        """>>> FAN_OUT (max_workers=N, max_units=M) >>> appears for the parallel phase."""
+        """The FAN_OUT marker appears for the parallel phase."""
         output = render_explanation_ascii(self._fanout_explanation())
         assert ">>> FAN_OUT" in output
 
@@ -103,10 +103,17 @@ class TestAsciiFanoutRejoinContract:
         output = render_explanation_ascii(self._fanout_explanation())
         assert "max_workers=4" in output
 
-    def test_fanout_shows_work_unit_count(self) -> None:
-        """Fan-out annotation includes max_units count."""
-        output = render_explanation_ascii(self._fanout_explanation())
-        assert "max_units=20" in output
+    def test_fanout_explains_queued_waves_and_file_ownership(self) -> None:
+        """Worker capacity bounds waves, not total units or directory-only ownership."""
+        explanation = self._fanout_explanation()
+        output = render_explanation_ascii(explanation)
+        assert "waves=queued" in output
+        assert "max_units=" not in output
+        text = render_explanation_text(explanation)
+        assert "waves" in text
+        assert "Paths" in text
+        assert "Max work units:" not in text
+        assert "Require allowed_directories:" not in text
 
     def test_rejoin_marker_present(self) -> None:
         """<<< REJOIN appears after the fan-out phase box."""

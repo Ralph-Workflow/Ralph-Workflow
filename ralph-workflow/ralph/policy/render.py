@@ -123,7 +123,7 @@ def _render_fanout_annotation(
         verify = "yes" if pe.post_fanout_verification else "no"
         lines.append(
             f">>> FAN_OUT (max_workers={pe.max_parallel_workers}, "
-            f"max_units={pe.max_work_units}, post_fanout_verify={verify}) >>>"
+            f"waves=queued, post_fanout_verify={verify}) >>>"
         )
 
 
@@ -259,7 +259,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
        ==FAILURE==> for terminal_outcome="failure". Only policy-declared
        terminal phases get markers.
 
-    7. FANOUT ANNOTATION: >>> FAN_OUT (max_workers=N, max_units=M, post_fanout_verify=yes/no)
+    7. FANOUT ANNOTATION: >>> FAN_OUT (max_workers=N, waves=queued, post_fanout_verify=yes/no)
        appears above the phase box for the parallel-eligible phase.
 
     8. LOOP ANNOTATION: [loop: counter=NAME, max=N] appears above the

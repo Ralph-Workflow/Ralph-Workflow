@@ -282,6 +282,12 @@ to the same-workspace worker model with the coordination tool and per-worker
 artifact namespaces.
 
 Use this when you want a planning artifact to split work into multiple development units.
+`max_parallel_workers` bounds simultaneous workers; additional ready units run in
+later waves. The legacy `max_work_units` and `require_allowed_directories`
+settings do not impose plan acceptance rules: total unit count and missing
+`Directories:` cannot reject a plan. Ownership can also use exact `Paths:` or
+fall back to the unit's steps' `Files:`; indeterminate scope stays with the
+main session.
 
 ## Parallel execution (agent-driven)
 
@@ -303,7 +309,7 @@ A plan communicates parallelization intent to the executing agent through two sh
 - `work_units` — same-workspace agent-driven chunks. Each unit's ownership combines `Paths:` (exact files) and `Directories:` (the declared directory limits), or — when the unit declares neither — its steps' `Files:` targets. The executor drops assignments under `.agent`, `.git`, and `.worktrees` (and their descendants) from the effective scope; ownership that resolves to those roots stays in the main session. The executing agent dispatches a sub-agent per unit, scoped to the unit's effective ownership, and produces the matching `plan_items_proven` evidence.
 - `parallel_plan` — read-mostly chunks (e.g. parallel exploration, investigation, or doc analysis) where the executing agent's sub-agents work on disjoint inputs and the planner defines the per-unit scope contract. The same combined `Paths:` and `Directories:` ownership, step `Files:` fallback, and protected-root sanitization apply.
 
-A plan with no parallelizable work remains just as expressible as before — omit both shapes and the executing agent runs the plan sequentially. A plan with no extractable step IDs and no work units is still executed as one prose plan; the development result proves it with a single `- [plan] <proof>` entry.
+A plan with no parallelizable work remains just as expressible as before — omit both shapes and the executing agent runs the plan sequentially. A plan with no usable extracted step or unit IDs is still executed as one prose plan; the development result proves it with exactly one `- [plan] <proof>` entry.
 
 ### How the executing agent dispatches sub-agents
 
@@ -668,12 +674,6 @@ Plan submission performs only the plan sanity check; a unit count, ownership
 shape, dependency graph, and overlap do not reject an otherwise accepted plan.
 `max_parallel_workers` is a concurrency limit, not a plan-size limit.
 Additional ready units run in queued waves.
-
-Large scope does not justify an assessment-only response or a request to split the
-work without advancing it. The coordinator starts a safe, testable increment while
-dispatching disjoint ready scopes within capacity; an isolated worker does the same
-only within its assignment. These are prompt instructions, not a guarantee of model
-behavior or a change to runtime deadlines, review, or result eligibility.
 
 The executor derives ownership from `Paths:`, `Directories:`, or step
 `Files:` when available. Conflicting files and directory containment run

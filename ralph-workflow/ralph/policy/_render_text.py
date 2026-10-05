@@ -215,16 +215,14 @@ def _render_parallel_executions_text(exp: object, lines: list[str]) -> None:
     lines.append("-" * 70)
     for pe in exp.parallel_executions:
         verify = "yes" if pe.post_fanout_verification else "no"
-        req = "yes" if pe.require_allowed_directories else "no"
         lines.append(f"  Fanout phase : {pe.phase}")
         lines.append(f"  Max workers  : {pe.max_parallel_workers}")
-        lines.append(f"  Max work units: {pe.max_work_units}")
-        lines.append(f"  Require allowed_directories: {req}")
+        lines.append("  Ownership: Paths, Directories, or step Files; conflicts serialize")
         lines.append(f"  post_fanout_verify: {verify}")
         lines.append(
             f"  When is parallel execution allowed? "
-            f"When the planning artifact declares multiple work_units "
-            f"(up to {pe.max_work_units}) for phase '{pe.phase}'."
+            f"When the planning artifact declares independently owned work_units "
+            f"for phase '{pe.phase}'; excess units queue in worker-bounded waves."
         )
 
 
@@ -241,14 +239,12 @@ def _render_parallel_text(exp: object, lines: list[str]) -> None:
     verify = "yes" if pe.post_fanout_verification else "no"
     lines.append(f"  Fanout phase : {pe.phase}")
     lines.append(f"  Max workers  : {pe.max_parallel_workers}")
-    lines.append(f"  Max work units: {pe.max_work_units}")
-    req = "yes" if pe.require_allowed_directories else "no"
-    lines.append(f"  Require allowed_directories: {req}")
+    lines.append("  Ownership: Paths, Directories, or step Files; conflicts serialize")
     lines.append(f"  post_fanout_verify: {verify}")
     lines.append(
         f"  When is parallel execution allowed? "
-        f"When the planning artifact declares multiple work_units "
-        f"(up to {pe.max_work_units}) for phase '{pe.phase}'."
+        f"When the planning artifact declares independently owned work_units "
+        f"for phase '{pe.phase}'; excess units queue in worker-bounded waves."
     )
 
 
