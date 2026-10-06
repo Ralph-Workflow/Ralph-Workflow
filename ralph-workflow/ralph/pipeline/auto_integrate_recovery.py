@@ -53,7 +53,7 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
 from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
-from ralph.pipeline._pending_merge_commit import resume_pending_merge
+from ralph.pipeline._pending_merge_commit import _git_value, resume_pending_merge
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
@@ -90,6 +90,8 @@ from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.workspace.scope import WorkspaceScope
 
 #: Mirrors of the outcome verbs in :mod:`ralph.pipeline.auto_integrate`
@@ -720,6 +722,8 @@ def recover_incomplete_integration(
     workspace_scope: WorkspaceScope,
     *,
     config: UnifiedConfig | None = None,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState | None:
     """Recover owned Git operations under an exclusive worktree lease.
 
@@ -736,24 +740,72 @@ def recover_incomplete_integration(
                 target=None,
                 record_retained=True,
             )
-        return _recover_incomplete_integration_owned(workspace_scope, config=config)
+        try:
+            record = _read_record(Path(workspace_scope.root))
+        except Exception as exc:
+            logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
+            return _record_skip(
+                reason=f"integration ownership unreadable: {exc}",
+                target=None,
+                record_retained=True,
+            )
+        if (
+            record is not None
+            and record.diagnostic_evidence
+            and record.operation_kind != "target_reconcile"
+        ):
+            from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+
+            failure = release_verified_diagnostic(Path(workspace_scope.root), record)
+            if failure is not None:
+                return _record_skip(
+                    reason=failure,
+                    target=record.target,
+                    record_retained=True,
+                )
+        return _recover_incomplete_integration_owned(
+            workspace_scope,
+            config=config,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+        )
 
 
 def _recover_pending_merge(
-    root: Path, record: IntegrationRecord, config: UnifiedConfig | None
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
-    if record.resolving_merge and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root):
+    if record.operation_kind == "target_reconcile":
+        from ralph.pipeline._remote_reconcile_recovery import recover_target_resolution
+
+        return recover_target_resolution(
+            root, record, config, conflict_resolver, rebase_stop_resolver
+        )
+    if (
+        record.resolving_merge and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root)
+        and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
+    ):
         _clear_record(root)
         return _record_skip(
             reason="interrupted merge left no operation or edits; retry integration",
             target=record.target,
         )
     if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
-        return _record_skip(
-            reason="integration resolution interrupted; retained for agent continuation",
-            target=record.target,
-            record_retained=True,
+        from ralph.pipeline._integration_continuation import continue_retained_resolution
+
+        continued = continue_retained_resolution(
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
+        if isinstance(continued, str):
+            return _record_skip(reason=continued, target=record.target, record_retained=True)
+        return _continue_fast_forward_from_record(root, continued, config)
     resumed = (
         resume_pending_rebase(root, record)
         if record.rebase_continue_pending
@@ -769,6 +821,8 @@ def _recover_incomplete_integration_owned(
     workspace_scope: WorkspaceScope,
     *,
     config: UnifiedConfig | None = None,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState | None:
     """Recover from an interrupted integration at run-loop startup.
 
@@ -836,8 +890,14 @@ def _recover_incomplete_integration_owned(
             or record.resolving_merge
             or record.merge_commit_pending
             or record.merge_commit_tree is not None
+            or (
+                record.operation_kind == "target_reconcile"
+                and (record.phase == "integrated" or record.diagnostic_evidence)
+            )
         ):
-            return _recover_pending_merge(root, record, config)
+            return _recover_pending_merge(
+                root, record, config, conflict_resolver, rebase_stop_resolver
+            )
 
         operation_kind, operation_root = _recovery_operation_root(record, root)
 

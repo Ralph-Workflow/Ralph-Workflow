@@ -274,8 +274,8 @@ def run_worker_auto_integration(
             by an interrupted integration before integrating. True for
             the startup seam, False for the per-phase boundary.
         state: Prior integration outcome carried from the worker lifecycle.
-            An unresolved state is returned unchanged without recovery,
-            resolver construction, or fresh integration.
+            Retained operations receive their resolvers before phase dispatch;
+            unresolved recovery prevents a fresh integration.
 
     Returns:
         The recorded :class:`~ralph.pipeline.rebase_state.RebaseState`,
@@ -292,11 +292,6 @@ def run_worker_auto_integration(
     swallowed, because an integration problem must never abort the
     worker whose actual job is the phase it was launched for.
     """
-    if (
-        state is not None
-        and not inspect_integration_resolution(Path(workspace_scope.root), state).dispatch_allowed
-    ):
-        return state
     # Cheap stat guard BEFORE anything else, mirroring the one
     # ``auto_integrate_on_phase_transition`` opens with: a worker whose
     # workspace is not a git checkout has nothing to recover and nothing
@@ -305,8 +300,34 @@ def run_worker_auto_integration(
     if not (Path(workspace_scope.root) / ".git").exists():
         return None
     try:
-        if recover_first:
-            recovered = recover_incomplete_integration(workspace_scope, config=config)
+        conflict_resolver, rebase_stop_resolver, display = _worker_integration_resolvers(
+            config=config,
+            workspace_scope=workspace_scope,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+            strategy_history=(
+                state.conflict_strategies_tried
+                if state is not None
+                and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
+        )
+        unresolved = (
+            state is not None
+            and not inspect_integration_resolution(
+                Path(workspace_scope.root),
+                state,
+            ).dispatch_allowed
+        )
+        if recover_first or unresolved:
+            recovered = recover_incomplete_integration(
+                workspace_scope,
+                config=config,
+                conflict_resolver=conflict_resolver,
+                rebase_stop_resolver=rebase_stop_resolver,
+            )
             if recovered is not None:
                 logger.info(
                     "auto_integrate: parallel worker reconciled an interrupted integration: {}",
@@ -324,20 +345,17 @@ def run_worker_auto_integration(
                     # verdict, and leave ownership with recovery.
                     _emit_deferred_integration_line(display_context, recovered)
                     return recovered
-        conflict_resolver, rebase_stop_resolver, display = _worker_integration_resolvers(
-            config=config,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            registry=registry,
-            pipeline_deps=pipeline_deps,
-            display_context=display_context,
-            strategy_history=(
-                state.conflict_strategies_tried
-                if state is not None
-                and state.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
-                else ()
-            ),
-        )
+                if recovered.fast_forwarded:
+                    return recovered
+                state = recovered
+            if (
+                state is not None
+                and not inspect_integration_resolution(
+                    Path(workspace_scope.root),
+                    state,
+                ).dispatch_allowed
+            ):
+                return state
         outcome = auto_integrate_on_phase_transition(
             config,
             workspace_scope,

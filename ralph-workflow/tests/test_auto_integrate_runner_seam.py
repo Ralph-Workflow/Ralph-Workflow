@@ -354,7 +354,7 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
     assert delays[0] < long_wait[0], "jitter must actually vary the delay"
 
 
-def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatch) -> None:
+def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """S-3 regression: neither public seam may LOSE durable recovery evidence.
 
     The original form of this test asserted the seams must not integrate
@@ -371,7 +371,8 @@ def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatc
     a skip comes back still blocking, with its durable reason intact.
     """
     config = _default_config()
-    workspace_scope = MagicMock()
+    workspace_scope = WorkspaceScope(Path("/workspace"))
+    monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)
     for unresolved in (
         RebaseState(last_action="conflict", last_reason="resolver exhausted"),
         RebaseState(last_action="skipped", recovery_record_retained=True),
@@ -399,7 +400,7 @@ def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatc
         assert on_transition.integration_unresolved is True
 
 
-def test_a_landing_releases_the_unresolved_integration_block(monkeypatch) -> None:
+def test_a_landing_releases_the_unresolved_integration_block(monkeypatch: pytest.MonkeyPatch) -> None:
     """Only a real landing clears the block -- and it must actually clear it.
 
     ``resolution_exhausted`` was set in one place and cleared in none, so
@@ -408,7 +409,8 @@ def test_a_landing_releases_the_unresolved_integration_block(monkeypatch) -> Non
     by hand-editing ``.agent/checkpoint.json``.
     """
     config = _default_config()
-    workspace_scope = MagicMock()
+    workspace_scope = WorkspaceScope(Path("/workspace"))
+    monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)
     exhausted = RebaseState(
         last_action="conflict",
         resolution_exhausted=True,

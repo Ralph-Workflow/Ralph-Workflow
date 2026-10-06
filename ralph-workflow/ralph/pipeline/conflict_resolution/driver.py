@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import paths_with_conflict_markers, unmerged_paths
+from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -307,7 +308,7 @@ def _prepare_conflicted_paths(
     display: ParallelDisplay | None,
 ) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
     """Classify on sight; return remaining paths, an early verdict, and decisions."""
-    conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
+    conflicted = stop.conflicted_files if stop is not None else retained_merge_paths(root, tuple(unmerged_paths(root)))
     if _QUERY_FAILED_SENTINEL in conflicted:
         # Ralph cannot see the conflict. Typed, or this exit reports a
         # failure with no reason at all and the merge seam then calls it

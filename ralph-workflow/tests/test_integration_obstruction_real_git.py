@@ -22,6 +22,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 from ralph.git.merge import merge_in_progress, merge_target_into_current
@@ -269,8 +270,12 @@ def test_failed_landing_recovers_and_fast_forwards_on_next_seam(
     feature = _commit_file(tmp_git_repo, "feature.txt", "keep me\n", "feature")
     config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": base}})
     scope = WorkspaceScope(tmp_git_repo)
+
+    def locked(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return False, "ref locked"
+
     with monkeypatch.context() as failure:
-        failure.setattr(integration, "_fast_forward_target", lambda *a, **kw: (False, "ref locked"))
+        failure.setattr(integration, "_fast_forward_target", locked)
         outcome = integration.auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None and not outcome.fast_forwarded
     assert read_record(tmp_git_repo) is not None
@@ -506,8 +511,6 @@ def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
 
 def _interrupt_queue_restore(root: Path, config: object, monkeypatch: pytest.MonkeyPatch) -> None:
     """Crash immediately after one atomic queue-file write, then release the injected fault."""
-    from typing import Any
-
     import ralph.mcp.artifacts.idempotent_write as writes
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
@@ -516,9 +519,24 @@ def _interrupt_queue_restore(root: Path, config: object, monkeypatch: pytest.Mon
     assert isinstance(config, UnifiedConfig)
     original = writes.atomic_write_bytes_if_changed
 
-    def interrupt(*args: Any, **kwargs: Any) -> bool:
-        changed = original(*args, **kwargs)
-        if len(args) > 1 and isinstance(args[1], Path) and args[1].name == "git-rebase-todo":
+    def interrupt(
+        backend: FileBackend,
+        destination: Path,
+        content: bytes,
+        *,
+        tmp_path: Path,
+        sync_directory: bool = False,
+        prepare_write: Callable[[], None] | None = None,
+    ) -> bool:
+        changed = original(
+            backend,
+            destination,
+            content,
+            tmp_path=tmp_path,
+            sync_directory=sync_directory,
+            prepare_write=prepare_write,
+        )
+        if destination.name == "git-rebase-todo":
             raise OSError("injected queue restore crash")
         return changed
 
@@ -625,8 +643,12 @@ def test_unknown_merge_observation_preserves_live_operation(
     _run(root, "checkout", target)
     _commit_file(root, "shared.txt", "target\n", "target")
     _run(root, "checkout", "feature")
+
+    def unknown(_root: Path) -> str:
+        return MERGE_STATE_UNKNOWN
+
     with monkeypatch.context() as patch:
-        patch.setattr(resolution, "merge_state", lambda _root: MERGE_STATE_UNKNOWN)
+        patch.setattr(resolution, "merge_state", unknown)
         pending = resolution.endpoint_merge_with_resolution(root, target, lambda *_args: True)
     assert pending is not None and pending.outcome == "merge_commit_pending"
     assert _run(root, "rev-parse", "--verify", "MERGE_HEAD").returncode == 0
@@ -638,3 +660,85 @@ def test_unknown_merge_observation_preserves_live_operation(
 
     assert resolution._resolve_and_commit(root, target, resolve)
     assert _run(root, "show", "HEAD:shared.txt").stdout == "resolved\n"
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_remote_reconciliation_preserves_and_resumes_target_agent_work(
+    tmp_git_repo: Path,
+    tmp_path: Path,
+    raises: bool,
+) -> None:
+    from ralph.git.rebase.rebase import rebase_in_progress
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
+    from ralph.pipeline.auto_integrate_transaction import integration_transaction
+    from ralph.workspace.scope import WorkspaceScope
+
+    base = _base_branch(tmp_git_repo)
+    _commit_file(tmp_git_repo, "shared.txt", "base\n", "base")
+    assert _run(tmp_git_repo, "checkout", "-b", "remote-seed").returncode == 0
+    remote_sha = _commit_file(tmp_git_repo, "shared.txt", "remote\n", "remote")
+    assert (
+        _run(tmp_git_repo, "update-ref", f"refs/remotes/origin/{base}", remote_sha).returncode == 0
+    )
+    assert _run(tmp_git_repo, "checkout", base).returncode == 0
+    _commit_file(tmp_git_repo, "shared.txt", "local\n", "local")
+    feature = tmp_path / "feature-worktree"
+    assert _run(tmp_git_repo, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
+    feature_head = _run(feature, "rev-parse", "HEAD").stdout
+    calls: list[Path] = []
+    with integration_transaction(tmp_git_repo) as acquired:
+        assert acquired
+        (tmp_git_repo / "shared.txt").write_text("active owner work\n", encoding="utf-8")
+        busy = reconcile_target_onto_remote(feature, base, "origin")
+        same_root_busy = reconcile_target_onto_remote(tmp_git_repo, base, "origin")
+        assert not busy.reconciled and not same_root_busy.reconciled
+        assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == "active owner work\n"
+        assert read_record(feature) is None
+        assert _run(tmp_git_repo, "checkout", "--", "shared.txt").returncode == 0
+
+    def partial(root: Path, _target: str, _stop: RebaseStop) -> bool:
+        calls.append(root)
+        (root / "shared.txt").write_text("valuable partial repair\n", encoding="utf-8")
+        if raises:
+            raise RuntimeError("interrupted resolver")
+        return False
+
+    outcome = reconcile_target_onto_remote(
+        feature,
+        base,
+        "origin",
+        rebase_stop_resolver=partial,
+        reclaim_target_worktree=False,
+    )
+
+    assert not outcome.reconciled and not outcome.cleanly_aborted
+    assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == "valuable partial repair\n"
+    assert rebase_in_progress(tmp_git_repo)
+    record = read_record(feature)
+    assert record is not None and record.resolving_rebase
+    assert read_record(tmp_git_repo) is None
+
+    def finish(root: Path, _target: str, _stop: RebaseStop) -> bool:
+        assert root == tmp_git_repo
+        assert (root / "shared.txt").read_text(encoding="utf-8") == "valuable partial repair\n"
+        calls.append(root)
+        (root / "shared.txt").write_text("completed repair\n", encoding="utf-8")
+        return True
+
+    with integration_transaction(tmp_git_repo) as acquired:
+        assert acquired
+        blocked = recover_incomplete_integration(
+            WorkspaceScope(feature), rebase_stop_resolver=finish
+        )
+        assert blocked is not None and blocked.recovery_record_retained
+        assert calls == [tmp_git_repo]
+    recovered = recover_incomplete_integration(WorkspaceScope(feature), rebase_stop_resolver=finish)
+    assert recovered is not None and not recovered.recovery_record_retained
+    assert calls == [tmp_git_repo, tmp_git_repo]
+    assert not rebase_in_progress(tmp_git_repo)
+    assert read_record(feature) is None and read_record(tmp_git_repo) is None
+    assert _run(tmp_git_repo, "show", f"{base}:shared.txt").stdout == "completed repair\n"
+    assert _run(tmp_git_repo, "merge-base", "--is-ancestor", remote_sha, base).returncode == 0
+    assert _run(feature, "rev-parse", "HEAD").stdout == feature_head

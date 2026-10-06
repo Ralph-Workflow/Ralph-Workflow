@@ -55,6 +55,7 @@ from ralph.pipeline._pending_merge_commit import (
     prepare_pending_merge,
     resume_pending_merge,
 )
+from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
@@ -156,7 +157,10 @@ def _resolve_and_commit_with_reason(
     so the next supervised invocation can continue the same work.
     """
     conflicted = unmerged_paths(root) or staged_conflict_marker_paths(root)
-    if not conflicted:
+    retained = read_record(root)
+    if retained is not None and retained.resolving_merge:
+        conflicted = list(retained_merge_paths(root, tuple(conflicted)))
+    elif not conflicted:
         return _stage_verify_and_commit(root, [], target)
     if _UNMERGED_QUERY_FAILED in conflicted or "<staged-marker-query-failed>" in conflicted:
         logger.warning(
@@ -191,7 +195,10 @@ def _resolve_and_commit_with_reason(
         return MergeResult(
             MERGE_COMMIT_PENDING, reason or "conflict resolution incomplete; progress retained"
         )
-    return _stage_verify_and_commit(root, conflicted, target)
+    return (
+        _stage_verify_and_commit(root, conflicted, target) if conflicted
+        else MergeResult(MERGE_COMMIT_PENDING, "original resolution scope unavailable; progress retained")
+    )
 
 
 def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:

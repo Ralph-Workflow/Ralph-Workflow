@@ -80,6 +80,11 @@ def finish_pending_rebase(root: Path) -> None:
             raise ValueError(
                 "continued rebase does not match the verified stop tree; landing withheld"
             )
+        if record.rebase_continue_pending and not rebase_in_progress_at(root):
+            promoted = _promote_completed_rebase(root, record)
+            if isinstance(promoted, str):
+                raise ValueError(promoted)
+            return
         write_record(
             root,
             record.model_copy(

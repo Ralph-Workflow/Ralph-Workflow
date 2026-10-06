@@ -44,8 +44,13 @@ def integrate_before_planning(
     if not config.general.auto_integrate_enabled:
         return None
     if read_record(root) is not None:
-        recovered = recover_incomplete_integration(scope, config=config)
+        recovered = recover_incomplete_integration(
+            scope, config=config, conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+        )
         if recovery_retained_record(recovered):
+            return recovered
+        if recovered is not None and recovered.fast_forwarded:
             return recovered
     target = resolve_integration_target(config, root)
     if target is None or _worktree_is_clean(root):

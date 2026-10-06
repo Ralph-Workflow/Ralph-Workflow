@@ -13,6 +13,8 @@ outside :mod:`ralph.pipeline.auto_integrate`.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
@@ -23,6 +25,7 @@ from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
@@ -97,10 +100,14 @@ class IntegrationRecord(RalphBaseModel):
     rebase_continue_tree: str | None = None
     rebase_continue_error: str | None = None
     resolving_merge: bool = False
+    resolving_paths: tuple[str, ...] = ()
+    resolving_stop_sha: str | None = None
     merge_commit_pending: bool = False
     merge_commit_repair_attempts: int = 0
     repair_original_tree: str | None = None
     repair_last_error: str | None = None
+    diagnostic_evidence: tuple[tuple[str, str], ...] = ()
+    diagnostic_ownership: str | None = None
     repair_pending_diff: str | None = None
     repair_pending_paths: tuple[str, ...] = ()
     repair_commit_controls: str | None = None
@@ -111,8 +118,27 @@ class IntegrationRecord(RalphBaseModel):
     owning_worktree: str | None = None
 
 
+_RECORD_ROOT_BINDING: ContextVar[tuple[Path, Path] | None] = ContextVar(
+    "integration_record_root_binding",
+    default=None,
+)
+
+
+@contextmanager
+def bind_integration_record_root(operation_root: Path, record_root: Path) -> Iterator[None]:
+    """Keep foreign-worktree resolver receipts in their initiating workspace."""
+    token = _RECORD_ROOT_BINDING.set((operation_root.resolve(), record_root))
+    try:
+        yield
+    finally:
+        _RECORD_ROOT_BINDING.reset(token)
+
+
 def record_path(workspace_root: Path) -> Path:
     """Return the durable crash-record path anchored to ``workspace_root``."""
+    binding = _RECORD_ROOT_BINDING.get()
+    if binding is not None and workspace_root.resolve() == binding[0]:
+        workspace_root = binding[1]
     return workspace_root / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
 
 

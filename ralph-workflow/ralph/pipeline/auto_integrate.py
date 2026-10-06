@@ -17,6 +17,9 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
+from ralph.pipeline._integration_continuation import (
+    recover_before_attempt as _recover_before_attempt,
+)
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref as _create_rebase_backup_ref,
@@ -128,6 +131,11 @@ def auto_integrate_after_commit(
     # protected on the way OUT instead -- see
     # ``preserve_unresolved_resolution_state``.
     try:
+        recovered = _recover_before_attempt(
+            config, workspace_scope, None, conflict_resolver, rebase_stop_resolver,
+        )
+        if recovered is not None:
+            return preserve_unresolved_resolution_state(recovered, prior=state)
         return preserve_unresolved_resolution_state(
             _auto_integrate_after_commit_inner(
                 config,
@@ -197,6 +205,11 @@ def _auto_integrate_on_phase_transition_inner(
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None
+        recovered = _recover_before_attempt(
+            config, workspace_scope, None, conflict_resolver, rebase_stop_resolver,
+        )
+        if recovered is not None:
+            return recovered
         target = resolve_integration_target(config, root)
         boundary_handled, boundary_outcome = _phase_boundary_outcome(
             config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
@@ -240,23 +253,6 @@ def _auto_integrate_on_phase_transition_inner(
 #: "the target moved once" and "the target kept moving until I gave up"
 #: call for different operator responses.
 _MAX_INTEGRATION_ATTEMPTS = 3
-
-
-def _recover_before_attempt(
-    config: UnifiedConfig,
-    scope: WorkspaceScope,
-    prior_attempt: RebaseState | None,
-) -> RebaseState | None:
-    if read_record(scope.root) is None:
-        return None
-    recovered = recover_incomplete_integration(scope, config=config)
-    if recovery_retained_record(recovered):
-        if prior_attempt is not None:
-            return prior_attempt.model_copy(update={"recovery_record_retained": True})
-        return recovered
-    if recovered is not None and recovered.fast_forwarded:
-        return recovered
-    return None
 
 
 def _auto_integrate_after_commit_inner(
@@ -316,7 +312,10 @@ def _auto_integrate_after_commit_inner(
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
-            recovered = _recover_before_attempt(config, workspace_scope, record)
+            recovered = _recover_before_attempt(
+                config, workspace_scope, record, effective_resolver,
+                rebase_stop_resolver if allowed else None,
+            )
             if recovered is not None:
                 record = recovered
                 break

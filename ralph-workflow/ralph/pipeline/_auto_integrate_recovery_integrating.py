@@ -35,7 +35,7 @@ def recover_integrating_record(
             target_sha = branch_sha(operation_root, record.target)
         except Exception as exc:
             return _retained(record, f"could not read target: {exc}")
-        if target_sha != record.pre_target_sha:
+        if target_sha != record.pre_feature_sha:
             return _retained(record, "target moved during reconciliation")
     reset_failed = False
     try:

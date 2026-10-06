@@ -221,7 +221,9 @@ def _record_seams(
     events: list[str] = []
     calls: list[_IntegrationCall] = []
 
-    def _fake_recover(workspace_scope: object, *, config: object = None) -> RebaseState | None:
+    def _fake_recover(
+        workspace_scope: object, *, config: object = None, **_kwargs: object
+    ) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return None
@@ -491,7 +493,9 @@ def test_a_raising_seam_never_aborts_the_worker(monkeypatch: MonkeyPatch, tmp_pa
     """
     module = _worker_module()
 
-    def _explode(workspace_scope: object, *, config: object = None) -> RebaseState | None:
+    def _explode(
+        workspace_scope: object, *, config: object = None, **_kwargs: object
+    ) -> RebaseState | None:
         del workspace_scope, config
         raise RuntimeError("simulated recovery failure")
 
@@ -609,3 +613,48 @@ def test_worker_boundary_live_verdict_blocks_success_exit(
     )
 
     assert exit_code == 1
+
+
+def test_worker_retained_resolution_retries_before_phase_dispatch(monkeypatch: MonkeyPatch) -> None:
+    from ralph.pipeline.parallel import worker_runtime
+
+    retained = RebaseState(last_action="skipped", recovery_record_retained=True)
+    landed = RebaseState(last_action="recovered", fast_forwarded=True)
+    resolver = MagicMock(return_value=True)
+    resolver_factory = MagicMock(return_value=(resolver, resolver, None))
+    recovery = MagicMock(side_effect=[retained, landed])
+    integration = MagicMock(side_effect=AssertionError("fresh attempt overwrites owned operation"))
+    monkeypatch.setattr(Path, "exists", MagicMock(return_value=True))
+    monkeypatch.setattr(worker_runtime, "_worker_integration_resolvers", resolver_factory)
+    monkeypatch.setattr(worker_runtime, "recover_incomplete_integration", recovery)
+    monkeypatch.setattr(worker_runtime, "auto_integrate_on_phase_transition", integration)
+    monkeypatch.setattr(
+        worker_runtime,
+        "inspect_integration_resolution",
+        MagicMock(
+            return_value=IntegrationResolutionVerdict(
+                IntegrationResolutionStatus.RECOVERABLE,
+                ("owned operation",),
+                "rebase_conflict_resolution",
+            )
+        ),
+    )
+    scope = WorkspaceScope(Path("/worker"))
+    for recover_first, expected in ((True, retained), (False, landed)):
+        result = worker_runtime.run_worker_auto_integration(
+            config=_config(),
+            workspace_scope=scope,
+            policy_bundle=None,
+            registry=None,
+            pipeline_deps=None,
+            display_context=None,
+            recover_first=recover_first,
+            state=retained,
+        )
+        assert result == expected
+    assert recovery.call_count == 2
+    assert resolver_factory.call_count == 2
+    for call in recovery.call_args_list:
+        assert call.kwargs["conflict_resolver"] is resolver
+        assert call.kwargs["rebase_stop_resolver"] is resolver
+    integration.assert_not_called()

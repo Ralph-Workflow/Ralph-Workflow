@@ -44,6 +44,10 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
+from ralph.pipeline.integration_resolution import (
+    IntegrationResolutionStatus,
+    IntegrationResolutionVerdict,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
@@ -518,7 +522,9 @@ def _install_worker_seams(
 ) -> list[str]:
     events: list[str] = []
 
-    def _fake_recover(workspace_scope: object, *, config: object = None) -> RebaseState | None:
+    def _fake_recover(
+        workspace_scope: object, *, config: object = None, **_kwargs: object
+    ) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return recovered
@@ -531,6 +537,15 @@ def _install_worker_seams(
     monkeypatch.setattr(module, "recover_incomplete_integration", _fake_recover, raising=False)
     monkeypatch.setattr(
         module, "auto_integrate_on_phase_transition", _fake_integrate, raising=False
+    )
+    monkeypatch.setattr(
+        module,
+        "inspect_integration_resolution",
+        lambda _root, state: IntegrationResolutionVerdict(
+            IntegrationResolutionStatus.RECOVERABLE
+            if state.recovery_record_retained or state.last_action == "conflict"
+            else IntegrationResolutionStatus.RESOLVED,
+        ),
     )
     return events
 
@@ -632,14 +647,14 @@ def test_worker_still_integrates_after_a_reconciled_recovery(
 def test_worker_boundary_does_not_integrate_over_an_unresolved_outcome(
     monkeypatch: MonkeyPatch, tmp_path: Path, unresolved: RebaseState
 ) -> None:
-    """S-3 regression: either unresolved form returns durable evidence unchanged."""
+    """S-3 regression: recovery may continue ownership but no fresh integration starts."""
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _retained())
 
     outcome = _run_worker_seam(module, tmp_path, recover_first=False, state=unresolved)
 
-    assert events == [], f"the boundary must not start fresh integration, got {events!r}"
-    assert outcome is unresolved
+    assert events == ["recover"], f"only owned recovery is allowed, got {events!r}"
+    assert outcome is not None and outcome.recovery_record_retained
 
 
 def test_run_loop_retained_recovery_blocks_first_phase_dispatch(monkeypatch: MonkeyPatch) -> None:

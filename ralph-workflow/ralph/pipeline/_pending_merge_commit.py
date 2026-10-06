@@ -32,11 +32,17 @@ def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> N
         pre_feature_sha=_git_value(root, "rev-parse", "--verify", "HEAD") or "",
         pre_target_sha=_git_value(root, "rev-parse", "--verify", "MERGE_HEAD"),
     )
+    paths = record.resolving_paths
+    if resolving:
+        current = unmerged_paths(root)
+        if "<unmerged-path-query-failed>" not in current:
+            paths = tuple(sorted(set(paths) | set(current)))
     write_record(
         root,
-        record.model_copy(
-            update={"resolving_merge": resolving, "merge_commit_pending": not resolving}
-        ),
+        record.model_copy(update={
+            "resolving_merge": resolving, "merge_commit_pending": not resolving,
+            "resolving_paths": paths,
+        }),
     )
 
 

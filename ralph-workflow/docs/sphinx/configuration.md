@@ -220,6 +220,16 @@ An unsuccessful landing raises a critical log and transcript alarm, saves
 recovery state, and retries instead of terminating the pipeline. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
+An interrupted conflict-resolution record routes back to the configured
+resolution chain before ordinary phase dispatch, even when staging has cleared
+the unmerged index entries. Recovery continues the owned operation using its
+recorded target. A completed rebase must be verified and its record advanced
+to landing; a retained resolution flag alone must not keep planning in a retry
+loop. Planning resumes only after the target fast-forward succeeds.
+Missing completion evidence reaches a supervised inspection agent. Its success
+does not authorize publication: recovery still requires Git proof, and changed
+protected evidence remains blocked until the original evidence is restored.
+
 If Git rejects the commit after merge conflicts are resolved, Ralph Workflow
 retains the resolved index and merge parents and reports Git's failure reason.
 Recovery retries that commit without repeating completed conflict resolution
@@ -233,6 +243,11 @@ The same recovery ownership protects a verified rebase stop whose
 required source corrections must declare their paths and pass fresh index,
 conflict, and parent verification before the normal Git checks run again.
 Existing unfinished edits are excluded from those corrections.
+
+Interrupted target reconciliation also retains partial resolver edits in the
+worktree that owns the target branch. Recovery resumes that operation before
+starting feature integration; it does not abort completed resolution work to
+restart the same remote conflict.
 
 Ralph Workflow does not stash unfinished edits or sweep them into preservation commits.
 Dirty files that Git refuses to merge remain intact. When additional pending

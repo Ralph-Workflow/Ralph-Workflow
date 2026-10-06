@@ -1961,6 +1961,23 @@ def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
         logger.critical("Merge commit retained; repair agent unavailable: {}", exc)
 
 
+def _diagnose_retained_integration(ctx: _LoopContext, failure: str) -> None:
+    from ralph.pipeline._integration_diagnostic import diagnose_retained_integration
+
+    diagnose_retained_integration(ctx, failure)
+
+
+def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
+    from ralph.pipeline._integration_diagnostic import diagnostic_needed
+    from ralph.pipeline.auto_integrate_record import read_record
+
+    latest = read_record(ctx.workspace_scope.root)
+    if latest is not None and diagnostic_needed(ctx.workspace_scope.root, latest):
+        _diagnose_retained_integration(ctx, failure)
+    elif latest is not None and (latest.merge_commit_pending or latest.rebase_continue_pending):
+        _repair_pending_merge_commit(ctx, failure)
+
+
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1978,6 +1995,15 @@ def _block_unresolved_integration(
     from ralph.pipeline.auto_integrate_record import read_record
 
     pending = read_record(ctx.workspace_scope.root)
+    if pending is not None and (pending.resolving_merge or pending.resolving_rebase):
+        continued = _run_startup_integration(ctx, state.rebase)
+        if continued is not None:
+            state = state.copy_with(rebase=continued)
+            _save_recovered_rebase_checkpoint(state, ctx)
+            if continued.recovery_record_retained:
+                _handoff_retained_failure(ctx, continued.last_reason or "integration continuation failed")
+                return state, prev_phase, 0
+        pending = read_record(ctx.workspace_scope.root)
     if pending is not None and (
         pending.merge_commit_pending or pending.rebase_continue_pending
         or pending.merge_commit_tree is not None
@@ -1987,7 +2013,7 @@ def _block_unresolved_integration(
             state = state.copy_with(rebase=recovered)
             _save_recovered_rebase_checkpoint(state, ctx)
             if recovered.recovery_record_retained:
-                _repair_pending_merge_commit(ctx, recovered.last_reason or "merge commit failed")
+                _handoff_retained_failure(ctx, recovered.last_reason or "merge commit failed")
                 return state, prev_phase, 0
 
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)

@@ -4,7 +4,7 @@ The auto-rebase conflict path on the main worktree is the workspace-context
 feature's first driver. The shared resolver built by
 ``build_agent_rebase_stop_resolver`` enters ``workspace_context`` for the
 target ``root`` the reconcile module passes in, and the resolver's with-block
-covers decline, pipeline exception, success, and abort so the caller is
+covers decline, pipeline exception, and success so the caller is
 restored byte-identical. The existing ``TestAutoRebaseWorkspaceContextEndToEnd``
 suite (in ``test_auto_integrate_remote_sync_reconcile.py``) drives the
 resolver directly; this module drives it through the real reconcile module
@@ -13,7 +13,6 @@ so every reconcile boundary is exercised end to end.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -24,6 +23,7 @@ from ralph.policy.loader import load_policy
 if TYPE_CHECKING:
     import pytest
 
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.policy.models import PolicyBundle
 
 
@@ -157,6 +157,20 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
         owner = target
+        records: list[tuple[Path, IntegrationRecord]] = []
+        cleared: list[Path] = []
+
+        def locate_owner(_root: Path, _target: str) -> Path:
+            return owner
+
+        def capture_record(root: Path, record: IntegrationRecord) -> None:
+            records.append((root, record))
+
+        def rebase_identity(_root: Path) -> tuple[str, str]:
+            return "before_sha", "onto_sha"
+
+        monkeypatch.setattr(remote_reconcile, "_reconciliation_owner", locate_owner)
+        monkeypatch.setattr(remote_reconcile, "current_rebase_identity", rebase_identity)
 
         # Reconcile preconditions short-circuit: pretend the caller is the
         # main worktree's repo root and the target is the owning target
@@ -166,35 +180,18 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             "_reconciliation_preconditions",
             lambda *_a, **_kw: (owner, "before_sha", None),
         )
-        monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a, **_kw: None)
+        monkeypatch.setattr(remote_reconcile, "write_record", capture_record)
         monkeypatch.setattr(
             remote_reconcile,
             "rebase_onto",
             lambda *_a, **_kw: RebaseConflicts("conflict"),
         )
-        # ``rebase_in_progress`` drives four probes in the path:
-        # (1) initial "still rebasing?" check, (2) post-resolver "did the
-        # resolver finish?" check, (3) and (4) the two probes inside
-        # ``_abort_restore_or_retain_record`` that gate the abort and the
-        # "retained for recovery" return. Pick the sequence based on the
-        # desired outcome.
-        if resolver_outcome:
-            # Success: resolver returned True, the second probe reads False,
-            # the path returns the clean-reconciliation outcome without
-            # invoking the abort probe again.
-            rebase_states: Iterator[bool] = iter((True, False))
-        else:
-            # Decline / abort: resolver returned False; every subsequent
-            # probe must read True (so ``abort_rebase`` fires) except the
-            # final probe inside ``_abort_restore_or_retain_record`` which
-            # must read False (so the call lands on the cleanly-aborted
-            # outcome rather than the "retained for recovery" branch).
-            rebase_states = iter((True, True, True, False))
-        monkeypatch.setattr(
-            remote_reconcile,
-            "rebase_in_progress",
-            lambda *_a, **_kw: next(rebase_states, False),
-        )
+        active_rebase = [True]
+
+        def is_rebasing(_root: Path) -> bool:
+            return active_rebase[0]
+
+        monkeypatch.setattr(remote_reconcile, "rebase_in_progress", is_rebasing)
 
         observations: dict[str, object] = {}
         resolver_call_args: list[tuple[Path, str, RebaseStop]] = []
@@ -238,7 +235,12 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
                 stop_cap=10,
             )
             resolver_call_args.append((root, target_ref, stop))
-            return received(root, target_ref, stop)
+            assert records[-1][0] == caller
+            assert records[-1][1].resolving_rebase
+            resolved = received(root, target_ref, stop)
+            if resolved:
+                active_rebase[0] = False
+            return resolved
 
         monkeypatch.setattr(remote_reconcile, "resolve_rebase_in_progress", _invoke_resolver)
         # ``abort_rebase`` is intentionally left unpatched here so the
@@ -246,7 +248,7 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         # the seams every path uses. ``branch_sha`` and ``clear_record``
         # are stubbed because the test doesn't need to observe them.
         monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a, **_kw: "before_sha")
-        monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a, **_kw: None)
+        monkeypatch.setattr(remote_reconcile, "clear_record", cleared.append)
 
         resolver = resolver_module.build_agent_rebase_stop_resolver(
             policy_bundle=_load_default_policy_bundle(),
@@ -268,6 +270,9 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             "observations": observations,
             "resolver_call_args": resolver_call_args,
             "outcome": outcome,
+            "records": records,
+            "cleared": cleared,
+            "rebase_active": active_rebase[0],
         }
 
     def test_reconcile_target_onto_remote_drives_shared_resolver_with_target_context(
@@ -314,20 +319,17 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         # The reconcile outcome succeeded -- the resolver returned True and
         # the second ``rebase_in_progress`` check was False.
         assert result["outcome"].reconciled is True
+        assert result["cleared"] == [caller]
+        assert result["rebase_active"] is False
         # Caller's observable resources are byte-identical before and after.
         assert after == before
 
-    def test_reconcile_target_onto_remote_aborts_leave_caller_unchanged(
+    def test_reconcile_target_onto_remote_decline_retains_owner_and_caller_context(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A resolver decline aborts the rebase without touching the caller.
-
-        When the resolver returns False the reconcile module aborts the
-        target rebase and the caller is left untouched. The caller
-        snapshot before the call matches the caller snapshot after.
-        """
+        """A declined resolver retains target ownership and preserves caller resources."""
         caller = tmp_path / "caller"
         target = tmp_path / "target"
         caller.mkdir()
@@ -358,10 +360,13 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
 
         assert len(result["resolver_call_args"]) == 1
         assert result["outcome"].reconciled is False
-        assert result["outcome"].cleanly_aborted is True
-        # abort_rebase fires once in the main branch (after the resolver
-        # declined) and once inside ``_abort_restore_or_retain_record``
-        # before the clean-abort outcome is returned. Both are idempotent.
-        assert abort_calls == [True, True]
+        assert result["outcome"].cleanly_aborted is False
+        assert "retained for recovery" in result["outcome"].reason
+        assert abort_calls == []
+        assert result["cleared"] == []
+        assert result["rebase_active"] is True
+        owner_root, retained = result["records"][-1]
+        assert owner_root == caller
+        assert retained.resolving_rebase and retained.owning_worktree == str(target)
         # The caller is byte-identical before and after.
         assert after == before
