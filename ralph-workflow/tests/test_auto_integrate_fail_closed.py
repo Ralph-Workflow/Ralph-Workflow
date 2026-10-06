@@ -336,7 +336,7 @@ def _install_resolve_stub(
     return log
 
 
-def test_resolution_regression_unreadable_merge_state_still_aborts(
+def test_resolution_regression_unreadable_merge_state_retains_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed merge-state query must not be read as 'nothing to repair'.
@@ -347,6 +347,9 @@ def test_resolution_regression_unreadable_merge_state_still_aborts(
     not be seen was left on disk to block every later integration.
     """
     log = _install_resolve_stub(monkeypatch, state=MERGE_STATE_UNKNOWN)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve.mark_pending_merge", lambda *_args, **_kwargs: None
+    )
 
     def _resolver(repo_root: Path, target: str) -> bool:
         log.append("resolver")
@@ -355,8 +358,8 @@ def test_resolution_regression_unreadable_merge_state_still_aborts(
     outcome = endpoint_merge_with_resolution(Path("/repos/main"), "main", _resolver)
 
     assert outcome is not None
-    assert outcome.outcome == "conflict"
-    assert "abort" in log, "an unreadable merge state must still attempt the abort"
+    assert outcome.outcome == "merge_commit_pending"
+    assert "abort" not in log, "an unreadable merge state must preserve possible progress"
     assert "resolver" not in log, "there are no readable conflicted paths to hand a resolver"
 
 

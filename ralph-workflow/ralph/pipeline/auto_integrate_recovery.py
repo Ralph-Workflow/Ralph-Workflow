@@ -53,6 +53,8 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
 from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
+from ralph.pipeline._pending_merge_commit import resume_pending_merge
+from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
@@ -192,12 +194,10 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
     because recovery's no-record branch used to return ``None``
     unconditionally. That is the forbidden permanent silent noop.
 
-    The discriminator against AC-11 case 4 (an operator's live
-    in-progress rebase, which must stay byte-unchanged) is worktree
-    cleanliness: a live conflict resolution has unmerged paths and
-    tracked modifications, while inert stale state sits on a clean
-    tree -- the only shape the boundary hook can meet, since it fires
-    exclusively on clean trees.
+    A clean index can be a valid resolution choosing HEAD's content.
+    Live operation metadata therefore prevents reclamation even on a
+    clean tree. Only malformed residue without a usable operation
+    identity reaches cleanup; dirty work is preserved independently.
 
     Returns ``None`` when there is nothing to reclaim or the state is
     protected (dirty tree); a ``recovered`` state after a successful
@@ -217,9 +217,6 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         # return ``None``, never a synthesized outcome -- must hold.
         return None
     blocking = _collect_blocking_markers(git_dir, root)
-    if blocking is None:
-        # ``None`` here means "live contention, do not reclaim".
-        return None
     if not blocking:
         return None
     if not is_repo_clean(root):
@@ -231,6 +228,17 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
             root,
         )
         return None
+    if _unowned_operation_may_be_live(root, git_dir):
+        logger.critical(
+            "recovery: live merge/rebase metadata in {} has no readable ownership record; "
+            "retaining operation and resolved index for supervised recovery",
+            root,
+        )
+        return _record_skip(
+            reason="live merge/rebase has no readable ownership record; progress retained",
+            target=None,
+            record_retained=True,
+        )
     logger.warning(
         "recovery: reclaiming stale unowned rebase/merge state in {} (no"
         " ownership record, clean worktree) -- it was permanently blocking"
@@ -258,6 +266,21 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         last_target=None,
         fast_forwarded=False,
     )
+
+
+def _unowned_operation_may_be_live(root: Path, git_dir: Path) -> bool:
+    """Clean indexes can represent valid resolutions; reclaim only proven residue."""
+    state_dir = _select_rebase_state_dir(git_dir)
+    if state_dir is not None and not _rebase_state_dir_is_corrupt(state_dir):
+        return True
+    if not (git_dir / "MERGE_HEAD").exists():
+        return False
+    parent = run_git(
+        ("rev-parse", "--verify", "MERGE_HEAD^{commit}"),
+        cwd=root,
+        label="recovery:unowned-merge-identity",
+    )
+    return parent.returncode == 0 or (git_dir / "MERGE_MSG").exists()
 
 
 def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
@@ -709,10 +732,37 @@ def recover_incomplete_integration(
     with integration_transaction(Path(workspace_scope.root)) as acquired:
         if not acquired:
             return _record_skip(
-                reason="integration worktree busy; recovery will retry", target=None,
+                reason="integration worktree busy; recovery will retry",
+                target=None,
                 record_retained=True,
             )
         return _recover_incomplete_integration_owned(workspace_scope, config=config)
+
+
+def _recover_pending_merge(
+    root: Path, record: IntegrationRecord, config: UnifiedConfig | None
+) -> RebaseState:
+    if record.resolving_merge and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root):
+        _clear_record(root)
+        return _record_skip(
+            reason="interrupted merge left no operation or edits; retry integration",
+            target=record.target,
+        )
+    if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
+        return _record_skip(
+            reason="integration resolution interrupted; retained for agent continuation",
+            target=record.target,
+            record_retained=True,
+        )
+    resumed = (
+        resume_pending_rebase(root, record)
+        if record.rebase_continue_pending
+        else resume_pending_merge(root, record)
+    )
+    if isinstance(resumed, str):
+        logger.critical("CRITICAL: {}", resumed)
+        return _record_skip(reason=resumed, target=record.target, record_retained=True)
+    return _continue_fast_forward_from_record(root, resumed, config)
 
 
 def _recover_incomplete_integration_owned(
@@ -726,8 +776,10 @@ def _recover_incomplete_integration_owned(
 
     * No durable record → no-op (never disturb an operator's own
       git operation).
-    * Abort any owned engine rebase/merge in flight before doing
-      anything else. If the abort itself FAILS, the durable record
+    * Preserve agent-owned resolution and verified pending commit/continuation
+      records; retry prepared operations before considering generic cleanup.
+    * Abort any other owned engine rebase/merge in flight before restoring
+      the interrupted attempt. If the abort itself FAILS, the durable record
       is RETAINED so the next startup can retry; the returned
       ``RebaseState`` records the abort failure as a skip with
       the original target preserved. The merge check is read via
@@ -778,26 +830,21 @@ def _recover_incomplete_integration_owned(
             # a dirty tree is operator-owned and preserved).
             return _reclaim_unowned_stale_rebase(root)
 
+        if (
+            record.resolving_rebase
+            or record.rebase_continue_pending
+            or record.resolving_merge
+            or record.merge_commit_pending
+            or record.merge_commit_tree is not None
+        ):
+            return _recover_pending_merge(root, record, config)
+
         operation_kind, operation_root = _recovery_operation_root(record, root)
 
         # Abort owned operations; retain the record if recovery cannot prove cleanup.
         abort_failed = False
         try:
             if rebase_in_progress(operation_root):
-                if record.resolving_rebase:
-                    # Named distinctly so an operator can tell this apart
-                    # from an ordinary crashed rebase. The rebase is still
-                    # ABORTED, never resumed: the agent session that was
-                    # editing it died with the previous process, and a new
-                    # process resuming a half-resolved replay it never saw
-                    # would land whatever the dead agent happened to have
-                    # written when it was killed.
-                    logger.warning(
-                        "recovery: found a rebase onto '{}' interrupted while a "
-                        "conflict-resolution agent was working; aborting it "
-                        "(an orphaned resolution is never resumed)",
-                        record.target,
-                    )
                 abort_rebase_discarding_progress(operation_root)
         except Exception as exc:
             abort_failed = True

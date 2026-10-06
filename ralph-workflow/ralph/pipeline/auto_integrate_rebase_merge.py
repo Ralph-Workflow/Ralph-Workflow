@@ -39,7 +39,7 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
 )
-from ralph.pipeline.auto_integrate_record import clear_record, set_resolving_rebase
+from ralph.pipeline.auto_integrate_record import clear_record, read_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
@@ -377,35 +377,13 @@ def _resolve_conflicted_rebase(
     display: ParallelDisplay | None,
     conflict_resolution_config: ConflictResolutionConfig | None,
 ) -> RebaseRunResult | None:
-    """Resolve the paused rebase in place, or hand it back to the fallback.
+    """Resolve the paused rebase and retain unfinished agent work for continuation.
 
-    This is the branch the whole feature turns on. Before it existed a
-    conflicted rebase was ALWAYS destroyed by
-    :func:`_abort_rebase_after_conflict` on the first stop, so the
-    rebase-conflict-resolution pipeline could only ever be reached for the
-    follow-up endpoint merge -- never for the rebase the operator was
-    actually watching fail.
-
-    Returns a :class:`RebaseRunResult` shaped like a clean rebase when the
-    replay completed, so the caller proceeds to the fast-forward and the
-    operator sees ``rebased``. Returns ``None`` when the resolution
-    declined, which routes the caller into the pre-existing
-    abort-then-endpoint-merge path completely unchanged.
-
-    The footer is captured once here and restored once, around the ENTIRE
-    loop: the per-stop pushes happen inside it, so a per-stop capture
-    would snapshot the conflict bar itself and strand it after the loop.
-
-    The resolution does not start until the durable record actually says
-    ``resolving_rebase=true``. A resolution session runs for as long as an
-    agent takes, and if this run is killed inside that window, startup
-    recovery reads the record to decide what it found; a record still
-    saying ``false`` makes an interrupted resolution indistinguishable
-    from an ordinary crashed rebase, and the operator loses the one
-    warning that explains it. When the flag cannot be persisted the
-    rebase is therefore handed to the fallback -- which aborts it here
-    and now, while this process is alive to do it -- rather than left
-    paused under an agent whose crash could not be described.
+    Persist resolution ownership before launching an agent. A completed replay
+    returns the clean rebase result; a verified blocked continuation or partial
+    agent result returns a retained record so no endpoint fallback discards it.
+    If ownership cannot be recorded before the agent starts, return control to
+    the existing fallback without launching an unowned resolution session.
     """
     if not set_resolving_rebase(root, True):
         logger.warning(
@@ -414,43 +392,39 @@ def _resolve_conflicted_rebase(
             target,
         )
         return None
-    try:
-        with conflict_status_bar_session(display, root):
-            resolved, exhaustion_reason = _resolve_rebase_with_config(
-                root,
-                target,
-                rebase_stop_resolver,
-                conflict_resolution_config,
-            )
-    finally:
-        # The unflag cannot fail the integration -- the resolution has
-        # already happened by the time it runs -- but a stale ``true``
-        # left behind would make the NEXT unrelated crash report an
-        # interrupted resolution that never existed, so say so.
-        if not set_resolving_rebase(root, False):
-            logger.warning(
-                "auto_integrate: could not clear the rebase-resolution flag "
-                "for '{}'; the durable record may misreport a later crash as "
-                "an interrupted resolution",
-                target,
-            )
-    if not resolved:
-        if exhaustion_reason is not None:
-            logger.error(
-                "auto_integrate: rebase conflict resolver exhausted for '{}': {}",
-                target,
-                exhaustion_reason,
-            )
-            return None
-        # Reached with no exhaustion evidence at all -- an unbound drain,
-        # an unreadable stop, a resolver that was never built. None of
-        # those is a resolver declining the conflict, so do not say so.
-        logger.info(
-            "auto_integrate: rebase conflict resolution did not complete for '{}' "
-            "and left no terminal evidence; falling back to the endpoint merge",
+    with conflict_status_bar_session(display, root):
+        resolved, exhaustion_reason = _resolve_rebase_with_config(
+            root,
             target,
+            rebase_stop_resolver,
+            conflict_resolution_config,
         )
-        return None
+    if resolved and not set_resolving_rebase(root, False):
+        logger.warning(
+            "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
+        )
+    record = read_record(root)
+    if record is not None and record.rebase_continue_pending:
+        return RebaseRunResult(
+            rebase_outcome=RebaseConflicts(files=[]),
+            merge_attempted=False,
+            merge_outcome=None,
+            short_circuit=record_conflict(
+                reason=record.rebase_continue_error or "verified rebase continuation pending",
+                target=target,
+            ).model_copy(update={"recovery_record_retained": True}),
+        )
+    if not resolved:
+        return RebaseRunResult(
+            rebase_outcome=RebaseConflicts(files=[]),
+            merge_attempted=False,
+            merge_outcome=None,
+            short_circuit=record_conflict(
+                reason=exhaustion_reason
+                or "rebase resolution incomplete; progress retained for next agent",
+                target=target,
+            ).model_copy(update={"recovery_record_retained": True}),
+        )
     logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
     return RebaseRunResult(
         rebase_outcome=RebaseSuccess(),
@@ -609,6 +583,15 @@ def _endpoint_merge_result(
                 reason="rebase conflict followed by merge attempt exception",
                 target=target,
             ),
+        )
+    if merge_result.outcome == "merge_commit_pending":
+        return RebaseRunResult(
+            rebase_outcome=rebase_outcome,
+            merge_attempted=True,
+            merge_outcome=merge_result,
+            short_circuit=record_conflict(
+                reason=merge_result.reason or "verified merge commit pending", target=target
+            ).model_copy(update={"recovery_record_retained": True}),
         )
     if merge_result.outcome in ("conflict", RESOLUTION_FAILED):
         _clear_record_if_no_inflight_op(root)

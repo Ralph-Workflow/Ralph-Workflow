@@ -323,23 +323,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="canonical session text audit: OK\n",
         ),
-        ("make", ("test-install-make-smoke",)): _result(
+        ("make", ("test-verification-smoke",)): _result(
             command="make",
-            args=("test-install-make-smoke",),
+            args=("test-verification-smoke",),
             returncode=0,
-            stdout="install make smoke ok\n",
-        ),
-        ("make", ("test-multimodal-smoke",)): _result(
-            command="make",
-            args=("test-multimodal-smoke",),
-            returncode=0,
-            stdout="multimodal smoke ok\n",
-        ),
-        ("make", ("test-visual-smoke",)): _result(
-            command="make",
-            args=("test-visual-smoke",),
-            returncode=0,
-            stdout="visual smoke ok\n",
+            stdout="installer, multimodal, and visual smoke ok\n",
         ),
     }
 
@@ -398,9 +386,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
-        ("make", ("test-install-make-smoke",)),
-        ("make", ("test-multimodal-smoke",)),
-        ("make", ("test-visual-smoke",)),
+        ("make", ("test-verification-smoke",)),
         ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS),
     ]
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
@@ -439,25 +425,8 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    # The three smoke steps immediately precede the final non-test audit.
-    # All three are budget-tracked.
-    install_smoke_timeout = runner.calls[-4][3]
-    assert install_smoke_timeout is not None
-    assert install_smoke_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
-        abs(install_smoke_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
-    )
-    multimodal_timeout = runner.calls[-3][3]
-    assert multimodal_timeout is not None
-    assert multimodal_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
-        abs(multimodal_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
-    )
-    # The visual smoke step immediately precedes the final audit and is budget-tracked.
-    # The actual timeout passed to the runner is
-    # ``min(step_timeout, remaining_budget)`` so floating-point
-    # arithmetic in the cumulative tracker may shave a few microseconds
-    # off the 60.0 constant. Pinning the visual-smoke timeout within 1 ms
-    # of the budget constant keeps the assertion robust while proving that
-    # this step is budget-tracked rather than a per-step audit.
+    # The aggregate smoke invocation is charged to the same remaining budget.
+    # Tiny clock deltas in this fake-runner scenario may shave microseconds.
     last_timeout = runner.calls[-2][3]
     assert last_timeout is not None
     assert last_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (

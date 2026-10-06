@@ -72,12 +72,13 @@ class IntegrationRecord(RalphBaseModel):
             AFTER the rebase/merge succeeded. Present only when
             phase='integrated'.
         resolving_rebase: True while a rebase-conflict resolution agent
-            is working inside a PAUSED rebase. Recovery aborts such a
-            rebase exactly as it aborts any other -- an orphaned rebase
-            cannot be resumed by a process that has no agent session for
-            it -- but the flag lets recovery say which of the two it
-            found, so an operator can tell an interrupted resolution
-            from an ordinary crashed rebase without reading the code.
+            is working inside a paused rebase. Recovery retains the operation
+            for supervised agent continuation instead of discarding edits.
+        resolving_merge: An interrupted merge resolver owns the current edits.
+        merge_commit_pending: The resolved merge awaits its ordinary commit.
+        rebase_continue_pending: A verified stop awaits ordinary continuation.
+        rebase_continue_metadata: Exact replay queue captured before continuation.
+        rebase_restore_metadata: Pre-restore queue receipt for idempotent repair.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -88,6 +89,24 @@ class IntegrationRecord(RalphBaseModel):
     pre_target_sha: str | None
     integrated_feature_sha: str | None = None
     resolving_rebase: bool = False
+    rebase_continue_pending: bool = False
+    rebase_continue_metadata: tuple[tuple[str, str], ...] = ()
+    rebase_restore_metadata: tuple[tuple[str, str], ...] | None = None
+    rebase_continue_head: str | None = None
+    rebase_continue_stop: str | None = None
+    rebase_continue_tree: str | None = None
+    rebase_continue_error: str | None = None
+    resolving_merge: bool = False
+    merge_commit_pending: bool = False
+    merge_commit_repair_attempts: int = 0
+    repair_original_tree: str | None = None
+    repair_last_error: str | None = None
+    repair_pending_diff: str | None = None
+    repair_pending_paths: tuple[str, ...] = ()
+    repair_commit_controls: str | None = None
+    merge_commit_head: str | None = None
+    merge_commit_parent: str | None = None
+    merge_commit_tree: str | None = None
     operation_kind: IntegrationOperation = "feature_integrate"
     owning_worktree: str | None = None
 

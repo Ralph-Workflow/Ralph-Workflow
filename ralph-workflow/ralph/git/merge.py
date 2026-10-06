@@ -71,7 +71,7 @@ from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, mer
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 #: Canonical git conflict-marker line prefixes. Matched as line
 #: PREFIXES, never substrings, so ordinary prose containing an
@@ -126,6 +126,8 @@ def staged_conflict_marker_paths(repo_root: Path | str) -> list[str]:
         cwd=Path(repo_root),
         label="git-staged-marker-check",
     )
+    if result.returncode not in (0, 2):
+        return ["<staged-marker-query-failed>"]
     reported: list[str] = []
     for line in result.stdout.splitlines():
         head, marker, _rest = line.partition(": leftover conflict marker")
@@ -562,7 +564,9 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
     return reported
 
 
-def commit_merge_in_progress(repo_root: Path | str) -> bool:
+def commit_merge_in_progress(
+    repo_root: Path | str, *, on_failure: Callable[[str], None] | None = None
+) -> bool:
     """Commit an in-progress merge with the default merge message.
 
     Returns True when the merge commit was created (``git commit
@@ -585,7 +589,14 @@ def commit_merge_in_progress(repo_root: Path | str) -> bool:
         cwd=repo_root_path,
         label="git-merge-commit",
     )
-    return result.returncode == 0 and merge_state(repo_root_path) == MERGE_STATE_NONE
+    committed = result.returncode == 0 and merge_state(repo_root_path) == MERGE_STATE_NONE
+    if not committed:
+        output = f"{result.stdout}\n{result.stderr}".strip()
+        reason = f"git commit --no-edit failed (exit {result.returncode}): {output[:2000] or 'merge completion unproven'}"
+        logger.critical("{}", reason)
+        if on_failure is not None:
+            on_failure(reason)
+    return committed
 
 
 def abort_merge(repo_root: Path | str) -> bool:

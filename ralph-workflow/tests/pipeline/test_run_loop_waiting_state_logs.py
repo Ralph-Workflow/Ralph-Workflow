@@ -34,8 +34,11 @@ if TYPE_CHECKING:
     import pytest
 from loguru import logger
 
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.run_loop import _LoopContext, _run_inner_loop
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.workspace.memory import MemoryWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
@@ -110,8 +113,8 @@ def _build_loop_context_and_state(
 
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=WorkspaceScope(MemoryWorkspace("/memory/waiting-logs").root),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,
@@ -182,6 +185,7 @@ def _drive_run_loop_until_complete(
         return state.copy_with(phase="complete")
 
     monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
 
     records, sink_id = _capture_loguru_records()
     try:

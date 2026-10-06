@@ -13,6 +13,7 @@ from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.run_loop import (
     _LoopContext,
     _run_inner_loop,
@@ -24,6 +25,8 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
+from ralph.workspace.memory import MemoryWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -40,6 +43,12 @@ def _make_state(agents: list[str]) -> PipelineState:
         phase="development",
         phase_chains={"development": chain_state},
     )
+
+
+def _memory_scope(monkeypatch: MonkeyPatch) -> WorkspaceScope:
+    workspace = MemoryWorkspace("/memory/no-progress")
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+    return WorkspaceScope(workspace.root)
 
 
 def test_classifier_flags_structured_unavailable_without_text_match() -> None:
@@ -130,8 +139,8 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
 
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=_memory_scope(monkeypatch),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,
@@ -204,8 +213,8 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
 
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=_memory_scope(monkeypatch),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,
@@ -330,8 +339,8 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
 
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=_memory_scope(monkeypatch),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,

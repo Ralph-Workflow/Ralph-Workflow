@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
@@ -11,6 +10,7 @@ from ralph.git.errors import GitOperationError
 from ralph.git.merge import MERGE_STATE_UNKNOWN
 from ralph.pipeline import auto_integrate
 from ralph.pipeline import auto_integrate_recovery as recovery
+from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -29,14 +29,15 @@ def _config() -> UnifiedConfig:
     )
 
 
-def _record(phase: str) -> object:
-    return SimpleNamespace(
-        phase=phase,
-        target="main",
-        pre_feature_sha="a" * 40,
-        pre_target_sha="b" * 40,
-        integrated_feature_sha="a" * 40,
-        resolving_rebase=False,
+def _record(phase: str) -> IntegrationRecord:
+    return IntegrationRecord.model_validate(
+        {
+            "phase": phase,
+            "target": "main",
+            "pre_feature_sha": "a" * 40,
+            "pre_target_sha": "b" * 40,
+            "integrated_feature_sha": "a" * 40,
+        }
     )
 
 

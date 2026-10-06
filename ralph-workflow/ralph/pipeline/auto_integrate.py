@@ -517,11 +517,20 @@ def _integrate_once(
 ) -> tuple[RebaseState | None, bool]:
     with integration_transaction(root) as acquired:
         if not acquired:
-            return _record_skip(reason="integration already running in this worktree", target=target), False
+            return _record_skip(
+                reason="integration already running in this worktree", target=target
+            ), False
         return _integrate_once_owned(
-            config, root, target, conflict_resolver, prefer_merge=prefer_merge,
-            refresh=refresh, rebase_stop_resolver=rebase_stop_resolver, display=display,
-            publish=publish, force_endpoint_merge=force_endpoint_merge,
+            config,
+            root,
+            target,
+            conflict_resolver,
+            prefer_merge=prefer_merge,
+            refresh=refresh,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
+            publish=publish,
+            force_endpoint_merge=force_endpoint_merge,
         )
 
 
@@ -543,7 +552,9 @@ def _integrate_once_owned(
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
     if read_record(root) is not None:
-        return _record_skip(reason="unfinished integration retained for recovery", target=target), False
+        return _record_skip(
+            reason="unfinished integration retained for recovery", target=target
+        ), False
     # Write the durable crash record BEFORE any git mutation so the
     # recovery preamble can always tell that we own an in-flight
     # integration (AC-11).
@@ -579,7 +590,8 @@ def _integrate_once_owned(
         if rebase_result.short_circuit is not None:
             # Resolved failures clear the record; an abort that leaves a rebase
             # in progress retains it for startup recovery.
-            _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
+            if not rebase_result.short_circuit.recovery_record_retained:
+                _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(rebase_result.short_circuit, refresh), False
 
         # Success path: the feature branch contains the target.
@@ -667,7 +679,9 @@ def _integrate_once_owned(
         if not ok:
             logger.critical(
                 "CRITICAL: feature {} did NOT land on '{}': {}; committed work remains on the feature",
-                feature_sha, target, skip_reason,
+                feature_sha,
+                target,
+                skip_reason,
             )
             # Fast-forward skipped: reason is appended but we keep
             # the rebase/merged action as the headline so the log line
@@ -862,6 +876,8 @@ def _reclaim_and_retry_preconditions(
         # tree was dirty (operator-owned, AC-11 case 4). Let the
         # caller record a skip with the original cause.
         return None
+    if reclaimed.recovery_record_retained:
+        return reclaimed
     logger.warning(
         "auto_integrate: rebase preconditions blocked by stale "
         "unowned state for target '{}': {}; "

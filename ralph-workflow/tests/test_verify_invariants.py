@@ -71,8 +71,10 @@ def _invariant_cases() -> list[_CaseSpec]:
     empty_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset([])"
     other_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
     empty_budget_steps = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset([])"
-    labels_anchor = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(\n    {\n        "make test",\n        "make test-install-make-smoke",\n        "make test-multimodal-smoke",\n        "make test-visual-smoke",\n    }\n)'
-    budget_steps_anchor = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset(\n    {2, len(_VERIFY_STEPS) - 4, len(_VERIFY_STEPS) - 3, len(_VERIFY_STEPS) - 2}\n)"
+    labels_anchor = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(\n    {\n        "make test",\n        "make test-verification-smoke",\n    }\n)'
+    budget_steps_anchor = (
+        "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 2})"
+    )
     budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
     integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"
@@ -146,6 +148,24 @@ def _invariant_cases() -> list[_CaseSpec]:
                 "RuntimeError",
                 "_BUDGET_TRACKED_STEPS must not be empty",
             ],
+        },
+        {
+            "name": "aggregate_smoke_must_be_budget_tracked",
+            "patches": [
+                (budget_steps_anchor, "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "make test-verification-smoke", "must be"],
+        },
+        {
+            "name": "aggregate_smoke_budget_survives_minus_o",
+            "patches": [
+                (budget_steps_anchor, "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})")
+            ],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "make test-verification-smoke", "must be"],
         },
         {
             "name": "make_test_must_be_in_known_labels",

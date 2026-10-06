@@ -3,8 +3,8 @@
 The sidecar is scoped to ONE rebase, identified by the ``(orig-head,
 onto)`` pair git pins for the whole replay. These tests cover both
 directions of that scope: stops of the rebase in progress are kept (and
-keep it off the abort path), while a record left by any other rebase is
-discarded so the conflicted rebase is aborted normally.
+keep it off the abort path), while a record left by another rebase is
+discarded so the current unresolved stop still reaches its next agent.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import pytest
 from ralph.pipeline.conflict_resolution import rebase_loop as rebase_loop_module
 from ralph.pipeline.conflict_resolution.progress import (
     RebaseResolutionProgress,
-    clear_progress,
     load_progress,
     progress_path,
     save_progress,
@@ -45,11 +44,11 @@ def _pretend_rebase_paused(
     target_sha: str | None = _TARGET_SHA,
 ) -> None:
     """Answer the rebase-identity probe without a real paused rebase."""
-    monkeypatch.setattr(
-        rebase_loop_module,
-        "current_rebase_identity",
-        lambda _root: (feature_sha, target_sha),
-    )
+
+    def identity(_root: Path) -> tuple[str | None, str | None]:
+        return feature_sha, target_sha
+
+    monkeypatch.setattr(rebase_loop_module, "current_rebase_identity", identity)
 
 
 def test_four_landed_stops_survive_in_the_sidecar(
@@ -112,108 +111,141 @@ def test_resume_reads_landed_stops_after_a_fresh_process(tmp_path: Path) -> None
     assert reloaded.remaining_paths == ["src/omega.py"]
 
 
-def _run_fallback_with_sidecar(
+@pytest.mark.parametrize("identity", ["current", "foreign", "legacy"])
+def test_interrupted_resolution_resumes_current_stop_without_aborting(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    *,
-    sidecar: RebaseResolutionProgress,
-) -> list[Path]:
-    """Drive one conflicted rebase to the fallback; return abort_rebase calls."""
-    from ralph.git.merge import MergeResult
+    identity: str,
+) -> None:
+    """Sidecar scope controls skipped stops; an interrupted agent never destroys this replay."""
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline import auto_integrate_rebase_merge as merge_module
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
+    current = identity == "current"
+    sidecar = RebaseResolutionProgress(
+        landed_shas=["already-landed"] if current else ["pending-stop"],
+        remaining_paths=["src/alpha.py"],
+        feature_sha=_FEATURE_SHA
+        if current
+        else ("foreign-feature" if identity == "foreign" else None),
+        target_sha=_TARGET_SHA
+        if current
+        else ("foreign-target" if identity == "foreign" else None),
+    )
     save_progress(tmp_path, sidecar)
-    aborted: list[Path] = []
+    events: list[str] = []
+    paused = [True]
+    _install_current_stop_seams(monkeypatch, paused, events)
 
-    def _abort(repo_root: Path) -> None:
-        aborted.append(repo_root)
-        clear_progress(repo_root)
+    def rebase(_target: str, *, repo_root: Path) -> RebaseConflicts:
+        return RebaseConflicts(files=["src/alpha.py"])
 
-    monkeypatch.setattr(merge_module, "_range_routing_reason", lambda _root, _target: None)
-    monkeypatch.setattr(
-        merge_module,
-        "rebase_onto",
-        lambda _target, repo_root: RebaseConflicts(files=["src/omega.py"]),
+    def record(_root: Path) -> IntegrationRecord:
+        return IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha=_FEATURE_SHA,
+            pre_target_sha=_TARGET_SHA,
+            resolving_rebase=True,
+        )
+
+    def abort(_root: Path) -> None:
+        events.append("abort")
+
+    def endpoint(*_args: object, **_kwargs: object) -> None:
+        events.append("endpoint merge")
+
+    monkeypatch.setattr(merge_module, "_range_routing_reason", _ignore)
+    monkeypatch.setattr(merge_module, "rebase_onto", rebase)
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", _succeed)
+    monkeypatch.setattr(merge_module, "read_record", record)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", abort)
+    monkeypatch.setattr(merge_module, "endpoint_merge_with_resolution", endpoint)
+
+    def interrupted(_root: Path, _target: str, stop: RebaseStop) -> bool:
+        assert stop.sha == "pending-stop"
+        events.append("first agent partial work")
+        return False
+
+    result = merge_module.run_rebase_or_merge(
+        tmp_path, "main", None, rebase_stop_resolver=interrupted
     )
-    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
-    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: True)
-    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
-    monkeypatch.setattr(
-        merge_module,
-        "endpoint_merge_with_resolution",
-        lambda *_args, **_kwargs: MergeResult(outcome="conflict"),
-    )
+    assert result.short_circuit is not None and result.short_circuit.recovery_record_retained
+    assert "progress retained" in (result.short_circuit.last_reason or "")
+    assert not result.merge_attempted
+    progress = load_progress(tmp_path)
+    if current:
+        assert progress is not None and progress.landed_shas == ["already-landed"]
+    else:
+        assert progress is None
 
-    merge_module.run_rebase_or_merge(
-        tmp_path,
-        "main",
-        None,
-        rebase_stop_resolver=lambda *_args: False,
-    )
-    return aborted
+    def next_agent(_root: Path, _target: str, stop: RebaseStop) -> bool:
+        assert stop.sha == "pending-stop"
+        assert events == ["first agent partial work"]
+        events.append("next agent completed current stop")
+        return True
 
-
-def test_later_stop_failure_aborts_before_endpoint_merge(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    landed = ["aaa1", "bbb2", "ccc3", "ddd4"]
-    aborted = _run_fallback_with_sidecar(
-        monkeypatch,
-        tmp_path,
-        sidecar=RebaseResolutionProgress(
-            landed_shas=landed,
-            remaining_paths=["src/omega.py"],
-            feature_sha=_FEATURE_SHA,
-            target_sha=_TARGET_SHA,
-        ),
-    )
-
-    assert aborted == [tmp_path]
+    assert rebase_loop_module.resolve_rebase_in_progress(tmp_path, "main", next_agent)
+    assert events == ["first agent partial work", "next agent completed current stop", "continue"]
+    assert not paused[0]
     assert load_progress(tmp_path) is None
 
 
-def test_sidecar_from_another_rebase_does_not_strand_this_one(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def _ignore(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
+def _succeed(*_args: object, **_kwargs: object) -> bool:
+    return True
+
+
+def _decline(*_args: object, **_kwargs: object) -> bool:
+    return False
+
+
+def _install_current_stop_seams(
+    monkeypatch: pytest.MonkeyPatch, paused: list[bool], events: list[str]
 ) -> None:
-    """A record naming a DIFFERENT replay must not veto the abort.
+    """Inject Git observations while exercising the real resolution loop and sidecar I/O."""
+    loop = rebase_loop_module
 
-    The wedging regression: a worktree whose first agent-resolved rebase
-    left landed SHAs behind had every later conflicted rebase left
-    paused on disk, waiting on a resume for stops the record does not
-    describe. The stale record is discarded and the abort runs.
-    """
-    aborted = _run_fallback_with_sidecar(
-        monkeypatch,
-        tmp_path,
-        sidecar=RebaseResolutionProgress(
-            landed_shas=["olddead1", "olddead2"],
-            remaining_paths=["src/ancient.py"],
-            feature_sha="someotherfeature00000000000000000000009",
-            target_sha="someothertarget000000000000000000000008",
-        ),
-    )
+    def identity(_root: Path) -> tuple[str | None, str | None]:
+        return (_FEATURE_SHA, _TARGET_SHA) if paused[0] else (None, None)
 
-    assert aborted == [tmp_path]
-    assert load_progress(tmp_path) is None
+    def in_progress(_root: Path) -> bool:
+        return paused[0]
 
+    def base(_root: Path) -> str:
+        return _TARGET_SHA
 
-def test_unstamped_legacy_sidecar_does_not_strand_this_rebase(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A record written before the identity existed belongs to no rebase."""
-    aborted = _run_fallback_with_sidecar(
-        monkeypatch,
-        tmp_path,
-        sidecar=RebaseResolutionProgress(
-            landed_shas=["olddead1"],
-            remaining_paths=["src/ancient.py"],
-        ),
-    )
+    def stop(_root: Path, index: int, _cap: int) -> RebaseStop:
+        return _stop("pending-stop", index)
 
-    assert aborted == [tmp_path]
-    assert load_progress(tmp_path) is None
+    def dirty(_root: Path) -> frozenset[str]:
+        return frozenset({"src/alpha.py"})
+
+    def completed(_root: Path, _target: str) -> bool:
+        return not paused[0]
+
+    monkeypatch.setattr(loop, "current_rebase_identity", identity)
+    monkeypatch.setattr(loop, "rebase_in_progress_at", in_progress)
+    monkeypatch.setattr(loop, "_rebase_base_sha", base)
+    monkeypatch.setattr(loop, "_is_at_the_first_replay", _decline)
+    monkeypatch.setattr(loop, "_read_stop", stop)
+    monkeypatch.setattr(loop, "_worktree_dirty_paths", dirty)
+    monkeypatch.setattr(loop, "_try_deterministic_resolution", _decline)
+    monkeypatch.setattr(loop, "_stage_and_prove", _succeed)
+    monkeypatch.setattr(loop, "_remove_ort_residue", _succeed)
+    monkeypatch.setattr(loop, "prepare_pending_rebase", _ignore)
+    monkeypatch.setattr(loop, "finish_pending_rebase", _ignore)
+    monkeypatch.setattr(loop, "verify_rebase_completed_at", completed)
+
+    def continue_rebase(_root: Path, *, skip_empty: bool = True) -> None:
+        events.append("continue")
+        paused[0] = False
+
+    monkeypatch.setattr(loop, "continue_rebase_at", continue_rebase)
 
 
 def test_aborting_a_rebase_discards_its_progress_record(

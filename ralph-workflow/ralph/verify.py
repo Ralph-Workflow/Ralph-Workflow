@@ -164,7 +164,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     # slowest shard wall clock varies 31-50 s (8 shards, 2 on efficiency
     # cores); a per-step cap below 60 s intermittently kills the suite
     # mid-run even when the cumulative budget would still accommodate
-    # the trailing smoke steps (~12 s multimodal at -n 4, ~1 s visual).
+    # the aggregate installer, multimodal, and visual smoke invocation.
     # The cumulative tracker naturally reduces the trailing steps'
     # effective timeout by the elapsed make-test time, so no separate
     # per-step cap is needed.
@@ -477,9 +477,8 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # scans: every canonical-primitive owner must have an inventory entry,
         # and every inventory site must resolve to a real source symbol.
         # AST + Path.read_text only -- no
-        # subprocess, no sleep, no real I/O. Appended BEFORE the two trailing
-        # smoke steps so the index-based budget tracking (len-2, len-1) still
-        # points at the smoke steps; NOT budget-tracked (does not count
+        # subprocess, no sleep, no real I/O. Appended BEFORE the aggregate
+        # smoke step; NOT budget-tracked (does not count
         # against the immutable 60-second combined test budget).
         "workspace resource inventory audit (audit_workspace_resource_inventory)",
         "uv",
@@ -488,7 +487,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     (
         # Pins the interactive Claude session-text classification vocabulary
-        # and its PTY exemption before the two budget-tracked smoke steps.
+        # and its PTY exemption before the budget-tracked aggregate smoke step.
         "canonical session text audit (audit_canonical_session_text)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
@@ -503,8 +502,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # in production -- which is exactly how every pipeline commit broke
         # via ``runner.execute_commit_effect``. Covers ``ralph/`` and
         # ``tests/``. AST + Path.read_text only -- no subprocess, no sleep,
-        # no real I/O. Inserted BEFORE the two trailing smoke steps so
-        # ``_BUDGET_TRACKED_STEPS`` keeps resolving to them; NOT
+        # no real I/O. Inserted BEFORE the aggregate smoke step; NOT
         # budget-tracked (does not count against the immutable 60-second
         # combined test budget).
         "kwargs forwarding audit (audit_kwargs_forwarding)",
@@ -520,8 +518,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # through an interrupt. Stays silent whenever the callee reads its
         # catch-all opaquely, so it only speaks when the key is provably
         # unreachable. AST + Path.read_text only -- nothing is imported or
-        # executed. Inserted BEFORE the two trailing smoke steps so
-        # ``_BUDGET_TRACKED_STEPS`` keeps resolving to them; NOT
+        # executed. Inserted BEFORE the aggregate smoke step; NOT
         # budget-tracked.
         "opts key drift audit (audit_opts_key_drift)",
         "uv",
@@ -529,55 +526,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
-        # Offline real-process proof for the public ``make install`` contract.
-        # It uses an isolated HOME/PATH and a fail-closed fake ``uv`` that
-        # accepts only the locked command forms, so no network is reachable.
-        # The fixture verifies the missing-uv diagnostic, successful rdev
-        # launch, stale-entry replacement with .venv preservation, and failed
-        # reinstall rollback. It is a subprocess_e2e test by necessity but is
-        # intentionally charged against the one immutable combined budget.
-        "make test-install-make-smoke",
+        # Preserve all installer, multimodal, and visual smoke scenarios while
+        # amortizing pytest imports and worker startup across one invocation.
+        # This entire aggregate remains charged to the immutable combined 60 s.
+        "make test-verification-smoke",
         "make",
-        ("test-install-make-smoke",),
-        _TOTAL_TEST_BUDGET_SECONDS,
-    ),
-    (
-        # Criterion 5 multimodal proof: drive the deterministic multimodal
-        # stub agent across all six harness identities (claude /
-        # claude-headless / agy / nanocoder / cursor / opencode) and
-        # assert the multimodal fact grades WIRE on every harness.
-        # Excluded from the default pytest profile by the ``smoke`` marker
-        # (kept in ``pytestmark`` alongside ``subprocess_e2e``) so the
-        # regular ``make test`` / ``make test-unit`` / ``make
-        # test-integration`` paths cannot collect it; only the dedicated
-        # ``make test-multimodal-smoke`` target does. The step drives the
-        # ``tests/_support/mock_*`` stubs and dials no paid backend, so
-        # it is safe to charge against the immutable 60 s combined
-        # budget -- the stub consumes zero live tokens. Tracked in
-        # ``_BUDGET_TRACKED_STEPS`` so the cumulative timer sums the
-        # multimodal smoke's wall clock into the immutable 60 s budget
-        # together with ``make test`` and ``make test-visual-smoke``.
-        "make test-multimodal-smoke",
-        "make",
-        ("test-multimodal-smoke",),
-        _TOTAL_TEST_BUDGET_SECONDS,
-    ),
-    (
-        # Criterion 12 deterministic visual-smoke tier: drive the
-        # offline visual smoke fixtures (capture handler + pre-change
-        # lifecycle + stub judge) under the ``smoke and subprocess_e2e``
-        # selector so the regular ``make test`` profile cannot collect
-        # them. The fixtures dial no paid backend and use no real
-        # renderer, so the suite is safe to charge against the
-        # immutable 60 s combined budget -- the stub consumes zero live
-        # tokens. Appended AFTER ``make test-multimodal-smoke`` so the
-        # only ``runner.calls`` indices that shift are those AFTER the
-        # previous LAST entry; tracked in ``_BUDGET_TRACKED_STEPS`` so
-        # the cumulative timer sums the visual smoke's wall clock into
-        # the immutable 60 s budget.
-        "make test-visual-smoke",
-        "make",
-        ("test-visual-smoke",),
+        ("test-verification-smoke",),
         _TOTAL_TEST_BUDGET_SECONDS,
     ),
     (
@@ -588,21 +542,10 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
 )
 
-#: Index 2 and the three entries before the final audit are the test steps charged
-#: against ``_TOTAL_TEST_BUDGET_SECONDS`` together with
-#: every other test step whose label is in ``_KNOWN_TEST_STEP_LABELS``.
-#: ``make test`` is the primary test step (index 2);
-#: ``make test-install-make-smoke`` proves the real offline installer;
-#: ``make test-multimodal-smoke`` (criterion 5 multimodal proof) and
-#: ``make test-visual-smoke`` (criterion 12 deterministic visual-smoke tier)
-#: precede the final non-test boundary audit. Adding a
-#: new test step without also adding its label to
-#: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
-#: contributing to the combined budget, which the immutable 60 s ceiling
-#: prohibits.
-_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset(
-    {2, len(_VERIFY_STEPS) - 4, len(_VERIFY_STEPS) - 3, len(_VERIFY_STEPS) - 2}
-)
+#: The main suite and aggregate installer/multimodal/visual smoke invocation
+#: are both charged in full. Every future test step must also appear in the
+#: known-label set and this tracked-index set.
+_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 2})
 
 # --- Module-level invariants ---
 # These are runtime checks that must hold for the enforcement
@@ -659,9 +602,7 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
 _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
     {
         "make test",
-        "make test-install-make-smoke",
-        "make test-multimodal-smoke",
-        "make test-visual-smoke",
+        "make test-verification-smoke",
     }
 )
 

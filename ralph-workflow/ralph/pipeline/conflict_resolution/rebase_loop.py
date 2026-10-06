@@ -51,6 +51,11 @@ from ralph.git.rebase.rebase_continuation import (
     verify_rebase_completed_at,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._pending_rebase_continue import (
+    finish_pending_rebase,
+    prepare_pending_rebase,
+    retain_pending_rebase_error,
+)
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     try_deterministic_resolution,
 )
@@ -402,16 +407,20 @@ def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
         stop_index,
     )
     try:
+        prepare_pending_rebase(root)
         continue_rebase_at(root)
     except NoRebaseInProgressError:
+        finish_pending_rebase(root)
         return True
     except (ConflictRemainingError, RebaseContinuationError) as exc:
+        retain_pending_rebase_error(root, exc)
         logger.warning(
             "conflict_resolution: could not continue the already-staged stop {}: {}",
             stop_index,
             exc,
         )
         return False
+    finish_pending_rebase(root)
     return True
 
 
@@ -602,7 +611,9 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
             "rebase; declining to resolve"
         )
         return None
-    conflicted = tuple(get_conflicted_files(repo_root=root))
+    conflicted = tuple(get_conflicted_files(repo_root=root) or staged_conflict_marker_paths(root))
+    if "<staged-marker-query-failed>" in conflicted:
+        return None
     if not conflicted:
         logger.warning(
             "conflict_resolution: rebase is paused with no conflicted path; declining to resolve"
@@ -762,8 +773,10 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
       never got the multi-stop resolution this module exists to provide.
     """
     try:
+        prepare_pending_rebase(root)
         continue_rebase_at(root, skip_empty=True)
     except NoRebaseInProgressError:
+        finish_pending_rebase(root)
         record_landed_stop(root, stop)
         return True
     except (ConflictRemainingError, RebaseContinuationError) as exc:
@@ -772,14 +785,17 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
                 "conflict_resolution: stop {} landed; the rebase stopped again on the next commit",
                 stop.stop_index,
             )
+            finish_pending_rebase(root)
             record_landed_stop(root, stop)
             return True
+        retain_pending_rebase_error(root, exc)
         logger.warning(
             "conflict_resolution: could not continue the rebase past stop {}: {}",
             stop.stop_index,
             exc,
         )
         return False
+    finish_pending_rebase(root)
     record_landed_stop(root, stop)
     return True
 

@@ -244,7 +244,7 @@ def test_a_recordable_resolution_is_started(
     assert flags == [True, False]
 
 
-def test_resolver_chain_exhaustion_falls_back_to_endpoint_merge(
+def test_resolver_chain_exhaustion_retains_progress_for_next_agent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """S-4/DA-006: exhausted recovery is persisted, never sent to merge fallback."""
@@ -264,10 +264,10 @@ def test_resolver_chain_exhaustion_falls_back_to_endpoint_merge(
         rebase_stop_resolver=lambda _root, _target, _stop: False,
     )
 
-    assert result.merge_attempted is True
-    assert result.short_circuit is None
-    assert result.merge_outcome is not None
-    assert result.merge_outcome.outcome == "success"
+    assert result.merge_attempted is False
+    assert result.short_circuit is not None and result.short_circuit.recovery_record_retained
+    assert "RESOLUTION_CHAIN_EXHAUSTED" in (result.short_circuit.last_reason or "")
+    assert result.merge_outcome is None
 
 
 def test_an_unparseable_record_is_discarded_not_left_to_block_every_run(

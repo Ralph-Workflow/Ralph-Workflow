@@ -44,6 +44,7 @@ from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.run_loop import _LoopContext, _run_inner_loop
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -55,6 +56,8 @@ from ralph.recovery.agent_unavailability_tracker import (
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.workspace.memory import MemoryWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import pytest
@@ -180,8 +183,8 @@ def _build_run_loop_context(
     connectivity_monitor.current_state = "online"
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=WorkspaceScope(MemoryWorkspace("/memory/waiting-controller").root),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,
@@ -283,6 +286,7 @@ def test_real_controller_wait_state_emits_waiting_logs(
         return state.copy_with(phase="complete")
 
     monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
 
     records, sink_id = _capture_loguru_records()
     try:

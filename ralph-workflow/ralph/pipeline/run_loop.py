@@ -1380,6 +1380,29 @@ def _run_integration_conflict_resolution(
     ctx: _LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
+    from ralph.pipeline.auto_integrate_transaction import integration_transaction
+
+    with integration_transaction(ctx.workspace_scope.root) as acquired:
+        if not acquired:
+            emit_integration_warn_line(
+                ctx.active_display, "integration recovery retained; another owner is active"
+            )
+            return False
+        from ralph.pipeline.auto_integrate_record import read_record
+
+        retained = read_record(ctx.workspace_scope.root)
+        if retained is not None and (
+            retained.merge_commit_pending or retained.rebase_continue_pending
+            or retained.merge_commit_tree is not None
+        ):
+            return False
+        return _run_owned_integration_conflict_resolution(ctx, rebase)
+
+
+def _run_owned_integration_conflict_resolution(
+    ctx: _LoopContext,
+    rebase: RebaseState | None = None,
+) -> bool:
     """Invoke the out-of-graph conflict resolver against live blocking evidence.
 
     ``_run_startup_integration`` cannot serve as the recovery executor for
@@ -1640,7 +1663,7 @@ def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResol
             # No merge to finish. An in-progress rebase is reconciled by
             # the crash-recovery preamble, which owns the rebase stops.
             return False
-        return bool(_resolve_and_commit(root, target, resolver))
+        return _resolve_and_commit(root, target, resolver)
     except Exception as resolve_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", resolve_exc)
         return False
@@ -1911,6 +1934,33 @@ def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bo
     return True
 
 
+def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
+    from ralph.pipeline._pending_merge_repair import repair_pending_merge
+    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+    if ctx.pipeline_deps is None:
+        emit_integration_warn_line(
+            ctx.active_display, "merge commit retained; recovery agent dependencies unavailable"
+        )
+        return
+    try:
+        repair_pending_merge(
+            workspace_scope=ctx.workspace_scope,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            policy_bundle=ctx.policy_bundle,
+            display=ctx.active_display,
+            display_context=ctx.display_context,
+            agents=tuple(
+                agent for agent in resolution_chain_agents(ctx.policy_bundle)
+                if ctx.registry.get(agent) is not None
+            ),
+            failure=failure,
+        )
+    except Exception as exc:
+        logger.critical("Merge commit retained; repair agent unavailable: {}", exc)
+
+
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1925,6 +1975,21 @@ def _block_unresolved_integration(
     fallback/retry opportunity. An exhausted or still-blocked verdict keeps
     ordinary dispatch suspended while the caller cools down before retrying.
     """
+    from ralph.pipeline.auto_integrate_record import read_record
+
+    pending = read_record(ctx.workspace_scope.root)
+    if pending is not None and (
+        pending.merge_commit_pending or pending.rebase_continue_pending
+        or pending.merge_commit_tree is not None
+    ):
+        recovered = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
+        if recovered is not None:
+            state = state.copy_with(rebase=recovered)
+            _save_recovered_rebase_checkpoint(state, ctx)
+            if recovered.recovery_record_retained:
+                _repair_pending_merge_commit(ctx, recovered.last_reason or "merge commit failed")
+                return state, prev_phase, 0
+
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
         reconciled = reconcile_stale_unresolved_state(state.rebase)

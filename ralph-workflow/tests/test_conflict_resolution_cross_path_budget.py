@@ -218,16 +218,14 @@ def test_remote_refresh_failure_still_books_conflict_budget(
     assert result is not None
 
 
-def test_endpoint_merge_fallback_keeps_the_resolver_after_a_failed_rebase_resolution(
+def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The merge fallback is the last way to land the target, so it keeps its resolver.
+    """Failure before a rebase agent starts may fall back, keeping the endpoint resolver.
 
-    It used to be handed ``None`` after a failed commit-by-commit rebase
-    resolution, so any conflicted merge aborted and the branch stayed
-    behind its target -- planning then ran on stale code. One whole-branch
-    merge is a different integration shape from the replay, and the
-    anti-thrash budget still bounds repeated attempts across seams.
+    No agent edits exist when durable ownership cannot be recorded. The
+    fallback can safely abort that untouched rebase, but must still give the
+    endpoint conflict its resolver despite the shared attempt budget.
     """
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
@@ -258,8 +256,15 @@ def test_endpoint_merge_fallback_keeps_the_resolver_after_a_failed_rebase_resolu
         "rebase_onto",
         lambda _target, repo_root: RebaseConflicts(files=["a.py"]),
     )
-    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
-    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False)
+
+    def _ownership_unavailable(*_args: object) -> bool:
+        return False
+
+    def _unexpected_rebase_agent(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("rebase agent must not start without durable ownership")
+
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", _ownership_unavailable)
+    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", _unexpected_rebase_agent)
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
     monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
     monkeypatch.setattr(merge_module, "_verify_terminal_state", lambda *_args, **_kwargs: None)
@@ -275,13 +280,15 @@ def test_endpoint_merge_fallback_keeps_the_resolver_after_a_failed_rebase_resolu
         return True
 
     try:
-        merge_module.run_rebase_or_merge(
+        result = merge_module.run_rebase_or_merge(
             tmp_path,
             "main",
             _merge_resolver,
             rebase_stop_resolver=lambda *_args: False,
         )
         assert endpoint_calls == [_merge_resolver]
+        assert aborted == [tmp_path]
+        assert result.merge_attempted
     finally:
         finish_conflict_attempt(identity)
 

@@ -43,6 +43,7 @@ from rich.console import Console
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate import recovery_retained_record
+from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
@@ -122,14 +123,16 @@ def _recovery_module() -> ModuleType:
     return importlib.import_module("ralph.pipeline.auto_integrate_recovery")
 
 
-def _fake_record(phase: str, *, integrated_sha: str | None = None) -> object:
+def _fake_record(phase: str, *, integrated_sha: str | None = None) -> IntegrationRecord:
     """Durable-record stand-in exposing only the attributes recovery reads."""
-    return SimpleNamespace(
-        phase=phase,
-        target="main",
-        pre_feature_sha="a" * 40,
-        integrated_feature_sha=integrated_sha,
-        resolving_rebase=False,
+    return IntegrationRecord.model_validate(
+        {
+            "phase": phase,
+            "target": "main",
+            "pre_feature_sha": "a" * 40,
+            "pre_target_sha": None,
+            "integrated_feature_sha": integrated_sha,
+        }
     )
 
 

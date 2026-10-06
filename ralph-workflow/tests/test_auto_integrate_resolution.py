@@ -168,54 +168,10 @@ def test_rebase_failed_falls_back_to_endpoint_merge(
     assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
 
 
-def test_conflict_resolver_resolves_commits_and_fast_forwards(
+def test_conflict_resolver_failure_retains_progress_and_records_conflict(
     tmp_git_repo: Path,
 ) -> None:
-    """A resolver that fixes the conflict yields a merge commit + ff."""
-    base = _diverged_conflicting_repo(tmp_git_repo)
-    feature_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-
-    def _resolver(root: Path, target: str) -> bool:
-        (root / "shared.txt").write_text("resolved version\n", encoding="utf-8")
-        _run(root, "add", "shared.txt")
-        return True
-
-    config = _build_config(tmp_git_repo, target=base)
-    outcome = auto_integrate_after_commit(
-        config,
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        conflict_resolver=_resolver,
-    )
-    assert outcome is not None
-    assert outcome.last_action == "merged", (
-        f"resolved conflicts must complete as a merge, got"
-        f" last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
-    )
-    assert outcome.fast_forwarded is True
-    # The merge was committed automatically: HEAD is a 2-parent commit.
-    head_parents = _run(tmp_git_repo, "log", "-1", "--format=%P", "HEAD").stdout.strip()
-    assert len(head_parents.split()) == 2
-    head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert head_sha != feature_sha_before
-    # The resolved content landed.
-    assert (tmp_git_repo / "shared.txt").read_text() == "resolved version\n"
-    # Target fast-forwarded to the merge commit.
-    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    assert base_sha == head_sha
-    # No merge state or crash record left behind.
-    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
-    if not git_dir.is_absolute():
-        git_dir = (tmp_git_repo / git_dir).resolve()
-    assert not (git_dir / "MERGE_HEAD").exists()
-    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
-    assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists()
-
-
-def test_conflict_resolver_failure_aborts_and_records_conflict(
-    tmp_git_repo: Path,
-) -> None:
-    """A failing resolver leaves the branch bit-identical and records conflict."""
+    """A failing resolver leaves branch refs unchanged and retains the live merge."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
@@ -232,20 +188,20 @@ def test_conflict_resolver_failure_aborts_and_records_conflict(
     assert outcome is not None
     assert outcome.last_action == "conflict"
     assert outcome.last_reason is not None
-    assert "conflict resolution failed" in outcome.last_reason
+    assert "conflict resolution incomplete" in outcome.last_reason
     after = _snapshot(tmp_git_repo)
     assert after["head"] == before["head"]
-    assert after["worktree"] == before["worktree"]
+    assert outcome.recovery_record_retained
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
-    assert not (git_dir / "MERGE_HEAD").exists()
+    assert (git_dir / "MERGE_HEAD").exists()
 
 
-def test_conflict_resolver_exception_aborts_and_records_conflict(
+def test_conflict_resolver_exception_retains_progress_and_records_conflict(
     tmp_git_repo: Path,
 ) -> None:
-    """A resolver that raises is contained: abort, bit-identical, recorded."""
+    """A resolver exception is contained while retaining progress for the next agent."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
@@ -263,7 +219,7 @@ def test_conflict_resolver_exception_aborts_and_records_conflict(
     assert outcome.last_action == "conflict"
     after = _snapshot(tmp_git_repo)
     assert after["head"] == before["head"]
-    assert after["worktree"] == before["worktree"]
+    assert outcome.recovery_record_retained
 
 
 def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
@@ -558,4 +514,5 @@ def test_resolver_regression_lone_conflict_marker_is_rejected(
     assert isinstance(before_refs, dict)
     assert isinstance(after_refs, dict)
     assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]
-    assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()
+    assert (tmp_git_repo / ".git" / "MERGE_HEAD").exists()
+    assert outcome.recovery_record_retained

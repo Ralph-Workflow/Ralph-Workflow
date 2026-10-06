@@ -11,6 +11,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.integration_resolution import (
@@ -23,6 +24,8 @@ from ralph.policy.loader import load_policy
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.workspace.memory import MemoryWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _policy_bundle() -> object:
@@ -59,10 +62,12 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     policy_bundle.pipeline.terminal_phase = "complete"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
+    workspace = MemoryWorkspace("/memory/resume-selection")
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
     ctx = run_loop._LoopContext(
         policy_bundle=policy_bundle,
-        workspace_scope=MagicMock(),
-        config=MagicMock(),
+        workspace_scope=WorkspaceScope(workspace.root),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=0,
@@ -912,5 +917,4 @@ def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_availab
     assert chain is not None
     assert chain.current_index == 0
     assert chain.agents[chain.current_index] == "claude"
-
 

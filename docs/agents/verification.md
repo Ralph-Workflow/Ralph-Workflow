@@ -95,7 +95,7 @@ This is a fail-closed static three-file profile with `not subprocess_e2e and not
 
 ## Smoke-check subsections
 
-Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate. The deterministic install, multimodal, and visual smoke targets are the exceptions: each is wired into `make verify` and charged to the same immutable budget.
+Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate. `make verify` runs every deterministic install, multimodal, and visual smoke case together through `make test-verification-smoke`, charged to the same immutable budget as `make test`. Sharing one pytest startup reduces overhead without dropping cases. The separate smoke targets remain available for focused checks.
 
 ```bash
 # Policy loader smoke check (after changing policy defaults)
@@ -120,11 +120,11 @@ make test-install-make-smoke
 # This smoke verifies the missing-uv diagnostic, immutable-generation `rdev`
 # installation, source-checkout independence, lock contention, and failed
 # candidate preservation. It does not contact a network and is budget-tracked by
-# `make verify`.
+# `make verify` through the combined `test-verification-smoke` target.
 
 # Multimodal smoke (criterion 5): drives the deterministic multimodal
 # stub agent across every harness identity. Runs under ``make verify``
-# as a budget-tracked ``_VERIFY_STEPS`` entry -- unlike the commands
+# through the combined budget-tracked smoke entry -- unlike the commands
 # above, this one IS counted toward the immutable 60-second combined
 # budget so a future endpoint-delivery regression like the OpenCode
 # multimodal break fails CI rather than passing silently.

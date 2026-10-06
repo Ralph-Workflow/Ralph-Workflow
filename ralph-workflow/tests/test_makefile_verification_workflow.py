@@ -145,9 +145,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
-    assert unit_body == [
-        "uv run --locked --project . python -m ralph.test_suites --profile unit"
-    ]
+    assert unit_body == ["uv run --locked --project . python -m ralph.test_suites --profile unit"]
     assert integration_body == [
         "uv run --locked --project . python -m ralph.test_suites --profile integration"
     ]
@@ -203,12 +201,28 @@ def test_install_make_smoke_is_an_explicit_authoritative_target() -> None:
         '$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py -q -m "smoke and subprocess_e2e"'
     ]
     assert any(
-        label == "make test-install-make-smoke"
+        label == "make test-verification-smoke"
         and command == "make"
-        and args == ("test-install-make-smoke",)
+        and args == ("test-verification-smoke",)
         and timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS
         for label, command, args, timeout in verify_module._VERIFY_STEPS
     )
+
+    aggregate = _target_body("test-verification-smoke")
+    assert len(aggregate) == 1
+    assert all(
+        path in aggregate[0]
+        for path in (
+            "tests/test_install_make_smoke.py",
+            "tests/test_smoke_multimodal_end_to_end.py",
+            "tests/test_visual_smoke.py",
+        )
+    )
+    assert '-m "smoke and subprocess_e2e"' in aggregate[0]
+    charged = {
+        verify_module._VERIFY_STEPS[index][0] for index in verify_module._BUDGET_TRACKED_STEPS
+    }
+    assert charged == {"make test", "make test-verification-smoke"}
 
 
 @pytest.mark.timeout_seconds(5)
@@ -217,12 +231,10 @@ def test_make_verify_excludes_paid_agy_markers() -> None:
 
     The ``agy`` and ``live_agy`` bans are universal -- no
     ``_VERIFY_STEPS`` label or arg may contain either substring, on any
-    transport. The ``smoke`` ban is narrowed: the only smoke-bearing
-    steps are ``make test-multimodal-smoke`` (criterion 5 multimodal
-    proof) and ``make test-visual-smoke`` (criterion 12
-    deterministic visual-smoke tier). Both suites drive the
-    ``tests/_support/mock_*`` stubs and dial no paid backend, so they
-    are safe to include in the verify budget. Every other step is
+    transport. The ``smoke`` ban permits only the aggregate deterministic
+    installer, multimodal, and visual smoke target. Its subprocess stubs
+    never dial paid backends and every case is charged to the same budget.
+    Every other step is
     checked for the full triple.
     """
     expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
@@ -230,9 +242,7 @@ def test_make_verify_excludes_paid_agy_markers() -> None:
     assert "not subprocess_e2e" in expression
     assert "not smoke" in expression
     smoke_bearing_steps = {
-        "make test-install-make-smoke",
-        "make test-multimodal-smoke",
-        "make test-visual-smoke",
+        "make test-verification-smoke",
     }
     for label, _command, args, _timeout in verify_module._VERIFY_STEPS:
         is_smoke_step = label in smoke_bearing_steps

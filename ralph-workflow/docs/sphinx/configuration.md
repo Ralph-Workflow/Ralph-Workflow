@@ -220,6 +220,20 @@ An unsuccessful landing raises a critical log and transcript alarm, saves
 recovery state, and retries instead of terminating the pipeline. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
+If Git rejects the commit after merge conflicts are resolved, Ralph Workflow
+retains the resolved index and merge parents and reports Git's failure reason.
+Recovery retries that commit without repeating completed conflict resolution
+and hands persistent blockers to the configured resolution agent chain.
+It verifies the saved tree and parents before allowing the target to advance;
+changed or unreadable evidence keeps publication blocked and the work retained.
+A crash after commit is recovered by verifying the completed commit and
+continuing the target fast-forward.
+The same recovery ownership protects a verified rebase stop whose
+`git rebase --continue` fails. Repair agents receive the command diagnostic;
+required source corrections must declare their paths and pass fresh index,
+conflict, and parent verification before the normal Git checks run again.
+Existing unfinished edits are excluded from those corrections.
+
 Ralph Workflow does not stash unfinished edits or sweep them into preservation commits.
 Dirty files that Git refuses to merge remain intact. When additional pending
 work blocks integration, recovery uses the configured commit-cleanup and commit

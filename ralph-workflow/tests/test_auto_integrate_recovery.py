@@ -380,17 +380,6 @@ def test_recovery_no_record_preserves_operator_in_progress_rebase(
 def test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree(
     tmp_git_repo: Path,
 ) -> None:
-    """Stale unowned rebase state on a CLEAN tree is reclaimed, not preserved.
-
-    Observed failure mode (PROMPT.md, wt-23, 2026-07-22): a leftover
-    ``rebase-merge``/``rebase-apply`` directory with NO ownership
-    record fails ``check_rebase_preconditions`` at every seam forever,
-    permanently disabling auto-integration in the worktree — the
-    forbidden silent noop. The discriminator against AC-11 case 4
-    (operator mid-conflict, which MUST be preserved) is worktree
-    cleanliness: a live conflict resolution has unmerged paths and
-    tracked modifications; inert stale state sits on a clean tree.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -404,9 +393,6 @@ def test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree(
     assert preflight.returncode != 0, (
         "test setup: expected a real rebase conflict to leave state on disk"
     )
-    # Make the tree clean while the rebase bookkeeping stays on disk:
-    # this is exactly the stale shape the boundary hook meets, since
-    # the hook only fires on a clean tree.
     _run(tmp_git_repo, "reset", "--hard")
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
@@ -414,6 +400,9 @@ def test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree(
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "test setup: stale rebase state must be on disk"
     )
+    for state_name in ("rebase-apply", "rebase-merge"):
+        for identity in ("head-name", "onto"):
+            (git_dir / state_name / identity).unlink(missing_ok=True)
     status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
     assert not status.stdout.strip(), "test setup: worktree must be clean"
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists(), (
@@ -462,11 +451,8 @@ def test_recovery_no_record_reclaims_stale_merge_state_on_clean_tree(
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
-    # ``git reset --hard`` clears MERGE_HEAD on modern git; restore the
-    # stale marker explicitly to model a crashed abort.
-    if not (git_dir / "MERGE_HEAD").exists():
-        base_sha = _run(tmp_git_repo, "rev-parse", base).stdout.strip()
-        (git_dir / "MERGE_HEAD").write_text(base_sha + "\n", encoding="utf-8")
+    (git_dir / "MERGE_HEAD").write_text("invalid-residual-parent\n", encoding="utf-8")
+    (git_dir / "MERGE_MSG").unlink(missing_ok=True)
     status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
     assert not status.stdout.strip(), "test setup: worktree must be clean"
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists(), (
@@ -1372,6 +1358,9 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "test setup: stale rebase state must be on disk"
     )
+    for state_name in ("rebase-apply", "rebase-merge"):
+        for identity in ("head-name", "onto"):
+            (git_dir / state_name / identity).unlink(missing_ok=True)
     status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
     assert not status.stdout.strip(), "test setup: worktree must be clean"
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists(), (
