@@ -956,7 +956,9 @@ def _integrate_inline_effect(
             inline_exc,
         )
         return inline_result
-    if outcome is not None and outcome.integration_unresolved is True:
+    if outcome is not None and outcome.recovery_record_retained:
+        inline_result = inline_result if isinstance(inline_result, PipelineState) else state
+    elif outcome is not None and outcome.integration_unresolved is True:
         if isinstance(inline_result, PipelineState):
             failed_state, _ = reducer_reduce(
                 state,
@@ -1044,11 +1046,14 @@ def _prepare_pipeline_step_dispatch(
 
 def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) -> PhaseFailureEvent:
     """Build the recovery-routable failure for an unresolved integration."""
+    from ralph.recovery.failure_category import FailureCategory
+
     reason = outcome.last_reason or "the conflict resolver did not produce a resolution"
     return PhaseFailureEvent(
         phase=state.phase,
         reason=f"integration conflict requires resolution: {reason}",
         recoverable=True,
+        failure_category=FailureCategory.INTEGRATION,
     )
 
 
@@ -1405,7 +1410,7 @@ def _integrate_after_fan_out(
     )
     if outcome is None:
         return state
-    if outcome.integration_unresolved is True:
+    if outcome.integration_unresolved is True and not outcome.recovery_record_retained:
         failed_state, _ = reducer_reduce(
             state,
             _integration_conflict_failure(state, outcome),
@@ -2079,6 +2084,7 @@ def _run_pipeline_step(
         if (
             isinstance(_auto_integrate_outcome, RebaseState)
             and _auto_integrate_outcome.integration_unresolved
+            and not _auto_integrate_outcome.recovery_record_retained
         ):
             event = _integration_conflict_failure(state, _auto_integrate_outcome)
         _phase_outcome = _coarse_outcome_for_event(event)

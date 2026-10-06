@@ -57,6 +57,7 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
+from ralph.policy.models import PhaseRetryPolicy
 from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
 from ralph.recovery._broken_agent_same_shape_tracker import (
     BrokenAgentFingerprint,
@@ -611,7 +612,6 @@ class RecoveryController:
         """
         phase = context.phase
         agent = context.agent
-        retry_in_session = context.retry_in_session
         failure = context.classified_failure or self._classifier.classify(
             raw_failure,
             phase=phase,
@@ -619,6 +619,18 @@ class RecoveryController:
             connectivity_state=state.last_connectivity_state,
         )
 
+        if failure.category == FailureCategory.INTEGRATION:
+            return self._handle_integration_continuation(state, failure, phase)
+        return self._handle_classified_failure(state, failure, context)
+
+    def _handle_classified_failure(
+        self,
+        state: PipelineState,
+        failure: ClassifiedFailure,
+        context: FailureContext,
+    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
+        phase, agent = context.phase, context.agent
+        retry_in_session = context.retry_in_session
         chain = state.chain_for_phase(phase)
         chain_capacity = 0
         retry_delay_ms = 0
@@ -1065,6 +1077,53 @@ class RecoveryController:
         if drain_config is None:
             return None
         return self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+
+    def _handle_integration_continuation(
+        self,
+        state: PipelineState,
+        failure: ClassifiedFailure,
+        phase: str,
+    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
+        delay = self._integration_retry_delay(state, phase)
+        attempt = state.rebase.integration_retry_attempt
+        if compute_backoff_ms(delay, 1) > delay:
+            attempt += 1
+        event = FailureEvent(
+            timestamp=datetime.now(UTC),
+            phase=phase,
+            agent=None,
+            category=str(failure.category),
+            reason=failure.reason,
+            counted_against_budget=False,
+            chain_capacity_remaining=0,
+            recovery_cycle=state.recovery_cycle_count,
+            retry_delay_ms=delay,
+        )
+        self._bus.publish(event)
+        return (
+            state.copy_with(
+                last_error=failure.reason,
+                last_failure_category=str(failure.category),
+                last_retry_delay_ms=delay,
+                is_waiting_state=False,
+                rebase=state.rebase.model_copy(update={"integration_retry_attempt": attempt}),
+            ),
+            [],
+            event,
+        )
+
+    def _integration_retry_delay(self, state: PipelineState, phase: str) -> int:
+        """Back off owned continuation without consuming the completed phase's agent budget."""
+        chain_config = self._chain_config_for_phase(phase)
+        configured = chain_config.retry_delay_ms if chain_config is not None else 0
+        base = configured or PhaseRetryPolicy().retry_delay_ms
+        delay = compute_backoff_ms(base, 0)
+        for _attempt in range(state.rebase.integration_retry_attempt):
+            increased = compute_backoff_ms(delay, 1)
+            if increased == delay:
+                break
+            delay = increased
+        return delay
 
     def _compute_retry_delay(
         self,

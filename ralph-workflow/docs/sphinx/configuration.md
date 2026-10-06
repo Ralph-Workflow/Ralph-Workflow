@@ -164,7 +164,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `auto_integrate_enabled` | `true` | Local integration is on by default. Set to `false` for byte-identical manual git behavior: no rebase, merge, ref movement, fetch, or push from this feature. |
+| `auto_integrate_enabled` | `true` | Local integration is on by default. Set to `false` to prevent new integrations. An existing owned transaction still recovers and finishes its landing before ordinary work resumes. |
 | `auto_integrate_target` | `"main"` | Local mainline branch used verbatim. It must be non-empty; if the branch is absent, the step records a skip. |
 | `auto_integrate_remote_enabled` | `true` when the remote exists | Enables remote freshness checks and publication when the configured remote exists. Set `false` for local-only operation. |
 | `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a local-only outcome while integration continues. |
@@ -226,6 +226,10 @@ the unmerged index entries. Recovery continues the owned operation using its
 recorded target. A completed rebase must be verified and its record advanced
 to landing; a retained resolution flag alone must not keep planning in a retry
 loop. Planning resumes only after the target fast-forward succeeds.
+An outstanding integration record remains blocking even when Git reports a
+clean worktree. A successful commit, including an empty commit, is not retried
+because its subsequent integration needs recovery. Ralph Workflow preserves
+the phase result and resumes integration before dispatching the next phase.
 Missing completion evidence reaches a supervised inspection agent. Its success
 does not authorize publication: recovery still requires Git proof, and changed
 protected evidence remains blocked until the original evidence is restored.

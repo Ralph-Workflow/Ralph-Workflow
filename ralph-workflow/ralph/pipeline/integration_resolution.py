@@ -53,7 +53,8 @@ def inspect_integration_resolution(
 ) -> IntegrationResolutionVerdict:
     """Return the fail-closed dispatch verdict for ``root`` and ``state``.
 
-    Ground-truth integration evidence is an UNMERGED index entry, an
+    Durable integration ownership blocks dispatch even on a clean tree.
+    Without ownership, Git evidence is an UNMERGED index entry, an
     in-progress rebase, or an in-progress merge. Ordinary staged, modified,
     or untracked changes are not: they are the normal working state of a
     development phase, which writes files and only commits at the commit
@@ -63,6 +64,9 @@ def inspect_integration_resolution(
     porcelain probe now reports only unmerged paths. Any failed inspection
     remains unsafe.
     """
+    ownership = retained_integration_reason(root)
+    if ownership is not None:
+        return IntegrationResolutionVerdict(RECOVERABLE, (ownership,), RESOLUTION_DRAIN)
     persisted = persisted_integration_resolution_verdict(state)
     reasons: list[str] = []
     # Non-repository orchestration contexts (unit seams and initial project
@@ -93,6 +97,24 @@ def inspect_integration_resolution(
         )
         return IntegrationResolutionVerdict(RESOLVED)
     return _verdict_from_persisted_reasons(reasons)
+
+
+
+def retained_integration_reason(root: object) -> str | None:
+    """A durable receipt owns dispatch until recovery proves and clears it."""
+    from ralph.pipeline.auto_integrate_record import read_record, record_path
+
+    if not isinstance(root, Path):
+        return None
+    try:
+        if read_record(root) is not None:
+            return "durable integration record retained; recovery must finish before ordinary dispatch"
+        record_path(root).stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return "durable integration ownership unreadable; recovery required"
+    return "durable integration record retained; recovery must finish before ordinary dispatch"
 
 
 def _live_integration_reasons(

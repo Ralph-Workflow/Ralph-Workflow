@@ -48,6 +48,7 @@ from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
     inspect_integration_resolution,
+    retained_integration_reason,
 )
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
@@ -1992,29 +1993,20 @@ def _block_unresolved_integration(
     fallback/retry opportunity. An exhausted or still-blocked verdict keeps
     ordinary dispatch suspended while the caller cools down before retrying.
     """
-    from ralph.pipeline.auto_integrate_record import read_record
-
-    pending = read_record(ctx.workspace_scope.root)
-    if pending is not None and (pending.resolving_merge or pending.resolving_rebase):
+    if retained_integration_reason(ctx.workspace_scope.root) is not None:
         continued = _run_startup_integration(ctx, state.rebase)
         if continued is not None:
             state = state.copy_with(rebase=continued)
             _save_recovered_rebase_checkpoint(state, ctx)
-            if continued.recovery_record_retained:
-                _handoff_retained_failure(ctx, continued.last_reason or "integration continuation failed")
-                return state, prev_phase, 0
-        pending = read_record(ctx.workspace_scope.root)
-    if pending is not None and (
-        pending.merge_commit_pending or pending.rebase_continue_pending
-        or pending.merge_commit_tree is not None
-    ):
-        recovered = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
-        if recovered is not None:
-            state = state.copy_with(rebase=recovered)
-            _save_recovered_rebase_checkpoint(state, ctx)
-            if recovered.recovery_record_retained:
-                _handoff_retained_failure(ctx, recovered.last_reason or "merge commit failed")
-                return state, prev_phase, 0
+        remaining = retained_integration_reason(ctx.workspace_scope.root)
+        if remaining is not None:
+            if not state.rebase.recovery_record_retained:
+                state = state.copy_with(rebase=state.rebase.model_copy(update={
+                    "recovery_record_retained": True, "last_reason": remaining,
+                }))
+                _save_recovered_rebase_checkpoint(state, ctx)
+            _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
+            return state, prev_phase, 0
 
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
@@ -2210,7 +2202,10 @@ def _run_inner_loop_after_startup(
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
-    while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
+    while (
+        state.phase != ctx.policy_bundle.pipeline.terminal_phase
+        or retained_integration_reason(ctx.workspace_scope.root) is not None
+    ):
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:

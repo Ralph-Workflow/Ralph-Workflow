@@ -77,3 +77,14 @@ def test_every_typed_conflict_reason_classifies() -> None:
     ):
         classified = classifier.classify(raw, phase=_PHASE, agent="pi")
         assert classified.category is not FailureCategory.AMBIGUOUS, raw
+
+
+def test_retained_integration_is_recognized_without_blaming_commit_agent() -> None:
+    failure = FailureClassifier().classify(
+        "integration conflict requires resolution: integration resolution interrupted; retained for agent continuation",
+        phase="development_commit",
+        agent="committer",
+    )
+    assert str(failure.category) == "integration"
+    assert not failure.counts_against_budget
+    assert failure.attributed_agent is None

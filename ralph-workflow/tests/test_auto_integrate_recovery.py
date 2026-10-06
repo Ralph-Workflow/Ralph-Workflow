@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -70,11 +69,15 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
-def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
-    kwargs.setdefault("sleep", lambda _seconds: None)
-    kwargs.setdefault("jitter", lambda: 0.0)
-    return _auto_integrate_after_commit(*args, **kwargs)
+def auto_integrate_after_commit(
+    config: UnifiedConfig, scope: WorkspaceScope, state: RebaseState,
+) -> RebaseState | None:
+    """Run integration with injected zero-delay retry timing."""
+    return _auto_integrate_after_commit(config, scope, state, sleep=_no_op, jitter=lambda: 0.0)
+
+
+def _no_op(*_args: object, **_kwargs: object) -> None:
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +121,10 @@ def _build_config(
     target: str | None = None,
 ) -> UnifiedConfig:
     """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
-    payload: dict[str, object] = {"general": {"auto_integrate_enabled": enabled}}
+    general: dict[str, object] = {"auto_integrate_enabled": enabled}
     if target is not None:
-        payload["general"]["auto_integrate_target"] = target
-    return UnifiedConfig.model_validate(payload)
+        general["auto_integrate_target"] = target
+    return UnifiedConfig.model_validate({"general": general})
 
 
 # ---------------------------------------------------------------------------
@@ -508,7 +511,7 @@ def test_merge_exception_with_lingering_merge_head_retains_record(
     # Model "merge raised AND its abort failed": the resolver-side
     # helper reports the raise (None) while MERGE_HEAD stays on disk.
     (git_dir / "MERGE_HEAD").write_text(head + "\n", encoding="utf-8")
-    monkeypatch.setattr(rm, "endpoint_merge_with_resolution", lambda *a, **k: None)
+    monkeypatch.setattr(rm, "endpoint_merge_with_resolution", _no_op)
 
     result = rm.run_rebase_or_merge(tmp_git_repo, base, None, prefer_merge=True)
 
@@ -701,27 +704,7 @@ def test_context_resolution_disabled_returns_none_not_skip(
 def test_recovery_treats_bogus_phase_record_as_corrupt(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-11 supplement: a record with a stray ``phase`` value is corrupt.
-
-    The prompt feedback item flagged that
-    :class:`ralph.pipeline.auto_integrate_record.IntegrationRecord`
-    accepted ANY string as ``phase``. ``recover_incomplete_integration`
-    uses an ``if record.phase == 'integrating': ... else: ...``
-    branch (the else path is the integrated fast-forward continuation),
-    so a record with ``phase='bogus'`` would silently fall into the
-    integrated-FF path and try to land a fast-forward against an
-    unknown state.
-
-    The fix is to restrict ``IntegrationRecord.phase`` to a Literal
-    of ``{'integrating', 'integrated'}`` AND to have ``read_record``
-    reject any record whose on-disk phase is outside that set. This
-    test writes a corrupt record with ``phase='bogus'`` directly to
-    disk and asserts that ``recover_incomplete_integration` is a
-    no-op (no abort, no reset_hard, no fast-forward, no rebase) -- it
-    treats the malformed record as corrupt and returns ``None``
-    (the same behavior as "no record on disk"), so the operator's
-    manual in-progress rebase is preserved untouched.
-    """
+    """Unknown phase ownership blocks dispatch without mutating the live rebase."""
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base v1\n", "base shared")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -739,32 +722,18 @@ def test_recovery_treats_bogus_phase_record_as_corrupt(
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists()
     pre_feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # Write a deliberately malformed record -- phase is not in
-    # {'integrating', 'integrated'}. The recovery preamble MUST
-    # treat this as corrupt (returning None, like the no-record
-    # case) rather than acting on it as if it were an integrated
-    # record and trying to land a fast-forward.
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     import json
 
-    record_file.write_text(
-        json.dumps(
-            {
-                "phase": "bogus",
-                "target": base,
-                "pre_feature_sha": pre_feature_sha,
-                "pre_target_sha": pre_target_sha,
-            }
-        ),
-        encoding="utf-8",
-    )
+    payload: dict[str, str] = {
+        "phase": "bogus", "target": base,
+        "pre_feature_sha": pre_feature_sha, "pre_target_sha": pre_target_sha,
+    }
+    record_file.write_text(json.dumps(payload), encoding="utf-8")
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
-    assert outcome is None, (
-        "AC-11 supplement: a corrupt (bogus-phase) record must be"
-        " treated as absent; recovery returns None and the operator's"
-        f" in-progress rebase is preserved. Got: {outcome!r}"
-    )
+    assert outcome is not None and outcome.recovery_record_retained
+    assert record_file.exists()
     # The operator's in-progress rebase is preserved untouched.
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "AC-11 supplement: corrupt record must NOT abort the operator's rebase"
@@ -965,7 +934,7 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(
-        config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
+        config, scope, RebaseState()
     )
     assert outcome is not None
     assert outcome.fast_forwarded is True, (
@@ -1078,13 +1047,13 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
     skip the backup-ref cleanup and let the recovery path
     restore the pre-attempt tip.
     """
+    from ralph.pipeline._auto_integrate_recovery_git_state import rebase_bookkeeping_dir
     from ralph.pipeline.auto_integrate_recovery import (
         TerminalStateViolationError,
-        _rebase_bookkeeping_dir,
         post_attempt_verify,
     )
 
-    git_dir = _rebase_bookkeeping_dir(tmp_git_repo)
+    git_dir = rebase_bookkeeping_dir(tmp_git_repo)
     assert git_dir is not None
     # Plant a synthetic rebase-merge dir to simulate a leaked
     # rebase that the integration left on disk.
@@ -1262,13 +1231,12 @@ def test_recovery_honors_target_reclaim_opt_out(
         pre_target_sha="b" * 40,
         integrated_feature_sha="c" * 40,
     )
-    monkeypatch.setattr(
-        recovery,
-        "fast_forward_target",
-        lambda *_args, **kwargs: (False, str(kwargs["reclaim_target_worktree"])),
-    )
-    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda *_args: None)
+    def refused(*_args: object, **kwargs: object) -> tuple[bool, str]:
+        return False, str(kwargs["reclaim_target_worktree"])
+
+    monkeypatch.setattr(recovery, "fast_forward_target", refused)
+    monkeypatch.setattr(recovery, "post_attempt_verify", _no_op)
+    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", _no_op)
 
     outcome = recovery._land_and_reconcile(
         tmp_path,

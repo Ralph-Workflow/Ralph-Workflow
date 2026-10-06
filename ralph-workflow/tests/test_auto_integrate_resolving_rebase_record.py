@@ -35,13 +35,24 @@ from ralph.pipeline.auto_integrate_record import (
     set_resolving_rebase,
     write_record,
 )
+from ralph.pipeline.conflict_resolution import RebaseStop
 
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.pipeline.conflict_resolution import RebaseStop
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 _TARGET = "main"
+
+
+def _unreadable_record(_root: Path) -> None:
+    return None
+
+
+def _persisted_flag(_root: Path, _resolving: bool) -> bool:
+    return True
 
 
 def _integrating_record() -> IntegrationRecord:
@@ -91,7 +102,7 @@ def test_set_resolving_rebase_reports_failure_when_a_present_record_is_unreadabl
     ``false`` while the caller believes it says ``true``.
     """
     write_record(tmp_path, _integrating_record())
-    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", _unreadable_record)
 
     assert set_resolving_rebase(tmp_path, True) is False
 
@@ -116,23 +127,24 @@ def test_set_resolving_rebase_reports_failure_when_the_write_fails(
 
 def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: list[str]) -> None:
     """Fake every git seam ``run_rebase_or_merge`` reaches after a conflict."""
-    monkeypatch.setattr(
-        merge_module,
-        "_range_routing_reason",
-        lambda _root, _target: None,
-    )
-    monkeypatch.setattr(
-        merge_module,
-        "rebase_onto",
-        lambda _target, repo_root: RebaseConflicts(files=["src/alpha.py"]),
-    )
-    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", lambda _root: None)
-    monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: False)
-    monkeypatch.setattr(
-        merge_module,
-        "endpoint_merge_with_resolution",
-        lambda _root, _target, _resolver: MergeResult(outcome="success"),
-    )
+
+    def no_range_reason(_root: Path, _target: str) -> None:
+        return None
+
+    def conflicted(_target: str, repo_root: Path) -> RebaseConflicts:
+        return RebaseConflicts(files=["src/alpha.py"])
+
+    def no_active_rebase(_root: Path) -> bool:
+        return False
+
+    def merge_success(_root: Path, _target: str, _resolver: object) -> MergeResult:
+        return MergeResult(outcome="success")
+
+    monkeypatch.setattr(merge_module, "_range_routing_reason", no_range_reason)
+    monkeypatch.setattr(merge_module, "rebase_onto", conflicted)
+    monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _unreadable_record)
+    monkeypatch.setattr(merge_module, "rebase_in_progress", no_active_rebase)
+    monkeypatch.setattr(merge_module, "endpoint_merge_with_resolution", merge_success)
 
     def _never(_root: Path, _target: str, _resolver: object, **_kwargs: object) -> bool:
         resolver_calls.append("resolve_rebase_in_progress")
@@ -152,7 +164,11 @@ def test_an_unrecordable_resolution_is_never_started(
     """
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
-    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda _root, _resolving: False)
+
+    def cannot_record(_root: Path, _resolving: bool) -> bool:
+        return False
+
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", cannot_record)
     # The paused rebase is real until the fallback aborts it, so the
     # abort must be OBSERVED rather than assumed: "handed to the
     # fallback" is only safe because the fallback tears the rebase down
@@ -162,7 +178,10 @@ def test_an_unrecordable_resolution_is_never_started(
     def _abort(repo_root: Path) -> None:
         aborted.append(repo_root)
 
-    monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
+    def still_active(_root: Path) -> bool:
+        return not aborted
+
+    monkeypatch.setattr(merge_module, "rebase_in_progress", still_active)
     monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
 
     def _stop_resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
@@ -188,15 +207,30 @@ def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_t
     """S-1/S-2: the integration path creates one rebase-wide session before its loop."""
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
-    sessions: list[object] = []
-    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
-    monkeypatch.setattr(
-        merge_module,
-        "resolve_rebase_in_progress",
-        lambda _root, _target, resolver, *, session: (
-            sessions.append(session) or resolver(_root, _target, object())
-        ),
-    )
+    sessions: list[ResolutionSession] = []
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", _persisted_flag)
+
+    def resolve_with_session(
+        root: Path,
+        target: str,
+        callback: RebaseStopResolver,
+        *,
+        session: ResolutionSession,
+    ) -> ResolutionOutcome | bool:
+        sessions.append(session)
+        return callback(
+            root,
+            target,
+            RebaseStop(
+                sha="abc123",
+                subject="feature",
+                conflicted_files=("src/alpha.py",),
+                stop_index=1,
+                stop_cap=10,
+            ),
+        )
+
+    monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", resolve_with_session)
 
     def resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
         return True
@@ -226,11 +260,12 @@ def test_a_recordable_resolution_is_started(
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
     flags: list[bool] = []
-    monkeypatch.setattr(
-        merge_module,
-        "set_resolving_rebase",
-        lambda _root, resolving: (flags.append(resolving), True)[1],
-    )
+
+    def record_flag(_root: Path, resolving: bool) -> bool:
+        flags.append(resolving)
+        return True
+
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", record_flag)
 
     result = merge_module.run_rebase_or_merge(
         tmp_path,
@@ -249,9 +284,11 @@ def test_resolver_chain_exhaustion_retains_progress_for_next_agent(
 ) -> None:
     """S-4/DA-006: exhausted recovery is persisted, never sent to merge fallback."""
     _install_fallback_seams(monkeypatch, [])
-    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda *_args: True)
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", _persisted_flag)
 
-    def _exhausted(_root: Path, _target: str, _resolver: object, *, session: object) -> bool:
+    def _exhausted(
+        _root: Path, _target: str, _resolver: object, *, session: ResolutionSession
+    ) -> bool:
         session.exhaustion_reason = "RESOLUTION_CHAIN_EXHAUSTED: src/alpha.py"
         return False
 
@@ -270,23 +307,17 @@ def test_resolver_chain_exhaustion_retains_progress_for_next_agent(
     assert result.merge_outcome is None
 
 
-def test_an_unparseable_record_is_discarded_not_left_to_block_every_run(
+def test_an_unparseable_record_is_preserved_without_authorizing_new_resolution(
     tmp_path: Path,
 ) -> None:
-    """A file nothing can parse is not a record, and must not veto resolution.
-
-    The caller refuses to start a resolution it could not record, and
-    nothing on that path ever removes the file -- so an unparseable one
-    disabled rebase conflict resolution for good: every later run ended
-    with no resolver invoked and no way out but deleting it by hand.
-    """
+    """Unreadable ownership cannot authorize a fresh operation or evidence deletion."""
     from ralph.pipeline.auto_integrate_record import record_path
 
     for content in ("{not json at all", '{"phase": "a-phase-from-the-future"}'):
         (tmp_path / ".agent").mkdir(exist_ok=True)
         record_path(tmp_path).write_text(content, encoding="utf-8")
-        assert set_resolving_rebase(tmp_path, True) is True, content
-        assert not record_path(tmp_path).exists(), content
+        assert set_resolving_rebase(tmp_path, True) is False, content
+        assert record_path(tmp_path).read_text(encoding="utf-8") == content
 
 
 def test_an_intact_record_is_never_discarded_by_a_transient_read_failure(
@@ -296,7 +327,7 @@ def test_an_intact_record_is_never_discarded_by_a_transient_read_failure(
     from ralph.pipeline.auto_integrate_record import record_path
 
     write_record(tmp_path, _integrating_record())
-    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", _unreadable_record)
 
     assert set_resolving_rebase(tmp_path, True) is False
     assert record_path(tmp_path).exists(), "an intact record must survive"

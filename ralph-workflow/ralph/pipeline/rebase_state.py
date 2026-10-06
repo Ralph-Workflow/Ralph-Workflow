@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -104,6 +104,11 @@ class RebaseState(RalphBaseModel):
     # on any successful land. Defaulted, so legacy checkpoints load
     # unchanged.
     consecutive_conflicts: int = 0
+    integration_retry_attempt: int = Field(
+        default=0,
+        ge=0,
+        description="Checkpointed integration backoff attempt; stops increasing at the delay cap",
+    )
 
     # Durable identity of the conflict ``consecutive_conflicts`` counts.
     # ``last_target`` alone does not identify a conflict: a developer

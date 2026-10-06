@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 def failure_category_prefix(category: FailureCategory) -> str:
     prefix_map = {
+        FailureCategory.INTEGRATION: "Integration continuation required",
         FailureCategory.ENVIRONMENTAL: "Environmental fault",
         FailureCategory.AGENT: "Agent fault",
         FailureCategory.USER_CONFIG: "Configuration fault",

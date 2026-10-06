@@ -1170,6 +1170,10 @@ class FailureClassifier:
     ) -> tuple[FailureCategory, bool, bool] | None:
         checks = (
             (
+                raw_message.startswith("integration conflict requires resolution:"),
+                (FailureCategory.INTEGRATION, False, False),
+            ),
+            (
                 _is_auth_config_failure(detail_parts),
                 (FailureCategory.USER_CONFIG, False, False),
             ),
@@ -1259,6 +1263,7 @@ class FailureClassifier:
 
     def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
         prefix_map = {
+            FailureCategory.INTEGRATION: "Integration continuation required",
             FailureCategory.ENVIRONMENTAL: "Environmental fault",
             FailureCategory.AGENT: "Agent fault",
             FailureCategory.USER_CONFIG: "Configuration fault",

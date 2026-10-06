@@ -176,16 +176,10 @@ def write_record(
 def read_record(workspace_root: Path) -> IntegrationRecord | None:
     """Return the durable record or ``None`` when absent / corrupt.
 
-    A corrupt record is treated as absent so a partial write from a
-    crashed prior run never wedges the recovery preamble. Corrupt
-    here means: missing file, unreadable file, invalid JSON,
-    non-object payload, schema mismatch, OR an on-disk ``phase``
-    outside the :data:`IntegrationPhase` Literal (e.g. a stray
-    value left behind by an older partially-applied write). A
-    record with a stray phase must never be acted on as if it were
-    a known phase -- the recovery path would otherwise run the
-    ``integrated`` fast-forward continuation on a record that is
-    neither integrating nor integrated.
+    ``None`` does not prove absence: invalid JSON, unreadable bytes, and
+    unsupported schema or phase values also return ``None``. Recovery and
+    dispatch callers check record-path existence separately and preserve
+    unreadable ownership evidence without authorizing Git mutations.
     """
     record_file = record_path(workspace_root)
     if not record_file.exists():
@@ -240,45 +234,14 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
 
 
 def _absent_record_is_recordable(path: Path) -> bool:
-    """Decide what an unreadable record means for the caller's flag.
-
-    A TRANSIENT read failure leaves an intact record on disk, and
-    failing closed is right: the file would still say ``false`` while
-    the caller believed it said ``true``. A PERMANENTLY unreadable one
-    is not a record at all -- and reporting it as "could not record"
-    disabled rebase conflict resolution for good, because the caller
-    refuses to start a resolution it cannot describe, nothing on that
-    path removes the file, and every later run ended with no resolver
-    invoked and no way out but deleting the file by hand.
-    """
-    if not path.exists():
+    """Only a proven absent ownership record permits starting a new operation."""
+    try:
+        path.stat()
+    except FileNotFoundError:
         return True
-    if _record_is_parseable(path):
+    except OSError:
         return False
-    logger.warning(
-        "auto_integrate: the in-flight integration record at {} cannot be parsed; "
-        "discarding it rather than blocking every future resolution",
-        path,
-    )
-    try:
-        path.unlink()
-    except OSError as unlink_exc:
-        logger.warning("auto_integrate: could not discard it: {}", unlink_exc)
-        return False
-    return True
-
-
-def _record_is_parseable(path: Path) -> bool:
-    """Whether the file on disk is a valid record this build understands.
-
-    Separates a TRANSIENT read failure -- where the record is intact and
-    failing closed is right -- from a permanently unreadable one, where
-    failing closed disables resolution for good.
-    """
-    try:
-        return IntegrationRecord.model_validate_json(path.read_text(encoding="utf-8")) is not None
-    except Exception:
-        return False
+    return False
 
 
 def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:

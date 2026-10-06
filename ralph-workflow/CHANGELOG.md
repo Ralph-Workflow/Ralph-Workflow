@@ -54,6 +54,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(integration): preserve completed commits during retained recovery** — durable ownership blocks ordinary dispatch even on a clean worktree; recovery finishes pending integration before the next phase, and integration failures use bounded backoff without charging the commit agent. Locked by `tests/test_retained_resolution_handoff.py` and `tests/test_recovery_dispatch_backoff.py`.
+
 - **fix(prompts): default to parallel branches around the critical path** — require real prerequisites for serial ordering, isolate shared contracts to their consumers, plan focused proof plus integration verification, and steer developers to continual dispatch with concurrent read-only helpers. Locked by `tests/test_planning_prompt_thinking_first.py` and `tests/test_developer_prompt_subagent_guidance.py`.
 
 - **fix(prompts): complete parallel delegation and plan validation guidance** — independent ready work runs concurrently, coverage helpers and reviewers stay read-only, workers run focused checks, deadline prompts identify artifact loss, and nested unit examples expose ownership; both plan formats reject unsafe directories or unreadable effective policy before submission. Locked by `tests/test_developer_prompt_subagent_guidance.py`, `tests/test_prompt_materialize_worker.py`, and `tests/test_plan_artifact_validate_draft.py`.

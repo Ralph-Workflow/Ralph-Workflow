@@ -16,16 +16,25 @@ Most users only need to know three things:
 
 ## Failure categories
 
-Every failure is classified into one of four categories:
+Every failure is classified by its cause:
 
 | Category | Description | Counts against budget? |
 |----------|-------------|----------------------|
 | `environmental` | Network outage, upstream service error, transport disconnect | No |
 | `agent` | Empty output, idle timeout, malformed tool calls, repeated policy violations | Yes |
 | `user_config` | Invalid config, unbound agent chain, missing required inputs | No |
+| `artifact_validation` | Submitted artifact fails its required contract | No |
+| `integration` | Git integration requires continuation after phase work | No |
 | `ambiguous` | Ralph Workflow cannot confidently determine the cause | No |
 
 The goal is simple: transient infrastructure problems should not burn the same budget as genuine agent failures.
+
+Integration recovery belongs to the conflict-resolution workflow. It preserves
+the completed phase's result and agent budget. Repeated integration failures
+use a bounded retry delay rather than repeatedly invoking the commit phase.
+An outstanding integration record blocks ordinary dispatch even when the
+worktree is clean; recovery must verify completion and finish the target
+fast-forward before releasing that ownership.
 
 ## Offline detection and auto-resume
 

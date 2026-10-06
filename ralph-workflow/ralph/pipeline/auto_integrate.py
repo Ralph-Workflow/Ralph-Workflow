@@ -199,17 +199,17 @@ def _auto_integrate_on_phase_transition_inner(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
-    """Body of :func:`auto_integrate_on_phase_transition`; see it for the contract."""
     try:
         root = Path(workspace_scope.root)
-        enabled: object = getattr(config.general, "auto_integrate_enabled", True)
-        if not enabled or not (root / ".git").exists():
+        if not (root / ".git").exists():
             return None
         recovered = _recover_before_attempt(
             config, workspace_scope, None, conflict_resolver, rebase_stop_resolver,
         )
         if recovered is not None:
             return recovered
+        if not config.general.auto_integrate_enabled:
+            return None
         target = resolve_integration_target(config, root)
         boundary_handled, boundary_outcome = _phase_boundary_outcome(
             config, root, target, state, rebase_stop_resolver=rebase_stop_resolver

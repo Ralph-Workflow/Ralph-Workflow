@@ -52,7 +52,10 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
     ``RESOLVED``. The persisted predicate identifies precisely the fields whose
     stale values used to re-latch the next integration seam.
     """
-    if persisted_integration_resolution_verdict(state) is None:
+    if (
+        persisted_integration_resolution_verdict(state) is None
+        and not state.integration_retry_attempt
+    ):
         return state
     clear_strategy = state.resolution_exhausted or state.conflict_strategy_index == 0
     update: dict[str, object] = {
@@ -61,6 +64,7 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
         "resolution_exhausted": False,
         "resolution_exhaustion_reason": None,
         "recovery_record_retained": False,
+        "integration_retry_attempt": 0,
         "legacy_checkpoint_blocked": False,
     }
     if clear_strategy:
@@ -116,11 +120,17 @@ def preserve_unresolved_resolution_state(
     if outcome is None:
         return prior if retains_unresolved_resolution_state(prior) else None
     if outcome.fast_forwarded:
-        return outcome
+        return (
+            outcome.model_copy(update={"integration_retry_attempt": 0})
+            if outcome.integration_retry_attempt
+            else outcome
+        )
     if not retains_unresolved_resolution_state(prior):
         return outcome
 
     update: dict[str, object] = {}
+    if prior.integration_retry_attempt != outcome.integration_retry_attempt:
+        update["integration_retry_attempt"] = prior.integration_retry_attempt
     if prior.resolution_exhausted and not outcome.resolution_exhausted:
         update["resolution_exhausted"] = True
         update["resolution_exhaustion_reason"] = prior.resolution_exhaustion_reason

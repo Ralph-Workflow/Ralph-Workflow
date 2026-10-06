@@ -494,14 +494,16 @@ def _continue_fast_forward_from_record(
     # AC-14 rationale: G3
     # AC-14 rationale: G4
     # AC-14 rationale: H7
-    Retain transient failures for retry; clear only malformed or terminal
-    records. When configured refresh cannot establish a current target pointer,
+    Retain transient failures and missing completion identities for retry.
+    Clear ownership only after a verified landing or a target movement that
+    requires fresh integration. When refresh cannot establish a current target pointer,
     fail closed and retain the record rather than deciding from stale state.
     """
     if record.integrated_feature_sha is None:
-        # Defensive: malformed record. Clear it so we stop retrying.
-        _clear_record(workspace_root)
-        return _record_skip(reason="recovery: malformed integrated record", target=record.target)
+        return _record_skip(
+            reason="recovery: malformed integrated record; verified feature SHA missing",
+            target=record.target, record_retained=True,
+        )
     feature_sha = record.integrated_feature_sha
     # ONE refresh, before either verdict: both of them are taken from the
     # target pointer, and the second one clears the record for good.
@@ -878,11 +880,13 @@ def _recover_incomplete_integration_owned(
         root = Path(workspace_scope.root)
         record = _read_record(root)
         if record is None:
-            # No durable record: either nothing happened, or stale
-            # unowned rebase bookkeeping is silently blocking every
-            # integration seam. Reclaim the latter (clean tree only;
-            # a dirty tree is operator-owned and preserved).
-            return _reclaim_unowned_stale_rebase(root)
+            from ralph.pipeline.integration_resolution import retained_integration_reason
+
+            retained = retained_integration_reason(root)
+            return (
+                _record_skip(reason=retained, target=None, record_retained=True)
+                if retained is not None else _reclaim_unowned_stale_rebase(root)
+            )
 
         if (
             record.resolving_rebase

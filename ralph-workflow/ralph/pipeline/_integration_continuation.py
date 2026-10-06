@@ -113,8 +113,9 @@ def recover_before_attempt(
         recover_incomplete_integration,
         recovery_retained_record,
     )
+    from ralph.pipeline.integration_resolution import retained_integration_reason
 
-    if not config.general.auto_integrate_enabled or read_record(scope.root) is None:
+    if retained_integration_reason(scope.root) is None:
         return None
     recovered = recover_incomplete_integration(
         scope, config=config, conflict_resolver=conflict_resolver,
@@ -126,4 +127,18 @@ def recover_before_attempt(
         return recovered
     if recovered is not None and recovered.fast_forwarded:
         return recovered
+    if not config.general.auto_integrate_enabled and recovered is not None:
+        from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+
+        return auto_integrate_after_commit(
+            config_for_owned_integration(config), scope, recovered,
+            conflict_resolver=conflict_resolver, rebase_stop_resolver=rebase_stop_resolver,
+        )
     return None
+
+
+def config_for_owned_integration(config: UnifiedConfig) -> UnifiedConfig:
+    """Disabling new integrations does not abandon an already-owned landing."""
+    return config if config.general.auto_integrate_enabled else config.model_copy(update={
+        "general": config.general.model_copy(update={"auto_integrate_enabled": True}),
+    })

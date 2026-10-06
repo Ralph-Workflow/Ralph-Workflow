@@ -9,10 +9,9 @@ per-shard collection cost without changing the observed behavior.
 
 from __future__ import annotations
 
-import importlib
-from functools import lru_cache
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 from unittest.mock import ANY, MagicMock
 
 import pytest
@@ -23,10 +22,13 @@ from ralph.config.enums import (
 )
 from ralph.config.mcp_loader import McpConfigError
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
+from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import phase_agent_handler as phase_agent_handler_module
 from ralph.pipeline import prompt_prep as prompt_prep_module
+from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent, resume_agent_retry_intent
 from ralph.pipeline.effects import (
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -36,7 +38,6 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -55,43 +56,55 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
-DEVELOPER_ITERATIONS = 5
-REVIEWER_PASSES = 2
-SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
-_AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
 
 
-@lru_cache(maxsize=1)
+class _Callback[T](Protocol):
+    def __call__(self, *_args: object, **_kwargs: object) -> T: ...
+
+
+def _returns[T](value: T) -> _Callback[T]:
+    def result(*_args: object, **_kwargs: object) -> T:
+        return value
+
+    return result
+
+
+def _nothing(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
+def _unchanged_state(state: PipelineState, _context: object) -> PipelineState:
+    return state
+
+
+def _unchanged_reducer(
+    state: PipelineState, *_args: object, **_kwargs: object
+) -> tuple[PipelineState, list[object]]:
+    return state, []
+
+
+def _next_effect[T](effects: Iterator[T]) -> _Callback[T]:
+    def result(*_args: object, **_kwargs: object) -> T:
+        return next(effects)
+
+    return result
+
+
+def _raises(error: BaseException) -> _Callback[None]:
+    def raise_error(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    return raise_error
+
+
+def _phase_transition(_display: object, previous: str, *_args: object, **_kwargs: object) -> str:
+    return previous
+
+
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
-
-
-def _policy_bundle_with_loop_counter(counter_name: str, default_max: int) -> PolicyBundle:
-    bundle = _load_default_policy_bundle()
-    loop_counters = dict(bundle.pipeline.loop_counters)
-    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
-        update={"default_max": default_max}
-    )
-    return bundle.model_copy(
-        update={"pipeline": bundle.pipeline.model_copy(update={"loop_counters": loop_counters})}
-    )
-
-
-def _registry_factory(return_value: object) -> object:
-    class Registry:
-        @classmethod
-        def from_config(cls, config: object) -> object:
-            instance = MagicMock()
-            instance.get.return_value = return_value
-            return instance
-
-    return Registry
 
 
 def _install_runner_display_context(
@@ -104,7 +117,7 @@ def _install_runner_display_context(
         console=console,
         force_width=width,
     )
-    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
+    monkeypatch.setattr(runner_module, "make_display_context", _returns(ctx))
     return console
 
 
@@ -129,67 +142,30 @@ def _unknown_connectivity_monitor() -> MagicMock:
     return monitor
 
 
-def _config_with_agents(
-    *,
-    agent_chains: dict[str, list[str]],
-    agent_drains: dict[str, str],
-) -> object:
-    config = MagicMock()
-    config.agent_chains = agent_chains
-    config.agent_drains = agent_drains
-    return config
-
-
-def _write_minimal_plan_artifacts(
-    root: Path,
-    *,
-    context: str = "Existing plan",
-) -> None:
-    (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
-        encoding="utf-8",
-    )
-    (root / ".agent" / "PLAN.md").write_text(
-        f"# Execution Plan\n\n{context}.\n",
-        encoding="utf-8",
-    )
-
-
-def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
-    artifact_dir = root / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan.draft.md").write_text(
-        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
-        encoding="utf-8",
-    )
-
-
 @pytest.fixture(autouse=True)
 def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(
-        runner_module, "load_policy_or_die", lambda _path: _load_default_policy_bundle()
+        runner_module, "load_policy_or_die", _returns(_load_default_policy_bundle())
     )
-    run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     monkeypatch.setattr(
         run_loop_module,
         "_apply_connectivity_check",
-        lambda current_state, _monitor: current_state,
+        _unchanged_state,
     )
     # Runner-loop unit tests own their injected effects, not startup Git
     # recovery; integration recovery has its own behavioral test modules.
     monkeypatch.setattr(
         run_loop_module,
         "_apply_startup_rebase_outcomes",
-        lambda current_state, _ctx: current_state,
+        _unchanged_state,
     )
-    monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", lambda *_args: None)
-    monkeypatch.setattr(run_loop_module, "_planning_sync_gap", lambda _ctx: None)
+    monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", _nothing)
+    monkeypatch.setattr(run_loop_module, "_planning_sync_gap", _nothing)
     monkeypatch.setattr(
         runner_module,
         "_assert_integration_dispatch_invariant",
-        lambda *_args: None,
+        _nothing,
     )
 
 
@@ -230,7 +206,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: effect,
+            _returns(effect),
         )
 
         def fake_invoke(*_args: object, **_kwargs: object) -> object:
@@ -245,21 +221,17 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "phase_event_after_agent_run",
-            lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
+            _returns(PipelineEvent.AGENT_SUCCESS),
         )
         monkeypatch.setattr(
             runner_module,
             "reducer_reduce",
-            lambda current_state, _event, _policy, recovery=None, routing_timing=None: (
-                current_state,
-                [],
-            ),
+            _unchanged_reducer,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(ckpt, "save", MagicMock())
         display_context = make_display_context()
-        display = runner_module.ParallelDisplay(display_context)
-        registry = MagicMock()
-        registry.get.return_value = None
+        display = ParallelDisplay(display_context)
+        registry = MagicMock(get=MagicMock(return_value=None))
 
         result = runner_module.run_pipeline_step(
             state=state,
@@ -281,8 +253,7 @@ class TestPipelineRunnerLoop:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.phase = "planning"
+        state = PipelineState(phase="planning")
         effects = [SaveCheckpointEffect(), ExitSuccessEffect()]
 
         def stub_determine_effect(*_args: object, **_kwargs: object) -> object:
@@ -307,9 +278,9 @@ class TestPipelineRunnerLoop:
             stub_determine_effect,
         )
         monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer_with_policy)
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", ckpt_save)
 
-        result = runner_module.run(
+        result = run_loop_module.run(
             MagicMock(),
             initial_state=state,
             verbosity=Verbosity.NORMAL,
@@ -331,11 +302,11 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.NORMAL)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.NORMAL)
 
         assert result == 0
         printed = captured_console.export_text()
@@ -344,19 +315,17 @@ class TestPipelineRunnerLoop:
     def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.phase = "planning"
-        interrupted_state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.copy_with.return_value = interrupted_state
+        state = PipelineState(phase="planning")
+        interrupted_state = state.copy_with(interrupted_by_user=True)
 
         def raise_interrupt(*_args: object, **_kwargs: object) -> None:
             raise KeyboardInterrupt
 
         ckpt_save = MagicMock()
         monkeypatch.setattr(runner_module, "determine_effect_from_policy", raise_interrupt)
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", ckpt_save)
 
-        result = runner_module.run(
+        result = run_loop_module.run(
             MagicMock(),
             initial_state=state,
             verbosity=Verbosity.QUIET,
@@ -364,7 +333,6 @@ class TestPipelineRunnerLoop:
         )
 
         assert result == INTERRUPT_EXIT_CODE
-        state.copy_with.assert_called_once_with(interrupted_by_user=True)
         ckpt_save.assert_called_once_with(interrupted_state, ANY)
 
     def test_run_converts_system_exit_during_effect_execution_into_recovery(
@@ -389,22 +357,22 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
         monkeypatch.setattr(
             runner_module,
             "materialize_agent_prompt_if_needed",
-            lambda *_args, **_kwargs: None,
+            _nothing,
         )
         monkeypatch.setattr(
             runner_module,
             "invoke_execute_effect_with_optional_display",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit("boom")),
+            _raises(SystemExit("boom")),
         )
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
 
         def record_saved_state(
@@ -412,9 +380,9 @@ class TestPipelineRunnerLoop:
         ) -> None:
             saved_states.append(saved_state)
 
-        monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
+        monkeypatch.setattr(ckpt, "save", record_saved_state)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         assert saved_states
@@ -448,29 +416,26 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: effect,
+            _returns(effect),
         )
         monkeypatch.setattr(
             runner_module,
             "materialize_agent_prompt_if_needed",
-            lambda *_args, **_kwargs: None,
+            _nothing,
         )
         monkeypatch.setattr(
             runner_module,
             "invoke_execute_effect_with_optional_display",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                McpConfigError("fallback backend 'searxng' is not configured")
-            ),
+            _raises(McpConfigError("fallback backend 'searxng' is not configured")),
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(ckpt, "save", MagicMock())
 
         recovery = RecoveryController(
             options=RecoveryControllerOptions(policy_bundle=bundle, cycle_cap=10)
         )
         display_context = make_display_context()
-        display = runner_module.ParallelDisplay(display_context)
-        registry = MagicMock()
-        registry.get.return_value = None
+        display = ParallelDisplay(display_context)
+        registry = MagicMock(get=MagicMock(return_value=None))
 
         result = runner_module.run_pipeline_step(
             state=state,
@@ -517,11 +482,11 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
+        monkeypatch.setattr(ckpt, "save", record_saved_state)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         assert saved_states
@@ -552,21 +517,21 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
         monkeypatch.setattr(
             runner_module,
             "materialize_prepared_prompt",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit("prompt blew up")),
+            _raises(SystemExit("prompt blew up")),
         )
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
+        monkeypatch.setattr(ckpt, "save", record_saved_state)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         assert saved_states
@@ -606,21 +571,21 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
         monkeypatch.setattr(
             runner_module,
             "execute_fan_out_sync",
-            lambda **_kwargs: (_ for _ in ()).throw(SystemExit("fanout blew up")),
+            _raises(SystemExit("fanout blew up")),
         )
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
+        monkeypatch.setattr(ckpt, "save", record_saved_state)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         assert saved_states
@@ -650,21 +615,21 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
         monkeypatch.setattr(
             runner_module,
             "materialize_prepared_prompt",
-            lambda *_args, **_kwargs: None,
+            _nothing,
         )
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
 
@@ -672,11 +637,11 @@ class TestPipelineRunnerLoop:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.phase = "planning"
-        advanced_state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        advanced_state.phase = "development"
-        state.copy_with.return_value = advanced_state
+        state = PipelineState(
+            phase="planning",
+            last_agent_session_id="stale-session",
+            agent_retry_intent=resume_agent_retry_intent("stale-session"),
+        )
 
         effects = [
             PreparePromptEffect(phase="development", iteration=0),
@@ -690,7 +655,11 @@ class TestPipelineRunnerLoop:
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_FAILURE)
         reducer = MagicMock()
-        ckpt_save = MagicMock()
+        saved: list[PipelineState] = []
+
+        def save_checkpoint(current: PipelineState, _scope: WorkspaceScope) -> None:
+            saved.append(current)
+
         _install_runner_display_context(monkeypatch)
 
         monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
@@ -699,11 +668,11 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "materialize_prepared_prompt",
-            lambda *_args, **_kwargs: None,
+            _nothing,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", save_checkpoint)
 
-        result = runner_module.run(
+        result = run_loop_module.run(
             MagicMock(),
             initial_state=state,
             verbosity=Verbosity.QUIET,
@@ -713,22 +682,18 @@ class TestPipelineRunnerLoop:
         assert result == 0
         # Advancing to a different phase must also clear the next-attempt session
         # action so a stale resume id/intent cannot leak into the new phase.
-        state.copy_with.assert_called_once_with(
-            phase="development",
-            current_drain="development",
-            last_agent_session_id=None,
-            agent_retry_intent=cleared_agent_retry_intent(),
-        )
+        assert len(saved) == 1
+        assert saved[0].phase == "development"
+        assert saved[0].current_drain == "development"
+        assert saved[0].last_agent_session_id is None
+        assert saved[0].agent_retry_intent == cleared_agent_retry_intent()
         execute_effect.assert_not_called()
         reducer.assert_not_called()
-        ckpt_save.assert_called_once_with(advanced_state, ANY)
 
     def test_invoke_agent_effect_materializes_prompt_before_execution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.phase = "planning"
-        state.copy_with.return_value = state
+        state = PipelineState(phase="planning")
 
         effects = [
             InvokeAgentEffect(
@@ -748,16 +713,16 @@ class TestPipelineRunnerLoop:
         ckpt_save = MagicMock()
         _install_runner_display_context(monkeypatch)
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
-        handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_SUCCESS])
+        handle_phase = _returns([PipelineEvent.AGENT_SUCCESS])
 
         monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
         monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
         monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
         monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
         monkeypatch.setattr(runner_module, "reducer_reduce", MagicMock(return_value=(state, None)))
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         materialize.assert_called_once()
@@ -768,8 +733,7 @@ class TestPipelineRunnerLoop:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
-        state.phase = "planning"
+        state = PipelineState(phase="planning")
 
         effects = [
             InvokeAgentEffect(
@@ -786,9 +750,19 @@ class TestPipelineRunnerLoop:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
-        reducer = MagicMock(return_value=(state, []))
+        received: list[tuple[PipelineState, object, object, dict[str, object]]] = []
+
+        def reducer(
+            current: PipelineState,
+            event: object,
+            policy: object,
+            **kwargs: object,
+        ) -> tuple[PipelineState, list[object]]:
+            received.append((current, event, policy, kwargs))
+            return state, []
+
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
-        handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_SUCCESS])
+        handle_phase = _returns([PipelineEvent.AGENT_SUCCESS])
         ckpt_save = MagicMock()
         _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
@@ -797,18 +771,18 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
         monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
         monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
-        monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+        monkeypatch.setattr(runner_module, "load_policy_or_die", _returns(policy_bundle))
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = run_loop_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
-        reducer.assert_called_once()
-        args, kwargs = reducer.call_args
-        assert args[1] == PipelineEvent.AGENT_SUCCESS
-        assert args[2] == policy_bundle.pipeline
-        assert kwargs.get("recovery") is not None
+        assert len(received) == 1
+        _current, event, policy, kwargs = received[0]
+        assert event == PipelineEvent.AGENT_SUCCESS
+        assert policy == policy_bundle.pipeline
+        assert isinstance(kwargs.get("recovery"), RecoveryController)
 
     def test_run_uses_phase_handler_event_after_agent_execution(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -841,9 +815,19 @@ class TestPipelineRunnerLoop:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
-        reducer = MagicMock(return_value=(failed_state, []))
+        received: list[tuple[PipelineState, object, object, dict[str, object]]] = []
+
+        def reducer(
+            current: PipelineState,
+            event: object,
+            policy: object,
+            **kwargs: object,
+        ) -> tuple[PipelineState, list[object]]:
+            received.append((current, event, policy, kwargs))
+            return failed_state, []
+
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
-        handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_FAILURE])
+        handle_phase = _returns([PipelineEvent.AGENT_FAILURE])
         ckpt_save = MagicMock()
         _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
@@ -852,11 +836,11 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
         monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
         monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
-        monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+        monkeypatch.setattr(runner_module, "load_policy_or_die", _returns(policy_bundle))
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
-        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(ckpt, "save", ckpt_save)
 
-        result = runner_module.run(
+        result = run_loop_module.run(
             MagicMock(),
             initial_state=planning_state,
             verbosity=Verbosity.QUIET,
@@ -864,12 +848,12 @@ class TestPipelineRunnerLoop:
         )
 
         assert result == 0
-        reducer.assert_called_once()
-        args, kwargs = reducer.call_args
-        assert args[0] is planning_state
-        assert args[1] == PipelineEvent.AGENT_FAILURE
-        assert args[2] == policy_bundle.pipeline
-        assert kwargs.get("recovery") is not None
+        assert len(received) == 1
+        current, event, policy, kwargs = received[0]
+        assert current is planning_state
+        assert event == PipelineEvent.AGENT_FAILURE
+        assert policy == policy_bundle.pipeline
+        assert isinstance(kwargs.get("recovery"), RecoveryController)
 
     def test_run_notifies_subscriber_with_initial_state_before_loop(
         self, monkeypatch: pytest.MonkeyPatch
@@ -895,24 +879,24 @@ class TestPipelineRunnerLoop:
         effects = iter([PreparePromptEffect(phase="planning", iteration=0), ExitSuccessEffect()])
 
         _install_runner_display_context(monkeypatch)
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(ckpt, "save", MagicMock())
         monkeypatch.setattr(
             runner_module,
             "call_determine_effect_from_policy",
-            lambda *_args, **_kwargs: next(effects),
+            _next_effect(effects),
         )
         monkeypatch.setattr(
             runner_module,
             "materialize_prepared_prompt",
-            lambda *_args, **_kwargs: None,
+            _nothing,
         )
         monkeypatch.setattr(
             runner_module,
             "emit_phase_transition_if_changed",
-            lambda *args, **kwargs: args[1],
+            _phase_transition,
         )
 
-        runner_module.run(
+        run_loop_module.run(
             MagicMock(),
             initial_state=state,
             dashboard_subscriber=_RecordingSubscriber(),

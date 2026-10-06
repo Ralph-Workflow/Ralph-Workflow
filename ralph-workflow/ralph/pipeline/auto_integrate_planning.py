@@ -9,12 +9,12 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_outcome import record_conflict
-from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
     recovery_retained_record,
 )
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
+from ralph.pipeline.integration_resolution import retained_integration_reason
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -41,9 +41,10 @@ def integrate_before_planning(
     cannot sweep staged agent work into history.
     """
     root = scope.root
-    if not config.general.auto_integrate_enabled:
-        return None
-    if read_record(root) is not None:
+    if retained_integration_reason(root) is not None:
+        from ralph.pipeline._integration_continuation import config_for_owned_integration
+
+        config = config_for_owned_integration(config)
         recovered = recover_incomplete_integration(
             scope, config=config, conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
@@ -52,6 +53,8 @@ def integrate_before_planning(
             return recovered
         if recovered is not None and recovered.fast_forwarded:
             return recovered
+    if not config.general.auto_integrate_enabled:
+        return None
     target = resolve_integration_target(config, root)
     if target is None or _worktree_is_clean(root):
         return auto_integrate_after_commit(
