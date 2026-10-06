@@ -60,6 +60,8 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
         "unresolved_integration_carried": False,
         "resolution_exhausted": False,
         "resolution_exhaustion_reason": None,
+        "recovery_record_retained": False,
+        "legacy_checkpoint_blocked": False,
     }
     if clear_strategy:
         update.update(

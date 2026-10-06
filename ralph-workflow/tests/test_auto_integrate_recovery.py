@@ -574,7 +574,7 @@ def test_recovery_retains_record_on_reset_failure(
     def _failing_reset(repo_root: object, sha: str) -> None:
         raise RuntimeError("simulated reset_hard failure")
 
-    monkeypatch.setattr(_ai_mod, "reset_hard", _failing_reset)
+    monkeypatch.setattr(_ai_mod, "reset_keep", _failing_reset)
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None
     assert outcome.last_action == "skipped", (

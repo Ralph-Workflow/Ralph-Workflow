@@ -1,13 +1,7 @@
-"""Planning never starts on a branch behind its integration target.
+"""Planning requires bidirectional synchronization with its integration target.
 
-The gate reads ground truth (``merge-base --is-ancestor <target> HEAD``),
-never an integration record: observed 2026-10-05, a refused endpoint merge
-left a clean tree, the record-based gate called that "resolved", and
-planning ran 40 commits behind ``main``. When the branch is behind, the
-gate itself integrates -- preserving uncommitted work first, then running
-the integration WITH the conflict resolver -- and retries up to the
-resolver budget. Nobody else is there to do it. Only a spent budget stops
-the run, and it never plans behind.
+Dirty completed work routes through normal policy commit phases. An unchanged
+integration refusal suspends dispatch and yields to cooldown before retrying.
 """
 
 from __future__ import annotations
@@ -18,7 +12,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.pipeline import run_loop
-from ralph.pipeline.auto_integrate_remote_sync import MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 
@@ -36,7 +29,7 @@ def _ctx(tmp_path: Path, *, enabled: bool = True, target: str = "main") -> Simpl
         policy_bundle=SimpleNamespace(
             pipeline=SimpleNamespace(
                 entry_phase="planning",
-                phases={"development": SimpleNamespace(drain="development")},
+                phases={"development": SimpleNamespace(drain="development", role="execution")},
             )
         ),
         active_display=None,
@@ -48,9 +41,9 @@ class _Repo:
 
     def __init__(self, *, contained: bool | None, target_exists: bool = True) -> None:
         self.contained = contained
+        self.landed = True
         self.target_exists = target_exists
         self.integrations = 0
-        self.preserved = 0
 
 
 @pytest.fixture
@@ -61,14 +54,11 @@ def repo(monkeypatch: pytest.MonkeyPatch) -> _Repo:
         lambda _root, _name: ("f" * 40 if fake.target_exists else None, True),
     )
     monkeypatch.setattr(
-        "ralph.git.merge_obstructions.ancestry_state", lambda _root, _anc, _desc: fake.contained
+        "ralph.git.merge_obstructions.ancestry_state",
+        lambda _root, ancestor, _desc: fake.landed if ancestor == "HEAD" else fake.contained,
     )
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda _s, _c: None)
 
-    def _preserve(_root: object, _target: object) -> None:
-        fake.preserved += 1
-
-    monkeypatch.setattr(run_loop, "_preserve_uncommitted_work", _preserve)
     return fake
 
 
@@ -79,6 +69,7 @@ def _integrate_with(
         repo.integrations += 1
         if lands:
             repo.contained = True
+            repo.landed = True
             return RebaseState(last_action="merged", last_target="main")
         return RebaseState(last_action="conflict", last_reason=reason, last_target="main")
 
@@ -110,8 +101,37 @@ def test_behind_branch_is_integrated_before_planning(
 
     assert blocked is None
     assert repo.integrations == 1
-    assert repo.preserved == 1, "uncommitted work is preserved before integrating"
     assert after.rebase.last_action == "merged"
+
+
+def test_feature_commits_must_land_on_target_before_planning(
+    repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo.landed = False
+    _integrate_with(monkeypatch, repo, lands=True, reason="")
+
+    _after, blocked = run_loop._ensure_planning_in_sync(
+        PipelineState(phase="planning"), _ctx(tmp_path), "planning"
+    )
+
+    assert blocked is None
+    assert repo.integrations == 1
+
+
+def test_failed_landing_blocks_planning_and_persists_critical_error(
+    repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo.landed = False
+    _integrate_with(monkeypatch, repo, lands=False, reason="target worktree busy")
+
+    after, blocked = run_loop._ensure_planning_in_sync(
+        PipelineState(phase="planning"), _ctx(tmp_path), "planning"
+    )
+
+    assert blocked is not None
+    assert blocked[2] == 0
+    assert "CRITICAL" in (after.last_error or "")
+    assert "not landed" in (after.last_error or "")
 
 
 def test_integration_is_retried_until_it_lands(
@@ -136,7 +156,7 @@ def test_integration_is_retried_until_it_lands(
     assert repo.integrations == 2
 
 
-def test_behind_branch_stops_only_after_the_resolver_budget_is_spent(
+def test_unchanged_obstruction_yields_to_cooldown_without_spending_all_attempts(
     repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repo.contained = False
@@ -152,8 +172,8 @@ def test_behind_branch_stops_only_after_the_resolver_budget_is_spent(
     )
 
     assert blocked is not None
-    assert blocked[2] == 1
-    assert repo.integrations == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    assert blocked[2] == 0
+    assert repo.integrations == 2
     assert "does not contain the tip of 'main'" in (after.last_error or "")
     assert "untracked files would be overwritten: a.txt" in (after.last_error or "")
 

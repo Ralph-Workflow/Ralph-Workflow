@@ -30,7 +30,7 @@ from ralph.git.merge import (
     merge_target_into_current,
     observe_branch_sha,
     paths_with_conflict_markers,
-    reset_hard,
+    reset_keep,
     worktree_for_branch,
 )
 
@@ -178,13 +178,12 @@ def test_merge_target_into_current_conflict_aborts_cleanly(tmp_git_repo: Path) -
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_sha
 
 
-def test_reset_hard_restores_branch_to_pre_integration_sha(tmp_git_repo: Path) -> None:
-    """``reset_hard`` moves HEAD back to the supplied SHA and clears the tree."""
+def test_reset_keep_restores_branch_to_pre_integration_sha(tmp_git_repo: Path) -> None:
     original_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     _commit_file(tmp_git_repo, "temp.txt", "temporary\n", "temp commit")
     new_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert new_sha != original_sha
-    reset_hard(tmp_git_repo, original_sha)
+    reset_keep(tmp_git_repo, original_sha)
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == original_sha
     assert not (tmp_git_repo / "temp.txt").exists()
     assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""

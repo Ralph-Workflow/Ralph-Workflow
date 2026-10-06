@@ -105,7 +105,6 @@ def _install_seams(
     )
     monkeypatch.setattr(loop_module, "rebase_in_progress_at", repo.in_progress)
     monkeypatch.setattr(loop_module, "staged_conflict_marker_paths", lambda _root: [])
-    monkeypatch.setattr(loop_module, "_replay_produced_nothing", lambda _root, _stop: False)
     if repo.never_finishes:
         monkeypatch.setattr(loop_module, "record_landed_stop", lambda _root, _stop: None)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
@@ -187,6 +186,7 @@ def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
     empty_stop_handled = {"value": False}
 
     def _continue_after_empty_stop(root: Path, *, skip_empty: bool = True) -> None:
+        assert skip_empty
         if not empty_stop_handled["value"]:
             empty_stop_handled["value"] = True
         repo.continue_rebase(root)

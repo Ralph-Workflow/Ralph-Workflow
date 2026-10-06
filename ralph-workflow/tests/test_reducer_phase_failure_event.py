@@ -427,17 +427,19 @@ class TestPhaseFailureEvent:
         assert effects == []
 
     def test_integration_conflict_failure_advances_durable_strategy_ladder(self) -> None:
-        """The reducer, not the run loop, owns conflict-strategy progression."""
+        """Integration failures advance durable recovery without terminating development."""
         state = PipelineState(phase="development")
         reason = "integration conflict requires resolution: unresolved shared.txt"
 
-        first, _ = _reduce(
+        first, effects = _reduce(
             state,
             PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
             _basic_pipeline_policy(),
         )
 
-        assert first.phase == "failed_terminal"
+        assert first.phase == "development"
+        assert effects == []
+        assert first.last_retry_delay_ms > 0
         assert first.rebase.conflict_strategy_index == 1
         assert first.rebase.conflict_strategies_tried == (
             f"rebase_resolver: development: {reason}",
@@ -454,13 +456,19 @@ class TestPhaseFailureEvent:
 
         current = first
         for _ in range(3):
-            current, _ = _reduce(
+            current, effects = _reduce(
                 current,
                 PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
                 _basic_pipeline_policy(),
             )
 
-        assert current.phase == "failed_terminal"
+            current = PipelineState.model_validate_json(current.model_dump_json())
+            assert current.phase == "development"
+            assert effects == []
+
+        assert current.phase == "development"
+        assert current.last_error == f"development: {reason}"
+        assert current.recovery_epoch == 4
         assert current.rebase.conflict_strategy_index == 4
         assert current.rebase.resolution_exhausted is True
         assert current.rebase.resolution_exhaustion_reason == "; ".join(

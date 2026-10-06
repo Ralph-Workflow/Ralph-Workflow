@@ -213,9 +213,26 @@ Auto-integration keeps a feature branch and its configured local mainline in
 lockstep. It runs at five seams: startup, commit, phase boundary, parallel
 worker startup/boundary, and the Ralph-managed parallel fan-out join.
 
-It never force-moves a ref, force-pushes, pushes a feature branch, leaves a
-rebase or merge in progress, or fails a run because remote synchronization
-fails. Local integration is on by default. Ralph Workflow refreshes the configured
+Integration rebases the feature onto the target, falls back to an endpoint
+merge when resolution fails, and fast-forwards the target to the resulting
+feature tip. Planning waits until both committed tips are synchronized.
+An unsuccessful landing raises a critical log and transcript alarm, saves
+recovery state, and retries instead of terminating the pipeline. Interrupted
+operations retain their durable record and backup refs until recovery succeeds.
+
+Ralph Workflow does not stash unfinished edits or sweep them into preservation commits.
+Dirty files that Git refuses to merge remain intact. When additional pending
+work blocks integration, recovery uses the configured commit-cleanup and commit
+phases before retrying planning synchronization. Repeated identical integration failures
+yield to a retry cooldown instead of exhausting the resolver budget in a tight loop.
+Crash recovery uses
+`git reset --keep`, which refuses to overwrite local edits. A verified conflict
+resolution may accept the target version of a file. Once Git proves the
+integration finished and the feature contains the target, Ralph Workflow
+fast-forwards the target to the resulting feature tip.
+
+It never force-pushes or pushes a feature branch. Local integration is on by
+default. Ralph Workflow refreshes the configured
 remote at every seam when it exists; set `auto_integrate_remote_enabled = false`
 for local-only operation, or set a positive interval to throttle probes.
 

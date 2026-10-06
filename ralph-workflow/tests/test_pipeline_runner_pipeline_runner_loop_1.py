@@ -36,6 +36,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -184,6 +185,7 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
         lambda current_state, _ctx: current_state,
     )
     monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", lambda *_args: None)
+    monkeypatch.setattr(run_loop_module, "_planning_sync_gap", lambda _ctx: None)
     monkeypatch.setattr(
         runner_module,
         "_assert_integration_dispatch_invariant",
@@ -279,7 +281,7 @@ class TestPipelineRunnerLoop:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        state = MagicMock()
+        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.phase = "planning"
         effects = [SaveCheckpointEffect(), ExitSuccessEffect()]
 
@@ -342,9 +344,9 @@ class TestPipelineRunnerLoop:
     def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        state = MagicMock()
+        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.phase = "planning"
-        interrupted_state = MagicMock()
+        interrupted_state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.copy_with.return_value = interrupted_state
 
         def raise_interrupt(*_args: object, **_kwargs: object) -> None:
@@ -670,9 +672,9 @@ class TestPipelineRunnerLoop:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        state = MagicMock()
+        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.phase = "planning"
-        advanced_state = MagicMock()
+        advanced_state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         advanced_state.phase = "development"
         state.copy_with.return_value = advanced_state
 
@@ -724,7 +726,7 @@ class TestPipelineRunnerLoop:
     def test_invoke_agent_effect_materializes_prompt_before_execution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        state = MagicMock()
+        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.phase = "planning"
         state.copy_with.return_value = state
 
@@ -766,7 +768,7 @@ class TestPipelineRunnerLoop:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        state = MagicMock()
+        state = MagicMock(rebase=RebaseState(), integration_commit_resume_phase=None)
         state.phase = "planning"
 
         effects = [

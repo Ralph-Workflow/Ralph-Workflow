@@ -13,7 +13,7 @@ from ralph.git.merge import (
     branch_sha,
     is_ancestor,
     merge_state,
-    reset_hard,
+    reset_keep,
 )
 from ralph.git.operations import is_repo_clean
 from ralph.git.rebase.rebase import rebase_in_progress
@@ -81,6 +81,7 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
 )
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
@@ -614,7 +615,7 @@ def _land_and_reconcile(
         # the right discriminator: a stranded feature branch
         # raises; an expected "advanced concurrently" refusal
         # matches the recorded pre-attempt SHA and passes.
-        expected_head_sha_for_verify = record.pre_feature_sha
+        expected_head_sha_for_verify = feature_sha
     try:
         post_attempt_verify(
             workspace_root,
@@ -645,8 +646,8 @@ def _land_and_reconcile(
             refresh,
         )
     # R6/AC-06: the invariant passed. Safe to clean up.
-    _delete_rebase_backup_refs(workspace_root)
     if ok:
+        _delete_rebase_backup_refs(workspace_root)
         _clear_record(workspace_root)
         return record_refresh(
             maybe_push_target(
@@ -697,6 +698,28 @@ def recover_incomplete_integration(
     *,
     config: UnifiedConfig | None = None,
 ) -> RebaseState | None:
+    """Recover owned Git operations under an exclusive worktree lease.
+
+    ``workspace_scope`` selects the repository; optional ``config`` controls
+    target freshness and publication. Return the recovery verdict, or ``None``
+    when no operation needs recovery. Contention retains recovery state for
+    retry. Restoration refuses to overwrite unfinished edits, and a durable
+    record survives until restoration or target landing is proven.
+    """
+    with integration_transaction(Path(workspace_scope.root)) as acquired:
+        if not acquired:
+            return _record_skip(
+                reason="integration worktree busy; recovery will retry", target=None,
+                record_retained=True,
+            )
+        return _recover_incomplete_integration_owned(workspace_scope, config=config)
+
+
+def _recover_incomplete_integration_owned(
+    workspace_scope: WorkspaceScope,
+    *,
+    config: UnifiedConfig | None = None,
+) -> RebaseState | None:
     """Recover from an interrupted integration at run-loop startup.
 
     Behavior (AC-11):
@@ -714,9 +737,9 @@ def recover_incomplete_integration(
       absent) rather than as "nothing to abort".
     * If ``record.phase == 'integrating'``: the rebase/merge never
       completed → restore the feature branch to ``pre_feature_sha``
-      via ``reset_hard``. The record is cleared ONLY after
-      ``reset_hard`` succeeds AND no owned engine op remains; if
-      reset_hard raises or any prior abort left an in-progress
+      via ``reset_keep``. The record is cleared ONLY after
+      ``reset_keep`` succeeds AND no owned engine op remains; if
+      reset_keep raises or any prior abort left an in-progress
       operation, the record is RETAINED for retry.
     * If ``record.phase == 'integrated'``: the rebase/merge already
       completed and only the fast-forward may be unfinished →
@@ -801,7 +824,7 @@ def recover_incomplete_integration(
                 operation_root=operation_root,
                 abort_failed=abort_failed,
                 merge_state=merge_state,
-                reset_hard=reset_hard,
+                reset_keep=reset_keep,
                 rebase_in_progress=rebase_in_progress,
                 head_matches_sha=_head_matches_sha,
                 clear_record=_clear_record,
@@ -819,16 +842,8 @@ def recover_incomplete_integration(
             )
         return _continue_fast_forward_from_record(root, record, config)
     except Exception as exc:
-        # Deliberately NOT marked ``record_retained``. This is the
-        # catch-all for an unexpected failure anywhere above, including
-        # before the record was even read, so it cannot honestly claim
-        # ownership of a record it may never have seen. Claiming it
-        # would gate the startup catch-up behind a fault that has no
-        # bounded end, which is the opposite of recovery's fail-open
-        # contract. The named retention branches above are the ones that
-        # know a record is on disk.
         logger.warning("recover_incomplete_integration failed: {}", exc)
-        return _record_skip(reason=f"recovery failed: {exc}", target=None)
+        return _record_skip(reason=f"recovery failed: {exc}", target=None, record_retained=True)
 
 
 # ----- AC-14 catalog evidence -----

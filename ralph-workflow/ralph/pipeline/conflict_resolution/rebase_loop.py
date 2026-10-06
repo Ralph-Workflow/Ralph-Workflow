@@ -44,7 +44,6 @@ from ralph.git.merge import (
 from ralph.git.rebase.rebase import get_conflicted_files
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
-    EmptyReplayError,
     NoRebaseInProgressError,
     RebaseContinuationError,
     continue_rebase_at,
@@ -763,23 +762,7 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
       never got the multi-stop resolution this module exists to provide.
     """
     try:
-        # `skip_empty=False`: an emptied replay here is the resolver's
-        # doing, and skipping it deletes a commit its author wrote while
-        # the rebase reports success. The subject-string check below
-        # cannot be the guard -- two commits share a subject often
-        # enough (`wip`, a backport, the mainline commit this one
-        # conflicted with) -- and by the time it looks, the commit is
-        # already gone.
-        continue_rebase_at(root, skip_empty=False)
-    except EmptyReplayError:
-        logger.warning(
-            "conflict_resolution: resolving stop {} ({}) left nothing to replay; refusing to "
-            "drop the commit '{}' from history",
-            stop.stop_index,
-            stop.sha[:8],
-            stop.subject,
-        )
-        return False
+        continue_rebase_at(root, skip_empty=True)
     except NoRebaseInProgressError:
         record_landed_stop(root, stop)
         return True
@@ -797,47 +780,7 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
             exc,
         )
         return False
-    if _replay_produced_nothing(root, stop):
-        return False
     record_landed_stop(root, stop)
-    return True
-
-
-def _replay_produced_nothing(root: Path, stop: RebaseStop) -> bool:
-    """Whether continuing DROPPED the replayed commit instead of landing it.
-
-    A resolution that leaves the replay identical to what it is being
-    replayed onto makes git drop the commit -- and the loop counted that
-    as the stop landing, so the commit disappeared from history while
-    the rebase reported success. Deciding to keep one side of a
-    modify/delete is the ordinary way to reach it.
-
-    Only a stop whose commit is genuinely gone is refused: a rebase that
-    is still in progress, or whose log cannot be read, is left to the
-    existing handling.
-    """
-    # NOT gated on the rebase having finished: `git rebase --continue`
-    # answers an emptied replay with `--skip`, which drops the commit and
-    # stops on the NEXT one -- so a mid-rebase stop is exactly where a
-    # commit disappears, and returning early here confined the guard to
-    # the last stop of a rebase.
-    result = run_git(
-        ("log", "--format=%s", "-n", "200"),
-        cwd=root,
-        label="git-replayed-subjects",
-    )
-    if result.returncode != 0 or not stop.subject or not result.stdout.strip():
-        # No readable log is not evidence that the commit is gone.
-        return False
-    if stop.subject in {line.strip() for line in result.stdout.splitlines()}:
-        return False
-    logger.warning(
-        "conflict_resolution: the resolution of stop {} ({}) left nothing to replay, so git "
-        "dropped the commit '{}'; refusing to report that as a landed stop",
-        stop.stop_index,
-        stop.sha[:8],
-        stop.subject,
-    )
     return True
 
 

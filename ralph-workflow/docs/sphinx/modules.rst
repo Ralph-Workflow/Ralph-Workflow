@@ -1291,6 +1291,20 @@ ralph.pipeline.auto_integrate_recovery
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_planning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_planning
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_transaction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_transaction
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_refresh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

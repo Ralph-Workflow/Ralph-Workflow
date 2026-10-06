@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from typing import cast
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
 
-from ralph.pipeline import run_loop
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
+from tests.test_run_loop_failed_ladder_terminal import run_recovery_scenario
+
+if TYPE_CHECKING:
+    from pytest import MonkeyPatch
 
 
 def _policy() -> PipelinePolicy:
@@ -33,8 +34,10 @@ def _policy() -> PipelinePolicy:
     )
 
 
-def test_strategy_escalation_regression_exhausts_once_with_full_history() -> None:
-    """S-8: every failed rung advances, then the exhausted run exits once."""
+def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Every failed rung advances; exhaustion still permits delayed recovery."""
     reason = "integration conflict requires resolution: unresolved shared.txt"
     state = PipelineState(phase="development")
     policy = _policy()
@@ -55,21 +58,13 @@ def test_strategy_escalation_regression_exhausts_once_with_full_history() -> Non
         "resolver_with_history",
     ]
 
-    display = MagicMock()
-    ctx = cast(
-        "run_loop._LoopContext",
-        SimpleNamespace(
-        policy_bundle=SimpleNamespace(pipeline=policy),
-            active_display=display,
-        ),
-    )
-    result, previous_phase, exit_code = run_loop._run_inner_loop_after_startup(
-        state, ctx, "development"
-    )
+    observed = run_recovery_scenario(monkeypatch, state)
 
-    assert exit_code == 1
-    assert previous_phase == "development"
-    assert result.last_error is not None
-    assert state.rebase.resolution_exhaustion_reason is not None
-    assert state.rebase.resolution_exhaustion_reason in result.last_error
-    display.emit.assert_called_once()
+    assert observed.exit_code == 0
+    assert observed.waits and all(delay > 0 for delay in observed.waits)
+    assert [dispatched.phase for dispatched in observed.dispatched] == ["development"]
+    assert any("CRITICAL" in warning for warning in observed.warnings)
+    assert (
+        observed.saved[0].rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
+    )
+    assert observed.result.rebase.integration_unresolved is False

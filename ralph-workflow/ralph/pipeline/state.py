@@ -117,6 +117,7 @@ class PipelineState(_FrozenPipelineStateModel):
 
     phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
+    integration_commit_resume_phase: PipelinePhase | None = None
 
     # Review outcome tracking (replaces direct review_issues_found writes)
     review_outcome: str | None = None

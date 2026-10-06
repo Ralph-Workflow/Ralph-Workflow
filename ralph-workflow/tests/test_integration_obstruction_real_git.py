@@ -4,8 +4,8 @@ Regression 2026-10-05: 22 untracked files that ``main`` also tracks made
 ``git merge main`` refuse to start (exit 2). No merge ran, so no resolver
 could act, and planning began 40 commits behind ``main``. Every refusal
 shape is driven through real git here: identical leftovers are cleared,
-differing local work is preserved in a commit and handed to the resolver,
-and the branch ends up containing the target.
+differing local work remains untouched, and safe integrations land the
+committed feature tip on the target.
 
 Registered in ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so ``make verify``
 runs it even though it crosses the real git boundary.
@@ -15,8 +15,12 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStop
 
 from ralph.git.merge import merge_in_progress, merge_target_into_current
 
@@ -85,104 +89,168 @@ def test_merge_refusal_over_differing_untracked_file_keeps_it_and_names_it(
     assert merge_in_progress(tmp_git_repo) is False
 
 
-def test_refused_merge_hands_preserved_local_work_to_the_resolver(tmp_git_repo: Path) -> None:
-    """Regression 2026-10-05: a refusal must end in a resolver call, not a stale branch.
-
-    The differing untracked file is committed (never deleted), the merge
-    runs again, the add/add overlap is a real conflict, and the resolver --
-    the agent in production -- reconciles it. The branch then contains the
-    target.
-    """
-    from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
-
-    base = _behind_with_untracked_copy(tmp_git_repo, "local work\n")
-    calls: list[str] = []
-
-    def _resolver(root: Path, target: str) -> bool:
-        calls.append(target)
-        (root / "incoming.txt").write_text("local work\nmainline body\n", encoding="utf-8")
-        return True
-
-    result = endpoint_merge_with_resolution(tmp_git_repo, base, _resolver)
-
-    assert result is not None
-    assert result.outcome == "success"
-    assert calls == [base]
-    assert _run(tmp_git_repo, "merge-base", "--is-ancestor", base, "HEAD").returncode == 0
-    assert (tmp_git_repo / "incoming.txt").read_text(encoding="utf-8") == (
-        "local work\nmainline body\n"
-    )
-    log = _run(tmp_git_repo, "log", "--format=%s").stdout
-    assert "preserve local work blocking integration" in log
-
-
-def test_refused_merge_over_uncommitted_tracked_edit_reaches_the_resolver(
-    tmp_git_repo: Path,
+@pytest.mark.parametrize("target_advanced", [False, True])
+def test_planning_lands_commits_without_committing_dirty_edits(
+    tmp_git_repo: Path, target_advanced: bool
 ) -> None:
-    """``local changes would be overwritten`` is preserved and resolved the same way."""
-    from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_planning import integrate_before_planning
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
 
     base = _base_branch(tmp_git_repo)
-    _commit_file(tmp_git_repo, "shared.txt", "original\n", "seed shared")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _run(tmp_git_repo, "checkout", base)
-    _commit_file(tmp_git_repo, "shared.txt", "mainline\n", "mainline edits shared")
-    _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "shared.txt").write_text("uncommitted local\n", encoding="utf-8")
+    _commit_file(tmp_git_repo, "tracked.txt", "base\n", "seed tracked")
+    assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
+    _commit_file(tmp_git_repo, "feature.txt", "feature\n", "feature work")
+    if target_advanced:
+        assert _run(tmp_git_repo, "checkout", base).returncode == 0
+        _commit_file(tmp_git_repo, "incoming.txt", "mainline\n", "mainline work")
+        assert _run(tmp_git_repo, "checkout", "feature").returncode == 0
+    (tmp_git_repo / "tracked.txt").write_text("unfinished\n", encoding="utf-8")
+    (tmp_git_repo / "loose.txt").write_text("untracked\n", encoding="utf-8")
 
-    def _resolver(root: Path, _target: str) -> bool:
-        (root / "shared.txt").write_text("uncommitted local + mainline\n", encoding="utf-8")
-        return True
-
-    result = endpoint_merge_with_resolution(tmp_git_repo, base, _resolver)
-
-    assert result is not None
-    assert result.outcome == "success"
-    assert _run(tmp_git_repo, "merge-base", "--is-ancestor", base, "HEAD").returncode == 0
-    assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == (
-        "uncommitted local + mainline\n"
+    outcome = integrate_before_planning(
+        UnifiedConfig.model_validate({"general": {"auto_integrate_target": base}}),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
     )
 
-
-def test_preserve_uncommitted_tracked_work_commits_edits_only(tmp_git_repo: Path) -> None:
-    """The planning gate's dirty-tree preservation keeps edits and leaves untracked files."""
-    from ralph.git.merge_obstructions import preserve_uncommitted_tracked_work
-
-    _commit_file(tmp_git_repo, "tracked.txt", "v1\n", "seed tracked")
-    (tmp_git_repo / "tracked.txt").write_text("v2\n", encoding="utf-8")
-    (tmp_git_repo / "untracked.txt").write_text("loose\n", encoding="utf-8")
-
-    assert preserve_uncommitted_tracked_work(tmp_git_repo, "main") is True
-    assert _run(tmp_git_repo, "show", "HEAD:tracked.txt").stdout == "v2\n"
-    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == "?? untracked.txt"
-    assert preserve_uncommitted_tracked_work(tmp_git_repo, "main") is False
+    assert outcome is not None and outcome.fast_forwarded
+    assert _run(tmp_git_repo, "rev-parse", base).stdout == _run(tmp_git_repo, "rev-parse", "HEAD").stdout
+    assert _run(tmp_git_repo, "show", f"{base}:feature.txt").stdout == "feature\n"
+    assert _run(tmp_git_repo, "show", f"{base}:tracked.txt").stdout == "base\n"
+    assert (tmp_git_repo / "tracked.txt").read_text(encoding="utf-8") == "unfinished\n"
+    assert (tmp_git_repo / "loose.txt").read_text(encoding="utf-8") == "untracked\n"
 
 
-def test_a_hook_rejecting_snapshot_commits_cannot_strand_the_branch(tmp_git_repo: Path) -> None:
-    """Unattended runs cannot wait for a human: preservation commits bypass hooks.
+@pytest.mark.parametrize("resolve_rebase", [False, True])
+def test_verified_resolution_using_target_version_lands_and_synchronizes(
+    tmp_git_repo: Path, resolve_rebase: bool,
+) -> None:
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
 
-    The hook here rejects every non-merge commit. The preservation commit
-    only snapshots work that already exists, so it skips hooks; the merge
-    commit, which carries the resolver's new content, still runs them.
-    """
-    from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
+    base = _base_branch(tmp_git_repo)
+    _commit_file(tmp_git_repo, "shared.txt", "original\n", "seed")
+    assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
+    _commit_file(tmp_git_repo, "shared.txt", "feature work\n", "feature work")
+    _commit_file(tmp_git_repo, "feature.txt", "nonconflicting feature\n", "additional feature")
+    assert _run(tmp_git_repo, "checkout", base).returncode == 0
+    _commit_file(tmp_git_repo, "shared.txt", "mainline\n", "mainline")
+    assert _run(tmp_git_repo, "checkout", "feature").returncode == 0
 
-    base = _behind_with_untracked_copy(tmp_git_repo, "local work\n")
-    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--absolute-git-dir").stdout.strip())
-    hook = git_dir / "hooks" / "pre-commit"
-    hook.parent.mkdir(parents=True, exist_ok=True)
-    hook.write_text(
-        '#!/bin/sh\ntest -f "$(git rev-parse --git-dir)/MERGE_HEAD" && exit 0\nexit 1\n',
-        encoding="utf-8",
-    )
-    hook.chmod(0o755)
-
-    def _resolver(root: Path, _target: str) -> bool:
-        (root / "incoming.txt").write_text("reconciled\n", encoding="utf-8")
+    def discard_feature(root: Path, _target: str) -> bool:
+        (root / "shared.txt").write_text("mainline\n", encoding="utf-8")
         return True
 
-    result = endpoint_merge_with_resolution(tmp_git_repo, base, _resolver)
+    def choose_target_at_stop(root: Path, _target: str, _stop: RebaseStop) -> bool:
+        (root / "shared.txt").write_text("mainline\n", encoding="utf-8")
+        return True
 
-    assert result is not None
-    assert result.outcome == "success"
-    assert _run(tmp_git_repo, "merge-base", "--is-ancestor", base, "HEAD").returncode == 0
+    outcome = auto_integrate_after_commit(
+        UnifiedConfig.model_validate({"general": {"auto_integrate_target": base}}),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=discard_feature,
+        rebase_stop_resolver=choose_target_at_stop if resolve_rebase else None,
+    )
+
+    assert outcome is not None and outcome.fast_forwarded
+    if resolve_rebase:
+        assert outcome.last_action == "rebased"
+    assert _run(tmp_git_repo, "rev-parse", base).stdout == _run(tmp_git_repo, "rev-parse", "HEAD").stdout
+    assert _run(tmp_git_repo, "show", f"{base}:shared.txt").stdout == "mainline\n"
+    assert _run(tmp_git_repo, "show", f"{base}:feature.txt").stdout == "nonconflicting feature\n"
+    from ralph.git.rebase.rebase import rebase_in_progress
+
+    assert not rebase_in_progress(tmp_git_repo)
+    assert not merge_in_progress(tmp_git_repo)
+
+
+def test_integration_transactions_exclude_overlapping_worktree_mutations(tmp_git_repo: Path) -> None:
+    from ralph.pipeline.auto_integrate_transaction import integration_transaction
+
+    with integration_transaction(tmp_git_repo) as first:
+        assert first
+        with integration_transaction(tmp_git_repo) as second:
+            assert not second
+    with integration_transaction(tmp_git_repo) as later:
+        assert later
+
+
+def test_interrupted_integration_recovery_keeps_unfinished_tracked_work(tmp_git_repo: Path) -> None:
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    base = _base_branch(tmp_git_repo)
+    sha = _commit_file(tmp_git_repo, "tracked.txt", "committed\n", "seed tracked")
+    (tmp_git_repo / "tracked.txt").write_text("unfinished\n", encoding="utf-8")
+    write_record(tmp_git_repo, IntegrationRecord(
+        phase="integrating", target=base, pre_feature_sha=sha, pre_target_sha=sha,
+    ))
+
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+
+    assert outcome is not None and outcome.last_action == "recovered"
+    assert (tmp_git_repo / "tracked.txt").read_text(encoding="utf-8") == "unfinished\n"
+    assert _run(tmp_git_repo, "show", "HEAD:tracked.txt").stdout == "committed\n"
+
+
+def test_unexpected_integration_failure_retains_recovery_ownership(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ralph.pipeline.auto_integrate as integration
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
+
+    base = _base_branch(tmp_git_repo)
+    assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
+    feature = _commit_file(tmp_git_repo, "feature.txt", "keep me\n", "feature")
+
+    def fail_after_record(*args: object, **kwargs: object) -> None:
+        raise TimeoutError("integration interrupted")
+
+    monkeypatch.setattr(integration, "_run_rebase_or_merge", fail_after_record)
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_target": base, "auto_integrate_remote_enabled": False,
+    }})
+    outcome = integration.auto_integrate_after_commit(
+        config, WorkspaceScope(tmp_git_repo), RebaseState(),
+    )
+    assert outcome is not None and outcome.recovery_record_retained
+    record = read_record(tmp_git_repo)
+    assert record is not None and record.pre_feature_sha == feature
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature
+    assert (tmp_git_repo / "feature.txt").read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_failed_landing_recovers_and_fast_forwards_on_next_seam(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ralph.pipeline.auto_integrate as integration
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
+
+    base = _base_branch(tmp_git_repo)
+    assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
+    feature = _commit_file(tmp_git_repo, "feature.txt", "keep me\n", "feature")
+    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": base}})
+    scope = WorkspaceScope(tmp_git_repo)
+    with monkeypatch.context() as failure:
+        failure.setattr(integration, "_fast_forward_target", lambda *a, **kw: (False, "ref locked"))
+        outcome = integration.auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None and not outcome.fast_forwarded
+    assert read_record(tmp_git_repo) is not None
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature
+    recovered = integration.auto_integrate_after_commit(config, scope, outcome)
+    assert recovered is not None and recovered.fast_forwarded
+    assert read_record(tmp_git_repo) is None
+    assert _run(tmp_git_repo, "rev-parse", base).stdout.strip() == feature
+    assert _run(tmp_git_repo, "show", f"{base}:feature.txt").stdout == "keep me\n"

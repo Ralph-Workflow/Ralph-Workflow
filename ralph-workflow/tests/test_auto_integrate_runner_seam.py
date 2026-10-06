@@ -23,6 +23,7 @@ from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _default_config() -> UnifiedConfig:
@@ -226,6 +227,7 @@ def _install_retry_loop(
     re-integrate onto the moved tip.
     """
     verdicts = iter(retries)
+    monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)
     monkeypatch.setattr(
         auto_integrate,
         "_auto_integrate_resolve_context",
@@ -270,7 +272,7 @@ def _recorder(monkeypatch, root: Path, *, retries: list[bool], events=None):
 
     auto_integrate.auto_integrate_after_commit(
         _default_config(),
-        SimpleNamespace(root=str(root)),
+        WorkspaceScope(root),
         RebaseState(),
         sleep=_sleep,
         jitter=lambda: 1.0,
@@ -326,7 +328,7 @@ def test_a_sleep_that_raises_never_escapes_the_integration_step(
 
     outcome = auto_integrate.auto_integrate_after_commit(
         _default_config(),
-        SimpleNamespace(root=str(tmp_path)),
+        WorkspaceScope(tmp_path),
         RebaseState(),
         sleep=_explode,
         jitter=lambda: 0.0,
@@ -343,7 +345,7 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
     _install_retry_loop(monkeypatch, tmp_path, retries=[True, False])
     auto_integrate.auto_integrate_after_commit(
         _default_config(),
-        SimpleNamespace(root=str(tmp_path)),
+        WorkspaceScope(tmp_path),
         RebaseState(),
         sleep=delays.append,
         jitter=lambda: 0.0,

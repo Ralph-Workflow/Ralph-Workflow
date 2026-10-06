@@ -24,7 +24,7 @@ def recover_integrating_record(
     operation_root: Path,
     abort_failed: bool,
     merge_state: Callable[[Path], str],
-    reset_hard: Callable[[Path, str], None],
+    reset_keep: Callable[[Path, str], None],
     rebase_in_progress: Callable[[Path], bool],
     head_matches_sha: Callable[[Path, str], bool],
     clear_record: Callable[[Path], None],
@@ -39,10 +39,10 @@ def recover_integrating_record(
             return _retained(record, "target moved during reconciliation")
     reset_failed = False
     try:
-        reset_hard(operation_root, record.pre_feature_sha)
+        reset_keep(operation_root, record.pre_feature_sha)
     except Exception as exc:
         reset_failed = True
-        logger.warning("recovery: reset_hard failed: {}", exc)
+        logger.warning("recovery: reset_keep failed: {}", exc)
     if (
         abort_failed
         or reset_failed

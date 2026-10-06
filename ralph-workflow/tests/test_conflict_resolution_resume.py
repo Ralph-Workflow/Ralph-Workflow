@@ -130,9 +130,6 @@ def _run_fallback_with_sidecar(
         aborted.append(repo_root)
         clear_progress(repo_root)
 
-    monkeypatch.setattr(
-        merge_module, "current_rebase_identity", lambda _root: (_FEATURE_SHA, _TARGET_SHA)
-    )
     monkeypatch.setattr(merge_module, "_range_routing_reason", lambda _root, _target: None)
     monkeypatch.setattr(
         merge_module,
@@ -158,14 +155,9 @@ def _run_fallback_with_sidecar(
     return aborted
 
 
-def test_later_stop_failure_does_not_discard_landed_git_objects(
+def test_later_stop_failure_aborts_before_endpoint_merge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Four landed replay commits must remain reachable when a later stop fails.
-
-    Aborting the in-progress rebase throws those commits away even when the
-    sidecar still names them. The fallback must not call abort_rebase.
-    """
     landed = ["aaa1", "bbb2", "ccc3", "ddd4"]
     aborted = _run_fallback_with_sidecar(
         monkeypatch,
@@ -178,10 +170,8 @@ def test_later_stop_failure_does_not_discard_landed_git_objects(
         ),
     )
 
-    assert aborted == []
-    progress = load_progress(tmp_path)
-    assert progress is not None
-    assert progress.landed_shas == landed
+    assert aborted == [tmp_path]
+    assert load_progress(tmp_path) is None
 
 
 def test_sidecar_from_another_rebase_does_not_strand_this_one(

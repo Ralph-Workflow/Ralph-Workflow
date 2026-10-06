@@ -35,7 +35,7 @@ Public functions (every primitive has a docstring):
   resolved in-progress merge (``git commit --no-edit``).
 * ``abort_merge`` — guarded ``git merge --abort``; returns whether the
   abort actually ran and succeeded.
-* ``reset_hard`` — guarded ``git reset --hard``; used by crash
+* ``reset_keep`` — guarded ``git reset --keep``; used by crash
   recovery to restore the feature branch to its pre-integration SHA.
 * ``fast_forward_via_worktree`` — ``git -C <wt> merge --ff-only
   <feature_sha>``. ``merge --ff-only`` is itself the atomic guard:
@@ -65,6 +65,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
 from ralph.git.subprocess_runner import run_git
@@ -246,7 +247,7 @@ class MergeResult:
     #: Paths git named when it REFUSED to start the merge (untracked files
     #: or local changes it would overwrite). Non-empty only for a refusal:
     #: no merge ran, so there is nothing for a resolver to repair until
-    #: these paths are preserved (see :func:`ralph.git.merge_obstructions.preserve_merge_obstructions`).
+    #: the obstruction is reconciled without committing unfinished work.
     blocked_paths: tuple[str, ...] = ()
 
 
@@ -621,21 +622,11 @@ def abort_merge(repo_root: Path | str) -> bool:
     return True
 
 
-def reset_hard(repo_root: Path | str, sha: str) -> None:
-    """Run ``git reset --hard <sha>``; crash-recovery only.
-
-    Used by :func:`ralph.pipeline.auto_integrate.recover_incomplete_integration`
-    to restore the feature branch to its ``pre_feature_sha`` when a
-    run is interrupted mid-rebase. Do NOT call this from any other
-    code path — a hard reset on a feature branch is destructive to
-    any uncommitted work.
-    """
-    repo_root_path = Path(repo_root)
-    run_git(
-        ("reset", "--hard", sha),
-        cwd=repo_root_path,
-        label="git-reset-hard",
-    )
+def reset_keep(repo_root: Path | str, sha: str) -> None:
+    """Restore a committed tip while refusing to overwrite unfinished edits."""
+    result = run_git(("reset", "--keep", sha), cwd=Path(repo_root), label="git-reset-keep")
+    if result.returncode != 0:
+        raise GitOperationError("reset_keep", (result.stderr or result.stdout).strip())
 
 
 def fast_forward_via_worktree(worktree_root: Path | str, feature_sha: str) -> bool:
@@ -769,7 +760,7 @@ __all__ = [
     "merge_state",
     "merge_target_into_current",
     "paths_with_conflict_markers",
-    "reset_hard",
+    "reset_keep",
     "stage_paths",
     "worktree_for_branch",
     "worktree_lookup",

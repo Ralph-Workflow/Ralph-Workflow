@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline import run_loop, runner
+from ralph.pipeline import auto_integrate_planning, run_loop, runner
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
@@ -52,7 +52,7 @@ def test_startup_seam_returns_injected_integration_outcome(
     """Startup forwards its config, scope, state, and resolver contract."""
     expected = _outcome()
     integration = MagicMock(return_value=expected)
-    monkeypatch.setattr(run_loop, "auto_integrate_on_phase_transition", integration)
+    monkeypatch.setattr(auto_integrate_planning, "integrate_before_planning", integration)
     conflict_resolver = object()
     stop_resolver = object()
     monkeypatch.setattr(
@@ -92,7 +92,7 @@ def test_startup_seam_forwards_restored_strategy_history(
     integration = MagicMock(return_value=None)
     conflict_builder = MagicMock(return_value=object())
     stop_builder = MagicMock(return_value=object())
-    monkeypatch.setattr(run_loop, "auto_integrate_on_phase_transition", integration)
+    monkeypatch.setattr(auto_integrate_planning, "integrate_before_planning", integration)
     monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", conflict_builder)
     monkeypatch.setattr(run_loop, "build_agent_rebase_stop_resolver", stop_builder)
     history = ("rebase_resolver: unresolved shared.txt",)

@@ -46,7 +46,7 @@ def _stub_recovery(monkeypatch: MonkeyPatch, *, phase: str) -> list[Path]:
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)
-    monkeypatch.setattr(recovery, "reset_hard", lambda _root, _sha: None)
+    monkeypatch.setattr(recovery, "reset_keep", lambda _root, _sha: None)
     return cleared
 
 

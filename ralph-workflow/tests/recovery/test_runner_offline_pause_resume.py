@@ -134,9 +134,7 @@ def _patch_runner_seams(
     # deterministic within the 1.0 s per-test policy limit without
     # weakening the black-box contract.
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
-    monkeypatch.setattr(
-        run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(run_loop_module, "_run_startup_integration", lambda *a, **kw: None)
     resolved = IntegrationResolutionVerdict(RESOLVED)
     monkeypatch.setattr(runner_module, "inspect_integration_resolution", lambda *_: resolved)
     monkeypatch.setattr(run_loop_module, "inspect_integration_resolution", lambda *_: resolved)

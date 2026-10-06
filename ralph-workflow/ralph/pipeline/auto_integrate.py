@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import random
 import time
 from pathlib import Path
@@ -64,6 +63,7 @@ from ralph.pipeline.auto_integrate_rebase_merge import (
 )
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
+    read_record,
 )
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -74,6 +74,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     _reclaim_unowned_stale_rebase,
+    post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
 )
@@ -93,6 +94,7 @@ from ralph.pipeline.auto_integrate_resolution_state import (
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
+from ralph.pipeline.auto_integrate_transaction import integration_transaction
 
 _MERGE_INSTEAD_STRATEGY_INDEX = 2
 
@@ -143,9 +145,9 @@ def auto_integrate_after_commit(
         raise
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
-        with contextlib.suppress(Exception):
-            _clear_record(Path(workspace_scope.root))
-        return _record_skip(reason=f"unexpected failure: {exc}", target=None)
+        return _record_skip(reason=f"unexpected failure: {exc}", target=None).model_copy(
+            update={"recovery_record_retained": read_record(Path(workspace_scope.root)) is not None},
+        )
 
 
 def auto_integrate_on_phase_transition(
@@ -240,6 +242,23 @@ def _auto_integrate_on_phase_transition_inner(
 _MAX_INTEGRATION_ATTEMPTS = 3
 
 
+def _recover_before_attempt(
+    config: UnifiedConfig,
+    scope: WorkspaceScope,
+    prior_attempt: RebaseState | None,
+) -> RebaseState | None:
+    if read_record(scope.root) is None:
+        return None
+    recovered = recover_incomplete_integration(scope, config=config)
+    if recovery_retained_record(recovered):
+        if prior_attempt is not None:
+            return prior_attempt.model_copy(update={"recovery_record_retained": True})
+        return recovered
+    if recovered is not None and recovered.fast_forwarded:
+        return recovered
+    return None
+
+
 def _auto_integrate_after_commit_inner(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -297,6 +316,10 @@ def _auto_integrate_after_commit_inner(
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
+            recovered = _recover_before_attempt(config, workspace_scope, record)
+            if recovered is not None:
+                record = recovered
+                break
             remote_record, refresh = _freshen_attempt_target(
                 config,
                 root,
@@ -358,13 +381,11 @@ def _auto_integrate_after_commit_inner(
         # Caught here, not only in the caller's broad guard: this is
         # the first frame knowing the target/identity to scope by.
         logger.warning("auto_integrate: integration attempt failed: {}", exc)
-        with contextlib.suppress(Exception):
-            _clear_record(root)
         return charge_failed_attempt(
             record_refresh(
                 _record_skip(reason=f"unexpected failure: {exc}", target=target),
                 refresh,
-            ),
+            ).model_copy(update={"recovery_record_retained": read_record(root) is not None}),
             prior=state,
             target=target,
             identity=identity,
@@ -468,7 +489,7 @@ def _reintegrate_after_remote_reconcile(
     display: ParallelDisplay | None,
 ) -> bool:
     """Rebase and land the feature after a target-to-remote reconciliation."""
-    record, retry = _integrate_once(
+    record, retry = _integrate_once_owned(
         config,
         root,
         target,
@@ -494,9 +515,35 @@ def _integrate_once(
     publish: bool = True,
     force_endpoint_merge: bool = False,
 ) -> tuple[RebaseState | None, bool]:
+    with integration_transaction(root) as acquired:
+        if not acquired:
+            return _record_skip(reason="integration already running in this worktree", target=target), False
+        return _integrate_once_owned(
+            config, root, target, conflict_resolver, prefer_merge=prefer_merge,
+            refresh=refresh, rebase_stop_resolver=rebase_stop_resolver, display=display,
+            publish=publish, force_endpoint_merge=force_endpoint_merge,
+        )
+
+
+def _integrate_once_owned(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    conflict_resolver: ConflictResolver | None,
+    *,
+    prefer_merge: bool = False,
+    refresh: str | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
+    publish: bool = True,
+    force_endpoint_merge: bool = False,
+) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
+    post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
+    if read_record(root) is not None:
+        return _record_skip(reason="unfinished integration retained for recovery", target=target), False
     # Write the durable crash record BEFORE any git mutation so the
     # recovery preamble can always tell that we own an in-flight
     # integration (AC-11).
@@ -517,7 +564,7 @@ def _integrate_once(
     # to restore the pre-attempt tip on a verified abort) and
     # deleted after a successful land or a verified abort.
     backup_ref = _create_rebase_backup_ref(root, pre_feature_sha)
-    owns_resolution = conflict_resolver is not None
+    owns_resolution = False
     try:
         rebase_result = _run_rebase_or_merge(
             root,
@@ -544,6 +591,7 @@ def _integrate_once(
                 refresh,
             ), False
 
+        post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
         # Flip the durable record to 'integrated' BEFORE any ref move so
         # a crash between this point and the fast-forward will be
         # recoverable as a continue-fast-forward rather than a restore
@@ -591,19 +639,11 @@ def _integrate_once(
         # the recorded pre-attempt SHA. Clearing the record BEFORE
         # verification (the prior shape) discarded the very
         # metadata recovery needs to restore the pre-attempt tip.
-        _verify_and_cleanup_backup(
-            root,
-            backup_ref,
-            None,
-            owns_resolution,
-        )
-        # Terminal-state invariant passed: the backup ref is gone,
-        # so the durable record is no longer the recovery
-        # preamble's only handle on the in-flight attempt. Clear
-        # it now -- the function's remaining work below
-        # (recording the outcome, pushing to remotes) cannot
-        # fail in a way that needs the record for recovery.
-        _clear_record(root)
+        post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
+        if ok:
+            _delete_rebase_backup_ref(root, backup_ref)
+        if ok:
+            _clear_record(root)
 
         record = _record_rebase_outcome(
             rebase_outcome=rebase_result.rebase_outcome,
@@ -625,6 +665,10 @@ def _integrate_once(
             }
         )
         if not ok:
+            logger.critical(
+                "CRITICAL: feature {} did NOT land on '{}': {}; committed work remains on the feature",
+                feature_sha, target, skip_reason,
+            )
             # Fast-forward skipped: reason is appended but we keep
             # the rebase/merged action as the headline so the log line
             # reflects what actually happened to the feature. Only an
@@ -670,21 +714,6 @@ def _integrate_once(
                 )
         return record, False
     except BaseException:
-        # R6/AC-06: terminal-state verification on the EXCEPTION
-        # path. The success path above already ran
-        # ``_verify_and_cleanup_backup`` (right after the
-        # fast-forward), so a violation that came from the
-        # helper itself is already the cause of this ``except``
-        # clause and MUST NOT be re-verified -- the prior shape
-        # called the helper again from this block and the
-        # helper raised a second time, masking the original
-        # cause. We track the verification result with a
-        # sentinel: if the helper already ran successfully
-        # BEFORE the exception, the invariant was satisfied
-        # and the exception is from a later step; if it did
-        # not run, the exception came from the rebase/merge/
-        # ff phase and the helper must run to verify the
-        # terminal state on the abort path.
         raise
 
 
@@ -915,28 +944,6 @@ def _handle_precondition_failure(
     target: str,
     exc: RebasePreconditionError,
 ) -> RebaseState | None:
-    """Handle a precondition failure with AC-07/R8 reclaim-at-seam.
-
-    The helper's return contract distinguishes three cases via the
-    returned state:
-
-    * ``None`` -- the reclaim did nothing; the caller should
-      record a skip with the original cause.
-    * ``RebaseState`` with reason starting with
-      ``"preconditions not met after reclaim: "`` -- the reclaim
-      ran but the precondition still fails; the caller returns
-      this state directly.
-    * ``RebaseState`` with the ``_reclaim_succeeded`` sentinel
-      reason -- the reclaim succeeded and the precondition now
-      passes; the caller proceeds in this seam (the sentinel
-      reason prevents the call site from falling through to the
-      original precondition error and recording a skip with the
-      wrong reason).
-
-    Extracted from :func:`_auto_integrate_check_skip_conditions`
-    so the orchestrator stays under the ruff PLR0911
-    (too-many-returns) cap.
-    """
     post_reclaim = _reclaim_and_retry_preconditions(root, target, exc)
     if post_reclaim is not None:
         if post_reclaim.last_reason == "_reclaim_succeeded":

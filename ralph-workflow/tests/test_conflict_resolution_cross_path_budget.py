@@ -262,7 +262,6 @@ def test_endpoint_merge_fallback_keeps_the_resolver_after_a_failed_rebase_resolu
     monkeypatch.setattr(merge_module, "resolve_rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
     monkeypatch.setattr(merge_module, "abort_rebase_discarding_progress", _abort)
-    monkeypatch.setattr(merge_module, "_rebase_has_landed_stops", lambda _root: False)
     monkeypatch.setattr(merge_module, "_verify_terminal_state", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(merge_module, "_clear_record_if_no_inflight_op", lambda _root: None)
 

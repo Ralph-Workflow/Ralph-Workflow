@@ -16,7 +16,7 @@ import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
-from ralph.pipeline import auto_integrate_agent
+from ralph.pipeline import auto_integrate_agent, auto_integrate_planning
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.effects import CommitEffect, EmptyCommitEffect, ExitSuccessEffect
@@ -476,7 +476,7 @@ def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path
 
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     hook = MagicMock(return_value=outcome)
-    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", hook)
+    monkeypatch.setattr(auto_integrate_planning, "integrate_before_planning", hook)
     monkeypatch.setattr(
         run_loop_module,
         "_run_auto_integrate_recovery_preamble",
@@ -510,8 +510,8 @@ def test_startup_integration_nothing_to_do_still_prints_a_line(
     from ralph.pipeline import run_loop as run_loop_module
 
     monkeypatch.setattr(
-        run_loop_module,
-        "auto_integrate_on_phase_transition",
+        auto_integrate_planning,
+        "integrate_before_planning",
         MagicMock(return_value=None),
     )
     ctx = MagicMock()
@@ -540,6 +540,9 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
     ctx.workspace_scope = WorkspaceScope(tmp_path)
     ctx.policy_bundle.pipeline.terminal_phase = "complete"
     saved = MagicMock()
+    monkeypatch.setattr(
+        auto_integrate_planning, "integrate_before_planning", lambda *_args, **_kwargs: None
+    )
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.recover_incomplete_integration",

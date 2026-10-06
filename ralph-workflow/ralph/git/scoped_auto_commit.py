@@ -46,6 +46,10 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
+from ralph.git._deterministic_commit_attempt import (
+    _commit_selected_paths,
+    _select_deterministic_paths,
+)
 from ralph.git._dirty_paths import (
     _list_dirty_paths,
     list_dirty_paths,
@@ -59,8 +63,8 @@ from ralph.git._index_snapshots import (
     _restore_pre_staged_index,
     _snapshot_pre_staged_index,
 )
-from ralph.git._transition_guard import drop_transition_conflicts
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -245,13 +249,21 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     return None
 
 
-def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
-    # PLR0911 (too many returns): each return maps a distinct
-    # failure mode to None (working_dir unreadable, working_dir
-    # empty, symlink target unreadable, symlink target unencodable,
-    # hash-object failure) plus the symlink fast-path's success
-    # return. Folding them into a sentinel would lose the
-    # fail-closed boundary each guard enforces.
+def _symlink_blob_sha(abs_path: Path) -> str | None:
+    """Hash a symlink target using Git's blob representation."""
+    try:
+        link_target = abs_path.readlink()
+    except OSError:
+        return None
+    try:
+        target_bytes = str(link_target).encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
+    return hashlib.sha1(blob).hexdigest()
+
+
+def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:
     """Return the git blob SHA-1 of the on-disk content at ``rel_path``.
 
     Uses ``git hash-object <path>`` so the value is git's blob hash,
@@ -304,23 +316,12 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:  # noqa: PLR0911
     # the target bytes. The hash matches ``git hash-object --stdin``
     # exactly.
     if abs_path.is_symlink():
-        try:
-            link_target = abs_path.readlink()
-        except OSError:
-            return None
-        try:
-            target_bytes = str(link_target).encode("utf-8")
-        except UnicodeEncodeError:
-            return None
-        blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
-        return hashlib.sha1(blob).hexdigest()
+        return _symlink_blob_sha(abs_path)
     try:
         hashed: object = repo.git.hash_object(abs_path)
     except (GitCommandError, OSError):
         return None
-    if not isinstance(hashed, str):
-        return None
-    return hashed.strip() or None
+    return (hashed.strip() or None) if isinstance(hashed, str) else None
 
 
 def _resolved_descendant_sha(repo: Repo, rel_path: str) -> str | None:
@@ -502,12 +503,8 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
     # ``NoSuchPathError`` when ``target`` itself does not exist on disk
     # yet -- the canonical first-creation shape -- and we wrongly
     # classify the path as ``not_repo``.
-    repo_anchor = (
-        target if target.exists() else target.parent
-    )  # filesystem-read-ok: git boundary probe -- the repo root must be found before FileBackend seams are importable
-    while (
-        not repo_anchor.exists()
-    ):  # filesystem-read-ok: same git-discovery probe, closest existing ancestor walk
+    repo_anchor = target if DEFAULT_FILE_BACKEND.exists(target) else target.parent
+    while not DEFAULT_FILE_BACKEND.exists(repo_anchor):
         repo_anchor = repo_anchor.parent
     try:
         repo = Repo(repo_anchor, search_parent_directories=True)
@@ -536,14 +533,7 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
 # ---- commit_deterministic_writes --------------------------------------------
 
 
-def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
-    # The complexity guards (PLR0911/0912/0915) are opted out here:
-    # the explicit-outcome contract (CREATED / NOOP / NOT_REPO /
-    # FAILED / SKIPPED) plus the pre-write hash discipline and
-    # failed-attempt rollback require more branches / returns /
-    # statements than the cap. Splitting the helper would scatter
-    # the rollback guarantee across files; a single function with
-    # the full state machine is the documented contract.
+def commit_deterministic_writes(
     repo_root: Path | str,
     *,
     paths: tuple[str, ...] | list[str],
@@ -660,254 +650,24 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
                 # Compare each in-scope path's HEAD blob hash against the
                 # caller-recorded pre-write content hash. SKIPPED paths
                 # stay dirty for the agent flow.
-                stageable: list[str] = []
-                skipped: list[str] = []
-                for path in path_list:
-                    head_sha = _read_head_blob_sha(repo, path)
-                    pre_sha = pre_contents.get(path)
-                    if head_sha == _HEAD_PROBE_FAILED:
-                        # HEAD metadata probe failed -- cannot distinguish
-                        # "absent at HEAD" from a broken index. Fail closed:
-                        # stage NOTHING and report FAILED (wt-012 DA-006/
-                        # DA-011). The finally below restores the pre-staged
-                        # snapshot, so the index stays byte-for-byte intact.
-                        logger.warning(
-                            "commit_deterministic_writes: HEAD metadata probe failed "
-                            "for {}; refusing to stage the deterministic commit",
-                            path,
-                        )
-                        return ScopedCommitResult(
-                            status=ScopedCommitStatus.FAILED,
-                            skipped_paths=tuple(skipped),
-                            error=(
-                                "HEAD metadata probe failed; refusing to stage deterministic commit"
-                            ),
-                        )
-                    if pre_sha is None and head_sha is None:
-                        # Brand-new path: absent on disk at pre-write capture
-                        # AND confirmed absent at HEAD -- the deterministic
-                        # writer authored the whole file, so committing it
-                        # cannot sweep in anyone else's work (wt-012 DA-006).
-                        # wt-012 DA-007/DA-012: a brand-new path that sits
-                        # under a newly-installed symlink ancestor (e.g. a
-                        # ``shutil.copytree`` fallback that materialized a
-                        # leaf under a sibling root now backed by a
-                        # symlink) cannot be staged as its lexical path --
-                        # ``git add --all`` would fatal with ``pathspec ...
-                        # is beyond a symbolic link``. Rewrite the
-                        # brand-new path to the symlink ancestor so the
-                        # new symlink and the materialized leaves land
-                        # atomically in one commit.
-                        if _has_symlink_ancestor(Path(repo.working_dir) / path):
-                            ancestor_path = _symlink_ancestor_path(repo, path)
-                            if ancestor_path is not None:
-                                logger.debug(
-                                    "commit_deterministic_writes: brand-new path {} "
-                                    "is beyond a symlink; rewriting to ancestor {} for "
-                                    "atomic staging",
-                                    path,
-                                    ancestor_path,
-                                )
-                                stageable.append(ancestor_path)
-                                continue
-                        stageable.append(path)
-                        continue
-                    if pre_sha is None:
-                        # Caller did not record a pre-write hash for this
-                        # path (or the file existed at HEAD but was missing
-                        # on disk at capture time). Treat as suspicious --
-                        # the deterministic writer should know what every
-                        # path's prior content was. SKIP rather than commit
-                        # a path we cannot isolate.
-                        logger.warning(
-                            "commit_deterministic_writes: path {} has no pre-write hash "
-                            "recorded; skipping to avoid sweeping in unrelated changes",
-                            path,
-                        )
-                        skipped.append(path)
-                        continue
-                    if head_sha != pre_sha:
-                        # HEAD does not match the caller's pre-write hash:
-                        # the user or agent dirtied the file in between
-                        # the writer's snapshot and the commit attempt.
-                        # SKIP so the chore commit cannot ride their work.
-                        logger.warning(
-                            "commit_deterministic_writes: path {} was already dirty at HEAD "
-                            "(head_sha != pre_sha); skipping to keep the chore commit isolated",
-                            path,
-                        )
-                        skipped.append(path)
-                        continue
-                    # HEAD matches the pre-write hash, so the on-disk
-                    # content the writer just produced is the only diff
-                    # for this path since HEAD. Confirm the on-disk
-                    # content also differs from HEAD (otherwise nothing
-                    # to commit). wt-012 PA-002: an ancestor-symlink
-                    # shape (a deleted sibling dir replaced by a
-                    # symlink that resolves to a same-named same-content
-                    # file) makes ``git hash-object`` return a value
-                    # that the cheap ``== head_sha`` comparison cannot
-                    # distinguish from "no real change" -- the
-                    # ``_ANCESTOR_SYMLINK_DIRTY`` sentinel forces the
-                    # path into ``stageable`` instead.
-                    on_disk_sha = _git_blob_sha(repo, path)
-                    if on_disk_sha == _ANCESTOR_SYMLINK_DIRTY:
-                        # The path is lexically unreachable from HEAD
-                        # (an ancestor is a symlink to a target that no
-                        # longer contains this file). Replacing the
-                        # descendant with its nearest symlink ancestor
-                        # in the stageable set lets ``git add --all``
-                        # pick up both the new symlink and the
-                        # descendant deletions atomically -- without
-                        # this rewrite ``git add`` would fatal with
-                        # ``pathspec ... is beyond a symbolic link``.
-                        ancestor_path = _symlink_ancestor_path(repo, path)
-                        if ancestor_path is not None:
-                            # wt-012 DA-003/DA-010/DA-012: a user change
-                            # that lands BETWEEN the producer's pre-write
-                            # capture and the install makes the recorded
-                            # ``pre_sha`` stale, and the cheap
-                            # HEAD-vs-pre-sha equality check above does
-                            # not catch it. When the resolved on-disk
-                            # state (the file the symlink target now
-                            # exposes) also differs from ``head_sha``,
-                            # the user must have dirtied the descendant
-                            # AFTER the capture, and committing the
-                            # ancestor transition would sweep the user's
-                            # deletion into the chore commit. Mark the
-                            # descendant as SKIPPED so
-                            # ``drop_transition_conflicts`` drops the
-                            # ancestor too. The caller can opt out via
-                            # ``intentional_transitions`` when the
-                            # transition's resolved content is the
-                            # install's own canonical target.
-                            if (
-                                intentional_transitions is None
-                                or ancestor_path not in intentional_transitions
-                            ):
-                                resolved_sha = _resolved_descendant_sha(repo, path)
-                                if resolved_sha is not None and resolved_sha != head_sha:
-                                    logger.warning(
-                                        "commit_deterministic_writes: path {} "
-                                        "resolves through a new symlink ancestor to "
-                                        "a state that differs from HEAD; the user "
-                                        "dirtied this descendant after the "
-                                        "pre-write snapshot, skipping to keep the "
-                                        "chore commit isolated",
-                                        path,
-                                    )
-                                    skipped.append(path)
-                                    del on_disk_sha
-                                    continue
-                            logger.debug(
-                                "commit_deterministic_writes: path {} is beyond a symlink; "
-                                "rewriting to ancestor {} for atomic staging",
-                                path,
-                                ancestor_path,
-                            )
-                            stageable.append(ancestor_path)
-                            del on_disk_sha  # narrow explicit type for the next iter
-                            continue
-                    if on_disk_sha is not None and on_disk_sha == head_sha:
-                        # No actual change since HEAD -- skip.
-                        continue
-                    stageable.append(path)
-                    del on_disk_sha  # narrow explicit type for the next iter
+                selected = _select_deterministic_paths(
+                    repo, path_list, pre_contents, intentional_transitions
+                )
+                if isinstance(selected, ScopedCommitResult):
+                    return selected
+                stageable, skipped = selected
 
-                # Dedupe (a dir→symlink rewrite can append the same
-                # ancestor once per descendant plus once for the root).
-                # wt-012 DA-003/DA-008: drop ancestors whose stage would
-                # sweep a SKIPPED dirty descendant's deletion.
-                stageable = sorted(set(stageable))
-                if skipped and stageable:
-                    stageable = drop_transition_conflicts(stageable, skipped)
-
-                if not stageable:
-                    return ScopedCommitResult(
-                        status=ScopedCommitStatus.SKIPPED if skipped else ScopedCommitStatus.NOOP,
-                        skipped_paths=tuple(skipped),
-                    )
-
-                # Stage EXACTLY the stageable set via the injected
-                # stage_fn so the production git plumbing is the same
-                # code path the rest of the pipeline uses. wt-012 DA-006:
-                # a partial staging failure must NOT leave the newly
-                # staged set half-applied, so the stage call is inside
-                # the same try that owns the failed-attempt rollback.
-                try:
-                    stage_fn(repo_root_path, stageable)
-                except (OSError, GitCommandError):
-                    _ = cast("None", repo.git.reset("HEAD", "--", *stageable))
-                    raise
-                try:
-                    if body_builder is not None:
-                        body = body_builder(stageable)
-                    else:
-                        body_lines = [
-                            "Auto-generated by Ralph deterministic writer",
-                            "",
-                            "Changed files:",
-                            *(f"- {p}" for p in stageable),
-                        ]
-                        body = "\n".join(body_lines)
-                    message = f"{subject}\n\n{body}"
-                    expected_head = str(repo.head.commit.hexsha)
-                    result = create_commit_fn(repo_root_path, message, expected_head=expected_head)
-                    if result.status is not CommitCreationStatus.CREATED or result.sha is None:
-                        # Failed commit -- rollback the stage we just did
-                        # and restore the pre-staged snapshot. NO half
-                        # staged index.
-                        _ = cast(
-                            "None",
-                            repo.git.reset("HEAD", "--", *stageable),
-                        )
-                        _restore_pre_staged_index(repo, pre_staged_snapshots)
-                        error_message: str | None
-                        error_attr: object = getattr(result, "error", None)
-                        if error_attr is not None:
-                            error_message = str(error_attr)
-                        else:
-                            error_message = "create_commit did not return CREATED"
-                        return ScopedCommitResult(
-                            status=ScopedCommitStatus.FAILED,
-                            skipped_paths=tuple(skipped),
-                            error=error_message,
-                        )
-                    return ScopedCommitResult(
-                        status=ScopedCommitStatus.CREATED,
-                        sha=result.sha,
-                        skipped_paths=tuple(skipped),
-                    )
-                except (OSError, GitCommandError) as inner_exc:
-                    # Commit raised -- rollback the stage and restore the
-                    # pre-staged snapshot so the failed attempt leaves no
-                    # half-staged debris.
-                    reset_error: str | None = None
-                    try:
-                        _ = cast(
-                            "None",
-                            repo.git.reset("HEAD", "--", *stageable),
-                        )
-                    except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                        # wt-012 DA-006: a failed rollback reset can leave
-                        # the newly staged paths in the index. Surface the
-                        # dirty-index state in the FAILED error so callers
-                        # know manual repair may be needed.
-                        reset_error = str(reset_exc)
-                        logger.warning(
-                            "commit_deterministic_writes: failed-attempt unstage failed; "
-                            "newly staged paths may remain in the index: {}",
-                            reset_exc,
-                        )
-                    _restore_pre_staged_index(repo, pre_staged_snapshots)
-                    error_detail = str(inner_exc)
-                    if reset_error is not None:
-                        error_detail = f"{error_detail}; rollback reset failed: {reset_error}"
-                    return ScopedCommitResult(
-                        status=ScopedCommitStatus.FAILED,
-                        skipped_paths=tuple(skipped),
-                        error=error_detail,
-                    )
+                return _commit_selected_paths(
+                    repo,
+                    repo_root_path,
+                    stageable,
+                    skipped,
+                    pre_staged_snapshots,
+                    subject,
+                    create_commit_fn,
+                    stage_fn,
+                    body_builder,
+                )
             finally:
                 # Always restore the pre-staged snapshot (modulo any
                 # rollback above) so the user's staged state is preserved
@@ -928,15 +688,59 @@ def commit_deterministic_writes(  # noqa: PLR0911, PLR0912, PLR0915
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
 
 
+def _select_scoped_paths(
+    repo: Repo,
+    scopes: tuple[str, ...],
+    exclude: frozenset[str],
+    path_filter: Callable[[str], bool] | None,
+) -> list[str]:
+    """Find dirty scoped paths while retaining pre-existing user edits."""
+    all_dirty: list[str] = []
+    for scope in sorted(scopes):
+        all_dirty.extend(_list_dirty_paths(repo, scope))
+    # Defensive re-filter: drop anything outside the scopes even if
+    # ``git status -- <scope>`` somehow returned it. Then drop everything
+    # that was already dirty before we started -- that is the user's work.
+    all_dirty = sorted(
+        {path for path in all_dirty if path_in_scope(path, scopes) and path not in exclude}
+    )
+    if path_filter is not None:
+        all_dirty = [path for path in all_dirty if path_filter(path)]
+    return all_dirty
+
+
+def _scoped_commit_failure(
+    repo: Repo,
+    all_dirty: list[str],
+    pre_staged_blobs: dict[str, str | None],
+    result: CommitCreationResult,
+) -> ScopedCommitResult:
+    """Restore the index after a declined scoped commit and report its error."""
+    # Commit failed: rollback the stage, restore the
+    # pre-staged snapshot, return FAILED.
+    try:
+        _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
+    except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
+        logger.debug(
+            "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
+            reset_exc,
+        )
+    _restore_pre_staged_index(repo, pre_staged_blobs)
+    scope_error_attr: object = getattr(result, "error", None)
+    if scope_error_attr is not None:
+        scope_error_message: str | None = str(scope_error_attr)
+    else:
+        scope_error_message = "create_commit did not return CREATED"
+    return ScopedCommitResult(
+        status=ScopedCommitStatus.FAILED,
+        error=scope_error_message,
+    )
+
+
 # ---- commit_scoped_updates (legacy public helper) ---------------------------
 
 
-def commit_scoped_updates(  # noqa: PLR0912
-    # The complexity guards (PLR0911/PLR0912) are opted out: the
-    # explicit-outcome contract (CREATED / NOOP / NOT_REPO / FAILED) plus the
-    # staged-state preservation requires more branches than the cap.
-    # Splitting the helper would scatter the snapshot / restore
-    # discipline across files; a single function is the contract.
+def commit_scoped_updates(
     repo_root: Path | str,
     *,
     scopes: tuple[str, ...],
@@ -981,17 +785,7 @@ def commit_scoped_updates(  # noqa: PLR0912
         # and the outer guard (ValueError included) reports FAILED.
 
         try:
-            all_dirty: list[str] = []
-            for scope in sorted(scopes):
-                all_dirty.extend(_list_dirty_paths(repo, scope))
-            # Defensive re-filter: drop anything outside the scopes even if
-            # ``git status -- <scope>`` somehow returned it. Then drop everything
-            # that was already dirty before we started -- that is the user's work.
-            all_dirty = sorted(
-                {path for path in all_dirty if path_in_scope(path, scopes) and path not in exclude}
-            )
-            if path_filter is not None:
-                all_dirty = [path for path in all_dirty if path_filter(path)]
+            all_dirty = _select_scoped_paths(repo, scopes, exclude, path_filter)
             if not all_dirty:
                 return ScopedCommitResult(status=ScopedCommitStatus.NOOP)
             # Snapshot and unstage every pre-staged path (in-scope and
@@ -1008,25 +802,7 @@ def commit_scoped_updates(  # noqa: PLR0912
                 expected_head = str(repo.head.commit.hexsha)
                 result = create_commit_fn(repo_root_path, message, expected_head=expected_head)
                 if result.status is not CommitCreationStatus.CREATED or result.sha is None:
-                    # Commit failed: rollback the stage, restore the
-                    # pre-staged snapshot, return FAILED.
-                    try:
-                        _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
-                    except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
-                        logger.debug(
-                            "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
-                            reset_exc,
-                        )
-                    _restore_pre_staged_index(repo, pre_staged_blobs)
-                    scope_error_attr: object = getattr(result, "error", None)
-                    if scope_error_attr is not None:
-                        scope_error_message: str | None = str(scope_error_attr)
-                    else:
-                        scope_error_message = "create_commit did not return CREATED"
-                    return ScopedCommitResult(
-                        status=ScopedCommitStatus.FAILED,
-                        error=scope_error_message,
-                    )
+                    return _scoped_commit_failure(repo, all_dirty, pre_staged_blobs, result)
                 return ScopedCommitResult(status=ScopedCommitStatus.CREATED, sha=result.sha)
             except (OSError, GitCommandError, ValueError):
                 # wt-012 DA-006: a raised commit failure (including the

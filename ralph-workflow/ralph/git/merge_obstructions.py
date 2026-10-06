@@ -9,28 +9,20 @@ finish:
 
 * ``clear_untracked_merge_obstructions`` -- removes untracked files whose
   bytes equal the target's copy (the merge would write the same file).
-* ``preserve_merge_obstructions`` -- commits the local work a refused merge
-  named, so the merge runs and the resolver reconciles the overlaps.
-* ``preserve_uncommitted_tracked_work`` -- commits tracked edits so a dirty
-  worktree cannot make integration skip.
 * ``ancestry_state`` -- three-valued ``merge-base --is-ancestor`` for the
   "branch contains the target" gate (``None`` = not proven).
 
-No local work is ever discarded: only byte-identical copies are removed.
+Uncommitted work is never committed, stashed or discarded by integration:
+only untracked copies byte-identical to the target's file are removed.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 def ancestry_state(repo_root: Path | str, ancestor: str, descendant: str) -> bool | None:
@@ -164,96 +156,8 @@ def merge_refusal(output: str) -> tuple[str, tuple[str, ...]] | None:
     return None
 
 
-def preserve_merge_obstructions(repo_root: Path | str, paths: Sequence[str], target: str) -> bool:
-    """Commit the paths that made ``git merge`` refuse, so it can run.
-
-    A refused merge never starts, so no resolver can act on it. Committing
-    the blocking local work (untracked files or uncommitted edits) keeps
-    every byte of it in history and turns the refusal into an ordinary
-    merge whose overlaps are real conflicts -- which the conflict resolver
-    then reconciles against ``target``. Returns whether the commit landed.
-    """
-    if not paths:
-        return False
-    root = Path(repo_root)
-    added = run_git(("add", "-A", "--", *paths), cwd=root, label="git-preserve-obstructions")
-    if added.returncode != 0:
-        logger.warning("could not stage merge obstructions: {}", added.stderr.strip())
-        return False
-    committed = run_git(
-        (
-            *COMMIT_PIN_CONFIG_ARGS,
-            "commit",
-            # Hooks must not veto a snapshot of work that already exists:
-            # unattended, a rejected preservation commit would hold the
-            # branch behind its target forever.
-            "--no-verify",
-            "-m",
-            f"chore(ralph): preserve local work blocking integration with {target}",
-            "--",
-            *paths,
-        ),
-        cwd=root,
-        label="git-preserve-obstructions-commit",
-    )
-    if committed.returncode != 0:
-        logger.warning(
-            "could not commit merge obstructions: {}",
-            (committed.stderr or committed.stdout).strip(),
-        )
-        return False
-    logger.warning(
-        "committed {} path(s) that blocked integration with '{}' so the merge can run",
-        len(paths),
-        target,
-    )
-    return True
-
-
-def preserve_uncommitted_tracked_work(repo_root: Path | str, target: str) -> bool:
-    """Commit uncommitted edits to tracked files ahead of an integration.
-
-    Integration never runs on a dirty worktree (the rebase precondition
-    refuses it), so leftover tracked edits would keep a branch behind its
-    target indefinitely. Committing them keeps every byte in history and
-    lets the integration -- and its conflict resolver -- reconcile them.
-    Untracked files are not touched here; a merge they obstruct is handled
-    by :func:`preserve_merge_obstructions`. Returns whether a commit landed.
-    """
-    root = Path(repo_root)
-    status = run_git(
-        ("status", "--porcelain", "--untracked-files=no"),
-        cwd=root,
-        label="git-preserve-status",
-    )
-    if status.returncode != 0 or not status.stdout.strip():
-        return False
-    committed = run_git(
-        (
-            *COMMIT_PIN_CONFIG_ARGS,
-            "commit",
-            "-a",
-            "--no-verify",
-            "-m",
-            f"chore(ralph): preserve uncommitted work before integrating {target}",
-        ),
-        cwd=root,
-        label="git-preserve-uncommitted-commit",
-    )
-    if committed.returncode != 0:
-        logger.warning(
-            "could not commit uncommitted work before integrating: {}",
-            (committed.stderr or committed.stdout).strip(),
-        )
-        return False
-    logger.warning("committed uncommitted tracked work so '{}' can be integrated", target)
-    return True
-
-
 __all__ = [
     "ancestry_state",
     "clear_untracked_merge_obstructions",
     "merge_refusal",
-    "preserve_merge_obstructions",
-    "preserve_uncommitted_tracked_work",
 ]

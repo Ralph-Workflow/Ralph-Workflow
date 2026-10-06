@@ -46,6 +46,7 @@ from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
+from tests.test_run_loop_failed_ladder_terminal import run_recovery_scenario
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -146,7 +147,7 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
-    monkeypatch.setattr(recovery, "reset_hard", lambda _root, _sha: None)
+    monkeypatch.setattr(recovery, "reset_keep", lambda _root, _sha: None)
     monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
 
@@ -177,7 +178,7 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     def record_reset(*args: object) -> None:
         resets.append(args)
 
-    monkeypatch.setattr(recovery, "reset_hard", record_reset)
+    monkeypatch.setattr(recovery, "reset_keep", record_reset)
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
@@ -190,15 +191,15 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
 def test_a_failed_reset_retains_the_record_and_says_so_structurally(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """phase='integrating' whose ``reset_hard`` raised (branch 3 of 4)."""
+    """phase='integrating' whose ``reset_keep`` raised (branch 3 of 4)."""
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrating"))
-    monkeypatch.setattr(recovery, "reset_hard", _boom)
+    monkeypatch.setattr(recovery, "reset_keep", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
     assert recovery_retained_record(outcome), (
-        f"a reset_hard that raised retains the record; got {outcome!r}"
+        f"a reset_keep that raised retains the record; got {outcome!r}"
     )
 
 
@@ -299,22 +300,17 @@ def test_a_cleared_record_never_reads_as_retained(
     assert recovery_retained_record(outcome) is False, f"{why}; got {outcome!r}"
 
 
-def test_an_unexpected_recovery_crash_does_not_claim_the_record(
+def test_an_unexpected_recovery_crash_keeps_integration_blocked(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The catch-all cannot honestly claim a record it may never have read.
-
-    Marking it retained would gate the startup catch-up behind a fault
-    with no bounded end, which is the opposite of recovery's fail-open
-    contract.
-    """
+    """Unreadable recovery evidence must block a fresh integration attempt."""
     recovery = _recovery_module()
     monkeypatch.setattr(recovery, "_read_record", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
     assert outcome is not None
-    assert recovery_retained_record(outcome) is False
+    assert recovery_retained_record(outcome) is True
 
 
 # --------------------------------------------------------------------
@@ -423,57 +419,43 @@ def test_a_display_that_cannot_take_the_line_never_aborts_startup(
 
 
 def test_persisted_legacy_conflict_blocks_shared_loop_before_dispatch(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch,
 ) -> None:
-    """The shared entry cannot advance planning past a legacy conflict."""
-    module = _run_loop_module()
-    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
-    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
-    dispatched: list[object] = []
-    legacy = RebaseState(
-        last_action="conflict", legacy_checkpoint_blocked=True, last_reason="legacy conflict"
-    )
-    monkeypatch.setattr(module, "legacy_rebase_startup_block", lambda _root: legacy)
-    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
-    monkeypatch.setattr(module, "_save_recovered_rebase_checkpoint", lambda *_args: None)
-
-    result, _prev_phase, exit_code = module._run_inner_loop(
-        PipelineState(phase="planning"), ctx, prev_phase="planning"
+    """Legacy conflict evidence holds dispatch until recovery clears the repository."""
+    state = PipelineState(
+        phase="planning",
+        rebase=RebaseState(
+            last_action="conflict", legacy_checkpoint_blocked=True, last_reason="legacy conflict"
+        ),
     )
 
-    assert exit_code == 1
-    assert result.rebase.legacy_checkpoint_blocked is True
-    assert dispatched == []
+    observed = run_recovery_scenario(monkeypatch, state, startup=True)
+
+    assert observed.exit_code == 0
+    assert observed.waits and all(delay > 0 for delay in observed.waits)
+    assert observed.saved[0].rebase == state.rebase
+    assert [dispatched.phase for dispatched in observed.dispatched] == ["planning"]
+    assert any("CRITICAL" in warning for warning in observed.warnings)
+    assert observed.result.rebase.integration_unresolved is False
 
 
 def test_run_loop_checkpointed_conflict_blocks_first_phase_dispatch(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch,
 ) -> None:
-    """S-3 regression: a persisted conflict cannot enter planning."""
-    module = _run_loop_module()
-    conflict_state = PipelineState(phase="planning").copy_with(
-        rebase=RebaseState(last_action="conflict", last_reason="resolver exhausted")
-    )
-    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
-    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
-    dispatched: list[object] = []
-    monkeypatch.setattr(
-        module, "_apply_startup_rebase_outcomes", lambda _state, _ctx: conflict_state
-    )
-    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
-    saved: list[PipelineState] = []
-    monkeypatch.setattr(
-        module, "_save_recovered_rebase_checkpoint", lambda state, _ctx: saved.append(state)
+    """Checkpointed conflict evidence waits and resumes after external recovery."""
+    state = PipelineState(
+        phase="planning",
+        rebase=RebaseState(last_action="conflict", last_reason="resolver exhausted"),
     )
 
-    result, _prev_phase, exit_code = module._run_inner_loop(
-        PipelineState(phase="planning"), ctx, prev_phase="planning"
-    )
+    observed = run_recovery_scenario(monkeypatch, state, startup=True)
 
-    assert exit_code == 1
-    assert result.rebase.last_action == "conflict"
-    assert dispatched == []
-    assert saved == [conflict_state]
+    assert observed.exit_code == 0
+    assert observed.waits and all(delay > 0 for delay in observed.waits)
+    assert observed.saved[0].rebase == state.rebase
+    assert [dispatched.phase for dispatched in observed.dispatched] == ["planning"]
+    assert any("CRITICAL" in warning for warning in observed.warnings)
+    assert observed.result.rebase.integration_unresolved is False
 
 
 def test_run_loop_still_catches_up_after_a_reconciled_recovery(
@@ -657,29 +639,15 @@ def test_worker_boundary_does_not_integrate_over_an_unresolved_outcome(
     assert outcome is unresolved
 
 
-def test_run_loop_retained_recovery_blocks_first_phase_dispatch(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    """A retained recovery record is as unresolved as an explicit conflict."""
-    module = _run_loop_module()
-    retained_state = PipelineState(phase="planning").copy_with(rebase=_retained())
-    ctx = _loop_ctx(tmp_path, _RecordingDisplay())
-    ctx.policy_bundle = SimpleNamespace(pipeline=SimpleNamespace(terminal_phase="complete"))
-    dispatched: list[object] = []
-    saved: list[PipelineState] = []
-    monkeypatch.setattr(
-        module, "_apply_startup_rebase_outcomes", lambda _state, _ctx: retained_state
-    )
-    monkeypatch.setattr(module._runner_module, "run_pipeline_step", dispatched.append)
-    monkeypatch.setattr(
-        module, "_save_recovered_rebase_checkpoint", lambda state, _ctx: saved.append(state)
-    )
+def test_run_loop_retained_recovery_blocks_first_phase_dispatch(monkeypatch: MonkeyPatch) -> None:
+    """A retained crash record waits without dispatch, then resumes after recovery."""
+    state = PipelineState(phase="planning", rebase=_retained())
 
-    result, _prev_phase, exit_code = module._run_inner_loop(
-        PipelineState(phase="planning"), ctx, prev_phase="planning"
-    )
+    observed = run_recovery_scenario(monkeypatch, state, startup=True)
 
-    assert exit_code == 1
-    assert result.rebase.recovery_record_retained is True
-    assert saved == [retained_state]
-    assert dispatched == []
+    assert observed.exit_code == 0
+    assert observed.waits and all(delay > 0 for delay in observed.waits)
+    assert observed.saved[0].rebase == state.rebase
+    assert [dispatched.phase for dispatched in observed.dispatched] == ["planning"]
+    assert any("CRITICAL" in warning for warning in observed.warnings)
+    assert observed.result.rebase.integration_unresolved is False

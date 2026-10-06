@@ -38,7 +38,6 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
-    record_resolution_exhausted,
 )
 from ralph.pipeline.auto_integrate_record import clear_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_recovery import (
@@ -54,8 +53,6 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
-from ralph.pipeline.conflict_resolution.progress import load_progress_for_rebase
-from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 
 if TYPE_CHECKING:
@@ -444,15 +441,7 @@ def _resolve_conflicted_rebase(
                 target,
                 exhaustion_reason,
             )
-            return RebaseRunResult(
-                rebase_outcome=RebaseConflicts(files=[]),
-                merge_attempted=False,
-                merge_outcome=None,
-                short_circuit=record_resolution_exhausted(
-                    reason=exhaustion_reason,
-                    target=target,
-                ),
-            )
+            return None
         # Reached with no exhaustion evidence at all -- an unbound drain,
         # an unreadable stop, a resolver that was never built. None of
         # those is a resolver declining the conflict, so do not say so.
@@ -536,9 +525,7 @@ def _fallback_to_endpoint_merge(
     on its conflict / resolution paths. The ``owns_resolution``
     flag is ``True`` when the conflict resolver is mid-edit.
     """
-    keep_landed = _rebase_has_landed_stops(root)
-    if not keep_landed:
-        _abort_rebase_after_conflict(root)
+    _abort_rebase_after_conflict(root)
     if rebase_in_progress(root):
         # Keep the pre-mutation record: abort_rebase can fail after the
         # rebase engine has created state, and recovery needs that record
@@ -551,11 +538,7 @@ def _fallback_to_endpoint_merge(
             merge_attempted=False,
             merge_outcome=None,
             short_circuit=record_conflict(
-                reason=(
-                    "rebase paused with landed stops; resume remaining stops"
-                    if keep_landed
-                    else "rebase in-progress after abort"
-                ),
+                reason="rebase in-progress after abort",
                 target=target,
             ),
         )
@@ -688,27 +671,6 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
         )
         return
     clear_record(root)
-
-
-def _rebase_has_landed_stops(root: Path) -> bool:
-    """Whether THIS paused rebase already landed replay commits.
-
-    Answering ``True`` is expensive: :func:`_fallback_to_endpoint_merge`
-    honours it by leaving the conflicted rebase paused on disk instead
-    of aborting it, betting that a later seam resumes the remaining
-    stops. That bet only pays off if the sidecar describes the rebase
-    actually in progress, so the identity of that rebase is handed to
-    the sidecar rather than trusting whatever file happens to be there.
-
-    Reading it unscoped is what wedged worktrees: the sidecar was
-    written by the first agent-resolved rebase and never removed, so
-    every later conflicted rebase in that checkout was left in progress
-    awaiting a resume of stops the file did not describe, and the branch
-    stayed mid-rebase until the next run's recovery preamble aborted it.
-    """
-    feature_sha, target_sha = current_rebase_identity(root)
-    progress = load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
-    return progress is not None and bool(progress.landed_shas)
 
 
 def _abort_rebase_after_conflict(root: Path) -> None:

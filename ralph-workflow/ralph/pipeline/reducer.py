@@ -522,6 +522,12 @@ def _enter_failed_recovery(
         rebase=rebase,
         last_retry_delay_ms=retry_delay_ms,
     )
+    if "integration conflict requires resolution:" in reason:
+        resume_phase = state.phase if state.phase != target else state.previous_phase
+        new_state = new_state.copy_with(
+            phase=resume_phase or policy.entry_phase,
+            previous_phase=state.previous_phase,
+        )
     # The cycle timer is deliberately NOT concluded here. The recovery failed
     # route is a terminal to this reducer but does not end the run: the effect
     # router turns it back into the phase the run was in, so the run re-enters
