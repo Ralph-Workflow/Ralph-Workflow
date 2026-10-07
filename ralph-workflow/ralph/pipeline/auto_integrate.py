@@ -545,27 +545,32 @@ def _integrate_once_owned(
     display: ParallelDisplay | None = None,
     publish: bool = True,
     force_endpoint_merge: bool = False,
+    owned_record: IntegrationRecord | None = None,
 ) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
     post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
-    if read_record(root) is not None:
+    retained = read_record(root)
+    if retained != owned_record:
         return _record_skip(
             reason="unfinished integration retained for recovery", target=target
         ), False
     # Write the durable crash record BEFORE any git mutation so the
     # recovery preamble can always tell that we own an in-flight
     # integration (AC-11).
-    _write_record(
-        root,
-        IntegrationRecord(
+    attempt_record = (
+        owned_record.model_copy(update={
+            "phase": "integrating", "pre_feature_sha": pre_feature_sha,
+            "pre_target_sha": pre_target_sha, "integrated_feature_sha": None,
+        }) if owned_record is not None else IntegrationRecord(
             phase="integrating",
             target=target,
             pre_feature_sha=pre_feature_sha,
             pre_target_sha=pre_target_sha,
-        ),
+        )
     )
+    _write_record(root, attempt_record)
     # B11/E5: backup the original feature tip on a uniquely named
     # ``refs/rebase-backup/<id>`` ref BEFORE any mutation so a
     # concurrent ``git gc --prune`` cannot reclaim the in-flight
@@ -609,13 +614,9 @@ def _integrate_once_owned(
         # (AC-11).
         _write_record(
             root,
-            IntegrationRecord(
-                phase="integrated",
-                target=target,
-                pre_feature_sha=pre_feature_sha,
-                pre_target_sha=pre_target_sha,
-                integrated_feature_sha=feature_sha,
-            ),
+            attempt_record.model_copy(update={
+                "phase": "integrated", "integrated_feature_sha": feature_sha,
+            }),
         )
 
         refresh_outcome = refresh

@@ -38,6 +38,11 @@ from ralph.mcp.artifacts.commit_message import (
 )
 from ralph.mcp.artifacts.completion_receipts import commit_receipt_matches_changed_files
 from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.plumbing.commit_integration import (
+    commit_integration_blocker,
+    prepare_commit_integration,
+)
 from ralph.pipeline.plumbing.commit_plumbing import (
     CommitAgentResult,
     _generate_commit_message_with_agent,
@@ -48,6 +53,7 @@ from ralph.pipeline.plumbing.commit_plumbing import (
     invoke_commit_agent_attempt,
     run_commit_plumbing,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.prompts._commit_diff import commit_generation_diff
 from ralph.prompts.master_prompt import materialize_master_prompt
@@ -161,6 +167,17 @@ def _handle_agent_commit_generation(
 
     if not generate:
         return 0
+
+    if not inspect_integration_resolution(repo_root, RebaseState()).dispatch_allowed:
+        deps = DefaultPipelineFactory().build(
+            config, display_context, pro_hooks=pro_hooks, model_identity=model_identity,
+        )
+        verdict = prepare_commit_integration(
+            repo_root, config, deps, AgentRegistry.from_config(config), display_context,
+        )
+        if not verdict.dispatch_allowed:
+            display.emit_warning(commit_integration_blocker(verdict))
+            return 1
 
     delete_commit_message_artifacts(repo_root)
     diff = working_tree_diff(repo_root)

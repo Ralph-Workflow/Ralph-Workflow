@@ -11,10 +11,10 @@ from ralph.git.merge import (
     MERGE_STATE_NONE,
     abort_merge,
     branch_sha,
-    is_ancestor,
     merge_state,
     reset_keep,
 )
+from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import is_repo_clean
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.rebase.rebase_checkpoint import (
@@ -53,6 +53,9 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
 from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
+from ralph.pipeline._owned_landing_reintegration import (
+    reintegrate_owned_landing as _reintegrate_owned_landing,
+)
 from ralph.pipeline._pending_merge_commit import _git_value, resume_pending_merge
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline.auto_integrate_context import (
@@ -445,11 +448,8 @@ def _refresh_before_verdict(
 ) -> tuple[str | None, bool]:
     """Re-read the mainline pointer the recovery verdicts are taken from.
 
-    Both verdicts below -- "already landed" and "target advanced
-    concurrently" -- are decided from ``branch_sha``, and the second one
-    CLEARS the durable record permanently. Taking that decision from a
-    pointer this process has never fetched is how a perfectly landable
-    integration gets discarded after a crash.
+    Landing and reintegration must use a refreshed target observation;
+    failed refresh preserves the durable obligation for retry.
 
     Returns ``(outcome, pointer_is_fresh)``:
 
@@ -487,6 +487,8 @@ def _continue_fast_forward_from_record(
     workspace_root: Path,
     record: IntegrationRecord,
     config: UnifiedConfig | None = None,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
     """Best-effort continue of an unfinished fast-forward (phase='integrated').
 
@@ -495,18 +497,19 @@ def _continue_fast_forward_from_record(
     # AC-14 rationale: G4
     # AC-14 rationale: H7
     Retain transient failures and missing completion identities for retry.
-    Clear ownership only after a verified landing or a target movement that
-    requires fresh integration. When refresh cannot establish a current target pointer,
+    Clear ownership only after a verified landing. Target movement schedules
+    owned reintegration. When refresh cannot establish a current target pointer,
     fail closed and retain the record rather than deciding from stale state.
     """
-    if record.integrated_feature_sha is None:
+    feature_sha = record.integrated_feature_sha
+    if feature_sha is None or not _head_matches_sha(workspace_root, feature_sha):
         return _record_skip(
-            reason="recovery: malformed integrated record; verified feature SHA missing",
+            reason=(
+                "recovery: malformed integrated record; verified feature SHA missing"
+                if feature_sha is None else "recovery: feature tip changed or unreadable; landing withheld"
+            ),
             target=record.target, record_retained=True,
         )
-    feature_sha = record.integrated_feature_sha
-    # ONE refresh, before either verdict: both of them are taken from the
-    # target pointer, and the second one clears the record for good.
     refresh, pointer_is_fresh = _refresh_before_verdict(config, workspace_root, record.target)
     if not pointer_is_fresh:
         # Fail closed. Neither ancestry verdict below may be taken from
@@ -543,17 +546,18 @@ def _continue_fast_forward_from_record(
             ),
             refresh,
         )
-    if not is_ancestor(workspace_root, record.target, feature_sha):
-        # Target advanced and is no longer an ancestor of the feature
-        # SHA: this is a permanent state. Clear the record so we
-        # don't keep retrying an impossible land.
-        _clear_record(workspace_root)
+    ancestry = ancestry_state(workspace_root, record.target, feature_sha)
+    if ancestry is None:
         return record_refresh(
             _record_skip(
-                reason="recovery: target advanced concurrently",
-                target=record.target,
+                reason="recovery: target ancestry unreadable; record retained for retry",
+                target=record.target, record_retained=True,
             ),
             refresh,
+        )
+    if not ancestry:
+        return _reintegrate_owned_landing(
+            workspace_root, record, config, conflict_resolver, rebase_stop_resolver,
         )
     return _land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
 
@@ -571,10 +575,8 @@ def _land_and_reconcile(
     function keeps one job: the caller decides whether the pointer may
     be trusted at all, and this one interprets what the landing did.
 
-    Only a PERMANENT refusal ("advanced concurrently") clears the
-    record. A refusal that raised, or any other refusal text, is
-    treated as transient and RETAINS the record so the next startup
-    retries.
+    Refusals retain the record so the next startup retries. Only a
+    proved successful landing releases ownership.
 
     The successful-landing branch routes through
     :func:`ralph.pipeline.auto_integrate_ff.maybe_push_target` so recovery
@@ -700,11 +702,10 @@ def _land_and_reconcile(
             ),
             refresh,
         )
-    # Permanent refusal (target advanced concurrently): clear the
-    # record -- a retry won't change the outcome.
-    _clear_record(workspace_root)
     return record_refresh(
-        _record_skip(reason=f"recovery: {skip_reason}", target=record.target),
+        _record_skip(
+            reason=f"recovery: {skip_reason}", target=record.target, record_retained=True,
+        ),
         refresh,
     )
 
@@ -786,6 +787,13 @@ def _recover_pending_merge(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
+    if record.reintegrate_pending and record.phase == "integrating" and not (
+        record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending
+        or record.merge_commit_pending or record.merge_commit_tree is not None
+    ):
+        return _reintegrate_owned_landing(
+            root, record, config, conflict_resolver, rebase_stop_resolver,
+        )
     if (
         record.resolving_merge and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root)
         and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
@@ -798,25 +806,25 @@ def _recover_pending_merge(
     if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
         from ralph.pipeline._integration_continuation import continue_retained_resolution
 
-        continued = continue_retained_resolution(
+        resumed = continue_retained_resolution(
             root,
             record,
             config,
             conflict_resolver,
             rebase_stop_resolver,
         )
-        if isinstance(continued, str):
-            return _record_skip(reason=continued, target=record.target, record_retained=True)
-        return _continue_fast_forward_from_record(root, continued, config)
-    resumed = (
-        resume_pending_rebase(root, record)
-        if record.rebase_continue_pending
-        else resume_pending_merge(root, record)
-    )
+    else:
+        resumed = (
+            resume_pending_rebase(root, record)
+            if record.rebase_continue_pending
+            else resume_pending_merge(root, record)
+        )
     if isinstance(resumed, str):
         logger.critical("CRITICAL: {}", resumed)
         return _record_skip(reason=resumed, target=record.target, record_retained=True)
-    return _continue_fast_forward_from_record(root, resumed, config)
+    return _continue_fast_forward_from_record(
+        root, resumed, config, conflict_resolver, rebase_stop_resolver,
+    )
 
 
 def _recover_incomplete_integration_owned(
@@ -894,6 +902,7 @@ def _recover_incomplete_integration_owned(
             or record.resolving_merge
             or record.merge_commit_pending
             or record.merge_commit_tree is not None
+            or (record.reintegrate_pending and record.phase == "integrating")
             or (
                 record.operation_kind == "target_reconcile"
                 and (record.phase == "integrated" or record.diagnostic_evidence)
@@ -951,7 +960,9 @@ def _recover_incomplete_integration_owned(
                 target=record.target,
                 record_retained=True,
             )
-        return _continue_fast_forward_from_record(root, record, config)
+        return _continue_fast_forward_from_record(
+            root, record, config, conflict_resolver, rebase_stop_resolver,
+        )
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(reason=f"recovery failed: {exc}", target=None, record_retained=True)

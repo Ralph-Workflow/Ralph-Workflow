@@ -91,7 +91,12 @@ from ralph.pipeline.factory import (
     PipelineCore,
     PipelineDeps,
 )
+from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
+from ralph.pipeline.plumbing.commit_integration import (
+    commit_integration_blocker,
+    prepare_commit_integration,
+)
 from ralph.pipeline.session_bridge import (
     BridgeFactory,
     bridge_env_for,
@@ -312,6 +317,13 @@ def run_commit_plumbing(
         effective_core = effective_pipeline_deps.core
         effective_bridge_factory = effective_pipeline_deps.bridge_factory
 
+    integration_verdict = prepare_commit_integration(
+        repo_root, chain_config.general_config or UnifiedConfig(),
+        effective_pipeline_deps, chain_config.registry, display_context,
+    )
+    if not integration_verdict.dispatch_allowed:
+        return CommitAgentResult(failure_details=[commit_integration_blocker(integration_verdict)])
+
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
     extra_env: dict[str, str] | None = None
@@ -359,17 +371,23 @@ def run_commit_plumbing(
                 general_config=chain_config.general_config,
                 bridge=bridge,
             )
-            result = _generate_commit_message_with_agent(
-                agent_name,
-                cfg,
-                prompt_file=prompt_file,
-                attempt_context=attempt_ctx,
-                display_context=display_context,
-                prior_session_id=last_session_id,
-                output_collector=output_lines,
-                materializer=materializer,
-                pipeline_deps=effective_pipeline_deps,
-            )
+            try:
+                result = _generate_commit_message_with_agent(
+                    agent_name,
+                    cfg,
+                    prompt_file=prompt_file,
+                    attempt_context=attempt_ctx,
+                    display_context=display_context,
+                    prior_session_id=last_session_id,
+                    output_collector=output_lines,
+                    materializer=materializer,
+                    pipeline_deps=effective_pipeline_deps,
+                )
+            except IntegrationDispatchBlockedError as blocked:
+                return CommitAgentResult(
+                    failure_details=[commit_integration_blocker(blocked.verdict)],
+                    last_error=blocked,
+                )
             failure_details.extend(result.failure_details)
             last_session_id = result.session_id or last_session_id
             last_error = result.last_error or last_error

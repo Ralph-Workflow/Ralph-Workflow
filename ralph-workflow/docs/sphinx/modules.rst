@@ -22,6 +22,12 @@ ralph.pipeline.integration_resolution
 .. automodule:: ralph.pipeline.integration_resolution
    :members:
 
+ralph.pipeline.integration_dispatch_blocked_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_dispatch_blocked_error
+   :members:
+
 ralph.mcp.runtime_executors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

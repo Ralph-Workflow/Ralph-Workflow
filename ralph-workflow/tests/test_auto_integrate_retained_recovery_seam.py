@@ -157,6 +157,7 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "reset_keep", lambda _root, _sha: None)
     monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
+    monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
 
 
 def _boom(*_args: object, **_kwargs: object) -> None:
@@ -254,14 +255,12 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
 ) -> None:
     """phase='integrated' whose fast-forward raised (branch 2 of 4).
 
-    Deliberately distinguished from the PERMANENT 'advanced
-    concurrently' refusal, which clears the record and must therefore
-    NOT read as retained.
+    Recovery must preserve ownership until landing is proved.
     """
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
-    monkeypatch.setattr(recovery, "is_ancestor", lambda _root, _target, _sha: True)
+    monkeypatch.setattr(recovery, "ancestry_state", lambda _root, _target, _sha: True)
     monkeypatch.setattr(recovery, "fast_forward_target", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
@@ -272,30 +271,25 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
 
 
 @pytest.mark.parametrize(
-    ("ff_result", "why"),
+    ("ff_result", "retained"),
     [
-        ((True, ""), "a landed fast-forward clears the record"),
+        ((True, ""), False),
         (
             (False, "target advanced concurrently"),
-            "a permanent refusal clears the record",
+            True,
         ),
     ],
 )
-def test_a_cleared_record_never_reads_as_retained(
+def test_landing_outcome_reports_whether_recovery_remains_owned(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     ff_result: tuple[bool, str],
-    why: str,
+    retained: bool,
 ) -> None:
-    """The flag must be false wherever recovery gave the record up.
-
-    Without this the gate could over-trigger and suppress the startup
-    catch-up on the two paths that genuinely finished.
-    """
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
-    monkeypatch.setattr(recovery, "is_ancestor", lambda _root, _target, _sha: True)
+    monkeypatch.setattr(recovery, "ancestry_state", lambda _root, _target, _sha: True)
     monkeypatch.setattr(
         recovery,
         "fast_forward_target",
@@ -304,7 +298,7 @@ def test_a_cleared_record_never_reads_as_retained(
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
-    assert recovery_retained_record(outcome) is False, f"{why}; got {outcome!r}"
+    assert recovery_retained_record(outcome) is retained
 
 
 def test_an_unexpected_recovery_crash_keeps_integration_blocked(

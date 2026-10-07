@@ -296,6 +296,7 @@ def test_recovery_killed_after_clean_merge_before_ff(tmp_git_repo: Path) -> None
     _run(tmp_git_repo, "commit", "-m", "base: B")
     pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "checkout", "feature")
+    assert _run(tmp_git_repo, "merge", "--no-edit", base).returncode == 0
     record = IntegrationRecord(
         phase="integrated",
         target=base,

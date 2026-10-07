@@ -510,6 +510,7 @@ def _install_recovery_seams(
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: events.append("clear"))
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: MERGE_STATE_NONE)
+    monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
 
     def _branch_sha(_root: Path, _ref: str) -> str:
         events.append("branch_sha")
@@ -524,7 +525,7 @@ def _install_recovery_seams(
         return on_refresh() if on_refresh is not None else REFRESH_REFRESHED
 
     monkeypatch.setattr(recovery, "branch_sha", _branch_sha)
-    monkeypatch.setattr(recovery, "is_ancestor", _is_ancestor)
+    monkeypatch.setattr(recovery, "ancestry_state", _is_ancestor)
     monkeypatch.setattr(recovery, "_refresh_target", _refresh)
     monkeypatch.setattr(
         recovery,
@@ -668,22 +669,3 @@ def test_an_unhealthy_refresh_outcome_also_defers_the_recovery_verdict(
     assert "clear" not in events
     assert outcome.last_action == "skipped"
     assert outcome.last_refresh == REFRESH_UNREACHABLE
-
-
-def test_a_healthy_refresh_still_reaches_the_ancestry_verdicts(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Fail-closed must not swallow the ordinary diverged-target verdict.
-
-    With a CONFIRMED-current pointer, "target advanced concurrently" is
-    still a permanent state and still clears the record.
-    """
-    events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=False)
-
-    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
-
-    assert outcome is not None
-    assert events[0] == "refresh"
-    assert "clear" in events
-    assert outcome.last_reason == "recovery: target advanced concurrently"
-    assert outcome.last_refresh == REFRESH_REFRESHED

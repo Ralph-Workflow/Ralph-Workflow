@@ -7,21 +7,223 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.config.models import UnifiedConfig
+from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
+from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
+from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
 )
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.plumbing.commit_integration import prepare_commit_integration
+from ralph.pipeline.plumbing.commit_plumbing import run_commit_plumbing
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests.test_cli_commit_command import _write_commit_message_doc
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize("receipt_flags_lost", [False, True])
+def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
+    tmp_git_repo: Path, *, enabled: bool, receipt_flags_lost: bool,
+) -> None:
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "shared.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "shared.txt", "feature\n")
+    write_record(root, IntegrationRecord(
+        phase="integrated", target=target, pre_feature_sha=feature,
+        pre_target_sha=base, integrated_feature_sha=feature,
+    ))
+    assert _git(root, "switch", target).returncode == 0
+    _commit(root, "shared.txt", "target\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": enabled, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+
+    declined = recover_incomplete_integration(
+        WorkspaceScope(root), config=config,
+        rebase_stop_resolver=lambda _root, _target, _stop: False,
+        conflict_resolver=lambda _root, _target: False,
+    )
+    assert declined is not None and not declined.fast_forwarded
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+
+    if receipt_flags_lost:
+        interrupted = read_record(root)
+        assert interrupted is not None
+        write_record(root, interrupted.model_copy(update={
+            "resolving_rebase": False, "resolving_paths": (),
+        }))
+
+    def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
+        assert read_record(root) is not None
+        assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+        (repo / "shared.txt").write_text("feature and target preserved\n", encoding="utf-8")
+        return True
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root), config=config, rebase_stop_resolver=resolve,
+    )
+    assert outcome is not None and outcome.fast_forwarded
+    assert read_record(root) is None
+    assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
+    assert _git(root, "show", f"{target}:shared.txt").stdout == "feature and target preserved\n"
+
+
+@pytest.mark.parametrize("receipt", ["integrated", "malformed", "missing_target", "changed_head"])
+def test_standalone_commit_recovers_ownership_before_commit_session(
+    tmp_git_repo: Path, receipt: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature\n")
+    write_record(root, IntegrationRecord(
+        phase="integrated", target=target, pre_feature_sha=feature,
+        pre_target_sha=base, integrated_feature_sha=feature,
+    ))
+    if receipt == "malformed":
+        (root / ".agent" / "auto_integrate_in_progress.json").write_text("{", encoding="utf-8")
+    elif receipt == "missing_target":
+        assert _git(root, "branch", "-D", target).returncode == 0
+    elif receipt == "changed_head":
+        _commit(root, "operator.txt", "operator work\n")
+    head_before = _git(root, "rev-parse", "HEAD").stdout.strip()
+    (root / "pending.txt").write_text("keep pending work\n", encoding="utf-8")
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": False, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+    context = make_display_context()
+    agent = AgentConfig(cmd="fake-commit", json_parser="generic")
+    registry = AgentRegistry.from_config(config)
+    registry.register("fake-commit", agent)
+
+    def invoke(_agent: AgentConfig, _prompt: str, *, options: InvokeOptions) -> Iterator[str]:
+        assert _git(root, "rev-parse", target).stdout.strip() == feature
+        _write_commit_message_doc(root, "fix: preserved pending work")
+        return iter(())
+
+    monkeypatch.setattr("ralph.cli.commands.commit.invoke_agent", invoke)
+    result = run_commit_plumbing(
+        diff="pending work", repo_root=root,
+        chain_config=CommitChainConfig(
+            registry=registry, agents=["fake-commit"], verbose=False,
+            agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
+            general_config=config,
+        ),
+        display_context=context, pipeline_deps=make_test_pipeline_deps(context),
+    )
+    if receipt == "integrated":
+        assert result.message == "fix: preserved pending work"
+        assert read_record(root) is None
+        assert _git(root, "rev-parse", target).stdout.strip() == feature
+    elif receipt == "malformed":
+        assert result.failure_details and "integration" in result.failure_details[0]
+        assert (root / ".agent" / "auto_integrate_in_progress.json").read_text(encoding="utf-8") == "{"
+        assert _git(root, "rev-parse", target).stdout.strip() == base
+    elif receipt == "missing_target":
+        assert not result.message and result.failure_details
+        assert read_record(root) is not None
+        assert _git(root, "rev-parse", "--verify", target).returncode != 0
+    else:
+        assert not result.message and result.failure_details
+        assert read_record(root) is not None
+        assert _git(root, "rev-parse", target).stdout.strip() == base
+        assert _git(root, "show", "HEAD:operator.txt").stdout == "operator work\n"
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == head_before
+    assert (root / "pending.txt").read_text(encoding="utf-8") == "keep pending work\n"
+
+
+def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_git_repo
+    _commit(root, "base.txt", "base\n")
+    receipt = root / ".agent" / "auto_integrate_in_progress.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text("{", encoding="utf-8")
+    _write_commit_message_doc(root, "fix: retained artifact")
+    monkeypatch.chdir(root)
+    def load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
+        return UnifiedConfig()
+
+    monkeypatch.setattr("ralph.cli.commands.commit.load_config", load_config)
+    result = commit_plumbing(
+        options=CommitPlumbingOptions(generate_commit=True),
+        display_context=make_display_context(),
+    )
+    assert result == 1
+    assert receipt.read_text(encoding="utf-8") == "{"
+    assert "fix: retained artifact" in (root / ".agent" / "artifacts" / "commit_message.md").read_text(encoding="utf-8")
+
+
+def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_repo: Path) -> None:
+    root = tmp_git_repo
+    base = _commit(root, "base.txt", "base\n")
+    config = UnifiedConfig()
+    registry = AgentRegistry.from_config(config)
+    registry.register("fake-commit", AgentConfig(cmd="fake-commit", json_parser="generic"))
+    context = make_display_context()
+    class Bridge:
+        run_id = "commit-race"
+
+        def start(self) -> None:
+            return None
+
+        def shutdown(self) -> None:
+            return None
+
+        def endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
+        def agent_endpoint_uri(self) -> str:
+            return self.endpoint_uri()
+
+    def race(**_kwargs: object) -> SessionBridgeLike:
+        write_record(root, IntegrationRecord(
+            phase="integrated", target="missing-target", pre_feature_sha=base,
+            pre_target_sha=base, integrated_feature_sha=base,
+        ))
+        return Bridge()
+
+    result = run_commit_plumbing(
+        diff="pending work", repo_root=root,
+        chain_config=CommitChainConfig(
+            registry=registry, agents=["fake-commit"], verbose=False,
+            agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
+            general_config=config,
+        ),
+        display_context=context,
+        pipeline_deps=make_test_pipeline_deps(context, bridge_factory=race),
+    )
+    assert not result.message and result.failure_details
+    assert "integration" in result.failure_details[0]
+    assert read_record(root) is not None
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == base
 
 
 def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
@@ -42,7 +244,7 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
-@pytest.mark.parametrize("seam", ["planning", "after_commit", "boundary"])
+@pytest.mark.parametrize("seam", ["planning", "after_commit", "boundary", "standalone_commit"])
 def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     tmp_git_repo: Path, operation: str, seam: str,
 ) -> None:
@@ -60,8 +262,18 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
 
     config = UnifiedConfig.model_validate({"general": {
         "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
+        "auto_integrate_enabled": seam != "standalone_commit",
     }})
-    if seam == "planning":
+    outcome: RebaseState | None
+    if seam == "standalone_commit":
+        context = make_display_context()
+        verdict = prepare_commit_integration(
+            root, config, make_test_pipeline_deps(context), AgentRegistry.from_config(config),
+            context, conflict_resolver=merge_resolver, rebase_stop_resolver=rebase_resolver,
+        )
+        assert verdict.dispatch_allowed
+        outcome = RebaseState(fast_forwarded=True)
+    elif seam == "planning":
         outcome = integrate_before_planning(
             config, WorkspaceScope(root), RebaseState(), conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,

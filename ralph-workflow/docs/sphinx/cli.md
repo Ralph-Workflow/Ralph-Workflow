@@ -120,6 +120,15 @@ These flags support Ralph Workflow's commit-message generation flow and the `ral
 
 Commits created through this generated-commit path keep the active git author identity unless you override it, and Ralph Workflow appends a `Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>` trailer so automated commits stay attributable.
 
+Before generating a message, Ralph Workflow resumes any retained integration using the
+configured conflict-resolution chain and verifies target landing. This also
+applies when new automatic integration is disabled. Pending edits remain
+uncommitted during recovery. If recovery cannot finish, the command exits with
+a diagnostic and preserves its recovery evidence; use `ralph --resume` to
+continue the owned operation. An operator-owned merge or rebase also blocks
+commit generation until the operator completes it. `--show-commit-msg` remains
+available while recovery is pending.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--generate-commit-msg` | `False` | Generate a commit message from the current repo changes |

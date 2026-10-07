@@ -103,9 +103,12 @@ def test_moving_target_preserves_completed_pending_merge(tmp_git_repo: Path) -> 
             "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
         }}),
     )
-    assert outcome is not None and not outcome.fast_forwarded
+    assert outcome is not None and outcome.fast_forwarded
     assert _git(root, "show", "HEAD:shared.txt").stdout == "resolved\n"
-    assert _git(root, "rev-parse", target).stdout.strip() == advanced
+    assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
+    assert _git(root, "merge-base", "--is-ancestor", advanced, "HEAD").returncode == 0
+    assert _git(root, "show", "HEAD^1:shared.txt").stdout == "resolved\n"
+    assert read_record(root) is None
     assert len(_git(root, "show", "-s", "--format=%P", "HEAD").stdout.split()) == 2
 
 

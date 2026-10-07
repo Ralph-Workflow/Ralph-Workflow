@@ -1,6 +1,7 @@
 {
   "phase": "planning",
   "previous_phase": null,
+  "integration_commit_resume_phase": null,
   "review_outcome": null,
   "phase_chains": {},
   "loop_iterations": {},
@@ -27,6 +28,7 @@
     "last_remote": null,
     "last_push_status": null,
     "consecutive_conflicts": 0,
+    "integration_retry_attempt": 0,
     "last_conflict_feature_sha": null,
     "last_conflict_target_sha": null,
     "last_conflict_paths": [],

@@ -17,6 +17,8 @@ the maintained Python package.
 - [ADR-0005: conflict-resolution pipeline parity](adr-0005-conflict-resolution-pipeline-parity.md) —
   shared recovery-controller routing, durable conflict identity, and Ralph-owned
   staging and Git advancement for every conflict path
+- [ADR-0006: owned landing recovery](adr-0006-owned-landing-recovery.md) —
+  standalone commit recovery, retained target reintegration, and typed dispatch refusal
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests

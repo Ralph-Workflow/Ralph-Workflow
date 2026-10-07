@@ -230,6 +230,13 @@ An outstanding integration record remains blocking even when Git reports a
 clean worktree. A successful commit, including an empty commit, is not retried
 because its subsequent integration needs recovery. Ralph Workflow preserves
 the phase result and resumes integration before dispatching the next phase.
+If the target advances before landing, recovery retains the same obligation
+and reintegrates against the moved target under its existing worktree lease.
+Missing targets and failed ancestry queries retain ownership and block ordinary
+dispatch. Reintegration waits when the feature tip has changed or unfinished
+edits would make it unsafe. Disabling new integration does not abandon a
+retained landing. Standalone commit generation runs this recovery boundary too;
+see [commit-message helpers](cli.md#commit-message-helpers).
 Missing completion evidence reaches a supervised inspection agent. Its success
 does not authorize publication: recovery still requires Git proof, and changed
 protected evidence remains blocked until the original evidence is restored.

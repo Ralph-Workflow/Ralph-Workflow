@@ -116,6 +116,7 @@ class IntegrationRecord(RalphBaseModel):
     merge_commit_tree: str | None = None
     operation_kind: IntegrationOperation = "feature_integrate"
     owning_worktree: str | None = None
+    reintegrate_pending: bool = False
 
 
 _RECORD_ROOT_BINDING: ContextVar[tuple[Path, Path] | None] = ContextVar(
@@ -292,6 +293,19 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
 
 def clear_record(workspace_root: Path) -> None:
     """Unlink the durable record; missing-ok."""
+    record = read_record(workspace_root)
+    if record is not None and record.reintegrate_pending:
+        from ralph.git.merge import branch_sha
+        from ralph.git.operations import get_head_sha
+        from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
+
+        post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
+        if (
+            record.phase != "integrated" or record.integrated_feature_sha is None
+            or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
+            or get_head_sha(workspace_root) != record.integrated_feature_sha
+        ):
+            raise RuntimeError("owned reintegration cannot release its unfinished target landing")
     record_file = record_path(workspace_root)
     try:
         record_file.unlink()

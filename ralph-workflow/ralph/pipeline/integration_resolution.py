@@ -17,6 +17,7 @@ from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
@@ -202,11 +203,7 @@ def assert_non_resolution_dispatch_allowed(
 ) -> None:
     """Reject every ordinary phase when the integration invariant blocks it."""
     if phase != RESOLUTION_DRAIN and not verdict.dispatch_allowed:
-        detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
-        detail = detail or verdict.status
-        raise RuntimeError(
-            f"cannot dispatch {phase!r}: integration resolution is {verdict.status}: {detail}"
-        )
+        raise IntegrationDispatchBlockedError(phase, verdict)
 
 
 def _full_porcelain(root: Path) -> tuple[bool, str]:
