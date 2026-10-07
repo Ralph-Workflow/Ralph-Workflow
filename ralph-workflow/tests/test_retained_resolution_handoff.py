@@ -106,7 +106,7 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         pre_target_sha=base, integrated_feature_sha=feature,
     ))
     if receipt == "malformed":
-        (root / ".agent" / "auto_integrate_in_progress.json").write_text("{", encoding="utf-8")
+        (root / ".agent" / "auto_integrate_in_progress.json").write_bytes(b"\xff\xfe")
     elif receipt == "missing_target":
         assert _git(root, "branch", "-D", target).returncode == 0
     elif receipt == "changed_head":
@@ -143,7 +143,7 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         assert _git(root, "rev-parse", target).stdout.strip() == feature
     elif receipt == "malformed":
         assert result.failure_details and "integration" in result.failure_details[0]
-        assert (root / ".agent" / "auto_integrate_in_progress.json").read_text(encoding="utf-8") == "{"
+        assert (root / ".agent" / "auto_integrate_in_progress.json").read_bytes() == b"\xff\xfe"
         assert _git(root, "rev-parse", target).stdout.strip() == base
     elif receipt == "missing_target":
         assert not result.message and result.failure_details

@@ -202,7 +202,7 @@ def _read_record_raw(record_file: Path) -> dict[str, object] | None:
     """
     try:
         raw_text = record_file.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     try:
         parsed: object = json.loads(raw_text)
