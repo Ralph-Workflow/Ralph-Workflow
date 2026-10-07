@@ -110,7 +110,7 @@ def retained_integration_reason(root: object) -> str | None:
     try:
         if read_record(root) is not None:
             return "durable integration record retained; recovery must finish before ordinary dispatch"
-        record_path(root).stat()
+        record_path(root).lstat()
     except FileNotFoundError:
         return None
     except OSError:

@@ -238,7 +238,7 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
 def _absent_record_is_recordable(path: Path) -> bool:
     """Only a proven absent ownership record permits starting a new operation."""
     try:
-        path.stat()
+        path.lstat()
     except FileNotFoundError:
         return True
     except OSError:
