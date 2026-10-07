@@ -316,28 +316,36 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     return target, feature, main
 
 
+@pytest.mark.parametrize("crash_before_mutation", [False, True])
 def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
-    tmp_git_repo: Path, tmp_path: Path,
+    tmp_git_repo: Path, tmp_path: Path, *, crash_before_mutation: bool,
 ) -> None:
     owner = tmp_git_repo
     target = _git(owner, "branch", "--show-current").stdout.strip()
     _commit(owner, "shared.txt", "base\n")
     assert _git(owner, "switch", "-c", "remote-seed").returncode == 0
-    _commit(owner, "shared.txt", "remote\n")
+    remote = _commit(owner, "shared.txt", "remote\n")
     origin = tmp_path / "origin.git"
     assert _git(owner, "init", "--bare", str(origin)).returncode == 0
     assert _git(owner, "remote", "add", "origin", str(origin)).returncode == 0
     assert _git(owner, "push", "origin", f"remote-seed:{target}").returncode == 0
     assert _git(owner, "switch", target).returncode == 0
-    _commit(owner, "shared.txt", "local\n")
+    local = _commit(owner, "shared.txt", "local\n")
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
-    _commit(feature, "feature.txt", "valuable completed feature\n")
-    initial = auto_integrate_after_commit(
-        UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
-        WorkspaceScope(feature), RebaseState(), rebase_stop_resolver=lambda *_args: False,
-    )
-    assert initial is not None and read_record(feature) is not None
+    feature_tip = _commit(feature, "feature.txt", "valuable completed feature\n")
+    if crash_before_mutation:
+        write_record(feature, IntegrationRecord(
+            phase="integrating", target=target, pre_feature_sha=local,
+            pre_target_sha=remote, operation_kind="target_reconcile",
+            owning_worktree=str(owner), initiating_feature_sha=feature_tip,
+        ))
+    else:
+        initial = auto_integrate_after_commit(
+            UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
+            WorkspaceScope(feature), RebaseState(), rebase_stop_resolver=lambda *_args: False,
+        )
+        assert initial is not None and read_record(feature) is not None
 
     def resolve(root: Path, _branch: str, _stop: RebaseStop) -> bool:
         (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")

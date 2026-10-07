@@ -6,7 +6,10 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
+from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, branch_sha, merge_state
+from ralph.git.merge_obstructions import ancestry_state
+from ralph.git.operations import get_head_sha, is_repo_clean
+from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.pipeline._integration_continuation import (
     _legacy_completed_rebase,
@@ -93,10 +96,46 @@ def _continue_target_record(
         if completed is not None:
             write_record(root, completed)
             record = completed
+        elif merge_state(owner) == MERGE_STATE_NONE and not rebase_in_progress_at(owner):
+            started = _start_saved_target_action(owner, root, record, config)
+            if isinstance(started, str):
+                return started
+            record = started
     return (
         resume_pending_rebase(owner, record) if record.rebase_continue_pending
         else continue_retained_resolution(owner, record, config, conflict_resolver, rebase_stop_resolver)
     )
+
+
+def _start_saved_target_action(
+    owner: Path, root: Path, record: IntegrationRecord, config: UnifiedConfig | None,
+) -> IntegrationRecord | str:
+    if (
+        config is None or record.pre_target_sha is None
+        or get_head_sha(owner) != record.pre_feature_sha
+        or branch_sha(owner, record.target) != record.pre_feature_sha
+        or not is_repo_clean(owner)
+        or (owner.resolve() != root.resolve() and (
+            record.initiating_feature_sha is None
+            or get_head_sha(root) != record.initiating_feature_sha
+        ))
+    ):
+        return "saved target reconciliation requires unchanged identities and clean owner; intervention required"
+    from ralph.pipeline._pending_merge_commit import _git_value
+
+    if _git_value(owner, "symbolic-ref", "--quiet", "--short", "HEAD") != record.target:
+        return "saved target reconciliation branch owner changed; intervention required"
+    retained = record.model_copy(update={"resolving_rebase": True})
+    write_record(root, retained)
+    result = rebase_onto(record.pre_target_sha, repo_root=owner)
+    if isinstance(result, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress_at(owner):
+        head = get_head_sha(owner)
+        if head is not None and ancestry_state(owner, record.pre_target_sha, head) is True:
+            retained = retained.model_copy(update={
+                "phase": "integrated", "integrated_feature_sha": head, "resolving_rebase": False,
+            })
+            write_record(root, retained)
+    return retained
 
 
 def _retained(record: IntegrationRecord, reason: str) -> RebaseState:
