@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
+from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.pipeline.auto_integrate_record import write_record
@@ -101,7 +101,16 @@ def _resume_owned_operation(
 
 
 def _completed_owned_action(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
-    if record.phase != "integrating" or not is_repo_clean(root):
+    if record.phase != "integrating":
+        return None
+    if (
+        get_head_sha(root) == record.pre_feature_sha
+        and branch_sha(root, record.target) == record.pre_feature_sha
+    ):
+        return record.model_copy(update={
+            "phase": "integrated", "integrated_feature_sha": record.pre_feature_sha,
+        })
+    if not is_repo_clean(root):
         return None
     from ralph.pipeline._integration_continuation import _legacy_completed_rebase
     from ralph.pipeline._pending_merge_commit import _git_value

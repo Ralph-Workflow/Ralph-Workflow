@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
+    MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
     abort_merge,
     branch_sha,
@@ -787,10 +788,15 @@ def _recover_pending_merge(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if record.reintegrate_pending and record.phase == "integrating" and not (
+    if record.phase == "integrating" and not (
         record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending
         or record.merge_commit_pending or record.merge_commit_tree is not None
     ):
+        if merge_state(root) not in {MERGE_STATE_NONE, MERGE_STATE_IN_PROGRESS}:
+            return _record_skip(
+                reason="recovery: merge state unreadable; record retained for retry",
+                target=record.target, record_retained=True,
+            )
         return _reintegrate_owned_landing(
             root, record, config, conflict_resolver, rebase_stop_resolver,
         )
@@ -902,7 +908,7 @@ def _recover_incomplete_integration_owned(
             or record.resolving_merge
             or record.merge_commit_pending
             or record.merge_commit_tree is not None
-            or (record.reintegrate_pending and record.phase == "integrating")
+            or (record.operation_kind == "feature_integrate" and record.phase == "integrating")
             or (
                 record.operation_kind == "target_reconcile"
                 and (record.phase == "integrated" or record.diagnostic_evidence)

@@ -159,8 +159,9 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
+@pytest.mark.parametrize("reintegrate", [False, True])
 def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
-    tmp_git_repo: Path, operation: str,
+    tmp_git_repo: Path, operation: str, *, reintegrate: bool,
 ) -> None:
     root = tmp_git_repo
     assert _git(root, "config", "--replace-all", "core.logAllRefUpdates", "true").returncode == 0
@@ -173,7 +174,7 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     assert _git(root, "switch", "feature").returncode == 0
     write_record(root, IntegrationRecord(
         phase="integrating", target=target, pre_feature_sha=feature,
-        pre_target_sha=moved, reintegrate_pending=True,
+        pre_target_sha=moved, reintegrate_pending=reintegrate,
     ))
     assert _git(root, operation, target).returncode == 0
     completed = _git(root, "rev-parse", "HEAD").stdout.strip()
@@ -193,8 +194,9 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
+@pytest.mark.parametrize("phase", ["integrating", "integrated"])
 def test_completed_landing_receipt_preserves_later_operator_resolution(
-    tmp_git_repo: Path, operation: str,
+    tmp_git_repo: Path, operation: str, phase: str,
 ) -> None:
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
@@ -202,11 +204,12 @@ def test_completed_landing_receipt_preserves_later_operator_resolution(
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "shared.txt", "feature\n")
     assert _git(root, "switch", target).returncode == 0
-    _commit(root, "shared.txt", "target\n")
+    moved = _commit(root, "shared.txt", "target\n")
     assert _git(root, "switch", "feature").returncode == 0
     write_record(root, IntegrationRecord(
-        phase="integrated", target=target, pre_feature_sha=feature,
-        pre_target_sha=base, integrated_feature_sha=feature,
+        phase=phase, target=target, pre_feature_sha=feature,
+        pre_target_sha=base if phase == "integrated" else moved,
+        integrated_feature_sha=feature if phase == "integrated" else None,
     ))
     assert _git(root, operation, target).returncode != 0
     (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
