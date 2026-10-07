@@ -13,7 +13,6 @@ from ralph.git.merge import (
     abort_merge,
     branch_sha,
     merge_state,
-    reset_keep,
 )
 from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import is_repo_clean
@@ -53,7 +52,6 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
-from ralph.pipeline._auto_integrate_recovery_integrating import recover_integrating_record
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
@@ -711,17 +709,6 @@ def _land_and_reconcile(
     )
 
 
-def _recovery_operation_root(record: object, root: Path) -> tuple[str, Path]:
-    """Return the owned worktree for current records and the root for legacy test records."""
-    if (
-        isinstance(record, IntegrationRecord)
-        and record.operation_kind == "target_reconcile"
-        and record.owning_worktree is not None
-    ):
-        return record.operation_kind, Path(record.owning_worktree)
-    return "feature_integrate", root
-
-
 def recover_incomplete_integration(
     workspace_scope: WorkspaceScope,
     *,
@@ -848,31 +835,6 @@ def _recover_incomplete_integration_owned(
       git operation).
     * Preserve agent-owned resolution and verified pending commit/continuation
       records; retry prepared operations before considering generic cleanup.
-    * Abort any other owned engine rebase/merge in flight before restoring
-      the interrupted attempt. If the abort itself FAILS, the durable record
-      is RETAINED so the next startup can retry; the returned
-      ``RebaseState`` records the abort failure as a skip with
-      the original target preserved. The merge check is read via
-      :func:`ralph.git.merge.merge_state`, so a FAILED git query
-      counts as a possible in-flight merge (abort attempted, record
-      retained unless a readable state later proves ``MERGE_HEAD``
-      absent) rather than as "nothing to abort".
-    * If ``record.phase == 'integrating'``: the rebase/merge never
-      completed → restore the feature branch to ``pre_feature_sha``
-      via ``reset_keep``. The record is cleared ONLY after
-      ``reset_keep`` succeeds AND no owned engine op remains; if
-      reset_keep raises or any prior abort left an in-progress
-      operation, the record is RETAINED for retry.
-    * If ``record.phase == 'integrated'``: the rebase/merge already
-      completed and only the fast-forward may be unfinished →
-      safely CONTINUE the fast-forward (same worktree-aware CAS path
-      used in the happy path).
-    * The durable record is cleared only when the recovery path
-      confirms (1) no owned git operation remains in flight AND
-      (2) the feature SHA was restored to ``pre_feature_sha`` (for
-      phase='integrating') OR the fast-forward reconciled cleanly
-      (for phase='integrated'). Any failure retains the record so
-      the next run can retry the recovery.
     * Every outcome that RETAINS the record sets
       ``RebaseState.recovery_record_retained``, which callers read
       through :func:`recovery_retained_record`. A caller that sees it
@@ -882,10 +844,7 @@ def _recover_incomplete_integration_owned(
 
     Args:
         workspace_scope: Scope whose root holds the durable record.
-        config: Run configuration, used ONLY to re-read the mainline
-            pointer before the phase='integrated' ancestry verdicts.
-            Optional, and ``None`` reproduces the pre-seam behaviour
-            exactly, so a caller that holds no config keeps working.
+        config: Run configuration for owned continuation and target refresh.
 
     Any unexpected exception inside this function is logged and
     swallowed; it must never abort the run.
@@ -911,56 +870,19 @@ def _recover_incomplete_integration_owned(
             or (record.operation_kind == "feature_integrate" and record.phase == "integrating")
             or (
                 record.operation_kind == "target_reconcile"
-                and (record.phase == "integrated" or record.diagnostic_evidence)
             )
         ):
             return _recover_pending_merge(
                 root, record, config, conflict_resolver, rebase_stop_resolver
             )
 
-        operation_kind, operation_root = _recovery_operation_root(record, root)
-        if record.phase == "integrated":
-            if rebase_in_progress(operation_root) or merge_state(operation_root) != MERGE_STATE_NONE:
-                return _record_skip(
-                    reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
-                    target=record.target, record_retained=True,
-                )
-            return _continue_fast_forward_from_record(
-                root, record, config, conflict_resolver, rebase_stop_resolver,
+        if rebase_in_progress(root) or merge_state(root) != MERGE_STATE_NONE:
+            return _record_skip(
+                reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
+                target=record.target, record_retained=True,
             )
-
-        # Abort owned operations; retain the record if recovery cannot prove cleanup.
-        abort_failed = False
-        try:
-            if rebase_in_progress(operation_root):
-                abort_rebase_discarding_progress(operation_root)
-        except Exception as exc:
-            abort_failed = True
-            logger.warning("recovery: abort_rebase raised: {}", exc)
-        try:
-            if merge_state(operation_root) != MERGE_STATE_NONE:
-                aborted = abort_merge(operation_root)
-                if not aborted and merge_state(operation_root) != MERGE_STATE_NONE:
-                    abort_failed = True
-                    logger.warning(
-                        "recovery: merge abort did not prove MERGE_HEAD gone in {}",
-                        root,
-                    )
-        except Exception as exc:
-            abort_failed = True
-            logger.warning("recovery: abort_merge raised: {}", exc)
-
-        return recover_integrating_record(
-            root=root,
-            record=record,
-            operation_kind=operation_kind,
-            operation_root=operation_root,
-            abort_failed=abort_failed,
-            merge_state=merge_state,
-            reset_keep=reset_keep,
-            rebase_in_progress=rebase_in_progress,
-            head_matches_sha=_head_matches_sha,
-            clear_record=_clear_record,
+        return _continue_fast_forward_from_record(
+            root, record, config, conflict_resolver, rebase_stop_resolver,
         )
 
     except Exception as exc:

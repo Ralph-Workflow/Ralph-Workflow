@@ -154,7 +154,6 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
-    monkeypatch.setattr(recovery, "reset_keep", lambda _root, _sha: None)
     monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
     monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
@@ -183,10 +182,6 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     resets: list[tuple[object, ...]] = []
     cleared: list[Path] = []
 
-    def record_reset(*args: object) -> None:
-        resets.append(args)
-
-    monkeypatch.setattr(recovery, "reset_keep", record_reset)
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
@@ -202,7 +197,6 @@ def test_a_failed_reset_retains_the_record_and_says_so_structurally(
     """phase='integrating' whose ``reset_keep`` raised (branch 3 of 4)."""
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrating"))
-    monkeypatch.setattr(recovery, "reset_keep", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 

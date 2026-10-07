@@ -117,6 +117,7 @@ class IntegrationRecord(RalphBaseModel):
     operation_kind: IntegrationOperation = "feature_integrate"
     owning_worktree: str | None = None
     reintegrate_pending: bool = False
+    initiating_feature_sha: str | None = None
 
 
 _RECORD_ROOT_BINDING: ContextVar[tuple[Path, Path] | None] = ContextVar(

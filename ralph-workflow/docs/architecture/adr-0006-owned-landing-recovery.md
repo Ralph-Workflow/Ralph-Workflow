@@ -26,6 +26,10 @@ receipts. Action replacement uses the existing atomic record writer, with no
 delete-and-recreate interval. Reintegration remains owned until Git proves the
 result landed. Missing targets and failed ancestry queries retain evidence.
 Disabling new automatic integration does not cancel existing ownership.
+Foreign target reconciliation records the initiating feature identity. Finishing
+that target operation atomically schedules the feature landing; it cannot release
+the initiating obligation. Older foreign receipts without that identity retain
+evidence and require intervention rather than guessing the protected feature.
 
 ## Consequences
 

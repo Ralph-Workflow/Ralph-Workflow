@@ -20,6 +20,7 @@ from ralph.pipeline._auto_integrate_config import configured_target as _configur
 from ralph.pipeline._integration_continuation import (
     recover_before_attempt as _recover_before_attempt,
 )
+from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref as _create_rebase_backup_ref,
@@ -497,6 +498,7 @@ def _reintegrate_after_remote_reconcile(
         rebase_stop_resolver=rebase_stop_resolver,
         display=display,
         publish=False,
+        owned_record=scheduled_landing(root, target),
     )
     return record is not None and record.fast_forwarded and not retry
 
@@ -530,6 +532,7 @@ def _integrate_once(
             display=display,
             publish=publish,
             force_endpoint_merge=force_endpoint_merge,
+            owned_record=scheduled_landing(root, target),
         )
 
 
@@ -556,9 +559,6 @@ def _integrate_once_owned(
         return _record_skip(
             reason="unfinished integration retained for recovery", target=target
         ), False
-    # Write the durable crash record BEFORE any git mutation so the
-    # recovery preamble can always tell that we own an in-flight
-    # integration (AC-11).
     attempt_record = (
         owned_record.model_copy(update={
             "phase": "integrating", "pre_feature_sha": pre_feature_sha,
@@ -598,7 +598,6 @@ def _integrate_once_owned(
                 _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(rebase_result.short_circuit, refresh), False
 
-        # Success path: the feature branch contains the target.
         feature_sha = _read_post_integration_head_sha(root, target)
         if feature_sha is None:
             _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)

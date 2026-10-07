@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.git import remote_push as remote_push_module
 from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
@@ -31,9 +33,13 @@ from ralph.policy.loader import load_policy
 _STOP_CAP = 10
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.policy.models import PolicyBundle
+
+
+@pytest.fixture(autouse=True)
+def initiating_feature_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(remote_reconcile, "get_head_sha", lambda _root: "completed-feature")
+    monkeypatch.setattr(remote_reconcile, "branch_sha", lambda _root, _ref: "before")
 
 
 def _config(**overrides: object):

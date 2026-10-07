@@ -248,6 +248,7 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         # the seams every path uses. ``branch_sha`` and ``clear_record``
         # are stubbed because the test doesn't need to observe them.
         monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a, **_kw: "before_sha")
+        monkeypatch.setattr(remote_reconcile, "get_head_sha", lambda *_a: "completed_feature_sha")
         monkeypatch.setattr(remote_reconcile, "clear_record", cleared.append)
 
         resolver = resolver_module.build_agent_rebase_stop_resolver(

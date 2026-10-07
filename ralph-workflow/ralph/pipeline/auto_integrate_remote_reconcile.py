@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
-from ralph.git.operations import find_main_worktree_root, is_repo_clean
+from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import (
     RebaseNoOp,
     RebaseSuccess,
@@ -20,6 +20,7 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
+from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     bind_integration_record_root,
@@ -129,9 +130,10 @@ def _reconcile_owned_target(
         phase="integrating",
         target=target,
         pre_feature_sha=pre_target_sha,
-        pre_target_sha=pre_target_sha,
+        pre_target_sha=branch_sha(owner, f"{remote}/{target}"),
         operation_kind="target_reconcile",
         owning_worktree=str(owner),
+        initiating_feature_sha=get_head_sha(repo_root) if owner.resolve() != repo_root.resolve() else None,
     )
     try:
         write_record(repo_root, record)
@@ -210,7 +212,11 @@ def _clear_successful_reconciliation_record(
 ) -> ReconciliationOutcome:
     """Clear durable ownership only after reconciliation finished cleanly."""
     try:
-        clear_record(repo_root)
+        retained = read_record(repo_root)
+        if retained is not None:
+            finish_target_substep(repo_root, retained)
+        else:
+            clear_record(repo_root)
     except Exception as exc:
         return ReconciliationOutcome(
             False,
@@ -287,7 +293,11 @@ def _abort_restore_or_retain_record(
             f"restore failed: {exc}",
         )
     try:
-        clear_record(repo_root)
+        retained = read_record(repo_root)
+        if retained is not None:
+            finish_target_substep(repo_root, retained)
+        else:
+            clear_record(repo_root)
     except Exception as exc:
         return ReconciliationOutcome(
             False,

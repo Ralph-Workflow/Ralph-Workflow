@@ -735,10 +735,10 @@ def test_remote_reconciliation_preserves_and_resumes_target_agent_work(
         assert blocked is not None and blocked.recovery_record_retained
         assert calls == [tmp_git_repo]
     recovered = recover_incomplete_integration(WorkspaceScope(feature), rebase_stop_resolver=finish)
-    assert recovered is not None and not recovered.recovery_record_retained
+    assert recovered is not None and recovered.recovery_record_retained
     assert calls == [tmp_git_repo, tmp_git_repo]
     assert not rebase_in_progress(tmp_git_repo)
-    assert read_record(feature) is None and read_record(tmp_git_repo) is None
+    assert read_record(feature) is not None and read_record(tmp_git_repo) is None
     assert _run(tmp_git_repo, "show", f"{base}:shared.txt").stdout == "completed repair\n"
     assert _run(tmp_git_repo, "merge-base", "--is-ancestor", remote_sha, base).returncode == 0
     assert _run(feature, "rev-parse", "HEAD").stdout == feature_head

@@ -316,6 +316,52 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     return target, feature, main
 
 
+def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
+    tmp_git_repo: Path, tmp_path: Path,
+) -> None:
+    owner = tmp_git_repo
+    target = _git(owner, "branch", "--show-current").stdout.strip()
+    _commit(owner, "shared.txt", "base\n")
+    assert _git(owner, "switch", "-c", "remote-seed").returncode == 0
+    _commit(owner, "shared.txt", "remote\n")
+    origin = tmp_path / "origin.git"
+    assert _git(owner, "init", "--bare", str(origin)).returncode == 0
+    assert _git(owner, "remote", "add", "origin", str(origin)).returncode == 0
+    assert _git(owner, "push", "origin", f"remote-seed:{target}").returncode == 0
+    assert _git(owner, "switch", target).returncode == 0
+    _commit(owner, "shared.txt", "local\n")
+    feature = tmp_path / "feature"
+    assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
+    _commit(feature, "feature.txt", "valuable completed feature\n")
+    initial = auto_integrate_after_commit(
+        UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
+        WorkspaceScope(feature), RebaseState(), rebase_stop_resolver=lambda *_args: False,
+    )
+    assert initial is not None and read_record(feature) is not None
+
+    def resolve(root: Path, _branch: str, _stop: RebaseStop) -> bool:
+        (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")
+        return True
+
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": False, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+    )
+    assert recovered is not None
+    assert not inspect_integration_resolution(feature, recovered).dispatch_allowed
+    assert read_record(feature) is not None
+    landed = recover_incomplete_integration(
+        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+    )
+    assert landed is not None and landed.fast_forwarded
+    assert _git(feature, "rev-parse", "HEAD").stdout == _git(feature, "rev-parse", target).stdout
+    assert _git(feature, "show", f"{target}:feature.txt").stdout == "valuable completed feature\n"
+    assert read_record(feature) is None
+
+
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
     tmp_git_repo: Path, operation: str,
@@ -610,10 +656,10 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     assert read_record(owner) is None
     assert read_record(feature) is not None
     result = recover_incomplete_integration(WorkspaceScope(feature))
-    assert result is not None and not result.recovery_record_retained
+    assert result is not None and result.recovery_record_retained
     assert _git(owner, "show", "feature:shared.txt").stdout == "fixed\n"
     assert _git(feature, "rev-parse", "HEAD").stdout == original_feature
-    assert read_record(feature) is None
+    assert read_record(feature) is not None
 
 
 @pytest.mark.parametrize("empty", [False, True])
