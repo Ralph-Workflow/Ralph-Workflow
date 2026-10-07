@@ -21,10 +21,10 @@ from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     bind_integration_record_root,
-    read_record,
     write_record,
 )
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ def recover_target_resolution(
     foreign = owner.resolve() != root.resolve()
     lease = integration_transaction(owner) if foreign else nullcontext(True)
     with lease as acquired:
-        if not acquired or (foreign and read_record(owner) is not None):
+        if not acquired or (foreign and retained_integration_reason(owner) is not None):
             return _retained(record, "target reconciliation worktree busy; recovery will retry")
         if record.diagnostic_evidence:
             from ralph.pipeline._integration_diagnostic import diagnostic_evidence_unchanged

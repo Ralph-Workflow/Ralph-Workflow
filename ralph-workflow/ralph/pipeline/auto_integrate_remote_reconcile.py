@@ -36,6 +36,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     resolution_session_from_config,
     resolve_rebase_in_progress,
 )
+from ralph.pipeline.integration_resolution import retained_integration_reason
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -89,7 +90,7 @@ def reconcile_target_onto_remote(
     if owner is None:
         return ReconciliationOutcome(False, f"target '{target}' is unavailable for reconciliation")
     with integration_transaction(owner) as acquired:
-        if not acquired or (owner != repo_root and read_record(owner) is not None):
+        if not acquired or (owner != repo_root and retained_integration_reason(owner) is not None):
             return ReconciliationOutcome(False, "target worktree busy; reconciliation will retry")
         checked_owner, pre_target_sha, reason = _reconciliation_preconditions(
             repo_root,

@@ -179,7 +179,6 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     )
     _stub_clean_git(recovery, monkeypatch, record)
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "moved")
-    resets: list[tuple[object, ...]] = []
     cleared: list[Path] = []
 
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
@@ -187,21 +186,19 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
     assert recovery_retained_record(outcome) is True
-    assert resets == []
     assert cleared == []
 
 
-def test_a_failed_reset_retains_the_record_and_says_so_structurally(
+def test_unconfigured_pending_landing_retains_the_record(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """phase='integrating' whose ``reset_keep`` raised (branch 3 of 4)."""
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrating"))
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
     assert recovery_retained_record(outcome), (
-        f"a reset_keep that raised retains the record; got {outcome!r}"
+        f"pending landing without configuration retains the record; got {outcome!r}"
     )
 
 

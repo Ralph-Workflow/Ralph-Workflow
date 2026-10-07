@@ -355,6 +355,20 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         "auto_integrate_enabled": False, "auto_integrate_target": target,
         "auto_integrate_remote_enabled": False,
     }})
+    from ralph.pipeline.auto_integrate_record import record_path
+
+    owner_receipt = record_path(owner)
+    owner_receipt.parent.mkdir(parents=True, exist_ok=True)
+    owner_receipt.write_text("{", encoding="utf-8")
+    before = _git(owner, "rev-parse", "HEAD").stdout
+    blocked = recover_incomplete_integration(
+        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+    )
+    assert blocked is not None and blocked.recovery_record_retained
+    assert _git(owner, "rev-parse", "HEAD").stdout == before
+    assert owner_receipt.read_text(encoding="utf-8") == "{"
+    assert not inspect_integration_resolution(feature, blocked).dispatch_allowed
+    owner_receipt.unlink()
     recovered = recover_incomplete_integration(
         WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
     )
