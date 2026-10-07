@@ -801,13 +801,13 @@ def _recover_pending_merge(
             root, record, config, conflict_resolver, rebase_stop_resolver,
         )
     if (
-        record.resolving_merge and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root)
+        (record.resolving_merge or record.resolving_rebase)
+        and not rebase_in_progress(root) and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root)
         and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
     ):
-        _clear_record(root)
-        return _record_skip(
-            reason="interrupted merge left no operation or edits; retry integration",
-            target=record.target,
+        return _reintegrate_owned_landing(
+            root, record.model_copy(update={"resolving_merge": False, "resolving_rebase": False}),
+            config, conflict_resolver, rebase_stop_resolver,
         )
     if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
         from ralph.pipeline._integration_continuation import continue_retained_resolution

@@ -317,6 +317,37 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
+def test_aborted_owned_resolution_retains_landing_until_retry_completes(
+    tmp_git_repo: Path, operation: str,
+) -> None:
+    root = tmp_git_repo
+    target, feature, _moved = _interrupted(root, operation)
+    assert _git(root, operation, "--abort").returncode == 0
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": False, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+
+    waiting = recover_incomplete_integration(WorkspaceScope(root))
+
+    assert waiting is not None and waiting.recovery_record_retained
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
+
+    def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
+        (repo / "shared.txt").write_text("feature and main preserved\n", encoding="utf-8")
+        return True
+
+    landed = recover_incomplete_integration(
+        WorkspaceScope(root), config=config, rebase_stop_resolver=resolve,
+    )
+    assert landed is not None and landed.fast_forwarded
+    assert read_record(root) is None
+    assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
+
+
+@pytest.mark.parametrize("operation", ["merge", "rebase"])
 @pytest.mark.parametrize("seam", ["planning", "after_commit", "boundary", "standalone_commit"])
 def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     tmp_git_repo: Path, operation: str, seam: str,
@@ -400,16 +431,11 @@ def test_completed_retained_rebase_requires_exact_completion_receipt(tmp_git_rep
 def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(tmp_git_repo: Path, operation: str) -> None:
     root = tmp_git_repo
     target, feature, main = _interrupted(root, operation)
-    saved = read_record(root)
-    assert saved is not None
+    assert read_record(root) is not None
     assert _git(root, operation, "--abort").returncode == 0
-    if operation == "merge":
-        from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-
-        aborted = recover_incomplete_integration(WorkspaceScope(root))
-        assert aborted is not None and not aborted.recovery_record_retained
-        assert read_record(root) is None
-        write_record(root, saved)
+    aborted = recover_incomplete_integration(WorkspaceScope(root))
+    assert aborted is not None and aborted.recovery_record_retained
+    assert read_record(root) is not None
     assert _git(root, "reset", "--hard", main).returncode == 0
     outcome = integrate_before_planning(
         UnifiedConfig.model_validate({"general": {
