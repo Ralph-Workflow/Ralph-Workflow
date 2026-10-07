@@ -158,6 +158,76 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
     assert (root / "pending.txt").read_text(encoding="utf-8") == "keep pending work\n"
 
 
+@pytest.mark.parametrize("operation", ["merge", "rebase"])
+def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
+    tmp_git_repo: Path, operation: str,
+) -> None:
+    root = tmp_git_repo
+    assert _git(root, "config", "--replace-all", "core.logAllRefUpdates", "true").returncode == 0
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature\n")
+    assert _git(root, "switch", target).returncode == 0
+    moved = _commit(root, "target.txt", "target\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    write_record(root, IntegrationRecord(
+        phase="integrating", target=target, pre_feature_sha=feature,
+        pre_target_sha=moved, reintegrate_pending=True,
+    ))
+    assert _git(root, operation, target).returncode == 0
+    completed = _git(root, "rev-parse", "HEAD").stdout.strip()
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": False, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+
+    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+
+    assert outcome is not None and outcome.fast_forwarded
+    assert read_record(root) is None
+    assert inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert _git(root, "rev-parse", target).stdout.strip() == completed
+    assert _git(root, "show", f"{target}:feature.txt").stdout == "feature\n"
+    assert _git(root, "show", f"{target}:target.txt").stdout == "target\n"
+
+
+@pytest.mark.parametrize("operation", ["merge", "rebase"])
+def test_completed_landing_receipt_preserves_later_operator_resolution(
+    tmp_git_repo: Path, operation: str,
+) -> None:
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "shared.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "shared.txt", "feature\n")
+    assert _git(root, "switch", target).returncode == 0
+    _commit(root, "shared.txt", "target\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    write_record(root, IntegrationRecord(
+        phase="integrated", target=target, pre_feature_sha=feature,
+        pre_target_sha=base, integrated_feature_sha=feature,
+    ))
+    assert _git(root, operation, target).returncode != 0
+    (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
+    assert _git(root, "add", "shared.txt").returncode == 0
+    index_before = _git(root, "write-tree").stdout
+    head_before = _git(root, "rev-parse", "HEAD").stdout
+    config = UnifiedConfig.model_validate({"general": {
+        "auto_integrate_enabled": False, "auto_integrate_target": target,
+        "auto_integrate_remote_enabled": False,
+    }})
+
+    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+
+    assert outcome is not None and not outcome.fast_forwarded
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert (root / "shared.txt").read_text(encoding="utf-8") == "valuable manual resolution\n"
+    assert _git(root, "write-tree").stdout == index_before
+    assert _git(root, "rev-parse", "HEAD").stdout == head_before
+
+
 def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

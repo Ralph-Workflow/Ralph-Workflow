@@ -31,6 +31,14 @@ def reintegrate_owned_landing(
     resumed = _resume_owned_operation(root, retained, config, conflict_resolver, rebase_stop_resolver)
     if resumed is not None:
         return resumed
+    completed = _completed_owned_action(root, retained)
+    if completed is not None:
+        write_record(root, completed)
+        from ralph.pipeline.auto_integrate_recovery import _continue_fast_forward_from_record
+
+        return _continue_fast_forward_from_record(
+            root, completed, config, conflict_resolver, rebase_stop_resolver,
+        )
     expected = (
         retained.integrated_feature_sha if retained.phase == "integrated"
         else retained.pre_feature_sha
@@ -90,3 +98,24 @@ def _resume_owned_operation(
     from ralph.pipeline.auto_integrate_recovery import _recover_pending_merge
 
     return _recover_pending_merge(root, resumed, config, conflict_resolver, rebase_stop_resolver)
+
+
+def _completed_owned_action(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
+    if record.phase != "integrating" or not is_repo_clean(root):
+        return None
+    from ralph.pipeline._integration_continuation import _legacy_completed_rebase
+    from ralph.pipeline._pending_merge_commit import _git_value
+
+    completed = _legacy_completed_rebase(root, record.model_copy(update={"resolving_rebase": True}))
+    if completed is not None:
+        return completed
+    head = _git_value(root, "rev-parse", "--verify", "HEAD")
+    parents = _git_value(root, "show", "-s", "--format=%P", "HEAD")
+    previous = _git_value(root, "rev-parse", "--verify", "HEAD@{1}")
+    if (
+        head is None or record.pre_target_sha is None
+        or parents != f"{record.pre_feature_sha} {record.pre_target_sha}"
+        or previous != record.pre_feature_sha
+    ):
+        return None
+    return record.model_copy(update={"phase": "integrated", "integrated_feature_sha": head})

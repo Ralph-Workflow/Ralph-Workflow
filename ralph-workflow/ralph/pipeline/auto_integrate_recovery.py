@@ -913,6 +913,15 @@ def _recover_incomplete_integration_owned(
             )
 
         operation_kind, operation_root = _recovery_operation_root(record, root)
+        if record.phase == "integrated":
+            if rebase_in_progress(operation_root) or merge_state(operation_root) != MERGE_STATE_NONE:
+                return _record_skip(
+                    reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
+                    target=record.target, record_retained=True,
+                )
+            return _continue_fast_forward_from_record(
+                root, record, config, conflict_resolver, rebase_stop_resolver,
+            )
 
         # Abort owned operations; retain the record if recovery cannot prove cleanup.
         abort_failed = False
@@ -935,34 +944,19 @@ def _recover_incomplete_integration_owned(
             abort_failed = True
             logger.warning("recovery: abort_merge raised: {}", exc)
 
-        # Step 2: reconcile by phase.
-        if record.phase == "integrating":
-            return recover_integrating_record(
-                root=root,
-                record=record,
-                operation_kind=operation_kind,
-                operation_root=operation_root,
-                abort_failed=abort_failed,
-                merge_state=merge_state,
-                reset_keep=reset_keep,
-                rebase_in_progress=rebase_in_progress,
-                head_matches_sha=_head_matches_sha,
-                clear_record=_clear_record,
-            )
-
-        # phase == 'integrated': continue the fast-forward. A failed
-        # (or unprovable) abort retains the record here too -- clearing
-        # it while an owned merge may still be in flight would strand
-        # the repository with no ownership marker.
-        if abort_failed:
-            return _record_skip(
-                reason=("recovery: owned merge not proven aborted, record retained for retry"),
-                target=record.target,
-                record_retained=True,
-            )
-        return _continue_fast_forward_from_record(
-            root, record, config, conflict_resolver, rebase_stop_resolver,
+        return recover_integrating_record(
+            root=root,
+            record=record,
+            operation_kind=operation_kind,
+            operation_root=operation_root,
+            abort_failed=abort_failed,
+            merge_state=merge_state,
+            reset_keep=reset_keep,
+            rebase_in_progress=rebase_in_progress,
+            head_matches_sha=_head_matches_sha,
+            clear_record=_clear_record,
         )
+
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(reason=f"recovery failed: {exc}", target=None, record_retained=True)
