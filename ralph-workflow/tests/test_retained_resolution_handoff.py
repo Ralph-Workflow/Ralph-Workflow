@@ -106,7 +106,15 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         pre_target_sha=base, integrated_feature_sha=feature,
     ))
     if receipt == "malformed":
-        (root / ".agent" / "auto_integrate_in_progress.json").write_bytes(b"\xff\xfe")
+        ownership = root / ".agent" / "auto_integrate_in_progress.json"
+        for payload in (
+            b'{"unsupported":' + b"9" * 5000 + b"}",
+            b'{"unsupported":' + b"[" * 100000 + b"0" + b"]" * 100000 + b"}",
+            b"\xff\xfe",
+        ):
+            ownership.write_bytes(payload)
+            assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+            assert ownership.read_bytes() == payload
     elif receipt == "missing_target":
         assert _git(root, "branch", "-D", target).returncode == 0
     elif receipt == "changed_head":

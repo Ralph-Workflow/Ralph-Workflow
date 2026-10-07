@@ -206,7 +206,7 @@ def _read_record_raw(record_file: Path) -> dict[str, object] | None:
         return None
     try:
         parsed: object = json.loads(raw_text)
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
         return None
     if not isinstance(parsed, dict):
         return None
