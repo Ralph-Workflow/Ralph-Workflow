@@ -32,16 +32,24 @@ def continue_retained_resolution(
     if not target:
         return "retained resolution target unreadable; progress preserved"
     if record.resolving_merge and merge_state(root) == MERGE_STATE_IN_PROGRESS:
-        if conflict_resolver is None:
-            return "merge resolution retained; continuation resolver required"
+        matches = active_operation_matches(root, record)
+        if conflict_resolver is None or not matches:
+            return (
+                "merge resolution retained; continuation resolver required" if matches
+                else "active merge identity differs from retained ownership; operator work preserved"
+            )
         from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
 
         result = _resolve_and_commit_with_reason(root, target, conflict_resolver)
         if result.outcome != "success":
             return result.reason or "merge resolution remains pending after continuation"
     elif record.resolving_rebase and rebase_in_progress_at(root):
-        if rebase_stop_resolver is None:
-            return "rebase resolution retained; continuation resolver required"
+        matches = active_operation_matches(root, record)
+        if rebase_stop_resolver is None or not matches:
+            return (
+                "rebase resolution retained; continuation resolver required" if matches
+                else "active rebase identity differs from retained ownership; operator work preserved"
+            )
         from ralph.pipeline.auto_integrate_rebase_merge import _resolve_rebase_with_config
 
         resolved, reason = _resolve_rebase_with_config(
@@ -51,6 +59,18 @@ def continue_retained_resolution(
         if not resolved:
             return reason or "rebase resolution remains pending after continuation"
     return _promote_completed_resolution(root, record)
+
+
+def active_operation_matches(root: Path, record: IntegrationRecord) -> bool:
+    from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+
+    if rebase_in_progress_at(root):
+        return current_rebase_identity(root) == (record.pre_feature_sha, record.pre_target_sha)
+    return (
+        merge_state(root) == MERGE_STATE_IN_PROGRESS
+        and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
+        and _git_value(root, "rev-parse", "--verify", "MERGE_HEAD") == record.pre_target_sha
+    )
 
 
 def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:

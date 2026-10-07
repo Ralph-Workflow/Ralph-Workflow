@@ -317,6 +317,39 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
+def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
+    tmp_git_repo: Path, operation: str,
+) -> None:
+    root = tmp_git_repo
+    target, feature, _main = _interrupted(root, operation)
+    assert _git(root, operation, "--abort").returncode == 0
+    assert _git(root, "switch", "-c", "other", f"{feature}^").returncode == 0
+    _commit(root, "shared.txt", "other target\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    assert _git(root, operation, "other").returncode != 0
+    (root / "shared.txt").write_text("operator partial resolution\n", encoding="utf-8")
+    head_before = _git(root, "rev-parse", "HEAD").stdout
+
+    def resolve(repo: Path, _branch: str) -> bool:
+        (repo / "shared.txt").write_text("incorrectly adopted operation\n", encoding="utf-8")
+        return True
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root), config=UnifiedConfig.model_validate({"general": {
+            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
+        }}), conflict_resolver=resolve,
+        rebase_stop_resolver=lambda repo, branch, _stop: resolve(repo, branch),
+    )
+
+    assert outcome is not None and outcome.recovery_record_retained
+    assert not outcome.fast_forwarded
+    assert read_record(root) is not None
+    assert _git(root, "rev-parse", "HEAD").stdout == head_before
+    assert (root / "shared.txt").read_text(encoding="utf-8") == "operator partial resolution\n"
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+
+
+@pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     tmp_git_repo: Path, operation: str,
 ) -> None:

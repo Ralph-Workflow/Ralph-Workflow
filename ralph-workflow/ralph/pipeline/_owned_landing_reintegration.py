@@ -72,22 +72,16 @@ def _resume_owned_operation(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
-    from ralph.pipeline._pending_merge_commit import _git_value
-    from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+    from ralph.pipeline._integration_continuation import active_operation_matches
 
     updates: dict[str, object]
     if rebase_in_progress_at(root):
-        matches = current_rebase_identity(root) == (record.pre_feature_sha, record.pre_target_sha)
         updates = {"resolving_rebase": True}
     elif merge_state(root) == MERGE_STATE_IN_PROGRESS:
-        matches = (
-            _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
-            and _git_value(root, "rev-parse", "--verify", "MERGE_HEAD") == record.pre_target_sha
-        )
         updates = {"resolving_merge": True}
     else:
         return None
-    if not matches:
+    if not active_operation_matches(root, record):
         return RebaseState(
             last_action="skipped", last_target=record.target,
             last_reason="active operation identity differs from owned reintegration; progress retained",
