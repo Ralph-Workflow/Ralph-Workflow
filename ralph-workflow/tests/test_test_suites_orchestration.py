@@ -318,6 +318,40 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     assert "RALPH_VERIFY_REQUIRED_AUTO_INTEGRATE_E2E" not in env
 
 
+def test_scheduler_hypothesis_regression_runs_before_parallel_shards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        spawner=spawner,
+        file_discoverer=lambda _cwd: (
+            "tests/test_alpha.py",
+            "tests/test_bootstrap_auto_seed_gitignore.py",
+            "tests/test_explore_fault_matrix_full.py",
+            "tests/test_explore_handlers.py",
+            "tests/test_scheduler.py",
+            "tests/test_tool_git_read_handle_git_status.py",
+        ),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    assert exit_code == 0
+    assert spawner.manifest_files == [
+        (
+            "tests/test_bootstrap_auto_seed_gitignore.py",
+            "tests/test_explore_fault_matrix_full.py",
+            "tests/test_explore_handlers.py",
+            "tests/test_scheduler.py",
+            "tests/test_tool_git_read_handle_git_status.py",
+        ),
+        ("tests/test_alpha.py",),
+    ]
 def test_run_test_suites_preserves_only_its_own_project_pythonpath(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1194,8 +1194,13 @@ def run_test_suites(
             "tests/test_kimi_wire_provenance.py",
             "tests/test_mcp_endpoint_functional_sweep.py",
             "tests/test_auto_integrate_resolving_rebase_record.py",
+            "tests/test_bootstrap_auto_seed_gitignore.py",
             "tests/test_evidence_provenance_lattice.py",
             "tests/test_explore_fault_matrix.py",
+            "tests/test_explore_fault_matrix_full.py",
+            "tests/test_explore_handlers.py",
+            "tests/test_scheduler.py",
+            "tests/test_tool_git_read_handle_git_status.py",
             "tests/unit/test_explore_pipeline_invariants.py",
         }
     )
