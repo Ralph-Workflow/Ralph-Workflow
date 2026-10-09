@@ -14,6 +14,19 @@ The contract has two halves:
 * Worker renderings (``worker_developer.jinja``, continuation+worker,
   fallback+worker) must keep their assignment-local framing and must
   NOT receive the coordinator-only orchestration anchors.
+
+The feedback-path contract (Unit 1 S-2/S-3) adds a second dimension:
+* Coordinator renders with ``ANALYSIS_FEEDBACK_STATUS=request_changes``
+  must surface the mandatory follow-plan sentence (MUST follow division,
+  dispatch every ready unit in parallel) and the explicit-plan-reason
+  anchor. The unconditional "the analysis above splits" claim and the
+  optional "may split ... When it does" framing must never appear.
+* Worker renders with the same feedback path must keep their
+  assignment-local recovery framing and must NOT receive the
+  coordinator-only orchestration sentence. The role-aware guard
+  (``{% if not IS_WORKER %}``) is the only mechanism that separates
+  the two halves; a future template regression that drops the guard
+  would re-leak the sentence into a worker.
 """
 
 from __future__ import annotations
@@ -150,6 +163,40 @@ def _render_raw_with_caps(
         ),
         workspace=MemoryWorkspace(root=str(tmp_path)),
         session_caps=session_caps,
+        template_name=template_name,
+    )
+
+
+def _render_with_feedback(
+    template_name: str,
+    tmp_path: Path,
+    *,
+    is_worker: bool,
+    analysis_feedback_status: str,
+    analysis_feedback_content: str,
+) -> str:
+    """Render one development prompt with analysis-feedback inputs.
+
+    The Unit-2 feedback-path tests need a render that exercises the
+    ``ANALYSIS_FEEDBACK`` / ``ANALYSIS_FEEDBACK_STATUS`` template
+    branches. The base ``_render`` helper hard-codes empty feedback,
+    which means the S-2/S-3 follow-plan sentence is never rendered.
+    A dedicated helper keeps the rest of the suite's behavior
+    untouched.
+    """
+    return prompt_developer_iteration_xml_with_context(
+        context=TemplateContext.default(),
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement the requested change.",
+            plan_content="### [S-1] Implement the assigned change",
+            work_unit_id="unit" if is_worker else "",
+            work_unit_description="Implement the assigned change" if is_worker else "",
+            work_unit_directories="src" if is_worker else "",
+            analysis_feedback_status=analysis_feedback_status,
+            analysis_feedback_content=analysis_feedback_content,
+        ),
+        workspace=MemoryWorkspace(root=str(tmp_path)),
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         template_name=template_name,
     )
 
@@ -433,3 +480,217 @@ def test_coordinator_full_render_excludes_removed_fallback_phrases(
                 f"full {template_name!r} render contains forbidden phrase "
                 f"{forbidden!r} under caps {caps!r}"
             )
+
+
+# Feedback-path mandatory wording (Unit 1 S-2/S-3). These literals are
+# the role-aware, conditionally accurate contract for the
+# ``ANALYSIS_FEEDBACK_STATUS == 'request_changes'`` branch. The
+# "MUST follow that division" anchor is the MUST-style mandatory
+# wording; the explicit-plan-reason anchor is the
+# sequentially-only-if-coupled claim; the "identifies independent
+# units" anchor is the conditional accuracy (no false "the analysis
+# above splits" claim when the feedback does not mention units).
+#
+# The full follow-plan sentence appears in non-worker renders of all
+# three coordinator templates, with a worker render that strips it
+# via the ``{% if not IS_WORKER %}`` guard. The set of literals is
+# intentionally split into one exact-verbatim sentence and two
+# sub-anchors so a future partial rewrite that splits the sentence
+# into shorter paragraphs still satisfies the contract.
+_FEEDBACK_PATH_FOLLOW_PLAN_SENTENCE = (
+    "Developer follow-plan: when the analysis above or the authoritative plan "
+    "identifies independent units, you MUST follow that division and dispatch "
+    "every ready unit in parallel \u2014 never handle them sequentially in this "
+    "session or hand them back one at a time as a separate `partial` result. "
+    "Sequential execution requires an explicit plan reason (declared coupling or "
+    "`Depends on:` chains)."
+)
+_FEEDBACK_PATH_MUST_ANCHOR = (
+    "you MUST follow that division and dispatch every ready unit in parallel"
+)
+_FEEDBACK_PATH_EXPLICIT_REASON_ANCHOR = (
+    "Sequential execution requires an explicit plan reason (declared coupling or "
+    "`Depends on:` chains)"
+)
+_FEEDBACK_PATH_FALSE_CLAIM = "the analysis above splits"
+_FEEDBACK_PATH_OPTIONAL_MAY_SPLIT = "may split the remaining work"
+_FEEDBACK_PATH_WHEN_IT_DOES = "When it does, dispatch each unit in parallel"
+# The pre-fix S-1 rendering bug produced this nested backtick sequence
+# in coordinator renders; the fix collapses it to a single well-formed
+# `` `partial` `` code span.
+_FEEDBACK_PATH_BROKEN_BACKTICK = "`partial``"
+# Worker retention anchors: workers must keep an assignment-local
+# follow-plan phrase even with feedback present. The exact wording
+# is intentionally loose; the contract is "the worker template still
+# gets a follow-plan that names its assignment, not the whole plan".
+_WORKER_FEEDBACK_RETENTION_CLAUSES = (
+    "the assigned unit",
+    "Implement and verify only",
+    "Do not inspect repo-wide status",
+    "coordinate other units",
+)
+
+
+@pytest.mark.parametrize("template_name", _COORDINATOR_TEMPLATES)
+def test_feedback_path_mandatory_wording_in_coordinator_renders(
+    tmp_path: Path, template_name: str
+) -> None:
+    """S-2/S-3 (Unit 1): non-worker renders with ``request_changes`` must
+    surface the new mandatory follow-plan sentence.
+
+    The previous wording was conditional on the analysis actually
+    splitting the work and used "may split ... When it does" framing,
+    which leaked uncertainty about the feedback. The Unit 1 rewrite
+    uses a MUST-style mandatory sentence and pairs it with the
+    explicit-plan-reason anchor; the negative anchors below also
+    close the "the analysis above splits" false-claim gap, the
+    optional-phrasing gap, and the broken-backtick rendering bug
+    from S-1.
+    """
+    rendered = _render_with_feedback(
+        template_name,
+        tmp_path,
+        is_worker=False,
+        analysis_feedback_status="request_changes",
+        analysis_feedback_content=(
+            "Add a unit-aware guard to the S-2 and S-3 follow-plan branch "
+            "so workers do not receive the orchestration sentence."
+        ),
+    )
+
+    assert _FEEDBACK_PATH_FOLLOW_PLAN_SENTENCE in rendered, (
+        f"coordinator {template_name!r} missing the mandatory follow-plan "
+        f"sentence under request_changes feedback"
+    )
+    assert _FEEDBACK_PATH_MUST_ANCHOR in rendered, (
+        f"coordinator {template_name!r} missing the MUST follow-plan anchor"
+    )
+    assert _FEEDBACK_PATH_EXPLICIT_REASON_ANCHOR in rendered, (
+        f"coordinator {template_name!r} missing the explicit-plan-reason anchor"
+    )
+    # Conditional accuracy + optional-phrasing sweep:
+    assert _FEEDBACK_PATH_FALSE_CLAIM not in rendered, (
+        f"coordinator {template_name!r} still asserts an unconditional "
+        f"'the analysis above splits' claim that is not true for arbitrary "
+        f"request_changes feedback"
+    )
+    assert _FEEDBACK_PATH_OPTIONAL_MAY_SPLIT not in rendered, (
+        f"coordinator {template_name!r} kept the optional 'may split' framing"
+    )
+    assert _FEEDBACK_PATH_WHEN_IT_DOES not in rendered, (
+        f"coordinator {template_name!r} kept the optional 'When it does' framing"
+    )
+    # S-1 rendering bug: the broken nested backtick must be gone.
+    assert _FEEDBACK_PATH_BROKEN_BACKTICK not in rendered, (
+        f"coordinator {template_name!r} render still has the broken nested "
+        f"backtick sequence from the S-1 fix"
+    )
+
+
+@pytest.mark.parametrize("template_name", _COORDINATOR_TEMPLATES)
+def test_feedback_path_renders_accurately_when_feedback_omits_units(
+    tmp_path: Path, template_name: str
+) -> None:
+    """S-3 (Unit 1) / PA-003: the follow-plan sentence is correct even
+    when ``request_changes`` feedback does not mention independent units.
+
+    ``request_changes`` does not guarantee the feedback lists units;
+    a coordinator render must not assert a fact the feedback does not
+    establish. The new sentence is conditional on identifying
+    independent units and pairs MUST-style action with a follow-up
+    plan-reason requirement, so it is correct regardless of whether
+    the analysis splits the work. The negative guards below also
+    re-confirm the optional-phrasing sweep under feedback-without-
+    units.
+    """
+    rendered = _render_with_feedback(
+        template_name,
+        tmp_path,
+        is_worker=False,
+        analysis_feedback_status="request_changes",
+        analysis_feedback_content=(
+            "Tighten the typed contract on the render helper. The current "
+            "shape leaks Optional[Workspace] in two places; switch to a "
+            "narrower protocol and add a regression test."
+        ),
+    )
+
+    # The conditional anchor "or the authoritative plan" must be
+    # present: the sentence is honest about the feedback not naming
+    # units and falls back to the plan as the source of any unit
+    # declaration.
+    assert "or the authoritative plan" in rendered, (
+        f"coordinator {template_name!r} dropped the conditional "
+        f"'or the authoritative plan' accuracy anchor"
+    )
+    assert _FEEDBACK_PATH_MUST_ANCHOR in rendered
+    assert _FEEDBACK_PATH_EXPLICIT_REASON_ANCHOR in rendered
+    # No false "the analysis above splits" claim, no optional phrasing.
+    assert _FEEDBACK_PATH_FALSE_CLAIM not in rendered
+    assert _FEEDBACK_PATH_OPTIONAL_MAY_SPLIT not in rendered
+    assert _FEEDBACK_PATH_WHEN_IT_DOES not in rendered
+
+
+_WORKER_FEEDBACK_TEMPLATES: tuple[str, ...] = (
+    "worker_developer.jinja",
+    "developer_iteration_continuation.jinja",
+    "developer_iteration_fallback.jinja",
+)
+
+
+@pytest.mark.parametrize("template_name", _WORKER_FEEDBACK_TEMPLATES)
+def test_feedback_path_worker_renders_omit_coordinator_orchestration(
+    tmp_path: Path, template_name: str
+) -> None:
+    """PA-001/PA-003: workers must never receive the coordinator
+    follow-plan sentence, even when ``request_changes`` feedback is
+    present.
+
+    The role-aware guard ``{% if not IS_WORKER %}`` around the
+    S-2/S-3 sentence is the only mechanism that separates coordinator
+    orchestration from worker assignment-local recovery framing. A
+    future template regression that drops the guard (or moves the
+    sentence outside the guard) would re-leak MUST-style
+    dispatch-and-fanout language to a worker, who would then start
+    orchestrating siblings \u2014 a contract violation. This test
+    pins both halves: the sentence must be absent, and the existing
+    assignment-local retention clauses must still be present.
+    """
+    rendered = _render_with_feedback(
+        template_name,
+        tmp_path,
+        is_worker=True,
+        analysis_feedback_status="request_changes",
+        analysis_feedback_content=(
+            "Your previous attempt missed the typed contract fix; retry "
+            "with a narrower Workspace protocol."
+        ),
+    )
+
+    # Coordinator-only orchestration anchors must be ABSENT.
+    assert _FEEDBACK_PATH_FOLLOW_PLAN_SENTENCE not in rendered, (
+        f"worker {template_name!r} received the coordinator follow-plan "
+        f"sentence \u2014 the {{% if not IS_WORKER %}} guard was dropped"
+    )
+    assert _FEEDBACK_PATH_MUST_ANCHOR not in rendered, (
+        f"worker {template_name!r} received the MUST follow-plan anchor"
+    )
+    assert _FEEDBACK_PATH_EXPLICIT_REASON_ANCHOR not in rendered, (
+        f"worker {template_name!r} received the explicit-plan-reason anchor"
+    )
+    # Optional-parallelism phrases must be absent too; they would
+    # reach a worker if the unconditional path leaked.
+    assert _FEEDBACK_PATH_FALSE_CLAIM not in rendered
+    assert _FEEDBACK_PATH_OPTIONAL_MAY_SPLIT not in rendered
+    assert _FEEDBACK_PATH_WHEN_IT_DOES not in rendered
+    # Worker assignment-local retention must remain. The render helper
+    # injects the work_unit_id "unit" and directories "src"; the
+    # template must keep the worker-scope contract even when feedback
+    # is present, which is the regression scenario S-2/S-3 was
+    # specifically designed to prevent.
+    retained = [c for c in _WORKER_FEEDBACK_RETENTION_CLAUSES if c in rendered]
+    assert retained, (
+        f"worker {template_name!r} lost its assignment-local retention "
+        f"anchors under request_changes feedback; the role guard must "
+        f"only suppress the coordinator sentence, not the worker frame"
+    )
