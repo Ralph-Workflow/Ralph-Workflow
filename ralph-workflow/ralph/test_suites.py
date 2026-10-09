@@ -76,13 +76,18 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 8 plain shards keep concurrent pytest startup, collection, and
-# filesystem work below the per-test watchdog contention threshold.
-_MAX_PYTEST_WORKERS = 8
+# host, 12 plain shards keep the slowest shard's wall time under the
+# ``make test-verification-smoke`` headroom (40-44 s slowest shard measured
+# vs 47-50 s for the prior 8-shard cap), so the cumulative two-step verify
+# time stays within the 60 s cap. Concurrent pytest startup, collection, and
+# filesystem work stay below the per-test watchdog contention threshold at
+# 12 shards; going higher concentrates the required auto-integrate E2E
+# files into fewer shards and trips the per-shard 60 s timeout.
+_MAX_PYTEST_WORKERS = 12
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host completes the suite faster with eight shards;
 # additional shard startup and filesystem contention consume smoke headroom.
-_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
+_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 12
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 8-shard CI profile the shard-saturated
