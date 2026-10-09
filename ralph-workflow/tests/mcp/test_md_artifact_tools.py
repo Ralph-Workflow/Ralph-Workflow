@@ -196,9 +196,12 @@ def test_commit_message_validation_failure_requires_rewriting_the_message(tmp_pa
     assert "do not change code" in action
 
 
-def test_development_result_missing_work_requires_completion_verification_and_evidence(
-    tmp_path,
-) -> None:
+def test_development_result_completed_body_is_free_form(tmp_path) -> None:
+    """A completed development result with a free-form body still validates.
+
+    Only the frontmatter ``status`` is checked; the body is the next
+    agent's reading matter, not a structure the validator gates.
+    """
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -218,16 +221,9 @@ def test_development_result_missing_work_requires_completion_verification_and_ev
         deps=ArtifactHandlerDeps(backend=backend),
     )
 
-    assert result.is_error is True
+    assert result.is_error is False
     payload = _payload(result)
-    assert payload["status"] == "validation_failed"
-    assert payload["severity"] == "error"
-    assert payload["diagnostics"]
-    assert "corrective_action" in payload
-    action = str(payload["corrective_action"]).lower()
-    assert "complete the underlying work" in action
-    assert "verification" in action
-    assert "proof" in action or "evidence" in action
+    assert payload["valid"] is True
 
 
 def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(

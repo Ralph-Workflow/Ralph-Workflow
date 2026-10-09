@@ -5,7 +5,6 @@ from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.policy.models._agents_policy import AgentsPolicy
 from ralph.policy.models._artifact_contract import ArtifactContract
 from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
-from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
 from ralph.policy.models._artifacts_policy import ArtifactsPolicy
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
 from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
@@ -39,7 +38,6 @@ __all__ = [
     "AgentsPolicy",
     "ArtifactContract",
     "ArtifactHistoryPolicy",
-    "ArtifactProofPolicy",
     "ArtifactsPolicy",
     "BudgetCounterConfig",
     "CycleTimeboxPolicy",

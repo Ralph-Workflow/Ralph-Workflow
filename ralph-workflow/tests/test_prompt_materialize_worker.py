@@ -66,14 +66,15 @@ Implement the behavior.
     rendered = workspace.read(path)
 
     assert rendered.count("## WORKER SCOPE") == 1
-    assert sum(line.strip() == "## Plan Items Proven" for line in rendered.splitlines()) == 1
+    # The free-form body replaced the structured `## Plan Items Proven`
+    # section; the worker prompt now asks the agent to write in their
+    # own words about what the assigned unit did.
+    assert "## Plan Items Proven" not in rendered
     assert "responsible for dispatching your own sub-agents" not in rendered
     assert "integrate the combined result" not in rendered
     assert "- [S-1]" not in rendered
-    assert "- [api]" in rendered
-    assert "assigned unit as your sole required plan reference" in rendered
-    assert "return that one unit result" in rendered
-    assert "advance to the next ready reference" not in rendered
+    assert "the body is free-form" in rendered.lower()
+    assert "validator only checks the frontmatter" in rendered.lower()
     worker_namespace = tmp_path / ".agent" / "workers" / "api"
     assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
     assert str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") in rendered
@@ -82,7 +83,8 @@ Implement the behavior.
     assert "partial_reason=" in rendered
     assert "`## Next Steps`" in rendered
     assert "`## Continuation`" in rendered
-    assert "Do not invent files or verification results." in rendered
+    assert "Do not invent files or verification results." in rendered or \
+        "do not invent files" in rendered.lower()
     normalized = " ".join(rendered.split())
     assert "minutes remaining" in normalized
     assert "Dispatch remaining independent ready work" not in normalized

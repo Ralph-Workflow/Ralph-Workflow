@@ -4,24 +4,45 @@ Report whether each criterion fixed by the request and plan is met. Submit
 markdown with `ralph_submit_md_artifact`
 (`artifact_type: development_analysis_decision`).
 
-## Completed example
+## Free-form body
 
-```markdown
----
-type: development_analysis_decision
-status: completed
----
+The frontmatter `status` is the only field the validator mechanically
+checks; routing reads it. Below the frontmatter, write the decision in
+your own words. The body is the next agent's reading matter: a useful
+shape describes what fell short, the evidence that supports the
+judgement, and (for `request_changes`) the leftover work the next
+agent should pick up. There is no required section, no required field
+label, and no required stable ID for individual items.
 
-## Summary
+`status` is `completed`, `request_changes`, or `failed`. The three
+meanings are:
 
-- [SUM-1] No counterexample was found for the fixed criteria.
+- `completed` — every unchanged request criterion is met, and no
+  necessary plan work remains.
+- `request_changes` — localized unmet work is actionable in this
+  development cycle. The body describes what fell short, what
+  evidence supports it, and what the next agent should do. Split the
+  remaining work into independent units and dispatch them in parallel
+  rather than handing each one back as a separate `partial` decision.
+- `failed` — a criterion is impossible, contradictory, or not
+  evaluable, or necessary work has no safe actionable route. `failed`
+  records stronger or not-evaluable evidence for explicit resolution;
+  the label itself never fails the pipeline.
 
-## Criterion Verdicts
+Bundled policy routes both `request_changes` and `failed` back to
+development. A `failed` decision adds an explicit mandate to
+determine whether and how the failure can be resolved, without
+treating the label itself as a pipeline failure. Terminal failure
+remains reserved for real pipeline or recovery exhaustion.
 
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: met. Evidence: `pytest tests/test_feature.py -q` reports 12 passed. Location: tests/test_feature.py:42.
-```
+## Whole-change review
 
-## Request-changes example
+The body is the right place for the whole-change review that
+development analysis owns: the parallel pieces fit together, nothing
+outside the plan regressed, no unrelated scope, and the change follows
+repository policy. These are judgment criteria, not validated fields.
+
+## Example shape
 
 ```markdown
 ---
@@ -30,47 +51,28 @@ status: request_changes
 ---
 
 ## Summary
+- One criterion is not met.
 
-- [SUM-1] One fixed criterion is not met.
+The focused regression test for oversized indexes is missing; the
+rest of the work is sound. A developer cycle should add a
+parametrized oversized-index case and re-run the focused tests.
 
 ## What Came Up Short
-
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add a parametrized oversized-index test case to tests/test_foo.py.
+- Criterion: oversized indexes are handled safely.
+  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
+  Location: tests/test_foo.py.
+  Remaining work: add a parametrized oversized-index test case.
 
 ## Criterion Verdicts
-
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+- Criterion: oversized indexes are handled safely.
+  Verdict: not met.
+  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
+  Location: tests/test_foo.py.
 ```
 
-## Sections
+The body is the next agent's reading matter; the validator only
+checks the frontmatter `status` enum. The shape above is a useful
+example, not a required form.
 
-- `## Summary` is required and has exactly one item.
-- `## Criterion Verdicts` is required and non-empty for every decision. Each
-  item has a unique `DA-###` ID and `Criterion:`, `Expected observation:`,
-  `Verdict:`, non-empty `Evidence:`, and non-empty `Location:` fields. Every
-  non-met verdict has a same-ID mirror in `## What Came Up Short`.
-- `## What Came Up Short` is required and non-empty for `request_changes` and
-  `failed`; it mirrors localized non-met criterion verdicts and is omitted for
-  `completed`. For `request_changes`, every finding must independently include
-  a non-empty `Remaining work:` statement naming concrete leftover development
-  work, a concrete repository `Location:` (not `unknown`/`N/A`/`none`), and
-  identify `Criterion:` or `Plan reference: [S-n]`. A single well-formed finding
-  does not excuse a sibling that lacks any of the three.
-- `## How To Fix` is not permitted. `## Analysis Items Addressed` cites the
-  stable finding ID as its closure reference, not a remedy authored by the
-  verifier.
-
-`status` is `completed`, `request_changes`, or `failed`. `met` means no
-counterexample was found. `not evaluable` requires `failed` rather than
-completion.
-
-`request_changes` means localized unmet work is actionable inside the current
-development cycle. `failed` records stronger or not-evaluable evidence, such as
-an impossible or contradictory criterion. Bundled policy routes both statuses
-back to development; a failed decision adds an explicit mandate to determine
-whether and how the failure can be resolved, without treating the label itself
-as a pipeline failure. Terminal failure remains reserved for real pipeline or
-recovery exhaustion.
-
-See `.agent/artifact-formats/examples/development_analysis_decision.md` for the
-validator-backed complete example.
+See `.agent/artifact-formats/examples/development_analysis_decision.md`
+for the validator-backed complete example.

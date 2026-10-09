@@ -181,7 +181,10 @@ def test_unencodable_plan_returns_sanity_diagnostic_before_persistence(operation
     assert json.loads(result.content[0].text)["diagnostics"][0]["rule_id"] == "PLAN001"
 
 
-def test_prose_plan_requires_exactly_one_plan_level_development_proof() -> None:
+def test_prose_plan_development_result_is_free_form() -> None:
+    """A development result with a free-form body is accepted regardless of
+    the plan's extracted step IDs. The DEV015 plan-proof gate is gone.
+    """
     workspace = MemoryWorkspace()
     session = MockSession()
     session.run_id = "proof-parity"
@@ -196,25 +199,10 @@ status: completed
 ---
 ## Summary
 - [SUM-1] Implemented the requested repository changes.
-## Files Changed
-- [F-1] src/example.py
-## Plan Items Proven
-- [plan] Ran the focused verification and observed all assertions passing.
-  Disposition: completed
+
+Wrote what I did, what changed, and what was verified. The validator
+checks only the frontmatter ``status``; the body is free-form.
 """
-    bad = handle_submit_md_artifact(
-        session,
-        workspace,
-        {
-            "artifact_type": "development_result",
-            "content": development.replace("[plan]", "[S-999]"),
-        },
-        deps=deps,
-    )
-    assert bad.is_error
-    assert any(
-        item["rule_id"] == "DEV015" for item in json.loads(bad.content[0].text)["diagnostics"]
-    )
     good = handle_submit_md_artifact(
         session,
         workspace,

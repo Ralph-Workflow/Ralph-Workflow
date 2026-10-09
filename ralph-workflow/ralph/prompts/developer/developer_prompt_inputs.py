@@ -21,10 +21,17 @@ class DeveloperPromptInputs:
     payload_root: str = ""
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
+    # Routing metadata for a prior free-form ``partial`` development
+    # result. The original markdown is carried whole so the next
+    # iteration reads the next agent's exact handoff rather than the
+    # three short fields the structured proof contract used to expose;
+    # those fields were the only things the old partial pipeline could
+    # forward, and a free-form body often says more than three strings
+    # can hold. The status, session id, and partial-route are read
+    # alongside when present.
+    prior_result_markdown: str = ""
     prior_result_status: str = ""
-    prior_result_summary: str = ""
-    prior_result_next_steps: str = ""
-    prior_result_continuation: str = ""
+    prior_session_id: str = ""
     skills_inline_content: str = ""
     has_docs_mcp: bool = False
     work_unit_id: str = ""

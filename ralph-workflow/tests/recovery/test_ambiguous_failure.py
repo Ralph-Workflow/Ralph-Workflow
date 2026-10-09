@@ -253,7 +253,7 @@ def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
     [
         (
             ("ralph.mcp.artifacts.development_result:normalize_development_result_content"),
-            {"status": "completed"},
+            {"status": "done"},
             "DevelopmentResultValidationError",
         ),
         (

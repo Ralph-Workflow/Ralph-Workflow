@@ -1,4 +1,12 @@
-"""Markdown specs for planning, development, review, and policy decisions."""
+"""Markdown specs for planning, development, review, and policy decisions.
+
+Development analysis decisions are free-form: only the ``status`` enum is
+validated, because routing reads it. The rest of the body is written for the
+next agent to read and act on, not for a validator to check.
+
+Planning, review, and policy-remediation decisions keep their structured
+validation verbatim (out of scope here).
+"""
 
 from __future__ import annotations
 
@@ -103,6 +111,10 @@ def _finding_target(text: str) -> str | None:
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:
+    if document.frontmatter["type"] == "development_analysis_decision":
+        content = _to_content_development(document)
+        content["type"] = "development_analysis_decision"
+        return content
     shortfall_section = document.section("What Came Up Short")
     shortfall_items = () if shortfall_section is None else shortfall_section.items
     verdict_section = document.section("Criterion Verdicts")
@@ -132,8 +144,48 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
+def _to_content_development(document: ParsedDocument) -> dict[str, object]:
+    """Map a development analysis decision's body to content.
+
+    The body is free-form below the frontmatter; ``summary`` is the
+    first Summary item when present so downstream code (history
+    snapshots, displays) keeps something to read.
+    """
+    return {
+        "status": document.frontmatter["status"],
+        "summary": _item_texts(document, "Summary")[0],
+        "what_came_up_short": [],
+        "finding_ids": [],
+        "finding_targets": {},
+        "criterion_verdicts": [],
+        "criterion_verdict_ids": [],
+        "how_to_fix": [],
+    }
+
+
 def _normalize(content: dict[str, object]) -> dict[str, object]:
+    if content.get("status") == "development_analysis_decision" or content.get("type") == "development_analysis_decision":
+        return _normalize_development(content)
     return normalize_analysis_decision_content(content)
+
+
+def _normalize_development(content: dict[str, object]) -> dict[str, object]:
+    """Validate a development decision content dict: status enum only.
+
+    The base ``AnalysisDecision`` model still demands a non-empty summary
+    and a status-specific ``what_came_up_short``; bypass both for the
+    free-form development contract. The ``type`` field is preserved so
+    downstream consumers (history snapshots, displays) keep their
+    artifact-type discriminator.
+    """
+    raw_status = content.get("status")
+    if not isinstance(raw_status, str) or raw_status not in _STATUSES:
+        raise ValueError(f"status must be one of {list(_STATUSES)!r}")
+    return {
+        "type": "development_analysis_decision",
+        "status": raw_status,
+        "summary": content.get("summary", "") or "",
+    }
 
 
 def _validation_diagnostic(item_line: int, section: str, rule_id: str, message: str) -> Diagnostic:
@@ -325,9 +377,11 @@ def _validate_request_changes_predicate(
     return diagnostics
 
 
-def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
+def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  # noqa: PLR0911 - structured per-type branches for shared spec
     artifact_type = document.frontmatter["type"]
     status = document.frontmatter["status"]
+    if artifact_type == "development_analysis_decision":
+        return []
     what_section = document.section("What Came Up Short")
     fix_section = document.section("How To Fix")
     if artifact_type in _VERIFICATION_TYPES:

@@ -22,7 +22,7 @@ Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, c
 
 Fan out read-only verification across independent criterion groups, one subagent per group. Examples of groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). These examples are not size prerequisites for delegation. Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
 
-Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any `## Criterion Verdicts` entry is written.
+Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any verdict is written.
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
 
@@ -36,10 +36,14 @@ Choose the outcome from fresh evidence, not the developer's status:
 
 - `completed`: every unchanged request criterion is met, every required plan
   item has been individually proven, and no necessary plan work remains.
-- `request_changes`: localized unmet work is actionable in this development cycle. Every finding must independently include `Remaining work:`, a concrete `Location:` (not `unknown`/`N/A`/`none`), and cite `Criterion:` or `Plan reference: [S-n]`.
+- `request_changes`: localized unmet work is actionable in this development cycle. The body describes what fell short, what evidence supports it, and what the next agent should do.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 
 `failed` records stronger or not-evaluable evidence for explicit resolution; the label itself never fails the pipeline.
+
+## Free-form decision body
+
+The validator only checks the frontmatter ``status`` enum. The body is the next agent's reading matter; write it in your own words. A useful pattern is to describe what fell short, the evidence that supports the judgement, and (for ``request_changes``) the leftover work the next agent should pick up. ``request_changes`` is the only safe status when localized unmet work is actionable in this development cycle — split the remaining work into independent units and dispatch them in parallel rather than handing each one back as a separate ``partial`` decision. A whole-change review of the implementation belongs here, too: the parallel pieces fit together, nothing outside the plan regressed, no unrelated scope, and the change follows repository policy.
 
 {% set development_decision_example %}
 ---
@@ -48,24 +52,28 @@ status: request_changes
 ---
 
 ## Summary
-- [SUM-1] One fixed criterion is not met.
+- [SUM-1] One criterion is not met.
+
+The focused regression test for oversized indexes is missing; the rest of the
+work is sound. A developer cycle should add a parametrized oversized-index case
+to tests/test_foo.py and re-run the focused tests.
 
 ## What Came Up Short
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py. Remaining work: add a parametrized oversized-index test case to tests/test_foo.py.
+- Criterion: oversized indexes are handled safely.
+  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
+  Location: tests/test_foo.py.
+  Remaining work: add a parametrized oversized-index test case.
 
 ## Criterion Verdicts
-- [DA-001] Criterion: oversized indexes are handled safely. Expected observation: the focused test exercises an oversized index. Verdict: not met. Evidence: `pytest tests/test_foo.py -q` has no oversized-index case. Location: tests/test_foo.py.
+- Criterion: oversized indexes are handled safely.
+  Verdict: not met.
+  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
+  Location: tests/test_foo.py.
 {% endset %}
-
-## Criteria and verdicts
-
-{% include 'shared/_criterion_verification_procedure.j2' %}
-
-Emit one stable `DA-###` item per unchanged request criterion in `## Criterion Verdicts`, with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Emit a separate item for every required plan reference, adding `Plan reference:` and `Disposition: completed|adapted|not_applicable|blocked`. Map `completed`, `adapted`, and justified `not_applicable` to `met`; map `blocked` to `not met` when actionable or `not evaluable` otherwise. `completed` requires all criteria to be `met` and no blocked plan reference. For `request_changes` or `failed`, mirror each localized non-met verdict in `## What Came Up Short`; do not prescribe a remedy. A `not evaluable` criterion requires `failed`.
 
 ## Decision artifact
 
-Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. Include one evidence-citing `## Summary` item and the criterion verdict block; do not read or use development-result/history narrative as evidence.
+Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. The body is free-form; lead with one `## Summary` item and describe the verdict the next agent needs.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 

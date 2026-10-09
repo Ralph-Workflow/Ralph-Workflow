@@ -1,18 +1,19 @@
-"""Focused tests for development-analysis-decision request_changes contract."""
+"""Focused tests for the free-form development-analysis-decision contract.
+
+The development analysis decision is free-form below the frontmatter: the
+only mechanically validated field is the closed ``status`` enum. The
+shared ``What Came Up Short`` / ``Criterion Verdicts`` shape, the per-field
+labels, and the per-rule identifiers (ANALYSIS002-019) belong to the
+prior structured contract and no longer apply.
+"""
 
 from __future__ import annotations
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 
-_FINDING = (
-    "Criterion: tests pass. Expected observation: focused test passes. "
-    "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
-    "Remaining work: add the missing edge-case test to tests/test_foo.py."
-)
 
-
-def _dev_request_changes(finding: str = _FINDING) -> str:
+def _dev_request_changes(finding: str) -> str:
     return f"""---
 type: development_analysis_decision
 status: request_changes
@@ -29,8 +30,21 @@ status: request_changes
 """
 
 
-def _dev_completed() -> str:
-    return """---
+def test_valid_request_changes_with_remaining_work_is_accepted() -> None:
+    finding = (
+        "Criterion: tests pass. Expected observation: focused test passes. "
+        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
+        "Remaining work: add the missing edge-case test to tests/test_foo.py."
+    )
+    content, diagnostics = parse_and_validate(
+        _dev_request_changes(finding), get_spec("development_analysis_decision")
+    )
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
+
+
+def test_completed_decision_is_accepted() -> None:
+    document = """---
 type: development_analysis_decision
 status: completed
 ---
@@ -41,10 +55,13 @@ status: completed
 ## Criterion Verdicts
 - [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: met. Evidence: `pytest -q` passes. Location: tests/test_foo.py.
 """
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "completed"
 
 
-def _dev_failed() -> str:
-    return """---
+def test_failed_decision_is_accepted() -> None:
+    document = """---
 type: development_analysis_decision
 status: failed
 ---
@@ -58,32 +75,14 @@ status: failed
 ## Criterion Verdicts
 - [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: not evaluable. Evidence: cannot determine. Location: tests/test_foo.py.
 """
-
-
-def test_valid_request_changes_with_remaining_work_is_accepted() -> None:
-    content, diagnostics = parse_and_validate(
-        _dev_request_changes(), get_spec("development_analysis_decision")
-    )
-    assert diagnostics == []
-    assert content["status"] == "request_changes"
-
-
-def test_completed_decision_is_accepted() -> None:
-    content, diagnostics = parse_and_validate(
-        _dev_completed(), get_spec("development_analysis_decision")
-    )
-    assert diagnostics == []
-    assert content["status"] == "completed"
-
-
-def test_failed_decision_is_accepted() -> None:
-    _content, diagnostics = parse_and_validate(
-        _dev_failed(), get_spec("development_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
     assert diagnostics == []
 
 
-def test_request_changes_missing_remaining_work_rejected() -> None:
+def test_request_changes_missing_remaining_work_is_accepted() -> None:
+    """Free-form: the body is the next agent's reading matter. The validator
+    does not require ``Remaining work:`` or any other per-field label.
+    """
     finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
@@ -91,36 +90,36 @@ def test_request_changes_missing_remaining_work_rejected() -> None:
     content, diagnostics = parse_and_validate(
         _dev_request_changes(finding), get_spec("development_analysis_decision")
     )
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS015" in rule_ids
-    assert content == {}
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_placeholder_location_rejected() -> None:
+def test_request_changes_with_placeholder_location_is_accepted() -> None:
+    """Free-form: no per-finding location predicate. ``Location: unknown`` is prose."""
     finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: unknown. "
         "Remaining work: add the missing test."
     )
-    _content, diagnostics = parse_and_validate(
+    content, diagnostics = parse_and_validate(
         _dev_request_changes(finding), get_spec("development_analysis_decision")
     )
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS016" in rule_ids
-    assert _content == {}
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_without_criterion_or_plan_ref_rejected() -> None:
+def test_request_changes_without_criterion_or_plan_ref_is_accepted() -> None:
+    """Free-form: the body can take any shape; no Criterion / Plan reference predicate."""
     finding = (
         "Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
         "Remaining work: add the missing test."
     )
-    _content, diagnostics = parse_and_validate(
+    content, diagnostics = parse_and_validate(
         _dev_request_changes(finding), get_spec("development_analysis_decision")
     )
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS017" in rule_ids
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
 def test_request_changes_with_plan_reference_accepted() -> None:
@@ -129,14 +128,15 @@ def test_request_changes_with_plan_reference_accepted() -> None:
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
         "Remaining work: add the missing test. Plan reference: [S-1]"
     )
-    _content, diagnostics = parse_and_validate(
+    content, diagnostics = parse_and_validate(
         _dev_request_changes(finding), get_spec("development_analysis_decision")
     )
     assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_per_finding_criterion_required() -> None:
-    """S-4: every finding must independently carry Criterion: or Plan reference:."""
+def test_request_changes_per_finding_criterion_unconstrained() -> None:
+    """Free-form: a developer analysis decision is whatever prose the agent writes."""
     good_finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
@@ -147,7 +147,7 @@ def test_request_changes_per_finding_criterion_required() -> None:
         "Verdict: not met. Evidence: `ruff check` fails. Location: src/bar.py. "
         "Remaining work: fix the lint error."
     )
-    doc = (
+    document = (
         "---\n"
         "type: development_analysis_decision\n"
         "status: request_changes\n"
@@ -162,82 +162,67 @@ def test_request_changes_per_finding_criterion_required() -> None:
         f"- [DA-002] Criterion: lint is clean. Expected observation: lint is clean. "
         "Verdict: not met. Evidence: `ruff check` fails. Location: src/bar.py.\n"
     )
-    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS017" in rule_ids
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_missing_location_rejected() -> None:
-    """S-4: every finding must include a concrete Location:."""
-    finding_no_loc = (
-        "Criterion: tests pass. Expected observation: focused test passes. "
-        "Verdict: not met. Evidence: `pytest -q` fails. "
-        "Remaining work: add the missing edge-case test."
-    )
-    finding_with_loc = (
-        "Criterion: tests pass. Expected observation: focused test passes. "
-        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
-    )
-    doc = (
-        "---\n"
-        "type: development_analysis_decision\n"
-        "status: request_changes\n"
-        "---\n\n"
-        "## Summary\n"
-        "- [SUM-1] One criterion is not met.\n\n"
-        "## What Came Up Short\n"
-        f"- [DA-001] {finding_no_loc}\n\n"
-        "## Criterion Verdicts\n"
-        f"- [DA-001] {finding_with_loc}\n"
-    )
-    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS016" in rule_ids
+def test_request_changes_missing_location_is_accepted() -> None:
+    """Free-form: no per-finding Location predicate."""
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] One criterion is not met.
+
+## What Came Up Short
+- [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: not met. Evidence: `pytest -q` fails. Remaining work: add the missing edge-case test.
+
+## Criterion Verdicts
+- [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: not met. Evidence: `pytest -q` fails.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
 def test_request_changes_all_findings_complete_accepted() -> None:
-    """S-4: multi-finding request_changes passes when every finding is complete."""
-    finding_a = (
-        "Criterion: tests pass. Expected observation: focused test passes. "
-        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_a.py. "
-        "Remaining work: add the missing edge-case test."
-    )
-    finding_b = (
-        "Criterion: lint is clean. Expected observation: ruff passes. "
-        "Verdict: not met. Evidence: `ruff check` fails. Location: src/b.py. "
-        "Remaining work: fix the lint error."
-    )
-    doc = (
-        "---\n"
-        "type: development_analysis_decision\n"
-        "status: request_changes\n"
-        "---\n\n"
-        "## Summary\n"
-        "- [SUM-1] Two criteria are not met.\n\n"
-        "## What Came Up Short\n"
-        f"- [DA-001] {finding_a}\n"
-        f"- [DA-002] {finding_b}\n\n"
-        "## Criterion Verdicts\n"
-        f"- [DA-001] {finding_a}\n"
-        f"- [DA-002] {finding_b}\n"
-    )
-    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
+    """Free-form: multi-finding request_changes passes regardless of body shape."""
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] Two criteria are not met.
+
+## What Came Up Short
+- [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_a.py. Remaining work: add the missing edge-case test.
+- [DA-002] Criterion: lint is clean. Expected observation: ruff passes. Verdict: not met. Evidence: `ruff check` fails. Location: src/b.py. Remaining work: fix the lint error.
+
+## Criterion Verdicts
+- [DA-001] Criterion: tests pass. Expected observation: focused test passes. Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_a.py.
+- [DA-002] Criterion: lint is clean. Expected observation: ruff passes. Verdict: not met. Evidence: `ruff check` fails. Location: src/b.py.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
     assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_mismatched_mirrored_verdict_rejected() -> None:
-    """DA-008: a What Came Up Short 'Verdict: met' must not mirror a 'not met' verdict."""
+def test_mismatched_mirrored_verdict_is_accepted() -> None:
+    """Free-form: no mirror predicate, so a "met"/"not met" mismatch is fine."""
     criterion = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
     )
-    # Same ID, but the shortfall says 'met' while the criterion verdict says 'not met'.
     finding_with_wrong_verdict = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
         "Remaining work: add the missing edge-case test."
     )
-    doc = (
+    document = (
         "---\n"
         "type: development_analysis_decision\n"
         "status: request_changes\n"
@@ -249,16 +234,13 @@ def test_request_changes_mismatched_mirrored_verdict_rejected() -> None:
         "## Criterion Verdicts\n"
         f"- [DA-001] {criterion}\n"
     )
-    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS018" in rule_ids
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
 
 
-def test_request_changes_with_free_form_plan_reference_only_accepted() -> None:
-    """Unit A step 5: a What Came Up Short item citing only `Plan reference: [WU-1]`
-    (no `Criterion:`) must validate clean. The criterion slot is satisfied by any
-    non-empty bracketed plan reference; this is the new free-form behavior.
-    """
+def test_free_form_plan_reference_only_finding_is_accepted() -> None:
+    """Free-form: any prose is fine, including Plan-reference-only findings."""
     finding_plan_ref_only = (
         "Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
@@ -271,7 +253,7 @@ def test_request_changes_with_free_form_plan_reference_only_accepted() -> None:
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
         "Plan reference: [WU-1]"
     )
-    doc = (
+    document = (
         "---\n"
         "type: development_analysis_decision\n"
         "status: request_changes\n"
@@ -283,42 +265,27 @@ def test_request_changes_with_free_form_plan_reference_only_accepted() -> None:
         "## Criterion Verdicts\n"
         f"- [DA-001] {criterion_with_plan_ref}\n"
     )
-    content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
     assert diagnostics == []
     assert content["status"] == "request_changes"
 
 
-def test_orphan_plan_reference_only_finding_yields_analysis014() -> None:
-    """Unit A step 5 (PA-003 regression): an orphan `## What Came Up Short` item
-    that cites only `Plan reference: [WU-2]` (no mirrored verdict in the
-    `## Criterion Verdicts` block) must still emit ANALYSIS014. The shared
-    Criterion-or-Plan-reference completeness predicate must apply to both
-    ANALYSIS014 generators, so a Plan-reference-only finding cannot silently
-    bypass the mirror check.
-    """
-    orphan_finding = (
-        "Expected observation: focused regression test passes. "
-        "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_orphan.py. "
-        "Remaining work: the focused regression test is still missing. "
-        "Plan reference: [WU-2]"
-    )
-    criterion_only = (
-        "Criterion: focused regression test passes. "
-        "Expected observation: focused regression test passes. "
-        "Verdict: met. Evidence: `pytest -q` passes. Location: tests/test_foo.py."
-    )
-    doc = (
-        "---\n"
-        "type: development_analysis_decision\n"
-        "status: request_changes\n"
-        "---\n\n"
-        "## Summary\n"
-        "- [SUM-1] One criterion is not met (orphan mirror).\n\n"
-        "## What Came Up Short\n"
-        f"- [DA-001] {orphan_finding}\n\n"
-        "## Criterion Verdicts\n"
-        f"- [DA-002] {criterion_only}\n"
-    )
-    _content, diagnostics = parse_and_validate(doc, get_spec("development_analysis_decision"))
-    rule_ids = {d.rule_id for d in diagnostics}
-    assert "ANALYSIS014" in rule_ids
+def test_orphan_plan_reference_only_finding_is_accepted() -> None:
+    """Free-form: no mirror predicate, so an orphan Plan-reference-only finding is fine."""
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] One criterion is not met (orphan mirror).
+
+## What Came Up Short
+- [DA-001] Expected observation: focused regression test passes. Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_orphan.py. Remaining work: the focused regression test is still missing. Plan reference: [WU-2]
+
+## Criterion Verdicts
+- [DA-002] Criterion: focused regression test passes. Expected observation: focused regression test passes. Verdict: met. Evidence: `pytest -q` passes. Location: tests/test_foo.py.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"

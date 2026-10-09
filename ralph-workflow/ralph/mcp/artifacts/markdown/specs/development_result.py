@@ -1,29 +1,17 @@
 """Markdown mapping and validation rules for ``development_result`` artifacts.
 
 Frontmatter ``status`` always has the closed vocabulary ``completed`` |
-``partial`` | ``failed`` (routing and continuation prompts read it — a wrong status
-such as ``done`` is a hard error naming the valid values). Everything
-below the frontmatter is validated only for a ``completed`` result,
-because only a completion claim is checkable: the required-section
-skeleton, the ``Analysis Items Addressed`` stable IDs (proof gating
-cross-references them) and the ``Continuation`` session ID. A
-non-``completed`` result requires at minimum a ``Summary`` section (the
-concise reason for the outcome) so silent omission is rejected
-mechanically; the rest of the body is mapped best-effort so the next
-iteration can read whatever the agent managed to write.
-
-Within a ``completed`` body the rest stays descriptive: sections
-tolerate multi-line prose and unknown ``Key: value`` continuation lines
-under items. This grammar layer only rejects duplicate IDs, a missing
-``Disposition``, and (for ``adapted`` / ``not_applicable`` / ``blocked``
-items) a missing ``Rationale``; matching the ``Plan Items Proven`` IDs
-against the proof set derived from the accepted plan happens at proof
-validation in :mod:`ralph.phases.execution`.
+``partial`` | ``failed`` (routing and continuation prompts read it — a wrong
+status such as ``done`` is a hard error naming the valid values). Everything
+below the frontmatter is free-form: the next agent reads it, never a
+validator. Plan/analysis/visual-proof machinery and per-item ID matching,
+dispositions, rationales, and the timebox-warned ``Incomplete Work`` CLOSED
+grammar are all removed; coverage is judged by development analysis, not
+checked mechanically here.
 """
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.development_result import (
@@ -31,394 +19,28 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
-from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
-from ralph.mcp.protocol.cycle_deadline_env import (
-    cycle_warning_is_active,
-    development_warning_is_active,
-)
+from ralph.mcp.artifacts.markdown.registry import register_spec
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
-    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
-from ralph.mcp.artifacts.markdown.registry import register_spec
 
 _STATUSES = ("completed", "partial", "failed")
 
 
-def _items(document: ParsedDocument, name: str) -> tuple[str, ...]:
-    section = document.section(name)
-    if section is None:
-        raise ValueError(f"missing required section {name!r}")
-    return tuple(item.text for item in section.items)
+def _to_content(document: ParsedDocument) -> Content:
+    """Map any development_result body to a free-form content dict.
 
-
-def _one_item(document: ParsedDocument, name: str) -> str:
-    items = _items(document, name)
-    if len(items) != 1:
-        raise ValueError(f"{name} must contain exactly one item")
-    return items[0]
-
-
-def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str, object]]:
-    section = document.section(name)
-    if section is None:
-        return []
-    proofs: list[dict[str, object]] = []
-    for item in section.items:
-        proof: dict[str, object] = {key: item.identifier, "proof": item.text}
-        fields = {
-            line.text.split(": ", 1)[0]: line.text.split(": ", 1)[1]
-            for line in item.fields
-            if ": " in line.text
-        }
-        disposition = fields.get("Disposition")
-        if disposition:
-            proof["disposition"] = disposition
-        rationale = fields.get("Rationale")
-        if rationale:
-            proof["rationale"] = rationale
-        verdict_id = fields.get("Verdict ID")
-        if verdict_id:
-            proof["verdict_id"] = verdict_id
-        before_handles = tuple(
-            handle.strip()
-            for handle in fields.get("Before Captures", "").split(",")
-            if handle.strip()
-        )
-        after_handles = tuple(
-            handle.strip()
-            for handle in fields.get("After Captures", "").split(",")
-            if handle.strip()
-        )
-        if before_handles and after_handles:
-            proof["capture_handles"] = before_handles + after_handles
-        proofs.append(proof)
-    return proofs
-
-
-def _is_completed(document: ParsedDocument) -> bool:
-    return document.frontmatter.get("status") == "completed"
-
-
-def _first_item(document: ParsedDocument, name: str) -> str | None:
-    """Read the first item of an optional section, tolerating any shape."""
-    section = document.section(name)
-    if section is None or not section.items:
-        return None
-    return section.items[0].text
-
-
-def _free_form_content(document: ParsedDocument) -> Content:
-    """Map a non-``completed`` result: status plus whatever prose exists.
-
-    A ``Summary`` section is required so the operator and the next
-    iteration always have a concise reason for the partial/failed
-    outcome — silent omission is rejected mechanically rather than
-    relying on prompt prose alone. Everything else is read best-effort:
-    missing sections contribute nothing, and proof entries are carried
-    only when well formed (proof gating is skipped for a non-completion
-    claim, so a degenerate entry is dropped rather than rejected).
-
-    When ``cycle_timebox_warned: true`` is set in the frontmatter, an
-    ``## Incomplete Work`` section with at least one stable-ID item is
-    required so the operator can trace what was interrupted by the
-    deadline without re-reading the entire transcript. Each item must
-    include a concise ``Reason:`` field and a supporting ``Evidence:``
-    field with a reproducible location; items without these are rejected
-    so fabricated completion or silent omission cannot pass validation.
+    The body below the frontmatter is the next agent's reading matter;
+    status is the only field the validator gates.
     """
-    summary = _first_item(document, "Summary")
-    if not summary:
-        raise ValueError(
-            "Summary section with at least one item is required for "
-            "partial/failed development results"
-        )
-    content: Content = {
+    return {
         "status": document.frontmatter["status"],
-        "summary": _first_item(document, "Summary") or "",
-        "files_changed": "\n".join(
-            item.text for item in _optional_items(document, "Files Changed") if item.text
-        ),
+        "summary": "",
+        "files_changed": "",
         "plan_items_proven": [],
         "analysis_items_addressed": [],
     }
-    # When the cycle or development timebox fired a warning before the
-    # partial/failed outcome, require an Incomplete Work section listing
-    # what remains. Either trigger gates the section, so the message
-    # names both rather than pointing at the one the agent did not see.
-    if _cycle_timebox_warned(document) or _development_timebox_warned(document):
-        incomplete_items = _optional_items(document, "Incomplete Work")
-        if not incomplete_items:
-            # A bracket-less bullet never becomes an item -- the parser reads it
-            # as prose -- so an agent that wrote the section without stable IDs
-            # was told it was missing while looking straight at it.
-            present = document.section("Incomplete Work") is not None
-            raise ValueError(
-                "Incomplete Work items must each be a top-level '-' bullet "
-                "carrying a stable-ID bracket, written as '- [S-4] ...'; the "
-                "section is present but no entry is"
-                if present
-                else "Incomplete Work section with at least one stable-ID item "
-                "is required after a cycle or development timebox warning; each "
-                "item must be a top-level '-' bullet with a 'Reason:' and "
-                "'Evidence:' field"
-            )
-        _validate_warned_incomplete_items(incomplete_items)
-        _reject_unbracketed_incomplete_bullets(document)
-        content["incomplete_work"] = [
-            f"[{item.identifier}] {item.text}" for item in incomplete_items
-        ]
-    else:
-        existing = _optional_items(document, "Incomplete Work")
-        # Checked before the emptiness test: a section made entirely of
-        # unbracketed bullets parses as zero items, which is the worst case
-        # rather than an exempt one.
-        _reject_unbracketed_incomplete_bullets(document)
-        if existing:
-            # Shaped exactly like the warned branch: storing bare text here
-            # while every other branch stores the stable ID made one field
-            # mean two things.
-            content["incomplete_work"] = [f"[{item.identifier}] {item.text}" for item in existing]
-    _carry_unplanned_work(document, content)
-    next_steps = _first_item(document, "Next Steps")
-    if next_steps:
-        content["next_steps"] = next_steps
-    prior_session_id = _first_item(document, "Continuation")
-    if prior_session_id:
-        content["continuation"] = {"prior_session_id": prior_session_id}
-    return content
-
-
-#: The only continuation fields an incomplete-work item may carry. The section
-#: is validated as a CLOSED grammar rather than by guessing which stray lines
-#: look like dropped work: every heuristic blacklist leaked (a nested bullet
-#: containing a colon read as a field, a tab after the marker read as neither),
-#: and each leak silently deleted exactly the unfinished work this gate exists
-#: to surface.
-_INCOMPLETE_WORK_FIELDS = ("Reason", "Evidence")
-
-
-def _reject_unbracketed_incomplete_bullets(document: ParsedDocument) -> None:
-    """Reject anything in ``## Incomplete Work`` that would be silently dropped.
-
-    Only two shapes survive the parser into the report: a top-level ``- [ID]``
-    bullet, and an indented ``Reason:``/``Evidence:`` line beneath one. Anything
-    else -- prose, a differently-marked bullet, a nested entry, an unrecognized
-    field, a ``### [ID]`` sub-block, or a second copy of the section -- is read
-    by nothing and vanishes. Rather than enumerate the ways that can happen,
-    this rejects everything that is not one of the two.
-
-    Every section with the name is inspected, not just the first: a
-    non-``completed`` document skips the shared structure validation that would
-    otherwise reject a duplicate, so a second copy carrying the remaining work
-    was accepted and discarded.
-    """
-    sections = document.sections_named("Incomplete Work")
-    if not sections:
-        return
-    stray_lines: list[int] = []
-    for index, section in enumerate(sections):
-        if index > 0:
-            # A repeated section: everything in it is dropped, so point at it.
-            stray_lines.append(section.line)
-        stray_lines += [line.line for line in section.lines]
-        # Sub-blocks are a third container the report never reads.
-        stray_lines += [block.line for block in section.blocks]
-        stray_lines += [
-            line.line
-            for item in section.items
-            for line in item.fields
-            if (parsed := _field_key_and_value(line.text)) is None
-            or parsed[0] not in _INCOMPLETE_WORK_FIELDS
-        ]
-    if stray_lines:
-        raise ValueError(
-            f"Incomplete Work accepts only top-level '- [ID] ...' bullets and "
-            f"their indented 'Reason:' / 'Evidence:' lines, in a single "
-            f"section; line {min(stray_lines)} is outside that shape and would "
-            f"be dropped from the report. Give every remaining item its own "
-            f"stable-ID bullet."
-        )
-
-
-def _development_timebox_warned(document: ParsedDocument) -> bool:
-    """Return whether the independent development timer passed its warning."""
-    if development_warning_is_active(now_epoch=time.time()):
-        return True
-    declared = document.frontmatter.get("development_timebox_warned")
-    return declared is not None and declared.lower() in ("true", "1", "yes")
-
-
-def _cycle_timebox_warned(document: ParsedDocument) -> bool:
-    """Return whether this result was produced after a cycle-timebox warning.
-
-    The runtime's published deadline is consulted first and is sufficient on
-    its own: keying the gate solely on the reporter's own frontmatter made it
-    self-defeating, since an agent tempted to hide unfinished work is exactly
-    the agent that would omit — or misspell, given unknown frontmatter keys are
-    tolerated — the flag that triggers the check. The declared flag is still
-    honoured so a result validated outside the warned invocation (a replay, a
-    hand-written report) keeps its stricter reading.
-    """
-    if cycle_warning_is_active(now_epoch=time.time()):
-        return True
-    declared = document.frontmatter.get("cycle_timebox_warned")
-    return declared is not None and declared.lower() in ("true", "1", "yes")
-
-
-def _optional_items(document: ParsedDocument, name: str) -> tuple[ParsedItem, ...]:
-    section = document.section(name)
-    return () if section is None else tuple(section.items)
-
-
-def _item_fields(item: ParsedItem) -> dict[str, str]:
-    """Extract ``Key: value`` pairs from an item's indented continuation lines.
-
-    List markers and bold emphasis are stripped before the split. Nothing tells
-    an agent which of the equivalent markdown shapes the parser wants, and
-    accepting only the bare one rejected ``- Reason:`` and ``**Reason:**`` —
-    the two most natural ways to write it — so an honest report failed
-    validation on its styling.
-    """
-    fields: dict[str, str] = {}
-    for line in item.fields:
-        parsed = _field_key_and_value(line.text)
-        if parsed is not None:
-            fields[parsed[0]] = parsed[1]
-    return fields
-
-
-def _field_key_and_value(text: str) -> tuple[str, str] | None:
-    """Return the ``Key``/``value`` a continuation line carries, if it is one."""
-    normalized = text.strip()
-    for marker in ("- ", "* ", "+ "):
-        if normalized.startswith(marker):
-            normalized = normalized[len(marker) :]
-            break
-    normalized = normalized.replace("**", "").replace("__", "")
-    # A missing space after the colon is a typo, not a different field.
-    key, separator, value = normalized.partition(":")
-    if not separator or not value.strip():
-        return None
-    return key.strip(), value.strip()
-
-
-def _validate_warned_incomplete_items(items: tuple[ParsedItem, ...]) -> None:
-    """Mechanically require evidence and a reason for each warned item.
-
-    When the cycle timebox fired a soft warning, each ``## Incomplete Work``
-    item must carry a concise ``Reason:`` field and a supporting ``Evidence:``
-    field with a reproducible location — so the operator and next iteration can
-    triage what was interrupted without re-reading the transcript or accepting
-    fabricated completion. The stable-ID bracket is enforced by the parser,
-    which builds an item only from a bracketed bullet.
-    """
-    for item in items:
-        # No identifier check here: the parser only builds an item from a
-        # bracketed bullet, so a bracket-less line never reaches this loop --
-        # it is caught where the section reads as empty.
-        fields = _item_fields(item)
-        reason = fields.get("Reason", "").strip()
-        if not reason:
-            raise ValueError(
-                f"Incomplete Work item [{item.identifier}] must include a "
-                f"concise 'Reason:' field explaining why the step is "
-                f"incomplete or infeasible, written as an indented "
-                f"continuation line under the item and capitalized exactly as "
-                f"'Reason:' (line {item.line})"
-            )
-        evidence = fields.get("Evidence", "").strip()
-        if not evidence:
-            raise ValueError(
-                f"Incomplete Work item [{item.identifier}] must include a "
-                f"supporting 'Evidence:' field with a reproducible location, "
-                f"written as an indented continuation line under the item and "
-                f"capitalized exactly as 'Evidence:' (line {item.line})"
-            )
-
-
-def _carry_unplanned_work(document: ParsedDocument, content: Content) -> None:
-    """Record any ``## Unplanned Work`` bullets under a separate content key.
-
-    Mid-phase discoveries live here, not in ``Plan Items Proven`` or
-    ``Analysis Items Addressed``: the bracketed ID is an anchor pointing
-    at a file:line, never a plan step reference, so a development_result
-    with a ``[UW-1]`` entry must report it only under
-    ``content["unplanned_work"]``. Each item is stored as
-    ``"[<ID>] <text>"`` so downstream consumers can query the anchor
-    without re-parsing the markdown.
-
-    The section is optional and shape-free: the spec admits body lines
-    (and accepts whatever bullet form the agent wrote), so we only
-    consume items the parser built from a bracketed bullet. Anything
-    written as plain prose under the heading stays in the document but
-    is dropped here, exactly like every other optional section's prose
-    is dropped on purpose.
-    """
-    items = _optional_items(document, "Unplanned Work")
-    if not items:
-        return
-    content["unplanned_work"] = [f"[{item.identifier}] {item.text}" for item in items]
-
-
-def _to_content(document: ParsedDocument) -> Content:
-    if not _is_completed(document):
-        return _free_form_content(document)
-    if (
-        _cycle_timebox_warned(document) or _development_timebox_warned(document)
-    ) and not _optional_items(document, "Plan Items Proven"):
-        # Gating only the partial/failed branch left the honesty requirement
-        # keyed on the single word the reporting agent chooses: under a live
-        # deadline warning the honest partial was rejected while a bare
-        # `completed` — no proof section at all — was accepted. A completion
-        # claim made under warning has to name what it proved. The gate fires
-        # for either the cycle or the independent development timebox, so the
-        # diagnostic names both triggers rather than the one the agent did
-        # not see.
-        raise ValueError(
-            "Plan Items Proven with at least one item is required for a "
-            "'completed' development result submitted after a cycle or "
-            "development timebox warning; report unfinished work as 'partial' "
-            "or 'failed' with an Incomplete Work section instead of claiming "
-            "completion"
-        )
-    content: Content = {
-        "status": document.frontmatter["status"],
-        "summary": _one_item(document, "Summary"),
-        "files_changed": "\n".join(_items(document, "Files Changed")),
-        "plan_items_proven": _proof_items(document, "Plan Items Proven", "plan_item"),
-        "analysis_items_addressed": _proof_items(
-            document, "Analysis Items Addressed", "how_to_fix_item"
-        ),
-    }
-    # A completion claim may still carry remaining work — a deferred step with
-    # a reason is honest reporting, and dropping the section deleted it.
-    completed_incomplete = _optional_items(document, "Incomplete Work")
-    if completed_incomplete:
-        # Reason/Evidence are required only under a warning, exactly as on the
-        # partial/failed branch. Demanding them here regardless rejected a
-        # `completed` result carrying a byte-identical section that `partial`
-        # accepted, for a rule the format documentation scopes to warned
-        # results — leaving no way to reconcile the diagnostic.
-        if _cycle_timebox_warned(document) or _development_timebox_warned(document):
-            _validate_warned_incomplete_items(completed_incomplete)
-        _reject_unbracketed_incomplete_bullets(document)
-        content["incomplete_work"] = [
-            f"[{item.identifier}] {item.text}" for item in completed_incomplete
-        ]
-    _carry_unplanned_work(document, content)
-    next_steps = document.section("Next Steps")
-    if next_steps is not None:
-        if len(next_steps.items) != 1:
-            raise ValueError("Next Steps must contain exactly one item")
-        content["next_steps"] = next_steps.items[0].text
-    continuation = document.section("Continuation")
-    if continuation is not None:
-        if len(continuation.items) != 1:
-            raise ValueError("Continuation must contain exactly one item")
-        content["continuation"] = {"prior_session_id": continuation.items[0].text}
-    return content
 
 
 DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
@@ -428,27 +50,12 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
         "type": FrontmatterVocabulary((DEVELOPMENT_RESULT_ARTIFACT_TYPE,), "DEV002"),
         "status": FrontmatterVocabulary(_STATUSES),
     },
-    sections={
-        "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
-        "Files Changed": SectionRule(require_items=True, allow_body=True),
-        "Plan Items Proven": SectionRule(required=False, allow_body=True),
-        "Analysis Items Addressed": SectionRule(required=False, allow_body=True),
-        "Next Steps": SectionRule(required=False, require_items=True, max_items=1, allow_body=True),
-        "Continuation": SectionRule(required=False, require_items=True, max_items=1),
-        "Incomplete Work": SectionRule(required=False, require_items=True, allow_body=True),
-        # Sanctioned home for mid-phase discoveries. The bracketed IDs in
-        # this section are anchors (not plan step references), so the
-        # spec admits them as items but they are never routed through
-        # proof validation: ``_to_content`` carries them in a separate
-        # ``unplanned_work`` field and the ``Plan Items Proven`` mapping
-        # never reads this section.
-        "Unplanned Work": SectionRule(required=False, allow_body=True),
-    },
+    sections={},
     to_content=_to_content,
     normalize_content=normalize_development_result_content,
     allow_unknown_frontmatter=True,
     allow_unknown_sections=True,
-    structured_body=_is_completed,
+    structured_body=lambda document: False,  # pragma: no cover - body is always free-form
 )
 
 register_spec(DEVELOPMENT_RESULT_SPEC)

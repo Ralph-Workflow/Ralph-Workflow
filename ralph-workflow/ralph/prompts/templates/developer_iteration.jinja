@@ -90,12 +90,9 @@ status: completed
 ## Summary
 - [SUM-1] Implemented the requested fix and verified it.
 
-## Files Changed
-- [FC-1] src/main.py
-
-## Plan Items Proven
-- [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
-  Disposition: completed
+Wrote what I did, what changed, and how I verified it. The validator
+only checks the frontmatter ``status``; the body is the next agent's
+reading matter.
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 

@@ -35,10 +35,18 @@ IMPORTANT: The previous attempt did not complete successfully.
 PRIOR WORKER RESULT — PARTIAL — NOT COMPLETE:
 This is a new invocation for the same assigned unit. Treat the continuation
 reference as handoff metadata; do not try to resume a transport session.
+The body below is the original partial result markdown, carried whole
+so the next agent reads the prior handoff verbatim rather than
+extracted summary fields. The remaining work, files changed, and any
+other prose the prior agent wrote are still authoritative — do not
+discard or rewrite it before reading.
 
-Summary: {{ PRIOR_RESULT_SUMMARY }}
-Next steps: {{ PRIOR_RESULT_NEXT_STEPS }}
-Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
+```
+{{ PRIOR_RESULT_MARKDOWN }}
+```
+{% if PRIOR_SESSION_ID %}
+Continuation reference: {{ PRIOR_SESSION_ID }}
+{% endif %}
 {% endif %}
 
 ## WORKER SCOPE
@@ -93,21 +101,17 @@ status: completed
 ## Summary
 - [SUM-1] Implemented and verified the assigned work unit.
 
-## Files Changed
-- [FC-1] src/main.py
-
-## Plan Items Proven
-- [{{ unit_id }}] Implemented this work unit; updated src/main.py and ran pytest tests/test_main.py -q; it passes.
-  Disposition: completed
+Wrote what I did, what changed, and what was verified. The body is
+free-form; the validator only checks the frontmatter ``status``.
 {% endset %}
 
 ## UNIT RESULT
 
-For `status: completed`, submit exactly one proof item under
-`## Plan Items Proven`: `- [{{ unit_id }}]`, citing the files changed and the
-focused verification result. Do not submit another plan-step or work-unit ID.
-Do not invent files or verification results.
-Add `Disposition: completed|adapted|not_applicable|blocked`; a blocked assignment requires a partial result. Adapted and not-applicable assignments require reproducible evidence and a rationale showing the request criteria remain covered.
+The body is free-form: write in your own words what the assigned unit did, what
+changed, how it was verified, and what remains. For `status: completed`, a
+useful pattern is to cite the files changed and the focused verification
+result; do not invent files or verification results. For partial or failed,
+state the concrete blocker and the next concrete step.
 
 When the assigned unit cannot be completed, follow the completion-pressure
 rules from the developer iteration guidance included above and emit the

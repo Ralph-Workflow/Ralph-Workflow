@@ -587,9 +587,8 @@ def _render_developer_prompt(
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
             prior_result_status=prior_partial_result[0] if prior_partial_result else "",
-            prior_result_summary=prior_partial_result[1] if prior_partial_result else "",
-            prior_result_next_steps=prior_partial_result[2] if prior_partial_result else "",
-            prior_result_continuation=prior_partial_result[3] if prior_partial_result else "",
+            prior_result_markdown=prior_partial_result[1] if prior_partial_result else "",
+            prior_session_id=prior_partial_result[2] if prior_partial_result else "",
             skills_inline_content=skills_inline_content,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
@@ -1106,7 +1105,14 @@ def _resolve_partial_development_result(
     artifacts_policy: ArtifactsPolicy | None,
     worker_namespace: Path | None = None,
 ) -> tuple[str, str, str, str] | None:
-    """Return continuation fields from this drain's valid partial result."""
+    """Return the original partial result markdown alongside minimal routing metadata.
+
+    The free-form contract drops the structured-summary/next-steps
+    fields the partial pipeline used to forward. The next agent reads
+    the whole body verbatim under the prior-result header; ``status``
+    and the optional ``prior_session_id`` are the only signals the
+    caller still needs.
+    """
     if artifacts_policy is None:
         return None
     required_artifact = resolve_required_artifact(artifacts_policy, drain=drain)
@@ -1137,20 +1143,17 @@ def _resolve_partial_development_result(
     if content is None or content.get("status") != "partial":
         return None
     continuation = content.get("continuation")
-    summary = content.get("summary")
-    next_steps = content.get("next_steps")
     prior_session_id = (
-        continuation.get("prior_session_id") if isinstance(continuation, dict) else None
+        continuation.get("prior_session_id")
+        if isinstance(continuation, dict)
+        else None
     )
-    values = (summary, next_steps, prior_session_id)
-    if not all(isinstance(value, str) for value in values):
-        return None
     return (
         "partial",
-        cast("str", summary),
-        cast("str", next_steps),
-        cast("str", prior_session_id),
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        markdown,
+        "" if prior_session_id is None else cast("str", prior_session_id),
+        "",
+    )
 
 
 def _snapshot_partial_execution_result(

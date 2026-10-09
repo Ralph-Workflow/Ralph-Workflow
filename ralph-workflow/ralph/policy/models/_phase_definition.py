@@ -5,7 +5,6 @@ from typing import Literal, cast
 from pydantic import Field, model_validator
 
 from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
-from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
 from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
@@ -121,14 +120,6 @@ class PhaseDefinition(_FrozenPolicyModel):
             "Optional artifact history policy. When set with enabled=True, the runtime "
             "archives the prior canonical artifact and Markdown handoff before overwrite. "
             "Phases sharing the same drain must agree on artifact_history.enabled."
-        ),
-    )
-    artifact_proof_policy: ArtifactProofPolicy | None = Field(
-        default=None,
-        description=(
-            "Optional proof-validation policy for development_result artifacts. When set, "
-            "the runtime validates plan and analysis proof entries before accepting the "
-            "development_result artifact."
         ),
     )
     workflow_fallback: PhaseWorkflowFallback | None = Field(

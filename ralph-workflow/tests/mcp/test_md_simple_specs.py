@@ -1,4 +1,11 @@
-"""Focused tests for analysis-decision Markdown contracts."""
+"""Focused tests for analysis-decision Markdown contracts.
+
+Planning, review, and policy decisions keep the structured contract
+verbatim. Development analysis decisions are free-form below the
+frontmatter; the only mechanically validated field is the closed
+``status`` enum. Tests of structured per-field predicates for development
+decisions are gone with the rules.
+"""
 
 from __future__ import annotations
 
@@ -28,23 +35,6 @@ def test_request_changes_requires_a_step_or_plan_level_target() -> None:
 
     assert content == {}
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS004", "error")]
-
-
-def test_non_planning_request_changes_do_not_require_a_plan_step_target() -> None:
-    document = (
-        _decision("The implementation omits a required negative test.")
-        .replace("planning_analysis_decision", "development_analysis_decision")
-        .replace("PA-001", "DA-001")
-        .replace(
-            "Location: plan step. Cost:",
-            "Location: src/example.py:1. Remaining work: add the missing negative test. Cost:",
-        )
-    )
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert diagnostics == []
-    assert content["finding_targets"] == {}
 
 
 def test_request_changes_preserves_exact_finding_binding() -> None:
@@ -89,71 +79,23 @@ def test_failed_planning_decision_requires_a_step_or_plan_level_target() -> None
 
 def test_criterion_verdict_rejects_non_numeric_phase_id() -> None:
     document = """---
-type: development_analysis_decision
-status: completed
+type: planning_analysis_decision
+status: request_changes
 ---
 ## Summary
-- [SUM-1] No counterexample was found.
+- [SUM-1] Evidence is unavailable.
+
+## What Came Up Short
+- [PA-invalid] Plan-level: Criterion: the plan is runnable. Expected observation: it runs. Proposed revision: rename. Verdict: not met. Evidence: evidence. Location: plan. Cost: cost. Remaining work: rename.
 
 ## Criterion Verdicts
-- [DA-invalid] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
+- [PA-invalid] Plan-level: Criterion: the plan is runnable. Expected observation: it runs. Proposed revision: rename. Verdict: not met. Evidence: evidence. Location: plan. Cost: cost.
 """
 
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
     assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS010", "error")]
-
-
-def test_completed_verification_decision_requires_evidence_citing_criterion_verdicts() -> None:
-    document = """---
-type: development_analysis_decision
-status: completed
----
-## Summary
-- [SUM-1] No counterexample was found.
-
-## Criterion Verdicts
-- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert diagnostics == []
-    assert content["criterion_verdict_ids"] == ["DA-001"]
-
-
-def test_completed_verification_decision_rejects_non_met_verdict() -> None:
-    document = """---
-type: development_analysis_decision
-status: completed
----
-## Summary
-- [SUM-1] No counterexample was found.
-
-## Criterion Verdicts
-- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: not met. Evidence: src/api.py:10. Location: src/api.py:10.
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS012", "error")]
-
-
-def test_completed_verification_decision_rejects_missing_criterion_verdicts() -> None:
-    document = """---
-type: development_analysis_decision
-status: completed
----
-## Summary
-- [SUM-1] No counterexample was found.
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS006", "error")]
 
 
 def test_criterion_verdict_rejects_unsupported_verdict_or_uncited_met() -> None:
@@ -175,24 +117,6 @@ status: completed
 
     assert content == {}
     assert [item.rule_id for item in diagnostics] == ["ANALYSIS008", "ANALYSIS005"]
-
-
-def test_criterion_verdict_rejects_empty_evidence_for_met() -> None:
-    document = """---
-type: development_analysis_decision
-status: completed
----
-## Summary
-- [SUM-1] No counterexample was found.
-
-## Criterion Verdicts
-- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: Location: src/api.py:10.
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS009", "error")]
 
 
 def test_not_evaluable_criterion_verdict_requires_failed_status() -> None:
@@ -233,45 +157,6 @@ def test_not_evaluable_verdict_requires_failed_status() -> None:
     ]
 
 
-def test_verification_decision_rejects_empty_location() -> None:
-    document = """---
-type: development_analysis_decision
-status: completed
----
-## Summary
-- [SUM-1] No counterexample was found.
-
-## Criterion Verdicts
-- [DA-001] Criterion: the API is available. Expected observation: the export exists. Verdict: met. Evidence: src/api.py:10. Location:
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert content == {}
-    assert [(item.rule_id, item.severity) for item in diagnostics] == [("ANALYSIS013", "error")]
-
-
-def test_verification_decision_requires_each_non_met_verdict_to_be_mirrored() -> None:
-    document = """---
-type: development_analysis_decision
-status: request_changes
----
-## Summary
-- [SUM-1] One fixed criterion is not met.
-
-## What Came Up Short
-- [DA-002] Criterion: another behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:11. Remaining work: implement the missing behavior.
-
-## Criterion Verdicts
-- [DA-001] Criterion: behavior holds. Expected observation: focused evidence observes it. Verdict: not met. Evidence: output. Location: src/example.py:10.
-"""
-
-    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
-
-    assert content == {}
-    assert [item.rule_id for item in diagnostics] == ["ANALYSIS014", "ANALYSIS014"]
-
-
 def test_request_changes_allows_explicit_plan_level_target() -> None:
     content, diagnostics = parse_and_validate(
         _decision("Plan-level: The outcome omits an out-of-scope boundary."),
@@ -310,16 +195,9 @@ def test_planning_findings_require_a_proposed_revision() -> None:
     ]
 
 
-def test_development_findings_do_not_require_a_proposed_revision() -> None:
-    """ANALYSIS019 is planning-only; development findings keep Remaining work:.
-
-    The same document also pins that ``Cost:`` is planning-only
-    (ANALYSIS005) — development verdicts never duplicate the cost.
-    Consolidating the two formerly-duplicate scenarios keeps the test
-    portfolio distinct on fault sensitivity: a regression that required
-    ``Proposed revision:`` on a development finding (ANALYSIS019) or
-    ``Cost:`` on a development verdict (ANALYSIS005) would fail here,
-    while a planning-only regression would not move this test at all.
+def test_development_decision_is_free_form_body() -> None:
+    """A development analysis decision with a structured-looking body still
+    validates cleanly: only the frontmatter ``status`` enum is checked.
     """
     document = """---
 type: development_analysis_decision
@@ -338,7 +216,42 @@ status: request_changes
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
 
     assert diagnostics == []
-    assert content["finding_ids"] == ["DA-001"]
+    assert content["status"] == "request_changes"
+    assert content["type"] == "development_analysis_decision"
+
+
+def test_development_decision_completed_is_accepted() -> None:
+    """A completed development decision with a structured-looking body is free-form."""
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] No counterexample was found.
+
+## Criterion Verdicts
+- [DA-001] Criterion: the public API remains available. Expected observation: the module exports the API. Verdict: met. Evidence: src/api.py:10. Location: src/api.py:10.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "completed"
+
+
+def test_development_decision_failed_is_accepted() -> None:
+    """A failed development decision with a structured-looking body is free-form."""
+    document = """---
+type: development_analysis_decision
+status: failed
+---
+## Summary
+- [SUM-1] Not evaluable.
+
+## Criterion Verdicts
+- [DA-001] Criterion: behavior holds. Verdict: not evaluable. Evidence: output. Location: src/example.py:10.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "failed"
 
 
 def test_planning_verdict_cost_omission_regression() -> None:

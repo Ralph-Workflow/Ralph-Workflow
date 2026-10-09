@@ -407,19 +407,9 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
     )
 
 
-def build_proof_failure_hint(phase: str, detail: str, *, validation: bool = False) -> str:
-    """Build a retry hint for a phase that submitted proof but failed validation."""
-    return build_retry_error_block(
-        failure_summary="proof entries are incomplete or invalid",
-        detail=detail,
-        validation=validation,
-    )
-
-
 __all__ = [
     "RequiredArtifact",
     "build_missing_input_hint",
-    "build_proof_failure_hint",
     "build_required_artifacts",
     "build_retry_hint",
     "resolve_phase_required_artifact",

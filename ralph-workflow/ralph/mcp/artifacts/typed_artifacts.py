@@ -101,7 +101,23 @@ def normalize_analysis_decision_content(
     *,
     allowed_statuses: Collection[str] | None = None,
 ) -> dict[str, object]:
-    """Validate and normalize an analysis decision artifact content dict."""
+    """Validate and normalize an analysis decision artifact content dict.
+
+    A development analysis decision is free-form: only the ``status``
+    enum is checked, because routing reads it. The body is otherwise
+    passed through unchanged for the next agent to read.
+    """
+    if isinstance(content, dict) and content.get("type") == "development_analysis_decision":
+        statuses = (
+            frozenset(allowed_statuses)
+            if allowed_statuses is not None
+            else _ANALYSIS_DECISION_VOCABULARY
+        )
+        status = content.get("status")
+        if not isinstance(status, str) or status not in statuses:
+            allowed = sorted(statuses)
+            raise TypedArtifactValidationError(f"status must be one of {allowed}")
+        return {"status": status, "summary": content.get("summary", "") or ""}
     normalized = _validate(AnalysisDecision, content)
     statuses = (
         frozenset(allowed_statuses)

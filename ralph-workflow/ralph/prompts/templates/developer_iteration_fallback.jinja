@@ -39,10 +39,18 @@ FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how
 PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
+The body below is the original partial result markdown, carried whole
+so the next agent reads the prior handoff verbatim rather than
+extracted summary fields. The remaining work, files changed, and any
+other prose the prior agent wrote are still authoritative — do not
+discard or rewrite it before reading.
 
-Summary: {{PRIOR_RESULT_SUMMARY}}
-Next steps: {{PRIOR_RESULT_NEXT_STEPS}}
-Continuation reference: {{PRIOR_RESULT_CONTINUATION}}
+```
+{{PRIOR_RESULT_MARKDOWN}}
+```
+{% if PRIOR_SESSION_ID %}
+Continuation reference: {{PRIOR_SESSION_ID}}
+{% endif %}
 {% endif %}
 
 {% if IS_WORKER %}
@@ -145,12 +153,7 @@ status: completed
 ## Summary
 - [SUM-1] Implemented and verified the assigned work.
 
-## Files Changed
-- [FC-1] path/to/file
-
-## Plan Items Proven
-{% if IS_WORKER %}- [{{unit_id}}] Focused verification passed.
-{% else %}- [S-1] Focused verification passed.
-{% endif %}  Disposition: completed
+Wrote what I did, what changed, and how I verified it. The body is
+free-form; the validator only checks the frontmatter ``status``.
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path=(WORKER_FALLBACK_PATH if IS_WORKER else '.agent/tmp/development_result.md')) }}

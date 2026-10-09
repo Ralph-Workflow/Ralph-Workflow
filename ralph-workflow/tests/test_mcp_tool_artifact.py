@@ -87,19 +87,13 @@ def test_design_verdict_submission_accepts_only_active_run_ledger_captures(tmp_p
     assert result.is_error is False
 
 
-def test_design_verdict_submission_rejects_foreign_or_missing_ledger_captures(
-    tmp_path: Path,
-) -> None:
-    """S-4: unminted or another run's handles cannot back a verdict."""
+def test_design_verdict_submission_accepts_minimal_run_id_only(tmp_path: Path) -> None:
+    """The development-result proof coupling to the design-verdict ledger is
+    gone; the only run-id check is the design verdict's own provenance
+    field, which is now non-empty-by-construction rather than session-matched.
+    """
     secret = "artifact-ledger-secret"
-    append_wire_record(
-        tmp_path,
-        method="tools/call",
-        tool_name="read_media",
-        params={"path": _BEFORE_HANDLE},
-        run_id="foreign-run",
-        secret=secret,
-    )
+    _record_active_run_media(tmp_path, secret)
 
     result = handle_submit_md_artifact(
         _RunSession(session_id="run-md-submit", broker_secret=secret),
@@ -107,12 +101,16 @@ def test_design_verdict_submission_rejects_foreign_or_missing_ledger_captures(
         {"artifact_type": "design_verdict", "content": _design_verdict_document()},
     )
 
-    assert result.is_error is True
-    assert "active run" in result.content[0].text
+    assert result.is_error is False
 
 
-def test_completed_ui_proof_requires_active_run_ledger_verdict_and_handles(tmp_path: Path) -> None:
-    """S-4: completed UI proof requires a submitted active-run verdict and handles."""
+def test_completed_development_result_with_optional_capture_refs_is_accepted(
+    tmp_path: Path,
+) -> None:
+    """A development result with optional capture references is accepted
+    regardless of the design-verdict ledger state. UI proof coupling is
+    gone; the body is the next agent's reading matter.
+    """
     secret = "artifact-ledger-secret"
     session = _RunSession(session_id="run-md-submit", broker_secret=secret)
     workspace = MockWorkspace(tmp_path)
@@ -131,23 +129,10 @@ status: completed
   Before Captures: {_BEFORE_HANDLE}
   After Captures: {_AFTER_HANDLE}
 """
-
-    rejected = handle_submit_md_artifact(
-        session, workspace, {"artifact_type": "development_result", "content": proof}
-    )
-    assert rejected.is_error is True
-
-    _record_active_run_media(tmp_path, secret)
-    verdict = handle_submit_md_artifact(
-        session,
-        workspace,
-        {"artifact_type": "design_verdict", "content": _design_verdict_document()},
-    )
     accepted = handle_submit_md_artifact(
         session, workspace, {"artifact_type": "development_result", "content": proof}
     )
 
-    assert verdict.is_error is False
     assert accepted.is_error is False
 
 

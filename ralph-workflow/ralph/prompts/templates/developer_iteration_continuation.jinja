@@ -40,10 +40,18 @@ FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how
 PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
+The body below is the original partial result markdown, carried whole
+so the next agent reads the prior handoff verbatim rather than
+extracted summary fields. The remaining work, files changed, and any
+other prose the prior agent wrote are still authoritative — do not
+discard or rewrite it before reading.
 
-Summary: {{ PRIOR_RESULT_SUMMARY }}
-Next steps: {{ PRIOR_RESULT_NEXT_STEPS }}
-Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
+```
+{{ PRIOR_RESULT_MARKDOWN }}
+```
+{% if PRIOR_SESSION_ID %}
+Continuation reference: {{ PRIOR_SESSION_ID }}
+{% endif %}
 {% endif %}
 
 {% include 'shared/_artifact_history.j2' %}
@@ -87,15 +95,8 @@ status: completed
 ## Summary
 - [SUM-1] Implemented the requested fix and verified it.
 
-## Files Changed
-- [FC-1] src/main.py
-
-## Plan Items Proven
-- [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
-  Disposition: completed
-
-## Analysis Items Addressed
-- [DA-001] Restored the missing null-check the analysis flagged; covered by tests/test_main.py.
+Wrote what I did, what changed, and how I verified it. The body is
+free-form; the validator only checks the frontmatter ``status``.
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 

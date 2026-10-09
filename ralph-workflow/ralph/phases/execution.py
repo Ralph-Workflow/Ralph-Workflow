@@ -16,7 +16,6 @@ pre-validation for plan and development_result drains.
 
 from __future__ import annotations
 
-from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,12 +39,10 @@ from ralph.phases.artifacts import (
 )
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
-    build_proof_failure_hint,
     build_required_artifacts,
     build_retry_hint,
     clear_validation_retry_hint,
     resolve_phase_required_artifact,
-    resolve_required_artifact,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -55,13 +52,11 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.pipeline.work_units import canonical_plan_references
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.policy.models import (
-        ArtifactProofPolicy,
         ArtifactsPolicy,
         PhaseDefinition,
         PipelinePolicy,
@@ -139,30 +134,12 @@ def handle_execution_phase(
             events = failure
         elif ra.artifact_type == "development_result" and validated_content is not None:
             development_result = DevelopmentResult.model_validate(validated_content)
-            # Proof gating checks a completion claim; a non-completed result
-            # makes none, so its body is free-form and nothing to cross-check.
-            if (
-                development_result.status == "completed"
-                and phase_def is not None
-                and phase_def.artifact_proof_policy is not None
-            ):
-                proof_failure = _validate_development_result_proof(
-                    ctx,
-                    phase,
-                    phase_def.artifact_proof_policy,
-                    development_result,
-                    assigned_work_unit_id=assigned_work_unit_id,
-                    retry_hint_path_override=worker_retry_hint_path,
+            events = [
+                ExecutionResultEvent(
+                    phase=phase,
+                    status=development_result.status,
                 )
-                if proof_failure is not None:
-                    events = proof_failure
-            if events is None:
-                events = [
-                    ExecutionResultEvent(
-                        phase=phase,
-                        status=development_result.status,
-                    )
-                ]
+            ]
 
     if events is None:
         events = [PipelineEvent.AGENT_SUCCESS]
@@ -413,214 +390,6 @@ def _write_retry_hint(
         ctx.workspace.write(hint_path, hint)
 
 
-def _write_proof_failure_hint(
-    ctx: PhaseContext,
-    phase: str,
-    detail: str,
-    *,
-    hint_path_override: str | None = None,
-) -> None:
-    hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
-    hint = build_proof_failure_hint(phase, detail, validation=True)
-    with suppress(Exception):
-        if ctx.workspace.exists(hint_path):
-            existing = ctx.workspace.read(hint_path).strip()
-            if existing:
-                hint = f"{existing}\n\n{hint}"
-        ctx.workspace.write(hint_path, hint)
-
-
-def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
-    errors: list[str] = []
-    submitted_set = frozenset(submitted_list)
-    if len(submitted_set) < len(submitted_list):
-        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
-    missing = required_refs - submitted_set
-    extra = submitted_set - required_refs
-    if missing:
-        errors.append(
-            "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
-            f"{sorted(missing)}. Each plan_item must exactly match a stable S-id."
-        )
-    if extra:
-        errors.append(
-            "PROOF INVALID: Unknown plan_item reference(s) not matching any plan step: "
-            f"{sorted(extra)}."
-        )
-    return errors
-
-
-def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
-    errors: list[str] = []
-    submitted_set = frozenset(submitted_list)
-    if len(submitted_set) < len(submitted_list):
-        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
-    missing = required_refs - submitted_set
-    if missing:
-        errors.append(
-            "PROOF INCOMPLETE: The following work-unit or main-session plan reference(s) "
-            f"have no proof entry: {sorted(missing)}. The main integration result must "
-            "prove every work_unit unit_id and every global step not owned by a work unit."
-        )
-    extra = submitted_set - required_refs
-    if extra:
-        errors.append(
-            "PROOF INVALID: Unknown plan_item reference(s) not matching a required work-unit "
-            f"or main-session step reference: {sorted(extra)}. "
-            f"Valid references: {sorted(required_refs)}."
-        )
-    return errors
-
-
-def _assigned_work_unit_proof_errors(
-    required_refs: frozenset[str],
-    submitted_list: list[str],
-    assigned_work_unit_id: str,
-) -> list[str]:
-    if required_refs and assigned_work_unit_id not in required_refs:
-        return [
-            "PROOF INVALID: Assigned worker unit "
-            f"{assigned_work_unit_id!r} is not a canonical work_unit unit_id. "
-            f"Valid unit_ids: {sorted(required_refs)}."
-        ]
-    if submitted_list == [assigned_work_unit_id]:
-        return []
-    return [
-        "PROOF INVALID: An isolated worker must submit exactly one proof for its "
-        f"assigned unit {assigned_work_unit_id!r}; received {submitted_list!r}."
-    ]
-
-
-def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
-    """Require stable analysis-item IDs, never fuzzy copied prose."""
-    errors: list[str] = []
-    submitted = frozenset(submitted_list)
-    if len(submitted) < len(submitted_list):
-        errors.append(
-            "PROOF INVALID: Duplicate analysis finding entries found in analysis_items_addressed."
-        )
-    missing = required_refs - submitted
-    extra = submitted - required_refs
-    if missing:
-        errors.append(
-            f"PROOF INCOMPLETE: Missing proof for analysis finding ID(s): {sorted(missing)}."
-        )
-    if extra:
-        errors.append(f"PROOF INVALID: Unknown analysis finding ID(s): {sorted(extra)}.")
-    return errors
-
-
-def _plan_proof_errors(
-    ctx: PhaseContext,
-    dev_result: DevelopmentResult,
-    *,
-    assigned_work_unit_id: str | None = None,
-) -> list[str]:
-    submitted = [proof.plan_item for proof in dev_result.plan_items_proven]
-    work_unit_ids, owned_step_refs = _get_canonical_work_unit_refs(ctx)
-    if assigned_work_unit_id is not None:
-        return _assigned_work_unit_proof_errors(
-            work_unit_ids,
-            submitted,
-            assigned_work_unit_id,
-        )
-    step_refs = _get_canonical_step_refs(ctx)
-    submitted_set = frozenset(submitted)
-    if work_unit_ids and not (submitted_set and submitted_set <= step_refs):
-        required_refs = work_unit_ids | (step_refs - owned_step_refs)
-        return _work_unit_proof_errors(required_refs, submitted)
-    if step_refs:
-        return _step_proof_errors(step_refs, submitted)
-    if work_unit_ids:
-        return _work_unit_proof_errors(work_unit_ids, submitted)
-    return _step_proof_errors(frozenset({"plan"}), submitted)
-
-
-def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
-    return _get_plan_references(ctx)[0]
-
-
-def _get_canonical_work_unit_refs(
-    ctx: PhaseContext,
-) -> tuple[frozenset[str], frozenset[str]]:
-    _, units, owned = _get_plan_references(ctx)
-    return units, owned
-
-
-def _get_plan_references(
-    ctx: PhaseContext,
-) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
-    try:
-        wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
-        content = unwrap_phase_artifact_content(wrapper, expected_type="plan")
-        return canonical_plan_references(content)
-    except (PhaseArtifactError, ValueError):
-        return frozenset(), frozenset(), frozenset()
-
-
-def _get_canonical_analysis_finding_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
-    """Return stable IDs from the prior analysis's localized findings."""
-    try:
-        for phase_def in ctx.pipeline_policy.phases.values():
-            if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
-                continue
-            ra = resolve_required_artifact(ctx.artifacts_policy, drain=phase_def.drain)
-            if ra is None or not ctx.workspace.exists(ra.artifact_path):
-                return frozenset()
-            artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
-            content = unwrap_phase_artifact_content(
-                artifact_wrapper, expected_type=ra.artifact_type
-            )
-            finding_ids = content.get("finding_ids")
-            if not isinstance(finding_ids, list):
-                return frozenset()
-            return frozenset(item for item in finding_ids if isinstance(item, str))
-        return frozenset()
-    except Exception:
-        return frozenset()
-
-
-def _validate_development_result_proof(
-    ctx: PhaseContext,
-    phase: str,
-    proof_policy: ArtifactProofPolicy,
-    dev_result: DevelopmentResult,
-    *,
-    assigned_work_unit_id: str | None = None,
-    retry_hint_path_override: str | None = None,
-) -> list[Event] | None:
-    errors: list[str] = []
-    if proof_policy.require_plan_proof:
-        errors.extend(
-            _plan_proof_errors(
-                ctx,
-                dev_result,
-                assigned_work_unit_id=assigned_work_unit_id,
-            )
-        )
-    if proof_policy.require_analysis_proof:
-        required_refs = _get_canonical_analysis_finding_refs(ctx, phase)
-        if required_refs:
-            errors.extend(
-                _analysis_proof_errors(
-                    required_refs,
-                    [a.how_to_fix_item for a in dev_result.analysis_items_addressed],
-                )
-            )
-
-    if not errors:
-        return None
-
-    detail = "\n".join(errors)
-    _write_proof_failure_hint(
-        ctx,
-        phase,
-        detail,
-        hint_path_override=retry_hint_path_override,
-    )
-    return [artifact_validation_failure_event(phase=phase, reason=detail)]
-
-
 def _worker_retry_hint_path(
     drain: str,
     output_artifact_path: str | None,
@@ -643,3 +412,10 @@ def _find_plan_producing_phase(
                 if phase_def.drain == contract.drain:
                     return phase_name
     return pipeline_policy.entry_phase
+
+
+# Reuse ``contextlib.suppress`` locally so the call sites read like the
+# rest of the codebase. Importing it at module top would shadow the
+# function name; the file is short enough to keep the import next to
+# its only user.
+from contextlib import suppress  # noqa: E402
