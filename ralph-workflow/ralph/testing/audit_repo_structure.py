@@ -135,6 +135,11 @@ def _record_bypass_comment(
 def _scan_structure(
     src: str, lines: tuple[str, ...]
 ) -> tuple[tuple[str, ...], tuple[tuple[int, str, str], ...], tuple[tuple[int, str], ...]]:
+    has_class = "class " in src or "class\t" in src or "class\n" in src or "class(" in src
+    has_bypass = _TYPE_IGNORE_MARKER in src or _NOQA_MARKER in src
+    if not has_class and not has_bypass:
+        return (), (), ()
+
     top_level_classes: list[str] = []
     nested_classes: list[tuple[int, str, str]] = []
     bypass_comments: list[tuple[int, str]] = []
@@ -159,12 +164,13 @@ def _scan_structure(
                     class_stack.pop()
                 continue
             if tok_type == tokenize.COMMENT:
-                _record_bypass_comment(
-                    tok_string=tok_string,
-                    start_row=start_row,
-                    lines=lines,
-                    bypass_comments=bypass_comments,
-                )
+                if has_bypass:
+                    _record_bypass_comment(
+                        tok_string=tok_string,
+                        start_row=start_row,
+                        lines=lines,
+                        bypass_comments=bypass_comments,
+                    )
                 continue
             if tok_type == tokenize.NAME and tok_string == "class":
                 pending_class_name = None

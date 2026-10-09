@@ -229,6 +229,8 @@ def _read_call_details(
 
 def _marker_line_indices(source: str) -> set[int]:
     """Return zero-based lines with a reasoned D3 marker in a real comment."""
+    if _MARKER_TOKEN not in source:
+        return set()
     indices: set[int] = set()
     for token in tokenize.generate_tokens(StringIO(source).readline):
         if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:

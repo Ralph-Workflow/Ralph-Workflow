@@ -606,6 +606,8 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
+        if "Observer" not in source and "schedule" not in source and "getattr" not in source:
+            continue
         nodes = list(ast.walk(tree))
         # Most production modules cannot own a watch. Parse every module first
         # so malformed source still fails closed. Observer construction is also

@@ -320,7 +320,7 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
     return diagnostics
 
 
-def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  # noqa: PLR0911 - structured per-type branches
+def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
     """Structured per-type validator for non-development analysis decisions.
 
     Development analysis decisions short-circuit at the top of the
@@ -430,74 +430,71 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  
         )
     if artifact_type in _VERIFICATION_TYPES:
         verdict_section = document.section("Criterion Verdicts")
-        if verdict_section is None:
-            return diagnostics
-        verdict_items = verdict_section.items
-        verdict_by_id = {item.identifier: item.text for item in verdict_items}
-        shortfall_by_id = {item.identifier: item.text for item in what_items}
-        diagnostics.extend(
-            _validation_diagnostic(
-                item.line,
-                "Criterion Verdicts",
-                "ANALYSIS014",
-                "each non-met criterion verdict must have a matching localized What Came Up Short item",
+        if verdict_section is not None:
+            verdict_items = verdict_section.items
+            verdict_by_id = {item.identifier: item.text for item in verdict_items}
+            shortfall_by_id = {item.identifier: item.text for item in what_items}
+            diagnostics.extend(
+                _validation_diagnostic(
+                    item.line,
+                    "Criterion Verdicts",
+                    "ANALYSIS014",
+                    "each non-met criterion verdict must have a matching localized What Came Up Short item",
+                )
+                for item in verdict_items
+                if "verdict: not met" in item.text.casefold()
+                and all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
+                and item.identifier not in shortfall_by_id
             )
-            for item in verdict_items
-            if "verdict: not met" in item.text.casefold()
-            and all(field in item.text for field in _REQUIRED_VERDICT_FIELDS)
-            and item.identifier not in shortfall_by_id
-        )
+            diagnostics.extend(
+                _validation_diagnostic(
+                    item.line,
+                    "What Came Up Short",
+                    "ANALYSIS014",
+                    "each What Came Up Short item must mirror a non-met criterion verdict",
+                )
+                for item in what_items
+                if _finding_fields_complete(item.text) and item.identifier not in verdict_by_id
+            )
+            shortfall_item_by_id = {item.identifier: item for item in what_items}
+            diagnostics.extend(
+                _validation_diagnostic(
+                    shortfall_item_by_id[v_item.identifier].line,
+                    "What Came Up Short",
+                    "ANALYSIS018",
+                    "a What Came Up Short item's Verdict must match its mirrored Criterion Verdict",
+                )
+                for v_item in verdict_items
+                if v_item.identifier in shortfall_item_by_id
+                and _extract_verdict(v_item.text) is not None
+                and _extract_verdict(shortfall_item_by_id[v_item.identifier].text) is not None
+                and _extract_verdict(v_item.text)
+                != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
+            )
+    elif artifact_type == "review_analysis_decision":
+        fix_items = () if fix_section is None else fix_section.items
+        what_ids = {item.identifier for item in what_items}
+        fix_ids = {item.identifier for item in fix_items}
         diagnostics.extend(
             _validation_diagnostic(
                 item.line,
                 "What Came Up Short",
-                "ANALYSIS014",
-                "each What Came Up Short item must mirror a non-met criterion verdict",
+                "ANALYSIS003",
+                "What Came Up Short item has no matching How To Fix item",
             )
             for item in what_items
-            if _finding_fields_complete(item.text) and item.identifier not in verdict_by_id
+            if item.identifier not in fix_ids
         )
-        shortfall_item_by_id = {item.identifier: item for item in what_items}
         diagnostics.extend(
             _validation_diagnostic(
-                shortfall_item_by_id[v_item.identifier].line,
-                "What Came Up Short",
-                "ANALYSIS018",
-                "a What Came Up Short item's Verdict must match its mirrored Criterion Verdict",
+                item.line,
+                "How To Fix",
+                "ANALYSIS003",
+                "How To Fix item has no matching What Came Up Short item",
             )
-            for v_item in verdict_items
-            if v_item.identifier in shortfall_item_by_id
-            and _extract_verdict(v_item.text) is not None
-            and _extract_verdict(shortfall_item_by_id[v_item.identifier].text) is not None
-            and _extract_verdict(v_item.text)
-            != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
+            for item in fix_items
+            if item.identifier not in what_ids
         )
-        return diagnostics
-    if artifact_type != "review_analysis_decision":
-        return diagnostics
-    fix_items = () if fix_section is None else fix_section.items
-    what_ids = {item.identifier for item in what_items}
-    fix_ids = {item.identifier for item in fix_items}
-    diagnostics.extend(
-        _validation_diagnostic(
-            item.line,
-            "What Came Up Short",
-            "ANALYSIS003",
-            "What Came Up Short item has no matching How To Fix item",
-        )
-        for item in what_items
-        if item.identifier not in fix_ids
-    )
-    diagnostics.extend(
-        _validation_diagnostic(
-            item.line,
-            "How To Fix",
-            "ANALYSIS003",
-            "How To Fix item has no matching What Came Up Short item",
-        )
-        for item in fix_items
-        if item.identifier not in what_ids
-    )
     return diagnostics
 
 

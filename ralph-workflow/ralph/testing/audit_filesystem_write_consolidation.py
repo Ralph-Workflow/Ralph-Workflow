@@ -632,6 +632,8 @@ def _qualified_violation_message(qualifier: str, attr: str) -> str:
 
 def _marker_comment_lines(source: str) -> set[int]:
     """Return lines with a reasoned filesystem-write marker in a Python comment."""
+    if _MARKER_TOKEN not in source:
+        return set()
     marker_lines: set[int] = set()
     for token in tokenize.generate_tokens(StringIO(source).readline):
         if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:
