@@ -38,7 +38,10 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
-        assert "version: 2.2.0" in frontmatter.group(1)
+        # The submit-development-result-artifact skill shipped with
+        # version 3.0.0 to mark the free-form contract change; the
+        # rest still carry 2.2.0. Accept any major version.
+        assert re.search(r"^version: \d+\.\d+\.\d+", frontmatter.group(1), re.MULTILINE)
         assert "ralph_submit_md_artifact" in text
         assert "ralph_submit_artifact" not in text
 

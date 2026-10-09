@@ -289,3 +289,62 @@ status: request_changes
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
     assert diagnostics == []
     assert content["status"] == "request_changes"
+
+
+def test_plain_prose_without_sections_is_accepted() -> None:
+    """Free-form body: any markdown is accepted on the frontmatter status alone.
+
+    The validator only checks the closed ``status`` enum; the body
+    is the next agent's reading matter, not a structure the artifact
+    gates on. No section headings, no list items, no per-field
+    labels are required.
+    """
+    document = """---
+type: development_analysis_decision
+status: completed
+---
+
+This is just plain prose. No sections, no list items, no per-finding
+field labels. The validator only checks the frontmatter ``status`` enum;
+the body is the next agent's reading matter.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "completed"
+    assert content["summary"] == ""
+
+
+def test_request_changes_with_plain_prose_is_accepted() -> None:
+    """Free-form: request_changes decisions are also body-free-form.
+
+    The body may describe the shortfall, evidence, and parallel fix
+    plan in the agent's own words without using the prior structured
+    section shape.
+    """
+    document = """---
+type: development_analysis_decision
+status: request_changes
+---
+
+The focused regression test for oversized indexes is missing. A
+developer cycle should add a parametrized oversized-index case to
+tests/test_foo.py and re-run the focused tests; this is one parallel
+unit of work that can be dispatched to a worker.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert diagnostics == []
+    assert content["status"] == "request_changes"
+
+
+def test_invalid_status_is_rejected() -> None:
+    """Status-only validation: invalid statuses still fail closed."""
+    document = """---
+type: development_analysis_decision
+status: done
+---
+Some body.
+"""
+    content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
+    assert content == {}
+    assert any(diagnostic.severity == "error" for diagnostic in diagnostics)
+

@@ -211,7 +211,7 @@ def test_consumed_status_missing_or_empty_names_every_accepted_value(
                 spec.artifact_type,
                 (f"type: {spec.artifact_type}", "status: done"),
                 ("completed", "request_changes", "failed"),
-                True,
+                spec.artifact_type != "development_analysis_decision",
                 id=spec.artifact_type,
             )
             for spec in ANALYSIS_DECISION_SPECS

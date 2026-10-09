@@ -173,7 +173,6 @@ def clear_validation_retry_hint(
 _VALIDATION_RETRY_BODY_CAP = 4_096
 _VALIDATION_RETRY_HISTORY_CAP = 16_384
 _MINIMUM_VALIDATION_RETRY_ATTEMPTS = 2
-_DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS = frozenset({"DEV011", "DEV012", "DEV013", "DEV015"})
 
 
 def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
@@ -186,15 +185,17 @@ def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnosti
             "same message unchanged."
         )
     if artifact_type == "development_result" and any(
-        d.severity == "error" and d.rule_id in _DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS
+        d.severity == "error"
+        and d.message
+        and ("status must be one of" in d.message or "frontmatter" in d.message)
         for d in diagnostics
     ):
         return (
-            "The result claims work or evidence the validator cannot find. Complete "
-            "the underlying work first: implement the missing plan items, run the "
-            "verification commands, and capture the proof the diagnostics name. Only "
-            "then update the staged draft with ralph_edit_md_artifact and resubmit. "
-            "Do not edit the result to claim proof you have not produced."
+            "The development_result body is free-form; the validator only checks "
+            "the closed-vocabulary ``status`` (completed | partial | failed) and "
+            "the ``type`` field. Fix the frontmatter the diagnostics name and "
+            "resubmit the document. Do not invent proof sections or dispositions; "
+            "those are read by the next agent, not validated here."
         )
     return (
         "The submitted document remains staged as the retained draft. Repair it in "

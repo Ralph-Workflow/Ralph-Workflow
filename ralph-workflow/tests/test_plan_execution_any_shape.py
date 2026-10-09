@@ -121,9 +121,15 @@ def test_rendered_developer_guidance_uses_unit_plus_unowned_step_proof() -> None
         MemoryWorkspace(),
         SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
     )
-    assert "Unit proof covers its owned steps" in prompt
-    assert "every work unit AND every step the plan owns" not in prompt
-    assert "every unowned global step" in prompt
+    # Free-form contract: the structured ``Unit proof covers its owned
+    # steps`` / ``every unowned global step`` proof-language references
+    # are removed. Coverage is judged in plain language against the
+    # plan, not by matching proof-section IDs.
+    assert "Unit proof covers its owned steps" not in prompt
+    assert "every unowned global step" not in prompt
+    # The remaining unit-handling guidance still names the
+    # independent-units fan-out and per-unit verification.
+    assert "independent units" in prompt.lower() or "work unit" in prompt.lower()
 
 
 def test_protected_ownership_is_absent_from_rendered_worker_scope() -> None:

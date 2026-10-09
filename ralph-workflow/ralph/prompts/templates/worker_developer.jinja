@@ -114,12 +114,11 @@ result; do not invent files or verification results. For partial or failed,
 state the concrete blocker and the next concrete step.
 
 When the assigned unit cannot be completed, follow the completion-pressure
-rules from the developer iteration guidance included above and emit the
-worker-specific shape: include `## Next Steps` plus `## Continuation` naming
-the external action required, then call `declare_complete` once with
-`partial_reason=` naming that literal impossibility. Use `failed` when no
-safe worker-local continuation exists; report the blocker and evidence
-without promising another iteration. Neither status decides the run outcome.
+rules from the developer iteration guidance included above and call
+`declare_complete` once with `partial_reason=` naming that literal
+impossibility. Use `failed` when no safe worker-local continuation exists;
+report the blocker and evidence without promising another iteration.
+Neither status decides the run outcome.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
 

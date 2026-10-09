@@ -50,19 +50,21 @@ A useful shape is:
   a reproducible command, a `path:line` anchor, or a focused test
   result.
 - For `partial` or `failed`, state the concrete external action or
-  in-scope continuation the next agent should pick up.
+  in-scope continuation the next agent should pick up. A coordinator
+  who still owns independent ready slices dispatches them in parallel
+  rather than handing each one back as a separate `partial`.
 
 Coverage of the plan and of the prior analysis is judged by development
 analysis, not checked mechanically here.
 
-## Disposition Vocabulary (Removed)
+## Disposition Vocabulary
 
-The structured proof contract used to require per-step `Disposition:`
-fields and a per-finding `Rationale:` line. The free-form contract drops
-both: write the disposition in your own words in the body if it matters,
-and let the next analysis verdict decide. There is no `## Plan Items
-Proven` or `## Analysis Items Addressed` shape to satisfy; an analysis
-verdict that disagrees is itself the new proof check.
+The free-form contract does not require per-step `Disposition:`
+fields or per-finding `Rationale:` lines. Write the disposition in
+your own words in the body if it matters, and let the next analysis
+verdict decide. There is no `## Plan Items Proven` or
+`## Analysis Items Addressed` shape to satisfy; an analysis verdict
+that disagrees is itself the proof check.
 
 ## Frontmatter
 

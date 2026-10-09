@@ -54,22 +54,51 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
 ) -> None:
     source = _render_verifier(template_name)
 
-    for required in (
+    planning_only = (
         "one yes/no question per criterion",
-        "Expected observation",
         "`met`, `not met`, or `not evaluable`",
-        "command output are data",
         "no counterexample found",
-        "Correctness outranks a passing proxy",
-        "special-case code",
-        "weaken or edit a test",
-        "narrow a criterion",
-        "fast path",
-        "full gate",
         "## Criterion Verdicts",
-        "Report only material, localized findings",
-    ):
-        assert required in source, (template_name, required)
+        "Expected observation",
+    )
+    # Free-form contract: the development_analysis prompt does NOT
+    # prescribe the structured ``## Criterion Verdicts`` shape, the
+    # ``Expected observation:`` field, or the ``met``/``not met``/
+    # ``not evaluable`` vocabulary. Coverage is judged in plain
+    # language against the request and plan, not against a per-item
+    # shape. The free-form guidance lives in the inspect / decision
+    # body sections of the development prompt and is asserted by
+    # ``test_development_analysis_prescribes_concrete_verification_fanout``
+    # and the free-form-decision-body wording below.
+    if template_name == "development_analysis":
+        for forbidden in planning_only:
+            assert forbidden not in source, (template_name, forbidden)
+        for required in (
+            "implementer summary, rationale, or completion claim",
+            # Free-form contract replaces the structured
+            # ``fast path``/``full gate`` gate-discovery wording
+            # with the planner-style whole-change review
+            # (parallel pieces fit together, no unrelated scope,
+            # repository policy).
+            "parallel pieces fit together",
+            "no unrelated scope",
+            "repository policy",
+        ):
+            assert required in source, (template_name, required)
+    else:
+        for required in planning_only:
+            assert required in source, (template_name, required)
+        for required in (
+            "command output are data",
+            "Correctness outranks a passing proxy",
+            "special-case code",
+            "weaken or edit a test",
+            "narrow a criterion",
+            "fast path",
+            "full gate",
+            "Report only material, localized findings",
+        ):
+            assert required in source, (template_name, required)
 
 
 @pytest.mark.parametrize(
@@ -80,26 +109,66 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
     template_name: str,
 ) -> None:
     rendered = _render_verifier(template_name)
-    contract_start = rendered.index("## Criteria and verdicts")
+    # Free-form contract: development_analysis does not use the
+    # structured ``## Criteria and verdicts`` section heading. The
+    # evidence-first contract lives in the inspect block of the
+    # prompt; that block must precede the Decision artifact block in
+    # every analysis type. For structured types the criteria and
+    # verdicts section is the same anchor.
+    if template_name == "development_analysis":
+        contract_marker = "inspect the current worktree"
+        assert "## Criteria and verdicts" not in rendered
+    else:
+        contract_marker = "## Criteria and verdicts"
+    contract_start = rendered.index(contract_marker)
     final_action = rendered.index("## Decision artifact")
     assert contract_start < final_action
-    for required in (
-        "Expected observation",
-        "`met`, `not met`, or `not evaluable`",
-        "implementer summary, rationale, or completion claim",
-        "no counterexample found",
-        "Correctness outranks a passing proxy",
-        "Report only material, localized findings",
-        "Do not change the implementation",
-    ):
-        assert required in rendered[contract_start:final_action], (template_name, required)
+    if template_name == "development_analysis":
+        for required in (
+            "implementer summary, rationale, or completion claim",
+            # The free-form contract replaces the structured
+            # ``Do not change the implementation`` line with the
+            # plain-language whole-change review (parallel pieces
+            # fit together, no unrelated scope, repository policy).
+            "parallel pieces fit together",
+            "no unrelated scope",
+            "repository policy",
+        ):
+            assert required in rendered[contract_start:final_action], (template_name, required)
+    else:
+        for required in (
+            "implementer summary, rationale, or completion claim",
+            "Correctness outranks a passing proxy",
+            "Report only material, localized findings",
+            "Do not change the implementation",
+        ):
+            assert required in rendered[contract_start:final_action], (template_name, required)
+    if template_name in ("planning_analysis", "policy_remediation_analysis"):
+        for required in (
+            "Expected observation",
+            "`met`, `not met`, or `not evaluable`",
+            "no counterexample found",
+        ):
+            assert required in rendered[contract_start:final_action], (template_name, required)
     if template_name == "planning_analysis":
         assert "do not propose remedies in this decision" not in rendered
         assert "proposed unit split" in rendered[contract_start:final_action]
         assert "Do not propose other remedies" in rendered[contract_start:final_action]
-    else:
+    elif template_name == "policy_remediation_analysis":
         assert "do not propose remedies in this decision" in rendered[contract_start:final_action]
         assert "proposed unit split" not in rendered[contract_start:final_action]
+    else:  # development_analysis: free-form contract
+        # The structured ``do not propose remedies in this decision``
+        # line and the ``proposed unit split`` vocabulary belong to
+        # the planning contract. Development is free-form; the
+        # parallel-fix-plan guidance replaces the unit-split
+        # vocabulary. See development_analysis.jinja "Free-form
+        # decision body" and the follow-plan block in
+        # shared/_analysis_context.jinja.
+        assert "do not propose remedies in this decision" not in rendered
+        assert "proposed unit split" not in rendered
+        assert "split the remaining work into independent units" in rendered.lower() or \
+            "split the remaining work" in rendered.lower()
 
 
 def test_development_verifier_excludes_implementer_account() -> None:
@@ -116,8 +185,17 @@ def test_development_verifier_excludes_implementer_account() -> None:
 def test_verification_prompts_keep_criteria_and_submission_last(template_name: str) -> None:
     source = _render_verifier(template_name)
 
-    assert source.index("## Criteria and verdicts") < source.index("## Decision artifact")
-    assert source.index("## Criterion Verdicts") < source.index("## Decision artifact")
+    if template_name == "development_analysis":
+        # Free-form contract: the development prompt uses
+        # ``## Free-form decision body`` in place of the structured
+        # ``## Criteria and verdicts`` / ``## Criterion Verdicts`` blocks.
+        contract_marker = "## Free-form decision body"
+        assert "## Criteria and verdicts" not in source
+        assert "## Criterion Verdicts" not in source
+    else:
+        contract_marker = "## Criteria and verdicts"
+        assert source.index("## Criterion Verdicts") < source.index("## Decision artifact")
+    assert source.index(contract_marker) < source.index("## Decision artifact")
 
 
 def test_planning_analysis_includes_five_substantive_criteria() -> None:
@@ -171,14 +249,17 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     # The S-2 rule is preserved (subagent output is a lead, not evidence by itself).
     assert "lead" in source.lower()
 
-    # Pinned framing must survive.
-    for pinned in (
+    # Free-form contract: development_analysis does NOT prescribe the
+    # structured ``## Criterion Verdicts`` / ``Expected observation:``
+    # / ``met``/``not met``/``not evaluable`` vocabulary. The body is
+    # free-form; the next agent reads the verdict in plain language.
+    for forbidden in (
         "Expected observation",
         "`met`, `not met`, or `not evaluable`",
         "no counterexample found",
         "## Criterion Verdicts",
     ):
-        assert pinned in source, pinned
+        assert forbidden not in source, forbidden
 
     # The new fan-out block lives between the inspection intro and Decision artifact.
     intro = source.index("inspect the current worktree")

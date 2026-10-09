@@ -16,16 +16,17 @@ def test_commit_message_failure_requires_rewriting_the_message() -> None:
     assert "Fix the underlying document issue" not in hint
 
 
-def test_development_result_missing_evidence_requires_completing_the_work() -> None:
+def test_development_result_invalid_status_frontmatter_keeps_free_form_guidance() -> None:
+    """Free-form contract: a bad frontmatter status is repaired via document-edit wording."""
     hint = build_validation_retry_hint(
         "development_result",
-        [Diagnostic(1, "Plan Items Proven", "DEV015", "missing=['S-2']")],
+        [Diagnostic(1, "Frontmatter", "DEV002", "status must be one of ['completed', 'partial', 'failed']")],
     )
     lowered = hint.lower()
 
-    assert "complete the underlying work" in lowered
-    assert "verif" in lowered
-    assert "Fix the underlying document issue" not in hint
+    assert "free-form" in lowered
+    assert "status" in lowered
+    assert "fix the underlying document issue" not in hint.lower()
 
 
 def test_development_result_structural_defect_keeps_document_repair_wording() -> None:

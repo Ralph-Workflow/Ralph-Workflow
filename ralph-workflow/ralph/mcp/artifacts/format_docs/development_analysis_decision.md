@@ -50,29 +50,24 @@ type: development_analysis_decision
 status: request_changes
 ---
 
-## Summary
-- One criterion is not met.
-
 The focused regression test for oversized indexes is missing; the
 rest of the work is sound. A developer cycle should add a
-parametrized oversized-index case and re-run the focused tests.
+parametrized oversized-index case to `tests/test_foo.py` and re-run
+the focused tests.
 
-## What Came Up Short
-- Criterion: oversized indexes are handled safely.
-  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
-  Location: tests/test_foo.py.
-  Remaining work: add a parametrized oversized-index test case.
-
-## Criterion Verdicts
-- Criterion: oversized indexes are handled safely.
-  Verdict: not met.
-  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
-  Location: tests/test_foo.py.
+`pytest tests/test_foo.py -q` shows 18 passed but no oversized-index
+case. The remaining work splits into one independent unit that a
+worker can pick up: WU-X — add the parametrized oversized-index test
+case at `tests/test_foo.py`; check is `pytest tests/test_foo.py -q
+-k oversized` exits 0 with at least one new oversized case.
 ```
 
 The body is the next agent's reading matter; the validator only
 checks the frontmatter `status` enum. The shape above is a useful
-example, not a required form.
+example, not a required form. For a `request_changes` decision the
+useful shape is a planner-style fix plan: name the gap, cite the
+evidence, and split the remaining work into independent units with
+ownership and a per-unit check, then dispatch the units in parallel.
 
 See `.agent/artifact-formats/examples/development_analysis_decision.md`
 for the validator-backed complete example.

@@ -149,11 +149,14 @@ def _to_content_development(document: ParsedDocument) -> dict[str, object]:
 
     The body is free-form below the frontmatter; ``summary`` is the
     first Summary item when present so downstream code (history
-    snapshots, displays) keeps something to read.
+    snapshots, displays) keeps something to read. A free-form
+    development decision may omit every section.
     """
+    summary_items = _item_texts(document, "Summary")
+    summary = summary_items[0] if summary_items else ""
     return {
         "status": document.frontmatter["status"],
-        "summary": _item_texts(document, "Summary")[0],
+        "summary": summary,
         "what_came_up_short": [],
         "finding_ids": [],
         "finding_targets": {},
@@ -573,7 +576,35 @@ def _spec(artifact_type: str) -> MdArtifactSpec:
     )
 
 
-ANALYSIS_DECISION_SPECS = tuple(_spec(artifact_type) for artifact_type in _ANALYSIS_TYPES)
+def _spec_development() -> MdArtifactSpec:
+    """Development analysis decision: status-only validation.
+
+    The body is free-form prose the next agent reads. The validator
+    only checks the frontmatter ``status`` enum. Section rules, body
+    grammar rules, and per-finding field labels all belong to the
+    structured planning / review / policy contracts and are not
+    applied here.
+    """
+    return MdArtifactSpec(
+        artifact_type="development_analysis_decision",
+        required_frontmatter=frozenset({"type", "status"}),
+        closed_frontmatter={
+            "type": FrontmatterVocabulary(("development_analysis_decision",), "ANALYSIS001"),
+            "status": FrontmatterVocabulary(_STATUSES),
+        },
+        sections={},
+        to_content=_to_content,
+        normalize_content=_normalize,
+        allow_unknown_frontmatter=True,
+        allow_unknown_sections=True,
+        structured_body=lambda document: False,  # body is always free-form
+    )
+
+
+ANALYSIS_DECISION_SPECS = tuple(
+    _spec_development() if artifact_type == "development_analysis_decision" else _spec(artifact_type)
+    for artifact_type in _ANALYSIS_TYPES
+)
 
 for _specification in ANALYSIS_DECISION_SPECS:
     register_spec(_specification)

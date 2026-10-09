@@ -266,28 +266,50 @@ def score_decisions(
 def _verdicts(
     case: EvaluationCase, decision: Mapping[str, object]
 ) -> dict[str, tuple[str, str, bool, str]]:
+    """Parse one validator output into a criterion-id-keyed verdict map.
+
+    Structured artifacts (planning, review, policy-remediation) carry
+    ``criterion_verdicts`` / ``criterion_verdict_ids`` keys; the free-form
+    development decision does not, so the body is read as a single free-form
+    string and the verdict is inferred from the closed ``status`` enum plus
+    any text-level evidence the body contains.
+    """
     entries = decision.get("criterion_verdicts")
     identifiers = decision.get("criterion_verdict_ids")
-    if not isinstance(entries, list) or not isinstance(identifiers, list):
-        raise ValueError("decision must be production-validator content")
-    raw_identifiers = cast("list[object]", identifiers)
-    raw_entries = cast("list[object]", entries)
-    if not all(isinstance(value, str) for value in (*raw_identifiers, *raw_entries)):
-        raise ValueError("criterion verdict entries must be strings")
-    parsed: dict[str, tuple[str, str, bool, str]] = {}
-    for identifier, entry in zip(raw_identifiers, raw_entries, strict=True):
-        identifier_text, entry_text = str(identifier), str(entry)
-        verdict = entry_text.split("Verdict:", 1)[-1].split(".", 1)[0].strip().casefold()
-        evidence = "Evidence:" in entry_text and bool(
-            entry_text.split("Evidence:", 1)[1].split("Location:", 1)[0].strip()
-        )
-        location = (
-            entry_text.split("Location:", 1)[-1].strip().rstrip(".")
-            if "Location:" in entry_text
-            else ""
-        )
-        parsed[identifier_text] = (identifier_text, verdict, evidence, location)
-    return parsed
+    if isinstance(entries, list) and isinstance(identifiers, list) and entries:
+        raw_identifiers = cast("list[object]", identifiers)
+        raw_entries = cast("list[object]", entries)
+        if not all(isinstance(value, str) for value in (*raw_identifiers, *raw_entries)):
+            raise ValueError("criterion verdict entries must be strings")
+        parsed: dict[str, tuple[str, str, bool, str]] = {}
+        for identifier, entry in zip(raw_identifiers, raw_entries, strict=True):
+            identifier_text, entry_text = str(identifier), str(entry)
+            verdict = entry_text.split("Verdict:", 1)[-1].split(".", 1)[0].strip().casefold()
+            evidence = "Evidence:" in entry_text and bool(
+                entry_text.split("Evidence:", 1)[1].split("Location:", 1)[0].strip()
+            )
+            location = (
+                entry_text.split("Location:", 1)[-1].strip().rstrip(".")
+                if "Location:" in entry_text
+                else ""
+            )
+            parsed[identifier_text] = (identifier_text, verdict, evidence, location)
+        return parsed
+    # Free-form development analysis: synthesize a single ``status``-only
+    # verdict and mark the evidence as missing so the scoring reduces to
+    # the structural agreement checks (false-rejection rate, disagreement
+    # rate) without expecting per-criterion localization. The free-form
+    # contract does not require structured evidence fields, so the
+    # evidence flag is False; the scoring suite only uses this to
+    # confirm weak agents that say ``met`` are unsupported.
+    if decision.get("type") == "development_analysis_decision":
+        status = str(decision.get("status", "")).casefold()
+        verdict = {
+            "completed": "met",
+            "failed": "not evaluable",
+        }.get(status, "not met")
+        return {case.case_id: (case.case_id, verdict, False, "")}
+    raise ValueError("decision must be production-validator content")
 
 
 def _ratio(numerator: int, denominator: int) -> float:

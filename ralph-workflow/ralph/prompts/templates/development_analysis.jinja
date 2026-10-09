@@ -51,24 +51,17 @@ type: development_analysis_decision
 status: request_changes
 ---
 
-## Summary
-- [SUM-1] One criterion is not met.
+The focused regression test for oversized indexes is missing; the rest of
+the work is sound. `pytest tests/test_foo.py -q` reports 18 passed but
+contains no oversized-index case. A developer cycle should add the
+missing case and re-run the focused tests.
 
-The focused regression test for oversized indexes is missing; the rest of the
-work is sound. A developer cycle should add a parametrized oversized-index case
-to tests/test_foo.py and re-run the focused tests.
-
-## What Came Up Short
-- Criterion: oversized indexes are handled safely.
-  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
-  Location: tests/test_foo.py.
-  Remaining work: add a parametrized oversized-index test case.
-
-## Criterion Verdicts
-- Criterion: oversized indexes are handled safely.
-  Verdict: not met.
-  Evidence: `pytest tests/test_foo.py -q` has no oversized-index case.
-  Location: tests/test_foo.py.
+The remaining work splits into one independent unit that a worker can
+pick up: WU-X owns `tests/test_foo.py`; add a parametrized
+oversized-index case there; the unit check is
+`pytest tests/test_foo.py -q -k oversized` exits 0 with at least one
+new oversized case. Dispatch WU-X in parallel with the rest of the
+cycle rather than handing each unit back as a separate `partial`.
 {% endset %}
 
 ## Decision artifact
