@@ -218,7 +218,10 @@ def test_condense_ready_block_requires_portfolio_and_public_evidence() -> None:
     assert "default-gate budget" in content
     assert "public-surface observation" in content
     assert "Telemetry," in content
-    assert "provenance, private-state inspection, and agent narration are not correctness proof." in content
+    assert (
+        "provenance, private-state inspection, and agent narration are not correctness proof."
+        in content
+    )
 
 
 def test_condense_preserves_rewritten_block() -> None:

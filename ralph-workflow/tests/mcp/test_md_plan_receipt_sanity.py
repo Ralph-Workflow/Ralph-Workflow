@@ -52,7 +52,8 @@ _CASES = (
     _PROSE + "\n## Steps\n### [S-1] First\n### [S-1] Second",
     _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-99",
     _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-2] Second\nDepends on: S-1",
-    _PROSE + "\n## Work Units\n- [U-1] First\n  Directories: src\n- [U-2] Second\n  Directories: src",
+    _PROSE
+    + "\n## Work Units\n- [U-1] First\n  Directories: src\n- [U-2] Second\n  Directories: src",
     _PROSE + "\n## Work Units\n- [U-1] First\n- [U-2] Second",
     _PROSE + "\n## Work Units\n" + "\n".join(f"- [U-{i}] Work on file {i}" for i in range(1, 66)),
     _PROSE + "\n## Work Units\n- [U-1] First\n## Parallel Plan\n- [U-2] Second",
@@ -97,7 +98,8 @@ def test_stage_finalize_edit_and_fallback_preserve_prose_and_receipts() -> None:
     ).is_error
     edited = _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-999"
     result = handle_edit_md_artifact(
-        session, workspace,
+        session,
+        workspace,
         {"artifact_type": "plan", "edits": [{"oldText": _PROSE, "newText": edited}]},
         deps=deps,
     )
@@ -123,9 +125,14 @@ def test_stage_finalize_edit_and_fallback_preserve_prose_and_receipts() -> None:
 
 @pytest.mark.parametrize(
     "document",
-    ("", "one two three four five six seven eight nine", "\x00ID3" + _PROSE,
-     "\ud800" + _PROSE, "I cannot complete this request because policy prevents me from helping you today.",
-     "I cannot implement this request because I cannot access any repository files today."),
+    (
+        "",
+        "one two three four five six seven eight nine",
+        "\x00ID3" + _PROSE,
+        "\ud800" + _PROSE,
+        "I cannot complete this request because policy prevents me from helping you today.",
+        "I cannot implement this request because I cannot access any repository files today.",
+    ),
 )
 def test_bad_plan_never_receives_submit_or_fallback_receipt(document: str) -> None:
     workspace = MemoryWorkspace()
@@ -138,9 +145,9 @@ def test_bad_plan_never_receives_submit_or_fallback_receipt(document: str) -> No
     assert handle_submit_md_artifact(session, workspace, params, deps=deps).is_error
     fallback = workspace.root / ".agent/tmp/plan.md"
     backend.write_text(fallback, document)
-    assert promote_fallback_artifact(
-        workspace.root, "plan", deps=deps, run_id=session.run_id
-    ) is None
+    assert (
+        promote_fallback_artifact(workspace.root, "plan", deps=deps, run_id=session.run_id) is None
+    )
     assert not artifact_receipt_present(
         workspace.root, session.run_id, "plan", backend=backend, receipt_secret=None
     )
@@ -157,14 +164,16 @@ def test_unencodable_plan_returns_sanity_diagnostic_before_persistence(operation
             session, workspace, {"artifact_type": "plan", "content": _PROSE}, deps=deps
         )
         result = handle_edit_md_artifact(
-            session, workspace,
+            session,
+            workspace,
             {"artifact_type": "plan", "edits": [{"oldText": _PROSE, "newText": "\ud800" + _PROSE}]},
             deps=deps,
         )
     else:
         handler = handle_submit_md_artifact if operation == "submit" else handle_stage_md_artifact
         result = handler(
-            session, workspace,
+            session,
+            workspace,
             {"artifact_type": "plan", "content": "\ud800" + _PROSE},
             deps=deps,
         )
@@ -194,14 +203,22 @@ status: completed
   Disposition: completed
 """
     bad = handle_submit_md_artifact(
-        session, workspace,
-        {"artifact_type": "development_result", "content": development.replace("[plan]", "[S-999]")},
+        session,
+        workspace,
+        {
+            "artifact_type": "development_result",
+            "content": development.replace("[plan]", "[S-999]"),
+        },
         deps=deps,
     )
     assert bad.is_error
-    assert any(item["rule_id"] == "DEV015" for item in json.loads(bad.content[0].text)["diagnostics"])
+    assert any(
+        item["rule_id"] == "DEV015" for item in json.loads(bad.content[0].text)["diagnostics"]
+    )
     good = handle_submit_md_artifact(
-        session, workspace, {"artifact_type": "development_result", "content": development},
+        session,
+        workspace,
+        {"artifact_type": "development_result", "content": development},
         deps=deps,
     )
     assert not good.is_error
@@ -222,12 +239,15 @@ def test_oversized_plan_returns_same_sanity_failure_without_a_receipt() -> None:
     verified = handle_verify_md_artifact(session, workspace, params)
     submitted = handle_submit_md_artifact(session, workspace, params, deps=deps)
     assert verified.is_error and submitted.is_error
-    assert json.loads(verified.content[0].text)["diagnostics"] == json.loads(
-        submitted.content[0].text
-    )["diagnostics"]
+    assert (
+        json.loads(verified.content[0].text)["diagnostics"]
+        == json.loads(submitted.content[0].text)["diagnostics"]
+    )
     fallback = workspace.root / ".agent/tmp/plan.md"
     backend.write_text(fallback, document)
-    assert promote_fallback_artifact(workspace.root, "plan", deps=deps, run_id=session.run_id) is None
+    assert (
+        promote_fallback_artifact(workspace.root, "plan", deps=deps, run_id=session.run_id) is None
+    )
     assert not artifact_receipt_present(workspace.root, session.run_id, "plan", backend=backend)
 
 
@@ -239,7 +259,9 @@ def test_submit_regression_accepts_oversized_numeric_step_token() -> None:
     # section; without that, extraction is a no-op and the int() overflow
     # path is never exercised. The oversized step ID lives inside the section
     # where the plan mapper would convert it to an int.
-    document = _PROSE + "\n\n## Steps\n\n### [S-" + ("9" * 4_301) + "] Structural token remains prose"
+    document = (
+        _PROSE + "\n\n## Steps\n\n### [S-" + ("9" * 4_301) + "] Structural token remains prose"
+    )
 
     result = handle_submit_md_artifact(
         session,

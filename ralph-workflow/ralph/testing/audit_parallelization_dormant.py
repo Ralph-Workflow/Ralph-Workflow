@@ -87,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"  {problem}")
         return 1
-    print("All planning-guidance invariants OK: delegation and parallel work units are first-class.")
+    print(
+        "All planning-guidance invariants OK: delegation and parallel work units are first-class."
+    )
     return 0
 
 

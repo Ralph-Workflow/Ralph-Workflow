@@ -140,6 +140,7 @@ _BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
 def _ensure_broker_secret() -> None:
     os.environ[_BROKER_SECRET_ENV] = secrets.token_hex(32)
 
+
 _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
     "artifacts",
     "tmp",

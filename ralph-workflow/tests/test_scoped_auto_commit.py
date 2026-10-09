@@ -243,9 +243,7 @@ def test_commit_dir_to_symlink_transition_removes_old_files_and_adds_new_link(
                 ".claude/skills/foo/_MANAGED_MARKER.json",
             ]
         )
-        repo.index.commit(
-            "add old sibling", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("add old sibling", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
@@ -332,9 +330,7 @@ def test_commit_dir_to_symlink_failed_attempt_preserves_pre_staged_index(
                 "my_wip.txt",
             ]
         )
-        repo.index.commit(
-            "seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
         # User pre-stages an edit to my_wip.txt.
         wip.write_text("wip updated\n", encoding="utf-8")
         repo.index.add(["my_wip.txt"])
@@ -442,9 +438,7 @@ def test_commit_dir_to_symlink_failed_attempt_byte_identical_pre_staged_index(
                 "my_wip.txt",
             ]
         )
-        repo.index.commit(
-            "seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
         wip.write_text("wip updated\n", encoding="utf-8")
         repo.index.add(["my_wip.txt"])
         # wt-012 DA-010: capture the pre-staged index bytes
@@ -562,9 +556,7 @@ def test_dir_to_symlink_transition_does_not_commit_skipped_dirty_descendant(
     # The user dirties old/wip BEFORE the producer captures pre-write
     # contents (capture sees the dirty bytes; HEAD still has "orig\n").
     (old / "wip").write_text("user wip\n", encoding="utf-8")
-    pre_contents = capture_pre_write_contents(
-        tmp_path, ["old", "old/clean", "old/wip"]
-    )
+    pre_contents = capture_pre_write_contents(tmp_path, ["old", "old/clean", "old/wip"])
 
     # Install: replace the dir with a symlink.
     shutil.rmtree(old)
@@ -637,9 +629,7 @@ def test_transition_conflict_skips_only_the_conflicting_ancestor(
     (old / "wip").write_text("user wip\n", encoding="utf-8")
     # new.txt does not exist at capture time -> recorded as None
     # (brand-new path the writer authors below).
-    pre_contents = capture_pre_write_contents(
-        tmp_path, ["old", "old/clean", "old/wip", "new.txt"]
-    )
+    pre_contents = capture_pre_write_contents(tmp_path, ["old", "old/clean", "old/wip", "new.txt"])
     assert pre_contents["new.txt"] is None
 
     shutil.rmtree(old)
@@ -704,16 +694,12 @@ def test_commit_does_not_misclassify_byte_equal_descendant_under_replaced_dir(
     repo = Repo(tmp_path)
     try:
         repo.index.add([".claude/skills/foo/SKILL.md"])
-        repo.index.commit(
-            "add identical", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("add identical", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
     # Capture pre-write BEFORE the install mutates the file.
-    pre_contents = capture_pre_write_contents(
-        tmp_path, [".claude/skills/foo/SKILL.md"]
-    )
+    pre_contents = capture_pre_write_contents(tmp_path, [".claude/skills/foo/SKILL.md"])
     assert pre_contents[".claude/skills/foo/SKILL.md"] is not None
 
     # Install: replace the dir with a symlink to the canonical dir.

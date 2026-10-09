@@ -49,9 +49,7 @@ def _protect_windows_process() -> None:
     dacl_security_information = 0x00000004
     se_kernel_object = 6
     acl = ctypes.create_string_buffer(8)
-    windows_library_loader = cast(
-        "_WindowsLibraryLoader", getattr(ctypes, "".join(("Win", "DLL")))
-    )
+    windows_library_loader = cast("_WindowsLibraryLoader", getattr(ctypes, "".join(("Win", "DLL"))))
     advapi32 = windows_library_loader("advapi32", use_last_error=True)
     kernel32 = windows_library_loader("kernel32", use_last_error=True)
     initialize_acl = cast(

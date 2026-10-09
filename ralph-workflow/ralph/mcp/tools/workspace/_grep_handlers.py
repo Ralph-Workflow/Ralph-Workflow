@@ -65,9 +65,7 @@ def _freshness_for_grep(
     alongside the canonical ones so existing callers and tests
     keep working.
     """
-    meta = serving_metadata(
-        session, index_used=index_used, fallback_reason=fallback_reason
-    )
+    meta = serving_metadata(session, index_used=index_used, fallback_reason=fallback_reason)
     handle = resolve_explore_index(session)
     if handle is None:
         return {
@@ -273,11 +271,7 @@ def _indexed_matches(
         full_text = str(full_text_obj) if full_text_obj is not None else ""
         if not full_text:
             continue
-        chunk_start_line = (
-            int(chunk_start_line_obj)
-            if isinstance(chunk_start_line_obj, int)
-            else 0
-        )
+        chunk_start_line = int(chunk_start_line_obj) if isinstance(chunk_start_line_obj, int) else 0
         text_hash = str(text_hash_obj) if text_hash_obj is not None else ""
         generation = int(generation_obj) if isinstance(generation_obj, int) else 0
         # The content_hash for the evidence span is the file's
@@ -286,9 +280,7 @@ def _indexed_matches(
         # when the JOIN's file row is missing or has no hash --
         # a defensive no-op since the JOIN filters out
         # ``is_deleted=1`` rows already.
-        file_content_hash = (
-            str(file_content_hash_obj) if file_content_hash_obj is not None else ""
-        )
+        file_content_hash = str(file_content_hash_obj) if file_content_hash_obj is not None else ""
         content_hash = file_content_hash or text_hash
         # Per-line parity: find every line inside the chunk that
         # matches the regex so the indexed branch emits the same
@@ -571,16 +563,13 @@ def handle_grep_files(
             store = None
             cold_index = False
     workspace_raw: object = getattr(workspace, "root", None)
-    workspace_root: Path | None = (
-        workspace_raw if isinstance(workspace_raw, Path) else None
-    )
+    workspace_root: Path | None = workspace_raw if isinstance(workspace_raw, Path) else None
     if cold_index and store is not None:
         fallback_reason = _cold_query_reason(store)
         if use_index == "always":
             _queue_recovery(workspace_root, fallback_reason)
             raise InvalidParamsError(
-                "use_index='always' cannot serve this query: "
-                f"reason_code={fallback_reason}"
+                f"use_index='always' cannot serve this query: reason_code={fallback_reason}"
             )
         eligible = False
 
@@ -628,8 +617,7 @@ def handle_grep_files(
             if use_index == "always":
                 _queue_recovery(workspace_root, fallback_reason)
                 raise InvalidParamsError(
-                    "use_index='always' cannot serve this query: "
-                    f"reason_code={fallback_reason}"
+                    f"use_index='always' cannot serve this query: reason_code={fallback_reason}"
                 ) from exc
             live_matches, skipped, truncated = _live_grep(
                 workspace,
@@ -662,9 +650,7 @@ def handle_grep_files(
                 ),
             }
             locked_result.update(
-                _freshness_for_grep(
-                    session, index_used=False, fallback_reason=fallback_reason
-                )
+                _freshness_for_grep(session, index_used=False, fallback_reason=fallback_reason)
             )
             return ToolResult(
                 content=[ToolContent.text_content(_tool_json(locked_result))],
@@ -718,9 +704,7 @@ def handle_grep_files(
                         store=store,
                         chunk_id=str(row.get("chunk_id", "")) or None,
                         graph_target=(
-                            str(params.get("graph_target"))
-                            if params.get("graph_target")
-                            else None
+                            str(params.get("graph_target")) if params.get("graph_target") else None
                         ),
                     )
                 )
@@ -765,13 +749,10 @@ def handle_grep_files(
         # return a structured reason-coded error, never an empty
         # success.
         if fallback_reason is None:
-            fallback_reason = (
-                "pattern_not_fts_eligible" if not eligible else "no_index_handle"
-            )
+            fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
         _queue_recovery(workspace_root, fallback_reason)
         raise InvalidParamsError(
-            f"use_index='always' cannot serve this query: "
-            f"reason_code={fallback_reason}"
+            f"use_index='always' cannot serve this query: reason_code={fallback_reason}"
         )
     elif use_index == "always" and store is None:
         raise InvalidParamsError(

@@ -16,7 +16,9 @@ _NATIVE_TRANSPORTS = (AgentTransport.AGY, AgentTransport.CURSOR, AgentTransport.
 _ENDPOINTS = ("http://127.0.0.1:41001/mcp", "http://127.0.0.1:41002/mcp")
 
 
-def _resolve(transport: AgentTransport, workspace: Path, endpoint: str) -> ResolvedInvocationRuntime:
+def _resolve(
+    transport: AgentTransport, workspace: Path, endpoint: str
+) -> ResolvedInvocationRuntime:
     return RUNTIME_RESOLVERS[transport]().resolve(
         config=AgentConfig(cmd=transport.value.lower(), transport=transport),
         extra_env={"RALPH_MCP_ENDPOINT": endpoint, "RALPH_MCP_RUN_ID": endpoint.rsplit(":", 1)[-1]},

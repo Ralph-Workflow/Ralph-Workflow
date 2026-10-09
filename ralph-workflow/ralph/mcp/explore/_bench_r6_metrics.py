@@ -716,16 +716,22 @@ def capture_baseline(
             ralph_self_metrics = _capture_with_repeat(ralph_self_ws, parent_dir=ralph_parent)
             existing_metrics["ralph_self"] = ralph_self_metrics
             existing_workloads["ralph_self"] = {"metrics": ralph_self_metrics}
-            existing_counts["ralph_self"] = float(sum(1 for p in ralph_self_ws.rglob("*") if p.is_file()))
+            existing_counts["ralph_self"] = float(
+                sum(1 for p in ralph_self_ws.rglob("*") if p.is_file())
+            )
 
         if "large_synthetic" in target_workloads:
-            large_ws = _seed_large_synthetic(scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT)
+            large_ws = _seed_large_synthetic(
+                scratch_path, file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT
+            )
             large_parent = scratch_path / "m_large"
             large_parent.mkdir(parents=True, exist_ok=True)
             large_metrics = _capture_with_repeat(large_ws, parent_dir=large_parent)
             existing_metrics["large_synthetic"] = large_metrics
             existing_workloads["large_synthetic"] = {"metrics": large_metrics}
-            existing_counts["large_synthetic"] = float(sum(1 for p in large_ws.rglob("*") if p.is_file()))
+            existing_counts["large_synthetic"] = float(
+                sum(1 for p in large_ws.rglob("*") if p.is_file())
+            )
 
         if "multi_session" in target_workloads:
             multi_ws = scratch_path / "ws_multi"
@@ -743,7 +749,9 @@ def capture_baseline(
             )
             existing_metrics["multi_session"] = multi_metrics
             existing_workloads["multi_session"] = {"metrics": multi_metrics}
-            existing_counts["multi_session"] = float(sum(1 for p in multi_ws.rglob("*") if p.is_file()))
+            existing_counts["multi_session"] = float(
+                sum(1 for p in multi_ws.rglob("*") if p.is_file())
+            )
 
     baseline: dict[str, object] = {
         "schema_version": 1,
@@ -755,8 +763,7 @@ def capture_baseline(
             "small": "Q1/Q2/Q3 fixtures (small)",
             "ralph_self": "Actual ralph-workflow working tree (real files)",
             "large_synthetic": (
-                f"{FULL_LARGE_SYNTHETIC_FILE_COUNT} synthetic Python files "
-                "(full R6.3 shape)"
+                f"{FULL_LARGE_SYNTHETIC_FILE_COUNT} synthetic Python files (full R6.3 shape)"
             ),
             "multi_session": "3 processes sharing one indexed workspace",
         },
@@ -790,16 +797,28 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
     workspace = parent / "ws_ralph_self"
     workspace.parent.mkdir(parents=True, exist_ok=True)
     source = _ralph_workflow_source()
+
     # filesystem-write-ok: transient scratch directory for benchmark seeding
     # The local ``_ignore`` typed wrapper accepts the strict mypy
     # ``disallow_any_expr`` config that ``shutil.ignore_patterns`` violates
     # by virtue of carrying no public type annotations.
     def _ignore(path: str, names: list[str]) -> set[str]:
         import fnmatch as _fnmatch
+
         ignored: set[str] = set()
-        for pat in (".venv", ".pytest_cache", ".mypy_cache", "__pycache__",
-                    "node_modules", ".git", "build", "dist", "*.pyc",
-                    ".agent", "tmp"):
+        for pat in (
+            ".venv",
+            ".pytest_cache",
+            ".mypy_cache",
+            "__pycache__",
+            "node_modules",
+            ".git",
+            "build",
+            "dist",
+            "*.pyc",
+            ".agent",
+            "tmp",
+        ):
             ignored.update(_fnmatch.filter(names, pat))
         return ignored
 
@@ -839,8 +858,7 @@ def _ralph_workflow_source() -> Path:
         if candidate.is_dir():
             return candidate
     raise FileNotFoundError(
-        "ralph_self workload source not found; searched "
-        + ", ".join(str(c) for c in candidates)
+        "ralph_self workload source not found; searched " + ", ".join(str(c) for c in candidates)
     )
 
 
@@ -959,9 +977,7 @@ def run_capture_baseline(
     canonical baseline value (the per-iteration samples are kept
     under ``samples`` so the regression gate can reason about noise).
     """
-    baseline = capture_baseline(
-        Path(output_path), workloads=workloads, repeat=repeat
-    )
+    baseline = capture_baseline(Path(output_path), workloads=workloads, repeat=repeat)
     metrics_obj: object = baseline.get("metrics")
     metrics_count = len(metrics_obj) if isinstance(metrics_obj, Sized) else 0
     payload: dict[str, object] = {
@@ -996,6 +1012,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     point is single-sourced.
     """
     from ralph.mcp.explore._bench_r6_cli import main as _cli_main
+
     return _cli_main(argv)
 
 

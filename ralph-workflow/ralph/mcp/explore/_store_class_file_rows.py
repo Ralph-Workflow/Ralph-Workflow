@@ -103,9 +103,7 @@ class _FileRowMethods:
             result[file_row.path] = file_row
         return result
 
-    def bulk_size_mtime_for_paths(
-        self, paths: Sequence[str]
-    ) -> dict[str, tuple[int, int]]:
+    def bulk_size_mtime_for_paths(self, paths: Sequence[str]) -> dict[str, tuple[int, int]]:
         """Bulk-load ``(size_bytes, mtime_ns)`` for ``paths``.
 
         Returns ``{path: (size_bytes, mtime_ns)}`` for every
@@ -157,7 +155,9 @@ class _FileRowMethods:
                 int(size_obj) if isinstance(size_obj, int) and not isinstance(size_obj, bool) else 0
             )
             mtime = (
-                int(mtime_obj) if isinstance(mtime_obj, int) and not isinstance(mtime_obj, bool) else 0
+                int(mtime_obj)
+                if isinstance(mtime_obj, int) and not isinstance(mtime_obj, bool)
+                else 0
             )
             result[path_value] = (size, mtime)
         return result
@@ -224,9 +224,7 @@ class _FileRowMethods:
         if not paths:
             return
         if not (len(paths) == len(content_hashes) == len(sizes) == len(mtimes)):
-            raise ValueError(
-                "upsert_manifest_many: all sequence arguments must be the same length"
-            )
+            raise ValueError("upsert_manifest_many: all sequence arguments must be the same length")
         params = [
             (
                 paths[i],

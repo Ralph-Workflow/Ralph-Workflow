@@ -390,7 +390,7 @@ def test_v3_freeze_does_not_install_v4_portfolio_defaults() -> None:
 
     ws = MemoryWorkspace()
     policy_path = f"{markers.CANONICAL_DIR}testing-policy.md"
-    ws.write(policy_path, '<!-- ralph-policy-schema: v3 -->\n# Customized\n')
+    ws.write(policy_path, "<!-- ralph-policy-schema: v3 -->\n# Customized\n")
     policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         list[str]().append,
@@ -410,7 +410,7 @@ def test_v3_upgrade_installs_portfolio_through_public_preflight() -> None:
 
     ws = MemoryWorkspace()
     policy_path = f"{markers.CANONICAL_DIR}testing-policy.md"
-    ws.write(policy_path, '<!-- ralph-policy-schema: v3 -->\n# Customized\n')
+    ws.write(policy_path, "<!-- ralph-policy-schema: v3 -->\n# Customized\n")
     policy_schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         list[str]().append,

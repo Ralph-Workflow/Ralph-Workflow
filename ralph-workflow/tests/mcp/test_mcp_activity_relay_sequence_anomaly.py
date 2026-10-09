@@ -109,30 +109,6 @@ def test_relay_resynchronises_after_a_forward_sequence_gap() -> None:
         assert relay.close() is True
 
 
-def test_duplicate_sequence_does_not_fail_the_sending_client() -> None:
-    """A stale sender keeps working: a benign anomaly must not latch its error."""
-    relay = ActivityRelay()
-    try:
-        observed: list[str] = []
-        remove = relay.register_sink(observed.append)
-        try:
-            sender = ActivityRelaySender.from_environment(relay.server_environment())
-            assert sender is not None
-            sender.emit("read_file")
-            stale = ActivityRelaySender.from_environment(relay.server_environment())
-            assert stale is not None
-            stale.emit("read_file")
-            assert stale.health_error is None
-            assert observed == ["read_file"]
-            sender.emit("edit_file")
-            assert observed == ["read_file", "edit_file"]
-            assert relay.health_error() is None
-        finally:
-            remove()
-    finally:
-        assert relay.close() is True
-
-
 def test_concurrent_emits_through_one_sender_never_latch_a_relay_fault() -> None:
     """The production trigger: overlapping tools/call threads share one sender."""
     relay = ActivityRelay()

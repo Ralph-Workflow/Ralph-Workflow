@@ -40,10 +40,7 @@ def is_provider_quota_output_line(line: str) -> bool:
         not is_user_prompt_event_line(line)
         and (
             _is_explicit_provider_failure_output(line)
-            or any(
-                normalized == marker.casefold()
-                for marker in _SUBSCRIPTION_LIMIT_SUBSTRINGS
-            )
+            or any(normalized == marker.casefold() for marker in _SUBSCRIPTION_LIMIT_SUBSTRINGS)
         )
         and _is_subscription_limit_message([line])
     )

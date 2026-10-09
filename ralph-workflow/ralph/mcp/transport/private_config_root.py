@@ -23,6 +23,8 @@ def prepare_private_config_root(
 
     def cleanup() -> None:
         """Remove the invocation-owned configuration root."""
-        shutil.rmtree(root, ignore_errors=True)  # filesystem-write-ok: invocation-owned temporary config root
+        shutil.rmtree(  # filesystem-write-ok: invocation-owned temporary config root
+            root, ignore_errors=True
+        )
 
     return root, cleanup

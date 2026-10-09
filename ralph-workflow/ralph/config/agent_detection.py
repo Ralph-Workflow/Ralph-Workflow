@@ -37,6 +37,7 @@ if TYPE_CHECKING:
             self, repo_root: Path | str, message: str, *, expected_head: str
         ) -> CommitCreationResult: ...
 
+
 __all__ = ["detect_installed_agents", "opencode_binary_override"]
 
 
@@ -107,9 +108,7 @@ def _commit_deterministic_config_write(
     # the parent search rather than the (non-existent) file path. If
     # the parent itself is not in a repo, ``find_repo_root`` raises and
     # the documented silent-NOOP branch below runs.
-    repo_root_search_anchor = (
-        config_path if config_path.exists() else config_path.parent
-    )
+    repo_root_search_anchor = config_path if config_path.exists() else config_path.parent
     try:
         repo_root = find_repo_root(repo_root_search_anchor)
     except (GitOperationError, OSError) as exc:
@@ -177,9 +176,7 @@ def _commit_deterministic_config_write(
     return result
 
 
-def _log_commit_result(
-    result: ScopedCommitResult, config_path: Path, rel_path: str
-) -> None:
+def _log_commit_result(result: ScopedCommitResult, config_path: Path, rel_path: str) -> None:
     """Surface the ``commit_deterministic_writes`` outcome at the documented level.
 
     ``CREATED`` / ``NOOP`` / ``NOT_REPO``: DEBUG (success / expected

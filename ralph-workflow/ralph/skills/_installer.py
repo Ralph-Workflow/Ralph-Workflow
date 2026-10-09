@@ -39,7 +39,6 @@ from ralph.skills._installer_candidates import (
 )
 
 if TYPE_CHECKING:
-
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
@@ -106,9 +105,7 @@ def install_project_baseline_skills_with_diff(
     """
     candidates = _candidate_skill_paths(workspace_root)
     pre_contents = capture_pre_write_contents(workspace_root, candidates)
-    user_dirty_descendants = _detect_user_dirty_tracked_descendants(
-        workspace_root, candidates
-    )
+    user_dirty_descendants = _detect_user_dirty_tracked_descendants(workspace_root, candidates)
     entry, failures = install_project_baseline_skills(workspace_root)
     written = _diff_written_paths(workspace_root, candidates, pre_contents)
     # A "transition root" is a candidate X such that at least one

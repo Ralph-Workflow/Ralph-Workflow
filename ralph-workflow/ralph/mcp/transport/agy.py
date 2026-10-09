@@ -46,6 +46,7 @@ from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_
 # AGY home config directory name within its default config root
 _AGY_HOME_SUBDIR = "antigravity-cli"
 
+
 def _agy_global_config_path() -> Path:
     """Return AGY's legacy global MCP config path.
 

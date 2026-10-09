@@ -36,9 +36,9 @@ class TestAnalysisTemplatePayloadContract:
         assert input_phrase in normalized_source, (
             f"{name}: must direct retrieval of the core analysis inputs"
         )
-        assert (
-            "concurrent read-only subagents" in source
-        ), f"{name}: must direct evidence-driven parallel investigation"
+        assert "concurrent read-only subagents" in source, (
+            f"{name}: must direct evidence-driven parallel investigation"
+        )
         assert "submit the final analysis artifact from this session" in source.lower(), (
             f"{name}: artifact submission must remain in the main session"
         )

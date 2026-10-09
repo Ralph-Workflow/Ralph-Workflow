@@ -13,14 +13,16 @@ def test_unit_ownership_only_references_usable_extracted_steps() -> None:
     )
     content, diagnostics, _ = analyze_plan_document(text)
     assert diagnostics == []
-    assert content["work_units"] == [{
-        "unit_id": "api",
-        "description": "Implement the requested API changes with focused behavior tests.",
-        "allowed_directories": [],
-        "allowed_paths": ["src/api.py"],
-        "dependencies": [],
-        "step_ids": ["S-1"],
-    }]
+    assert content["work_units"] == [
+        {
+            "unit_id": "api",
+            "description": "Implement the requested API changes with focused behavior tests.",
+            "allowed_directories": [],
+            "allowed_paths": ["src/api.py"],
+            "dependencies": [],
+            "step_ids": ["S-1"],
+        }
+    ]
 
 
 def test_colon_prefixed_prose_outside_frontmatter_remains_main_session_work() -> None:
@@ -32,7 +34,6 @@ def test_colon_prefixed_prose_outside_frontmatter_remains_main_session_work() ->
     content, diagnostics, _ = analyze_plan_document(text)
     assert diagnostics == []
     assert content.get("unextractable_work_units") is True
-
 
 
 def test_plan_regression_heading_only_tasks_remain_main_session_work() -> None:
@@ -263,17 +264,13 @@ def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -
     # ``I cannot`` / ``I'm sorry`` line that does not prescribe
     # any implementation, verification, or test work is a refusal.
     for text in (
-        "I cannot complete this request because I cannot access "
-        "any repository files.",
-        "I cannot complete this request because policy prevents me "
-        "from helping you today.",
-        "I'm sorry, I cannot help with that request as an AI "
-        "assistant without more information.",
+        "I cannot complete this request because I cannot access any repository files.",
+        "I cannot complete this request because policy prevents me from helping you today.",
+        "I'm sorry, I cannot help with that request as an AI assistant without more information.",
     ):
         _, diagnostics, _ = analyze_plan_document(text)
         assert [item.rule_id for item in diagnostics] == ["PLAN001"], (
-            f"expected PLAN001 for refusal: {text!r}; "
-            f"got {[d.rule_id for d in diagnostics]}"
+            f"expected PLAN001 for refusal: {text!r}; got {[d.rule_id for d in diagnostics]}"
         )
 
 
@@ -443,22 +440,26 @@ Files:
         assert diagnostics == []
         assert overrides == []
         assert content["unextractable_work_units"] is True
-        assert content["work_units"] == [{
-            "unit_id": "api",
-            "description": "Implement the first API component",
-            "allowed_directories": [],
-            "allowed_paths": ["src/first.py"],
-            "dependencies": [],
-            "step_ids": [],
-        }]
-        if second_section == "Parallel Plan":
-            assert content["parallel_plan"] == [{
-                "id": "api",
-                "description": "Implement the second API component",
-                "edit_area": {"directories": [], "paths": ["src/second.py"]},
-                "depends_on": [],
+        assert content["work_units"] == [
+            {
+                "unit_id": "api",
+                "description": "Implement the first API component",
+                "allowed_directories": [],
+                "allowed_paths": ["src/first.py"],
+                "dependencies": [],
                 "step_ids": [],
-            }]
+            }
+        ]
+        if second_section == "Parallel Plan":
+            assert content["parallel_plan"] == [
+                {
+                    "id": "api",
+                    "description": "Implement the second API component",
+                    "edit_area": {"directories": [], "paths": ["src/second.py"]},
+                    "depends_on": [],
+                    "step_ids": [],
+                }
+            ]
 
 
 def test_plan_regression_duplicate_steps_make_worker_ownership_unextractable() -> None:

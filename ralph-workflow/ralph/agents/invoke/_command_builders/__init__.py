@@ -159,7 +159,6 @@ def _load_prompt_with_master(
     return f"{master.rstrip()}\n\n{prompt}"
 
 
-
 def _materialize_prompt_file(text: str, dest_path: Path) -> str:
     """Write ``text`` once and return its stable file-path argv value."""
     # filesystem-write-ok: per-invocation command-builder draft under tmp, not a repo-tracked deliverable

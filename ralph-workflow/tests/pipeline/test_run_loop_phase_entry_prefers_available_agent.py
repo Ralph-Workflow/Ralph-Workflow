@@ -143,9 +143,7 @@ def test_controller_preferred_agent_index_repeated_invocations() -> None:
     )
 
     # First invocation: all cooldowns expired; claude (index 0) wins.
-    selection_first = controller.preferred_agent_index(
-        "development", ["claude", "opencode", "agy"]
-    )
+    selection_first = controller.preferred_agent_index("development", ["claude", "opencode", "agy"])
     assert selection_first.index == 0
     assert selection_first.agent == "claude"
 
@@ -157,12 +155,9 @@ def test_controller_preferred_agent_index_repeated_invocations() -> None:
     assert selection_second.agent == "claude"
 
     # Third invocation: same answer again. Priority is not a cursor.
-    selection_third = controller.preferred_agent_index(
-        "development", ["claude", "opencode", "agy"]
-    )
+    selection_third = controller.preferred_agent_index("development", ["claude", "opencode", "agy"])
     assert selection_third.index == 0
     assert selection_third.agent == "claude"
-
 
 
 # ---------------------------------------------------------------------------

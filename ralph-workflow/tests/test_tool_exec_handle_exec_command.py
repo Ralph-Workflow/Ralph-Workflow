@@ -139,7 +139,10 @@ class TestHandleExecCommand:
         )
 
         assert result.is_error is False
-        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
+        assert (
+            "Warning: script 'deploy.sh' contains version-control commands"
+            in result.content[0].text
+        )
 
     def test_exec_allows_shell_script_without_git(self, tmp_path: Path) -> None:
         script = tmp_path / "build.sh"

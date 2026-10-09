@@ -558,9 +558,7 @@ def _finalize_ready_state(
     from ralph.project_policy._auto_commit import commit_policy_writes  # noqa: PLC0415
     from ralph.project_policy.markers import AGENTS_MD  # noqa: PLC0415
 
-    pre_contents = capture_pre_write_contents(
-        workspace_scope.root, [AGENTS_MD]
-    )
+    pre_contents = capture_pre_write_contents(workspace_scope.root, [AGENTS_MD])
     try:
         policy_agents_md.condense_placeholder_block(workspace)
     except Exception as exc:
@@ -580,9 +578,7 @@ def _finalize_ready_state(
                 "(agent edit?)"
             )
         elif result.status.value == "failed":
-            logger.debug(
-                "project-policy auto-commit failed (non-fatal): {}", result.error
-            )
+            logger.debug("project-policy auto-commit failed (non-fatal): {}", result.error)
     except Exception as exc:
         logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
     try:

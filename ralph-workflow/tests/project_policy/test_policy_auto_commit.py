@@ -322,10 +322,7 @@ def test_commit_policy_writes_skips_path_already_dirty_at_head(
 
     # Simulate condense rewriting AGENTS.md (the post-READY condense
     # pass). The post-write content is the condense form.
-    condense_form = (
-        "<!-- ralph-managed:begin -->\n"
-        "<!-- ralph-managed:end -->\n"
-    )
+    condense_form = "<!-- ralph-managed:begin -->\n<!-- ralph-managed:end -->\n"
     pre_contents = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
     (tmp_git_repo / AGENTS_MD).write_text(condense_form, encoding="utf-8")
 
@@ -365,9 +362,7 @@ def test_commit_policy_writes_commits_clean_path(
     # Simulate the preflight's own write: pre-write hash matches HEAD,
     # post-write differs. The producer-level helper commits the diff.
     pre_contents = capture_pre_write_contents(tmp_git_repo, [AGENTS_MD])
-    (tmp_git_repo / AGENTS_MD).write_text(
-        "# AGENTS.md -- preflight write\n", encoding="utf-8"
-    )
+    (tmp_git_repo / AGENTS_MD).write_text("# AGENTS.md -- preflight write\n", encoding="utf-8")
 
     result = commit_policy_writes(
         tmp_git_repo,
@@ -428,6 +423,7 @@ def test_commit_policy_writes_real_git_end_to_end(tmp_git_repo: Path) -> None:
     repo = Repo(tmp_git_repo)
     try:
         from git import Actor
+
         actor = Actor("Test Author", "test@example.com")
         repo.index.add([AGENTS_MD])
         repo.index.commit("seed", author=actor, committer=actor)

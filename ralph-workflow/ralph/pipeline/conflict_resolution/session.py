@@ -90,6 +90,7 @@ class ResolutionSession:
     last_attempt_failure: BaseException | str | None = None
     last_attempt_saw_activity: bool = False
     ralph_fault_hits: int = 0
+    last_fault_progress_at: float | None = None
 
 
 def begin_resolution_stop(session: ResolutionSession) -> None:
@@ -291,6 +292,7 @@ def invoke_resolution_agent(
         session.last_attempt_failure = None
         session.last_attempt_saw_activity = False
         session.ralph_fault_hits = 0
+        session.last_fault_progress_at = None
     # The retry intent is a thread-local the executor writes on failure
     # and clears only on SUCCESS, so a candidate that failed through one
     # of the exception paths below parks its intent there. Discarding it
@@ -301,8 +303,20 @@ def invoke_resolution_agent(
     _effect_executor_module.pop_last_captured_retry_intent()
     if _candidate_cannot_be_launched(agent_name, session):
         return False
+    observed_fault: ResolutionTerminationReason | None = None
+
+    def _record_fault(reason: ResolutionTerminationReason) -> None:
+        nonlocal observed_fault
+        observed_fault = reason
+
+    def _supervision_health_error() -> str | None:
+        return None if observed_fault is None else observed_fault.value
+
     wrapped_listener = wrap_activity_listener(
-        activity_status_listener, session, agent_name=agent_name
+        activity_status_listener,
+        session if session is not None else ResolutionSession(),
+        agent_name=agent_name,
+        on_fault=_record_fault,
     )
     effect = InvokeAgentEffect(
         agent_name=agent_name,
@@ -315,6 +329,7 @@ def invoke_resolution_agent(
         activity_only_operator_cap_seconds=operator_cap_seconds,
         activity_only_status_interval_seconds=status_interval_seconds,
         activity_status_listener=wrapped_listener,
+        supervision_health_error=_supervision_health_error,
     )
     conflict_limits = config.conflict_resolution.model_copy(
         update={
@@ -483,7 +498,12 @@ def _record_resolution_termination(session: ResolutionSession | None, exc: Excep
             float(raw_duration) if isinstance(raw_duration, (int, float)) else exc.timeout_seconds
         )
         return
-    session.terminal_reason = ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
+    session.terminal_reason = (
+        classify_ralph_origin_fault(exc.detail)
+        if isinstance(exc, SupervisionInfrastructureError)
+        else None
+    ) or ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
+    session.charge_conflict_budget = False
 
 
 def _record_resolution_exception(session: ResolutionSession | None) -> None:
@@ -503,7 +523,14 @@ def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...
         )
         fields = exc.diagnostic
     else:
-        reason_value = "SUPERVISION_INFRASTRUCTURE_FAILURE"
+        observed = (
+            classify_ralph_origin_fault(exc.detail)
+            if isinstance(exc, SupervisionInfrastructureError)
+            else None
+        )
+        reason_value = (
+            observed or ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
+        ).value
         fields = {}
     logger.warning(
         "conflict_resolution termination: reason={}; last_activity_kind={}; "
@@ -581,6 +608,11 @@ def _observed_ralph_fault(
     observed = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
     if observed is None:
         observed = classify_ralph_origin_fault(str(event))
+        progress_at: object = getattr(event, "last_subagent_progress_at", None)
+        if isinstance(progress_at, (float, int)) and session is not None:
+            if session.last_fault_progress_at == progress_at:
+                return None
+            session.last_fault_progress_at = float(progress_at)
     if observed is None or session is None:
         return None
     # Corroboration applies to BOTH channels. A tripped MCP breaker
@@ -605,6 +637,7 @@ def wrap_activity_listener(
     session: ResolutionSession | None,
     *,
     agent_name: str,
+    on_fault: Callable[[ResolutionTerminationReason], None] | None = None,
 ) -> Callable[[object], None] | None:
     """Escalate Ralph-origin faults from activity events instead of treating them as life."""
 
@@ -629,6 +662,8 @@ def wrap_activity_listener(
                 and agent_name not in session.stop_dead_surfaces
             ):
                 session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
+            if on_fault is not None:
+                on_fault(reason)
             return
         if listener is not None:
             listener(event)

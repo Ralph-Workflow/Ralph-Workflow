@@ -37,7 +37,10 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
     )
     assert commands == [
         (("/usr/local/bin/uv", "lock", "--check"), Path("/install/.staging/candidate")),
-        (("/usr/local/bin/uv", "sync", "--locked", "--extra", "dev"), Path("/install/.staging/candidate")),
+        (
+            ("/usr/local/bin/uv", "sync", "--locked", "--extra", "dev"),
+            Path("/install/.staging/candidate"),
+        ),
         (
             ("/usr/local/bin/uv", "sync", "--locked", "--extra", "dev", "--check"),
             Path("/install/.staging/candidate"),

@@ -112,6 +112,7 @@ CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 #: Names the worker so an abandoned step is identifiable in a stack dump.
 _PROBE_THREAD_NAME = "ralph-watch-capacity-probe"
 
+
 class _ProbeFailed:
     """Signals a probe exception through the bounded publication channel."""
 

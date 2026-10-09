@@ -34,11 +34,11 @@ def test_opencode_smoke_default_is_not_pinned_in_either_seam() -> None:
 
 
 def test_opencode_smoke_default_comes_from_the_development_policy_chain() -> None:
-    config = UnifiedConfig(
-        agent_chains={"development": ["opencode/config-only/stale"]}
-    )
+    config = UnifiedConfig(agent_chains={"development": ["opencode/config-only/stale"]})
     agents_policy = AgentsPolicy(
-        agent_chains={"smoke-development": AgentChainConfig(agents=["opencode/minimax/MiniMax-M3"])},
+        agent_chains={
+            "smoke-development": AgentChainConfig(agents=["opencode/minimax/MiniMax-M3"])
+        },
         agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
     )
     lookup = AgentRegistry.from_config(config).get

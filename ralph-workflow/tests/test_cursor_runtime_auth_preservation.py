@@ -221,7 +221,9 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
         invoke_agent(
             AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
             str(prompt_file),
-            options=InvokeOptions(show_progress=False, workspace_path=tmp_path, extra_env=extra_env),
+            options=InvokeOptions(
+                show_progress=False, workspace_path=tmp_path, extra_env=extra_env
+            ),
         )
     )
 
@@ -604,9 +606,7 @@ def test_cursor_invocation_projects_ide_credentials_before_spawn(
 
     assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] == credential_store
     assert Path(captured_env["HOME"]) != operator_home
-    assert projected_payloads == [
-        {"accessToken": "ide-token", "refreshToken": "refresh-token"}
-    ] * 2
+    assert projected_payloads == [{"accessToken": "ide-token", "refreshToken": "refresh-token"}] * 2
 
 
 def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
@@ -695,4 +695,3 @@ def test_cursor_runtime_regression_strips_ssh_markers_for_each_credential_source
     finally:
         assert runtime.cleanup is not None
         runtime.cleanup()
-

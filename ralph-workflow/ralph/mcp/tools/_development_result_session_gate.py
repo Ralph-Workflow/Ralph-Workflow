@@ -46,7 +46,11 @@ def development_result_session_diagnostics(
     required_refs = _required_plan_refs(session, workspace, deps, submitted_refs)
     if not required_refs:
         return []
-    if required_refs == submitted_refs and isinstance(raw_proofs, list) and len(raw_proofs) == len(submitted_refs):
+    if (
+        required_refs == submitted_refs
+        and isinstance(raw_proofs, list)
+        and len(raw_proofs) == len(submitted_refs)
+    ):
         return []
     return [
         Diagnostic(
@@ -61,16 +65,16 @@ def development_result_session_diagnostics(
 
 
 def _required_plan_refs(
-    session: CoordinationSessionLike, workspace: WorkspaceLike, deps: ArtifactHandlerDeps | None,
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    deps: ArtifactHandlerDeps | None,
     submitted_refs: set[str],
 ) -> set[str]:
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     plan_path = _workspace_root(workspace) / PLAN_ARTIFACT_PATH
     if not backend.exists(plan_path):
         return set()
-    plan_content, _, _ = analyze_plan_document(
-        backend.read_text(plan_path, encoding="utf-8")
-    )
+    plan_content, _, _ = analyze_plan_document(backend.read_text(plan_path, encoding="utf-8"))
     step_refs, unit_refs, owned_steps = canonical_plan_references(plan_content)
     worker_namespace = session.worker_namespace if isinstance(session, _WorkerSession) else None
     if worker_namespace is not None and worker_namespace.name in unit_refs:

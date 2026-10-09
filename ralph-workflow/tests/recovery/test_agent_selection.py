@@ -288,12 +288,8 @@ def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> No
 def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> None:
     """An unavailable agent with cooldown_ms_remaining=0 is reported as 'unavailable'."""
     rows = [
-        agent_availability(
-            agent="claude", available=False, cooldown_ms_remaining=0, spent=False
-        ),
-        agent_availability(
-            agent="opencode", available=False, cooldown_ms_remaining=0, spent=False
-        ),
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="opencode", available=False, cooldown_ms_remaining=0, spent=False),
         agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
     ]
     selection = select_preferred_agent(rows)

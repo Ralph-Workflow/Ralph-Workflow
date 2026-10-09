@@ -36,11 +36,15 @@ def test_finalize_generation_atomically_promotes_a_fully_prepared_candidate(tmp_
     assert not candidate.exists()
 
 
-def test_cleanup_staging_removes_abandoned_candidates_without_touching_generations(tmp_path: Path) -> None:
+def test_cleanup_staging_removes_abandoned_candidates_without_touching_generations(
+    tmp_path: Path,
+) -> None:
     staging = tmp_path / ".staging"
     generations = tmp_path / "generations"
     _write_tree(staging / "abandoned", {"ralph/__init__.py": "candidate"})
-    _write_tree(generations / "live", {"ralph/__init__.py": "published", ".venv/bin/python": "live"})
+    _write_tree(
+        generations / "live", {"ralph/__init__.py": "published", ".venv/bin/python": "live"}
+    )
 
     cleanup_staging(staging)
 
@@ -49,7 +53,9 @@ def test_cleanup_staging_removes_abandoned_candidates_without_touching_generatio
     assert (generations / "live" / ".venv/bin/python").read_text(encoding="utf-8") == "live"
 
 
-def test_publish_generation_discards_unpublished_generation_when_launcher_fails(tmp_path: Path) -> None:
+def test_publish_generation_discards_unpublished_generation_when_launcher_fails(
+    tmp_path: Path,
+) -> None:
     candidate = tmp_path / ".staging" / "candidate"
     generations = tmp_path / "generations"
     _write_tree(candidate, {"ralph/__init__.py": "new", ".venv/bin/python": "new interpreter"})
@@ -132,8 +138,9 @@ def test_install_lock_rejects_symlinked_root_or_lock(tmp_path: Path) -> None:
     root_link = tmp_path / "root-link"
     root_link.symlink_to(real_root, target_is_directory=True)
 
-    with pytest.raises(InstallLockUnavailableError, match="symlink"), install_lock(
-        root_link / ".install.lock"
+    with (
+        pytest.raises(InstallLockUnavailableError, match="symlink"),
+        install_lock(root_link / ".install.lock"),
     ):
         pass
 

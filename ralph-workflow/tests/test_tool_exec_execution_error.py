@@ -124,9 +124,7 @@ def test_run_command_timeout_reports_the_expired_deadline_and_useful_suggestion(
     def timeout_runner(
         _argv: list[str], _cwd: Path, timeout: float | None
     ) -> _CompletedProcessAdapter:
-        raise DeadlineTimeoutExpired(
-            ["slow"], timeout or 1, timeout_cause=timeout_cause
-        )
+        raise DeadlineTimeoutExpired(["slow"], timeout or 1, timeout_cause=timeout_cause)
 
     result = handle_exec_command(
         MockSession({PROCESS_EXEC_BOUNDED_CAPABILITY}),

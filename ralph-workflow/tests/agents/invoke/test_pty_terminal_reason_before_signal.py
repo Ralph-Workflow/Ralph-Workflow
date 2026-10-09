@@ -131,4 +131,3 @@ def test_record_terminal_reason_tolerates_missing_recorder() -> None:
     reader = object.__new__(PtyLineReader)
     reader._handle = object()  # no record_terminal_reason attribute
     PtyLineReader._record_terminal_reason(reader, "quota_exhausted")  # must not raise
-

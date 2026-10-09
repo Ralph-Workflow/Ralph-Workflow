@@ -266,9 +266,7 @@ class RecoveryScheduler:
             self._state.last_failure_message = message
         self._persist()
 
-    def should_attempt_recovery(
-        self, *, clock: Callable[[], float] = time.monotonic
-    ) -> bool:
+    def should_attempt_recovery(self, *, clock: Callable[[], float] = time.monotonic) -> bool:
         """Return True when the scheduler should run another recovery attempt.
 
         Bounded by ``max_attempts`` and the exponential backoff. When
@@ -305,7 +303,9 @@ class RecoveryScheduler:
             pass
 
 
-_LAST_ADVISORY_LOCK_FD: list[int | None] = [None]  # bounded-accumulator-ok: single-element lock fd cell
+_LAST_ADVISORY_LOCK_FD: list[int | None] = [
+    None
+]  # bounded-accumulator-ok: single-element lock fd cell
 
 
 def advisory_lock_path(workspace_root: Path) -> Path:
@@ -331,7 +331,9 @@ def try_advisory_lock(workspace_root: Path) -> bool:
     # the lock is released by ``release_advisory_lock`` and closed via
     # ``os.close`` so it cannot leak across long-running sessions.
     # filesystem-write-ok: cross-process advisory lock file opened for flock fd
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)  # resource-lifecycle-ok: cross-process advisory lock — released by release_advisory_lock
+    fd = os.open(
+        str(lock_path), os.O_CREAT | os.O_RDWR, 0o644
+    )  # resource-lifecycle-ok: cross-process advisory lock — released by release_advisory_lock
     try:
         import fcntl
 
@@ -531,7 +533,9 @@ def run_recovery_action(
 # ``run_pending_recovery``. Insert refuses growth past this cap so a
 # long-lived server cannot accumulate unbounded path keys.
 _PENDING_RECOVERY_CAP: int = 64
-_PENDING_RECOVERY: dict[str, str] = {}  # bounded-accumulator-ok: capped at _PENDING_RECOVERY_CAP; drained by run_pending_recovery
+_PENDING_RECOVERY: dict[
+    str, str
+] = {}  # bounded-accumulator-ok: capped at _PENDING_RECOVERY_CAP; drained by run_pending_recovery
 _PENDING_LOCK = threading.Lock()
 
 _RECOVERABLE_QUERY_CODES: frozenset[str] = frozenset(
@@ -638,7 +642,9 @@ def enqueue_recovery(
 # S-2 production drain path -- without it the queue fills and no
 # rebuild ever runs (E1 root cause).
 _DRAIN_WAKEUP = threading.Event()
-_DRAIN_THREAD: list[threading.Thread | None] = [None]  # bounded-accumulator-ok: single-element thread cell
+_DRAIN_THREAD: list[threading.Thread | None] = [
+    None
+]  # bounded-accumulator-ok: single-element thread cell
 _DRAIN_TIMEOUT_MS = 15_000
 
 
@@ -652,7 +658,9 @@ def _drain_pending_recoveries_once() -> int:
 
 
 def _drain_thread_main() -> None:
-    while _DRAIN_WAKEUP.wait():  # mcp-timeout-ok: daemon drain thread parks on the enqueue event forever by design
+    while True:
+        if not _DRAIN_WAKEUP.wait(timeout=60.0):
+            continue
         _DRAIN_WAKEUP.clear()
         try:
             _drain_pending_recoveries_once()

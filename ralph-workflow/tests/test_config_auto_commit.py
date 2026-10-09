@@ -126,10 +126,7 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text(
-        "[agents.claude]\n"
-        'cmd = "claude"\n'
-        "can_commit = true\n"
-        'display_name = "Claude Code"\n',
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n',
         encoding="utf-8",
     )
     # Seed the retired-key version at HEAD so the pre-write hash matches
@@ -139,9 +136,7 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["ralph-workflow.toml"])
-        repo.index.commit(
-            "seed retired key", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed retired key", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
@@ -152,14 +147,12 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
     # 2. The on-disk file also had the retired key stripped.
     rewritten = config_path.read_text(encoding="utf-8")
     assert "can_commit = true" not in rewritten
-    assert '[agents.claude]' in rewritten
+    assert "[agents.claude]" in rewritten
     # 3. A chore commit with the pinned subject landed.
     subjects = _git_log_subjects(tmp_path)
     assert subjects[0] == "chore(config): migrate retired agent_can_commit assignments"
     # 4. The post-commit tree is clean -- no untracked / unstaged / staged residue.
-    assert _git_status_clean(tmp_path), (
-        "tree must be clean after the deterministic commit"
-    )
+    assert _git_status_clean(tmp_path), "tree must be clean after the deterministic commit"
 
 
 def test_load_toml_migration_commits_via_symlinked_config_path(
@@ -184,10 +177,7 @@ def test_load_toml_migration_commits_via_symlinked_config_path(
     # matches HEAD before ``load_toml`` runs.
     target = tmp_path / "target.toml"
     target.write_text(
-        "[agents.claude]\n"
-        'cmd = "claude"\n'
-        "can_commit = true\n"
-        'display_name = "Claude Code"\n',
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n',
         encoding="utf-8",
     )
     # ``config.toml`` is a tracked symlink to ``target.toml``. The
@@ -199,15 +189,11 @@ def test_load_toml_migration_commits_via_symlinked_config_path(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["target.toml"])
-        repo.index.commit(
-            "seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
         # Add the symlink as a tracked entry AFTER seeding the target
         # so git records the symlink blob (the target text) at HEAD.
         repo.index.add(["config.toml"])
-        repo.index.commit(
-            "seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
@@ -229,7 +215,7 @@ def test_load_toml_migration_commits_via_symlinked_config_path(
     )
     rewritten = config_link.read_text(encoding="utf-8")
     assert "can_commit = true" not in rewritten
-    assert '[agents.claude]' in rewritten
+    assert "[agents.claude]" in rewritten
     # 3. A chore commit with the pinned subject landed on the lexical
     #    ``config.toml`` entry -- not on the (unchanged) symlink target.
     subjects = _git_log_subjects(tmp_path)
@@ -319,9 +305,7 @@ def test_autowire_chains_commits_in_repo_with_fixed_subject(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["ralph-workflow.toml"])
-        repo.index.commit(
-            "seed main config", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed main config", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
@@ -379,9 +363,7 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
     finally:
         repo.close()
 
-    monkeypatch.setattr(
-        "ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"]
-    )
+    monkeypatch.setattr("ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"])
 
     enabled = enable_detected_agents(config_path)
 
@@ -394,9 +376,9 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
     # The committed content must contain the activated block (uncommented).
     repo = Repo(tmp_path)
     try:
-        committed_text = repo.head.commit.tree[
-            "ralph-workflow-agents.toml"
-        ].data_stream.read().decode()
+        committed_text = (
+            repo.head.commit.tree["ralph-workflow-agents.toml"].data_stream.read().decode()
+        )
     finally:
         repo.close()
     assert "[agents.codex]" in committed_text
@@ -442,19 +424,13 @@ def test_enable_detected_agents_commits_via_symlinked_config_path(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["target.toml"])
-        repo.index.commit(
-            "seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
         repo.index.add(["config.toml"])
-        repo.index.commit(
-            "seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
-    monkeypatch.setattr(
-        "ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"]
-    )
+    monkeypatch.setattr("ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"])
 
     enabled = enable_detected_agents(config_link)
 
@@ -476,9 +452,7 @@ def test_enable_detected_agents_commits_via_symlinked_config_path(
     )
     repo = Repo(tmp_path)
     try:
-        committed_text = (
-            repo.head.commit.tree["target.toml"].data_stream.read().decode()
-        )
+        committed_text = repo.head.commit.tree["target.toml"].data_stream.read().decode()
     finally:
         repo.close()
     assert "[agents.codex]" in committed_text, (
@@ -523,9 +497,7 @@ def test_global_config_path_writes_file_but_creates_no_commit(
     )
 
     assert sentinel["called"] is True, "write_fn MUST run even on the NOT_REPO branch"
-    assert result is None, (
-        f"NOT_REPO branch must return None; got: {result!r}"
-    )
+    assert result is None, f"NOT_REPO branch must return None; got: {result!r}"
     assert config_path.exists(), "config file must land on disk"
     assert not (tmp_path / ".git").exists(), (
         "the helper MUST NOT create a git repo on the NOT_REPO branch"
@@ -593,9 +565,7 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["src/main.py"])
-        repo.index.commit(
-            "seed src", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed src", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
     finally:
         repo.close()
 
@@ -604,7 +574,7 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     config_path = tmp_path / ".agent" / "ralph-workflow.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
-        "[agents.claude]\ncmd = \"claude\"\ncan_commit = true\n",
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\n',
         encoding="utf-8",
     )
     repo = Repo(tmp_path)
@@ -643,9 +613,7 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     repo = Repo(tmp_path)
     try:
         head_commit = repo.head.commit
-        committed_paths = {
-            diff.a_path for diff in head_commit.diff(head_commit.parents[0])
-        }
+        committed_paths = {diff.a_path for diff in head_commit.diff(head_commit.parents[0])}
         assert ".agent/ralph-workflow.toml" in committed_paths
         assert "src/main.py" not in committed_paths
         # The user's pre-staged src/main.py is still staged after the
@@ -674,7 +642,7 @@ def test_failed_create_commit_injection_preserves_head_and_index(
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text(
-        "[agents.claude]\ncmd = \"claude\"\ncan_commit = true\n",
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\n',
         encoding="utf-8",
     )
     # Seed the config at HEAD so the deterministic writer's pre-write
@@ -700,9 +668,7 @@ def test_failed_create_commit_injection_preserves_head_and_index(
     repo = Repo(tmp_path)
     try:
         repo.index.add(["src/main.py"])
-        repo.index.commit(
-            "seed src", author=Actor("t", "t@t"), committer=Actor("t", "t@t")
-        )
+        repo.index.commit("seed src", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
         # Re-stage the wip edit to simulate a user mid-work state.
         src_file.write_text("print('wip v2')\n", encoding="utf-8")
         repo.index.add(["src/main.py"])
@@ -726,7 +692,7 @@ def test_failed_create_commit_injection_preserves_head_and_index(
             config_path,
             subject="chore(config): migrate retired agent_can_commit assignments",
             write_fn=lambda: config_path.write_text(
-                "[agents.claude]\ncmd = \"claude\"\n",
+                '[agents.claude]\ncmd = "claude"\n',
                 encoding="utf-8",
             ),
             create_commit_fn=_failing_create_commit,
@@ -751,8 +717,7 @@ def test_failed_create_commit_injection_preserves_head_and_index(
         # The file is on disk (the write_fn ran before the commit attempt)
         # but the migration commit is not in HEAD.
         committed_paths = {
-            diff.a_path
-            for diff in repo.head.commit.diff(repo.head.commit.parents[0])
+            diff.a_path for diff in repo.head.commit.diff(repo.head.commit.parents[0])
         }
         assert "ralph-workflow.toml" not in committed_paths
     finally:
@@ -780,7 +745,7 @@ def test_repeat_config_write_is_a_noop(tmp_path: Path) -> None:
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text(
-        "[agents.claude]\ncmd = \"claude\"\ncan_commit = true\n",
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\n',
         encoding="utf-8",
     )
     # Seed the retired-key version at HEAD so the deterministic writer's
@@ -881,9 +846,7 @@ def test_helper_returns_scoped_commit_result_on_cre_commit_outcome(
     result = _commit_deterministic_config_write(
         config_path,
         subject="chore(config): update agent configuration",
-        write_fn=lambda: config_path.write_text(
-            "new = true\n# updated\n", encoding="utf-8"
-        ),
+        write_fn=lambda: config_path.write_text("new = true\n# updated\n", encoding="utf-8"),
     )
     assert isinstance(result, ScopedCommitResult)
     assert result.status is ScopedCommitStatus.CREATED

@@ -121,7 +121,10 @@ def _parse_metric_table(
     """
     errors: list[str] = []
     if "| Metric" not in raw and "|metric" not in raw:
-        return ([], ["report is missing the canonical metric table header"],)
+        return (
+            [],
+            ["report is missing the canonical metric table header"],
+        )
     rows: list[str] = []
     in_table = False
     for line in raw.splitlines():
@@ -136,7 +139,10 @@ def _parse_metric_table(
         rows.append(line)
     min_report_table_rows = 3  # header + separator + at least one row
     if len(rows) < min_report_table_rows:
-        return ([], ["report is missing the canonical metric table body"],)
+        return (
+            [],
+            ["report is missing the canonical metric table body"],
+        )
     body_rows = rows[2:]
     parsed: list[list[str]] = []
     for row in body_rows:
@@ -216,9 +222,7 @@ def validate_report(
     if baseline is None and targets is None:
         return _validate_report_shape_only(parsed_rows)
     if baseline is None or targets is None:
-        return (
-            "validate_report requires both baseline and targets (or neither)",
-        )
+        return ("validate_report requires both baseline and targets (or neither)",)
     failures = list(
         _validate_report_with_cross_check(
             parsed_rows,
@@ -281,8 +285,7 @@ def _validate_post_matches_report(
         post_value = float(post_value_obj)
         if abs(final_value - post_value) > cell_eps:
             errors.append(
-                f"{workload}.{metric}: Final cell {final_value} "
-                f"!= post JSON {post_value}",
+                f"{workload}.{metric}: Final cell {final_value} != post JSON {post_value}",
             )
         baseline_value_obj = baseline.get(workload, {}).get(metric)
         if not isinstance(baseline_value_obj, (int, float)):
@@ -299,8 +302,7 @@ def _validate_post_matches_report(
             ceiling = baseline_value * improvement_factor
             if post_value > ceiling + cell_eps:
                 errors.append(
-                    f"{workload}.{metric}: post {post_value} exceeds "
-                    f"0.6x baseline ({ceiling:.6f})",
+                    f"{workload}.{metric}: post {post_value} exceeds 0.6x baseline ({ceiling:.6f})",
                 )
     for workload, post_metrics in post.items():
         if workload not in _R6_3_WORKLOADS:
@@ -379,9 +381,7 @@ def _validate_report_with_cross_check(
         baseline_text = cells[cell_baseline].strip() if len(cells) > cell_baseline else ""
         final_text = cells[cell_final].strip() if len(cells) > cell_final else ""
         target_text = cells[cell_target].strip() if len(cells) > cell_target else ""
-        disposition_text = (
-            cells[cell_disposition].strip() if len(cells) > cell_disposition else ""
-        )
+        disposition_text = cells[cell_disposition].strip() if len(cells) > cell_disposition else ""
         if not metric and not workload:
             # Blank padding row.
             continue

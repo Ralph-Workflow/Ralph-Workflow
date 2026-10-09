@@ -626,11 +626,7 @@ def _read_env_or_fail() -> tuple[str, str, str]:
         or os.environ.get("MCP_URL", "")
     )
     output_file = os.environ.get(OUTPUT_FILE_ENV, "")
-    run_id = (
-        os.environ.get(RUN_ID_ENV)
-        or os.environ.get("RALPH_MCP_RUN_ID")
-        or "multimodal-smoke"
-    )
+    run_id = os.environ.get(RUN_ID_ENV) or os.environ.get("RALPH_MCP_RUN_ID") or "multimodal-smoke"
     return endpoint, output_file, run_id
 
 

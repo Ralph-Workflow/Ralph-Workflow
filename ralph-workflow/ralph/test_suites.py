@@ -119,6 +119,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_pending_merge_commit_recovery.py",
     "tests/test_pending_merge_repair_real_git.py",
     "tests/test_retained_resolution_handoff.py",
+    "tests/test_retained_resolution_dispatch.py",
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
@@ -1000,8 +1001,7 @@ def _run_shards(
                     timeout_seconds=_remaining_seconds(deadline, monotonic),
                 )
             print(
-                f"pytest shard {index}: exit={returncode}, "
-                f"elapsed={monotonic() - started_at:.2f}s",
+                f"pytest shard {index}: exit={returncode}, elapsed={monotonic() - started_at:.2f}s",
                 flush=True,
             )
             if returncode not in successful_returncodes:
@@ -1051,9 +1051,7 @@ def _select_test_files(
     """Resolve one fail-closed profile into static files and shard settings."""
     if profile is not None and profile not in _FOCUSED_PROFILES:
         raise ValueError(f"unknown test-suite profile: {profile}")
-    active_selector_count = sum(
-        (auto_integrate_e2e_only, subprocess_e2e_only, profile is not None)
-    )
+    active_selector_count = sum((auto_integrate_e2e_only, subprocess_e2e_only, profile is not None))
     if active_selector_count > 1:
         raise ValueError("test-suite profiles are mutually exclusive")
     if profile == _UNIT_PROFILE:
@@ -1183,7 +1181,9 @@ def run_test_suites(
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     if required_e2e_shard:
-        validate_exact_file_assignment((*selected_files, *required_e2e_shard), (*shards, required_e2e_shard))
+        validate_exact_file_assignment(
+            (*selected_files, *required_e2e_shard), (*shards, required_e2e_shard)
+        )
     else:
         validate_exact_file_assignment(selected_files, shards)
     print(
@@ -1209,12 +1209,8 @@ def run_test_suites(
         basetemp_path = Path(basetemp_root)
         successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
         empty_selection_returncode = 5 if profile is not None else None
-        run_required_concurrently = bool(
-            required_e2e_shard and not subprocess_e2e_only
-        )
-        all_shards = (
-            (*shards, required_e2e_shard) if run_required_concurrently else shards
-        )
+        run_required_concurrently = bool(required_e2e_shard and not subprocess_e2e_only)
+        all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
         general_result = _run_shards(
             all_shards,
             cwd=cwd,

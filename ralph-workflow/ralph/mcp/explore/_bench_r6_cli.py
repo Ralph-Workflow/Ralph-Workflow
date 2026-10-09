@@ -87,9 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--capture-baseline",
         metavar="PATH",
         default=None,
-        help=(
-            "Capture the baseline into PATH (alias for --out)."
-        ),
+        help=("Capture the baseline into PATH (alias for --out)."),
     )
     parser.add_argument(
         "--validate-baseline",
@@ -198,15 +196,12 @@ def _dispatch_validate_report(args: _BenchArgs) -> int:
 def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
     """Dispatch capture / capture-list / workload-validation paths."""
     requested = [
-        _WORKLOAD_ALIASES.get(w.strip(), w.strip())
-        for w in args.workloads.split(",")
-        if w.strip()
+        _WORKLOAD_ALIASES.get(w.strip(), w.strip()) for w in args.workloads.split(",") if w.strip()
     ]
     unknown = tuple(w for w in requested if w not in _R6_3_WORKLOADS)
     if unknown:
         parser.error(
-            f"unknown workload name(s) {list(unknown)!r}; "
-            f"valid names: {list(_R6_3_WORKLOADS)}"
+            f"unknown workload name(s) {list(unknown)!r}; valid names: {list(_R6_3_WORKLOADS)}"
         )
     out_path = args.out or args.capture_baseline
     if out_path is None:
@@ -221,9 +216,7 @@ def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
         file=sys.stderr,
         flush=True,
     )
-    return run_capture_baseline(
-        out_path, workloads=requested, repeat=args.repeat
-    )
+    return run_capture_baseline(out_path, workloads=requested, repeat=args.repeat)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

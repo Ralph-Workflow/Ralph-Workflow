@@ -154,7 +154,13 @@ def test_no_fd_leak_after_reindex_and_search(tmp_path: Path) -> None:
         result = handle_grep_files(
             session,
             ws_obj,
-            {"pattern": "def", "path": ".", "regex": False, "case_sensitive": False, "use_index": "auto"},
+            {
+                "pattern": "def",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "auto",
+            },
         )
         # Decode so the response is fully consumed.
         assert "matches" in result.content[0].text
@@ -162,9 +168,7 @@ def test_no_fd_leak_after_reindex_and_search(tmp_path: Path) -> None:
     fds_after = _count_fds()
     # Tolerate a tiny drift (≤ 2 FDs) for ``/proc/self/fd`` itself
     # and any stdio churn. Anything beyond that is a leak.
-    assert fds_after <= fds_before + 2, (
-        f"FD leak: before={fds_before}, after={fds_after}"
-    )
+    assert fds_after <= fds_before + 2, f"FD leak: before={fds_before}, after={fds_after}"
 
 
 def test_no_fd_leak_under_concurrent_searches(tmp_path: Path) -> None:
@@ -206,7 +210,13 @@ def test_no_fd_leak_under_concurrent_searches(tmp_path: Path) -> None:
         handle_grep_files(
             session,
             ws_obj,
-            {"pattern": "def", "path": ".", "regex": False, "case_sensitive": False, "use_index": "auto"},
+            {
+                "pattern": "def",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "auto",
+            },
         )
     store2.close()
     fds_after = _count_fds()

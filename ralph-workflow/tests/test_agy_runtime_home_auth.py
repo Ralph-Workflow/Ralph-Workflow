@@ -52,7 +52,9 @@ def test_agy_runtime_preserves_auth_and_generated_configs_in_private_home(
             Path(".gemini/antigravity-cli/mcp_config.json"),
             Path(".gemini/config/mcp_config.json"),
         ):
-            generated_config = json.loads((private_home / relative_path).read_text(encoding="utf-8"))
+            generated_config = json.loads(
+                (private_home / relative_path).read_text(encoding="utf-8")
+            )
             assert generated_config["mcpServers"]["ralph"] == {"serverUrl": endpoint}
 
         for source_path, source_bytes in auth_artifacts.items():

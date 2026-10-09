@@ -80,9 +80,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
                 ),
             )
 
-    def test_clean_development_exit_does_not_need_completion_sentinel(
-        self, tmp_path: Path
-    ) -> None:
+    def test_clean_development_exit_does_not_need_completion_sentinel(self, tmp_path: Path) -> None:
         run_id = "seam-claude-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)

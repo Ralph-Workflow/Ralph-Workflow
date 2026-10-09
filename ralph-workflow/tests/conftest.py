@@ -184,10 +184,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # Most AGY regression coverage is an explicit smoke profile. The
         # sub-second in-memory PTY invocation module remains in the default
         # suite so launch-policy regressions cannot hide behind an opt-in gate.
-        if (
-            "agy" in item.nodeid.casefold()
-            and relative_path not in _AGY_DEFAULT_TEST_PATHS
-        ):
+        if "agy" in item.nodeid.casefold() and relative_path not in _AGY_DEFAULT_TEST_PATHS:
             item.add_marker("smoke")
 
 

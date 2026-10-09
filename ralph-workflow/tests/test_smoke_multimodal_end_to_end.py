@@ -483,9 +483,7 @@ def test_skip_media_multimodal_run_exits_nonzero(
     """No-call case: skipping the media tool call entirely fails the smoke run with a named break."""
     monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
     monkeypatch.setenv("MOCK_MULTIMODAL_SKIP_MEDIA", "1")
-    result = _end_to_end_test_for_harness(
-        tmp_path, "agy", positive=False, monkeypatch=monkeypatch
-    )
+    result = _end_to_end_test_for_harness(tmp_path, "agy", positive=False, monkeypatch=monkeypatch)
     assert result.multimodal_tool_used is not None
     assert (
         result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE

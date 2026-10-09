@@ -143,7 +143,9 @@ def test_recovered_submit_and_edit_log_info_but_non_recovered_paths_do_not(tmp_p
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
-    handle_submit_md_artifact(session, workspace, {"artifact_type": "product_spec", "content": _INVALID}, deps=deps)
+    handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _INVALID}, deps=deps
+    )
 
     captured, sink_id = _capture()
     try:
@@ -153,12 +155,17 @@ def test_recovered_submit_and_edit_log_info_but_non_recovered_paths_do_not(tmp_p
     finally:
         logger.remove(sink_id)
     assert _payload(recovered_submit)["validation_recovered"] is True
-    assert any(record.strip() == "VALIDATION RECOVERED artifact_type=product_spec" for record in captured)
+    assert any(
+        record.strip() == "VALIDATION RECOVERED artifact_type=product_spec" for record in captured
+    )
 
     captured, sink_id = _capture()
     try:
         normal_submit = handle_submit_md_artifact(
-            MockSession(), MockWorkspace(tmp_path / "normal"), {"artifact_type": "product_spec", "content": _VALID}, deps=ArtifactHandlerDeps(backend=MemoryBackend())
+            MockSession(),
+            MockWorkspace(tmp_path / "normal"),
+            {"artifact_type": "product_spec", "content": _VALID},
+            deps=ArtifactHandlerDeps(backend=MemoryBackend()),
         )
     finally:
         logger.remove(sink_id)
@@ -180,7 +187,11 @@ def test_recovered_submit_and_edit_log_info_but_non_recovered_paths_do_not(tmp_p
         preview = handle_edit_md_artifact(
             session,
             workspace,
-            {"artifact_type": "product_spec", "edits": [{"oldText": "---", "newText": "---"}], "dry_run": True},
+            {
+                "artifact_type": "product_spec",
+                "edits": [{"oldText": "---", "newText": "---"}],
+                "dry_run": True,
+            },
             deps=deps,
         )
     finally:
@@ -195,17 +206,27 @@ def test_recovered_edit_logs_info(tmp_path: Path) -> None:
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
     handle_stage_md_artifact(
-        session, workspace, {"artifact_type": "product_spec", "content": _INVALID, "mode": "replace_all"}, deps=deps
+        session,
+        workspace,
+        {"artifact_type": "product_spec", "content": _INVALID, "mode": "replace_all"},
+        deps=deps,
     )
-    handle_submit_md_artifact(session, workspace, {"artifact_type": "product_spec", "content": _INVALID}, deps=deps)
+    handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _INVALID}, deps=deps
+    )
 
     captured, sink_id = _capture()
     try:
         result = handle_edit_md_artifact(
-            session, workspace, {"artifact_type": "product_spec", "edits": [{"oldText": _INVALID, "newText": _VALID}]}, deps=deps
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "edits": [{"oldText": _INVALID, "newText": _VALID}]},
+            deps=deps,
         )
     finally:
         logger.remove(sink_id)
 
     assert _payload(result)["validation_recovered"] is True
-    assert any(record.strip() == "VALIDATION RECOVERED artifact_type=product_spec" for record in captured)
+    assert any(
+        record.strip() == "VALIDATION RECOVERED artifact_type=product_spec" for record in captured
+    )

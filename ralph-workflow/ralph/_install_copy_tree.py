@@ -32,7 +32,6 @@ _IGNORED_NAMES = frozenset(
 )
 
 
-
 @dataclass(frozen=True)
 class SnapshotIdentity:
     """Which checkout a dev snapshot was built from, and what it contains.

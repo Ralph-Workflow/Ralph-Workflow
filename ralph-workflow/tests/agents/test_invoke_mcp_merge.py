@@ -623,7 +623,9 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" in merged_servers
-        assert "ralph" not in must_mapping(json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"])
+        assert "ralph" not in must_mapping(
+            json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"]
+        )
     finally:
         if runtime.cleanup is not None:
             runtime.cleanup()
@@ -656,7 +658,9 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" not in merged_servers
-        assert "ralph" not in must_mapping(json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"])
+        assert "ralph" not in must_mapping(
+            json.loads(cursor_workspace_config.read_text(encoding="utf-8"))["mcpServers"]
+        )
     finally:
         if runtime_safe.cleanup is not None:
             runtime_safe.cleanup()

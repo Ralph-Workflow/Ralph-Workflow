@@ -40,7 +40,6 @@ Expect: the focused plan suites pass with exit code 0
 _plan_document = _complete_plan
 
 
-
 def test_plan_spec_extracts_usable_steps_and_dependencies() -> None:
     content, diagnostics = parse_and_validate(_complete_plan(), PLAN_SPEC)
 

@@ -319,7 +319,9 @@ def test_delegated_media_call_derives_and_seals_its_caller_identity(tmp_path: Pa
 
     rows = [
         json.loads(line)
-        for line in (_signed_ledger_path(tmp_path, "s3cr3t")).read_text(encoding="utf-8").splitlines()
+        for line in (_signed_ledger_path(tmp_path, "s3cr3t"))
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert [row["agent_id"] for row in rows] == ["sess-1", "vision-verdict-1"]
     assert [row["model_id"] for row in rows] == ["parent-model", "vision-model"]

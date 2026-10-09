@@ -99,11 +99,7 @@ class _InitializeMethods:
                 return
             except sqlite3.OperationalError as exc:
                 msg = str(exc).lower()
-                if (
-                    "locked" not in msg
-                    and "busy" not in msg
-                    and "disk i/o error" not in msg
-                ):
+                if "locked" not in msg and "busy" not in msg and "disk i/o error" not in msg:
                     raise
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:
@@ -117,7 +113,9 @@ class _InitializeMethods:
                         check_same_thread=False,
                     )
                     self._conn.row_factory = sqlite3.Row
-                time.sleep(backoff)  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
+                time.sleep(  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
+                    backoff
+                )
                 backoff *= 2
 
     def _migrate_schema(self) -> None:
@@ -188,9 +186,7 @@ class _InitializeMethods:
         # fall through to the DDL transaction. Treat that case as
         # "schema does not match" so the caller runs the DDL.
         try:
-            cur = self._conn.execute(
-                "SELECT value FROM settings WHERE key = 'schema_version'"
-            )
+            cur = self._conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
         except sqlite3.OperationalError as exc:
             if "no such table" not in str(exc).lower():
                 raise
@@ -240,5 +236,7 @@ class _InitializeMethods:
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:
                     raise
-                time.sleep(backoff)  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
+                time.sleep(  # filesystem-poll-ok: bounded backoff between DDL retry attempts; total ceiling is 0.25+0.5+1.0=1.75s, not a poll loop.
+                    backoff
+                )
                 backoff *= 2

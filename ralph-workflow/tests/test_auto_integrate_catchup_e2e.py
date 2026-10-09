@@ -138,9 +138,7 @@ def test_remote_ahead_advances_local_target_then_checkout(tmp_path: Path) -> Non
     assert _run(writer, "push", "origin", _TARGET).returncode == 0
     assert _run(repo, "checkout", _FEATURE).returncode == 0
 
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(remote_enabled=True), repo
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(remote_enabled=True), repo)
 
     assert outcome == catchup.CATCHUP_FAST_FORWARDED
     assert _run(repo, "rev-parse", f"refs/heads/{_TARGET}").stdout.strip() == remote_sha
@@ -153,9 +151,7 @@ def test_remote_ahead_advances_local_target_then_checkout(tmp_path: Path) -> Non
 def test_remote_ahead_advances_target_with_head_on_target(tmp_path: Path) -> None:
     repo, _bare, remote_sha = _repo_with_remote_ahead(tmp_path)
 
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(remote_enabled=True), repo
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(remote_enabled=True), repo)
 
     assert outcome == catchup.CATCHUP_FAST_FORWARDED
     assert _head_sha(repo) == remote_sha

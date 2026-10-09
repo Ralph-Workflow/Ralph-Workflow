@@ -10,9 +10,7 @@ def test_repeated_same_signature_backs_off_and_reports_terminal_diagnostic() -> 
     calls = 0
     delays: list[float] = []
 
-    def run_attempt(
-        _session_id: str | None, _capture_session_id: object
-    ) -> str:
+    def run_attempt(_session_id: str | None, _capture_session_id: object) -> str:
         nonlocal calls
         calls += 1
         raise AgentInvocationError(

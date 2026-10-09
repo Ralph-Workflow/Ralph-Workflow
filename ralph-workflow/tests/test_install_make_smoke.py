@@ -110,7 +110,9 @@ def _environment(home: Path, fake_bin: Path) -> dict[str, str]:
     }
 
 
-def _run_make_install(source: Path, environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_make_install(
+    source: Path, environment: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ("make", "install"),
         cwd=source,

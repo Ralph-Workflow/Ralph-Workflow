@@ -100,7 +100,9 @@ class ManagedAsyncProcess:
         # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
+        self._manager.record_terminal_reason(
+            self._record.pid, "operator_cancellation", "managed_process.terminate"
+        )
         gp = (
             grace_period_s
             if grace_period_s is not None

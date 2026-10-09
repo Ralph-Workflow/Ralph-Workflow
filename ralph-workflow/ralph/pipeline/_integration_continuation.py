@@ -23,7 +23,9 @@ _REBASE_RECEIPT_ENTRIES = 2
 
 
 def continue_retained_resolution(
-    root: Path, record: IntegrationRecord, config: UnifiedConfig | None,
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> IntegrationRecord | str:
@@ -35,7 +37,8 @@ def continue_retained_resolution(
         matches = active_operation_matches(root, record)
         if conflict_resolver is None or not matches:
             return (
-                "merge resolution retained; continuation resolver required" if matches
+                "merge resolution retained; continuation resolver required"
+                if matches
                 else "active merge identity differs from retained ownership; operator work preserved"
             )
         from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
@@ -47,13 +50,16 @@ def continue_retained_resolution(
         matches = active_operation_matches(root, record)
         if rebase_stop_resolver is None or not matches:
             return (
-                "rebase resolution retained; continuation resolver required" if matches
+                "rebase resolution retained; continuation resolver required"
+                if matches
                 else "active rebase identity differs from retained ownership; operator work preserved"
             )
         from ralph.pipeline.auto_integrate_rebase_merge import _resolve_rebase_with_config
 
         resolved, reason = _resolve_rebase_with_config(
-            root, target, rebase_stop_resolver,
+            root,
+            target,
+            rebase_stop_resolver,
             config.conflict_resolution if config is not None else None,
         )
         if not resolved:
@@ -92,7 +98,9 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
     if legacy is not None:
         write_record(root, legacy)
         return legacy
-    return "retained resolution lacks verified completion proof; work preserved and landing withheld"
+    return (
+        "retained resolution lacks verified completion proof; work preserved and landing withheld"
+    )
 
 
 def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
@@ -104,7 +112,8 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> Integrati
         return None
     history = run_git(
         ("reflog", "show", "--format=%H%x00%gs", "-2", branch),
-        cwd=root, label="recovery:legacy-rebase-receipt",
+        cwd=root,
+        label="recovery:legacy-rebase-receipt",
     )
     rows = history.stdout.splitlines()
     if history.returncode or len(rows) != _REBASE_RECEIPT_ENTRIES:
@@ -112,14 +121,19 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> Integrati
     latest, _, action = rows[0].partition("\0")
     previous, _, _action = rows[1].partition("\0")
     if (
-        latest != head or previous != record.pre_feature_sha
+        latest != head
+        or previous != record.pre_feature_sha
         or action != f"rebase (finish): {branch} onto {record.pre_target_sha}"
         or not is_ancestor(root, record.pre_target_sha, head)
     ):
         return None
-    return record.model_copy(update={
-        "phase": "integrated", "integrated_feature_sha": head, "resolving_rebase": False,
-    })
+    return record.model_copy(
+        update={
+            "phase": "integrated",
+            "integrated_feature_sha": head,
+            "resolving_rebase": False,
+        }
+    )
 
 
 def recover_before_attempt(
@@ -138,7 +152,9 @@ def recover_before_attempt(
     if retained_integration_reason(scope.root) is None:
         return None
     recovered = recover_incomplete_integration(
-        scope, config=config, conflict_resolver=conflict_resolver,
+        scope,
+        config=config,
+        conflict_resolver=conflict_resolver,
         rebase_stop_resolver=rebase_stop_resolver,
     )
     if recovery_retained_record(recovered):
@@ -151,14 +167,23 @@ def recover_before_attempt(
         from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 
         return auto_integrate_after_commit(
-            config_for_owned_integration(config), scope, recovered,
-            conflict_resolver=conflict_resolver, rebase_stop_resolver=rebase_stop_resolver,
+            config_for_owned_integration(config),
+            scope,
+            recovered,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
         )
     return None
 
 
 def config_for_owned_integration(config: UnifiedConfig) -> UnifiedConfig:
     """Disabling new integrations does not abandon an already-owned landing."""
-    return config if config.general.auto_integrate_enabled else config.model_copy(update={
-        "general": config.general.model_copy(update={"auto_integrate_enabled": True}),
-    })
+    return (
+        config
+        if config.general.auto_integrate_enabled
+        else config.model_copy(
+            update={
+                "general": config.general.model_copy(update={"auto_integrate_enabled": True}),
+            }
+        )
+    )

@@ -79,9 +79,7 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_development_artifact_absent_accepts_clean_exit(
-        self, tmp_path: Path
-    ) -> None:
+    def test_optional_development_artifact_absent_accepts_clean_exit(self, tmp_path: Path) -> None:
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",

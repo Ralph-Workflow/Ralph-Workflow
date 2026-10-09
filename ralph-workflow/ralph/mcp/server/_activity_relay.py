@@ -139,6 +139,12 @@ class ActivityRelay:
         with self._lock:
             return self._receiver_error or self._sender_error
 
+    def record_sender_error(self, message: str) -> None:
+        """Latch a sender failure reported by the standalone server's health probe."""
+        with self._lock:
+            if self._sender_error is None:
+                self._sender_error = message
+
     def snapshot(self) -> ActivityRelaySnapshot:
         """Return bounded state for invocation diagnostics."""
         with self._lock:

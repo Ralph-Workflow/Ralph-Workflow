@@ -37,7 +37,10 @@ def test_validation_proof_hint_uses_the_canonical_banner() -> None:
     ("artifact", "diagnostic"),
     [
         (None, "Missing commit_message artifact"),
-        ("---\ntype: commit\nsubject: invalid subject\n---\n", "Invalid or empty commit_message artifact"),
+        (
+            "---\ntype: commit\nsubject: invalid subject\n---\n",
+            "Invalid or empty commit_message artifact",
+        ),
     ],
 )
 def test_commit_gate_persists_validation_hint_for_missing_or_invalid_artifact(

@@ -123,7 +123,13 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
 def test_planning_analysis_includes_five_substantive_criteria() -> None:
     source = " ".join(_render_verifier("planning_analysis").split())
 
-    for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+    for criterion in (
+        "coverage",
+        "truthfulness",
+        "actionability",
+        "parallel decomposition",
+        "execution conflicts",
+    ):
         assert criterion in source
     for expected in (
         "every part of the request",

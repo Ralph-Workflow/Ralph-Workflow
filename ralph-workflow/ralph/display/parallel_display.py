@@ -4302,8 +4302,7 @@ class ParallelDisplay:
                 else:
                     level = "WARN"
                     message = (
-                        f"[phase-close] debug phase={exit_model.phase_name} "
-                        f"{' '.join(debug_parts)}"
+                        f"[phase-close] debug phase={exit_model.phase_name} {' '.join(debug_parts)}"
                     )
                 self._console.print(
                     self._build_line(timestamp, level, "META", message),

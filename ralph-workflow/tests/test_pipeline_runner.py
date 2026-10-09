@@ -42,7 +42,6 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 
-
 def _load_run_loop() -> ModuleType:
     return importlib.import_module("ralph.pipeline.run_loop")
 

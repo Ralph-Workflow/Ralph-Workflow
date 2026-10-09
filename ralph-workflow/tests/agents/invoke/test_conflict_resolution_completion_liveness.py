@@ -12,7 +12,7 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
-from ralph.agents.invoke import AgentRunCtx
+from ralph.agents.invoke import AgentRunCtx, SupervisionInfrastructureError
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
@@ -378,3 +378,55 @@ def test_conflict_resolution_regression_pty_declared_completion_ends_the_done_pa
         if reader is not None:
             os.close(reader._input_writer_fd)
             os.close(reader._read_fd)
+
+
+@pytest.mark.parametrize("pty", [False, True])
+def test_confirmed_relay_failure_precedes_terminal_completion(tmp_path: Path, pty: bool) -> None:
+    from ralph.agents.invoke._process_reader import make_line_reader
+    from ralph.agents.invoke._types import ProcessReaderCtx
+
+    clock = FakeClock()
+    policy = TimeoutPolicy(idle_timeout_seconds=900.0, profile=TimeoutProfile.ACTIVITY_ONLY)
+
+    def health() -> str:
+        return "activity relay sender: timed out"
+
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_invocation_start()
+    if not pty:
+        reader = make_line_reader(
+            _ParentExitedHandle(),
+            ProcessReaderCtx(
+                config=AgentConfig(cmd="resolver", transport=AgentTransport.GENERIC),
+                policy=policy,
+                workspace_path=tmp_path,
+                completion_is_terminal=lambda: True,
+                relay_health_error=health,
+            ),
+            clock,
+        )
+        with pytest.raises(SupervisionInfrastructureError, match="timed out"):
+            reader._finish_reader_done(watchdog)
+        return
+    read_fd, write_fd = os.pipe()
+    pty_reader = None
+    try:
+        ctx = AgentRunCtx(
+            config=AgentConfig(cmd="resolver", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            show_progress=False,
+            extra_env={"RALPH_MCP_RUN_ID": "run-1"},
+            workspace_path=tmp_path,
+            policy=policy,
+            evaluate_completion_fn=_declared_complete,
+            relay_health_error=health,
+        )
+        pty_reader = PtyLineReader(
+            _PtyParentExitedHandle(read_fd), "resolver", ctx, clock, extras=None
+        )
+        with pytest.raises(SupervisionInfrastructureError, match="timed out"):
+            list(pty_reader._handle_done_path(watchdog))
+    finally:
+        os.close(write_fd)
+        if pty_reader is not None:
+            os.close(pty_reader._input_writer_fd)
+            os.close(pty_reader._read_fd)

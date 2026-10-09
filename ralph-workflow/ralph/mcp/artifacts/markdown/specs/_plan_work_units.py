@@ -171,7 +171,8 @@ def _claim_steps_by_target(
         candidates = [
             unit_id
             for unit_id, directories in directories_by_unit.items()
-            if paths and all(
+            if paths
+            and all(
                 _path_is_owned(path, directories) or PurePosixPath(path) in paths_by_unit[unit_id]
                 for path in paths
             )

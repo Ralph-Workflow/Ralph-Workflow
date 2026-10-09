@@ -75,9 +75,7 @@ _REQUIRED_PROBE_ENTRIES: tuple[str, ...] = (
     "collect_workspace_files",
     "bulk_size_mtime_for_paths",
 )
-_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = (
-    "store.get_file",
-)
+_FORBIDDEN_PROBE_ENTRIES: tuple[str, ...] = ("store.get_file",)
 #: ``_staleness_block`` has been cached since S-3; on a hit the
 #: cumulative-time contribution of ``peek_dirty_paths`` /
 #: ``count_deleted_files`` / ``latest_job`` is near zero. We assert
@@ -251,9 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return staleness_probe(session, workspace_root=workspace)
 
         def _run_metadata() -> object:
-            return serving_metadata(
-                session, index_used=True, fallback_reason=None
-            )
+            return serving_metadata(session, index_used=True, fallback_reason=None)
 
         probe_profiler: cProfile.Profile = _run_profile(_run_probe)
         metadata_profiler: cProfile.Profile = _run_profile(_run_metadata)
@@ -297,10 +293,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = {
             "top": top_n,
             "probe": [{"name": name, "cumtime": cumtime} for name, cumtime in probe_rows],
-            "metadata": [
-                {"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows
-            ],
-        # filesystem-write-ok: probe profile cache under .agent/explore, runtime profile state not tracked
+            "metadata": [{"name": name, "cumtime": cumtime} for name, cumtime in metadata_rows],
+            # filesystem-write-ok: probe profile cache under .agent/explore, runtime profile state not tracked
         }
         write_text_if_changed(
             DEFAULT_FILE_BACKEND, out_path, json.dumps(payload, indent=2, sort_keys=True)

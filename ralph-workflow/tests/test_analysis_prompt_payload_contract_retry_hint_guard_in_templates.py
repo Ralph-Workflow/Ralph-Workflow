@@ -109,7 +109,9 @@ class TestRetryHintGuardInTemplates:
     def test_template_includes_the_shared_validation_failure_section(self, name: str) -> None:
         source = _load(name)
 
-        assert source.startswith("{% include 'shared/_validation_failure.j2' -%}") or source.startswith(
+        assert source.startswith(
+            "{% include 'shared/_validation_failure.j2' -%}"
+        ) or source.startswith(
             "{% if LAST_RETRY_ERROR %}{% include 'shared/_validation_failure.j2' %}{% endif -%}"
         ), f"{name}: must render the shared validation failure section first"
 
@@ -125,7 +127,9 @@ class TestRetryHintGuardInTemplates:
         if name in {"developer_iteration.jinja", "worker_developer.jinja"}:
             assert "PREVIOUS ATTEMPT ERROR:" in rendered
             assert "SPEC001: missing required field" in rendered
-        expected_footer_count = 2 if name in {"developer_iteration.jinja", "worker_developer.jinja"} else 1
+        expected_footer_count = (
+            2 if name in {"developer_iteration.jinja", "worker_developer.jinja"} else 1
+        )
         assert rendered.count(build_validation_retry_footer()) == expected_footer_count
 
     @pytest.mark.parametrize("name", _RETRY_HINT_TEMPLATES)

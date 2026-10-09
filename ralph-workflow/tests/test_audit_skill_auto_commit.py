@@ -174,9 +174,7 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch.setattr(audit_module, "_read", _read_with_failure_log_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
-    )
+    assert rc == 1, f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
     assert run_path in captured.out
     assert "missing required literal" in captured.out
 
@@ -200,7 +198,10 @@ def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
         content = real_read(rel_path)
         if rel_path == runner_path:
             # Pretend the phase-seam sweep resurfaced.
-            return content + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
+            return (
+                content
+                + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
+            )
         return content
 
     monkeypatch.setattr(audit_module, "_read", _read_with_seam_commit_removed)

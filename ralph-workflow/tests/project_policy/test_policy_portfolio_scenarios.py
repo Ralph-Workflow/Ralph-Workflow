@@ -249,25 +249,28 @@ Mutation = Callable[[str], str]
         (
             "quota inflation",
             lambda text: text.replace(
-                'default_budget_seconds = 5.0',
-                'coverage_target = 100\ndefault_budget_seconds = 5.0',
+                "default_budget_seconds = 5.0",
+                "coverage_target = 100\ndefault_budget_seconds = 5.0",
             ),
             "coverage_target",
         ),
         (
             "lane cost laundering",
-            lambda text: text
-            + _control(
-                "renamed",
-                outcome="library API remains stable",
-                lane="triggered",
+            lambda text: (
+                text
+                + _control(
+                    "renamed",
+                    outcome="library API remains stable",
+                    lane="triggered",
+                )
             ),
             "cost laundering",
         ),
         (
             "delete to green",
-            lambda text: text
-            + """
+            lambda text: (
+                text
+                + """
 [[exceptions]]
 id = "delete-kernel"
 control = "public-contract"
@@ -275,19 +278,20 @@ owner = "maintainers"
 reason = "make the gate green"
 review_trigger = "later"
 expires = "2099-01-01"
-""",
+"""
+            ),
             "cannot remove an invariant kernel control",
         ),
         (
             "renamed duplicate",
-            lambda text: text
-            + _control("alias-contract", outcome="library API remains stable"),
+            lambda text: text + _control("alias-contract", outcome="library API remains stable"),
             "cost laundering",
         ),
         (
             "exception expiry bypass",
-            lambda text: text
-            + """
+            lambda text: (
+                text
+                + """
 [[exceptions]]
 id = "expired"
 control = "optional"
@@ -295,7 +299,8 @@ owner = "maintainers"
 reason = "temporary"
 review_trigger = "incident"
 expires = "2020-01-01"
-""",
+"""
+            ),
             "expired exception",
         ),
         (
@@ -325,12 +330,14 @@ impact = ["low"]
         ),
         (
             "unowned one off",
-            lambda text: text
-            + _control(
-                "one-off",
-                outcome="one-off migration remains correct",
-                lane="triggered",
-                owner="",
+            lambda text: (
+                text
+                + _control(
+                    "one-off",
+                    outcome="one-off migration remains correct",
+                    lane="triggered",
+                    owner="",
+                )
             ),
             "owner",
         ),

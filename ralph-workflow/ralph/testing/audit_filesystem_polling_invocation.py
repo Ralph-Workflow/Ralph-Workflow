@@ -99,7 +99,9 @@ _SUBPROCESS_CALLS: frozenset[str] = frozenset(
 )
 
 
-def _module_aliases(nodes: Sequence[ast.AST]) -> tuple[set[str], set[str], set[str], dict[str, str]]:
+def _module_aliases(
+    nodes: Sequence[ast.AST],
+) -> tuple[set[str], set[str], set[str], dict[str, str]]:
     time_names = _imported_names(nodes, module="time", accepted={"time", "sleep"})
     asyncio_names = _imported_names(nodes, module="asyncio", accepted={"asyncio", "sleep"})
     observer_names = _observer_aliases(nodes)
@@ -153,9 +155,7 @@ def _subprocess_aliases(nodes: Sequence[ast.AST]) -> dict[str, str]:
     return aliases
 
 
-def _imported_names(
-    nodes: Sequence[ast.AST], *, module: str, accepted: set[str]
-) -> set[str]:
+def _imported_names(nodes: Sequence[ast.AST], *, module: str, accepted: set[str]) -> set[str]:
     names: set[str] = set()
     for node in nodes:
         if isinstance(node, ast.Import):

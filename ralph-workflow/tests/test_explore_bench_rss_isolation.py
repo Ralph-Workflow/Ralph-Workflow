@@ -42,10 +42,7 @@ from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
 from ralph.mcp.explore._bench_r6_metrics import measure_cold_build
 
 _TARGETS_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "docs"
-    / "performance"
-    / "explore-index-targets.json"
+    Path(__file__).resolve().parents[1] / "docs" / "performance" / "explore-index-targets.json"
 )
 
 

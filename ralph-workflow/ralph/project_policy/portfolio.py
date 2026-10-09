@@ -66,13 +66,9 @@ _ALLOWED_CONTROL = frozenset(
         "removed-tests",
     }
 )
-_ALLOWED_PROFILE = frozenset(
-    {"id", "version", "requires", "controls", "incompatible_with"}
-)
+_ALLOWED_PROFILE = frozenset({"id", "version", "requires", "controls", "incompatible_with"})
 _ALLOWED_TIGHTENING = frozenset({"controls"})
-_ALLOWED_EXCEPTION = frozenset(
-    {"id", "control", "owner", "reason", "review_trigger", "expires"}
-)
+_ALLOWED_EXCEPTION = frozenset({"id", "control", "owner", "reason", "review_trigger", "expires"})
 _REQUIRED_CONTROL = _ALLOWED_CONTROL - frozenset({"removed-tests"})
 _RISK_VALUES = {
     "impact": frozenset({"low", "medium", "high", "critical"}),
@@ -210,9 +206,7 @@ def _parse_lanes(root: Mapping[str, object]) -> tuple[_Lane, ...]:
     return tuple(sorted(lanes, key=_lane_id))
 
 
-def _parse_controls(
-    root: Mapping[str, object], lane_ids: frozenset[str]
-) -> dict[str, _Control]:
+def _parse_controls(root: Mapping[str, object], lane_ids: frozenset[str]) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
     for table in _table_list(root, "controls", MAX_CONTROLS):
@@ -314,9 +308,7 @@ def _parse_profiles(root: Mapping[str, object]) -> tuple[_Profile, ...]:
     return tuple(sorted(profiles, key=_profile_key))
 
 
-def _profile_matches(
-    profile: _Profile, context: Mapping[str, str | tuple[str, ...]]
-) -> bool:
+def _profile_matches(profile: _Profile, context: Mapping[str, str | tuple[str, ...]]) -> bool:
     for key, accepted in profile.requires:
         actual = context.get(key)
         if isinstance(actual, tuple):
@@ -380,9 +372,7 @@ def _apply_exceptions(
             try:
                 expires = date.fromisoformat(raw_expires)
             except ValueError as exc:
-                raise _error(
-                    f"exception {exception_id} requires an ISO expiry date"
-                ) from exc
+                raise _error(f"exception {exception_id} requires an ISO expiry date") from exc
         elif isinstance(raw_expires, date):
             expires = raw_expires
         else:
@@ -396,9 +386,7 @@ def _apply_exceptions(
     return tuple(sorted(retained)), tuple(sorted(applied))
 
 
-def parse_portfolio_toml(
-    content: str, *, today: date | None = None
-) -> PolicyPortfolio:
+def parse_portfolio_toml(content: str, *, today: date | None = None) -> PolicyPortfolio:
     """Parse, validate, and deterministically compose one portfolio manifest."""
 
     if len(content.encode("utf-8")) > MAX_PORTFOLIO_BYTES:
@@ -431,9 +419,7 @@ def parse_portfolio_toml(
     )
     effective = tuple(controls[control_id] for control_id in retained_ids)
     default_cost = sum(
-        control.marginal_cost_seconds
-        for control in effective
-        if control.lane == "default"
+        control.marginal_cost_seconds for control in effective if control.lane == "default"
     )
     if default_cost > float(budget):
         raise _error(

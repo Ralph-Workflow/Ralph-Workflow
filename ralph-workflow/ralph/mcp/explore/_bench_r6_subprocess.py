@@ -143,8 +143,7 @@ def run_build_subprocess(
     refresh does set it so the steady-state reindex path is measured.
     """
     script = (
-        _BUILD_RUNNER_SCRIPT
-        .replace("__WORKSPACE_PATH__", repr(str(workspace)))
+        _BUILD_RUNNER_SCRIPT.replace("__WORKSPACE_PATH__", repr(str(workspace)))
         .replace("__INDEX_DIR_PATH__", repr(str(index_dir)))
         .replace("__MEASURED_MODE__", repr(measured_mode))
         .replace("__CHANGE_COUNT__", str(change_count))

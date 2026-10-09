@@ -97,7 +97,13 @@ def test_analysis_format_docs_teach_evidence_first_decision_invariants(
         assert "Expected observation:" in normalized
         assert "not permitted" in normalized
     if artifact_type == "planning_analysis_decision":
-        for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+        for criterion in (
+            "coverage",
+            "truthfulness",
+            "actionability",
+            "parallel decomposition",
+            "execution conflicts",
+        ):
             assert criterion in normalized
     elif artifact_type != _POLICY_REMEDIATION_ANALYSIS_DECISION:
         assert "stable" in normalized
@@ -145,7 +151,13 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
         assert "exactly one `[plan]`" in skill
         assert "usable unit IDs plus unowned step IDs" in skill
     elif artifact_type == "planning_analysis_decision":
-        for criterion in ("coverage", "truthfulness", "actionability", "parallel decomposition", "execution conflicts"):
+        for criterion in (
+            "coverage",
+            "truthfulness",
+            "actionability",
+            "parallel decomposition",
+            "execution conflicts",
+        ):
             assert f"Criterion: {criterion}." in example
         assert "split into independent" in example
     _, diagnostics = parse_and_validate(example, get_spec(artifact_type))

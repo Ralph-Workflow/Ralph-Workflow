@@ -51,7 +51,6 @@ from ralph.mcp.transport.kimi import (
 )
 
 if TYPE_CHECKING:
-
     from pytest import MonkeyPatch
 
 

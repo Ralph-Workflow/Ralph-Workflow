@@ -691,7 +691,9 @@ def smoke_interactive_codex_command(
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
     agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CODEX, agents_policy, registry)
+    agent_name = _resolve_smoke_agent_name(
+        agent_name, AgentTransport.CODEX, agents_policy, registry
+    )
     if agent_name is None:
         return 2
     agent_config = registry.get(agent_name)
@@ -802,7 +804,9 @@ def smoke_interactive_nanocoder_command(
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
     agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.NANOCODER, agents_policy, registry)
+    agent_name = _resolve_smoke_agent_name(
+        agent_name, AgentTransport.NANOCODER, agents_policy, registry
+    )
     if agent_name is None:
         return 2
     agent_config = registry.get(agent_name)
@@ -868,7 +872,9 @@ def smoke_interactive_cursor_command(
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
     agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.CURSOR, agents_policy, registry)
+    agent_name = _resolve_smoke_agent_name(
+        agent_name, AgentTransport.CURSOR, agents_policy, registry
+    )
     if agent_name is None:
         return 2
     agent_config = registry.get(agent_name)
@@ -1016,7 +1022,9 @@ def smoke_interactive_opencode_command(
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
     agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    agent_name = _resolve_smoke_agent_name(agent_name, AgentTransport.OPENCODE, agents_policy, registry)
+    agent_name = _resolve_smoke_agent_name(
+        agent_name, AgentTransport.OPENCODE, agents_policy, registry
+    )
     if agent_name is None:
         return 2
     agent_config = registry.get(agent_name)

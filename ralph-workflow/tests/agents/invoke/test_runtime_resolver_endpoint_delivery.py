@@ -301,8 +301,14 @@ class TestRuntimeResolverEndpointDelivery:
             first_cleanup()
             second_cleanup()
 
-        first_root = first_config.parent if transport is AgentTransport.KIMI else first_config.parent.parent
-        second_root = second_config.parent if transport is AgentTransport.KIMI else second_config.parent.parent
+        first_root = (
+            first_config.parent if transport is AgentTransport.KIMI else first_config.parent.parent
+        )
+        second_root = (
+            second_config.parent
+            if transport is AgentTransport.KIMI
+            else second_config.parent.parent
+        )
         assert not first_root.exists()
         assert not second_root.exists()
 
@@ -354,16 +360,8 @@ class TestRuntimeResolverEndpointDelivery:
 
     @pytest.mark.parametrize(
         ("transport", "env_keys", "file_locator"),
-        [
-            entry
-            for entry in _DELIVERY_CHANNELS
-            if entry[2](Path("/tmp")) is not None
-        ],
-        ids=[
-            entry[0].name
-            for entry in _DELIVERY_CHANNELS
-            if entry[2](Path("/tmp")) is not None
-        ],
+        [entry for entry in _DELIVERY_CHANNELS if entry[2](Path("/tmp")) is not None],
+        ids=[entry[0].name for entry in _DELIVERY_CHANNELS if entry[2](Path("/tmp")) is not None],
     )
     def test_file_channel_carries_endpoint(
         self,

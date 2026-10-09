@@ -195,7 +195,6 @@ class ExploreStore(
         self.reopen()
         return True
 
-
     # --- Chunk + FTS5 -------------------------------------------------
 
     def upsert_chunk(self, chunk: ChunkRow, text: str) -> None:
@@ -793,4 +792,3 @@ class ExploreStore(
                 """,
                 (key, value),
             )
-

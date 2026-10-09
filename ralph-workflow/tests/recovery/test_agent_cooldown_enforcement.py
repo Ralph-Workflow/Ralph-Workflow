@@ -236,7 +236,7 @@ def test_terminal_provider_failures_cool_before_fallback_selection() -> None:
             AgentInvocationError(
                 "fallback",
                 1,
-                'overloaded_error: server cluster is currently under high load (529)',
+                "overloaded_error: server cluster is currently under high load (529)",
             ),
             UnavailabilityReason.PROVIDER_UNAVAILABLE,
             60_000,
@@ -319,12 +319,8 @@ def test_non_agent_provider_text_does_not_cool_agent() -> None:
             failure_origin="runtime_launch",
         ),
         AgentInvocationError("fallback", 1, "HTTP 429", failure_origin="mcp_operation"),
-        AgentInvocationError(
-            "fallback", 143, "HTTP 429", failure_origin="intentional_termination"
-        ),
-        AgentInvocationError(
-            "fallback", 1, "HTTP 429", failure_origin="watchdog_observation"
-        ),
+        AgentInvocationError("fallback", 143, "HTTP 429", failure_origin="intentional_termination"),
+        AgentInvocationError("fallback", 1, "HTTP 429", failure_origin="watchdog_observation"),
     )
     for failure in failures:
         classified = FailureClassifier().classify(
@@ -369,7 +365,9 @@ def test_all_cooling_agents_have_one_earliest_wait_and_no_selection() -> None:
     selection = controller.preferred_agent_index("development", ["cursor/auto", "fallback"])
 
     assert selection.agent is None
-    assert controller.earliest_available_wait_ms("development", ["cursor/auto", "fallback"]) == 5_000
+    assert (
+        controller.earliest_available_wait_ms("development", ["cursor/auto", "fallback"]) == 5_000
+    )
 
 
 def test_success_reset_isolated_to_the_succeeding_agent() -> None:

@@ -42,7 +42,9 @@ def test_per_test_cleanup_runs_before_monkeypatch_restores_fake_backend(
 
     session_manager = get_process_manager()
     fake_manager = _session_process_manager()
-    monkeypatch.setattr(session_manager, "_sync_process_factory", fake_manager._sync_process_factory)
+    monkeypatch.setattr(
+        session_manager, "_sync_process_factory", fake_manager._sync_process_factory
+    )
     monkeypatch.setattr(session_manager, "_psutil", fake_manager._psutil)
     child = session_manager.spawn([sys.executable, "-c", "pass"])
 
@@ -116,7 +118,9 @@ def test_pytest_unconfigure_regression_releases_default_manager_children(
 ) -> None:
     session_manager = get_process_manager()
     fake_manager = _session_process_manager()
-    monkeypatch.setattr(session_manager, "_sync_process_factory", fake_manager._sync_process_factory)
+    monkeypatch.setattr(
+        session_manager, "_sync_process_factory", fake_manager._sync_process_factory
+    )
     monkeypatch.setattr(session_manager, "_psutil", fake_manager._psutil)
     child = session_manager.spawn([sys.executable, "-c", "pass"])
 

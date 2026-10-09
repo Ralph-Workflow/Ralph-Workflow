@@ -153,9 +153,7 @@ class TestAutoIntegrateCatchup:
             lambda *_args: events.append("checkout-catchup") or catchup.CATCHUP_REFUSED,
         )
 
-        outcome = catchup.attempt_catchup_fast_forward(
-            _config(remote_enabled=True), tmp_path
-        )
+        outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=True), tmp_path)
 
         assert outcome == catchup.CATCHUP_ON_TARGET
         assert events == ["sync:main"]
@@ -179,15 +177,11 @@ class TestAutoIntegrateCatchup:
             ),
         )
 
-        outcome = catchup.attempt_catchup_fast_forward(
-            _config(remote_enabled=True), tmp_path
-        )
+        outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=True), tmp_path)
         worker._tick_once()
 
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
-        assert messages == [
-            "auto_integrate catch-up: fast-forwarded the checkout onto the target"
-        ]
+        assert messages == ["auto_integrate catch-up: fast-forwarded the checkout onto the target"]
 
     def test_dirty_worktree(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         ff_calls = _open_all_gates(monkeypatch, clean=False)
@@ -263,9 +257,7 @@ class TestAutoIntegrateCatchup:
 
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
         assert events == ["refresh", "observe-target"]
-        assert refresh_calls == [
-            (tmp_path, "main", catchup.FETCH_TIMEOUT_SECONDS, "upstream")
-        ]
+        assert refresh_calls == [(tmp_path, "main", catchup.FETCH_TIMEOUT_SECONDS, "upstream")]
         assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
     def test_remote_sync_disabled_keeps_local_catchup_without_remote_probe(
@@ -280,9 +272,7 @@ class TestAutoIntegrateCatchup:
 
         monkeypatch.setattr(catchup, "refresh_target_from_remote", _unexpected_refresh)
 
-        outcome = catchup.attempt_catchup_fast_forward(
-            _config(remote_enabled=False), tmp_path
-        )
+        outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=False), tmp_path)
 
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
         assert refresh_calls == []
@@ -300,9 +290,7 @@ class TestAutoIntegrateCatchup:
         )
         monkeypatch.setattr(catchup, "remote_sync_transaction", _remote_lease)
 
-        outcome = catchup.attempt_catchup_fast_forward(
-            _config(remote_enabled=True), tmp_path
-        )
+        outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=True), tmp_path)
 
         assert outcome == catchup.CATCHUP_REMOTE_SKIPPED
         assert ff_calls == []

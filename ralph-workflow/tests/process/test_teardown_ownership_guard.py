@@ -172,7 +172,9 @@ def test_dead_host_with_verified_pgid_still_reaps_the_group(
     group_signals = _capture_group_signals(monkeypatch)
     monkeypatch.setattr(psutil, "Process", _no_such_process)
 
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(999_999, issuer="invoke:test", pgid=999_999)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        999_999, issuer="invoke:test", pgid=999_999
+    )
 
     assert (999_999, signal.SIGTERM) in group_signals
 
@@ -183,7 +185,9 @@ def test_own_process_group_is_never_signalled(monkeypatch: pytest.MonkeyPatch) -
     group_signals = _capture_group_signals(monkeypatch)
     monkeypatch.setattr(psutil, "Process", _no_such_process)
 
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(own_pgid, issuer="invoke:test", pgid=own_pgid)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        own_pgid, issuer="invoke:test", pgid=own_pgid
+    )
 
     assert group_signals == []
 

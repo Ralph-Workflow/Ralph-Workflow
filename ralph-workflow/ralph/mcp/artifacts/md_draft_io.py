@@ -87,7 +87,11 @@ def load_md_draft_revision(
 ) -> int:
     """Return the persisted draft revision, treating absent/invalid markers as zero."""
     try:
-        return int(backend.read_text(_md_draft_revision_path(artifact_dir, artifact_type), encoding="utf-8"))
+        return int(
+            backend.read_text(
+                _md_draft_revision_path(artifact_dir, artifact_type), encoding="utf-8"
+            )
+        )
     except (KeyError, OSError, ValueError):
         return 0
 
@@ -146,7 +150,7 @@ def save_md_draft(
     # An identical replay did not author a new draft. Preserve seeded provenance
     # and avoid its otherwise redundant deletion mutation; a changed publication
     # becomes authored content and must clear the marker as before.
-        # filesystem-write-ok: markdown draft IO under tmp / .agent/tmp, agent-authored draft not committed by chore
+    # filesystem-write-ok: markdown draft IO under tmp / .agent/tmp, agent-authored draft not committed by chore
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
     if changed:
         write_text_if_changed(

@@ -32,6 +32,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_pending_merge_commit_recovery.py",
     "tests/test_pending_merge_repair_real_git.py",
     "tests/test_retained_resolution_handoff.py",
+    "tests/test_retained_resolution_dispatch.py",
     "tests/test_tool_git_read_path_validation.py",
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
@@ -98,11 +99,14 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
 
     monkeypatch.setattr(test_suites_module._PYTEST_SHARD_PROCESS_MANAGER, "spawn", capture_spawn)
 
-    assert test_suites_module._default_spawner(
-        ("pytest",),
-        cwd=tmp_path,
-        env={},
-    ) is sentinel
+    assert (
+        test_suites_module._default_spawner(
+            ("pytest",),
+            cwd=tmp_path,
+            env={},
+        )
+        is sentinel
+    )
 
     assert len(captured_options) == 1
     options = captured_options[0]
@@ -487,10 +491,7 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
         ("tests/agents/test_terminal_state_restored_on_exit.py",),
     ]
     marker_flag = general_command.index("-m", general_command.index("pytest") + 1)
-    assert (
-        general_command[marker_flag + 1]
-        == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
-    )
+    assert general_command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
     assert "-n" not in exclusive_command
 
 
@@ -562,10 +563,14 @@ def test_run_test_suites_regression_accepts_marker_empty_profile_shard(
 ) -> None:
     """S-2: a statically assigned file with no matching marker is not a profile failure."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
-    monkeypatch.setattr(test_suites_module, "discover_unit_test_files", lambda _cwd: (
-        "tests/test_empty.py",
-        "tests/test_selected.py",
-    ))
+    monkeypatch.setattr(
+        test_suites_module,
+        "discover_unit_test_files",
+        lambda _cwd: (
+            "tests/test_empty.py",
+            "tests/test_selected.py",
+        ),
+    )
     processes = [_FakeShardProcess([5]), _FakeShardProcess([0])]
 
     assert (
@@ -626,7 +631,9 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("runner started")),
     )
 
-    with pytest.raises(SystemExit, match="--profile unit, --profile integration, or --profile fast"):
+    with pytest.raises(
+        SystemExit, match="--profile unit, --profile integration, or --profile fast"
+    ):
         test_suites_module.main(("--profile", "unknown"))
 
 

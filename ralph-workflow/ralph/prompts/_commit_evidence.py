@@ -62,7 +62,10 @@ class CommitEvidenceBundle:
             or self.verification_facts
             or self.verification_hints
         )
-        if len(self.change_areas) > _MEDIUM_CHANGE_AREAS or len(self.public_behavior_paths) > _MEDIUM_PRODUCTION_FILES:
+        if (
+            len(self.change_areas) > _MEDIUM_CHANGE_AREAS
+            or len(self.public_behavior_paths) > _MEDIUM_PRODUCTION_FILES
+        ):
             return CommitMessageBudget("large", max(3, grounded_fact_count))
         if len(self.change_areas) > 1 or has_elevated_signal:
             return CommitMessageBudget("medium", 3)
@@ -130,29 +133,57 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
     changed_files = tuple(sorted(set(list_changed_paths(repo_root))))
     diff = commit_generation_diff(repo_root)
     areas = tuple(sorted({_change_area(path) for path in changed_files if path}))
-    public_paths = tuple(path for path in changed_files if path.startswith(("ralph/", "src/", "app/", "lib/", "api/")))
-    verification_hints = tuple(
-        hint for hint, present in (
-            ("run focused tests for changed tests", any(path.startswith("tests/") for path in changed_files)),
-            ("run the verification gate", bool(public_paths)),
-        ) if present
+    public_paths = tuple(
+        path
+        for path in changed_files
+        if path.startswith(("ralph/", "src/", "app/", "lib/", "api/"))
     )
-    compatibility_hints = (("review public API compatibility",) if any(path.startswith(("ralph/mcp/", "api/", "src/")) for path in changed_files) else ())
-    risk_hints = (("review commit staging and secret handling",) if any(path.startswith(("ralph/git/", "ralph/pipeline/", ".github/")) for path in changed_files) else ())
+    verification_hints = tuple(
+        hint
+        for hint, present in (
+            (
+                "run focused tests for changed tests",
+                any(path.startswith("tests/") for path in changed_files),
+            ),
+            ("run the verification gate", bool(public_paths)),
+        )
+        if present
+    )
+    compatibility_hints = (
+        ("review public API compatibility",)
+        if any(path.startswith(("ralph/mcp/", "api/", "src/")) for path in changed_files)
+        else ()
+    )
+    risk_hints = (
+        ("review commit staging and secret handling",)
+        if any(
+            path.startswith(("ralph/git/", "ralph/pipeline/", ".github/")) for path in changed_files
+        )
+        else ()
+    )
     verification_facts = _verification_facts(repo_root)
     behavior_facts = _behavior_facts(repo_root)
     provenance = (
-        *(('behavior', fact, 'development_result', 'high') for fact in behavior_facts),
-        *(('verification', fact, 'parallel_development_summary', 'high') for fact in verification_facts),
-        *(('compatibility', fact, 'changed_paths', 'medium') for fact in compatibility_hints),
-        *(('risk', fact, 'changed_paths', 'medium') for fact in risk_hints),
+        *(("behavior", fact, "development_result", "high") for fact in behavior_facts),
+        *(
+            ("verification", fact, "parallel_development_summary", "high")
+            for fact in verification_facts
+        ),
+        *(("compatibility", fact, "changed_paths", "medium") for fact in compatibility_hints),
+        *(("risk", fact, "changed_paths", "medium") for fact in risk_hints),
     )
     return CommitEvidenceBundle(
-        diff=diff, changed_files=changed_files, change_areas=areas,
-        verification_hints=verification_hints, public_behavior_paths=public_paths,
-        compatibility_hints=compatibility_hints, risk_hints=risk_hints,
-        verification_facts=verification_facts, behavior_facts=behavior_facts,
-        diff_summary=_summarize_diff(diff), fact_provenance=provenance,
+        diff=diff,
+        changed_files=changed_files,
+        change_areas=areas,
+        verification_hints=verification_hints,
+        public_behavior_paths=public_paths,
+        compatibility_hints=compatibility_hints,
+        risk_hints=risk_hints,
+        verification_facts=verification_facts,
+        behavior_facts=behavior_facts,
+        diff_summary=_summarize_diff(diff),
+        fact_provenance=provenance,
     )
 
 

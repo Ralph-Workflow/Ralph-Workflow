@@ -127,12 +127,8 @@ def test_skill_sync_leaves_skill_paths_clean_with_fixed_subject_commit(
     # The gitignore/exclude seeders are separate writer surfaces with
     # their own tests; stub them here so this test pins ONLY the skill
     # sync writer's cleanliness contract.
-    monkeypatch.setattr(
-        "ralph.config.bootstrap.auto_seed_default_gitignore", lambda _root: None
-    )
-    monkeypatch.setattr(
-        "ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _root: None
-    )
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _root: None)
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _root: None)
 
     run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
 
@@ -190,9 +186,7 @@ def test_skill_install_commits_clean_and_noop_second_run(
     with patch("pathlib.Path.home", return_value=home):
         second = install_project_baseline_skills_with_diff(tmp_path)
 
-    assert second.written_paths == [], (
-        "the no-op second install run must record no written paths"
-    )
+    assert second.written_paths == [], "the no-op second install run must record no written paths"
     assert _commit_count(tmp_path) == commits_before + 1, (
         "the no-op second run must not create a new commit"
     )
@@ -265,9 +259,7 @@ def test_config_autowire_leaves_config_clean_with_fixed_subject(
     configuration`` and leaves the config clean."""
     from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
-    defaults = (
-        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    )
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     main_config = tmp_git_repo / "ralph-workflow.toml"
     main_config.write_text(
         (defaults / "ralph-workflow.toml").read_text(encoding="utf-8"),
@@ -297,4 +289,3 @@ def test_config_autowire_leaves_config_clean_with_fixed_subject(
     assert _commit_count(tmp_git_repo) == commits_before + 1, (
         "the no-op second autowire must not create a new commit"
     )
-

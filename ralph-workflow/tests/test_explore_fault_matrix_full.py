@@ -132,10 +132,7 @@ def _live_only_call(workspace: Path, pattern: str = "hello") -> dict:
 
 
 def _matches_set(payload: dict) -> set[tuple[str, int]]:
-    return {
-        (str(m.get("path")), int(m.get("line", 0) or 0))
-        for m in payload.get("matches", [])
-    }
+    return {(str(m.get("path")), int(m.get("line", 0) or 0)) for m in payload.get("matches", [])}
 
 
 def _status_payload(workspace: Path, session=None) -> dict:
@@ -347,9 +344,7 @@ def test_f4_version_mismatch_wipes_and_rebuilds() -> None:
             }, fault_payload
             assert fault_payload["fallback_reason"] in CANONICAL_REASON_CODES
             # (c) budget
-            assert fault_elapsed < _budget_seconds(), (
-                f"F4 elapsed {fault_elapsed:.3f}s > 1s"
-            )
+            assert fault_elapsed < _budget_seconds(), f"F4 elapsed {fault_elapsed:.3f}s > 1s"
         finally:
             with contextlib.suppress(Exception):
                 fault_store.close()
@@ -511,7 +506,6 @@ def test_f9_unwritable_index_backs_off_and_self_recovers() -> None:
             store.close()
 
 
-
 # --- F10: read-only mount -------------------------------------------------
 
 
@@ -604,6 +598,7 @@ def test_f12_external_edit_detected_without_dirty_marking() -> None:
             target = workspace / "hello.py"
             target.write_text("def hello():\n    return 'changed_externally'\n")
             import os
+
             bumped = max(
                 target.stat().st_mtime_ns + 10_000_000,  # +10ms in ns
                 target.stat().st_mtime_ns + 1,

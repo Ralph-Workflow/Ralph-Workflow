@@ -156,6 +156,5 @@ def test_user_prompt_event_detection_covers_supported_json_envelopes_and_key_ord
         '{"type":"error","context":{"type":"user"},"message":"RESOURCE_EXHAUSTED (code 429)"}'
     )
     assert not is_user_prompt_event_line(
-        '{"type":"user","message":{"role":"assistant",'
-        '"content":"RESOURCE_EXHAUSTED"}}'
+        '{"type":"user","message":{"role":"assistant","content":"RESOURCE_EXHAUSTED"}}'
     )

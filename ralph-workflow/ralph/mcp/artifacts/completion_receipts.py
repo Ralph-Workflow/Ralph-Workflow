@@ -327,7 +327,11 @@ def commit_receipt_matches_changed_files(
             return False
         try:
             payload = cast("object", json.loads(backend.read_text(path, encoding="utf-8")))
-            audit = cast("dict[str, object]", payload).get("normalization_audit") if isinstance(payload, dict) else None
+            audit = (
+                cast("dict[str, object]", payload).get("normalization_audit")
+                if isinstance(payload, dict)
+                else None
+            )
         except (OSError, json.JSONDecodeError):
             return False
     elif audit_json is None:

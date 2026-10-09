@@ -73,9 +73,10 @@ def is_user_prompt_event_line(line: str) -> bool:
         event = as_mapping(raw_event)
     except (json.JSONDecodeError, TypeError, ValueError):
         return False
-    return event.get("type") in {"user", "message_start", "message_end"} and _event_role(
-        event
-    ) == "user"
+    return (
+        event.get("type") in {"user", "message_start", "message_end"}
+        and _event_role(event) == "user"
+    )
 
 
 __all__ = ["HARNESS_ECHO_MARKERS", "is_prompt_echo_line", "is_user_prompt_event_line"]

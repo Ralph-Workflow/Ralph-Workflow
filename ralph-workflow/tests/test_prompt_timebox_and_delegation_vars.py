@@ -148,9 +148,10 @@ def test_timebox_template_variables_renders_warning_countdown() -> None:
     assert vars_map["DEV_FORCE_CUT"] == "true"
 
     # Missing epochs ⇒ empty mapping; partials fall through via |default('').
-    assert timebox_template_variables(
-        warn_epoch=None, deadline_epoch=deadline_epoch, now_epoch=now
-    ) == {}
-    assert timebox_template_variables(
-        warn_epoch=warn_epoch, deadline_epoch=None, now_epoch=now
-    ) == {}
+    assert (
+        timebox_template_variables(warn_epoch=None, deadline_epoch=deadline_epoch, now_epoch=now)
+        == {}
+    )
+    assert (
+        timebox_template_variables(warn_epoch=warn_epoch, deadline_epoch=None, now_epoch=now) == {}
+    )

@@ -92,22 +92,30 @@ def test_receipt_requires_exact_live_file_identity(tmp_path: Path) -> None:
     }
     write_artifact_receipt(tmp_path, "commit-plumbing", "commit_message", normalization_audit=audit)
 
-    assert commit_receipt_matches_changed_files(
-        tmp_path,
-        "commit-plumbing",
-        "commit_message",
-        ("tests/test_app.py", "ralph/app.py"),
-    ) is True
-    assert commit_receipt_matches_changed_files(
-        tmp_path, "commit-plumbing", "commit_message", ("ralph/other.py",)
-    ) is False
+    assert (
+        commit_receipt_matches_changed_files(
+            tmp_path,
+            "commit-plumbing",
+            "commit_message",
+            ("tests/test_app.py", "ralph/app.py"),
+        )
+        is True
+    )
+    assert (
+        commit_receipt_matches_changed_files(
+            tmp_path, "commit-plumbing", "commit_message", ("ralph/other.py",)
+        )
+        is False
+    )
 
 
 def test_normalization_audit_records_fresh_evidence_and_draft_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """DA-005/S-6: the canonical receipt gets the exact fresh-evidence audit."""
-    monkeypatch.setattr(commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py"))
+    monkeypatch.setattr(
+        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+    )
     (tmp_path / ".git").mkdir()
 
     content, audit = commit_normalization_module.normalize_commit_submission(
@@ -127,7 +135,9 @@ def test_normalization_audit_records_fresh_evidence_and_draft_revision(
 def test_normalization_audit_does_not_score_authored_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py"))
+    monkeypatch.setattr(
+        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+    )
     (tmp_path / ".git").mkdir()
 
     _, audit = commit_normalization_module.normalize_commit_submission(
@@ -139,7 +149,11 @@ def test_normalization_audit_does_not_score_authored_words(
     assert audit is not None
     assert audit["confidence"] == "high"
     assert audit["transformations"] == [
-        {"action": "rendered canonical artifact from live evidence", "source": "live evidence", "confidence": "high"},
+        {
+            "action": "rendered canonical artifact from live evidence",
+            "source": "live evidence",
+            "confidence": "high",
+        },
     ]
 
 
@@ -147,7 +161,9 @@ def test_canonical_submission_persists_first_normalization_pass_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """DA-007/S-2: canonical receipt keeps the single fresh normalization pass."""
-    monkeypatch.setattr(commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py"))
+    monkeypatch.setattr(
+        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+    )
     (tmp_path / ".git").mkdir()
     content, audit = commit_normalization_module.normalize_commit_submission(
         "commit_message",
@@ -178,5 +194,8 @@ def test_canonical_submission_persists_first_normalization_pass_audit(
 
 
 def test_receipt_audit_is_json_serializable() -> None:
-    audit: dict[str, object] = {"changed_files": ["ralph/app.py"], "transformations": ["canonicalized"]}
+    audit: dict[str, object] = {
+        "changed_files": ["ralph/app.py"],
+        "transformations": ["canonicalized"],
+    }
     assert json.dumps(audit, sort_keys=True)

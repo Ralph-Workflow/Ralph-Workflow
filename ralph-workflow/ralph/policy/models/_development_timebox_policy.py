@@ -33,9 +33,7 @@ class DevelopmentTimeboxPolicy(_FrozenPolicyModel):
                 "development_timebox.duration_seconds must be finite and greater than zero"
             )
         if not math.isfinite(self.warning_seconds) or self.warning_seconds < 0:
-            raise ValueError(
-                "development_timebox.warning_seconds must be finite and non-negative"
-            )
+            raise ValueError("development_timebox.warning_seconds must be finite and non-negative")
         if self.warning_seconds >= self.duration_seconds:
             raise ValueError(
                 "development_timebox.warning_seconds must be less than duration_seconds"

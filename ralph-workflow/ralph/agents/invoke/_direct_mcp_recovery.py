@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.agents.invoke._supervision_infrastructure_error import SupervisionInfrastructureError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.runtime_events import RuntimeEventRecorder, record_runtime_event, runtime_event_scope
 
@@ -106,9 +107,7 @@ def _retry_allowed_or_raise(
     return False
 
 
-def _apply_retry_cooldown(
-    consecutive_failures: int, sleep_fn: Callable[[float], object]
-) -> None:
+def _apply_retry_cooldown(consecutive_failures: int, sleep_fn: Callable[[float], object]) -> None:
     cooldown_seconds = _retry_cooldown_seconds(consecutive_failures)
     if cooldown_seconds:
         sleep_fn(cooldown_seconds)
@@ -219,6 +218,8 @@ def _run_with_direct_mcp_recovery[T](
 
         try:
             return run_attempt(current_session_id, _capture_session_id)
+        except SupervisionInfrastructureError:
+            raise
         except Exception as exc:
             if type(exc).__name__ == "OpenCodeResumableExitError" and not retry_resumable_exit:
                 raise

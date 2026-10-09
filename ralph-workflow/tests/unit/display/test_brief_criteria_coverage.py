@@ -384,5 +384,3 @@ def test_every_brief_criterion_id_has_a_registered_probe() -> None:
     extra = sorted(id_ for id_ in PROBES if id_ not in ALL_IDS and id_ not in {"A-5", "B-3"})
     if extra:
         raise AssertionError(f"probes registered for IDs outside the brief: {extra}")
-
-

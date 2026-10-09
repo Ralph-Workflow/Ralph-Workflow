@@ -332,7 +332,11 @@ def test_md_artifact_preview_keeps_invalid_diagnostics_non_gating(tmp_path) -> N
     result = handle_edit_md_artifact(
         session,
         workspace,
-        {"artifact_type": "product_spec", "edits": [{"oldText": "---", "newText": "---"}], "dry_run": True},
+        {
+            "artifact_type": "product_spec",
+            "edits": [{"oldText": "---", "newText": "---"}],
+            "dry_run": True,
+        },
         deps=ArtifactHandlerDeps(backend=backend),
     )
 

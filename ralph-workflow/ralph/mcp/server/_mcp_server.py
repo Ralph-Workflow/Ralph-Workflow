@@ -226,6 +226,7 @@ class McpServer:
         # ``_activity_sink`` (set_active_sink) so concurrent agent runs
         # do not stomp on each other.
         self._mcp_activity_sink = mcp_activity_sink
+        self._activity_relay_error: str | None = None
 
     def reset_session_budget(self) -> None:
         return None
@@ -261,6 +262,15 @@ class McpServer:
     def _dispatch_request(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
+        if self._activity_relay_error is not None and request.msg_id is not None:
+            return (
+                JsonRpcResponse(
+                    jsonrpc="2.0",
+                    error={"code": -32070, "message": self._activity_relay_error},
+                    msg_id=request.msg_id,
+                ),
+                state,
+            )
         if request.method == "notifications/initialized":
             self._append_wire_record_best_effort(request)
             return (None, ServerState.RUNNING)
@@ -836,7 +846,8 @@ class McpServer:
         if self._mcp_activity_sink is not None:
             try:
                 self._mcp_activity_sink(tool_name)
-            except ActivityRelayError:
+            except ActivityRelayError as exc:
+                self._activity_relay_error = str(exc)
                 raise
             except Exception:
                 logger.opt(exception=True).debug(

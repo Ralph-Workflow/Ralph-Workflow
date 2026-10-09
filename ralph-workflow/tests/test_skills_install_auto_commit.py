@@ -133,9 +133,7 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
             ]
         )
         actor = Actor("Test Author", "test@example.com")
-        repo.index.commit(
-            "seed tracked sibling dir", author=actor, committer=actor
-        )
+        repo.index.commit("seed tracked sibling dir", author=actor, committer=actor)
     finally:
         repo.close()
 
@@ -422,9 +420,7 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
             ]
         )
         actor = Actor("Test Author", "test@example.com")
-        repo.index.commit(
-            "seed byte-equal", author=actor, committer=actor
-        )
+        repo.index.commit("seed byte-equal", author=actor, committer=actor)
     finally:
         repo.close()
 
@@ -462,8 +458,7 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     # return NOOP / SKIPPED and the deletion would leak into the
     # working tree uncommitted.
     assert result.status is ScopedCommitStatus.CREATED, (
-        f"U2: byte-equal descendant under a replaced dir MUST commit; "
-        f"got: {result!r}"
+        f"U2: byte-equal descendant under a replaced dir MUST commit; got: {result!r}"
     )
 
     # 4. Post-commit: the descendant is no longer tracked.
@@ -607,8 +602,7 @@ def test_install_repeat_run_is_noop(tmp_path: Path) -> None:
         f"got: {sorted(second_outcome.written_paths)}"
     )
     assert second_outcome.pre_contents == {}, (
-        f"second install MUST produce empty pre_contents; "
-        f"got: {dict(second_outcome.pre_contents)}"
+        f"second install MUST produce empty pre_contents; got: {dict(second_outcome.pre_contents)}"
     )
 
     # No chore commit on the second install -- the helper is called with
@@ -623,12 +617,9 @@ def test_install_repeat_run_is_noop(tmp_path: Path) -> None:
         intentional_transitions=second_outcome.intentional_transitions,
     )
     assert second_result.status is ScopedCommitStatus.NOOP, (
-        f"second install MUST report NOOP (no spurious chore commit); "
-        f"got: {second_result!r}"
+        f"second install MUST report NOOP (no spurious chore commit); got: {second_result!r}"
     )
-    assert second_result.sha is None, (
-        f"NOOP result MUST have sha=None; got: {second_result.sha!r}"
-    )
+    assert second_result.sha is None, f"NOOP result MUST have sha=None; got: {second_result.sha!r}"
 
     # Sanity: HEAD is still the first install's commit.
     repo = Repo(tmp_path)
@@ -696,7 +687,9 @@ def test_install_symlink_unavailable_fallback_commits_materialized_leaves(
     # because the candidate enumeration never reached the
     # copytree-created leaves.
     sibling_roots = _installer_module.project_sibling_skill_roots(tmp_path)
-    sibling_rel_roots = {s.resolve(tmp_path).relative_to(tmp_path).as_posix() for s in sibling_roots}
+    sibling_rel_roots = {
+        s.resolve(tmp_path).relative_to(tmp_path).as_posix() for s in sibling_roots
+    }
     for sibling_root in sibling_rel_roots:
         # The skill names live as immediate subdirectories of each
         # sibling root, and the materialized ``SKILL.md`` /
@@ -735,8 +728,10 @@ def test_install_symlink_unavailable_fallback_commits_materialized_leaves(
         # untracked entries (``?? ...``) MUST be gone for the
         # sibling roots.
         untracked_sibling_lines = [
-            line for line in porcelain.splitlines()
-            if line.startswith("?? ") and any(
+            line
+            for line in porcelain.splitlines()
+            if line.startswith("?? ")
+            and any(
                 line.endswith(sibling_root) or f"{sibling_root}/" in line
                 for sibling_root in sibling_rel_roots
             )
@@ -786,9 +781,7 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
     try:
         repo.index.add([".claude/skills/brainstorming/alias"])
         actor = Actor("Test Author", "test@example.com")
-        repo.index.commit(
-            "seed tracked symlink descendant", author=actor, committer=actor
-        )
+        repo.index.commit("seed tracked symlink descendant", author=actor, committer=actor)
         seed_head = repo.head.commit.hexsha
         # User retargets the tracked symlink descendant AFTER the seed
         # commit but BEFORE the install. The change stays UNCOMMITTED.
@@ -849,11 +842,7 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
         for commit in repo.iter_commits():
             if commit.hexsha == seed_head:
                 break
-            deleted = {
-                diff.a_path
-                for diff in commit.diff(commit.parents[0])
-                if diff.deleted_file
-            }
+            deleted = {diff.a_path for diff in commit.diff(commit.parents[0]) if diff.deleted_file}
             assert ".claude/skills/brainstorming/alias" not in deleted, (
                 f"chore commit {commit.hexsha[:8]} MUST NOT sweep the dirty "
                 f"descendant's deletion; deleted={sorted(deleted)}"
@@ -861,10 +850,7 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
         # The user's change remains an uncommitted working-tree state.
         porcelain = repo.git.status("--porcelain")
         assert any(
-            ".claude/skills/brainstorming/alias" in line
-            for line in porcelain.splitlines()
-        ), (
-            f"user's dirty descendant MUST remain uncommitted; status: {porcelain!r}"
-        )
+            ".claude/skills/brainstorming/alias" in line for line in porcelain.splitlines()
+        ), f"user's dirty descendant MUST remain uncommitted; status: {porcelain!r}"
     finally:
         repo.close()

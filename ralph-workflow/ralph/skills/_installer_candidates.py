@@ -34,6 +34,9 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from git import GitCommandError, InvalidGitRepositoryError, Repo
+
+from ralph.git.scoped_auto_commit import _git_blob_sha
 from ralph.skills._agent_paths import (
     project_sibling_skill_roots,
     project_skill_root,
@@ -104,9 +107,7 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
         candidates.append(sibling_root_rel)
         # The baseline skill entries (the symlinks themselves) under
         # this sibling root.
-        candidates.extend(
-            _rel(sibling_root, name, workspace_root) for name in BASELINE_SKILL_NAMES
-        )
+        candidates.extend(_rel(sibling_root, name, workspace_root) for name in BASELINE_SKILL_NAMES)
         # DA-007/DA-012 (fallback materialization): when
         # ``Path.symlink_to`` raises ``OSError`` (e.g. a Windows /
         # FAT-filesystem / cross-filesystem link), the install falls
@@ -123,9 +124,7 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
         # cannot hash, so it never reports as a change).
         for skill_name in BASELINE_SKILL_NAMES:
             canonical_skill_dir = canonical / skill_name
-            sibling_skill_leaves = _canonical_skill_leaf_names(
-                canonical_skill_dir, workspace_root
-            )
+            sibling_skill_leaves = _canonical_skill_leaf_names(canonical_skill_dir, workspace_root)
             candidates.extend(
                 _rel(sibling_root / skill_name, source_leaf, workspace_root)
                 for source_leaf in sibling_skill_leaves
@@ -141,9 +140,7 @@ def _candidate_skill_paths(workspace_root: Path) -> list[str]:
     return candidates
 
 
-def _canonical_skill_leaf_names(
-    canonical_skill_dir: Path, workspace_root: Path
-) -> list[str]:
+def _canonical_skill_leaf_names(canonical_skill_dir: Path, workspace_root: Path) -> list[str]:
     """Return every leaf filename (lexical, no symlink resolution) under ``canonical_skill_dir``.
 
     The canonical skill directory is the source-of-truth that
@@ -171,7 +168,11 @@ def _canonical_skill_leaf_names(
             # the well-known leaves.
             return sorted(leaves)
         try:
-            for dirpath, _dirnames, filenames in os.walk(  # filesystem-read-ok: skill candidate capture must NOT descend through directory symlinks (the canonical source itself is the boundary being enumerated); Workspace.iter_files follows no such guarantee
+            for (
+                dirpath,
+                _dirnames,
+                filenames,
+            ) in os.walk(  # filesystem-read-ok: skill candidate capture must NOT descend through directory symlinks (the canonical source itself is the boundary being enumerated); Workspace.iter_files follows no such guarantee
                 str(canonical_skill_dir), followlinks=False
             ):
                 base = Path(str(dirpath)).relative_to(canonical_skill_dir)
@@ -218,12 +219,6 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
     if not root.exists() and not root.is_symlink():
         return []
     try:
-        from git import (  # noqa: PLC0415 -- git is an optional seam here
-            GitCommandError,
-            InvalidGitRepositoryError,
-            Repo,
-        )
-
         try:
             repo_obj = Repo(str(workspace_root), search_parent_directories=False)
         except (InvalidGitRepositoryError, Exception):
@@ -238,9 +233,7 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
             paths = [line.strip() for line in raw.splitlines() if line.strip()]
             return sorted(set(paths))
         finally:
-            close = cast(
-                "Callable[[], object] | None", getattr(repo_obj, "close", None)
-            )
+            close = cast("Callable[[], object] | None", getattr(repo_obj, "close", None))
             if callable(close):
                 close()
     except ImportError:
@@ -262,7 +255,13 @@ def _lexical_descendants(root: Path, workspace_root: Path) -> list[str]:
         except ValueError:
             return []
     paths: list[str] = []
-    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):  # filesystem-read-ok: skill candidate capture must NOT descend through directory symlinks (the sibling-symlink roots themselves are the boundary being diffed); Workspace.iter_files follows no such guarantee
+    for (
+        dirpath,
+        _dirnames,
+        filenames,
+    ) in os.walk(  # filesystem-read-ok: skill candidate capture must NOT descend through directory symlinks (the sibling-symlink roots themselves are the boundary being diffed); Workspace.iter_files follows no such guarantee
+        root, followlinks=False
+    ):
         base_rel = Path(str(dirpath)).relative_to(workspace_root)
         for filename in filenames:
             file_path = base_rel / filename
@@ -320,12 +319,6 @@ def _diff_written_paths(
     actually changed. The deterministic auto-commit consumes it via
     :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`.
     """
-    from git import GitCommandError, InvalidGitRepositoryError, Repo  # noqa: PLC0415
-
-    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415 -- producer-side diff helper
-        _git_blob_sha,
-    )
-
     try:
         repo = Repo(workspace_root)
     except (InvalidGitRepositoryError, Exception):

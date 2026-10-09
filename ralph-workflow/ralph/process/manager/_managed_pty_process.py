@@ -79,7 +79,9 @@ class ManagedPtyProcess:
         # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
+        self._manager.record_terminal_reason(
+            self._record.pid, "operator_cancellation", "managed_process.terminate"
+        )
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -88,7 +90,9 @@ class ManagedPtyProcess:
         self._manager._escalate_termination_pty(self._record, self._proc, gp)
 
     def kill(self) -> None:
-        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
+        self._manager.record_terminal_reason(
+            self._record.pid, "operator_cancellation", "managed_process.terminate"
+        )
         self._manager._escalate_termination_pty(self._record, self._proc, 0.0)
 
     def has_live_descendants(self) -> bool:

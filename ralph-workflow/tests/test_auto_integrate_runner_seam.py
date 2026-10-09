@@ -354,7 +354,9 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
     assert delays[0] < long_wait[0], "jitter must actually vary the delay"
 
 
-def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_direct_auto_integrate_entry_points_preserve_unresolved_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """S-3 regression: neither public seam may LOSE durable recovery evidence.
 
     The original form of this test asserted the seams must not integrate
@@ -400,7 +402,9 @@ def test_direct_auto_integrate_entry_points_preserve_unresolved_state(monkeypatc
         assert on_transition.integration_unresolved is True
 
 
-def test_a_landing_releases_the_unresolved_integration_block(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_landing_releases_the_unresolved_integration_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Only a real landing clears the block -- and it must actually clear it.
 
     ``resolution_exhausted`` was set in one place and cleared in none, so

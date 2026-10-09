@@ -75,6 +75,7 @@ class _CapturedStderrHandle(Protocol):
 @runtime_checkable
 class _ReadableTextPipe(Protocol):
     """Minimal typed boundary for a captured text stderr pipe."""
+
     def read(self, size: int = -1, /) -> str: ...
 
 
@@ -119,13 +120,7 @@ if TYPE_CHECKING:
 
 
 def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | None:
-    """Resolve the gate's run identity from the agent's MCP_RUN_ID_ENV variable.
-
-    The launcher sets this env var to the MCP session's run_id (the same value the
-    artifact handler stamps receipts with), so resolving it here lets the gate
-    correlate a receipt to the submission that produced it — for subprocess
-    agents that report no usable transport session id.
-    """
+    """Resolve the MCP run identity used to correlate completion receipts."""
     if extra_env is None:
         return None
     return extra_env.get(str(MCP_RUN_ID_ENV)) or None
@@ -154,9 +149,13 @@ def _teardown_subtree_if_pid_available(
             teardown_subtree(pid, issuer=issuer)
         else:
             teardown.teardown_subtree(pid, issuer=issuer)
+
+
 def _is_pi_agent(agent_name: str) -> bool:
     normalized = agent_name.casefold()
     return normalized == "pi" or normalized.startswith("pi/")
+
+
 def _message_has_length_stop_reason(message: object) -> bool:
     if not isinstance(message, dict):
         return False
@@ -164,6 +163,8 @@ def _message_has_length_stop_reason(message: object) -> bool:
     return isinstance(stop_reason, str) and (
         stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
     )
+
+
 def _line_has_pi_context_exhaustion(line: str) -> bool:
     try:
         parsed = cast("object", json.loads(line))
@@ -666,9 +667,7 @@ def check_process_result(
         intentional = returncode in {-15, 143} and isinstance(issuer, str)
         bounded_output = _bounded_output_lines(
             parsed_output or [],
-            explicit_completion_seen=bool(
-                check_options and check_options.explicit_completion_seen
-            ),
+            explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
         )
         if not intentional:
             _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)

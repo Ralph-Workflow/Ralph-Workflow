@@ -73,9 +73,7 @@ def _observed_parser_classified_lines(output: str) -> list[str]:
     return [
         line
         for raw_line in observed_output.splitlines()
-        if (
-            line := raw_line.strip().lstrip("│ ").strip()
-        )
+        if (line := raw_line.strip().lstrip("│ ").strip())
         and re.fullmatch(r"- (?:text|thinking|tool_use|tool_result|error): \S.*", line)
     ]
 

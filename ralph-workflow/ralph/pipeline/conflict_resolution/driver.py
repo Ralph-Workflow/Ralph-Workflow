@@ -102,12 +102,7 @@ _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
 @dataclass(frozen=True)
 class RoundAttempt:
-    """What one resolution round actually did.
-
-    ``invoked`` is the half the terminal reason depends on: a round that
-    spent no candidate has no resolver verdict to report, so the driver
-    must not describe it as one.
-    """
+    """Record success and whether a resolution candidate was invoked."""
 
     succeeded: bool
     invoked: bool
@@ -308,7 +303,11 @@ def _prepare_conflicted_paths(
     display: ParallelDisplay | None,
 ) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
     """Classify on sight; return remaining paths, an early verdict, and decisions."""
-    conflicted = stop.conflicted_files if stop is not None else retained_merge_paths(root, tuple(unmerged_paths(root)))
+    conflicted = (
+        stop.conflicted_files
+        if stop is not None
+        else retained_merge_paths(root, tuple(unmerged_paths(root)))
+    )
     if _QUERY_FAILED_SENTINEL in conflicted:
         # Ralph cannot see the conflict. Typed, or this exit reports a
         # failure with no reason at all and the merge seam then calls it

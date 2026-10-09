@@ -158,9 +158,7 @@ def test_bulk_size_mtime_for_paths_skips_removed_rows(tmp_path: Path) -> None:
         # Remove the row via the public seam; the projection must skip it.
         store.delete_file_rows("b.py")
 
-        fetched = store.bulk_size_mtime_for_paths(
-            ["a.py", "b.py", "c.py", "missing.py"]
-        )
+        fetched = store.bulk_size_mtime_for_paths(["a.py", "b.py", "c.py", "missing.py"])
         assert fetched == {
             "a.py": (10, 100),
             "c.py": (30, 300),

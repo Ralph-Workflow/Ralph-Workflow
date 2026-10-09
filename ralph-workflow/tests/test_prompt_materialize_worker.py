@@ -87,7 +87,9 @@ Implement the behavior.
     assert "minutes remaining" in normalized
     assert "Dispatch remaining independent ready work" not in normalized
     assert "impossible to complete through any developer action available" in normalized
-    assert "follow the completion-pressure rules from the developer iteration guidance" in normalized
+    assert (
+        "follow the completion-pressure rules from the developer iteration guidance" in normalized
+    )
     assert "The receipt is not phase completion" in normalized
     assert "MANDATORY FINAL ACTION" in rendered
     receipt_index = normalized.index("promote that worker-local fallback")

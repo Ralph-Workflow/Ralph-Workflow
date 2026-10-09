@@ -90,10 +90,13 @@ status: issues_found
         effect = InvokeAgentEffect(agent_name="reviewer", phase="review", prompt_file="review.txt")
         ctx = self._make_context()
         hint_path = retry_hint_path("review")
-        ctx.workspace.exists.side_effect = lambda path: path in {
-            ".agent/artifacts/issues.md",
-            hint_path,
-        }
+        ctx.workspace.exists.side_effect = lambda path: (
+            path
+            in {
+                ".agent/artifacts/issues.md",
+                hint_path,
+            }
+        )
         ctx.workspace.read.return_value = """---
 type: issues
 status: issues_found

@@ -35,7 +35,9 @@ def install_lock(path: Path) -> Iterator[None]:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 acquired = True
             except OSError as error:
-                raise InstallLockUnavailableError("another Ralph install is already updating rdev") from error
+                raise InstallLockUnavailableError(
+                    "another Ralph install is already updating rdev"
+                ) from error
             yield
         finally:
             if acquired:
@@ -52,7 +54,9 @@ def finalize_generation(candidate: Path, generations: Path) -> Path:
     """Atomically turn a fully prepared candidate into an immutable generation."""
     _ensure_private_root(generations)
     generation = generations / candidate.name
-    candidate.replace(generation)  # filesystem-write-ok: atomically publish a prepared immutable generation.
+    candidate.replace(
+        generation
+    )  # filesystem-write-ok: atomically publish a prepared immutable generation.
     return generation
 
 
@@ -84,7 +88,9 @@ def point_current(current: Path, generation: Path) -> None:
     staging = current.with_name(f".{current.name}.next")
     staging.unlink(missing_ok=True)
     staging.symlink_to(generation, target_is_directory=True)
-    staging.replace(current)  # filesystem-write-ok: atomically refresh the compatibility generation pointer.
+    staging.replace(
+        current
+    )  # filesystem-write-ok: atomically refresh the compatibility generation pointer.
 
 
 def _ensure_private_root(root: Path) -> None:

@@ -38,8 +38,7 @@ def build_retry_error_block(
     lines.extend(
         [
             (
-                "Fix the underlying issue before submitting again. "
-                "Do not resubmit unchanged work."
+                "Fix the underlying issue before submitting again. Do not resubmit unchanged work."
                 if validation
                 else "The exact cause may be unknown."
             ),

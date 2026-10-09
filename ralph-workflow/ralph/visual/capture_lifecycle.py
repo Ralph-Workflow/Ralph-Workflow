@@ -644,7 +644,7 @@ class CaptureLifecycle:
         path.parent.mkdir(parents=True, exist_ok=True)
         # A half-written manifest would be treated as corrupt on the next read.
         tmp_path = path.with_suffix(path.suffix + ".tmp")
-            # filesystem-write-ok: visual capture lifecycle metadata under .agent/visual, runtime capture state not tracked
+        # filesystem-write-ok: visual capture lifecycle metadata under .agent/visual, runtime capture state not tracked
         encoded = json.dumps(manifest.to_dict(), indent=2, sort_keys=True)
         try:
             atomic_write_text_if_changed(

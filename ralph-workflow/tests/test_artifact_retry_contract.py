@@ -429,7 +429,9 @@ def test_read_and_clear_retry_hint_returns_content_without_deleting_file() -> No
     result = read_and_clear_retry_hint(workspace, "review")
 
     assert result == "hint content here"
-    assert workspace.exists(retry_hint_path("review")), "Hint file must persist until a gate accepts the artifact"
+    assert workspace.exists(retry_hint_path("review")), (
+        "Hint file must persist until a gate accepts the artifact"
+    )
 
 
 def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:

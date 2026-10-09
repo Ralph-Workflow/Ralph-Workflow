@@ -163,9 +163,9 @@ def _run_kill_round(workspace: Path, kill_after_seconds: float) -> int:
     killed mid-build. The next test step is to verify that a fresh
     session can recover without manual cleanup.
     """
-    script = SCRIPT_TEMPLATE.replace(
-        "__WORKSPACE__", repr(str(workspace))
-    ).replace("__KILL_AFTER__", repr(kill_after_seconds))
+    script = SCRIPT_TEMPLATE.replace("__WORKSPACE__", repr(str(workspace))).replace(
+        "__KILL_AFTER__", repr(kill_after_seconds)
+    )
     result = subprocess.run(
         [sys.executable, "-c", script],
         capture_output=True,
@@ -230,15 +230,12 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
         rc = _run_kill_round(workspace, kill_delay)
         # The process was killed -> non-zero returncode expected.
         assert rc != 0, (
-            f"round {round_idx}: SIGKILL did not interrupt build "
-            f"(rc={rc}, kill_delay={kill_delay})"
+            f"round {round_idx}: SIGKILL did not interrupt build (rc={rc}, kill_delay={kill_delay})"
         )
         # Recovery: a fresh process must rebuild the index and serve
         # matches without manual cleanup.
         verify = _verify_recovery(workspace)
-        assert verify["status"] == "ok", (
-            f"round {round_idx}: recovery failed, verify={verify}"
-        )
+        assert verify["status"] == "ok", f"round {round_idx}: recovery failed, verify={verify}"
         assert verify["match_count"] > 0, (
             f"round {round_idx}: fresh index served 0 matches: {verify}"
         )

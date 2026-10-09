@@ -134,10 +134,7 @@ def _live_only_call(workspace: Path, pattern: str = "hello") -> dict:
 
 
 def _matches_set(payload: dict) -> set[tuple[str, int]]:
-    return {
-        (str(m.get("path")), int(m.get("line", 0) or 0))
-        for m in payload.get("matches", [])
-    }
+    return {(str(m.get("path")), int(m.get("line", 0) or 0)) for m in payload.get("matches", [])}
 
 
 def _status_payload(workspace: Path, session=None) -> dict:
@@ -239,9 +236,7 @@ def test_f15_hard_files_skip_without_crashing() -> None:
             assert "binary.dat" not in paths, paths
             assert "invalid_utf8.txt" not in paths, paths
             assert "long_line.py" not in paths, paths
-            assert elapsed < _budget_seconds(), (
-                f"F15 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
-            )
+            assert elapsed < _budget_seconds(), f"F15 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
             # (b) the served-call reason is ``None``; the index
             # covered the text files (F15 acceptance is that the
             # build skips hard files without leaving the index
@@ -330,9 +325,7 @@ def test_f16_regex_falls_through_to_live() -> None:
             assert payload["index_used"] is False
             assert payload["fallback_reason"] == "pattern_not_fts_eligible"
             assert any("hello" in (m.get("text") or "") for m in payload["matches"])
-            assert elapsed < _budget_seconds(), (
-                f"F16 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
-            )
+            assert elapsed < _budget_seconds(), f"F16 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
             # (e) status truthfulness during the fall-through.
             status_during = _status_payload(workspace, session)
             assert status_during["health"] == "healthy", status_during

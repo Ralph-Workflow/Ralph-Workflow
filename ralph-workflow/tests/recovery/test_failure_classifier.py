@@ -59,13 +59,14 @@ def test_cursor_auth_incident_fails_as_user_config_without_stale_session_reset(
 ) -> None:
     with tempfile.TemporaryDirectory() as directory:
         policy_bundle = load_policy(Path(directory) / ".agent")
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(policy_bundle=policy_bundle)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(policy_bundle=policy_bundle))
+
     def fail_if_stale_session_handling_runs(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("cursor authentication must not enter stale-session handling")
 
-    monkeypatch.setattr(controller, "_write_session_reset_hint", fail_if_stale_session_handling_runs)
+    monkeypatch.setattr(
+        controller, "_write_session_reset_hint", fail_if_stale_session_handling_runs
+    )
     state = PipelineState(
         phase="development_analysis",
         phase_chains={

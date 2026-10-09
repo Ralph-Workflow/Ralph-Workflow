@@ -62,9 +62,19 @@ def recover_target_resolution(
             )
             write_record(root, record)
         with bind_integration_record_root(owner, root):
-            continued = _continue_target_record(owner, root, record, config, conflict_resolver, rebase_stop_resolver)
-            if isinstance(continued, str) or branch_sha(owner, record.target) != continued.integrated_feature_sha:
-                return _retained(record, continued if isinstance(continued, str) else "target reconciliation completion does not match target")
+            continued = _continue_target_record(
+                owner, root, record, config, conflict_resolver, rebase_stop_resolver
+            )
+            if (
+                isinstance(continued, str)
+                or branch_sha(owner, record.target) != continued.integrated_feature_sha
+            ):
+                return _retained(
+                    record,
+                    continued
+                    if isinstance(continued, str)
+                    else "target reconciliation completion does not match target",
+                )
             reason = finish_target_substep(root, record)
             if reason is not None:
                 return _retained(record, reason)
@@ -77,22 +87,29 @@ def recover_target_resolution(
 
 
 def _continue_target_record(
-    owner: Path, root: Path, record: IntegrationRecord, config: UnifiedConfig | None,
-    conflict_resolver: ConflictResolver | None, rebase_stop_resolver: RebaseStopResolver | None,
+    owner: Path,
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
 ) -> IntegrationRecord | str:
-    if (
-        not (record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending)
-        and (rebase_in_progress_at(owner) or merge_state(owner) == MERGE_STATE_IN_PROGRESS)
-    ):
+    if not (
+        record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending
+    ) and (rebase_in_progress_at(owner) or merge_state(owner) == MERGE_STATE_IN_PROGRESS):
         if not active_operation_matches(owner, record):
             return "target operation identity differs from retained ownership"
-        record = record.model_copy(update={
-            "resolving_rebase": rebase_in_progress_at(owner),
-            "resolving_merge": merge_state(owner) == MERGE_STATE_IN_PROGRESS,
-        })
+        record = record.model_copy(
+            update={
+                "resolving_rebase": rebase_in_progress_at(owner),
+                "resolving_merge": merge_state(owner) == MERGE_STATE_IN_PROGRESS,
+            }
+        )
         write_record(root, record)
     elif record.phase == "integrating" and not record.rebase_continue_pending:
-        completed = _legacy_completed_rebase(owner, record.model_copy(update={"resolving_rebase": True}))
+        completed = _legacy_completed_rebase(
+            owner, record.model_copy(update={"resolving_rebase": True})
+        )
         if completed is not None:
             write_record(root, completed)
             record = completed
@@ -102,23 +119,33 @@ def _continue_target_record(
                 return started
             record = started
     return (
-        resume_pending_rebase(owner, record) if record.rebase_continue_pending
-        else continue_retained_resolution(owner, record, config, conflict_resolver, rebase_stop_resolver)
+        resume_pending_rebase(owner, record)
+        if record.rebase_continue_pending
+        else continue_retained_resolution(
+            owner, record, config, conflict_resolver, rebase_stop_resolver
+        )
     )
 
 
 def _start_saved_target_action(
-    owner: Path, root: Path, record: IntegrationRecord, config: UnifiedConfig | None,
+    owner: Path,
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
 ) -> IntegrationRecord | str:
     if (
-        config is None or record.pre_target_sha is None
+        config is None
+        or record.pre_target_sha is None
         or get_head_sha(owner) != record.pre_feature_sha
         or branch_sha(owner, record.target) != record.pre_feature_sha
         or not is_repo_clean(owner)
-        or (owner.resolve() != root.resolve() and (
-            record.initiating_feature_sha is None
-            or get_head_sha(root) != record.initiating_feature_sha
-        ))
+        or (
+            owner.resolve() != root.resolve()
+            and (
+                record.initiating_feature_sha is None
+                or get_head_sha(root) != record.initiating_feature_sha
+            )
+        )
     ):
         return "saved target reconciliation requires unchanged identities and clean owner; intervention required"
     from ralph.pipeline._pending_merge_commit import _git_value
@@ -131,9 +158,13 @@ def _start_saved_target_action(
     if isinstance(result, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress_at(owner):
         head = get_head_sha(owner)
         if head is not None and ancestry_state(owner, record.pre_target_sha, head) is True:
-            retained = retained.model_copy(update={
-                "phase": "integrated", "integrated_feature_sha": head, "resolving_rebase": False,
-            })
+            retained = retained.model_copy(
+                update={
+                    "phase": "integrated",
+                    "integrated_feature_sha": head,
+                    "resolving_rebase": False,
+                }
+            )
             write_record(root, retained)
     return retained
 

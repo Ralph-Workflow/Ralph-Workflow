@@ -73,7 +73,8 @@ def test_prose_plan_is_accepted_by_both_entry_points() -> None:
 def test_explanatory_noop_agrees_across_both_entry_points() -> None:
     """The ``noop: true`` payload returns ``{"noop": True}`` with no diagnostics."""
     direct_content, direct_diagnostics = parse_and_validate(
-        "---\ntype: plan\nnoop: true\n---\nNo changes are needed because the requested behavior already works correctly.\n", PLAN_SPEC
+        "---\ntype: plan\nnoop: true\n---\nNo changes are needed because the requested behavior already works correctly.\n",
+        PLAN_SPEC,
     )
     analyzed_content, analyzed_diagnostics, _ = analyze_plan_document(
         "---\ntype: plan\nnoop: true\n---\nNo changes are needed because the requested behavior already works correctly.\n"

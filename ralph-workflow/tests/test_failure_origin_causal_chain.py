@@ -60,8 +60,7 @@ def test_missing_required_artifact_does_not_replace_runtime_launch_origin() -> N
 
     assert verdict == "FAILED"
     assert artifact_detail == (
-        "no receipt for 'development_result'; "
-        ".agent/artifacts/development_result.md absent"
+        "no receipt for 'development_result'; .agent/artifacts/development_result.md absent"
     )
     assert raised.value.parsed_output == [artifact_detail]
     assert raised.value.returncode == launch_failure.returncode
@@ -92,7 +91,12 @@ def test_direct_mcp_recovery_records_reset_for_following_watchdog() -> None:
         calls += 1
         if calls == 1:
             _capture("sess")
-            raise AgentInvocationError("claude", 1, "Model returned an empty response; No such tool available: mcp__ralph__read_file", parsed_output=['{"type":"tool_result"}'])
+            raise AgentInvocationError(
+                "claude",
+                1,
+                "Model returned an empty response; No such tool available: mcp__ralph__read_file",
+                parsed_output=['{"type":"tool_result"}'],
+            )
         exc = IdleWatchdogKilledError(
             "no_output_at_start", 15, runtime_event=current_runtime_event()
         )
@@ -100,9 +104,7 @@ def test_direct_mcp_recovery_records_reset_for_following_watchdog() -> None:
         raise exc
 
     with pytest.raises(IdleWatchdogKilledError):
-        run_with_direct_mcp_recovery(
-            attempt, max_retries=1, reset_tool_registry=lambda: None
-        )
+        run_with_direct_mcp_recovery(attempt, max_retries=1, reset_tool_registry=lambda: None)
 
     assert observed[0].runtime_event == "mcp_operation"
 
@@ -150,4 +152,3 @@ def test_oversized_spawn_payload_records_runtime_launch_event() -> None:
         )
 
     assert recorder.latest() == "runtime_launch"
-

@@ -65,7 +65,9 @@ def _lease(*, acquired: bool = True, fetch_allowed: bool = True):
         if not acquired:
             yield None
             return
-        yield type("Lease", (), {"fetch_allowed": fetch_allowed, "record_fetch": lambda self: None})()
+        yield type(
+            "Lease", (), {"fetch_allowed": fetch_allowed, "record_fetch": lambda self: None}
+        )()
 
     return _acquire
 
@@ -199,9 +201,7 @@ def test_remote_sync_uses_five_minute_cadence_while_local_catchup_continues(
         "ralph.pipeline.auto_integrate_catchup_coordination._common_git_dir",
         lambda _root: common_dir,
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now)
     monkeypatch.setattr(
         catchup,
         "refresh_target_from_remote",
@@ -234,9 +234,7 @@ def test_remote_disabled_does_not_attempt_coordination(
         lambda *_args, **_kwargs: coordination.append("lock"),
     )
 
-    outcome = catchup.attempt_catchup_fast_forward(
-        _config(remote_enabled=False), tmp_path
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=False), tmp_path)
 
     assert outcome == catchup.CATCHUP_FAST_FORWARDED
     assert coordination == []
@@ -294,9 +292,7 @@ def test_clock_rollback_reanchors_throttle_without_fetch_storm(
         "ralph.pipeline.auto_integrate_catchup_coordination._common_git_dir",
         lambda _root: common_dir,
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now)
 
     with remote_sync_transaction(tmp_path, "origin", "main") as initial:
         assert initial is not None
@@ -328,9 +324,7 @@ def test_implausibly_future_record_is_bounded_to_one_interval(
         "ralph.pipeline.auto_integrate_catchup_coordination._common_git_dir",
         lambda _root: common_dir,
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_catchup_coordination.time.time", lambda: now)
 
     with remote_sync_transaction(tmp_path, "origin", "main") as initial:
         assert initial is not None

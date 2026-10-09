@@ -161,9 +161,6 @@ def capability_template_variables_from_session(
     return capability_template_variables(caps, flags, tool_name_prefix=tool_name_prefix)
 
 
-
-
-
 def timebox_template_variables(
     *,
     warn_epoch: float | None,

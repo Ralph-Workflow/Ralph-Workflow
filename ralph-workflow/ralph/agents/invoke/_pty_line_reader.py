@@ -54,6 +54,7 @@ from ralph.agents.invoke._process_reader import (
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
     _parent_broker_secret,
+    _raise_on_relay_health_error,
     check_broken_agent_timer,
 )
 from ralph.agents.invoke._pty_extras import PtyExtras
@@ -1161,6 +1162,7 @@ class PtyLineReader:
         which in the activity-only profile can hold the done path open until
         the operator ceiling.
         """
+        _raise_on_relay_health_error(self, self._agent_name)
         terminal = self._completion_exit_sent
         if not terminal:
             with contextlib.suppress(Exception):
@@ -1688,6 +1690,7 @@ class PtyLineReader:
                 overflow.append(line)
 
     def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        _raise_on_relay_health_error(self, self._agent_name)
         if self._finish_terminal_completion():
             return
         # A conflict resolver can outlive its foreground PTY parent while a
@@ -1778,6 +1781,7 @@ class PtyLineReader:
 
     def _run_read_loop(self, watchdog: IdleWatchdog) -> Iterator[str]:
         while True:
+            _raise_on_relay_health_error(self, self._agent_name)
             self._lines_event.clear()
             self._raise_if_quota_exhausted()
             queued_line: str | None = None

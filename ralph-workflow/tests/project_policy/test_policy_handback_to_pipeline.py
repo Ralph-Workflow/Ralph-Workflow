@@ -433,6 +433,7 @@ def _build_handback_pipeline_stubs(
     ) -> int:
         del mode, invoke_remediation_agent_factory
         preflight_order.append("run_project_policy_readiness")
+
         # Always inject a ``workspace_factory`` returning the
         # in-memory ``MemoryWorkspace`` so no real filesystem access
         # happens under ``/test/...``.
@@ -633,6 +634,7 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
 
     # Imports deferred so the patch is local to this test.
     from ralph.pipeline import effect_executor as effect_executor_module
+
     # Minimal valid bundle keeps this at the policy-invocation boundary
     # without parsing the full shipped policy corpus.
     real_bundle = policy_invocation_bundle()

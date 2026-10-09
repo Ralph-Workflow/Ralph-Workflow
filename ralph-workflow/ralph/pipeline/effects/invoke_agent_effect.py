@@ -44,3 +44,4 @@ class InvokeAgentEffect:
     activity_only_operator_cap_seconds: float | None = None
     activity_only_status_interval_seconds: float | None = None
     activity_status_listener: Callable[[object], None] | None = None
+    supervision_health_error: Callable[[], str | None] | None = None

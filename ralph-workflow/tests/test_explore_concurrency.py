@@ -185,9 +185,9 @@ def test_concurrent_reindex_is_single_flight(tmp_path: Path) -> None:
     for i in range(n):
         # Stagger the start so the cross-process lock contention
         # is observed.
-        script = REINDEX_SCRIPT.replace(
-            "__WORKSPACE__", repr(str(workspace))
-        ).replace("__STARTUP_DELAY__", repr(0.001 * (i + 1)))
+        script = REINDEX_SCRIPT.replace("__WORKSPACE__", repr(str(workspace))).replace(
+            "__STARTUP_DELAY__", repr(0.001 * (i + 1))
+        )
         procs.append(
             subprocess.Popen(
                 [sys.executable, "-c", script],
@@ -209,9 +209,7 @@ def test_concurrent_reindex_is_single_flight(tmp_path: Path) -> None:
     assert counter_file.is_file()
     disk_count = int(counter_file.read_text())
     assert disk_count == max(rebuild_counts) if rebuild_counts else True
-    assert disk_count >= 1, (
-        f"expected at least one rebuild, got {disk_count}"
-    )
+    assert disk_count >= 1, f"expected at least one rebuild, got {disk_count}"
     peak_file = workspace / ".agent" / "ralph-explore" / "peak_inflight"
     assert int(peak_file.read_text()) == 1
     # The final index is a valid SQLite DB.
@@ -239,9 +237,9 @@ def test_concurrent_search_and_reindex_correct_for_all(tmp_path: Path) -> None:
     procs: list[subprocess.Popen[bytes]] = []
     # 2 reindexers + 3 searchers, started in parallel.
     for i in range(2):
-        script = REINDEX_SCRIPT.replace(
-            "__WORKSPACE__", repr(str(workspace))
-        ).replace("__STARTUP_DELAY__", repr(0.001 * (i + 1)))
+        script = REINDEX_SCRIPT.replace("__WORKSPACE__", repr(str(workspace))).replace(
+            "__STARTUP_DELAY__", repr(0.001 * (i + 1))
+        )
         procs.append(
             subprocess.Popen(
                 [sys.executable, "-c", script],
@@ -349,9 +347,7 @@ def test_concurrent_construction_no_database_is_locked(tmp_path: Path) -> None:
         p.wait(timeout=30)
         out = p.stdout.read().decode("utf-8", errors="replace").strip()
         err = p.stderr.read().decode("utf-8", errors="replace").strip()
-        assert p.returncode == 0, (
-            f"subprocess failed (rc={p.returncode}): {err}\nstdout={out}"
-        )
+        assert p.returncode == 0, f"subprocess failed (rc={p.returncode}): {err}\nstdout={out}"
         last_line = out.splitlines()[-1] if out else "{}"
         results.append(json.loads(last_line))
     for payload in results:
@@ -362,9 +358,7 @@ def test_concurrent_construction_no_database_is_locked(tmp_path: Path) -> None:
     assert db.is_file()
     conn = sqlite3.connect(str(db))
     try:
-        cur = conn.execute(
-            "SELECT value FROM settings WHERE key = 'schema_version'"
-        )
+        cur = conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
         row = cur.fetchone()
         assert row is not None
         assert row[0] == "explore-v2", row

@@ -374,25 +374,41 @@ def _disable_incompatible_inherited_timebox(
     for key in ("start_source", "start_entry", "guarded_entry", "end_entry", "finalization_target"):
         value = timebox.get(key)
         if not isinstance(value, str) or value not in phase_names:
-            logger.warning("{name} disabled: inherited default names {key}={value!r}, which the active graph does not declare.{deadline}", name=name, key=key, value=value, deadline=" This run has no cycle deadline." if name == "cycle_timebox" else "")
+            logger.warning(
+                "{name} disabled: inherited default names {key}={value!r}, which the active graph does not declare.{deadline}",
+                name=name,
+                key=key,
+                value=value,
+                deadline=" This run has no cycle deadline." if name == "cycle_timebox" else "",
+            )
             result = dict(normalized)
             result.pop(name, None)
             return result
     source, entry = timebox.get("start_source"), timebox.get("start_entry")
-    if not _edge_declared_in_normalized(normalized, source if isinstance(source, str) else "", entry if isinstance(entry, str) else ""):
-        logger.warning("{name} disabled: inherited default start edge does not fit the graph", name=name)
+    if not _edge_declared_in_normalized(
+        normalized,
+        source if isinstance(source, str) else "",
+        entry if isinstance(entry, str) else "",
+    ):
+        logger.warning(
+            "{name} disabled: inherited default start edge does not fit the graph", name=name
+        )
         result = dict(normalized)
         result.pop(name, None)
         return result
     return normalized
 
 
-def _disable_incompatible_inherited_development_timebox(normalized: dict[str, object]) -> dict[str, object]:
+def _disable_incompatible_inherited_development_timebox(
+    normalized: dict[str, object],
+) -> dict[str, object]:
     """Disable an inherited development timebox that does not fit the graph."""
     return _disable_incompatible_inherited_timebox(normalized, "development_timebox")
 
 
-def _disable_incompatible_inherited_cycle_timebox(normalized: dict[str, object]) -> dict[str, object]:
+def _disable_incompatible_inherited_cycle_timebox(
+    normalized: dict[str, object],
+) -> dict[str, object]:
     """Disable an inherited cycle timebox that does not fit the graph."""
     return _disable_incompatible_inherited_timebox(normalized, "cycle_timebox")
 
@@ -573,7 +589,10 @@ def _resolve_pipeline_data(
         data = local_pipeline_data or default_pipeline_data
         explicit = bool(
             local_pipeline_data
-            and ("cycle_timebox" in local_pipeline_data or "development_timebox" in local_pipeline_data)
+            and (
+                "cycle_timebox" in local_pipeline_data
+                or "development_timebox" in local_pipeline_data
+            )
         )
         return data, explicit
 
@@ -588,7 +607,9 @@ def _resolve_pipeline_data(
         pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
     explicit = (
         bool(global_pipeline_data)
-        and ("cycle_timebox" in global_pipeline_data or "development_timebox" in global_pipeline_data)
+        and (
+            "cycle_timebox" in global_pipeline_data or "development_timebox" in global_pipeline_data
+        )
     ) or (
         bool(local_pipeline_data)
         and ("cycle_timebox" in local_pipeline_data or "development_timebox" in local_pipeline_data)
@@ -876,9 +897,7 @@ def _load_policy_from_paths(
             artifacts_data = _merge_mapping_defaults(artifacts_data, local_artifacts_data)
 
     agents_policy = _load_agents_policy_from_path(agents_path, config=config)
-    pipeline_policy = _validate_pipeline(
-        pipeline_data, timeboxes_explicit=timeboxes_explicit
-    )
+    pipeline_policy = _validate_pipeline(pipeline_data, timeboxes_explicit=timeboxes_explicit)
     artifacts_policy = _validate_artifacts(artifacts_data)
 
     try:

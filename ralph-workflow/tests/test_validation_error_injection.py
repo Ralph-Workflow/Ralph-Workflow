@@ -75,8 +75,14 @@ def test_retry_hint_path_resolves_policy_phase_to_its_drain() -> None:
     assert retry_hint_path("development_commit_cleanup", pipeline_policy=policy) == (
         ".agent/tmp/last_retry_error_commit.txt"
     )
-    assert retry_hint_path("commit", pipeline_policy=policy) == ".agent/tmp/last_retry_error_commit.txt"
-    assert retry_hint_path("unknown", pipeline_policy=policy) == ".agent/tmp/last_retry_error_unknown.txt"
+    assert (
+        retry_hint_path("commit", pipeline_policy=policy)
+        == ".agent/tmp/last_retry_error_commit.txt"
+    )
+    assert (
+        retry_hint_path("unknown", pipeline_policy=policy)
+        == ".agent/tmp/last_retry_error_unknown.txt"
+    )
     assert retry_hint_path("custom_review_phase", pipeline_policy=object()) == (
         ".agent/tmp/last_retry_error_custom_review_phase.txt"
     )
@@ -179,7 +185,11 @@ def test_successful_artifact_operations_clear_drain_and_legacy_phase_hints(
         handle_stage_md_artifact(
             session,
             workspace,
-            {"artifact_type": "product_spec", "content": _VALID_PRODUCT_SPEC, "mode": "replace_all"},
+            {
+                "artifact_type": "product_spec",
+                "content": _VALID_PRODUCT_SPEC,
+                "mode": "replace_all",
+            },
             deps=deps,
         )
         result = handle_finalize_md_artifact(
@@ -192,13 +202,20 @@ def test_successful_artifact_operations_clear_drain_and_legacy_phase_hints(
         handle_stage_md_artifact(
             session,
             workspace,
-            {"artifact_type": "product_spec", "content": _INVALID_PRODUCT_SPEC, "mode": "replace_all"},
+            {
+                "artifact_type": "product_spec",
+                "content": _INVALID_PRODUCT_SPEC,
+                "mode": "replace_all",
+            },
             deps=deps,
         )
         result = handle_edit_md_artifact(
             session,
             workspace,
-            {"artifact_type": "product_spec", "edits": [{"oldText": _INVALID_PRODUCT_SPEC, "newText": _VALID_PRODUCT_SPEC}]},
+            {
+                "artifact_type": "product_spec",
+                "edits": [{"oldText": _INVALID_PRODUCT_SPEC, "newText": _VALID_PRODUCT_SPEC}],
+            },
             deps=deps,
         )
 
@@ -207,7 +224,9 @@ def test_successful_artifact_operations_clear_drain_and_legacy_phase_hints(
     assert not backend.exists(legacy_path)
 
 
-def test_recovery_prompt_reads_worker_validation_hint_without_coordinator_leak(tmp_path: Path) -> None:
+def test_recovery_prompt_reads_worker_validation_hint_without_coordinator_leak(
+    tmp_path: Path,
+) -> None:
     worker_namespace = tmp_path / ".agent" / "workers" / "unit-1"
     worker_hint = worker_namespace / "tmp" / "last_retry_error_commit.txt"
     worker_hint.parent.mkdir(parents=True)

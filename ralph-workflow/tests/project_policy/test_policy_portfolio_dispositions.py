@@ -64,13 +64,9 @@ _SCAN_SUFFIXES: frozenset[str] = frozenset(
 _CATEGORY_RE = re.compile(r"category-[1-4]")
 _DATE_RE = re.compile(r"\b202\d-\d{2}-\d{2}\b")
 _SCRIPT_RE = re.compile(r"\b\w[\w/-]*\.sh\b|\bscripts/\S+")
-_RECEIPT_RE = re.compile(
-    r"\b(receipt|stdout|stderr|run-[a-z0-9_-]+|commit[: ][a-f0-9]{7,})\b"
-)
+_RECEIPT_RE = re.compile(r"\b(receipt|stdout|stderr|run-[a-z0-9_-]+|commit[: ][a-f0-9]{7,})\b")
 _TEST_NAME_RE = re.compile(r"\btest_[a-z0-9_]+\b")
-_DISPOSITIONS_REQUIRING_CATEGORY: frozenset[str] = frozenset(
-    {"REMOVE", "MERGE", "REPLACE"}
-)
+_DISPOSITIONS_REQUIRING_CATEGORY: frozenset[str] = frozenset({"REMOVE", "MERGE", "REPLACE"})
 _DISPOSITIONS_REQUIRING_SURVIVOR: frozenset[str] = frozenset({"MERGE", "REPLACE"})
 _EVIDENCE_LOCATION_LANES: frozenset[str] = frozenset({"human", "triggered"})
 
@@ -143,8 +139,7 @@ def test_remove_merge_replace_controls_carry_a_category_token() -> None:
         if not _CATEGORY_RE.search(_control_text_blob(entry, fields)):
             missing.append(str(entry.get("id", "<no id>")))
     assert not missing, (
-        "REMOVE/MERGE/REPLACE controls missing a category-[1-4] token: "
-        + ", ".join(missing)
+        "REMOVE/MERGE/REPLACE controls missing a category-[1-4] token: " + ", ".join(missing)
     )
 
 
@@ -160,8 +155,7 @@ def test_merge_replace_controls_name_a_surviving_test() -> None:
         if not _TEST_NAME_RE.search(_control_text_blob(entry, fields)):
             missing.append(str(entry.get("id", "<no id>")))
     assert not missing, (
-        "MERGE/REPLACE controls missing a named surviving/replacement test: "
-        + ", ".join(missing)
+        "MERGE/REPLACE controls missing a named surviving/replacement test: " + ", ".join(missing)
     )
 
 
@@ -182,8 +176,7 @@ def test_human_or_triggered_lane_controls_record_evidence_location() -> None:
             missing.append(str(entry.get("id", "<no id>")))
     assert not missing, (
         "human/triggered-lane controls missing an evidence location "
-        "(dated review note, named script, or receipt): "
-        + ", ".join(missing)
+        "(dated review note, named script, or receipt): " + ", ".join(missing)
     )
 
 
@@ -191,6 +184,4 @@ def test_no_removed_test_names_in_documentation_roots() -> None:
     """No removed test name (floor set + removed-tests markers) appears in docs roots."""
     hits = _scan_paths_for_removed_names()
     rendered = "\n".join(f"{path}: {name}" for path, name in hits[:10])
-    assert not hits, (
-        "Removed test names found in documentation roots:\n" + rendered
-    )
+    assert not hits, "Removed test names found in documentation roots:\n" + rendered

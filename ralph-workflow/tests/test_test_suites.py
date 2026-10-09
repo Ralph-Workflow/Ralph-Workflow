@@ -29,6 +29,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_pending_merge_commit_recovery.py",
     "tests/test_pending_merge_repair_real_git.py",
     "tests/test_retained_resolution_handoff.py",
+    "tests/test_retained_resolution_dispatch.py",
     "tests/test_tool_git_read_path_validation.py",
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",
@@ -76,9 +77,7 @@ EXPECTED_FAST_TEST_FILES = (
     "tests/test_test_suites.py",
     "tests/test_test_suites_orchestration.py",
 )
-EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = (
-    "tests/agents/test_terminal_state_restored_on_exit.py",
-)
+EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = ("tests/agents/test_terminal_state_restored_on_exit.py",)
 
 
 def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(
@@ -110,12 +109,15 @@ def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(
 
 def test_default_routing_allowlist_is_exact_and_immutable() -> None:
     """AGY's two deterministic regressions stay in the default suite."""
-    assert frozenset(
-        {
-            "tests/test_agy_pty_invocation.py",
-            "tests/test_agy_runtime_home_auth.py",
-        }
-    ) == conftest_module._AGY_DEFAULT_TEST_PATHS
+    assert (
+        frozenset(
+            {
+                "tests/test_agy_pty_invocation.py",
+                "tests/test_agy_runtime_home_auth.py",
+            }
+        )
+        == conftest_module._AGY_DEFAULT_TEST_PATHS
+    )
 
 
 def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
@@ -604,8 +606,7 @@ def test_static_discovery_finds_pytest_patterns_and_required_files(
 def test_subprocess_e2e_regression_exclusive_pty_registry_is_fixed_and_unique() -> None:
     """S-1: PTY restoration runs in exactly one explicit exclusive lane."""
     assert (
-        test_suites_module.EXCLUSIVE_SUBPROCESS_E2E_FILES
-        == EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES
+        test_suites_module.EXCLUSIVE_SUBPROCESS_E2E_FILES == EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES
     )
     assert len(set(test_suites_module.EXCLUSIVE_SUBPROCESS_E2E_FILES)) == len(
         EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES
@@ -632,7 +633,9 @@ def test_subprocess_e2e_regression_exclusive_pty_selection_fails_closed(
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     spawner = _StubSpawner([])
-    monkeypatch.setattr(test_suites_module, "discover_subprocess_e2e_files", lambda _cwd: selected_files)
+    monkeypatch.setattr(
+        test_suites_module, "discover_subprocess_e2e_files", lambda _cwd: selected_files
+    )
 
     with pytest.raises(RuntimeError, match="exclusive subprocess-E2E"):
         test_suites_module.run_test_suites(
@@ -702,7 +705,10 @@ def test_subprocess_e2e_regression_runs_pty_after_general_shards_once_without_xd
     assert "-n" not in spawner.calls[2][0]
     assert captured.out.index("general one output") < captured.out.index("exclusive output")
     assert captured.out.index("general two output") < captured.out.index("exclusive output")
-    assert all(process.reaped and process.orphans_cleaned for process in (general_one, general_two, exclusive))
+    assert all(
+        process.reaped and process.orphans_cleaned
+        for process in (general_one, general_two, exclusive)
+    )
 
 
 def test_static_discovery_populates_source_cache_for_retained_files(

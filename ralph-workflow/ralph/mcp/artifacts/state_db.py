@@ -147,7 +147,9 @@ class RunStateDB:
                 params,
             )
 
-    def get_receipt_normalization_audit(self, run_id: str, artifact_type: str) -> str | None | _Missing:
+    def get_receipt_normalization_audit(
+        self, run_id: str, artifact_type: str
+    ) -> str | None | _Missing:
         cursor = self._conn.execute(
             "SELECT normalization_audit FROM receipts WHERE run_id = ? AND artifact_type = ?",
             (run_id, artifact_type),

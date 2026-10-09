@@ -1393,7 +1393,8 @@ def _run_integration_conflict_resolution(
 
         retained = read_record(ctx.workspace_scope.root)
         if retained is not None and (
-            retained.merge_commit_pending or retained.rebase_continue_pending
+            retained.merge_commit_pending
+            or retained.rebase_continue_pending
             or retained.merge_commit_tree is not None
         ):
             return False
@@ -1953,7 +1954,8 @@ def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
             display=ctx.active_display,
             display_context=ctx.display_context,
             agents=tuple(
-                agent for agent in resolution_chain_agents(ctx.policy_bundle)
+                agent
+                for agent in resolution_chain_agents(ctx.policy_bundle)
                 if ctx.registry.get(agent) is not None
             ),
             failure=failure,
@@ -2001,9 +2003,14 @@ def _block_unresolved_integration(
         remaining = retained_integration_reason(ctx.workspace_scope.root)
         if remaining is not None:
             if not state.rebase.recovery_record_retained:
-                state = state.copy_with(rebase=state.rebase.model_copy(update={
-                    "recovery_record_retained": True, "last_reason": remaining,
-                }))
+                state = state.copy_with(
+                    rebase=state.rebase.model_copy(
+                        update={
+                            "recovery_record_retained": True,
+                            "last_reason": remaining,
+                        }
+                    )
+                )
                 _save_recovered_rebase_checkpoint(state, ctx)
             _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
             return state, prev_phase, 0

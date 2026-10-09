@@ -58,24 +58,41 @@ def prepare_commit_integration(
             )
         display = resolve_active_display(None, display_context)
         display.emit_status("Recovering retained integration before commit generation")
-        state = integrate_before_planning(
-            config, scope, state,
-            conflict_resolver=conflict_resolver or build_agent_conflict_resolver(
-                policy_bundle=policy, registry=registry, display=display,
-                config=config, pipeline_deps=deps, workspace_scope=scope,
-                display_context=display_context,
-            ),
-            rebase_stop_resolver=rebase_stop_resolver or build_agent_rebase_stop_resolver(
-                policy_bundle=policy, registry=registry, display=display,
-                config=config, pipeline_deps=deps, workspace_scope=scope,
-                display_context=display_context,
-            ),
-            display=display,
-        ) or state
+        state = (
+            integrate_before_planning(
+                config,
+                scope,
+                state,
+                conflict_resolver=conflict_resolver
+                or build_agent_conflict_resolver(
+                    policy_bundle=policy,
+                    registry=registry,
+                    display=display,
+                    config=config,
+                    pipeline_deps=deps,
+                    workspace_scope=scope,
+                    display_context=display_context,
+                ),
+                rebase_stop_resolver=rebase_stop_resolver
+                or build_agent_rebase_stop_resolver(
+                    policy_bundle=policy,
+                    registry=registry,
+                    display=display,
+                    config=config,
+                    pipeline_deps=deps,
+                    workspace_scope=scope,
+                    display_context=display_context,
+                ),
+                display=display,
+            )
+            or state
+        )
     verdict = inspect_integration_resolution(root, state)
     if not verdict.dispatch_allowed and state.last_reason:
         return IntegrationResolutionVerdict(
-            verdict.status, (state.last_reason, *verdict.reasons), verdict.recovery_executor,
+            verdict.status,
+            (state.last_reason, *verdict.reasons),
+            verdict.recovery_executor,
         )
     return verdict
 

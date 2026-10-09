@@ -58,7 +58,9 @@ def test_next_strategy_gets_a_fresh_budget_and_is_named(monkeypatch: MonkeyPatch
         }
     )
     warnings: list[str] = []
-    sink = logger.add(lambda message: warnings.append(str(message)), level="WARNING", format="{message}")
+    sink = logger.add(
+        lambda message: warnings.append(str(message)), level="WARNING", format="{message}"
+    )
     try:
         auto_integrate._auto_integrate_after_commit_inner(
             config,

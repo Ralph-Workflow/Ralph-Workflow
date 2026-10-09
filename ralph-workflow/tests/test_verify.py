@@ -86,6 +86,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
     the command/args/returncode tuples).
     """
     return {
+        ("uv", ("run", "ruff", "format", "--check", "ralph/", "tests/")): _result(
+            command="uv",
+            args=("run", "ruff", "format", "--check", "ralph/", "tests/"),
+            returncode=0,
+        ),
         ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
             command="uv",
             args=("run", "ruff", "check", "ralph/", "tests/"),
@@ -351,6 +356,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "ruff", "check", "ralph/", "tests/")),
         ("uv", ("run", "python", "-m", "mypy", "ralph/")),
         ("make", ("test",)),
+        ("uv", ("run", "ruff", "format", "--check", "ralph/", "tests/")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_lint_bypass")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")),

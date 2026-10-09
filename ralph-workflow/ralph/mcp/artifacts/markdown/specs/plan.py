@@ -130,11 +130,8 @@ def _units(document: ParsedDocument, name: str) -> list[Content]:
 def _is_step_metadata_line(text: str) -> bool:
     """Return whether a step-body line is safely represented in extraction."""
     stripped = text.strip()
-    return (
-        _TARGET.match(stripped) is not None
-        or stripped.casefold().startswith(
-            ("files:", "depends on:", "satisfies:", "verify:", "expect:")
-        )
+    return _TARGET.match(stripped) is not None or stripped.casefold().startswith(
+        ("files:", "depends on:", "satisfies:", "verify:", "expect:")
     )
 
 
@@ -146,8 +143,8 @@ def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> boo
         # A non-unit heading can itself name work. Extraction has no safe
         # ownership for its text, including a heading that contains a unit
         # section, so retain it for the main agent rather than omit it.
-        unrepresented_heading = (
-            not is_unit_section and not (section.lines or section.items or section.blocks)
+        unrepresented_heading = not is_unit_section and not (
+            section.lines or section.items or section.blocks
         )
         for block in section.blocks:
             if _STEP_ID.fullmatch(block.identifier) and block.identifier in seen_step_ids:
@@ -159,8 +156,7 @@ def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> boo
             if any(block.identifier not in unit_step_ids for block in section.blocks):
                 return True
             if any(
-                not _is_step_metadata_line(line.text)
-                and (not is_unit_section or "/" in line.text)
+                not _is_step_metadata_line(line.text) and (not is_unit_section or "/" in line.text)
                 for block in section.blocks
                 for line in block.lines
             ):
@@ -203,9 +199,7 @@ def _to_content(document: ParsedDocument) -> Content:
     for unit in (*units, *parallel):
         raw_step_ids = unit.get("step_ids")
         if isinstance(raw_step_ids, list):
-            unit_step_ids.update(
-                step_id for step_id in raw_step_ids if isinstance(step_id, str)
-            )
+            unit_step_ids.update(step_id for step_id in raw_step_ids if isinstance(step_id, str))
     if (units or parallel) and _has_residual_work(document, unit_step_ids):
         # Keep non-unit prose or unowned blocks in the main session instead
         # of allowing fan-out to silently drop it.

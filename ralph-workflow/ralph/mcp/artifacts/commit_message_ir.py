@@ -29,15 +29,22 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
     behavior_risk = (*evidence.behavior_facts, *evidence.compatibility_hints, *evidence.risk_hints)
     verification = evidence.verification_facts
     return CommitMessageIR(
-        subject, evidence.change_areas, (), behavior_risk, verification,
-        (), fact_provenance=evidence.fact_provenance,
+        subject,
+        evidence.change_areas,
+        (),
+        behavior_risk,
+        verification,
+        (),
+        fact_provenance=evidence.fact_provenance,
         message_budget=evidence.message_budget,
     )
 
 
 def _body_items(ir: CommitMessageIR) -> tuple[str, ...]:
     """Cover grounded categories before applying the evidence-derived cap."""
-    categories = tuple(parts for parts in (ir.rationale, ir.behavior_risk, ir.verification) if parts)
+    categories = tuple(
+        parts for parts in (ir.rationale, ir.behavior_risk, ir.verification) if parts
+    )
     if not categories:
         return ()
     limit = ir.message_budget.max_body_points if ir.message_budget else len(categories)
@@ -53,11 +60,24 @@ def render_commit_message_artifact(ir: CommitMessageIR) -> str:
     """Render the IR into the canonical commit_message Markdown grammar."""
     lines = ["---", "type: commit", f"subject: {ir.intent}", "---"]
     if body_items := _body_items(ir):
-        lines.extend(("", "## Body", *(f"- [B-{index}] {item}" for index, item in enumerate(body_items, 1))))
+        lines.extend(
+            ("", "## Body", *(f"- [B-{index}] {item}" for index, item in enumerate(body_items, 1)))
+        )
     if ir.files:
-        lines.extend(("", "## Files", *(f"- [F-{index}] {path}" for index, path in enumerate(ir.files, 1))))
+        lines.extend(
+            ("", "## Files", *(f"- [F-{index}] {path}" for index, path in enumerate(ir.files, 1)))
+        )
     if ir.excluded_files:
-        lines.extend(("", "## Excluded Files", *(f"- [X-{index}] {path} | {reason}" for index, (path, reason) in enumerate(ir.excluded_files, 1))))
+        lines.extend(
+            (
+                "",
+                "## Excluded Files",
+                *(
+                    f"- [X-{index}] {path} | {reason}"
+                    for index, (path, reason) in enumerate(ir.excluded_files, 1)
+                ),
+            )
+        )
     return "\n".join(lines) + "\n"
 
 

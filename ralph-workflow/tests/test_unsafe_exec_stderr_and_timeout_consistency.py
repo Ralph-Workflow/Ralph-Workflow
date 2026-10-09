@@ -25,9 +25,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _result_runner(
-    *, stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0
-) -> ExecRunDeps:
+def _result_runner(*, stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0) -> ExecRunDeps:
     def run(
         _argv: list[str], _cwd: Path, _timeout: float | None
     ) -> exec_completed_process._CompletedProcessAdapter:
@@ -112,9 +110,18 @@ def test_timeout_is_error_with_guidance_and_partial_output_for_exec_family(tmp_p
 
 
 def test_exec_timeout_parsing_clamps_invalid_and_oversized_values() -> None:
-    assert parse_exec_params({"command": "echo", "timeout_ms": 0}).timeout_ms == EXEC_DEFAULT_TIMEOUT_MS
-    assert parse_exec_params({"command": "echo", "timeout_ms": -1}).timeout_ms == EXEC_DEFAULT_TIMEOUT_MS
-    assert parse_exec_params({"command": "echo", "timeout_ms": "bad"}).timeout_ms == EXEC_DEFAULT_TIMEOUT_MS
+    assert (
+        parse_exec_params({"command": "echo", "timeout_ms": 0}).timeout_ms
+        == EXEC_DEFAULT_TIMEOUT_MS
+    )
+    assert (
+        parse_exec_params({"command": "echo", "timeout_ms": -1}).timeout_ms
+        == EXEC_DEFAULT_TIMEOUT_MS
+    )
+    assert (
+        parse_exec_params({"command": "echo", "timeout_ms": "bad"}).timeout_ms
+        == EXEC_DEFAULT_TIMEOUT_MS
+    )
     assert (
         parse_exec_params({"command": "echo", "timeout_ms": EXEC_MAX_TIMEOUT_MS + 1}).timeout_ms
         == EXEC_MAX_TIMEOUT_MS

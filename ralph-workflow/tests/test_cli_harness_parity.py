@@ -139,14 +139,12 @@ def test_default_resolves_to_the_development_policy_chain_alias() -> None:
     )
     lookup = AgentRegistry.from_config(config).get
 
-    assert resolve_default_smoke_agent(AgentTransport.PI, agents_policy, lookup, drain="development") == (
-        "pi/omnirouter/kmc/k3"
-    )
+    assert resolve_default_smoke_agent(
+        AgentTransport.PI, agents_policy, lookup, drain="development"
+    ) == ("pi/omnirouter/kmc/k3")
     assert resolve_default_smoke_agent(
         AgentTransport.CODEX, agents_policy, lookup, drain="development"
-    ) == (
-        "codex/gpt-5.6-terra"
-    )
+    ) == ("codex/gpt-5.6-terra")
 
 
 @pytest.mark.timeout_seconds(3)
@@ -193,9 +191,7 @@ def test_command_without_agent_flag_runs_the_configured_chain_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``smoke-interactive-cursor`` with no ``--agent`` runs the operator's alias."""
-    config = UnifiedConfig(
-        agent_chains={"development": ["claude/sonnet"]}
-    )
+    config = UnifiedConfig(agent_chains={"development": ["claude/sonnet"]})
     agents_policy = AgentsPolicy(
         agent_chains={"smoke-development": AgentChainConfig(agents=["cursor/gpt-5.3-codex-high"])},
         agent_drains={"development": AgentDrainConfig(chain="smoke-development")},

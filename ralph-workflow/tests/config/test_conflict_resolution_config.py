@@ -29,7 +29,9 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
 def test_resolver_attempt_budget_defaults_above_incident_baseline_and_is_configurable() -> None:
     """The per-strategy budget is higher than the incident shared limit."""
     default = UnifiedConfig.model_validate({}).conflict_resolution.max_consecutive_resolver_attempts
-    override = UnifiedConfig.model_validate({"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}).conflict_resolution.max_consecutive_resolver_attempts
+    override = UnifiedConfig.model_validate(
+        {"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}
+    ).conflict_resolution.max_consecutive_resolver_attempts
 
     assert default == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS == 64
     assert default > 8

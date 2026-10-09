@@ -45,7 +45,9 @@ class TestOldCheckpointLoads:
         policy_bundle = _make_policy_bundle()
 
         effect = determine_effect_from_policy(
-            state, policy_bundle, config=UnifiedConfig(),
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(root=tmp_path),
         )
 
@@ -57,7 +59,9 @@ class TestOldCheckpointLoads:
         policy_bundle = _make_policy_bundle()
 
         effect = determine_effect_from_policy(
-            state, policy_bundle, config=UnifiedConfig(),
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(root=tmp_path),
         )
 

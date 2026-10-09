@@ -19,7 +19,13 @@ def test_rendered_planning_prompt_names_canonical_tools(tmp_path: Path) -> None:
     workspace.write("PROMPT.md", "Plan independent repository work with evidence.")
     policy = load_policy(tmp_path / ".agent")
     path = materialize_prompt_for_phase(
-        PromptPhaseContext("planning", workspace, policy.pipeline, SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING), tmp_path),
+        PromptPhaseContext(
+            "planning",
+            workspace,
+            policy.pipeline,
+            SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            tmp_path,
+        ),
         PromptPhaseOptions(artifacts_policy=policy.artifacts),
     )
     rendered = workspace.read(path)

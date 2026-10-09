@@ -242,9 +242,7 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     "a 'not evaluable' criterion verdict requires status 'failed'",
                 )
             )
-        if artifact_type == "planning_analysis_decision" and not _has_finding_target(
-            item.text
-        ):
+        if artifact_type == "planning_analysis_decision" and not _has_finding_target(item.text):
             diagnostics.append(
                 _validation_diagnostic(
                     item.line,
@@ -253,8 +251,10 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
                     "planning criterion verdict must identify 'Step: [S-n]', 'Plan-level:', or a 'Plan reference: [<stable id>]'",
                 )
             )
-        if artifact_type == "planning_analysis_decision" and status != "completed" and (
-            "Proposed revision:" not in item.text
+        if (
+            artifact_type == "planning_analysis_decision"
+            and status != "completed"
+            and ("Proposed revision:" not in item.text)
         ):
             diagnostics.append(
                 _validation_diagnostic(
@@ -449,8 +449,7 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
                 "each What Came Up Short item must mirror a non-met criterion verdict",
             )
             for item in what_items
-            if _finding_fields_complete(item.text)
-            and item.identifier not in verdict_by_id
+            if _finding_fields_complete(item.text) and item.identifier not in verdict_by_id
         )
         shortfall_item_by_id = {item.identifier: item for item in what_items}
         diagnostics.extend(

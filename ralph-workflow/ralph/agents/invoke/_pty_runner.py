@@ -226,11 +226,11 @@ def run_pty_and_read_lines(
                 InactivityTimeoutOpts(
                     reason=exc.reason,
                     session_resume_safe=session_resume_safe,
-                        resumable_session_id=(
-                            captured_session_id
-                            or pty_reader.discover_captured_session_id()
-                            or expected_session_id
-                        ),
+                    resumable_session_id=(
+                        captured_session_id
+                        or pty_reader.discover_captured_session_id()
+                        or expected_session_id
+                    ),
                     diagnostic=exc.diagnostic,
                 ),
             ) from exc

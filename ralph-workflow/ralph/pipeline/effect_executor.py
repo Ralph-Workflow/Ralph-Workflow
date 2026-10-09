@@ -681,9 +681,12 @@ def _invoke_agent_with_recovery(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
             )
-    except McpConfigError:
-        raise
-    except OpenCodeResumableExitError:
+    except (
+        McpConfigError,
+        OpenCodeResumableExitError,
+        AgentInactivityTimeoutError,
+        SupervisionInfrastructureError,
+    ):
         raise
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
@@ -948,6 +951,18 @@ def _build_attempt_invoke_options(
     endpoint_uri = _bridge_endpoint_uri(bridge_ctx.bridge)
     if endpoint_uri:
         env[str(MCP_ENDPOINT_ENV)] = endpoint_uri
+
+    def _supervision_health_error() -> str | None:
+        observed_health = ctx.effect.supervision_health_error
+        if observed_health is not None:
+            error = observed_health()
+            if error is not None:
+                return error
+        health_bridge: object = bridge_ctx.bridge
+        if isinstance(health_bridge, RestartAwareMcpBridge):
+            return health_bridge.relay_health_error()
+        return None
+
     invoke_options = build_invoke_options_from_config(
         ctx.config.general,
         InvokeRuntimeOptions(
@@ -984,8 +999,9 @@ def _build_attempt_invoke_options(
                 else None
             ),
             relay_health_error=(
-                bridge_ctx.bridge.relay_health_error
-                if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
+                _supervision_health_error
+                if ctx.effect.supervision_health_error is not None
+                or isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
                 else None
             ),
         ),

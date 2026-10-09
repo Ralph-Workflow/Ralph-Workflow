@@ -44,7 +44,7 @@ import threading
 import time
 from collections import OrderedDict
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import psutil
 
@@ -56,6 +56,8 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessManager
     from ralph.process.manager._process_record import ProcessRecord
 
+
+@runtime_checkable
 class _ProcessManagerModule(Protocol):
     """Typed late-bound process-manager module surface."""
 
@@ -187,6 +189,7 @@ def _label_family(value: str) -> str:
     """Return the subsystem family used to authorize a teardown."""
     return value.split(":", 1)[0]
 
+
 def _resolve_target(host_pid: int, pgid: int | None) -> tuple[psutil.Process | None, int | None]:
     """Resolve what may legitimately be killed for ``host_pid``.
 
@@ -257,9 +260,7 @@ class DefaultProcessTeardown:
         self._kill_escalation_ms = kill_escalation_ms
         self._record_lookup = record_lookup
 
-    def teardown_subtree(
-        self, host_pid: int, *, issuer: str, pgid: int | None = None
-    ) -> None:
+    def teardown_subtree(self, host_pid: int, *, issuer: str, pgid: int | None = None) -> None:
         """Kill the host process and all of its descendants.
 
         Args:
@@ -324,9 +325,9 @@ class DefaultProcessTeardown:
     def _record_for(self, host_pid: int) -> ProcessRecord | None:
         if self._record_lookup is not None:
             return self._record_lookup(host_pid)
-        manager_module = cast(
-            "_ProcessManagerModule", import_module("ralph.process.manager")
-        )
+        manager_module: object = import_module("ralph.process.manager")
+        if not isinstance(manager_module, _ProcessManagerModule):
+            raise RuntimeError("process manager module does not expose get_process_manager")
         return manager_module.get_process_manager().get_record(host_pid)
 
     def _await_exit(self, procs: list[psutil.Process]) -> set[int]:

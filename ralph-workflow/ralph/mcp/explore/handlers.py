@@ -83,7 +83,9 @@ class ExploreIndex:
     #: the store-state signature changes. The default ``None``
     #: keeps the attribute optional for test doubles that subclass
     #: or duck-type the handle.
-    staleness_block_cache: tuple[tuple[int, int, float | None, int], dict[str, object]] | None = None
+    staleness_block_cache: tuple[tuple[int, int, float | None, int], dict[str, object]] | None = (
+        None
+    )
 
     @property
     def index_dir(self) -> Path:

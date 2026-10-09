@@ -81,9 +81,9 @@ def test_concurrent_cursor_resolves_isolate_mcp_config_and_project_operator_xdg_
                 private_cursor / "mcp.json",
             )
             assert tuple(private_cursor_config.iterdir()) == (private_cursor_config / "auth.json",)
-            assert json.loads((private_cursor_config / "auth.json").read_text(encoding="utf-8")) == {
-                "token": "credential"
-            }
+            assert json.loads(
+                (private_cursor_config / "auth.json").read_text(encoding="utf-8")
+            ) == {"token": "credential"}
             assert json.loads((private_cursor / "auth.json").read_text(encoding="utf-8")) == {
                 "token": "credential"
             }

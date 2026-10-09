@@ -910,4 +910,3 @@ def test_content_cache_insert_then_delete_round_trip(tmp_path: Path) -> None:
         )
     finally:
         store.close()
-

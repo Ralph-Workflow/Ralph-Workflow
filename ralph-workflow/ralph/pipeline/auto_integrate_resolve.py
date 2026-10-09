@@ -196,8 +196,11 @@ def _resolve_and_commit_with_reason(
             MERGE_COMMIT_PENDING, reason or "conflict resolution incomplete; progress retained"
         )
     return (
-        _stage_verify_and_commit(root, conflicted, target) if conflicted
-        else MergeResult(MERGE_COMMIT_PENDING, "original resolution scope unavailable; progress retained")
+        _stage_verify_and_commit(root, conflicted, target)
+        if conflicted
+        else MergeResult(
+            MERGE_COMMIT_PENDING, "original resolution scope unavailable; progress retained"
+        )
     )
 
 

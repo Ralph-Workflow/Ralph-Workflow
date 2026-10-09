@@ -39,6 +39,7 @@ def test_seam_1_and_2_scoped_resets_coalesce_and_clear() -> None:
     bridge = _SharedBridge()
     reset_b = scoped_reset_tool_registry_callback(bridge, "invocation-b")
     assert reset_b is not None
+
     def reset_b_during_reset() -> None:
         reset_b()
 
@@ -223,7 +224,9 @@ def test_seam_5_completion_teardown_names_its_issuer() -> None:
 def test_typed_origins_stay_distinguishable_without_stderr() -> None:
     runtime = AgentLaunchError("agent", OSError(7, "too big"), 1)
     watchdog = IdleWatchdogKilledError("idle", 15)
-    intentional = AgentInvocationError("agent", -15, failure_origin="intentional_termination", issuer="invoke:x")
+    intentional = AgentInvocationError(
+        "agent", -15, failure_origin="intentional_termination", issuer="invoke:x"
+    )
     mcp = AgentInvocationError("agent", 1, failure_origin="mcp_operation")
     agent = AgentInvocationError("agent", 1)
 

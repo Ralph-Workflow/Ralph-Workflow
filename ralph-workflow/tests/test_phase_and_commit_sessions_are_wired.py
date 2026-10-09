@@ -225,7 +225,9 @@ def test_fan_out_propagates_policy_validation_without_reloading_policy(
         ),
         artifacts=ArtifactsPolicy(artifacts={}),
     )
-    monkeypatch.setattr(fan_out, "resolve_phase_session_transport", lambda _agents, _config: (None, False))
+    monkeypatch.setattr(
+        fan_out, "resolve_phase_session_transport", lambda _agents, _config: (None, False)
+    )
     monkeypatch.setattr(
         fan_out,
         "build_session_mcp_plan",

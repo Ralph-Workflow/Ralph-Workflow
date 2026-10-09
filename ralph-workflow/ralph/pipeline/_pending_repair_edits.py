@@ -28,14 +28,25 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
     captured: dict[str, str] = {}
     for path in filter(None, result.stdout.split("\0")):
         diff = run_git(
-            ("--literal-pathspecs", "diff", "--binary", "--no-ext-diff", "--no-textconv", "--", path),
-            cwd=root, label="repair:dirty-snapshot",
+            (
+                "--literal-pathspecs",
+                "diff",
+                "--binary",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--",
+                path,
+            ),
+            cwd=root,
+            label="repair:dirty-snapshot",
         )
         if diff.returncode:
             raise RuntimeError(f"cannot protect existing work in {path}")
         captured[path] = diff.stdout
     loose = run_git(
-        ("ls-files", "--others", "--exclude-standard", "-z"), cwd=root, label="repair:untracked",
+        ("ls-files", "--others", "--exclude-standard", "-z"),
+        cwd=root,
+        label="repair:untracked",
     )
     if loose.returncode:
         raise RuntimeError("cannot enumerate pre-existing untracked work")
@@ -43,7 +54,9 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
         if path.startswith(".agent/"):
             continue
         digest = run_git(
-            ("hash-object", "--no-filters", "--", path), cwd=root, label="repair:untracked-snapshot",
+            ("hash-object", "--no-filters", "--", path),
+            cwd=root,
+            label="repair:untracked-snapshot",
         )
         if digest.returncode:
             raise RuntimeError(f"cannot protect untracked work in {path}")
@@ -52,11 +65,16 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
 
 
 def accept_repair_edits(
-    root: Path, record: IntegrationRecord, before: dict[str, str], *, backend: FileBackend,
+    root: Path,
+    record: IntegrationRecord,
+    before: dict[str, str],
+    *,
+    backend: FileBackend,
 ) -> bool:
     """Admit declared edits only after proving existing work and Git parents unchanged."""
     matches = (
-        pending_rebase_identity_matches(root, record) if record.rebase_continue_pending
+        pending_rebase_identity_matches(root, record)
+        if record.rebase_continue_pending
         else pending_merge_identity_matches(root, record)
     )
     if not matches:
@@ -73,25 +91,35 @@ def accept_repair_edits(
         raise RuntimeError("repair must declare its source paths as a JSON string array")
     declared = {path for path in value if isinstance(path, str)}
     if declared != changed or any(
-        PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts
-        or path.startswith((".git/", ".agent/", ".githooks/")) for path in declared
+        PurePosixPath(path).is_absolute()
+        or ".." in PurePosixPath(path).parts
+        or path.startswith((".git/", ".agent/", ".githooks/"))
+        for path in declared
     ):
-        raise RuntimeError("repair source edits differ from declared scope or include protected paths")
-    original = record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+        raise RuntimeError(
+            "repair source edits differ from declared scope or include protected paths"
+        )
+    original = (
+        record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+    )
     if original is None:
         raise RuntimeError("source correction baseline missing")
     patch = _proposed_patch(root, original, tuple(sorted(declared)))
     current = read_record(root)
     if current is None:
         raise RuntimeError("repair ownership unreadable before staging")
-    staged_transition = current.model_copy(update={
-        "repair_pending_diff": patch,
-        "repair_original_tree": record.repair_original_tree or original,
-        "repair_pending_paths": tuple(sorted(declared)),
-    })
+    staged_transition = current.model_copy(
+        update={
+            "repair_pending_diff": patch,
+            "repair_original_tree": record.repair_original_tree or original,
+            "repair_pending_paths": tuple(sorted(declared)),
+        }
+    )
     write_record(root, staged_transition, backend=backend)
     result = run_git(
-        ("--literal-pathspecs", "add", "--", *sorted(declared)), cwd=root, label="repair:stage-scoped",
+        ("--literal-pathspecs", "add", "--", *sorted(declared)),
+        cwd=root,
+        label="repair:stage-scoped",
     )
     if result.returncode or unmerged_paths(root) or staged_conflict_marker_paths(root):
         raise RuntimeError("repair source corrections failed staging or conflict verification")
@@ -102,15 +130,30 @@ def accept_repair_edits(
 
 
 def resume_source_repair(
-    root: Path, record: IntegrationRecord, *, backend: FileBackend = DEFAULT_FILE_BACKEND,
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> IntegrationRecord | str:
     field = "rebase_continue_tree" if record.rebase_continue_pending else "merge_commit_tree"
-    baseline = record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+    baseline = (
+        record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+    )
     if not baseline:
         return "source repair baseline unavailable; integration retained"
     patch = run_git(
-        ("diff", "--cached", "--binary", "--full-index", "--no-renames", "--no-ext-diff",
-         "--no-textconv", baseline), cwd=root, label="repair:staged-proof",
+        (
+            "diff",
+            "--cached",
+            "--binary",
+            "--full-index",
+            "--no-renames",
+            "--no-ext-diff",
+            "--no-textconv",
+            baseline,
+        ),
+        cwd=root,
+        label="repair:staged-proof",
     )
     if patch.returncode:
         return "source correction index unreadable; integration retained"
@@ -118,17 +161,32 @@ def resume_source_repair(
         if not _stage_after_crash(root, record, baseline):
             return "prepared source correction changed or could not be staged; integration retained"
         patch = run_git(
-            ("diff", "--cached", "--binary", "--full-index", "--no-renames", "--no-ext-diff",
-             "--no-textconv", baseline), cwd=root, label="repair:restaged-proof",
+            (
+                "diff",
+                "--cached",
+                "--binary",
+                "--full-index",
+                "--no-renames",
+                "--no-ext-diff",
+                "--no-textconv",
+                baseline,
+            ),
+            cwd=root,
+            label="repair:restaged-proof",
         )
     if patch.returncode or patch.stdout != record.repair_pending_diff:
         return "source correction staging incomplete or changed; integration retained"
     tree = _git_value(root, "write-tree")
-    revised = record.model_copy(update={
-        field: tree, "repair_pending_diff": None, "repair_pending_paths": (),
-    })
+    revised = record.model_copy(
+        update={
+            field: tree,
+            "repair_pending_diff": None,
+            "repair_pending_paths": (),
+        }
+    )
     verified = tree is not None and (
-        pending_rebase_identity_matches(root, revised) if revised.rebase_continue_pending
+        pending_rebase_identity_matches(root, revised)
+        if revised.rebase_continue_pending
         else pending_merge_identity_matches(root, revised)
     )
     if not verified:
@@ -141,44 +199,69 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
     proposed = _proposed_patch(root, baseline, record.repair_pending_paths)
     staged_paths = run_git(
         ("diff", "--cached", "--name-only", "-z", baseline),
-        cwd=root, label="repair:partial-index-paths",
+        cwd=root,
+        label="repair:partial-index-paths",
     )
     tree = _git_value(root, "write-tree")
     field = "rebase_continue_tree" if record.rebase_continue_pending else "merge_commit_tree"
     staged_record = record.model_copy(update={field: tree})
     matches = tree is not None and (
-        pending_rebase_identity_matches(root, staged_record) if record.rebase_continue_pending
+        pending_rebase_identity_matches(root, staged_record)
+        if record.rebase_continue_pending
         else pending_merge_identity_matches(root, staged_record)
     )
     if (
-        proposed != record.repair_pending_diff or not matches
+        proposed != record.repair_pending_diff
+        or not matches
         or staged_paths.returncode
-        or not set(filter(None, staged_paths.stdout.split("\0"))).issubset(record.repair_pending_paths)
+        or not set(filter(None, staged_paths.stdout.split("\0"))).issubset(
+            record.repair_pending_paths
+        )
     ):
         return False
     for path in filter(None, staged_paths.stdout.split("\0")):
         staged_delta = run_git(
-            ("--literal-pathspecs", "diff", "--cached", "--binary", "--full-index", "--no-renames",
-             "--no-ext-diff", "--no-textconv", baseline, "--", path),
-            cwd=root, label="repair:partial-index-proof",
+            (
+                "--literal-pathspecs",
+                "diff",
+                "--cached",
+                "--binary",
+                "--full-index",
+                "--no-renames",
+                "--no-ext-diff",
+                "--no-textconv",
+                baseline,
+                "--",
+                path,
+            ),
+            cwd=root,
+            label="repair:partial-index-proof",
         )
-        if staged_delta.returncode or staged_delta.stdout != _proposed_patch(root, baseline, (path,)):
+        if staged_delta.returncode or staged_delta.stdout != _proposed_patch(
+            root, baseline, (path,)
+        ):
             return False
-    return run_git(
-        ("--literal-pathspecs", "add", "--", *record.repair_pending_paths),
-        cwd=root, label="repair:resume-stage",
-    ).returncode == 0
+    return (
+        run_git(
+            ("--literal-pathspecs", "add", "--", *record.repair_pending_paths),
+            cwd=root,
+            label="repair:resume-stage",
+        ).returncode
+        == 0
+    )
 
 
 def _proposed_patch(root: Path, baseline: str, paths: tuple[str, ...]) -> str:
     patches: list[str] = []
     for path in paths:
-        exists = run_git(("cat-file", "-e", f"{baseline}:{path}"), cwd=root, label="repair:baseline-path")
+        exists = run_git(
+            ("cat-file", "-e", f"{baseline}:{path}"), cwd=root, label="repair:baseline-path"
+        )
         options = ("--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv")
         args = (
             ("--literal-pathspecs", "diff", *options, baseline, "--", path)
-            if exists.returncode == 0 else
-            ("--literal-pathspecs", "diff", "--no-index", *options, "--", os.devnull, path)
+            if exists.returncode == 0
+            else ("--literal-pathspecs", "diff", "--no-index", *options, "--", os.devnull, path)
         )
         result = run_git(args, cwd=root, label="repair:proposed-path")
         if result.returncode not in ({0} if exists.returncode == 0 else {0, 1}):
@@ -190,7 +273,8 @@ def _proposed_patch(root: Path, baseline: str, paths: tuple[str, ...]) -> str:
 def capture_commit_controls(root: Path, backend: FileBackend = DEFAULT_FILE_BACKEND) -> str:
     config = run_git(
         ("config", "--get-regexp", "^(core\\.hookspath|commit\\.gpgsign|gpg\\.program)$"),
-        cwd=root, label="repair:commit-controls",
+        cwd=root,
+        label="repair:commit-controls",
     )
     hooks = _git_value(root, "rev-parse", "--git-path", "hooks")
     if config.returncode not in {0, 1} or hooks is None:

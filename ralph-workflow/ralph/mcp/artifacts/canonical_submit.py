@@ -76,7 +76,7 @@ def _restore_file_state(
     state: tuple[bool, str],
 ) -> None:
     """Restore a captured file or remove a file created by the failed submit."""
-        # filesystem-write-ok: canonical artifact write under .agent/ subtree (plan/agent/development_result), agent-authored deliverable not in fixed-message chore commit
+    # filesystem-write-ok: canonical artifact write under .agent/ subtree (plan/agent/development_result), agent-authored deliverable not in fixed-message chore commit
     existed, content = state
     if existed:
         atomic_write_text_if_changed(

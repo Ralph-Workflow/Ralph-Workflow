@@ -131,7 +131,9 @@ def _render_prompt(
         "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,
         "agents_block_end": markers.AGENTS_BLOCK_END,
         "LAST_RETRY_ERROR": (
-            _read_and_clear_retry_hint(workspace, PHASE_REMEDIATION) if workspace is not None else ""
+            _read_and_clear_retry_hint(workspace, PHASE_REMEDIATION)
+            if workspace is not None
+            else ""
         ),
     }
     # Load the packaged shared partials so `{% include 'shared/... %}` in the

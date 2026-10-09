@@ -16,7 +16,9 @@ def test_build_commit_evidence_bundle_is_fresh(monkeypatch, tmp_path: Path) -> N
     assert second.change_areas == ("ralph", "tests")
 
 
-def test_evidence_bundle_captures_verification_compatibility_and_risk(monkeypatch, tmp_path: Path) -> None:
+def test_evidence_bundle_captures_verification_compatibility_and_risk(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(
         commit_evidence,
         "list_changed_paths",

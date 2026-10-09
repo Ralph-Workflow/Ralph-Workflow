@@ -753,7 +753,9 @@ def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -
 # ---------------------------------------------------------------------------
 
 
-def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_available(monkeypatch: Any) -> None:
+def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_available(
+    monkeypatch: Any,
+) -> None:
     """After waiting, the resume picks the highest-priority agent whose cooldown has expired."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -809,7 +811,9 @@ def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_availab
     assert chain.agents[chain.current_index] == "claude"
 
 
-def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zero(monkeypatch: Any) -> None:
+def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zero(
+    monkeypatch: Any,
+) -> None:
     """A persisted current_index that points past index 0 is NOT a search origin on resume."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -864,7 +868,9 @@ def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zer
     assert chain.agents[chain.current_index] == "claude"
 
 
-def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_available(monkeypatch: Any) -> None:
+def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_available(
+    monkeypatch: Any,
+) -> None:
     """The cursor's neighbor becoming available does NOT block the highest-priority agent."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -917,4 +923,3 @@ def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_availab
     assert chain is not None
     assert chain.current_index == 0
     assert chain.agents[chain.current_index] == "claude"
-

@@ -156,9 +156,7 @@ def reindex(
             status="failed",
             error_summary=f"{type(exc).__name__}: {exc}",
         )
-    return _finalize_with_recovery(
-        store, state, workspace_root, now_fn=now_fn, status=status
-    )
+    return _finalize_with_recovery(store, state, workspace_root, now_fn=now_fn, status=status)
 
 
 def _finalize_with_recovery(

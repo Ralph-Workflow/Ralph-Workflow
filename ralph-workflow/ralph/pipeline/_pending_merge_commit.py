@@ -39,10 +39,13 @@ def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> N
             paths = tuple(sorted(set(paths) | set(current)))
     write_record(
         root,
-        record.model_copy(update={
-            "resolving_merge": resolving, "merge_commit_pending": not resolving,
-            "resolving_paths": paths,
-        }),
+        record.model_copy(
+            update={
+                "resolving_merge": resolving,
+                "merge_commit_pending": not resolving,
+                "resolving_paths": paths,
+            }
+        ),
     )
 
 

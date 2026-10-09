@@ -241,7 +241,7 @@ _CONTEXT_EXHAUSTED_SUBSTRINGS: tuple[str, ...] = (
     "maximum context length",
     "stopreason=length",
     "stopreason='length'",
-    "stopreason\":\"length",
+    'stopreason":"length',
 )
 
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
@@ -548,9 +548,8 @@ def _terminal_process_unavailability_reason(
     elif agent_origin:
         result = _provider_unavailability_reason(exc, detail_parts)
         offline_no_output = (
-            (connectivity_state or "").casefold() != "online"
-            and contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
-        )
+            connectivity_state or ""
+        ).casefold() != "online" and contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
         returncode = cast("object", getattr(exc, "returncode", 0))
         process_failed = (
             type_name == "AgentInvocationError"
@@ -899,40 +898,44 @@ class FailureClassifier:
             exc_obj is not None and type(exc_obj).__name__ == "QuotaExhaustedError"
         )
         broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
-        base_unavailable = provider_unavailability is not None or broken_agent or (
-            category == FailureCategory.AGENT
-            and (connectivity_state or "").casefold() == "online"
-            and not reset_tool_registry
-            and not typed_quota_exhaustion
-            and (
-                (
-                    watchdog_reason in _WATCHDOG_UNAVAILABILITY_REASONS
-                    and watchdog_reason != "no_progress_quiet"
-                )
-                or (watchdog_reason == "no_progress_quiet" and child_alive in (False, None))
-                or (
+        base_unavailable = (
+            provider_unavailability is not None
+            or broken_agent
+            or (
+                category == FailureCategory.AGENT
+                and (connectivity_state or "").casefold() == "online"
+                and not reset_tool_registry
+                and not typed_quota_exhaustion
+                and (
                     (
-                        exc_obj is None
-                        or type(exc_obj).__name__
-                        in {"AgentInvocationError", "AgentInactivityTimeoutError"}
+                        watchdog_reason in _WATCHDOG_UNAVAILABILITY_REASONS
+                        and watchdog_reason != "no_progress_quiet"
                     )
-                    # Suppress the text-based fallback when the watchdog
-                    # provided a typed ``child_alive=True`` signal for a
-                    # ``no_progress_quiet`` fire: the typed signal is
-                    # authoritative (live child = defense-in-depth;
-                    # ``is_unavailable=False`` per
-                    # ``_classify_unavailability_reason``), so allowing
-                    # the text fallback to flip it to ``True`` would
-                    # collapse the typed Rule 1 path back to the
-                    # text-based Rule 2 path the gate refinement was
-                    # designed to avoid.
-                    and not (watchdog_reason == "no_progress_quiet" and child_alive is True)
-                    and (
-                        _is_unavailable_agent_message(raw_message)
-                        or contains_casefolded_marker(
-                            detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                    or (watchdog_reason == "no_progress_quiet" and child_alive in (False, None))
+                    or (
+                        (
+                            exc_obj is None
+                            or type(exc_obj).__name__
+                            in {"AgentInvocationError", "AgentInactivityTimeoutError"}
                         )
-                        or _is_subscription_limit_message(detail_parts)
+                        # Suppress the text-based fallback when the watchdog
+                        # provided a typed ``child_alive=True`` signal for a
+                        # ``no_progress_quiet`` fire: the typed signal is
+                        # authoritative (live child = defense-in-depth;
+                        # ``is_unavailable=False`` per
+                        # ``_classify_unavailability_reason``), so allowing
+                        # the text fallback to flip it to ``True`` would
+                        # collapse the typed Rule 1 path back to the
+                        # text-based Rule 2 path the gate refinement was
+                        # designed to avoid.
+                        and not (watchdog_reason == "no_progress_quiet" and child_alive is True)
+                        and (
+                            _is_unavailable_agent_message(raw_message)
+                            or contains_casefolded_marker(
+                                detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                            )
+                            or _is_subscription_limit_message(detail_parts)
+                        )
                     )
                 )
             )

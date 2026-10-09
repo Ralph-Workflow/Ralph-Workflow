@@ -100,7 +100,6 @@ def inspect_integration_resolution(
     return _verdict_from_persisted_reasons(reasons)
 
 
-
 def retained_integration_reason(root: object) -> str | None:
     """A durable receipt owns dispatch until recovery proves and clears it."""
     from ralph.pipeline.auto_integrate_record import read_record, record_path
@@ -109,7 +108,9 @@ def retained_integration_reason(root: object) -> str | None:
         return None
     try:
         if read_record(root) is not None:
-            return "durable integration record retained; recovery must finish before ordinary dispatch"
+            return (
+                "durable integration record retained; recovery must finish before ordinary dispatch"
+            )
         record_path(root).lstat()
     except FileNotFoundError:
         return None

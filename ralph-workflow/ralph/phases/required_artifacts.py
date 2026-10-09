@@ -126,7 +126,9 @@ def resolve_phase_required_artifact(
 
 def retry_hint_path(phase: str, *, pipeline_policy: object | None = None) -> str:
     """Return the workspace-relative retry-hint path keyed by the effective drain."""
-    phase_def = pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
+    phase_def = (
+        pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
+    )
     drain = phase_def.drain if phase_def is not None else phase
     return f".agent/tmp/last_retry_error_{drain}.txt"
 
@@ -171,9 +173,7 @@ def clear_validation_retry_hint(
 _VALIDATION_RETRY_BODY_CAP = 4_096
 _VALIDATION_RETRY_HISTORY_CAP = 16_384
 _MINIMUM_VALIDATION_RETRY_ATTEMPTS = 2
-_DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS = frozenset(
-    {"DEV011", "DEV012", "DEV013", "DEV015"}
-)
+_DEVELOPMENT_RESULT_MISSING_WORK_RULE_IDS = frozenset({"DEV011", "DEV012", "DEV013", "DEV015"})
 
 
 def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
@@ -223,9 +223,14 @@ def build_validation_retry_hint(
             f"- {diagnostic.rule_id} at line {diagnostic.line}, section {section}: "
             f"{diagnostic.message}"
         )
-    lines.extend(["", validation_corrective_action(artifact_type, diagnostics),
-                  "Do not blindly resubmit identical content. "
-                  "Do not restart the task from scratch or discard prior work."])
+    lines.extend(
+        [
+            "",
+            validation_corrective_action(artifact_type, diagnostics),
+            "Do not blindly resubmit identical content. "
+            "Do not restart the task from scratch or discard prior work.",
+        ]
+    )
     current_attempt = "\n".join(lines)
     attempts = [*_validation_retry_attempts(prior_hint), current_attempt]
     numbered_attempts = [
@@ -241,7 +246,11 @@ def build_validation_retry_hint(
         else ""
     )
     return "\n\n".join(
-        [VALIDATION_FAILURE_BANNER, header + "\n\n".join(bounded_attempts), build_validation_retry_footer()]
+        [
+            VALIDATION_FAILURE_BANNER,
+            header + "\n\n".join(bounded_attempts),
+            build_validation_retry_footer(),
+        ]
     )
 
 

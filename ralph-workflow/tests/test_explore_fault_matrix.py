@@ -225,9 +225,7 @@ def test_f4_version_mismatch_wipes_index(tmp_path: Path) -> None:
         # Attach the rebuilt handle and exercise the auto-mode
         # grep to assert (a) parity, (b) reason code, (c) budget.
         started = time.monotonic()
-        payload = _grep_call(
-            _attach_session(rebuilt.store, workspace), workspace, use_index="auto"
-        )
+        payload = _grep_call(_attach_session(rebuilt.store, workspace), workspace, use_index="auto")
         elapsed = time.monotonic() - started
         _assert_matches_contain_hello(payload)
         assert payload["index_used"] is False
@@ -256,9 +254,7 @@ def test_f4_version_mismatch_wipes_index(tmp_path: Path) -> None:
             rebuilt_store = ExploreStore(index_dir)
             try:
                 rebuilt_session = _attach_session(rebuilt_store, workspace)
-                served = _grep_call(
-                    rebuilt_session, workspace, use_index="auto"
-                )
+                served = _grep_call(rebuilt_session, workspace, use_index="auto")
                 assert served["index_used"] is True, served
             finally:
                 rebuilt_store.close()

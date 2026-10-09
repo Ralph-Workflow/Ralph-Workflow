@@ -39,9 +39,7 @@ def _get_default_policy_path() -> Path:
     for candidate in candidates:
         if candidate.is_dir():
             return candidate
-    raise FileNotFoundError(
-        "Default policy directory not found in any candidate location"
-    )
+    raise FileNotFoundError("Default policy directory not found in any candidate location")
 
 
 class TestRenderExplanationAscii:

@@ -149,7 +149,9 @@ def test_declare_complete_needs_only_one_post_warning_call(
 def test_declare_complete_reports_partial_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(coordination_module, "_write_completion_sentinel", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        coordination_module, "_write_completion_sentinel", lambda *args, **kwargs: True
+    )
     result = handle_declare_complete(
         MockSession(),
         MockWorkspace(),

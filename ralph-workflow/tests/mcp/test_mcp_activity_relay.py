@@ -79,9 +79,13 @@ def test_activity_relay_ignores_stale_sequence_without_killing_the_run() -> None
             stale = ActivityRelaySender.from_environment(relay.server_environment())
             assert stale is not None
             stale.emit("read_file")
+            assert stale.health_error is None
             assert observed == ["read_file"]
             assert relay.snapshot().delivered_events == 1
             assert relay.ignored_events == 1
+            assert relay.health_error() is None
+            sender.emit("edit_file")
+            assert observed == ["read_file", "edit_file"]
             assert relay.health_error() is None
         finally:
             remove()

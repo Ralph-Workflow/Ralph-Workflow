@@ -61,6 +61,7 @@ def test_no_template_sentence_starts_lowercase() -> None:
     consolidation.
     """
     import re
+
     touched = (
         _TEMPLATES_DIR / "worker_developer.jinja",
         _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2",
@@ -73,8 +74,7 @@ def test_no_template_sentence_starts_lowercase() -> None:
         # Strip Jinja control lines so `{% if ... %}` and `{% include ... %}`
         # don't count as sentences.
         stripped = "\n".join(
-            line for line in source.splitlines()
-            if not line.lstrip().startswith("{%")
+            line for line in source.splitlines() if not line.lstrip().startswith("{%")
         )
         for raw_sentence in re.split(r"(?<=[.!?])\s+", stripped):
             sentence = raw_sentence.strip()
@@ -172,19 +172,21 @@ def test_rendered_development_surfaces_require_size_based_execution(
     must appear exactly once per surface. Workers stay assignment-scoped and
     do not receive the coordinator's dispatch directive.
     """
-    rendered = " ".join(prompt_developer_iteration_xml_with_context(
-        context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(
-            prompt_content="Implement the requested change.",
-            plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
-        ),
-        workspace=MemoryWorkspace(root=str(tmp_path)),
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name=template_name,
-    ).split())
+    rendered = " ".join(
+        prompt_developer_iteration_xml_with_context(
+            context=TemplateContext.default(),
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the requested change.",
+                plan_content="### [S-1] Implement the assigned change",
+                work_unit_id="unit" if is_worker else "",
+                work_unit_description="Implement the assigned change" if is_worker else "",
+                work_unit_directories="src" if is_worker else "",
+            ),
+            workspace=MemoryWorkspace(root=str(tmp_path)),
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            template_name=template_name,
+        ).split()
+    )
 
     assert rendered.count(_SIZE_RULE) == 1
     assert rendered.count(_FIRST_INCREMENT_RULE) == 1
@@ -216,19 +218,21 @@ def test_rendered_development_surfaces_replace_partial_progress_escape_with_reco
     prose. The old escape phrase is the unique verbatim string that bound
     the prior guidance; removing it is the contract U-1 implements.
     """
-    rendered = " ".join(prompt_developer_iteration_xml_with_context(
-        context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(
-            prompt_content="Implement the requested change.",
-            plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
-        ),
-        workspace=MemoryWorkspace(root=str(tmp_path)),
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name=template_name,
-    ).split())
+    rendered = " ".join(
+        prompt_developer_iteration_xml_with_context(
+            context=TemplateContext.default(),
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the requested change.",
+                plan_content="### [S-1] Implement the assigned change",
+                work_unit_id="unit" if is_worker else "",
+                work_unit_description="Implement the assigned change" if is_worker else "",
+                work_unit_directories="src" if is_worker else "",
+            ),
+            workspace=MemoryWorkspace(root=str(tmp_path)),
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            template_name=template_name,
+        ).split()
+    )
 
     # The unconditional partial-progress escape is gone from every surface.
     assert _OLD_PARTIAL_PROGRESS_ESCAPE not in rendered, (

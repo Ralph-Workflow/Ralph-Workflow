@@ -87,10 +87,22 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # Each entry is named with a one-line rationale so a future
     # refactor can either rewire the import or extend the rationale.
     ("scoped_auto_commit", "PLC0415"),
-    ("scoped_auto_commit", "PLR0911"),  # wt-012 -- the explicit-outcome state machine returns CREATED/NOOP/NOT_REPO/FAILED/SKIPPED plus the rollback branch
-    ("scoped_auto_commit", "PLR0912"),  # wt-012 -- commit_scoped_updates has more branches than the cap because of staged-state preservation
-    ("scoped_auto_commit", "PLR0915"),  # wt-012 -- commit_deterministic_writes needs more statements for the producer-level state machine + rollback
-    ("scoped_auto_commit", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
+    (
+        "scoped_auto_commit",
+        "PLR0911",
+    ),  # wt-012 -- the explicit-outcome state machine returns CREATED/NOOP/NOT_REPO/FAILED/SKIPPED plus the rollback branch
+    (
+        "scoped_auto_commit",
+        "PLR0912",
+    ),  # wt-012 -- commit_scoped_updates has more branches than the cap because of staged-state preservation
+    (
+        "scoped_auto_commit",
+        "PLR0915",
+    ),  # wt-012 -- commit_deterministic_writes needs more statements for the producer-level state machine + rollback
+    (
+        "scoped_auto_commit",
+        "C420",
+    ),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("preflight", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
     ("_run_start_setup", "PLC0415"),
     (
@@ -98,12 +110,24 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
         "PLR0912",
     ),  # wt-012 -- the run-start flow has explicit per-stage gates (user-global, project install, gitignore seed, auto-commit + diff, retention sweep) each with its own non-fatal warning surface; flattening into a single branch would lose the per-stage boundary
     ("init", "PLC0415"),  # wt-012 -- lazy import in --init helper to avoid init<->operations cycle
-    ("manager", "PLC0415"),  # wt-012 -- lazy import in --force-init-skills to avoid manager<->operations cycle
-    ("bootstrap", "PLC0415"),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle
+    (
+        "manager",
+        "PLC0415",
+    ),  # wt-012 -- lazy import in --force-init-skills to avoid manager<->operations cycle
+    (
+        "bootstrap",
+        "PLC0415",
+    ),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle
     ("preflight", "PLC0415"),  # wt-012 -- lazy import in preflight commit path
-    ("cli_integration", "PLC0415"),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
+    (
+        "cli_integration",
+        "PLC0415",
+    ),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
     ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
-    ("_installer_candidates", "PLC0415"),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
+    (
+        "_installer_candidates",
+        "PLC0415",
+    ),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators

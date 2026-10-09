@@ -279,7 +279,9 @@ class ManagedProcess:
         if stream is None:
             return
         while True:
-            chunk = stream.read1(8_192) if isinstance(stream, io.BufferedIOBase) else stream.read(8_192)
+            chunk = (
+                stream.read1(8_192) if isinstance(stream, io.BufferedIOBase) else stream.read(8_192)
+            )
             if not chunk:
                 break
             if on_chunk is not None:
@@ -514,7 +516,9 @@ class ManagedProcess:
                 f"skipping terminate"
             )
             return
-        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
+        self._manager.record_terminal_reason(
+            self._record.pid, "operator_cancellation", "managed_process.terminate"
+        )
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -523,7 +527,9 @@ class ManagedProcess:
         self._manager._escalate_termination_sync(self._record, self._proc, gp)
 
     def kill(self) -> None:
-        self._manager.record_terminal_reason(self._record.pid, "operator_cancellation", "managed_process.terminate")
+        self._manager.record_terminal_reason(
+            self._record.pid, "operator_cancellation", "managed_process.terminate"
+        )
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def cleanup_orphans(self) -> None:

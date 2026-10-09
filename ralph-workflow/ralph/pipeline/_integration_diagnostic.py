@@ -84,9 +84,13 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
         def invoke(agent: str, prompt: Path) -> bool:
             with workspace_context(operation_root):
                 return invoke_resolution_agent(
-                    agent_name=agent, prompt_path=prompt, config=ctx.config,
-                    pipeline_deps=pipeline_deps, workspace_scope=WorkspaceScope(operation_root),
-                    policy_bundle=ctx.policy_bundle, display=ctx.active_display,
+                    agent_name=agent,
+                    prompt_path=prompt,
+                    config=ctx.config,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=WorkspaceScope(operation_root),
+                    policy_bundle=ctx.policy_bundle,
+                    display=ctx.active_display,
                     display_context=ctx.display_context,
                     operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
                     require_completion_evidence=True,
@@ -95,21 +99,33 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
         try:
             before = record.diagnostic_evidence or _diagnostic_snapshot(operation_root)
             if not record.diagnostic_evidence:
-                record = record.model_copy(update={
-                    "diagnostic_evidence": before,
-                    "diagnostic_ownership": _ownership_fingerprint(record),
-                })
+                record = record.model_copy(
+                    update={
+                        "diagnostic_evidence": before,
+                        "diagnostic_ownership": _ownership_fingerprint(record),
+                    }
+                )
             handoff_integration_diagnostic(
-                root=ctx.workspace_scope.root, record=record, failure=failure,
-                agents=tuple(agent for agent in resolution_chain_agents(ctx.policy_bundle)
-                             if ctx.registry.get(agent) is not None), invoke=invoke,
+                root=ctx.workspace_scope.root,
+                record=record,
+                failure=failure,
+                agents=tuple(
+                    agent
+                    for agent in resolution_chain_agents(ctx.policy_bundle)
+                    if ctx.registry.get(agent) is not None
+                ),
+                invoke=invoke,
             )
             if _diagnostic_snapshot(operation_root) != before:
-                logger.critical("Integration diagnostic changed protected Git evidence; landing withheld")
+                logger.critical(
+                    "Integration diagnostic changed protected Git evidence; landing withheld"
+                )
             retained = read_record(ctx.workspace_scope.root)
             if retained is None or _ownership_fingerprint(retained) != record.diagnostic_ownership:
                 write_record(ctx.workspace_scope.root, record)
-                logger.critical("Integration diagnostic changed ownership; original record restored")
+                logger.critical(
+                    "Integration diagnostic changed ownership; original record restored"
+                )
             return False
         except Exception as exc:
             logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
@@ -117,10 +133,14 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
 
 
 def _ownership_fingerprint(record: IntegrationRecord) -> str:
-    stable = record.model_copy(update={
-        "diagnostic_evidence": (), "diagnostic_ownership": None,
-        "merge_commit_repair_attempts": 0, "repair_last_error": None,
-    })
+    stable = record.model_copy(
+        update={
+            "diagnostic_evidence": (),
+            "diagnostic_ownership": None,
+            "merge_commit_repair_attempts": 0,
+            "repair_last_error": None,
+        }
+    )
     return hashlib.sha256(stable.model_dump_json().encode()).hexdigest()
 
 
@@ -140,9 +160,15 @@ def release_verified_diagnostic(root: Path, record: IntegrationRecord) -> str | 
     try:
         if not diagnostic_evidence_unchanged(root, record):
             return "diagnostic evidence changed; original evidence must be restored before recovery"
-        write_record(root, record.model_copy(update={
-            "diagnostic_evidence": (), "diagnostic_ownership": None,
-        }))
+        write_record(
+            root,
+            record.model_copy(
+                update={
+                    "diagnostic_evidence": (),
+                    "diagnostic_ownership": None,
+                }
+            ),
+        )
         return None
     except Exception as exc:
         return f"diagnostic evidence unreadable; recovery retained: {exc}"
@@ -159,7 +185,11 @@ def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
         ("ls-files", "--stage", "-z"),
     ):
         result = run_git(args, cwd=root, label="integration:diagnostic-evidence")
-        value = "unreadable" if result.returncode else hashlib.sha256(result.stdout.encode()).hexdigest()
+        value = (
+            "unreadable"
+            if result.returncode
+            else hashlib.sha256(result.stdout.encode()).hexdigest()
+        )
         observations.append((args[0], value))
     captures: tuple[tuple[str, Callable[[], str]], ...] = (
         ("work", lambda: repr(sorted(capture_unstaged_work(root).items()))),
@@ -171,28 +201,46 @@ def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
         except (RuntimeError, OSError):
             value = "unreadable"
         observations.append((name, value))
-    metadata = run_git(("rev-parse", "--absolute-git-dir"), cwd=root, label="integration:diagnostic-gitdir")
+    metadata = run_git(
+        ("rev-parse", "--absolute-git-dir"), cwd=root, label="integration:diagnostic-gitdir"
+    )
     if metadata.returncode:
         observations.append(("metadata", "unreadable"))
     else:
         gitdir = Path(metadata.stdout.strip())
         files = set(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-merge/*"))
         files.update(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-apply/*"))
-        files.update(gitdir / name for name in (
-            "MERGE_HEAD", "MERGE_MSG", "REBASE_HEAD", "ORIG_HEAD", "AUTO_MERGE",
-            "CHERRY_PICK_HEAD", "logs/HEAD",
-        ))
-        branch = run_git(("symbolic-ref", "--quiet", "HEAD"), cwd=root, label="integration:diagnostic-branch")
+        files.update(
+            gitdir / name
+            for name in (
+                "MERGE_HEAD",
+                "MERGE_MSG",
+                "REBASE_HEAD",
+                "ORIG_HEAD",
+                "AUTO_MERGE",
+                "CHERRY_PICK_HEAD",
+                "logs/HEAD",
+            )
+        )
+        branch = run_git(
+            ("symbolic-ref", "--quiet", "HEAD"), cwd=root, label="integration:diagnostic-branch"
+        )
         if branch.returncode == 0:
-            location = run_git(("rev-parse", "--git-path", f"logs/{branch.stdout.strip()}"),
-                               cwd=root, label="integration:diagnostic-reflog")
+            location = run_git(
+                ("rev-parse", "--git-path", f"logs/{branch.stdout.strip()}"),
+                cwd=root,
+                label="integration:diagnostic-reflog",
+            )
             if location.returncode == 0:
                 path = Path(location.stdout.strip())
                 files.add(path if path.is_absolute() else root / path)
         for path in sorted(files):
             try:
-                value = (hashlib.sha256(DEFAULT_FILE_BACKEND.read_bytes(path)).hexdigest()
-                         if DEFAULT_FILE_BACKEND.exists(path) else "absent")
+                value = (
+                    hashlib.sha256(DEFAULT_FILE_BACKEND.read_bytes(path)).hexdigest()
+                    if DEFAULT_FILE_BACKEND.exists(path)
+                    else "absent"
+                )
             except OSError:
                 value = "unreadable"
             observations.append((str(path), value))
@@ -200,8 +248,12 @@ def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
 
 
 def handoff_integration_diagnostic(
-    *, root: Path, record: IntegrationRecord, failure: str,
-    agents: Sequence[str], invoke: Callable[[str, Path], bool],
+    *,
+    root: Path,
+    record: IntegrationRecord,
+    failure: str,
+    agents: Sequence[str],
+    invoke: Callable[[str, Path], bool],
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
     """Rotate inspection candidates without authorizing publication or record cleanup."""
@@ -228,8 +280,14 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    write_record(root, record.model_copy(update={
-        "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
-        "repair_last_error": failure[:8192],
-    }), backend=backend)
+    write_record(
+        root,
+        record.model_copy(
+            update={
+                "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
+                "repair_last_error": failure[:8192],
+            }
+        ),
+        backend=backend,
+    )
     return invoke(agent, prompt)

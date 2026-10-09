@@ -457,7 +457,9 @@ def test_auto_commit_body_is_deterministic_across_shuffled_input_orderings(
         assert fake_create_commit.call_args.kwargs == {
             "expected_head": Repo(tmp_path).head.commit.hexsha
         }
-        assert fake_create_commit.return_value.status is CommitCreationResult.created("f" * 40).status
+        assert (
+            fake_create_commit.return_value.status is CommitCreationResult.created("f" * 40).status
+        )
         assert fake_create_commit.return_value.sha == "f" * 40
         captured_messages.append(message)
 

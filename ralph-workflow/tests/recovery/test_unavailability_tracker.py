@@ -81,9 +81,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
 
         assert tracker.is_available("review", "claude") is False
         assert tracker.earliest_unavailable_wait_ms("review", ["claude"]) == 5_000
@@ -92,9 +90,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         tracker.reset_backoff("review", "claude")
 
         entry = tracker.mark_unavailable(
@@ -390,7 +386,6 @@ class TestAgentUnavailabilityTracker:
         assert "stale" not in snap["unavailable_timeouts"]
         assert "fresh" in snap["unavailable_timeouts"]
 
-
     # -----------------------------------------------------------------------
     # Five-hour ceiling regressions (plan S-3)
     #
@@ -413,9 +408,7 @@ class TestAgentUnavailabilityTracker:
 
         # Run enough iterations to comfortably overshoot the cap.
         for i in range(15):
-            tracker.mark_unavailable(
-                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-            )
+            tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
             if i < 14:
                 clock.advance(60_000)
 
@@ -466,9 +459,7 @@ class TestAgentUnavailabilityTracker:
 
         # Drive enough failures to push past the universal ceiling.
         for i in range(50):
-            tracker.mark_unavailable(
-                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-            )
+            tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
             if i < 49:
                 clock.advance(60_000)
 
@@ -497,9 +488,7 @@ class TestAgentUnavailabilityTracker:
         tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
         for i in range(200):
-            tracker.mark_unavailable(
-                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-            )
+            tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
             if i < 199:
                 clock.advance(60_000)
 
@@ -569,11 +558,9 @@ class TestAgentUnavailabilityTracker:
         assert entry_after.unavailable_until_ms - int(clock.monotonic() * 1000) == 5_000
 
 
-
 # ---------------------------------------------------------------------------
 # Plan S-3 / S-4 focused regressions
 # ---------------------------------------------------------------------------
-
 
 
 def test_all_default_reasons_saturate_at_five_hours() -> None:
@@ -602,17 +589,13 @@ def test_per_agent_history_isolation_across_phases() -> None:
     tracker = AgentUnavailabilityTracker(clock=clock)
 
     for i in range(5):
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         if i < 4:
             clock.advance(60_000)
 
     # After 4 advances, clock is at 240_000 ms. The 5th mark_unavailable
     # sets entry.unavailable_until_ms = 240_000 + 5_000 * 2^4 = 240_000 + 80_000.
-    entry = tracker.mark_unavailable(
-        "review", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-    )
+    entry = tracker.mark_unavailable("review", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
     assert entry.attempt == 5
     expected_remaining = 5_000 * (2**5)
     assert entry.unavailable_until_ms - int(clock.monotonic() * 1000) == expected_remaining
@@ -624,9 +607,7 @@ def test_saturation_stable_across_many_failures() -> None:
     tracker = AgentUnavailabilityTracker(clock=clock)
 
     for i in range(500):
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         if i < 499:
             clock.advance(60_000)
 
@@ -649,9 +630,7 @@ def test_custom_policy_with_lower_cap_clamps_at_custom_value() -> None:
     tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
     for i in range(15):
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         if i < 14:
             clock.advance(60_000)
 
@@ -673,9 +652,7 @@ def test_custom_policy_with_higher_cap_clamps_at_universal_ceiling() -> None:
     tracker = AgentUnavailabilityTracker(clock=clock, backoff_policy=policy)
 
     for i in range(100):
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
         if i < 99:
             clock.advance(60_000)
 
@@ -745,8 +722,6 @@ def test_success_reset_next_failure_starts_at_base_delay() -> None:
 
     tracker.reset_backoff("development", "claude")
 
-    entry = tracker.mark_unavailable(
-        "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-    )
+    entry = tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
     assert entry.attempt == 0
     assert entry.unavailable_until_ms - int(clock.monotonic() * 1000) == 60_000

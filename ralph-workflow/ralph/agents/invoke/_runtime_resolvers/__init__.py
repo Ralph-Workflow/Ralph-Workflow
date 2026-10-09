@@ -577,7 +577,9 @@ def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
         destination = destination_root / artifact_name
         try:
             destination_root.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)  # filesystem-write-ok: bounded AGY credential projection into an invocation-owned private HOME
+            shutil.copy2(  # filesystem-write-ok: bounded AGY credential projection into an invocation-owned private HOME
+                source, destination
+            )
         except FileNotFoundError:
             continue
 

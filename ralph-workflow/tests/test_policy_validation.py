@@ -343,7 +343,9 @@ class TestDefaultPolicyLoading:
 
         assert bundle.pipeline.terminal_phase == "complete"
 
-    def test_parallel_policy_roundtrip_retains_legacy_settings_without_capping_workers(self) -> None:
+    def test_parallel_policy_roundtrip_retains_legacy_settings_without_capping_workers(
+        self,
+    ) -> None:
         """Legacy unit settings do not constrain the concurrent worker policy."""
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
@@ -356,7 +358,9 @@ class TestDefaultPolicyLoading:
         phases["development"] = phases["development"].model_copy(
             update={
                 "parallelization": PhaseParallelization(
-                    max_parallel_workers=8, max_work_units=1, require_allowed_directories=True,
+                    max_parallel_workers=8,
+                    max_work_units=1,
+                    require_allowed_directories=True,
                 )
             }
         )

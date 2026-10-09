@@ -317,9 +317,7 @@ def test_unplanned_work_markdown_section_validates_with_zero_section_errors() ->
     _, diagnostics = parse_and_validate(content, spec)
     errors = [d for d in diagnostics if d.severity == "error"]
 
-    assert errors == [], "; ".join(
-        f"line {d.line} [{d.rule_id}] {d.message}" for d in errors
-    )
+    assert errors == [], "; ".join(f"line {d.line} [{d.rule_id}] {d.message}" for d in errors)
 
 
 def test_unplanned_work_items_are_not_promoted_to_proof_ids() -> None:
@@ -352,9 +350,7 @@ def test_unplanned_work_items_are_not_promoted_to_proof_ids() -> None:
 
     content_dict, diagnostics = parse_and_validate(content, spec)
     errors = [d for d in diagnostics if d.severity == "error"]
-    assert errors == [], "; ".join(
-        f"line {d.line} [{d.rule_id}] {d.message}" for d in errors
-    )
+    assert errors == [], "; ".join(f"line {d.line} [{d.rule_id}] {d.message}" for d in errors)
     assert content_dict["unplanned_work"] == [
         "[UW-1] ralph/mcp/tool_bridge.py:78 — mid-phase discovery."
     ]

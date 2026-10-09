@@ -46,7 +46,9 @@ def integrate_before_planning(
 
         config = config_for_owned_integration(config)
         recovered = recover_incomplete_integration(
-            scope, config=config, conflict_resolver=conflict_resolver,
+            scope,
+            config=config,
+            conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
         )
         if recovery_retained_record(recovered):
@@ -58,8 +60,12 @@ def integrate_before_planning(
     target = resolve_integration_target(config, root)
     if target is None or _worktree_is_clean(root):
         return auto_integrate_after_commit(
-            config, scope, state, conflict_resolver=conflict_resolver,
-            rebase_stop_resolver=rebase_stop_resolver, display=display,
+            config,
+            scope,
+            state,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
         )
     from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
 
@@ -67,9 +73,16 @@ def integrate_before_planning(
     if ancestry_state(root, target, "HEAD") is not True:
         staged = run_git(("diff", "--cached", "--quiet"), cwd=root, label="planning:staged-work")
         if staged.returncode != 0:
-            return record_conflict(reason="staged uncommitted work blocks integration", target=target)
+            return record_conflict(
+                reason="staged uncommitted work blocks integration", target=target
+            )
     outcome, _retry = _integrate_once(
-        config, root, target, conflict_resolver, force_endpoint_merge=True,
-        rebase_stop_resolver=rebase_stop_resolver, display=display,
+        config,
+        root,
+        target,
+        conflict_resolver,
+        force_endpoint_merge=True,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
     )
     return outcome

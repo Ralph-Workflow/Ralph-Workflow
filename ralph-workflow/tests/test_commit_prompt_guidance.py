@@ -15,7 +15,9 @@ def test_commit_prompts_place_evidence_guidance_before_document_grammar() -> Non
 
     prompts = (
         prompt_commit_message(evidence),
-        prompt_commit_message_for_opencode(evidence, submit_artifact_tool_name="ralph_submit_md_artifact"),
+        prompt_commit_message_for_opencode(
+            evidence, submit_artifact_tool_name="ralph_submit_md_artifact"
+        ),
     )
 
     for prompt, heading in zip(

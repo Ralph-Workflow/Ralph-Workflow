@@ -139,7 +139,9 @@ def test_development_epochs_are_independent_and_warn_at_seventy_minutes(
         development_total_elapsed=4200.0,
     )
     assert abs(float(os.environ[DEV_WARN_EPOCH_ENV]) - before) < _CLOCK_TOLERANCE_SECONDS
-    assert abs(float(os.environ[DEV_DEADLINE_EPOCH_ENV]) - before - 1200.0) < _CLOCK_TOLERANCE_SECONDS
+    assert (
+        abs(float(os.environ[DEV_DEADLINE_EPOCH_ENV]) - before - 1200.0) < _CLOCK_TOLERANCE_SECONDS
+    )
     assert development_warning_is_active(now_epoch=time.time())
     assert not cycle_warning_is_active(now_epoch=time.time())
 

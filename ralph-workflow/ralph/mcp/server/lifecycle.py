@@ -23,6 +23,7 @@ from ralph.mcp.multimodal.capabilities import (
     profile_for_caller,
     resolve_capability_profile,
 )
+from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
@@ -282,7 +283,14 @@ class RestartAwareMcpBridge:
                         else timedelta(seconds=5)
                     )
                     self._probe_fn(self._inner.endpoint, probe_timeout)
-                except Exception:
+                except Exception as exc:
+                    if (
+                        isinstance(exc, PreflightError)
+                        and self._activity_relay is not None
+                        and "SUPERVISION_INFRASTRUCTURE_FAILURE" in str(exc)
+                    ):
+                        self._activity_relay.record_sender_error(str(exc))
+                        return False
                     probe_failed = True
 
             if probe_failed:
@@ -845,7 +853,9 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json")
     path = Path(temp_path)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:  # filesystem-write-ok: transient handshake stream
+        with os.fdopen(  # filesystem-write-ok: transient handshake stream
+            fd, "w", encoding="utf-8"
+        ) as stream:
             stream.write(session_payload_json(session))
         return path
     except BaseException:
@@ -855,16 +865,7 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
 
 
 def identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
-    """Return True when an identity carries information worth handing on.
-
-    A resolved provider or a known transport each independently affect
-    downstream delivery decisions, so either one is enough.
-
-    Public because it decides what crosses the subprocess boundary: an
-    identity that fails here is simply absent from the child's payload,
-    and the child then resolves as though nothing was known. A rule with
-    that reach needs to be assertable from outside this module.
-    """
+    """Decide whether provider or transport identity crosses the subprocess boundary."""
     return identity.is_known() or identity.transport is not None
 
 
@@ -893,13 +894,9 @@ def session_payload_json(session: SessionLike) -> str:
         "drain": session.drain,
         "capabilities": sorted(session.capabilities),
     }
-    raw_activity_only_supervision: object = getattr(
-        session, "activity_only_supervision", False
-    )
+    raw_activity_only_supervision: object = getattr(session, "activity_only_supervision", False)
     activity_only_supervision = (
-        raw_activity_only_supervision
-        if isinstance(raw_activity_only_supervision, bool)
-        else False
+        raw_activity_only_supervision if isinstance(raw_activity_only_supervision, bool) else False
     )
     if activity_only_supervision:
         session_payload["activity_only_supervision"] = True

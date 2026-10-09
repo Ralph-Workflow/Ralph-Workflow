@@ -96,7 +96,7 @@ def materialize_skills_to_dir(
     """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
-        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
+    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     metadata = get_skill_metadata()
     for name in BASELINE_SKILL_NAMES:
         write_text_if_changed(

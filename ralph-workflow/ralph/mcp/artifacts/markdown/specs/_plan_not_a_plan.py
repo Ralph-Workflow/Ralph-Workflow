@@ -95,7 +95,9 @@ def _sanity_failure_reason(text: str) -> str | None:
         utf8_error = False
     except UnicodeEncodeError:
         utf8_error = True
-    readable = len(text) if text.isprintable() else sum(_is_readable(character) for character in text)
+    readable = (
+        len(text) if text.isprintable() else sum(_is_readable(character) for character in text)
+    )
     words = text.split(maxsplit=_MIN_WORDS)
     first_line = next((line.strip().casefold() for line in text.splitlines() if line.strip()), "")
     if utf8_error:

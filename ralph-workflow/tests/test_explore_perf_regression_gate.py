@@ -479,7 +479,9 @@ def test_post_data_passes_when_meeting_improvement_target() -> None:
         "large_synthetic": {"cold_build_wall_seconds": 10.0},
         "multi_session": {"idle_cpu_seconds": 0.0},
     }
-    post_payload = _build_post_change_metrics(baseline_payload=baseline_payload, improvement_factor=0.6)
+    post_payload = _build_post_change_metrics(
+        baseline_payload=baseline_payload, improvement_factor=0.6
+    )
     # Build a report whose Final cell equals the post payload and
     # whose Disposition is ``improved`` for every row (post is strictly
     # better than baseline, well within target).
@@ -540,9 +542,7 @@ def test_post_data_fails_on_ralph_self_indexed_query_p50_above_target() -> None:
             post=post_payload,
         )
         assert failures, "expected the post-data gate to fail"
-        assert any(
-            "exceeds 0.6x baseline" in f or "Final cell" in f for f in failures
-        )
+        assert any("exceeds 0.6x baseline" in f or "Final cell" in f for f in failures)
 
 
 def test_post_data_fails_when_speed_ratio_does_not_improve() -> None:
@@ -593,5 +593,7 @@ def test_post_data_fails_when_final_cell_disagrees_with_post_json() -> None:
             targets=targets_payload,
             post=post_payload,
         )
-        assert failures, "expected the gate to fail on a Final cell that disagrees with the post JSON"
+        assert failures, (
+            "expected the gate to fail on a Final cell that disagrees with the post JSON"
+        )
         assert any("Final cell" in f and "post JSON" in f for f in failures)

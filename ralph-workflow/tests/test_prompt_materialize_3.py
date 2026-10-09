@@ -456,8 +456,7 @@ def test_planning_regression_fresh_entry_omits_prior_work_payloads_and_retry_con
     prior_plan = "prior plan secret\n" + ("P" * (100 * 1024 + 1))
     prior_feedback = (
         "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
-        "## Summary\n- [S-1] prior feedback secret\n"
-        + ("F" * (100 * 1024 + 1))
+        "## Summary\n- [S-1] prior feedback secret\n" + ("F" * (100 * 1024 + 1))
     )
     workspace.write("PROMPT.md", "Plan a new feature")
     workspace.write(".agent/PLAN.md", prior_plan)

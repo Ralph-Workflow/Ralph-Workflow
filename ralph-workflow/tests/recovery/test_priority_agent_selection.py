@@ -490,9 +490,7 @@ def test_priority_first_selection_consecutive_invocations_always_return_highest_
     )
 
     for _ in range(10):
-        selection = controller.preferred_agent_index(
-            "development", ["claude", "opencode", "agy"]
-        )
+        selection = controller.preferred_agent_index("development", ["claude", "opencode", "agy"])
         assert selection.index == 0
         assert selection.agent == "claude"
         assert selection.skipped_reasons == (
@@ -529,9 +527,7 @@ def test_priority_first_selection_returns_to_highest_priority_after_cooldown_exp
     )
 
     # claude is on cooldown -> opencode is the highest-priority available.
-    selection_first = controller.preferred_agent_index(
-        "development", ["claude", "opencode", "agy"]
-    )
+    selection_first = controller.preferred_agent_index("development", ["claude", "opencode", "agy"])
     assert selection_first.agent == "opencode"
     # The skipped reason includes the unavailability reason string.
     assert selection_first.skipped_reasons[0][0] == "claude"
@@ -550,7 +546,9 @@ def test_priority_first_selection_returns_to_highest_priority_after_cooldown_exp
     assert selection_second.index == 0
 
 
-def test_priority_first_selection_keeps_successful_preferred_agent_across_repeated_failures() -> None:
+def test_priority_first_selection_keeps_successful_preferred_agent_across_repeated_failures() -> (
+    None
+):
     """After the preferred (claude) agent succeeds, repeated failures still pick claude.
 
     Production success path: the runner calls ``reset_backoff`` after
@@ -614,7 +612,8 @@ def test_priority_first_selection_persisted_current_index_does_not_introduce_rou
     chain = state.chain_for_phase(state.phase)
     assert chain is not None
     selection = controller.preferred_agent_index(
-        state.phase, chain.agents,
+        state.phase,
+        chain.agents,
         current_index=chain.current_index,
     )
     assert selection.index == 0

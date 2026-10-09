@@ -22,8 +22,10 @@ def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
-        and ((isinstance(node.func, ast.Name) and node.func.id == name)
-             or (isinstance(node.func, ast.Attribute) and node.func.attr == name))
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == name)
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == name)
+        )
     ]
 
 
@@ -57,10 +59,19 @@ def audit_source(path: Path, source: str) -> list[BoundaryViolation]:
         return [BoundaryViolation(path, 1, "source does not parse")]
     violations: list[BoundaryViolation] = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "reset_tool_registry_callback":
-            violations.append(BoundaryViolation(path, node.lineno, "unscoped reset wrapper is forbidden"))
-        if isinstance(node, ast.ImportFrom) and any(alias.name == "reset_tool_registry_callback" for alias in node.names):
-            violations.append(BoundaryViolation(path, node.lineno, "unscoped reset import is forbidden"))
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "reset_tool_registry_callback"
+        ):
+            violations.append(
+                BoundaryViolation(path, node.lineno, "unscoped reset wrapper is forbidden")
+            )
+        if isinstance(node, ast.ImportFrom) and any(
+            alias.name == "reset_tool_registry_callback" for alias in node.names
+        ):
+            violations.append(
+                BoundaryViolation(path, node.lineno, "unscoped reset import is forbidden")
+            )
     if path.name == "_spawn_validation.py" and (
         "raise OSError(7" in source or "raise OSError(errno.E2BIG" in source
     ):
@@ -112,7 +123,11 @@ def _required_source_violations(root: Path) -> list[BoundaryViolation]:
         and "OSError" in ast.unparse(node.type)
         for node in ast.walk(manager_tree)
     )
-    if not catches_oserror or "errno.E2BIG" not in manager_source or "AgentLaunchError" not in manager_source:
+    if (
+        not catches_oserror
+        or "errno.E2BIG" not in manager_source
+        or "AgentLaunchError" not in manager_source
+    ):
         violations.append(BoundaryViolation(manager, 1, "Popen E2BIG must use AgentLaunchError"))
     return violations
 

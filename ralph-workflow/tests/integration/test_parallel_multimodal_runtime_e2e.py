@@ -89,9 +89,7 @@ def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
     bundle.agents = AgentsPolicy(
-        agent_drains={
-            "development": AgentDrainConfig(chain="default", drain_class="development")
-        },
+        agent_drains={"development": AgentDrainConfig(chain="default", drain_class="development")},
         agent_chains={"default": AgentChainConfig(agents=["default"])},
     )
     return bundle

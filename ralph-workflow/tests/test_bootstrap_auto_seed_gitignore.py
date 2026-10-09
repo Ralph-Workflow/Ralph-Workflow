@@ -309,8 +309,7 @@ def test_ensure_default_gitignore_commits_in_git_workspace(tmp_git_repo: Path) -
     repo = Repo(tmp_git_repo)
     try:
         assert not repo.is_dirty(untracked_files=True), (
-            f"bootstrap gitignore append MUST be committed; got: "
-            f"{repo.git.status('--porcelain')!r}"
+            f"bootstrap gitignore append MUST be committed; got: {repo.git.status('--porcelain')!r}"
         )
     finally:
         repo.close()

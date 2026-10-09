@@ -126,9 +126,7 @@ def _freshness_for_read(session: object) -> dict[str, object]:
         dirty = list(store.peek_dirty_paths())
     except Exception:
         dirty = []
-    meta = serving_metadata(
-        session, index_used=True, fallback_reason=None
-    )
+    meta = serving_metadata(session, index_used=True, fallback_reason=None)
     return {
         **meta,
         "index_generation": generation_int,
@@ -1875,14 +1873,14 @@ def handle_search_files(
     # index participates only in role/contains_symbol/changed_only
     # filtering, so the truthful ``index_used`` reflects whether the
     # caller asked for indexed filtering.
-    has_indexed_filter = (
-        role != "any" or contains_symbol is not None or changed_only
-    )
+    has_indexed_filter = role != "any" or contains_symbol is not None or changed_only
     output.update(
         serving_metadata(
             session,
             index_used=bool(has_indexed_filter),
-            fallback_reason=("no_index_handle" if has_indexed_filter and not _search_handle else None),
+            fallback_reason=(
+                "no_index_handle" if has_indexed_filter and not _search_handle else None
+            ),
         )
     )
     if return_evidence_ids:

@@ -408,11 +408,7 @@ def handle_declare_complete(
     message = (
         "Task declared complete: "
         f"session_id={session.session_id}, summary='{_quotable_summary(summary)}', "
-        + (
-            f"partial_reason='{_quotable_summary(partial_reason)}', "
-            if partial_reason
-            else ""
-        )
+        + (f"partial_reason='{_quotable_summary(partial_reason)}', " if partial_reason else "")
         + f"timestamp={now_fn()}\n"
         "[Completion event emitted to pipeline]"
     )

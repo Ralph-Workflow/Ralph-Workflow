@@ -35,8 +35,9 @@ def _install_validation_hook(root: Path, *, custom: bool) -> Path:
         assert _git(root, "config", "core.hooksPath", str(hooks)).returncode == 0
     hook = hooks / "pre-commit"
     hook.write_text(
-        "#!/bin/sh\nif [ \"$(git show :shared.txt)\" != fixed ]; then\n"
-        "echo 'shared.txt: expected fixed' >&2\nexit 1\nfi\n", encoding="utf-8",
+        '#!/bin/sh\nif [ "$(git show :shared.txt)" != fixed ]; then\n'
+        "echo 'shared.txt: expected fixed' >&2\nexit 1\nfi\n",
+        encoding="utf-8",
     )
     hook.chmod(0o755)
     return hook
@@ -51,9 +52,22 @@ def _assert_recovered_landing(root: Path, target: str, case: str) -> None:
         assert _git(root, "show", f"{target}:required.txt").stdout == "new source\n"
 
 
-@pytest.mark.parametrize("case", ["fixed", "existing_wip", "before_stage", "after_stage", "new_file", "weak_hook", "staged_intruder"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "fixed",
+        "existing_wip",
+        "before_stage",
+        "after_stage",
+        "new_file",
+        "weak_hook",
+        "staged_intruder",
+    ],
+)
 def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch, case: str,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
 ) -> None:
     import ralph.pipeline._pending_repair_edits as repair_edits
 
@@ -72,7 +86,8 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
             (root / "required.txt").write_text("new source\n", encoding="utf-8")
         (root / "shared.txt").write_text("fixed\n", encoding="utf-8")
         (root / ".agent" / "tmp" / "pending_commit_repair_paths.json").write_text(
-            '["required.txt", "shared.txt"]' if case == "new_file" else '["shared.txt"]', encoding="utf-8",
+            '["required.txt", "shared.txt"]' if case == "new_file" else '["shared.txt"]',
+            encoding="utf-8",
         )
         return PipelineEvent.AGENT_SUCCESS
 
@@ -81,14 +96,21 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
     original_git = repair_edits.run_git
 
     def fail_publication(
-        workspace_root: Path, record: IntegrationRecord, *, backend: FileBackend = DEFAULT_FILE_BACKEND,
+        workspace_root: Path,
+        record: IntegrationRecord,
+        *,
+        backend: FileBackend = DEFAULT_FILE_BACKEND,
     ) -> None:
         if record.repair_pending_diff is None:
             raise OSError("record publication interrupted after staging")
         original_write(workspace_root, record, backend=backend)
 
     def fail_staging(
-        args: Sequence[str], *, cwd: Path | None, label: str, options: GitRunOptions | None = None,
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: GitRunOptions | None = None,
     ) -> GitRunResult:
         if label == "repair:stage-scoped":
             raise OSError("process interrupted before staging")
@@ -100,10 +122,15 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
         if case in {"before_stage", "staged_intruder"}:
             crash.setattr(repair_edits, "run_git", fail_staging)
         repaired = repair_pending_merge(
-            workspace_scope=WorkspaceScope(root), config=UnifiedConfig(),
-            pipeline_deps=make_test_pipeline_deps(make_display_context(console=Console(file=StringIO()))),
+            workspace_scope=WorkspaceScope(root),
+            config=UnifiedConfig(),
+            pipeline_deps=make_test_pipeline_deps(
+                make_display_context(console=Console(file=StringIO()))
+            ),
             policy_bundle=PolicyBundle.model_construct(),
-            display=None, display_context=None, agents=("repair",),
+            display=None,
+            display_context=None,
+            agents=("repair",),
             failure=outcome.last_reason or "",
         )
     if case in {"existing_wip", "weak_hook"}:

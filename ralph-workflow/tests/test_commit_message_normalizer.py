@@ -214,8 +214,13 @@ def test_normalizer_extracts_key_value_fields() -> None:
 
 def test_normalizer_does_not_inject_evidence_or_drop_authored_body_items() -> None:
     evidence = CommitEvidenceBundle(
-        "diff", ("docs/guide.md",), ("docs",), (), (),
-        behavior_facts=("Preserves compatibility.",), verification_facts=("pytest passed",),
+        "diff",
+        ("docs/guide.md",),
+        ("docs",),
+        (),
+        (),
+        behavior_facts=("Preserves compatibility.",),
+        verification_facts=("pytest passed",),
     )
     expanded = normalize_commit_message_draft("fix: preserve evidence", evidence)
     compressed = normalize_commit_message_draft(

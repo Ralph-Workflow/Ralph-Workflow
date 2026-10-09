@@ -26,7 +26,9 @@ def integration_transaction(root: Path) -> Iterator[bool]:
     path = Path(observed.stdout.strip()) / "ralph-auto-integrate.lock"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle = path.open("a+", encoding="utf-8")  # filesystem-write-ok: persistent integration advisory-lock inode
+        handle = path.open(  # filesystem-write-ok: persistent integration advisory-lock inode
+            "a+", encoding="utf-8"
+        )
     except OSError:
         yield False
         return

@@ -712,9 +712,7 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
                     "(user mid-edit?); left for the user flow"
                 )
             elif result.status is ScopedCommitStatus.FAILED:
-                logger.warning(
-                    ".gitignore auto-seed commit failed (non-fatal): {}", result.error
-                )
+                logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", result.error)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
@@ -889,9 +887,7 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         while not repo_anchor.exists():
             repo_anchor = repo_anchor.parent
         repo_root = Path(Repo(repo_anchor, search_parent_directories=True).working_dir)
-        pre_contents = capture_pre_write_contents(
-            repo_root, [_repo_rel_path(target, repo_root)]
-        )
+        pre_contents = capture_pre_write_contents(repo_root, [_repo_rel_path(target, repo_root)])
 
     if pre_existed and force:
         backup = _backup_path(target)
@@ -901,12 +897,16 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         # config write routed through commit_deterministic_writes below
         # (wt-12). The audit's helper-following check accepts the write
         # as routed.
-        shutil.move(str(target), str(backup))  # filesystem-write-ok: forced-regeneration backup preserves the prior config bytes before reinstall
+        shutil.move(  # filesystem-write-ok: forced-regeneration backup preserves the prior config bytes before reinstall
+            str(target), str(backup)
+        )
 
     # Shipped-template install write, committed by the routing below
     # (wt-12). The audit's helper-following check accepts the write as
     # routed.
-    shutil.copy2(str(source), str(target))  # filesystem-write-ok: shipped-template install committed by the scoped config routing below
+    shutil.copy2(  # filesystem-write-ok: shipped-template install committed by the scoped config routing below
+        str(source), str(target)
+    )
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )

@@ -363,9 +363,7 @@ status: request_changes
 - [PA-001] Step: [S-2] Criterion: verification is runnable. Expected observation: the command resolves. Proposed revision: name the runnable command. Verdict: not met. Evidence: command output. Location: plan step.
 """
 
-    content, diagnostics = parse_and_validate(
-        document, get_spec("planning_analysis_decision")
-    )
+    content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
     # The verdict item is missing ``Cost:``, so ANALYSIS005 fires once
@@ -431,9 +429,7 @@ status: request_changes
 - [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: split. Proposed revision: split. Verdict: not met. Evidence: cited paths. Location: plan prose. Cost: time.
 """
 
-    _content, diagnostics = parse_and_validate(
-        document, get_spec("planning_analysis_decision")
-    )
+    _content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     analysis_011 = [d for d in diagnostics if d.rule_id == "ANALYSIS011"]
     assert len(analysis_011) == 1

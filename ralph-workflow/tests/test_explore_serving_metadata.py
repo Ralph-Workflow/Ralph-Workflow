@@ -93,14 +93,26 @@ class _Workspace:
         total_lines = len(lines)
         if head is not None:
             sliced = lines[:head]
-            return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+            return (
+                "\n".join(sliced),
+                {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+            )
         if tail is not None:
             sliced = lines[-tail:]
-            return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+            return (
+                "\n".join(sliced),
+                {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+            )
         if start is None and end is None:
-            return (text, {"total_lines": total_lines, "returned_lines": total_lines, "truncated": False})
+            return (
+                text,
+                {"total_lines": total_lines, "returned_lines": total_lines, "truncated": False},
+            )
         sliced = lines[(start - 1) if start else 0 : end if end else total_lines]
-        return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+        return (
+            "\n".join(sliced),
+            {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+        )
 
     def list_dir(self, path: str):
         target = self.root / path if path else self.root
@@ -187,7 +199,11 @@ def test_serving_metadata_block_shape() -> None:
     assert "index_staleness" in block
     staleness = block["index_staleness"]
     assert isinstance(staleness, dict)
-    assert set(staleness.keys()) >= {"stale_paths_count", "last_refresh_age", "recovery_willfallback"}
+    assert set(staleness.keys()) >= {
+        "stale_paths_count",
+        "last_refresh_age",
+        "recovery_willfallback",
+    }
 
 
 # --- per-tool coverage -----------------------------------------------------
@@ -404,9 +420,7 @@ def test_serving_metadata_caches_staleness_block_until_state_changes(
         assert second_slot[1]["stale_paths_count"] == first_stale_count
         assert second_slot[1]["recovery_willfallback"] == first_block["recovery_willfallback"]
         # Mutate the store and confirm the next call recomputes.
-        session.explore_index.store.mark_dirty(
-            "hello.py", reason="test_cache", source_tool="test"
-        )
+        session.explore_index.store.mark_dirty("hello.py", reason="test_cache", source_tool="test")
         serving_metadata(session, index_used=True, fallback_reason=None)
         third_slot = session.explore_index.staleness_block_cache
         assert third_slot is not None

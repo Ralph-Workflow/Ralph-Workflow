@@ -70,7 +70,9 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
 def auto_integrate_after_commit(
-    config: UnifiedConfig, scope: WorkspaceScope, state: RebaseState,
+    config: UnifiedConfig,
+    scope: WorkspaceScope,
+    state: RebaseState,
 ) -> RebaseState | None:
     """Run integration with injected zero-delay retry timing."""
     return _auto_integrate_after_commit(config, scope, state, sleep=_no_op, jitter=lambda: 0.0)
@@ -655,8 +657,10 @@ def test_recovery_treats_bogus_phase_record_as_corrupt(
     import json
 
     payload: dict[str, str] = {
-        "phase": "bogus", "target": base,
-        "pre_feature_sha": pre_feature_sha, "pre_target_sha": pre_target_sha,
+        "phase": "bogus",
+        "target": base,
+        "pre_feature_sha": pre_feature_sha,
+        "pre_target_sha": pre_target_sha,
     }
     record_file.write_text(json.dumps(payload), encoding="utf-8")
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
@@ -857,9 +861,7 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
 
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
-    outcome = auto_integrate_after_commit(
-        config, scope, RebaseState()
-    )
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
     assert outcome.fast_forwarded is True, (
         f"B11/E5 happy-path setup failed: integration did not land; got outcome={outcome!r}"
@@ -1155,6 +1157,7 @@ def test_recovery_honors_target_reclaim_opt_out(
         pre_target_sha="b" * 40,
         integrated_feature_sha="c" * 40,
     )
+
     def refused(*_args: object, **kwargs: object) -> tuple[bool, str]:
         return False, str(kwargs["reclaim_target_worktree"])
 

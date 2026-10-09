@@ -31,12 +31,20 @@ from jinja2 import Environment
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FORMAT_DOC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "development_result.md"
 _FORMAT_DOC_EXAMPLE = (
-    _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "examples" / "development_result.md"
+    _REPO_ROOT
+    / "ralph"
+    / "mcp"
+    / "artifacts"
+    / "format_docs"
+    / "examples"
+    / "development_result.md"
 )
 _JINJA_PARTIAL = (
     _REPO_ROOT / "ralph" / "prompts" / "templates" / "shared" / "_development_result_proof.jinja"
 )
-_VALIDATOR_SPEC = _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "markdown" / "specs" / "development_result.py"
+_VALIDATOR_SPEC = (
+    _REPO_ROOT / "ralph" / "mcp" / "artifacts" / "markdown" / "specs" / "development_result.py"
+)
 
 
 def _normalized(path: Path) -> str:
@@ -46,8 +54,6 @@ def _normalized(path: Path) -> str:
     phrase-level assertions run against whitespace-normalized text.
     """
     return " ".join(path.read_text(encoding="utf-8").split())
-
-
 
 
 def test_format_doc_states_analysis_finding_ids_are_validated_exactly() -> None:
@@ -60,8 +66,6 @@ def test_format_doc_states_analysis_finding_ids_are_validated_exactly() -> None:
     assert "duplicate analysis-item proof entries" in text
     assert "missing or unknown analysis finding IDs" in text
     assert "analysis finding IDs are validated exactly" in text
-
-
 
 
 def test_format_doc_partial_guidance_names_parallel_dispatch() -> None:
@@ -98,8 +102,6 @@ def _rendered_partial() -> str:
     """Render the shipped jinja partial exactly as the prompt engine does."""
     template = Environment().from_string(_JINJA_PARTIAL.read_text(encoding="utf-8"))
     return " ".join(template.render().split())
-
-
 
 
 def test_rendered_partial_requires_exact_analysis_finding_id_match() -> None:
@@ -140,8 +142,7 @@ def test_rendered_partial_scopes_rationale_to_non_completed_dispositions() -> No
     rendered = _rendered_partial()
 
     assert (
-        "A missing `Rationale` is rejected only for `adapted` / "
-        "`not_applicable` / `blocked` items"
+        "A missing `Rationale` is rejected only for `adapted` / `not_applicable` / `blocked` items"
     ) in rendered
     assert "completed items do not" in rendered
     assert "missing Disposition / Rationale fields" not in rendered
@@ -196,15 +197,10 @@ def test_rendered_partial_names_timebox_only_mechanical_gate() -> None:
     rendered = _rendered_partial()
 
     assert "Carry this section whenever there is work to prove" in rendered
-    assert (
-        "the validator mechanically requires it only for a `completed` result"
-        in rendered
-    )
+    assert "the validator mechanically requires it only for a `completed` result" in rendered
     assert "cycle timebox or development timebox has warned" in rendered
     assert "cycle_timebox_warned" in rendered
     assert "development_timebox_warned" in rendered
-
-
 
 
 # ---------------------------------------------------------------------------

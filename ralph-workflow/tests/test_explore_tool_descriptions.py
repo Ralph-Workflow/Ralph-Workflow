@@ -87,21 +87,13 @@ def test_ralph_index_status_description_documents_fallback_contract() -> None:
     )
     # Five documented health states (R2 status-truthfulness).
     for state in ("healthy", "building", "stale", "degraded", "unhealthy"):
-        assert state in lowered, (
-            f"status description must list the {state!r} health state"
-        )
+        assert state in lowered, f"status description must list the {state!r} health state"
     # 5% staleness threshold (R4 / DEFAULT_STALENESS_THRESHOLD).
-    assert "5%" in description, (
-        "status description must name the 5% staleness threshold"
-    )
+    assert "5%" in description, "status description must name the 5% staleness threshold"
     # Automatic recovery (R2 "Recovery is automatic").
-    assert "automatic" in lowered, (
-        "status description must state recovery is automatic"
-    )
+    assert "automatic" in lowered, "status description must state recovery is automatic"
     # OS watch-handle resource guarantee (R5).
-    assert "watch" in lowered, (
-        "status description must surface the OS watch-handle guarantee"
-    )
+    assert "watch" in lowered, "status description must surface the OS watch-handle guarantee"
     # Performance targets (R6 / baseline + targets docs).
     assert "performance" in lowered and "target" in lowered, (
         "status description must point at the performance targets"

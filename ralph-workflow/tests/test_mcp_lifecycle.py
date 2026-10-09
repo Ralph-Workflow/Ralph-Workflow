@@ -10,6 +10,7 @@ import pytest
 
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -368,6 +369,36 @@ def test_conflict_resolution_relay_drops_events_after_bridge_shutdown(tmp_path: 
         sender.emit("write_file")
     assert observed == []
     remove()
+
+
+def test_sender_timeout_reported_by_probe_interrupts_the_parent_without_agent_output() -> None:
+    fault = "SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: timed out"
+    relay = ActivityRelay()
+
+    def probe(_endpoint: str, _timeout: timedelta) -> None:
+        raise PermanentPreflightError(f"HTTP MCP initialize failed: {fault}")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        lifecycle.StandaloneMcpProcess(
+            endpoint="http://127.0.0.1:1/mcp",
+            process=FakeProcess(),
+            session_file=pathlib.Path("/unused-session.json"),
+        ),
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        run_id="test-relay-failure",
+        probe_fn=probe,
+        activity_relay=relay,
+    )
+    try:
+        assert bridge.relay_health_error() is None
+        assert bridge.check_health_and_restart_if_needed() is False
+        health = bridge.relay_health_error()
+        assert health is not None
+        assert fault in health
+        assert bridge.restart_count == 0
+    finally:
+        assert relay.close()
 
 
 def test_restart_aware_bridge_closes_relay_before_terminating_the_server(tmp_path: Path) -> None:

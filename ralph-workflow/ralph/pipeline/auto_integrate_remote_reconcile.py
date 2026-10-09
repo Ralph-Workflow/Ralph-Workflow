@@ -134,7 +134,9 @@ def _reconcile_owned_target(
         pre_target_sha=branch_sha(owner, f"{remote}/{target}"),
         operation_kind="target_reconcile",
         owning_worktree=str(owner),
-        initiating_feature_sha=get_head_sha(repo_root) if owner.resolve() != repo_root.resolve() else None,
+        initiating_feature_sha=get_head_sha(repo_root)
+        if owner.resolve() != repo_root.resolve()
+        else None,
     )
     try:
         write_record(repo_root, record)

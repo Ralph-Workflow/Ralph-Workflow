@@ -207,9 +207,7 @@ def test_s2_drain_rebuilds_cold_index(tmp_path: Path) -> None:
     # The handle reopens after the cross-process-style swap (S-3) so
     # it observes the newly committed generation.
     committed = handle.store.get_setting("current_generation") or "0"
-    assert int(committed) >= 1, (
-        f"drain rebuilt but no generation committed (got {committed!r})"
-    )
+    assert int(committed) >= 1, f"drain rebuilt but no generation committed (got {committed!r})"
     clear_pending_recovery(workspace)
 
 
@@ -246,9 +244,7 @@ def test_e2_short_budget_cold_build_leaves_gen_zero_no_retry_storm(
         )
         assert result.status in {"timed_out", "failed"}
         persisted = store.get_setting("current_generation") or "0"
-        assert int(persisted) == 0, (
-            "timed-out cold build leaked a partial committed generation"
-        )
+        assert int(persisted) == 0, "timed-out cold build leaked a partial committed generation"
     finally:
         store.close()
     # After S-2 the handler hub MUST enqueue exactly one recovery
@@ -260,9 +256,7 @@ def test_e2_short_budget_cold_build_leaves_gen_zero_no_retry_storm(
     )
     # And no retry storm -- a second timed-out probe inside the
     # same backoff window MUST NOT enqueue a second recovery.
-    scheduler.record_failure(
-        code="timeout_exceeded", message="timed_out"
-    )
+    scheduler.record_failure(code="timeout_exceeded", message="timed_out")
     # Drive a second timed-out probe and assert the queued recovery is still timeout_exceeded.
     store = ExploreStore(index_dir)
     try:
@@ -383,14 +377,12 @@ def test_e3_handle_observes_cross_process_generation_swap(tmp_path: Path) -> Non
     stdout_str = stdout if isinstance(stdout, str) else (stdout.decode() if stdout else "")
     stderr_str = stderr if isinstance(stderr, str) else (stderr.decode() if stderr else "")
     assert "BUILD:" in stdout_str, (
-        f"sibling build did not emit BUILD: -- stdout={stdout_str!r} "
-        f"stderr={stderr_str!r}"
+        f"sibling build did not emit BUILD: -- stdout={stdout_str!r} stderr={stderr_str!r}"
     )
     build_payload_raw: object = json.loads(stdout_str.split("BUILD:", 1)[1].splitlines()[0])
     assert isinstance(build_payload_raw, dict)
     assert build_payload_raw.get("status") == "ok", (
-        f"sibling build failed -- stdout={stdout_str!r} "
-        f"stderr={stderr_str!r}"
+        f"sibling build failed -- stdout={stdout_str!r} stderr={stderr_str!r}"
     )
 
     # Phase 3: read via the still-open in-process handle.
@@ -435,6 +427,4 @@ def test_module_markers_are_pinned() -> None:
     rot silently.
     """
     assert any(marker.name == "subprocess_e2e" for marker in pytestmark)
-    assert any(
-        marker.name == "required_auto_integrate_e2e" for marker in pytestmark
-    )
+    assert any(marker.name == "required_auto_integrate_e2e" for marker in pytestmark)

@@ -1565,8 +1565,6 @@ def test_move_with_identical_content_uses_cache_and_pivots_path(
         store.close()
 
 
-
-
 def test_cache_lookup_rejects_stale_extractor_version(tmp_path: Path) -> None:
     """AC-05: ``lookup_content_cache`` returns ``None`` when the
     persisted row's ``extractor_version`` does not match the
@@ -1683,9 +1681,7 @@ class _BatchingProbeStore(ExploreStore):
     ) -> None:
         self.upsert_manifest_many_calls += 1
         self.upsert_manifest_many_callsites.append(len(paths))
-        super().upsert_manifest_many(
-            paths, content_hashes, sizes, mtimes, last_seen_generation
-        )
+        super().upsert_manifest_many(paths, content_hashes, sizes, mtimes, last_seen_generation)
 
     def peek_dirty_paths(self) -> list[str]:
         self.peek_dirty_paths_calls += 1

@@ -318,8 +318,11 @@ def run_commit_plumbing(
         effective_bridge_factory = effective_pipeline_deps.bridge_factory
 
     integration_verdict = prepare_commit_integration(
-        repo_root, chain_config.general_config or UnifiedConfig(),
-        effective_pipeline_deps, chain_config.registry, display_context,
+        repo_root,
+        chain_config.general_config or UnifiedConfig(),
+        effective_pipeline_deps,
+        chain_config.registry,
+        display_context,
     )
     if not integration_verdict.dispatch_allowed:
         return CommitAgentResult(failure_details=[commit_integration_blocker(integration_verdict)])

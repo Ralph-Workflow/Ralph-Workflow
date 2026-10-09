@@ -84,9 +84,7 @@ def serving_metadata(
             f"must be one of {sorted(CANONICAL_REASON_CODES)}"
         )
     raw_handle: object = getattr(session, "explore_index", None)
-    handle: ExploreIndex | None = (
-        raw_handle if isinstance(raw_handle, ExploreIndex) else None
-    )
+    handle: ExploreIndex | None = raw_handle if isinstance(raw_handle, ExploreIndex) else None
     block: dict[str, object] = {
         "index_used": bool(index_used),
         "fallback_reason": fallback_reason,
@@ -212,7 +210,9 @@ def attach_serving_metadata(
     on top of whatever the handler has already produced; the helper
     does NOT clobber caller-owned fields.
     """
-    payload.update(serving_metadata(session, index_used=index_used, fallback_reason=fallback_reason))
+    payload.update(
+        serving_metadata(session, index_used=index_used, fallback_reason=fallback_reason)
+    )
     return payload
 
 
@@ -252,9 +252,7 @@ def staleness_probe(
         fall through.
     """
     raw_handle: object = getattr(session, "explore_index", None)
-    handle: ExploreIndex | None = (
-        raw_handle if isinstance(raw_handle, ExploreIndex) else None
-    )
+    handle: ExploreIndex | None = raw_handle if isinstance(raw_handle, ExploreIndex) else None
     if handle is None or workspace_root is None:
         return {
             "stale": False,

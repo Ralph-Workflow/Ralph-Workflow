@@ -907,6 +907,7 @@ class ProcessLineReader:
 
     def _finish_terminal_completion(self) -> bool:
         """Stop a process whose completion evidence is already durable."""
+        _raise_on_relay_health_error(self, _agent_command_name(self._config))
         if self._completion_is_terminal is None:
             return False
         with contextlib.suppress(Exception):
@@ -1428,6 +1429,7 @@ class ProcessLineReader:
         self, watchdog: IdleWatchdog
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         """Stop on durable completion or drain remaining process shutdown evidence."""
+        _raise_on_relay_health_error(self, _agent_command_name(self._config))
         # stdout is closed: a buffered OpenCode frame can no longer arrive, so
         # the strategy must stop treating an open turn as a live child.
         self._strategy.observe_stream_end()
@@ -1552,6 +1554,7 @@ class ProcessLineReader:
         reader = self._start_read_thread()
         try:
             while True:
+                _raise_on_relay_health_error(self, _agent_command_name(self._config))
                 self._lines_event.clear()
                 self._raise_if_quota_exhausted()
                 self._poll_opencode_subagent_probe()

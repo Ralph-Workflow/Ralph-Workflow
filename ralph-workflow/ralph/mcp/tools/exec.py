@@ -680,9 +680,7 @@ def run_command(
     except PermissionError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except subprocess.TimeoutExpired as exc:
-        timeout_cause = (
-            exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
-        )
+        timeout_cause = exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
         # Suggest a larger timeout but never above the cap (the MCP client request
         # timeout is derived to exceed EXEC_MAX_TIMEOUT_MS; suggesting more would
         # let the next call outrun the client and re-trigger -32001).

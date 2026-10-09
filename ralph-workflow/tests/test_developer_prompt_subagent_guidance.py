@@ -63,19 +63,21 @@ _OWNERSHIP_FIELDS = ("Paths:", "Directories:", "Files:")
 
 def _render(template_name: str, tmp_path: Path, *, is_worker: bool) -> str:
     """Render one development prompt surface to a whitespace-normalized form."""
-    return " ".join(prompt_developer_iteration_xml_with_context(
-        context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(
-            prompt_content="Implement the requested change.",
-            plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
-        ),
-        workspace=MemoryWorkspace(root=str(tmp_path)),
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name=template_name,
-    ).split())
+    return " ".join(
+        prompt_developer_iteration_xml_with_context(
+            context=TemplateContext.default(),
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the requested change.",
+                plan_content="### [S-1] Implement the assigned change",
+                work_unit_id="unit" if is_worker else "",
+                work_unit_description="Implement the assigned change" if is_worker else "",
+                work_unit_directories="src" if is_worker else "",
+            ),
+            workspace=MemoryWorkspace(root=str(tmp_path)),
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            template_name=template_name,
+        ).split()
+    )
 
 
 @pytest.mark.parametrize(
@@ -112,10 +114,9 @@ def test_rendered_parallel_execution_contracts_match_role(
         assert _WORKER_TRANSFER_PROHIBITION not in rendered
         assert _WORKER_REVIEW_PROHIBITION not in rendered
         # Workers retain assignment-local recovery framing.
-        assert any(
-            clause in rendered
-            for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES
-        ), f"worker lost assignment-local recovery framing in {template_name}"
+        assert any(clause in rendered for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES), (
+            f"worker lost assignment-local recovery framing in {template_name}"
+        )
     else:
         # Coordinator surfaces must keep the four contract anchors. The
         # exact phrasing is intentionally avoided — the shared partial
@@ -140,7 +141,11 @@ def test_shared_parallel_partial_keeps_sanitization_and_waves() -> None:
     """
     partial = (
         Path(__file__).resolve().parents[1]
-        / "ralph" / "prompts" / "templates" / "shared" / "_parallel_execution.jinja"
+        / "ralph"
+        / "prompts"
+        / "templates"
+        / "shared"
+        / "_parallel_execution.jinja"
     )
     source = partial.read_text(encoding="utf-8")
 

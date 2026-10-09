@@ -14,7 +14,9 @@ from ralph.workspace.memory import MemoryWorkspace
 from tests._artifact_format_docs_mock_session import planning_session
 from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 
-_PLAN = "Inspect the repository then implement independent changes and verify their combined behavior."
+_PLAN = (
+    "Inspect the repository then implement independent changes and verify their combined behavior."
+)
 
 
 def test_verify_prose_plan_is_valid_without_persisting_it() -> None:

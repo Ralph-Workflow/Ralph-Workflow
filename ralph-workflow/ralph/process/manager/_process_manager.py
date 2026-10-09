@@ -692,7 +692,9 @@ class ProcessManager:
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
                 record_runtime_event("runtime_launch", str(exc))
-                raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
+                raise AgentLaunchError(
+                    effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)
+                ) from exc
             raise
 
         pid = proc.pid
@@ -775,7 +777,9 @@ class ProcessManager:
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
                 record_runtime_event("runtime_launch", str(exc))
-                raise AgentLaunchError(effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)) from exc
+                raise AgentLaunchError(
+                    effective.label or cmd[0], exc, spawn_payload_bytes(cmd, child_env)
+                ) from exc
             raise
 
         pid = proc.pid
@@ -858,7 +862,9 @@ class ProcessManager:
         grace_period_s: float | None = None,
     ) -> None:
         """Terminate a tracked process with explicit operator cancellation."""
-        self.record_terminal_reason(handle.record.pid, "operator_cancellation", "process_manager.terminate")
+        self.record_terminal_reason(
+            handle.record.pid, "operator_cancellation", "process_manager.terminate"
+        )
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
@@ -1076,7 +1082,9 @@ class ProcessManager:
                 if record.status in _TERMINAL_STATUSES:
                     continue
                 try:
-                    self.record_terminal_reason(pid, "operator_cancellation", "process_manager.shutdown_all")
+                    self.record_terminal_reason(
+                        pid, "operator_cancellation", "process_manager.shutdown_all"
+                    )
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)
@@ -1154,7 +1162,9 @@ class ProcessManager:
                 ):
                     continue
                 try:
-                    self.record_terminal_reason(pid, "operator_cancellation", "process_manager.shutdown_all_for_label")
+                    self.record_terminal_reason(
+                        pid, "operator_cancellation", "process_manager.shutdown_all_for_label"
+                    )
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)

@@ -613,7 +613,9 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
         )
         return None
     conflicted = retained_rebase_paths(
-        root, sha, tuple(get_conflicted_files(repo_root=root) or staged_conflict_marker_paths(root)),
+        root,
+        sha,
+        tuple(get_conflicted_files(repo_root=root) or staged_conflict_marker_paths(root)),
     )
     if "<staged-marker-query-failed>" in conflicted:
         return None

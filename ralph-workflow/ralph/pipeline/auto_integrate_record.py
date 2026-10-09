@@ -302,7 +302,8 @@ def clear_record(workspace_root: Path) -> None:
 
         post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
         if (
-            record.phase != "integrated" or record.integrated_feature_sha is None
+            record.phase != "integrated"
+            or record.integrated_feature_sha is None
             or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
             or get_head_sha(workspace_root) != record.integrated_feature_sha
         ):

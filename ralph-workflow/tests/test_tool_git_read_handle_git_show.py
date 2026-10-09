@@ -83,7 +83,9 @@ class TestHandleGitShow:
         workspace = MockWorkspaceRoot(tmp_path)
 
         with (
-            patch("ralph.mcp.tools.git_read.run_git_command", side_effect=ExecutionError("bad ref")),
+            patch(
+                "ralph.mcp.tools.git_read.run_git_command", side_effect=ExecutionError("bad ref")
+            ),
             pytest.raises(ExecutionError),
         ):
             handle_git_show(session, workspace, {"ref": "DOES_NOT_EXIST_12345"})

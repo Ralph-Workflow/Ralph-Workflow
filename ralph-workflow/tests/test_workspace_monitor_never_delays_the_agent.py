@@ -288,7 +288,8 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
         "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
     )
     monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: _FastSidecar()
+        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
+        lambda _root: _FastSidecar(),
     )
     monitor = WorkspaceMonitor(
         tmp_path,

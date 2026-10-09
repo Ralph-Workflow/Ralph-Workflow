@@ -159,8 +159,7 @@ def _assert_only_steady_metrics(metrics: Mapping[str, float]) -> None:
     for key in spike_carrying_keys:
         measured = metrics[key]
         assert math.isclose(measured, _STEADY_SECONDS, rel_tol=1e-6, abs_tol=1e-9), (
-            f"{key}={measured} != steady {_STEADY_SECONDS} "
-            f"(cold spike leaked into percentile tail)"
+            f"{key}={measured} != steady {_STEADY_SECONDS} (cold spike leaked into percentile tail)"
         )
     # Speed ratio = live_p50 / indexed_p50; both equal steady so
     # the ratio is 1.0 either way. Kept here so any future change

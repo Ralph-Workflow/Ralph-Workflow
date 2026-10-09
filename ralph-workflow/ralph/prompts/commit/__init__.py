@@ -70,14 +70,16 @@ def prompt_commit_message(
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
         "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
-        "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
-        "MESSAGE_BUDGET": str(evidence.message_budget) if evidence is not None else "derive from the diff",
+        "CHANGE_AREAS": ", ".join(evidence.change_areas)
+        if evidence is not None
+        else "derive from the diff",
+        "MESSAGE_BUDGET": str(evidence.message_budget)
+        if evidence is not None
+        else "derive from the diff",
         "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
         "BEHAVIOR_FACTS": _evidence_facts(evidence, "behavior_facts"),
         "VERIFICATION_FACTS": _evidence_facts(evidence, "verification_facts"),
-        "OPTIONAL_CONTEXT_PATHS": "\n".join(
-            f"- `{path}`" for path in optional_context_paths
-        ),
+        "OPTIONAL_CONTEXT_PATHS": "\n".join(f"- `{path}`" for path in optional_context_paths),
     }
     variables.update(
         _commit_payload_variables(
@@ -121,8 +123,12 @@ def prompt_commit_message_for_opencode(
             f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
         ),
         "LAST_RETRY_ERROR": _read_commit_retry_hint(workspace_root),
-        "CHANGE_AREAS": ", ".join(evidence.change_areas) if evidence is not None else "derive from the diff",
-        "MESSAGE_BUDGET": str(evidence.message_budget) if evidence is not None else "derive from the diff",
+        "CHANGE_AREAS": ", ".join(evidence.change_areas)
+        if evidence is not None
+        else "derive from the diff",
+        "MESSAGE_BUDGET": str(evidence.message_budget)
+        if evidence is not None
+        else "derive from the diff",
         "CHANGED_FILES": "\n".join(evidence.changed_files) if evidence is not None else "",
         "BEHAVIOR_FACTS": _evidence_facts(evidence, "behavior_facts"),
         "VERIFICATION_FACTS": _evidence_facts(evidence, "verification_facts"),

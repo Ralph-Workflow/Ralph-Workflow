@@ -13,10 +13,14 @@ if TYPE_CHECKING:
 
 def original_conflict_paths(root: Path) -> tuple[str, ...]:
     """Read Git's resolve-undo receipt after staging removed conflict entries."""
-    result = run_git(("ls-files", "--resolve-undo", "-z"), cwd=root, label="resolution:original-conflicts")
+    result = run_git(
+        ("ls-files", "--resolve-undo", "-z"), cwd=root, label="resolution:original-conflicts"
+    )
     if result.returncode:
         return ()
-    return tuple(sorted({entry.partition("\t")[2] for entry in result.stdout.split("\0") if "\t" in entry}))
+    return tuple(
+        sorted({entry.partition("\t")[2] for entry in result.stdout.split("\0") if "\t" in entry})
+    )
 
 
 def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
@@ -24,7 +28,9 @@ def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
     record = read_record(root)
     if record is None or not record.resolving_merge:
         return paths
-    return tuple(sorted(set(paths) | set(record.resolving_paths) | set(original_conflict_paths(root))))
+    return tuple(
+        sorted(set(paths) | set(record.resolving_paths) | set(original_conflict_paths(root)))
+    )
 
 
 def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple[str, ...]:
@@ -35,5 +41,7 @@ def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple
     saved = record.resolving_paths if record.resolving_stop_sha == sha else ()
     scope = tuple(sorted(set(paths) | set(saved) | set(original_conflict_paths(root))))
     if scope:
-        write_record(root, record.model_copy(update={"resolving_paths": scope, "resolving_stop_sha": sha}))
+        write_record(
+            root, record.model_copy(update={"resolving_paths": scope, "resolving_stop_sha": sha})
+        )
     return scope

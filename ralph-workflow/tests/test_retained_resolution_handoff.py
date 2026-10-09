@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -42,27 +41,42 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 @pytest.mark.parametrize("enabled", [True, False])
 @pytest.mark.parametrize("receipt_flags_lost", [False, True])
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
-    tmp_git_repo: Path, *, enabled: bool, receipt_flags_lost: bool,
+    tmp_git_repo: Path,
+    *,
+    enabled: bool,
+    receipt_flags_lost: bool,
 ) -> None:
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
     base = _commit(root, "shared.txt", "base\n")
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "shared.txt", "feature\n")
-    write_record(root, IntegrationRecord(
-        phase="integrated", target=target, pre_feature_sha=feature,
-        pre_target_sha=base, integrated_feature_sha=feature,
-    ))
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+            integrated_feature_sha=feature,
+        ),
+    )
     assert _git(root, "switch", target).returncode == 0
     _commit(root, "shared.txt", "target\n")
     assert _git(root, "switch", "feature").returncode == 0
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": enabled, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": enabled,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
 
     declined = recover_incomplete_integration(
-        WorkspaceScope(root), config=config,
+        WorkspaceScope(root),
+        config=config,
         rebase_stop_resolver=lambda _root, _target, _stop: False,
         conflict_resolver=lambda _root, _target: False,
     )
@@ -73,9 +87,15 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     if receipt_flags_lost:
         interrupted = read_record(root)
         assert interrupted is not None
-        write_record(root, interrupted.model_copy(update={
-            "resolving_rebase": False, "resolving_paths": (),
-        }))
+        write_record(
+            root,
+            interrupted.model_copy(
+                update={
+                    "resolving_rebase": False,
+                    "resolving_paths": (),
+                }
+            ),
+        )
 
     def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
         assert read_record(root) is not None
@@ -84,7 +104,9 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
         return True
 
     outcome = recover_incomplete_integration(
-        WorkspaceScope(root), config=config, rebase_stop_resolver=resolve,
+        WorkspaceScope(root),
+        config=config,
+        rebase_stop_resolver=resolve,
     )
     assert outcome is not None and outcome.fast_forwarded
     assert read_record(root) is None
@@ -94,17 +116,25 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
 
 @pytest.mark.parametrize("receipt", ["integrated", "malformed", "missing_target", "changed_head"])
 def test_standalone_commit_recovers_ownership_before_commit_session(
-    tmp_git_repo: Path, receipt: str, monkeypatch: pytest.MonkeyPatch,
+    tmp_git_repo: Path,
+    receipt: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
     base = _commit(root, "base.txt", "base\n")
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "feature.txt", "feature\n")
-    write_record(root, IntegrationRecord(
-        phase="integrated", target=target, pre_feature_sha=feature,
-        pre_target_sha=base, integrated_feature_sha=feature,
-    ))
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+            integrated_feature_sha=feature,
+        ),
+    )
     if receipt == "malformed":
         ownership = root / ".agent" / "auto_integrate_in_progress.json"
         for payload in (
@@ -121,10 +151,15 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         _commit(root, "operator.txt", "operator work\n")
     head_before = _git(root, "rev-parse", "HEAD").stdout.strip()
     (root / "pending.txt").write_text("keep pending work\n", encoding="utf-8")
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
     context = make_display_context()
     agent = AgentConfig(cmd="fake-commit", json_parser="generic")
     registry = AgentRegistry.from_config(config)
@@ -137,13 +172,17 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
 
     monkeypatch.setattr("ralph.cli.commands.commit.invoke_agent", invoke)
     result = run_commit_plumbing(
-        diff="pending work", repo_root=root,
+        diff="pending work",
+        repo_root=root,
         chain_config=CommitChainConfig(
-            registry=registry, agents=["fake-commit"], verbose=False,
+            registry=registry,
+            agents=["fake-commit"],
+            verbose=False,
             agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
             general_config=config,
         ),
-        display_context=context, pipeline_deps=make_test_pipeline_deps(context),
+        display_context=context,
+        pipeline_deps=make_test_pipeline_deps(context),
     )
     if receipt == "integrated":
         assert result.message == "fix: preserved pending work"
@@ -169,7 +208,10 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 @pytest.mark.parametrize("reintegrate", [False, True])
 def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
-    tmp_git_repo: Path, operation: str, *, reintegrate: bool,
+    tmp_git_repo: Path,
+    operation: str,
+    *,
+    reintegrate: bool,
 ) -> None:
     root = tmp_git_repo
     assert _git(root, "config", "--replace-all", "core.logAllRefUpdates", "true").returncode == 0
@@ -180,16 +222,27 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     assert _git(root, "switch", target).returncode == 0
     moved = _commit(root, "target.txt", "target\n")
     assert _git(root, "switch", "feature").returncode == 0
-    write_record(root, IntegrationRecord(
-        phase="integrating", target=target, pre_feature_sha=feature,
-        pre_target_sha=moved, reintegrate_pending=reintegrate,
-    ))
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=moved,
+            reintegrate_pending=reintegrate,
+        ),
+    )
     assert _git(root, operation, target).returncode == 0
     completed = _git(root, "rev-parse", "HEAD").stdout.strip()
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -204,7 +257,9 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 @pytest.mark.parametrize("phase", ["integrating", "integrated"])
 def test_completed_landing_receipt_preserves_later_operator_resolution(
-    tmp_git_repo: Path, operation: str, phase: str,
+    tmp_git_repo: Path,
+    operation: str,
+    phase: str,
 ) -> None:
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
@@ -214,20 +269,30 @@ def test_completed_landing_receipt_preserves_later_operator_resolution(
     assert _git(root, "switch", target).returncode == 0
     moved = _commit(root, "shared.txt", "target\n")
     assert _git(root, "switch", "feature").returncode == 0
-    write_record(root, IntegrationRecord(
-        phase=phase, target=target, pre_feature_sha=feature,
-        pre_target_sha=base if phase == "integrated" else moved,
-        integrated_feature_sha=feature if phase == "integrated" else None,
-    ))
+    write_record(
+        root,
+        IntegrationRecord(
+            phase=phase,
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base if phase == "integrated" else moved,
+            integrated_feature_sha=feature if phase == "integrated" else None,
+        ),
+    )
     assert _git(root, operation, target).returncode != 0
     (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
     assert _git(root, "add", "shared.txt").returncode == 0
     index_before = _git(root, "write-tree").stdout
     head_before = _git(root, "rev-parse", "HEAD").stdout
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -240,7 +305,8 @@ def test_completed_landing_receipt_preserves_later_operator_resolution(
 
 
 def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_git_repo
     _commit(root, "base.txt", "base\n")
@@ -249,6 +315,7 @@ def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
     receipt.write_text("{", encoding="utf-8")
     _write_commit_message_doc(root, "fix: retained artifact")
     monkeypatch.chdir(root)
+
     def load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
         return UnifiedConfig()
 
@@ -259,7 +326,9 @@ def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
     )
     assert result == 1
     assert receipt.read_text(encoding="utf-8") == "{"
-    assert "fix: retained artifact" in (root / ".agent" / "artifacts" / "commit_message.md").read_text(encoding="utf-8")
+    assert "fix: retained artifact" in (
+        root / ".agent" / "artifacts" / "commit_message.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_repo: Path) -> None:
@@ -269,6 +338,7 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
     registry = AgentRegistry.from_config(config)
     registry.register("fake-commit", AgentConfig(cmd="fake-commit", json_parser="generic"))
     context = make_display_context()
+
     class Bridge:
         run_id = "commit-race"
 
@@ -285,16 +355,25 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
             return self.endpoint_uri()
 
     def race(**_kwargs: object) -> SessionBridgeLike:
-        write_record(root, IntegrationRecord(
-            phase="integrated", target="missing-target", pre_feature_sha=base,
-            pre_target_sha=base, integrated_feature_sha=base,
-        ))
+        write_record(
+            root,
+            IntegrationRecord(
+                phase="integrated",
+                target="missing-target",
+                pre_feature_sha=base,
+                pre_target_sha=base,
+                integrated_feature_sha=base,
+            ),
+        )
         return Bridge()
 
     result = run_commit_plumbing(
-        diff="pending work", repo_root=root,
+        diff="pending work",
+        repo_root=root,
         chain_config=CommitChainConfig(
-            registry=registry, agents=["fake-commit"], verbose=False,
+            registry=registry,
+            agents=["fake-commit"],
+            verbose=False,
             agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
             general_config=config,
         ),
@@ -317,16 +396,26 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     main = _commit(root, "shared.txt", "main\n")
     assert _git(root, "switch", "feature").returncode == 0
     assert _git(root, operation, target).returncode != 0
-    write_record(root, IntegrationRecord(
-        phase="integrating", target=target, pre_feature_sha=feature, pre_target_sha=main,
-        resolving_rebase=operation == "rebase", resolving_merge=operation == "merge",
-    ))
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=main,
+            resolving_rebase=operation == "rebase",
+            resolving_merge=operation == "merge",
+        ),
+    )
     return target, feature, main
 
 
 @pytest.mark.parametrize("crash_before_mutation", [False, True])
 def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
-    tmp_git_repo: Path, tmp_path: Path, *, crash_before_mutation: bool,
+    tmp_git_repo: Path,
+    tmp_path: Path,
+    *,
+    crash_before_mutation: bool,
 ) -> None:
     owner = tmp_git_repo
     target = _git(owner, "branch", "--show-current").stdout.strip()
@@ -343,15 +432,24 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     feature_tip = _commit(feature, "feature.txt", "valuable completed feature\n")
     if crash_before_mutation:
-        write_record(feature, IntegrationRecord(
-            phase="integrating", target=target, pre_feature_sha=local,
-            pre_target_sha=remote, operation_kind="target_reconcile",
-            owning_worktree=str(owner), initiating_feature_sha=feature_tip,
-        ))
+        write_record(
+            feature,
+            IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=local,
+                pre_target_sha=remote,
+                operation_kind="target_reconcile",
+                owning_worktree=str(owner),
+                initiating_feature_sha=feature_tip,
+            ),
+        )
     else:
         initial = auto_integrate_after_commit(
             UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
-            WorkspaceScope(feature), RebaseState(), rebase_stop_resolver=lambda *_args: False,
+            WorkspaceScope(feature),
+            RebaseState(),
+            rebase_stop_resolver=lambda *_args: False,
         )
         assert initial is not None and read_record(feature) is not None
 
@@ -359,10 +457,15 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")
         return True
 
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
     from ralph.pipeline.auto_integrate_record import record_path
 
     owner_receipt = record_path(owner)
@@ -373,7 +476,9 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         owner_receipt.write_text("{", encoding="utf-8")
     before = _git(owner, "rev-parse", "HEAD").stdout
     blocked = recover_incomplete_integration(
-        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+        WorkspaceScope(feature),
+        config=config,
+        rebase_stop_resolver=resolve,
     )
     assert blocked is not None and blocked.recovery_record_retained
     assert _git(owner, "rev-parse", "HEAD").stdout == before
@@ -384,13 +489,17 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     assert not inspect_integration_resolution(feature, blocked).dispatch_allowed
     owner_receipt.unlink()
     recovered = recover_incomplete_integration(
-        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+        WorkspaceScope(feature),
+        config=config,
+        rebase_stop_resolver=resolve,
     )
     assert recovered is not None
     assert not inspect_integration_resolution(feature, recovered).dispatch_allowed
     assert read_record(feature) is not None
     landed = recover_incomplete_integration(
-        WorkspaceScope(feature), config=config, rebase_stop_resolver=resolve,
+        WorkspaceScope(feature),
+        config=config,
+        rebase_stop_resolver=resolve,
     )
     assert landed is not None and landed.fast_forwarded
     assert _git(feature, "rev-parse", "HEAD").stdout == _git(feature, "rev-parse", target).stdout
@@ -400,7 +509,8 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
-    tmp_git_repo: Path, operation: str,
+    tmp_git_repo: Path,
+    operation: str,
 ) -> None:
     root = tmp_git_repo
     target, feature, _main = _interrupted(root, operation)
@@ -417,9 +527,16 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
         return True
 
     outcome = recover_incomplete_integration(
-        WorkspaceScope(root), config=UnifiedConfig.model_validate({"general": {
-            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        }}), conflict_resolver=resolve,
+        WorkspaceScope(root),
+        config=UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_target": target,
+                    "auto_integrate_remote_enabled": False,
+                }
+            }
+        ),
+        conflict_resolver=resolve,
         rebase_stop_resolver=lambda repo, branch, _stop: resolve(repo, branch),
     )
 
@@ -433,15 +550,21 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_aborted_owned_resolution_retains_landing_until_retry_completes(
-    tmp_git_repo: Path, operation: str,
+    tmp_git_repo: Path,
+    operation: str,
 ) -> None:
     root = tmp_git_repo
     target, feature, _moved = _interrupted(root, operation)
     assert _git(root, operation, "--abort").returncode == 0
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
 
     waiting = recover_incomplete_integration(WorkspaceScope(root))
 
@@ -455,7 +578,9 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
         return True
 
     landed = recover_incomplete_integration(
-        WorkspaceScope(root), config=config, rebase_stop_resolver=resolve,
+        WorkspaceScope(root),
+        config=config,
+        rebase_stop_resolver=resolve,
     )
     assert landed is not None and landed.fast_forwarded
     assert read_record(root) is None
@@ -465,7 +590,9 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 @pytest.mark.parametrize("seam", ["planning", "after_commit", "boundary", "standalone_commit"])
 def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
-    tmp_git_repo: Path, operation: str, seam: str,
+    tmp_git_repo: Path,
+    operation: str,
+    seam: str,
 ) -> None:
     root = tmp_git_repo
     target, _, _ = _interrupted(root, operation)
@@ -479,32 +606,51 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     def rebase_resolver(repo: Path, branch: str, _stop: RebaseStop) -> bool:
         return merge_resolver(repo, branch)
 
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        "auto_integrate_enabled": seam != "standalone_commit",
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+                "auto_integrate_enabled": seam != "standalone_commit",
+            }
+        }
+    )
     outcome: RebaseState | None
     if seam == "standalone_commit":
         context = make_display_context()
         verdict = prepare_commit_integration(
-            root, config, make_test_pipeline_deps(context), AgentRegistry.from_config(config),
-            context, conflict_resolver=merge_resolver, rebase_stop_resolver=rebase_resolver,
+            root,
+            config,
+            make_test_pipeline_deps(context),
+            AgentRegistry.from_config(config),
+            context,
+            conflict_resolver=merge_resolver,
+            rebase_stop_resolver=rebase_resolver,
         )
         assert verdict.dispatch_allowed
         outcome = RebaseState(fast_forwarded=True)
     elif seam == "planning":
         outcome = integrate_before_planning(
-            config, WorkspaceScope(root), RebaseState(), conflict_resolver=merge_resolver,
+            config,
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
         )
     elif seam == "boundary":
         outcome = auto_integrate_on_phase_transition(
-            config, WorkspaceScope(root), RebaseState(), conflict_resolver=merge_resolver,
+            config,
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
         )
     else:
         outcome = auto_integrate_after_commit(
-            config, WorkspaceScope(root), RebaseState(), conflict_resolver=merge_resolver,
+            config,
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
         )
     assert calls == [target]
@@ -515,7 +661,9 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
 
 
 @pytest.mark.parametrize("completion", ["legacy", "prepared", "empty", "unrelated"])
-def test_completed_retained_rebase_requires_exact_completion_receipt(tmp_git_repo: Path, completion: str) -> None:
+def test_completed_retained_rebase_requires_exact_completion_receipt(
+    tmp_git_repo: Path, completion: str
+) -> None:
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
 
     root = tmp_git_repo
@@ -529,9 +677,16 @@ def test_completed_retained_rebase_requires_exact_completion_receipt(tmp_git_rep
     if completion == "unrelated":
         _commit(root, "unrelated.txt", "later commit\n")
     outcome = integrate_before_planning(
-        UnifiedConfig.model_validate({"general": {
-            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        }}), WorkspaceScope(root), RebaseState(),
+        UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_target": target,
+                    "auto_integrate_remote_enabled": False,
+                }
+            }
+        ),
+        WorkspaceScope(root),
+        RebaseState(),
     )
     assert outcome is not None
     if completion == "unrelated":
@@ -543,7 +698,9 @@ def test_completed_retained_rebase_requires_exact_completion_receipt(tmp_git_rep
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
-def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(tmp_git_repo: Path, operation: str) -> None:
+def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
+    tmp_git_repo: Path, operation: str
+) -> None:
     root = tmp_git_repo
     target, feature, main = _interrupted(root, operation)
     assert read_record(root) is not None
@@ -553,9 +710,16 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(tm
     assert read_record(root) is not None
     assert _git(root, "reset", "--hard", main).returncode == 0
     outcome = integrate_before_planning(
-        UnifiedConfig.model_validate({"general": {
-            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        }}), WorkspaceScope(root), RebaseState(),
+        UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_target": target,
+                    "auto_integrate_remote_enabled": False,
+                }
+            }
+        ),
+        WorkspaceScope(root),
+        RebaseState(),
     )
     assert outcome is not None and not outcome.fast_forwarded
     assert outcome.recovery_record_retained
@@ -566,7 +730,10 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(tm
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch, legacy: bool, operation: str,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy: bool,
+    operation: str,
 ) -> None:
     from ralph.pipeline._pending_merge_commit import mark_pending_merge
 
@@ -603,35 +770,60 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-    }})
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
     policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     registry = AgentRegistry()
-    registry.agents.update({name: AgentConfig(cmd="fake") for name in resolution_chain_agents(policy)})
+    registry.agents.update(
+        {name: AgentConfig(cmd="fake") for name in resolution_chain_agents(policy)}
+    )
     context = make_display_context(console=Console(file=StringIO()))
     deps = make_test_pipeline_deps(context)
     scope = WorkspaceScope(root)
     display = ParallelDisplay(context)
     merge_resolver = build_agent_conflict_resolver(
-        config=config, pipeline_deps=deps, workspace_scope=scope, policy_bundle=policy,
-        registry=registry, display=display, display_context=context,
+        config=config,
+        pipeline_deps=deps,
+        workspace_scope=scope,
+        policy_bundle=policy,
+        registry=registry,
+        display=display,
+        display_context=context,
     )
     rebase_resolver = build_agent_rebase_stop_resolver(
-        config=config, pipeline_deps=deps, workspace_scope=scope, policy_bundle=policy,
-        registry=registry, display=display, display_context=context,
+        config=config,
+        pipeline_deps=deps,
+        workspace_scope=scope,
+        policy_bundle=policy,
+        registry=registry,
+        display=display,
+        display_context=context,
     )
     if legacy:
         from ralph.pipeline.parallel.worker_runtime import run_worker_auto_integration
 
         outcome = run_worker_auto_integration(
-            config=config, workspace_scope=scope, policy_bundle=policy, registry=registry,
-            pipeline_deps=deps, display_context=context, recover_first=True,
+            config=config,
+            workspace_scope=scope,
+            policy_bundle=policy,
+            registry=registry,
+            pipeline_deps=deps,
+            display_context=context,
+            recover_first=True,
             state=RebaseState(last_action="conflict", recovery_record_retained=True),
         )
     else:
         outcome = integrate_before_planning(
-            config, scope, RebaseState(), conflict_resolver=merge_resolver,
+            config,
+            scope,
+            RebaseState(),
+            conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
         )
     assert calls == ["agent"]
@@ -643,7 +835,9 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
 
 
 def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
-    tmp_git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_git_repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from rich.console import Console
 
@@ -659,21 +853,34 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     owner = tmp_git_repo
     target, _, _ = _interrupted(owner, "rebase")
     feature = tmp_path / "record-owner"
-    assert _git(owner, "worktree", "add", "-b", "record-owner", str(feature), target).returncode == 0
+    assert (
+        _git(owner, "worktree", "add", "-b", "record-owner", str(feature), target).returncode == 0
+    )
     original_feature = _git(feature, "rev-parse", "HEAD").stdout
     (owner / "shared.txt").write_text("resolved but invalid\n", encoding="utf-8")
     assert _git(owner, "add", "shared.txt").returncode == 0
     prepare_pending_rebase(owner)
     record = read_record(owner)
     assert record is not None and record.rebase_continue_pending
-    write_record(feature, record.model_copy(update={
-        "target": "feature", "operation_kind": "target_reconcile", "owning_worktree": str(owner),
-    }))
+    write_record(
+        feature,
+        record.model_copy(
+            update={
+                "target": "feature",
+                "operation_kind": "target_reconcile",
+                "owning_worktree": str(owner),
+            }
+        ),
+    )
     clear_record(owner)
     seen: list[Path] = []
 
     def execute(
-        _effect: object, _config: object, _deps: object, scope: WorkspaceScope, **_kwargs: object,
+        _effect: object,
+        _config: object,
+        _deps: object,
+        scope: WorkspaceScope,
+        **_kwargs: object,
     ) -> PipelineEvent:
         seen.append(scope.root)
         assert scope.root == owner
@@ -683,10 +890,16 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
     assert repair_pending_merge(
-        workspace_scope=WorkspaceScope(feature), config=UnifiedConfig(),
-        pipeline_deps=make_test_pipeline_deps(make_display_context(console=Console(file=StringIO()))),
-        policy_bundle=PolicyBundle.model_construct(), display=None, display_context=None,
-        agents=("repair",), failure="source validation failed",
+        workspace_scope=WorkspaceScope(feature),
+        config=UnifiedConfig(),
+        pipeline_deps=make_test_pipeline_deps(
+            make_display_context(console=Console(file=StringIO()))
+        ),
+        policy_bundle=PolicyBundle.model_construct(),
+        display=None,
+        display_context=None,
+        agents=("repair",),
+        failure="source validation failed",
     )
     assert seen == [owner]
     assert read_record(owner) is None
@@ -696,143 +909,3 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     assert _git(owner, "show", "feature:shared.txt").stdout == "fixed\n"
     assert _git(feature, "rev-parse", "HEAD").stdout == original_feature
     assert read_record(feature) is not None
-
-
-@pytest.mark.parametrize("empty", [False, True])
-def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch, empty: bool,
-) -> None:
-    from rich.console import Console
-
-    from ralph.config.enums import Verbosity
-    from ralph.display.context import make_display_context
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline import run_loop, runner
-    from ralph.pipeline.commit_state import CommitState
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.pipeline.state import PipelineState
-    from ralph.policy.loader import load_policy
-    from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.testing import FakeConnectivityMonitor
-    from tests._pipeline_deps_factory import make_test_pipeline_deps
-
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "completed feature\n")
-    if not empty:
-        (root / "shared.txt").write_text("new committed work\n", encoding="utf-8")
-    context = make_display_context(console=Console(file=StringIO(), width=120))
-    display = ParallelDisplay(context)
-    policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-    }})
-    scope = WorkspaceScope(root)
-    commit_calls: list[str] = []
-
-    def commit(_effect: object, _root: Path) -> PipelineEvent:
-        nonlocal feature
-        commit_calls.append("commit")
-        feature = _commit(root, "shared.txt", "new committed work\n")
-        return PipelineEvent.COMMIT_SUCCESS
-
-    target_lock = root / ".git" / "refs" / "heads" / f"{target}.lock"
-    waits: list[float] = []
-
-    def sleep(delay: float) -> None:
-        waits.append(delay)
-        assert read_record(root) is not None
-        assert target_lock.exists()
-        target_lock.unlink()
-
-    def held(_config: UnifiedConfig, _scope: WorkspaceScope, _state: RebaseState) -> RebaseState:
-        target_lock.write_text("another process owns target lock", encoding="utf-8")
-        write_record(root, IntegrationRecord(
-            phase="integrated", target=target, pre_feature_sha=feature, pre_target_sha=base,
-            integrated_feature_sha=feature,
-        ))
-        return RebaseState(last_action="skipped", last_reason="target lock busy", recovery_record_retained=True)
-
-    deps = replace(
-        make_test_pipeline_deps(context), has_uncommitted_changes=lambda _root: not empty,
-        commit_effect_executor=commit, auto_integrate_resolver=held,
-    )
-    initial = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
-    controller = RecoveryController()
-    completed = runner.run_pipeline_step(
-        state=initial, config=config, workspace_scope=scope, policy_bundle=policy,
-        registry={}, display=display, display_context=context, verbosity=Verbosity.QUIET,
-        pipeline_deps=deps, recovery_controller=controller, pipeline_subscriber=None,
-    )
-    assert isinstance(completed, PipelineState)
-    assert completed.phase != initial.phase
-    assert completed.rebase.recovery_record_retained
-    assert read_record(root) is not None
-    assert commit_calls == ([] if empty else ["commit"])
-    phases: list[str] = []
-
-    def next_step(*, state: PipelineState, **_kwargs: object) -> int:
-        phases.append(str(state.phase))
-        assert state.phase != initial.phase
-        assert read_record(root) is None
-        assert _git(root, "rev-parse", target).stdout.strip() == feature
-        return 0
-
-    monkeypatch.setattr(runner, "run_pipeline_step", next_step)
-    ctx = run_loop._LoopContext(
-        policy_bundle=policy, workspace_scope=scope, config=config, active_display=display,
-        display_context=context, effective_verbosity=Verbosity.QUIET, registry={},
-        effective_pipeline_subscriber=None, controller=controller, config_path=None,
-        cli_overrides={}, monitor_stop=None, connectivity_monitor=FakeConnectivityMonitor(),
-        sleep=sleep, is_quiet=True, pipeline_deps=replace(deps, auto_integrate_resolver=None),
-    )
-    _, _, code = run_loop._run_inner_loop_after_startup(completed, ctx, str(initial.phase))
-    assert code == 0
-    assert phases == [completed.phase]
-    assert waits == [5.0]
-
-
-@pytest.mark.parametrize("receipt", ["integrating", "integrated", "malformed", "missing_sha"])
-def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
-    tmp_git_repo: Path, receipt: str,
-) -> None:
-    from ralph.pipeline.auto_integrate_record import clear_record, record_path
-    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-    from ralph.pipeline.integration_resolution import inspect_integration_resolution
-
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "feature\n")
-    write_record(root, IntegrationRecord(
-        phase="integrating" if receipt == "integrating" else "integrated", target=target,
-        pre_feature_sha=feature, pre_target_sha=base,
-        integrated_feature_sha=feature if receipt == "integrated" else None,
-    ))
-    if receipt == "malformed":
-        record_path(root).write_text('{"phase":', encoding="utf-8")
-    original = record_path(root).read_bytes()
-    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
-    config = UnifiedConfig.model_validate({"general": {
-        "auto_integrate_enabled": False, "auto_integrate_target": target,
-        "auto_integrate_remote_enabled": False,
-    }})
-    recovered = integrate_before_planning(config, WorkspaceScope(root), RebaseState())
-    assert recovered is not None
-    if receipt in {"malformed", "missing_sha"}:
-        assert recovered.recovery_record_retained
-        assert record_path(root).read_bytes() == original
-        direct = recover_incomplete_integration(WorkspaceScope(root), config=config)
-        assert direct is not None and direct.recovery_record_retained
-        assert _git(root, "rev-parse", target).stdout.strip() == base
-        assert not inspect_integration_resolution(root, recovered).dispatch_allowed
-    else:
-        assert recovered.fast_forwarded
-        assert read_record(root) is None
-        assert _git(root, "rev-parse", target).stdout.strip() == feature
-        assert inspect_integration_resolution(root, recovered).dispatch_allowed
-    clear_record(root)
-    assert inspect_integration_resolution(root, RebaseState(recovery_record_retained=True)).dispatch_allowed

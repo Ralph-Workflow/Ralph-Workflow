@@ -133,7 +133,11 @@ def auto_integrate_after_commit(
     # ``preserve_unresolved_resolution_state``.
     try:
         recovered = _recover_before_attempt(
-            config, workspace_scope, None, conflict_resolver, rebase_stop_resolver,
+            config,
+            workspace_scope,
+            None,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
         if recovered is not None:
             return preserve_unresolved_resolution_state(recovered, prior=state)
@@ -155,7 +159,9 @@ def auto_integrate_after_commit(
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
         return _record_skip(reason=f"unexpected failure: {exc}", target=None).model_copy(
-            update={"recovery_record_retained": read_record(Path(workspace_scope.root)) is not None},
+            update={
+                "recovery_record_retained": read_record(Path(workspace_scope.root)) is not None
+            },
         )
 
 
@@ -205,7 +211,11 @@ def _auto_integrate_on_phase_transition_inner(
         if not (root / ".git").exists():
             return None
         recovered = _recover_before_attempt(
-            config, workspace_scope, None, conflict_resolver, rebase_stop_resolver,
+            config,
+            workspace_scope,
+            None,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
         if recovered is not None:
             return recovered
@@ -314,7 +324,10 @@ def _auto_integrate_after_commit_inner(
             if attempt:
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
             recovered = _recover_before_attempt(
-                config, workspace_scope, record, effective_resolver,
+                config,
+                workspace_scope,
+                record,
+                effective_resolver,
                 rebase_stop_resolver if allowed else None,
             )
             if recovered is not None:
@@ -560,10 +573,16 @@ def _integrate_once_owned(
             reason="unfinished integration retained for recovery", target=target
         ), False
     attempt_record = (
-        owned_record.model_copy(update={
-            "phase": "integrating", "pre_feature_sha": pre_feature_sha,
-            "pre_target_sha": pre_target_sha, "integrated_feature_sha": None,
-        }) if owned_record is not None else IntegrationRecord(
+        owned_record.model_copy(
+            update={
+                "phase": "integrating",
+                "pre_feature_sha": pre_feature_sha,
+                "pre_target_sha": pre_target_sha,
+                "integrated_feature_sha": None,
+            }
+        )
+        if owned_record is not None
+        else IntegrationRecord(
             phase="integrating",
             target=target,
             pre_feature_sha=pre_feature_sha,
@@ -613,9 +632,12 @@ def _integrate_once_owned(
         # (AC-11).
         _write_record(
             root,
-            attempt_record.model_copy(update={
-                "phase": "integrated", "integrated_feature_sha": feature_sha,
-            }),
+            attempt_record.model_copy(
+                update={
+                    "phase": "integrated",
+                    "integrated_feature_sha": feature_sha,
+                }
+            ),
         )
 
         refresh_outcome = refresh
@@ -735,25 +757,7 @@ def _check_early_skips(
     *,
     missing_target: str,
 ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
-    """Apply the AC-01/AC-02/AC-13 skip table to the resolved context.
-
-    Returns:
-        ``(skip_record, usable_ctx)`` where exactly one of the two
-        slots is non-``None``:
-
-        * When ``ctx is None`` (disabled / env lookup failed),
-          ``skip_record is None`` and ``usable_ctx is None`` -- the
-          caller returns ``None`` directly.
-        * When a recorded skip is triggered (AC-02/AC-13), the
-          ``RebaseState`` is returned for the caller to return
-          directly, and ``usable_ctx is None``.
-        * Otherwise, ``skip_record is None`` and ``usable_ctx`` is
-          the narrowed context tuple with ``str`` (non-Optional)
-          slots the caller can unpack without type ignores.
-
-    Extracted from :func:`_auto_integrate_after_commit_inner` so the
-    orchestrator keeps a sensible return-statement count.
-    """
+    """Return either a recorded skip or the narrowed integration context."""
     if ctx is None:
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
@@ -850,25 +854,7 @@ def _reclaim_and_retry_preconditions(
     target: str,
     precondition_exc: RebasePreconditionError,
 ) -> RebaseState | None:
-    """AC-07/R8 reclaim-at-seam helper.
-
-    On a precondition failure that looks like unowned stale state,
-    invoke :func:`_reclaim_unowned_stale_rebase` to abort/reclaim
-    the state, then re-run ``check_rebase_preconditions`` and
-    return ``None`` (proceed) when it now passes. A dirty tree
-    keeps the state protected (AC-11 case 4); a post-reclaim
-    precondition failure surfaces a loud ``skipped`` record with
-    the cause so the next seam can retry.
-
-    Return contract: a recorded skip is returned when the
-    precondition still fails after the reclaim, ``None`` otherwise
-    (both when the reclaim did nothing and when it succeeded).
-    The caller relies on this contract to distinguish "skip
-    because the reclaim retried and still failed" from "proceed
-    because the reclaim worked" by checking the LAST_REASON
-    string on the returned record (only the recorded-skip
-    branch sets a ``preconditions not met after reclaim`` reason).
-    """
+    """Reclaim the integration worktree at the skip seam."""
     reclaimed = _reclaim_unowned_stale_rebase(root)
     if reclaimed is None:
         # No reclaim happened: either nothing to reclaim or the

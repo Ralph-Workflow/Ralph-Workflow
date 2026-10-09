@@ -505,9 +505,11 @@ def _continue_fast_forward_from_record(
         return _record_skip(
             reason=(
                 "recovery: malformed integrated record; verified feature SHA missing"
-                if feature_sha is None else "recovery: feature tip changed or unreadable; landing withheld"
+                if feature_sha is None
+                else "recovery: feature tip changed or unreadable; landing withheld"
             ),
-            target=record.target, record_retained=True,
+            target=record.target,
+            record_retained=True,
         )
     refresh, pointer_is_fresh = _refresh_before_verdict(config, workspace_root, record.target)
     if not pointer_is_fresh:
@@ -550,13 +552,18 @@ def _continue_fast_forward_from_record(
         return record_refresh(
             _record_skip(
                 reason="recovery: target ancestry unreadable; record retained for retry",
-                target=record.target, record_retained=True,
+                target=record.target,
+                record_retained=True,
             ),
             refresh,
         )
     if not ancestry:
         return _reintegrate_owned_landing(
-            workspace_root, record, config, conflict_resolver, rebase_stop_resolver,
+            workspace_root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
     return _land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
 
@@ -703,7 +710,9 @@ def _land_and_reconcile(
         )
     return record_refresh(
         _record_skip(
-            reason=f"recovery: {skip_reason}", target=record.target, record_retained=True,
+            reason=f"recovery: {skip_reason}",
+            target=record.target,
+            record_retained=True,
         ),
         refresh,
     )
@@ -776,25 +785,38 @@ def _recover_pending_merge(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
     if record.phase == "integrating" and not (
-        record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending
-        or record.merge_commit_pending or record.merge_commit_tree is not None
+        record.resolving_rebase
+        or record.resolving_merge
+        or record.rebase_continue_pending
+        or record.merge_commit_pending
+        or record.merge_commit_tree is not None
     ):
         if merge_state(root) not in {MERGE_STATE_NONE, MERGE_STATE_IN_PROGRESS}:
             return _record_skip(
                 reason="recovery: merge state unreadable; record retained for retry",
-                target=record.target, record_retained=True,
+                target=record.target,
+                record_retained=True,
             )
         return _reintegrate_owned_landing(
-            root, record, config, conflict_resolver, rebase_stop_resolver,
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
     if (
         (record.resolving_merge or record.resolving_rebase)
-        and not rebase_in_progress(root) and merge_state(root) == MERGE_STATE_NONE and is_repo_clean(root)
+        and not rebase_in_progress(root)
+        and merge_state(root) == MERGE_STATE_NONE
+        and is_repo_clean(root)
         and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
     ):
         return _reintegrate_owned_landing(
-            root, record.model_copy(update={"resolving_merge": False, "resolving_rebase": False}),
-            config, conflict_resolver, rebase_stop_resolver,
+            root,
+            record.model_copy(update={"resolving_merge": False, "resolving_rebase": False}),
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
     if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
         from ralph.pipeline._integration_continuation import continue_retained_resolution
@@ -816,7 +838,11 @@ def _recover_pending_merge(
         logger.critical("CRITICAL: {}", resumed)
         return _record_skip(reason=resumed, target=record.target, record_retained=True)
     return _continue_fast_forward_from_record(
-        root, resumed, config, conflict_resolver, rebase_stop_resolver,
+        root,
+        resumed,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
     )
 
 
@@ -858,7 +884,8 @@ def _recover_incomplete_integration_owned(
             retained = retained_integration_reason(root)
             return (
                 _record_skip(reason=retained, target=None, record_retained=True)
-                if retained is not None else _reclaim_unowned_stale_rebase(root)
+                if retained is not None
+                else _reclaim_unowned_stale_rebase(root)
             )
 
         if (
@@ -868,9 +895,7 @@ def _recover_incomplete_integration_owned(
             or record.merge_commit_pending
             or record.merge_commit_tree is not None
             or (record.operation_kind == "feature_integrate" and record.phase == "integrating")
-            or (
-                record.operation_kind == "target_reconcile"
-            )
+            or (record.operation_kind == "target_reconcile")
         ):
             return _recover_pending_merge(
                 root, record, config, conflict_resolver, rebase_stop_resolver
@@ -879,10 +904,15 @@ def _recover_incomplete_integration_owned(
         if rebase_in_progress(root) or merge_state(root) != MERGE_STATE_NONE:
             return _record_skip(
                 reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
-                target=record.target, record_retained=True,
+                target=record.target,
+                record_retained=True,
             )
         return _continue_fast_forward_from_record(
-            root, record, config, conflict_resolver, rebase_stop_resolver,
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
 
     except Exception as exc:

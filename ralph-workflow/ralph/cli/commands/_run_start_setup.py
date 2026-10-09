@@ -125,13 +125,9 @@ def sync_shipped_skills(  # noqa: PLR0912
                 if failures:
                     dependencies.print_project_skill_conflict_hint(failures)
                 if pre_tree is not None:
-                    written_paths = _diff_written_paths(
-                        target_root, candidates, pre_contents
-                    )
+                    written_paths = _diff_written_paths(target_root, candidates, pre_contents)
                     if written_paths:
-                        written_pre_contents = {
-                            p: pre_contents.get(p) for p in written_paths
-                        }
+                        written_pre_contents = {p: pre_contents.get(p) for p in written_paths}
                         result = commit_skill_writes(
                             target_root,
                             written_paths=written_paths,
@@ -139,19 +135,14 @@ def sync_shipped_skills(  # noqa: PLR0912
                             create_commit_fn=create_commit,
                         )
                         if result.status is ScopedCommitStatus.CREATED and result.sha:
-                            logger.info(
-                                "Auto-committed skill updates: {}", result.sha[:8]
-                            )
+                            logger.info("Auto-committed skill updates: {}", result.sha[:8])
                         elif result.status is ScopedCommitStatus.FAILED:
                             dependencies.emit_warning(
                                 f"Skill auto-commit failed (non-fatal): {result.error}. "
                                 "The run continues with the new skill content uncommitted; "
                                 "commit manually or re-run to retry."
                             )
-                        elif (
-                            result.status is ScopedCommitStatus.SKIPPED
-                            and result.skipped_paths
-                        ):
+                        elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
                             logger.warning(
                                 "Skill auto-commit skipped {} path(s) already dirty at HEAD; "
                                 "left for the agent flow",

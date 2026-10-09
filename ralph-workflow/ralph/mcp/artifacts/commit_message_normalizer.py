@@ -28,8 +28,12 @@ _SUBJECT: re.Pattern[str] = re.compile(
     r"(?:\([^)]+\))?!?)(?::\s*|\s+).+)$"
 )
 _HEADING: re.Pattern[str] = re.compile(r"(?m)^##+\s+.*\S\s*$")
-_BODY_ITEM: re.Pattern[str] = re.compile(r"(?m)^\s*(?:[-*]|\d+\.)\s+(?:\[[A-Z]+-\d+\]\s*)?(.*\S)\s*$")
-_KEY_VALUE: re.Pattern[str] = re.compile(r"(?im)^\s*(?:intent|rationale|changes?|verification)\s*:\s*(.+\S)\s*$")
+_BODY_ITEM: re.Pattern[str] = re.compile(
+    r"(?m)^\s*(?:[-*]|\d+\.)\s+(?:\[[A-Z]+-\d+\]\s*)?(.*\S)\s*$"
+)
+_KEY_VALUE: re.Pattern[str] = re.compile(
+    r"(?im)^\s*(?:intent|rationale|changes?|verification)\s*:\s*(.+\S)\s*$"
+)
 _SUBJECT_PART_COUNT = 2
 
 
@@ -56,18 +60,28 @@ def normalize_commit_message_draft(
         return NormalizationResult(content, (), "high", ("draft",))
     match = _FRONTMATTER_SUBJECT.search(content) or _SUBJECT.search(content)
     if match is None:
-        raise ValueError(_regeneration_diagnostic(
-            "intent is ambiguous",
-            "a conventional subject", "draft has no conventional subject", evidence,
-            draft_revision, "conventional-subject repair and live-file refresh",
-        ))
+        raise ValueError(
+            _regeneration_diagnostic(
+                "intent is ambiguous",
+                "a conventional subject",
+                "draft has no conventional subject",
+                evidence,
+                draft_revision,
+                "conventional-subject repair and live-file refresh",
+            )
+        )
     subject = _normalized_subject(_capture_subject(match))
     if not subject:
-        raise ValueError(_regeneration_diagnostic(
-            "intent is ambiguous",
-            "'<kind>(<scope>)?: <lowercase description>'", _capture_subject(match), evidence,
-            draft_revision, "conventional-subject repair and live-file refresh",
-        ))
+        raise ValueError(
+            _regeneration_diagnostic(
+                "intent is ambiguous",
+                "'<kind>(<scope>)?: <lowercase description>'",
+                _capture_subject(match),
+                evidence,
+                draft_revision,
+                "conventional-subject repair and live-file refresh",
+            )
+        )
     ir = build_commit_message_ir(evidence, subject=subject)
     claims = _extract_claims(content)
     ir = replace(ir, rationale=claims, behavior_risk=(), verification=(), files=())
@@ -75,12 +89,20 @@ def normalize_commit_message_draft(
     if rendered == content:
         return NormalizationResult(rendered, (), "high", ("live evidence",))
     transformations: list[NormalizationTransformation] = [
-        NormalizationTransformation("rendered canonical artifact from live evidence", "live evidence", "high"),
+        NormalizationTransformation(
+            "rendered canonical artifact from live evidence", "live evidence", "high"
+        ),
     ]
     if "## Files" in content:
-        transformations.append(NormalizationTransformation("removed file inventory", "draft", "high"))
-    confidence: Confidence = "medium" if any(item.confidence == "medium" for item in transformations) else "high"
-    return NormalizationResult(rendered, tuple(transformations), confidence, ("live evidence", "draft" if claims else ""))
+        transformations.append(
+            NormalizationTransformation("removed file inventory", "draft", "high")
+        )
+    confidence: Confidence = (
+        "medium" if any(item.confidence == "medium" for item in transformations) else "high"
+    )
+    return NormalizationResult(
+        rendered, tuple(transformations), confidence, ("live evidence", "draft" if claims else "")
+    )
 
 
 def _is_valid_safe_artifact(content: str) -> bool:
@@ -135,7 +157,15 @@ def _prose_body(content: str) -> str:
     for line in content.splitlines():
         if line.strip() == "---":
             in_frontmatter = not in_frontmatter
-        elif not in_frontmatter and not line.lower().startswith("subject:") and not _HEADING.match(line) and not _BODY_ITEM.match(line) and not _SUBJECT.match(line) and not _KEY_VALUE.match(line) and not re.match(r"^\s*-\s+\[F-\d+\]", line):
+        elif (
+            not in_frontmatter
+            and not line.lower().startswith("subject:")
+            and not _HEADING.match(line)
+            and not _BODY_ITEM.match(line)
+            and not _SUBJECT.match(line)
+            and not _KEY_VALUE.match(line)
+            and not re.match(r"^\s*-\s+\[F-\d+\]", line)
+        ):
             lines.append(line.strip())
     return " ".join(line for line in lines if line)
 
@@ -149,13 +179,32 @@ def _sentence_claims(body: str) -> tuple[str, ...]:
     return tuple(sentences)
 
 
-def _regeneration_diagnostic(reason: str, expected: str, actual: str, evidence: CommitEvidenceBundle, revision: int, attempted: str) -> str:
-    fact_groups: tuple[tuple[str, tuple[str, ...]], ...] = (("behavior", evidence.behavior_facts), ("verification", evidence.verification_facts), ("compatibility", evidence.compatibility_hints), ("risk", evidence.risk_hints), ("diff", evidence.diff_summary))
+def _regeneration_diagnostic(
+    reason: str,
+    expected: str,
+    actual: str,
+    evidence: CommitEvidenceBundle,
+    revision: int,
+    attempted: str,
+) -> str:
+    fact_groups: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("behavior", evidence.behavior_facts),
+        ("verification", evidence.verification_facts),
+        ("compatibility", evidence.compatibility_hints),
+        ("risk", evidence.risk_hints),
+        ("diff", evidence.diff_summary),
+    )
     kinds = [name for name, facts in fact_groups if facts]
     summary = f"changed-file count: {len(evidence.changed_files)}; change areas: {', '.join(evidence.change_areas) or 'none'}; available fact kinds: {', '.join(kinds) or 'none'}"
-    example = "fix: update changed files\n\n## Body\n- [B-1] Changed " + (evidence.change_areas[0] if evidence.change_areas else "code") + "."
-    return (f"commit evidence regeneration required: {reason}; expected shape: {expected}; actual value/claim: {actual!r}; "
-            f"evidence considered: {summary}; attempted normalization: {attempted}; draft revision: {revision}; minimal valid repair: {example!r}")
+    example = (
+        "fix: update changed files\n\n## Body\n- [B-1] Changed "
+        + (evidence.change_areas[0] if evidence.change_areas else "code")
+        + "."
+    )
+    return (
+        f"commit evidence regeneration required: {reason}; expected shape: {expected}; actual value/claim: {actual!r}; "
+        f"evidence considered: {summary}; attempted normalization: {attempted}; draft revision: {revision}; minimal valid repair: {example!r}"
+    )
 
 
 def _capture_subject(match: re.Match[str]) -> str:
@@ -164,11 +213,23 @@ def _capture_subject(match: re.Match[str]) -> str:
 
 
 def _normalized_subject(subject: str) -> str:
-    subject = subject.strip().strip('"\'').strip()
+    subject = subject.strip().strip("\"'").strip()
     prefix, separator, description = subject.partition(":")
     if not separator:
         parts = subject.split(maxsplit=1)
-        if len(parts) != _SUBJECT_PART_COUNT or parts[0].lower() not in {"build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test"}:
+        if len(parts) != _SUBJECT_PART_COUNT or parts[0].lower() not in {
+            "build",
+            "chore",
+            "ci",
+            "docs",
+            "feat",
+            "fix",
+            "perf",
+            "refactor",
+            "revert",
+            "style",
+            "test",
+        }:
             return ""
         prefix, description = parts
     description = description.strip()

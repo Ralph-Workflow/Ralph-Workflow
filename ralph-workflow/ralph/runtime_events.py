@@ -28,7 +28,9 @@ class RuntimeEventRecorder:
         return self._latest
 
 
-_RECORDER: ContextVar[RuntimeEventRecorder | None] = ContextVar("runtime_event_recorder", default=None)
+_RECORDER: ContextVar[RuntimeEventRecorder | None] = ContextVar(
+    "runtime_event_recorder", default=None
+)
 
 
 @contextmanager

@@ -67,4 +67,3 @@ class _EvidenceRowBuilder:
             created_at=time.time(),
             is_stale=False,
         )
-

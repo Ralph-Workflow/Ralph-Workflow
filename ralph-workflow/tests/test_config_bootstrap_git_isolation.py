@@ -192,14 +192,10 @@ def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
     with _WarningCapture() as captured:
         results = ensure_local_configs(agent_dir, force=True)
 
-    assert not any(
-        "has no pre-write hash recorded" in msg for msg in captured.messages
-    ), (
+    assert not any("has no pre-write hash recorded" in msg for msg in captured.messages), (
         f"Tracked-symlink regeneration must record a pre-write hash; got {captured.messages!r}"
     )
-    assert not any(
-        "was already dirty at HEAD" in msg for msg in captured.messages
-    ), (
+    assert not any("was already dirty at HEAD" in msg for msg in captured.messages), (
         f"Tracked-symlink regeneration must not see HEAD-dirty paths; got {captured.messages!r}"
     )
     new_subjects = _non_gitignore_new_subjects(repo_root, subjects_before)
@@ -305,8 +301,6 @@ def test_ignored_force_regeneration_stays_silent(tmp_path: Path) -> None:
         f"Ignored-path regeneration must not warn; got {captured.messages!r}"
     )
     new_subjects = _non_gitignore_new_subjects(repo_root, subjects_before)
-    assert new_subjects == [], (
-        f"Ignored-path regeneration must not commit; got {new_subjects!r}"
-    )
+    assert new_subjects == [], f"Ignored-path regeneration must not commit; got {new_subjects!r}"
     regenerated = [r for r in results if r.path == config_path]
     assert regenerated and regenerated[0].action == "regenerated"

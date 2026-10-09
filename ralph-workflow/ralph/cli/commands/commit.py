@@ -170,10 +170,17 @@ def _handle_agent_commit_generation(
 
     if not inspect_integration_resolution(repo_root, RebaseState()).dispatch_allowed:
         deps = DefaultPipelineFactory().build(
-            config, display_context, pro_hooks=pro_hooks, model_identity=model_identity,
+            config,
+            display_context,
+            pro_hooks=pro_hooks,
+            model_identity=model_identity,
         )
         verdict = prepare_commit_integration(
-            repo_root, config, deps, AgentRegistry.from_config(config), display_context,
+            repo_root,
+            config,
+            deps,
+            AgentRegistry.from_config(config),
+            display_context,
         )
         if not verdict.dispatch_allowed:
             display.emit_warning(commit_integration_blocker(verdict))

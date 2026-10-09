@@ -232,7 +232,10 @@ class TestUnsafeExecVcsBlacklist:
         result = handle_unsafe_exec(
             session, workspace, {"command": "bash deploy.sh"}, _runner(stdout=b"deployed")
         )
-        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
+        assert (
+            "Warning: script 'deploy.sh' contains version-control commands"
+            in result.content[0].text
+        )
 
     def test_warns_for_direct_script_execution_with_blocked_git_operation(
         self, tmp_path: Path
@@ -245,7 +248,10 @@ class TestUnsafeExecVcsBlacklist:
         result = handle_unsafe_exec(
             session, workspace, {"command": "./release"}, _runner(stdout=b"released")
         )
-        assert "Warning: script './release' contains version-control commands" in result.content[0].text
+        assert (
+            "Warning: script './release' contains version-control commands"
+            in result.content[0].text
+        )
 
     def test_warns_for_a_script_hiding_git_behind_an_embedded_nul(self, tmp_path: Path) -> None:
         """``sh`` drops NULs from a script, so the scanner must drop them too:
@@ -257,7 +263,10 @@ class TestUnsafeExecVcsBlacklist:
         result = handle_unsafe_exec(
             session, workspace, {"command": "bash deploy.sh"}, _runner(stdout=b"deployed")
         )
-        assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
+        assert (
+            "Warning: script 'deploy.sh' contains version-control commands"
+            in result.content[0].text
+        )
 
     def test_allows_shell_script_without_git(self, tmp_path: Path) -> None:
         script = tmp_path / "build.sh"

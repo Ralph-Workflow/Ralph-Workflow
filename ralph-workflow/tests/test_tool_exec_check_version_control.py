@@ -361,7 +361,10 @@ class TestGitBlockedSubcommandsConstant:
             )
 
             assert result.is_error is False
-            assert "Warning: script 'deploy.sh' contains version-control commands" in result.content[0].text
+            assert (
+                "Warning: script 'deploy.sh' contains version-control commands"
+                in result.content[0].text
+            )
 
         def test_framework_launcher_with_git_text_is_not_flagged(self, tmp_path: Path) -> None:
             script = tmp_path / "rails"

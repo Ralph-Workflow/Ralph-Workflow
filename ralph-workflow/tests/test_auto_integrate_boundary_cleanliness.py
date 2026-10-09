@@ -154,8 +154,14 @@ def test_dirty_clean_target_boundary_stays_silent_on_repeated_evaluations(
     monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: True)
 
     scope = WorkspaceScope(tmp_path)
-    assert ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState()) is None
-    assert ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState()) is None
+    assert (
+        ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState())
+        is None
+    )
+    assert (
+        ai.auto_integrate_on_phase_transition(_dirty_boundary_config(), scope, RebaseState())
+        is None
+    )
 
 
 def test_dirty_boundary_regression_suppressed_divergence_forces_a_refresh(

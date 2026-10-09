@@ -1310,7 +1310,9 @@ class TestTransportAdaptationIsNarrow:
             path
             for path in _walk_python_files(RALPH_ROOT / "agents" / "invoke")
             if path.name != "__init__.py"
-            and any(_is_transport_adaptation_name(name) for name in _DEF_NAME_RE.findall(_read(path)))
+            and any(
+                _is_transport_adaptation_name(name) for name in _DEF_NAME_RE.findall(_read(path))
+            )
         )
         assert parsed_paths == list(scanned_paths)
 

@@ -547,10 +547,13 @@ def test_on_output_chunk_does_not_prevent_output_limit_error() -> None:
 def test_streaming_output_resets_the_inactivity_timeout() -> None:
     pm = ProcessManager(policy=_FAST_POLICY, psutil=None)
     handle = pm.spawn(
-        [sys.executable, "-u", "-c", "import time; [print(i) or time.sleep(.05) for i in range(6)]"],
-        SpawnOptions(
-            label="test:progress-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        ),
+        [
+            sys.executable,
+            "-u",
+            "-c",
+            "import time; [print(i) or time.sleep(.05) for i in range(6)]",
+        ],
+        SpawnOptions(label="test:progress-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE),
     )
 
     stdout, stderr = handle.communicate_and_cleanup(
@@ -590,9 +593,7 @@ def test_streaming_process_still_stops_at_the_absolute_hard_deadline() -> None:
             "-c",
             "import time\nwhile True:\n print('progress'); time.sleep(.02)",
         ],
-        SpawnOptions(
-            label="test:absolute-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        ),
+        SpawnOptions(label="test:absolute-timeout", stdout=subprocess.PIPE, stderr=subprocess.PIPE),
     )
 
     with pytest.raises(subprocess.TimeoutExpired) as excinfo:

@@ -16,7 +16,10 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 def _git(root: Path, *args: str) -> GitRunResult:
     return run_git(
-        args, cwd=root, label="pending-recovery-test", options=GitRunOptions(timeout=5),
+        args,
+        cwd=root,
+        label="pending-recovery-test",
+        options=GitRunOptions(timeout=5),
     )
 
 
@@ -46,7 +49,9 @@ def _prepared(root: Path) -> tuple[str, IntegrationRecord]:
 
 @pytest.mark.parametrize("change", ["index", "head", "merge_parent", "query_failure"])
 def test_pending_merge_refuses_changed_or_unreadable_evidence(
-    tmp_git_repo: Path, change: str, monkeypatch: pytest.MonkeyPatch,
+    tmp_git_repo: Path,
+    change: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_git_repo
     target, record = _prepared(root)
@@ -57,7 +62,8 @@ def test_pending_merge_refuses_changed_or_unreadable_evidence(
         assert _git(root, "update-ref", "HEAD", record.merge_commit_parent or "").returncode == 0
     elif change == "merge_parent":
         (root / ".git" / "MERGE_HEAD").write_text(
-            f"{record.merge_commit_head}\n", encoding="utf-8",
+            f"{record.merge_commit_head}\n",
+            encoding="utf-8",
         )
     else:
         monkeypatch.setattr("ralph.pipeline._pending_merge_commit._git_value", lambda *_a: None)
@@ -93,15 +99,26 @@ def test_moving_target_preserves_completed_pending_merge(tmp_git_repo: Path) -> 
     root = tmp_git_repo
     target, record = _prepared(root)
     advanced = _git(
-        root, "commit-tree", record.merge_commit_tree or "", "-p",
-        record.merge_commit_parent or "", "-m", "concurrent target",
+        root,
+        "commit-tree",
+        record.merge_commit_tree or "",
+        "-p",
+        record.merge_commit_parent or "",
+        "-m",
+        "concurrent target",
     ).stdout.strip()
     assert advanced
     assert _git(root, "update-ref", f"refs/heads/{target}", advanced).returncode == 0
     outcome = recover_incomplete_integration(
-        WorkspaceScope(root), config=UnifiedConfig.model_validate({"general": {
-            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        }}),
+        WorkspaceScope(root),
+        config=UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_target": target,
+                    "auto_integrate_remote_enabled": False,
+                }
+            }
+        ),
     )
     assert outcome is not None and outcome.fast_forwarded
     assert _git(root, "show", "HEAD:shared.txt").stdout == "resolved\n"
@@ -138,9 +155,17 @@ def test_successful_hook_cannot_publish_changed_verified_merge(tmp_git_repo: Pat
         return True
 
     outcome = auto_integrate_after_commit(
-        UnifiedConfig.model_validate({"general": {
-            "auto_integrate_target": target, "auto_integrate_remote_enabled": False,
-        }}), WorkspaceScope(root), RebaseState(), conflict_resolver=resolve,
+        UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_target": target,
+                    "auto_integrate_remote_enabled": False,
+                }
+            }
+        ),
+        WorkspaceScope(root),
+        RebaseState(),
+        conflict_resolver=resolve,
     )
     assert outcome is not None and not outcome.fast_forwarded
     assert outcome.recovery_record_retained
@@ -148,14 +173,19 @@ def test_successful_hook_cannot_publish_changed_verified_merge(tmp_git_repo: Pat
     assert _git(root, "rev-parse", target).stdout.strip() == target_tip
     retained = read_record(root)
     assert retained is not None and retained.merge_commit_tree
-    assert _git(root, "show", f"{retained.merge_commit_tree}:shared.txt").stdout == "verified resolution\n"
+    assert (
+        _git(root, "show", f"{retained.merge_commit_tree}:shared.txt").stdout
+        == "verified resolution\n"
+    )
     assert _git(root, "show", "HEAD:shared.txt").stdout == "hook changed source\n"
 
 
 @pytest.mark.parametrize("record_state", ["missing", "corrupt"])
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_unowned_clean_resolution_is_preserved(
-    tmp_git_repo: Path, record_state: str, operation: str,
+    tmp_git_repo: Path,
+    record_state: str,
+    operation: str,
 ) -> None:
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()

@@ -100,11 +100,13 @@ version = 1
 requires = { impact = ["high"], obligations = ["pii"] }
 controls = ["security-boundary"]
 """
-    text = _manifest(
-        controls=_control("kernel") + _control("security-boundary", lane="human"),
-        profiles=profiles,
-    ).replace('impact = "low"', 'impact = "high"').replace(
-        "obligations = []", 'obligations = ["pii"]'
+    text = (
+        _manifest(
+            controls=_control("kernel") + _control("security-boundary", lane="human"),
+            profiles=profiles,
+        )
+        .replace('impact = "low"', 'impact = "high"')
+        .replace("obligations = []", 'obligations = ["pii"]')
     )
 
     portfolio = parse_portfolio_toml(text, today=date(2026, 9, 11))
@@ -158,9 +160,7 @@ incompatible_with = ["web@1"]
         ),
     ],
 )
-def test_duplicates_and_incompatible_versions_fail_closed(
-    mutation: str, message: str
-) -> None:
+def test_duplicates_and_incompatible_versions_fail_closed(mutation: str, message: str) -> None:
     with pytest.raises(PortfolioError, match=message):
         parse_portfolio_toml(
             _manifest(controls=_control("kernel") + mutation),
@@ -268,7 +268,7 @@ def test_unknown_fields_and_invalid_evidence_fail_closed() -> None:
     with pytest.raises(PortfolioError, match="unknown root field"):
         parse_portfolio_toml(
             _manifest(controls=_control("kernel")).replace(
-                '[context]', 'repository_size = 3\n\n[context]'
+                "[context]", "repository_size = 3\n\n[context]"
             ),
             today=date(2026, 9, 11),
         )
