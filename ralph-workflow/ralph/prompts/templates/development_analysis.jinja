@@ -24,7 +24,7 @@ Fan out read-only verification across independent criterion groups, one subagent
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any verdict is written.
 
-Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify each required plan reference as completed, adapted, not applicable, or blocked:
+Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify every required plan reference as completed, adapted, not applicable, or blocked:
 
 - `adapted`: fresh evidence required a different route and the intended outcome still holds.
 - `not_applicable`: the plan assumption conflicts with or is already satisfied by the worktree, while every affected request criterion remains covered.
@@ -44,6 +44,18 @@ Choose the outcome from fresh evidence, not the developer's status:
 ## Free-form decision body
 
 The validator only checks the frontmatter ``status`` enum. The body is the next agent's reading matter; write it in your own words. A useful pattern is to describe what fell short, the evidence that supports the judgement, and (for ``request_changes``) the leftover work the next agent should pick up. ``request_changes`` is the only safe status when localized unmet work is actionable in this development cycle — split the remaining work into independent units and dispatch them in parallel rather than handing each one back as a separate ``partial`` decision. A whole-change review of the implementation belongs here, too: the parallel pieces fit together, nothing outside the plan regressed, no unrelated scope, and the change follows repository policy.
+
+## Criteria and verdicts
+
+{% include 'shared/_criterion_verification_procedure.j2' %}
+
+Use one stable `DA-###` item per criterion in `## Criterion Verdicts`. For
+`completed`, every criterion must be `met` with evidence and no counterexample
+found; a completed decision does not need `## What Came Up Short` items. For
+`request_changes` or `failed`, each localized non-met verdict is mirrored in
+`## What Came Up Short` with a `Remaining work:` line so the next agent knows
+what to fix. A `not evaluable` criterion requires `failed`. Do not add
+`## How To Fix` (development analysis is read-only).
 
 {% set development_decision_example %}
 ---

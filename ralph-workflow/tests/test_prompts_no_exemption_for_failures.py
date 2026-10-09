@@ -192,11 +192,21 @@ def test_rendered_development_surfaces_require_size_based_execution(
     assert rendered.count(_FIRST_INCREMENT_RULE) == 1
     assert rendered.index(_SIZE_RULE) < rendered.index("EXECUTION PLAN")
     if is_worker:
+        # Workers must not receive the coordinator's dispatch directive.
+        # The old literal ("dispatch independent ready groups") was the
+        # optional-dispatch opener; the parallel-by-default rewrite
+        # replaced it with the mandatory "dispatch every ready unit
+        # concurrently in one wave" wording, which is also coordinator-
+        # only and must stay out of the worker rendering.
         assert "dispatch independent ready groups" not in rendered
+        assert "dispatch every ready unit concurrently" not in rendered
         assert "stopped-writer transfer" not in rendered
         assert _COORDINATOR_REVIEW_MANDATE not in rendered
     else:
-        assert "dispatch independent ready groups" in rendered
+        # Coordinator surfaces must state the parallel-by-default
+        # dispatch directive verbatim; this is the shared wording
+        # contract anchor that proves the rewrite.
+        assert "dispatch every ready unit concurrently" in rendered
 
 
 @pytest.mark.parametrize(
@@ -255,8 +265,12 @@ def test_rendered_development_surfaces_replace_partial_progress_escape_with_reco
     if is_worker:
         # Workers never get coordinator dispatch or coordinator pre-submit
         # review mandates — and the partial-progress escape must not be
-        # replaced by a worker-only escape either.
+        # replaced by a worker-only escape either. The dispatch directive
+        # (old "dispatch independent ready groups" OR new "dispatch every
+        # ready unit concurrently") is coordinator-only and must not
+        # leak into a worker rendering.
         assert "dispatch independent ready groups" not in rendered
+        assert "dispatch every ready unit concurrently" not in rendered
         assert "stopped-writer transfer" not in rendered
         assert _COORDINATOR_REVIEW_MANDATE not in rendered
         assert any(clause in rendered for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES), (

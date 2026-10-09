@@ -162,9 +162,9 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
         # reports the free-form shape; the validator only checks the
         # frontmatter ``status`` enum.
         _, diagnostics = parse_and_validate(example, get_spec(artifact_type))
-        assert [
+        assert [d for d in diagnostics if d.severity == "error"] == [], [
             d for d in diagnostics if d.severity == "error"
-        ] == [], [d for d in diagnostics if d.severity == "error"]
+        ]
         assert "free-form" in example.lower()
         skill = get_skill_content("submit-development-result-artifact")
         assert "free-form" in skill.lower()
@@ -363,7 +363,9 @@ def test_consumed_status_docs_teach_closed_vocabulary(
         assert "request_changes" in doc
         assert "completed" in doc
         assert "failed" in doc
-    elif artifact_type.endswith("analysis_decision") and artifact_type != "review_analysis_decision":
+    elif (
+        artifact_type.endswith("analysis_decision") and artifact_type != "review_analysis_decision"
+    ):
         assert "not evaluable" in doc or artifact_type == "planning_analysis_decision"
     else:
         assert "hard error" in doc.lower()

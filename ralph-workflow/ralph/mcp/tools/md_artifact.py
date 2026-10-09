@@ -725,9 +725,7 @@ def _current_context_diagnostics(
 ) -> list[Diagnostic]:
     """Apply authenticated active-run evidence checks after structural parsing."""
     if artifact_type == "design_verdict":
-        return _design_verdict_context_diagnostics(
-            session, workspace, parsed_content
-        )
+        return _design_verdict_context_diagnostics(session, workspace, parsed_content)
     return []
 
 

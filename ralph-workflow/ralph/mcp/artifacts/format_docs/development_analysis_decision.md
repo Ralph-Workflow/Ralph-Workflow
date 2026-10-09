@@ -50,6 +50,9 @@ type: development_analysis_decision
 status: request_changes
 ---
 
+## Summary
+- [SUM-1] One criterion is not met.
+
 The focused regression test for oversized indexes is missing; the
 rest of the work is sound. A developer cycle should add a
 parametrized oversized-index case to `tests/test_foo.py` and re-run

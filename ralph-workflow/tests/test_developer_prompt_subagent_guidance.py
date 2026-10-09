@@ -5,6 +5,15 @@ surface (``prompt_developer_iteration_xml_with_context`` with a
 ``MemoryWorkspace``). Source-text inspection is intentionally avoided:
 rendered-output assertions catch template regressions that source grep
 misses, and they survive partial rewording.
+
+The contract has two halves:
+* Coordinator renderings (regular, continuation, fallback) must surface
+  the parallel-by-default anchors AND keep the existing four shared
+  contract behaviors (independent ready steps, queue/local progress,
+  exposed-tool sequential fallback, stopped-writer transfer).
+* Worker renderings (``worker_developer.jinja``, continuation+worker,
+  fallback+worker) must keep their assignment-local framing and must
+  NOT receive the coordinator-only orchestration anchors.
 """
 
 from __future__ import annotations
@@ -21,18 +30,28 @@ from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-# Concise policy clauses used as contract anchors. The shared partial
-# contract requires the coordinator rendering to surface four behaviors and
-# the worker rendering to retain its own narrow set; the partials must
-# keep these anchors (or a strict superset) in lockstep across every
-# fresh / continuation / fallback surface.
-
 # Coordinator-only behaviors the S-1/U-1 work must make visible on every
-# coordinator rendering.
+# coordinator rendering. These are the four pre-existing contract anchors
+# (independent ready steps, queue/local progress, exposed-tool sequential
+# fallback, stopped-writer transfer) plus the parallel-by-default
+# mandatory wording.
 _COORDINATOR_INDEPENDENT_READY = "independent ready"
 _COORDINATOR_QUEUE_OR_LOCAL = "queue"
 _COORDINATOR_EXPOSED_TOOLS = "exposed"
 _COORDINATOR_STOPPED_WRITER = "stopped"
+
+# Coordinator-only pinned anchors (exact literals). These must surface on
+# every coordinator rendering and must be ABSENT from every worker
+# rendering. The shared wording contract is the single source of truth
+# for the parallel-by-default rewrite.
+_COORDINATOR_PINS_REQUIRED: tuple[str, ...] = (
+    "Parallel execution of independent ready units is required by default",
+    "dispatch every ready unit concurrently",
+    "Sequential execution requires an explicit plan reason or a missing sub-agent tool",
+    "not a reason to stop, hand back, split the task, or return `partial`",
+    "which plan text or runtime limit forced it",
+    "## PARALLEL EXECUTION (required by default)",
+)
 
 # Worker-only prohibitions: the continuation and first-iteration templates
 # must NOT leak coordinator dispatch or coordinator pre-submit review
@@ -98,10 +117,12 @@ def test_rendered_parallel_execution_contracts_match_role(
 
     Coordinator renderings must surface the four shared-contract behaviors
     (independent ready steps, queue/local progress, exposed-tool sequential
-    fallback, stopped-writer transfer) and keep distinct ownership/waves
-    protections. Worker renderings must retain assignment-local recovery
-    framing and must NOT receive coordinator dispatch or independent
-    pre-subagent review mandates.
+    fallback, stopped-writer transfer) AND every coordinator-only pinned
+    anchor from the parallel-by-default rewrite. Worker renderings must
+    retain assignment-local recovery framing and must NOT receive any
+    coordinator-only pinned anchor (orchestration language must never
+    reach a worker), in addition to the existing dispatch / review /
+    stopped-writer-transfer prohibitions.
     """
     rendered = _render(template_name, tmp_path, is_worker=is_worker)
     rendered_lower = rendered.lower()
@@ -117,6 +138,14 @@ def test_rendered_parallel_execution_contracts_match_role(
         assert any(clause in rendered for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES), (
             f"worker lost assignment-local recovery framing in {template_name}"
         )
+        # Coordinator-only pinned anchors must NEVER reach a worker. If
+        # any of these leak into a worker rendering, the worker would
+        # start orchestrating siblings, which is a contract violation.
+        leaked = [pin for pin in _COORDINATOR_PINS_REQUIRED if pin in rendered]
+        assert not leaked, (
+            f"worker rendering {template_name!r} leaked coordinator-only "
+            f"orchestration anchors: {leaked!r}"
+        )
     else:
         # Coordinator surfaces must keep the four contract anchors. The
         # exact phrasing is intentionally avoided — the shared partial
@@ -130,6 +159,14 @@ def test_rendered_parallel_execution_contracts_match_role(
             assert token in rendered, f"protected root {token!r} missing in {template_name}"
         for token in _OWNERSHIP_FIELDS:
             assert token in rendered, f"ownership token {token!r} missing in {template_name}"
+        # Parallel-by-default pinned anchors must surface on every
+        # coordinator rendering. The contract is the single source of
+        # truth for the rewrite.
+        missing = [pin for pin in _COORDINATOR_PINS_REQUIRED if pin not in rendered]
+        assert not missing, (
+            f"coordinator rendering {template_name!r} missing pinned "
+            f"parallel-by-default anchors: {missing!r}"
+        )
 
 
 def test_shared_parallel_partial_keeps_sanitization_and_waves() -> None:
@@ -156,3 +193,13 @@ def test_shared_parallel_partial_keeps_sanitization_and_waves() -> None:
     assert "waves" in source
     assert "Serialize conflicting ownership" in source
     assert "Do not broaden file ownership" in source
+    # Parallel-by-default rewrite: the partial must open with the new
+    # mandatory wording, must state the explicit plan reason, and must
+    # keep the large-plan-cue phrasing.
+    assert "Parallel execution of independent ready units is required by default" in source
+    assert "Sequential execution requires an explicit plan reason" in source
+    assert "not a reason to stop, hand back, split the task, or return `partial`" in source
+    # Rephrased bounded-sequential fallback sentence preserves behavior
+    # but drops the contradictory "When the plan declares units the
+    # runtime cannot dispatch" framing.
+    assert "When the runtime cannot dispatch declared units" in source

@@ -28,6 +28,18 @@ def test_developer_prompt_includes_plan_and_submission_contract(tmp_path: Path) 
     assert "### [S-1] Change it" in prompt
     assert "development_result" in prompt
     assert "ralph_submit_md_artifact" in prompt
+    # Parallel-by-default rewrite: the non-worker developer prompt must
+    # state that parallel execution of independent ready units is
+    # required by default, the literal heading, the sequential-only
+    # exception clause, and the large-plan-cue phrasing. These are the
+    # shared-wording-contract anchors the rewrite pins.
+    assert "Parallel execution of independent ready units is required by default" in prompt
+    assert "## PARALLEL EXECUTION (required by default)" in prompt
+    assert (
+        "Sequential execution requires an explicit plan reason or a missing sub-agent tool"
+        in prompt
+    )
+    assert "not a reason to stop, hand back, split the task, or return `partial`" in prompt
 
 
 def test_planning_prompt_uses_concise_artifact_workflow(tmp_path: Path) -> None:

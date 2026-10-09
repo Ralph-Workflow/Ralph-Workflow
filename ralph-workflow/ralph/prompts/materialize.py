@@ -1143,15 +1143,15 @@ def _resolve_partial_development_result(
     if content is None or content.get("status") != "partial":
         return None
     continuation = content.get("continuation")
-    prior_session_id = (
-        continuation.get("prior_session_id")
-        if isinstance(continuation, dict)
-        else None
-    )
+    prior_session_id: str | None = None
+    if isinstance(continuation, dict):
+        raw_prior_session_id = continuation.get("prior_session_id")
+        if isinstance(raw_prior_session_id, str):
+            prior_session_id = raw_prior_session_id
     return (
         "partial",
         markdown,
-        "" if prior_session_id is None else cast("str", prior_session_id),
+        "" if prior_session_id is None else prior_session_id,
         "",
     )
 

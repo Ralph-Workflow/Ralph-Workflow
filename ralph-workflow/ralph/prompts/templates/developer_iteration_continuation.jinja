@@ -57,7 +57,12 @@ Continuation reference: {{ PRIOR_SESSION_ID }}
 {% include 'shared/_artifact_history.j2' %}
 
 {% if not IS_WORKER %}
-## PARALLEL EXECUTION (declared units and independent ready steps)
+## PARALLEL EXECUTION (required by default)
+
+A continuation must keep parallelizing remaining ready work; being a continuation
+is not a reason to fall back to sequential execution. Inventory any remaining
+units and dependencies, then dispatch every ready unit in one wave before
+starting this session's own implementation.
 
 {% include 'shared/_parallel_execution.j2' %}
 {% endif %}

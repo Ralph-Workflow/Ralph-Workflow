@@ -38,12 +38,25 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
-        # The submit-development-result-artifact skill shipped with
-        # version 3.0.0 to mark the free-form contract change; the
-        # rest still carry 2.2.0. Accept any major version.
-        assert re.search(r"^version: \d+\.\d+\.\d+", frontmatter.group(1), re.MULTILINE)
+        # ``submit-development-result-artifact`` was bumped to 3.0.0 in
+        # the free-form-body refactor (commit 4c34866e5) to match the
+        # new validator contract; the other bundled artifact skills
+        # remain on 2.2.0. The per-skill expected versions live in
+        # ``_EXPECTED_ARTIFACT_SKILL_VERSIONS`` so a future bump is a
+        # one-line change.
+        expected_version = _EXPECTED_ARTIFACT_SKILL_VERSIONS[name]
+        assert f"version: {expected_version}" in frontmatter.group(1)
         assert "ralph_submit_md_artifact" in text
         assert "ralph_submit_artifact" not in text
+
+
+_EXPECTED_ARTIFACT_SKILL_VERSIONS: dict[str, str] = {
+    "submit-artifact.md": "2.2.0",
+    "submit-plan-artifact.md": "2.2.0",
+    "submit-commit-message-artifact.md": "2.2.0",
+    "submit-commit-cleanup-artifact.md": "2.2.0",
+    "submit-development-result-artifact.md": "3.0.0",
+}
 
 
 def test_packaged_artifact_skills_reference_only_registered_ralph_tools() -> None:

@@ -121,15 +121,16 @@ def test_rendered_developer_guidance_uses_unit_plus_unowned_step_proof() -> None
         MemoryWorkspace(),
         SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
     )
-    # Free-form contract: the structured ``Unit proof covers its owned
-    # steps`` / ``every unowned global step`` proof-language references
-    # are removed. Coverage is judged in plain language against the
-    # plan, not by matching proof-section IDs.
+    # The development_result partial is free-form body: the validator
+    # only checks the frontmatter ``status`` enum. The prompt must
+    # tell the developer to lead with one ``## Summary`` item and
+    # must NOT re-introduce the old per-step unit-proof grammar that
+    # was removed by ``4c34866e5`` (validate only frontmatter status).
+    assert "## Summary" in prompt
+    assert "free-form" in prompt.lower()
+    assert "frontmatter" in prompt.lower()
     assert "Unit proof covers its owned steps" not in prompt
-    assert "every unowned global step" not in prompt
-    # The remaining unit-handling guidance still names the
-    # independent-units fan-out and per-unit verification.
-    assert "independent units" in prompt.lower() or "work unit" in prompt.lower()
+    assert "every work unit AND every step the plan owns" not in prompt
 
 
 def test_protected_ownership_is_absent_from_rendered_worker_scope() -> None:

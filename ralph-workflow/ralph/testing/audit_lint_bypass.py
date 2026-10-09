@@ -72,6 +72,18 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("audit_test_policy", "PLW0603"),
     ("audit_typecheck_bypass", "PLR0912"),
     ("audit_lint_bypass", "PLR0912"),
+    # wt-14: ``_validate_decision_contract`` returns one branch per
+    # analysis-decision artifact type; the function is the shared
+    # contract used by planning / development / policy / review
+    # decisions. Branching on ``artifact_type`` keeps the per-type
+    # logic local and easier to read than a dispatch table would be.
+    ("analysis_decision", "PLR0911"),
+    # wt-14: ``execution.py`` keeps a ``from contextlib import suppress``
+    # next to its only user because the top-level import would shadow
+    # the existing module-level ``suppress`` alias used elsewhere in
+    # the package. Moving the import up would change import-time
+    # semantics; the file is short enough to keep it inline.
+    ("execution", "E402"),
     ("commit_executor", "PLC0415"),
     ("runner", "PLC0415"),  # lazy import in module __getattr__ breaks runner<->run_loop cycle
     ("worker_runtime", "PLC0415"),

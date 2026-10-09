@@ -136,6 +136,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "LAST_RETRY_ERROR": ("Previous submission failed validation.",),
     "OPTIONAL_CONTEXT_PATHS": ("- `.agent/artifacts/development_result.md`",),
     "PRIOR_RESULT_STATUS": ("partial",),
+    "PRIOR_SESSION_ID": ("sess-2026-01-15-001",),
     "planning_unit_split_allowed": ("true",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),

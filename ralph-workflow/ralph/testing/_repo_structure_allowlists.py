@@ -1305,6 +1305,18 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
 
 _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
     {
+        # wt-14: ``_validate_decision_contract`` returns one branch per
+        # analysis-decision artifact type; the function is the shared
+        # contract used by planning / development / policy / review
+        # decisions. Branching on ``artifact_type`` keeps the per-type
+        # logic local and easier to read than a dispatch table would be.
+        ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 408),
+        # wt-14: ``execution.py`` keeps a ``from contextlib import suppress``
+        # next to its only user because the top-level import would shadow
+        # the existing module-level ``suppress`` alias used elsewhere in
+        # the package. Moving the import up would change import-time
+        # semantics; the file is short enough to keep it inline.
+        ("ralph/phases/execution.py", 421),
         # wt-012: deterministic auto-commit producer-level helpers. The
         # PLC0415 markers break module-load cycles with
         # ``ralph.git.operations`` / ``ralph.git.scoped_auto_commit``

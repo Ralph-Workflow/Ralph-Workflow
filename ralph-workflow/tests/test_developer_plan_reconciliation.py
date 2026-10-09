@@ -39,7 +39,11 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "request and its acceptance criteria as authoritative" in prompt
     assert "execution plan's steps" in prompt
     assert "performed broad exploration" in prompt
-    assert "dispatch independent ready groups" in prompt
+    # Parallel-by-default rewrite replaced "dispatch independent ready
+    # groups" with the mandatory "dispatch every ready unit concurrently
+    # in one wave" wording. The new anchor is the shared-wording
+    # contract proof that the rewrite took.
+    assert "dispatch every ready unit concurrently" in prompt
     assert "Reassess the remaining dependency graph after each result" in prompt
     assert "`completed`" in prompt
     assert "`adapted`" in prompt

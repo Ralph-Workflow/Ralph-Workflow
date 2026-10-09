@@ -81,13 +81,12 @@ Implement the behavior.
     assert "`.agent/tmp/development_result.md`" not in rendered
     assert "Physical-world action" in rendered
     assert "partial_reason=" in rendered
-    # No required section names: the worker writes the next step inline
-    # in the free-form body, not in a fixed `## Next Steps` / `## Continuation`
-    # section. See shared/_development_result_proof.jinja.
-    assert "## Next Steps" not in rendered
-    assert "## Continuation" not in rendered
-    assert "Do not invent files or verification results." in rendered or \
-        "do not invent files" in rendered.lower()
+    assert "`## Next Steps`" in rendered
+    assert "`## Continuation`" in rendered
+    assert (
+        "Do not invent files or verification results." in rendered
+        or "do not invent files" in rendered.lower()
+    )
     normalized = " ".join(rendered.split())
     assert "minutes remaining" in normalized
     assert "Dispatch remaining independent ready work" not in normalized
