@@ -22,14 +22,22 @@ silently:
    mirror content diverges from the source of truth.
 
 Usage:
-    python -m ralph.testing.audit_skill_mirror_freshness
+    python -m ralph.testing.audit_skill_mirror_freshness [--repo-root PATH]
 
 Exit 0 = clean, 1 = at least one mirror diverges from the bundled content.
+
+The repository root defaults to the module's own ``parents[3]`` walk.
+Override with ``--repo-root PATH`` (or ``RALPH_AUDIT_REPO_ROOT=...``) to
+audit a non-default location. The override is what makes isolated
+black-box CLI tests portable: they build a temporary tree under
+``tmp_path`` and pass it as the override.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -46,14 +54,29 @@ from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _mirror_path(skill_root_prefix: str, skill_name: str) -> Path:
+def _resolve_repo_root(cli_override: str | None = None) -> Path:
+    """Resolve the repository root for the audit run.
+
+    Precedence: explicit ``cli_override`` (from ``--repo-root``) >
+    ``RALPH_AUDIT_REPO_ROOT`` environment variable > module-level
+    ``_REPO_ROOT`` (the ``parents[3]`` walk).
+    """
+    if cli_override:
+        return Path(cli_override).resolve()
+    env_root = os.environ.get("RALPH_AUDIT_REPO_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    return _REPO_ROOT
+
+
+def _mirror_path(repo_root: Path, skill_root_prefix: str, skill_name: str) -> Path:
     """Resolve ``<repo_root>/<root_prefix><skill_name>`` for one mirror."""
-    return _REPO_ROOT / skill_root_prefix.rstrip("/") / skill_name
+    return repo_root / skill_root_prefix.rstrip("/") / skill_name
 
 
-def _check_mirror(skill_root_prefix: str, skill_name: str) -> list[str]:
+def _check_mirror(repo_root: Path, skill_root_prefix: str, skill_name: str) -> list[str]:
     """Return zero or more mismatch diagnostics for one mirror."""
-    mirror = _mirror_path(skill_root_prefix, skill_name)
+    mirror = _mirror_path(repo_root, skill_root_prefix, skill_name)
     skill_file = mirror / "SKILL.md"
     if not mirror.is_dir():
         return [f"  {mirror}: mirror directory missing"]
@@ -87,11 +110,27 @@ def _iter_mirror_targets() -> tuple[tuple[str, str], ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    parser = argparse.ArgumentParser(
+        description=("Audit that the FIVE project-scope skill mirrors match the bundled content.")
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help=(
+            "Override the repository root to audit. Defaults to the "
+            "module's parents[3] walk. Accepts RALPH_AUDIT_REPO_ROOT."
+        ),
+    )
+    parsed: tuple[argparse.Namespace, list[str]] = parser.parse_known_args(
+        argv if argv is not None else []
+    )
+    args: argparse.Namespace = parsed[0]
+    cli_repo_root: str | None = getattr(args, "repo_root", None)
+    repo_root: Path = _resolve_repo_root(cli_repo_root)
     problems: list[str] = []
     targets = _iter_mirror_targets()
     for skill_root_prefix, skill_name in targets:
-        problems.extend(_check_mirror(skill_root_prefix, skill_name))
+        problems.extend(_check_mirror(repo_root, skill_root_prefix, skill_name))
 
     if problems:
         print(
@@ -110,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     mirrors_checked = roots_checked * skills_checked
     print(
         f"audit_skill_mirror_freshness OK ({mirrors_checked} mirrors checked: "
-        f"{roots_checked} roots x {skills_checked} skills). repo_root={_REPO_ROOT}"
+        f"{roots_checked} roots x {skills_checked} skills). repo_root={repo_root}"
     )
     return 0
 

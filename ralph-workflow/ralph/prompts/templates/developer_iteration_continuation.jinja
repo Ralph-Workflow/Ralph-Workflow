@@ -34,6 +34,8 @@ IMPLEMENTATION MODE — CONTINUATION
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'request_changes' %}
 Developer follow-plan: when the analysis above or the authoritative plan identifies independent units, you MUST follow that division and dispatch every ready unit in parallel — never handle them sequentially in this session or hand them back one at a time as a separate `partial` result. Sequential execution requires an explicit plan reason (declared coupling or `Depends on:` chains).
+{% else %}
+Worker follow-plan: when the analysis above or the authoritative plan identifies independent units, the assigned unit is your scope — Implement and verify only the assigned unit, do not inspect repo-wide status, and do not coordinate other units.
 {% endif %}
 {% endif %}
 
