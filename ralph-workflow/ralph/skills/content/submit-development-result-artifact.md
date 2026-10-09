@@ -23,7 +23,7 @@ Frontmatter: `type: development_result` and exactly one closed-vocabulary
 status: `completed`, `partial`, or `failed`. Any other status is invalid and
 must be repaired before submission.
 
-`status: completed` means the ENTIRE plan is done: every required plan item
+`status: completed` means the entire plan is done: every required plan item
 must be implemented or have a proven disposition that preserves every
 request criterion. Completing only some items is incremental progress, not
 completion.

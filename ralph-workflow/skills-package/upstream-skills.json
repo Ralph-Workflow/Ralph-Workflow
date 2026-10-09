@@ -38,6 +38,7 @@
     {"name": "submit-artifact", "bundle": "core-workflow", "source": {"type": "package", "path": "ralph/skills/content/submit-artifact.md"}},
     {"name": "submit-commit-message-artifact", "bundle": "core-workflow", "source": {"type": "package", "path": "ralph/skills/content/submit-commit-message-artifact.md"}},
     {"name": "submit-development-result-artifact", "bundle": "core-workflow", "source": {"type": "package", "path": "ralph/skills/content/submit-development-result-artifact.md"}},
+    {"name": "submit-development-analysis-decision-artifact", "bundle": "core-workflow", "source": {"type": "package", "path": "ralph/skills/content/submit-development-analysis-decision-artifact.md"}},
     {"name": "submit-commit-cleanup-artifact", "bundle": "core-workflow", "source": {"type": "package", "path": "ralph/skills/content/submit-commit-cleanup-artifact.md"}}
   ]
 }

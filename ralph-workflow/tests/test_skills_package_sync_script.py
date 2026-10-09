@@ -26,6 +26,7 @@ PACKAGE_OWNED_SKILLS = frozenset(
         "submit-artifact",
         "submit-commit-message-artifact",
         "submit-development-result-artifact",
+        "submit-development-analysis-decision-artifact",
         "submit-commit-cleanup-artifact",
     }
 )

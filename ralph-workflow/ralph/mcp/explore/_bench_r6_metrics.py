@@ -915,8 +915,8 @@ _QUERY_LATENCY_SLACK_SECONDS: Final[float] = 0.002
 _LIVE_QUERY_LATENCY_SLACK_SECONDS: Final[float] = 0.050
 #: Cold-build / refresh subprocesses share the CPU with sibling pytest
 #: xdist workers under ``make test``. Empirical noise under the
-#: default 4-worker REQUIRED_AUTO_INTEGRATE_E2E shard on a 12-shard
-#: profile runs ~30-50 ms above the isolated value (parallel
+#: default 4-worker REQUIRED_AUTO_INTEGRATE_E2E shard on the maintained
+#: 8-shard profile runs ~30-50 ms above the isolated value (parallel
 #: scheduler dispatch + cache contention). 50 ms matches the live
 #: query slack above and leaves headroom for the observed
 #: large-synthetic cold-build spike without compromising the

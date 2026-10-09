@@ -189,12 +189,14 @@ test-install-make-smoke:
 # through the deterministic multimodal stub agent, asserting the
 # multimodal fact grades WIRE on every harness. Excluded from the
 # default pytest profile by the `smoke` marker (kept in `pytestmark`
-# alongside `subprocess_e2e`) and wired into `make verify` as its own
-# budget-tracked step (see `_VERIFY_STEPS` in `ralph/verify.py` and the
-# `make test-multimodal-smoke` step's `_BUDGET_TRACKED_STEPS` index).
+# alongside `subprocess_e2e`) and folded into the `make test-verification-smoke`
+# aggregate invocation in `make verify` (see `_VERIFY_STEPS` in
+# `ralph/verify.py`, where the `make test-verification-smoke` step's
+# `_BUDGET_TRACKED_STEPS` index charges the whole aggregate against the
+# immutable 60s combined budget).
 # No paid backend is dialled -- the stub consumes zero live tokens --
 # so the suite stays inside the 60s combined budget headroom even when
-# both `make test` and `make test-multimodal-smoke` run sequentially
+# both `make test` and `make test-verification-smoke` run sequentially
 # under `make verify`.
 #
 # The trailing `-m "smoke and subprocess_e2e"` overrides the

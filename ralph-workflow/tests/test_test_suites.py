@@ -570,9 +570,9 @@ def test_static_discovery_finds_pytest_patterns_and_required_files(
     ``tests/`` tree so the assertion is deterministic and well inside the
     1s per-test ITIMER_REAL budget even under shard-saturated disk
     contention. The full-tree variant walked ``Path.cwd()/tests/`` (~1.3k
-    files), and even with a 5s override the cold-cache walk on a 32-shard
-    run could exceed the SIGALRM cap, masking the assertion the test was
-    trying to pin. The synthetic tree asserts the same observable contract
+    files), and even with a 5s override the cold-cache walk on the
+    maintained 8-shard run could exceed the SIGALRM cap, masking the
+    assertion the test was trying to pin. The synthetic tree asserts the same observable contract
     (name pattern, sort order, required-file inclusion) without paying the
     per-file read cost.
     """

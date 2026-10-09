@@ -85,8 +85,8 @@ _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
-# because on the maintained 32-core CI profile the shard-saturated
-# 32-shard fan-out already uses one pytest process per shard and adding
+# because on the maintained 8-shard CI profile the shard-saturated
+# 8-shard fan-out already uses one pytest process per shard and adding
 # xdist workers inside each shard shifts wall-clock budget from
 # parallel-IO back into pytest-coordination overhead. Operators may
 # override with ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` for the legacy
@@ -94,11 +94,11 @@ _MINIMUM_MULTI_SHARD_CORES = 2
 # in-shard fan-out.
 _DEFAULT_XDIST_WORKERS_PER_SHARD = "0"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
-# Combined with ``_MAX_PYTEST_WORKERS`` (12 shards) this gives a maximum
-# fan-out of 12 * 4 = 48 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
+# Combined with ``_MAX_PYTEST_WORKERS`` (8 shards) this gives a maximum
+# fan-out of 8 * 4 = 32 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
 # is overridden to ``"auto"`` or a positive integer. The default plain-
 # pytest path keeps the slowest shard under the 60s combined budget on
-# 32-core CI without coordination overhead.
+# 8-shard CI without coordination overhead.
 _MAX_XDIST_WORKERS_PER_SHARD = 4
 
 #: Exact subprocess-E2E files required by the authoritative verification
@@ -433,7 +433,7 @@ def _shard_command(
     (``-p no:cacheprovider``) and header output
     (``--no-header``) so the per-shard overhead of writing the
     ``tests/.pytest_cache`` directory and emitting the platform/
-    rootdir banner is bounded. On a 12-shard fan-out the
+    rootdir banner is bounded. On the maintained 8-shard fan-out the
     cache-write + banner path adds 100-300 ms of wall time per
     shard; eliminating it on every shard keeps the slowest shard
     well under the combined 60-second budget. The cache is

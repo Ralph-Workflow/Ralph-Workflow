@@ -40,6 +40,7 @@
     "submit-artifact",
     "submit-commit-message-artifact",
     "submit-development-result-artifact",
+    "submit-development-analysis-decision-artifact",
     "submit-commit-cleanup-artifact"
   ],
   "bundles": {
@@ -70,6 +71,7 @@
     "submit-artifact": "core-workflow",
     "submit-commit-message-artifact": "core-workflow",
     "submit-development-result-artifact": "core-workflow",
+    "submit-development-analysis-decision-artifact": "core-workflow",
     "submit-commit-cleanup-artifact": "core-workflow"
   },
   "skill_sources": {
@@ -342,6 +344,16 @@
       "repo": null,
       "ref": null,
       "path": "ralph/skills/content/submit-development-result-artifact.md"
+    },
+    "submit-development-analysis-decision-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-development-analysis-decision-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-development-analysis-decision-artifact.md"
     },
     "submit-commit-cleanup-artifact": {
       "bundle": "core-workflow",
