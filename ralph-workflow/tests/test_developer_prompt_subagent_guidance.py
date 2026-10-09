@@ -126,35 +126,6 @@ def _render(template_name: str, tmp_path: Path, *, is_worker: bool) -> str:
     )
 
 
-def _render_with_caps(
-    template_name: str,
-    tmp_path: Path,
-    *,
-    is_worker: bool,
-    session_caps: SessionCapabilities,
-) -> str:
-    """Render one development prompt surface with caller-supplied capability inputs.
-
-    Returns the whitespace-normalized form used by the role-aware
-    contracts in the rest of this module.
-    """
-    return " ".join(
-        prompt_developer_iteration_xml_with_context(
-            context=TemplateContext.default(),
-            inputs=DeveloperPromptInputs(
-                prompt_content="Implement the requested change.",
-                plan_content="### [S-1] Implement the assigned change",
-                work_unit_id="unit" if is_worker else "",
-                work_unit_description="Implement the assigned change" if is_worker else "",
-                work_unit_directories="src" if is_worker else "",
-            ),
-            workspace=MemoryWorkspace(root=str(tmp_path)),
-            session_caps=session_caps,
-            template_name=template_name,
-        ).split()
-    )
-
-
 def _render_raw_with_caps(
     template_name: str,
     tmp_path: Path,
@@ -184,26 +155,30 @@ def _render_raw_with_caps(
 
 
 def _extract_parallel_section(rendered: str) -> str:
-    """Return the parallel-by-default partial content from a full render.
+    """Return the parallel orchestration section from a full coordinator render.
 
-    The shared partial is the sole author of the parallel-by-default
-    contract. The fallback template places the partial between other
-    tool-name-bearing prose, so the next-``## ``-heading cut includes
-    text outside the partial; instead, return the prose between the
-    parallel partial's first stable opening and its last stable closing
-    sentence. The closing anchor is the final sentence of
-    ``shared/_parallel_execution.jinja``; if it is not present the
-    rendered prompt does not include the partial at all and the test
-    should fail loudly elsewhere.
+    The boundary starts at ``## PARALLEL EXECUTION`` and extends through
+    the next section boundary (``\\n## ``) or, for the fallback template,
+    the start of the subsequent capability-dependent tool-name guidance
+    (``Use runtime-native orchestration``).
+
+    This captures the full parallel orchestration section including
+    template-specific framing (such as the continuation template's
+    mandatory continuation-dispatch preamble and the fallback template's
+    coverage-check blurb) while excluding unrelated capability-dependent
+    tool-name prose.
     """
-    start = rendered.find("Parallel execution of independent ready units is required by default")
+    start = rendered.find("## PARALLEL EXECUTION")
     if start < 0:
         return ""
-    closing = "even when extraction cannot represent them as worker assignments."
-    end = rendered.find(closing, start)
-    if end < 0:
+    tool_guidance = "Use runtime-native orchestration"
+    tool_boundary = rendered.find(tool_guidance, start)
+    next_heading = rendered.find("\n## ", start + 1)
+
+    candidates = [pos for pos in (next_heading, tool_boundary) if pos > 0]
+    if not candidates:
         return rendered[start:]
-    return rendered[start : end + len(closing)]
+    return rendered[start : min(candidates)]
 
 
 @pytest.mark.parametrize(
@@ -396,14 +371,29 @@ def test_coordinator_parallel_section_is_capability_invariant(
         f"capability inputs; capability gating is forbidden"
     )
 
+    if template_name == "developer_iteration_continuation.jinja":
+        continuation_preamble = (
+            "A continuation must keep parallelizing remaining ready work; being a continuation\n"
+            "is not a reason to fall back to sequential execution."
+        )
+        assert continuation_preamble in default_section, (
+            "continuation parallel framing missing from extracted section under default caps"
+        )
+        assert continuation_preamble in alternate_section, (
+            "continuation parallel framing missing from extracted section under alternate caps"
+        )
+
     # Both renders must contain the parallel-by-default anchors and must
     # NOT contain the removed fallback phrases. This is the negative
     # rendered fallback assertion that closes the include / render gap
-    # the source-level grep cannot cover. The heading literal is
-    # verified against the full render, not the section, because the
-    # section starts inside the heading for templates that anchor the
-    # partial after the heading text.
+    # the source-level grep cannot cover.
     for pin in _COORDINATOR_PINS_REQUIRED:
+        assert pin in default_section, (
+            f"extracted section missing anchor {pin!r} under default caps in {template_name!r}"
+        )
+        assert pin in alternate_section, (
+            f"extracted section missing anchor {pin!r} under alternate caps in {template_name!r}"
+        )
         assert pin in default_rendered, (
             f"full render missing anchor {pin!r} under default caps in {template_name!r}"
         )

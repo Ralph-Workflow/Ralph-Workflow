@@ -10,9 +10,8 @@ in the source text.
 
 The pinned anchors below are the shared wording contract that
 parallelizes the developer prompt: parallel dispatch is required by
-default, sequential execution needs a plan reason or a missing
-sub-agent tool, and an ambitious plan means more parallelism, never
-an early stop.
+default, sequential execution needs an explicit plan reason, and an
+ambitious plan means more parallelism, never an early stop.
 """
 
 from __future__ import annotations
