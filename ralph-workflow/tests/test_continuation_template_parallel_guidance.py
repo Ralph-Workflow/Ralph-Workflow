@@ -39,9 +39,13 @@ _REQUIRED_ANCHORS: tuple[str, ...] = (
 
 # Preserved literals (already enforced elsewhere; kept here to make
 # sure the continuation template never silently drops them while
-# rewriting the opening to make parallelism the default).
+# rewriting the opening to make parallelism the default). The
+# "dispatch ready units concurrently" phrase was removed from the
+# shared partial in the S-1 cleanup because the unit-less dispatch
+# rule above already covers the case where the plan does not declare
+# units; the mandatory-anchor set above still pins the
+# parallel-by-default opening.
 _PRESERVED_LITERALS: tuple[str, ...] = (
-    "dispatch ready units concurrently",
     "Execute only coupled steps",
     "collect each unit's",
     "cross-unit and",
