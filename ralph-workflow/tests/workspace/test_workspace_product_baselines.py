@@ -424,6 +424,20 @@ def test_ac10_managed_categories_stay_within_checked_in_bounds(
 # --- Production-clock p95 proof (S-1 responsiveness gate) --------------------
 
 
+# S-1 responsiveness proof drives 6 representative MCP flows x 21 iterations
+# through the real handlers under the production ``SystemClock``. Standalone
+# the bench completes in ~0.13s; under xdist load the same work spends
+# >1.0s and the per-test ``ITIMER_REAL`` guard (default ``DEFAULT_TEST_TIMEOUT_SECONDS``)
+# would raise ``TestExecutionTimeoutError`` even when the bench itself
+# returns 0. The ``timeout_seconds`` marker is the documented per-test
+# override in pytest.ini ("override the per-test timeout for slower
+# integration cases") and is the single explicit escape hatch that does
+# NOT touch the immutable ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS`` /
+# ``_TOTAL_TEST_BUDGET_SECONDS`` constants guarded by the
+# ``tests/test_verify_invariants.py`` import-time checks. ``30`` is
+# generous: under load the bench has been measured at <8s, while the
+# p95-gate rejection paths in ``_bench_product_baseline`` are sub-second.
+@pytest.mark.timeout_seconds(30)
 def test_product_baseline_cli_passes_against_checked_in_limits(
     tmp_path: Path, limits: Mapping[str, object]
 ) -> None:

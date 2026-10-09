@@ -162,6 +162,16 @@ _IO_ALLOWLIST: set[str] = {
     # This cannot be tested from the same process because -O is a
     # per-process flag; a subprocess is the only way to test this.
     "test_audit_artifact_submission_canonical_path",
+    # Black-box CLI entry-point verification for the wt-013 skill-mirror
+    # freshness audit. The test spawns ``python -m
+    # ralph.testing.audit_skill_mirror_freshness`` to prove the audit's
+    # ``main()`` is reachable as a module CLI (the path the verify
+    # step uses), not just as an imported function. MockProcessExecutor
+    # cannot replace this: the verification step runs the audit as a
+    # subprocess, and the test's job is to mirror that path so a
+    # packaging regression that breaks ``python -m ...`` invocation
+    # cannot slip past the unit test.
+    "test_audit_skill_mirror_freshness",
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",

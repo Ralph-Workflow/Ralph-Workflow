@@ -395,6 +395,7 @@ class TestVcsCommandsConstant:
         assert "ls" not in _VCS_COMMANDS
 
 
+@pytest.mark.timeout_seconds(30)
 def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
     spill_dir = tmp_path / "spill"
     spill_dir.mkdir()

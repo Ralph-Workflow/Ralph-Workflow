@@ -291,6 +291,29 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # wt-013 free-form skill contract: AST + literal-string audit
+        # that pins the project-scope skill-mirror freshness invariant
+        # so a future skill-content edit that updates the bundled
+        # ``ralph/skills/content/<name>.md`` but forgets to re-run the
+        # project-scope installer cannot silently leave a divergent
+        # mirror and reintroduce the removed structured contract.
+        # Walks every (root, skill) pair across the FIVE canonical
+        # project-scope skill-root prefixes and asserts the mirrored
+        # ``SKILL.md`` byte-equals ``ralph.skills.content.get_skill_content(name)``.
+        # The audit derives the repository root from its own module
+        # location (``Path(__file__).resolve().parents[3]``); it is an
+        # audit, NOT a test suite: NOT added to ``_BUDGET_TRACKED_STEPS``
+        # or ``_KNOWN_TEST_STEP_LABELS`` (does NOT count against the
+        # immutable 60-second combined test budget). Inserted BESIDE the
+        # existing skill auto-commit audit step so the smoke-budget
+        # index ``len(_VERIFY_STEPS) - 2`` (the position of
+        # ``make test-verification-smoke``) remains valid.
+        "skill mirror freshness audit (audit_skill_mirror_freshness)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_skill_mirror_freshness"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # AST-only, import-safe module-docstring floor that locks a
         # non-empty docstring on every public module under ralph/
         # (leaf modules AND package __init__.py). complements the
