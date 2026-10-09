@@ -25,13 +25,23 @@ graded. The planner's account is not proof.
 
 ## Review contract
 
-Return criterion-level verdicts, not a holistic quality score. Review coverage,
-truthfulness, actionability, parallel decomposition, execution fit, and execution
-conflicts as these six substantive criteria:
+Return criterion-level verdicts, not a holistic quality score. Review coverage, truthfulness, actionability, parallel decomposition, execution fit, and execution conflicts as these six substantive criteria:
 
 1. **coverage** — The plan addresses every part of the request.
-2. **truthfulness** — Paths, commands, and current-behavior claims match the repository.
-3. **actionability** — The executor can tell what to change and how to show it works.
+   Require requirement-to-work-to-proof traceability: every requested outcome has
+   owned implementation work and an observable acceptance check, including the
+   integrated user-facing or system behavior.
+2. **truthfulness** — Paths, commands, and current-behavior claims, call/data flow,
+   interfaces, and assumptions match fresh repository evidence. Delegated findings
+   are leads until the reviewer reads the critical evidence itself.
+3. **actionability** — The executor can tell what to change and how to show it works:
+   the chosen approach, why it fits, what behavior and consequential interfaces
+   change, and what each unit must return. Reject invented architecture, unresolved contradictory
+   subplans, unsupported assumptions, generic verification, or missing integration
+   behavior. Check applicable compatibility, migration, rollback, failure, security,
+   performance, and scope-boundary consequences without requiring irrelevant
+   boilerplate. Require explicit replanning triggers for discoveries that invalidate
+   an assumption, contract, dependency, ownership boundary, or acceptance check.
 4. **parallel decomposition** — Independent work can run concurrently. This is
    not met when invented dependencies, list order, or a single chain without
    stated coupling serialize independent work. For avoidable serialization,
@@ -66,6 +76,12 @@ conflicts as these six substantive criteria:
    evaluable and still judge context packets, wave capacity, and fan-in reserve.
 6. **execution conflicts** — Concurrent units do not write the same file, and
    no consumer precedes its shared-contract producer.
+
+Find substantive defects, not stylistic preferences. Do not return
+`request_changes` for a style preference, optional heading, harmless implementation
+choice, absence of irrelevant risk sections, or because an adversarial review was
+asked to find something. Scale plan detail to task complexity while keeping the
+handoff decision-complete and concise.
 
 Delegate independent checks to read-only subagents. Treat their output as leads,
 not proof: reproduce every relied-on lead in the main session before recording

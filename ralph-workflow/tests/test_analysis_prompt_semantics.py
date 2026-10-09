@@ -268,3 +268,24 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     decision = source.index("## Decision artifact")
     fanout = source.lower().index("reproduce", intro)
     assert intro < fanout < decision
+
+
+def test_development_analysis_continuation_plan_matches_planning_contract() -> None:
+    source = " ".join(_render_verifier("development_analysis").split())
+
+    for required in (
+        "remaining requested outcomes",
+        "current repository evidence",
+        "chosen approach",
+        "requirement-to-work-to-proof",
+        "applicable compatibility, migration, rollback, failure, security",
+        "self-contained unit",
+        "integrated end-to-end proof",
+        "replanning triggers",
+        "## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST",
+        "Initial wave:",
+        "Queued ready:",
+        "Why not parallel:",
+        "development-phase budget",
+    ):
+        assert required in source

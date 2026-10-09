@@ -8,9 +8,7 @@ ANALYSIS CONTEXT
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
 {% endif %}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'request_changes' %}
-{% if not IS_WORKER %}
 Developer follow-plan: when the analysis above or the authoritative plan identifies independent units, you MUST follow that division and dispatch every ready unit in parallel — never handle them sequentially in this session or hand them back one at a time as a separate `partial` result. Sequential execution requires an explicit plan reason (declared coupling or `Depends on:` chains).
-{% endif %}
 {% endif %}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
 FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.

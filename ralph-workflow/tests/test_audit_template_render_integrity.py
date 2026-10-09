@@ -27,6 +27,7 @@ from ralph.testing.audit_template_render_integrity import (
     _conditional_variable_names,
     _render_targets,
     check_rendered_prompt,
+    check_template_source,
 )
 from ralph.testing.audit_template_render_integrity import main as audit_main
 
@@ -51,6 +52,17 @@ def test_detects_unrendered_jinja_markers() -> None:
     descriptions = check_rendered_prompt("example", "Body with {{ LEFTOVER }} and {% if x %}.")
     assert any("'{{'" in d for d in descriptions)
     assert any("'{%'" in d for d in descriptions)
+
+
+def test_rejects_deprecated_worker_role_conditional() -> None:
+    forbidden_name = "IS_" + "WORKER"
+    source = "{% if " + forbidden_name + " %}legacy branch{% endif %}"
+
+    descriptions = check_template_source("example", source)
+
+    assert descriptions == [
+        f"forbidden deprecated template variable {forbidden_name!r} in source"
+    ]
 
 
 def test_detects_duplicated_heading_outside_code_fences() -> None:

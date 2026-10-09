@@ -9,12 +9,25 @@ than 4,000,000 raw UTF-8 bytes, and recognizable plan intent. The boundary
 does not require headings, IDs, fields, dependencies, ownership, or a unit
 count. There are no structural errors or advisories. Prose remains
 authoritative; extraction is best effort. The planning analyzer judges coverage,
-truthfulness, actionability, parallel decomposition and execution conflicts.
+truthfulness, actionability, parallel decomposition, execution fit, and conflicts.
+
+An executor-ready plan is a compact, evidence-grounded handoff rather than a task
+inventory. State requested outcomes, constraints, non-goals, safe assumptions,
+and observable acceptance criteria. Ground the chosen approach in current files,
+call or data flow, existing patterns, and real verification entry points. Map each
+requirement to owned work and proof, describe consequential interface and
+integration decisions, and cover compatibility, migration, rollback, failures,
+security, or performance only when applicable. Include focused checks plus an
+integrated end-to-end observation. Name evidence that would trigger replanning of
+an assumption, contract, dependency, ownership boundary, or acceptance check.
+Scale detail to the task; do not add speculative internals or irrelevant sections.
 
 Parallel work is recommended by default. When independent work exists, use
 `## Work Units` as a helpful convention. Units may name `Directories:` and/or
-exact `Paths:`, real prerequisites, shared contracts before their consumers,
-and integration after fan-in. A wholly linear plan explains the coupling.
+exact `Paths:`, real prerequisites, relevant current behavior, consumed or
+produced interface constraints, focused acceptance evidence, a compact return
+format, shared contracts before their consumers, and integration after fan-in.
+A wholly linear plan explains the coupling.
 
 Finish with the visually explicit heading
 `## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST`. Prefix independently runnable

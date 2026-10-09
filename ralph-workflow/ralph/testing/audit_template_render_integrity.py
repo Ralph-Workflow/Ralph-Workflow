@@ -5,7 +5,7 @@ every ``shared/_*`` partial through the real rendering path
 (``TemplateContext.default()`` + ``TemplateRenderer``). Macro-only partials
 receive small call harnesses so their bodies are validated independently
 rather than only when a top-level caller happens to reach them. The audit
-asserts five integrity properties on every rendered prompt:
+asserts six integrity properties on every prompt source/render pair:
 
 1. **No unrendered Jinja markers** — ``{{``, ``{%`` and ``{#`` must not
    survive into the rendered output.
@@ -23,6 +23,8 @@ asserts five integrity properties on every rendered prompt:
    run of 3+ consecutive blank lines; no ``LABEL:`` line immediately followed
    by an identical ``LABEL:`` line. These are hard failures, matching the
    renderer's blank-line normalization contract.
+6. **No deprecated worker-role conditional** — the removed role flag is a
+   source-level hard error instead of an optional render input.
 
 Rendered contexts use real drain capability mappings; capability and tool
 variables are never toggled independently. Case-neutral condition discovery
@@ -76,6 +78,8 @@ _DUPLICATION_PREVIEW_CHARS = 60
 #: Maximum duplicated paragraph text included in one diagnostic.
 
 _JINJA_MARKERS: tuple[str, ...] = ("{{", "{%", "{#")
+
+_DEPRECATED_WORKER_ROLE_VARIABLE = "IS_" + "WORKER"
 
 _FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 
@@ -634,6 +638,17 @@ def check_rendered_prompt(template_name: str, rendered: str) -> list[str]:
     return descriptions
 
 
+def check_template_source(template_name: str, source: str) -> list[str]:
+    """Return violations for deprecated variables in one prompt source."""
+    del template_name
+    if _DEPRECATED_WORKER_ROLE_VARIABLE not in source:
+        return []
+    return [
+        "forbidden deprecated template variable "
+        f"{_DEPRECATED_WORKER_ROLE_VARIABLE!r} in source"
+    ]
+
+
 def _collect_findings() -> list[str]:
     """Render every top-level/shared target scenario and aggregate every finding.
 
@@ -650,7 +665,14 @@ def _collect_findings() -> list[str]:
 
     aggregated: dict[tuple[str, str], list[str]] = {}
     for target in targets:
+        for description in check_template_source(target.name, target.source):
+            aggregated.setdefault((target.name, description), []).append("source")
         closure = _template_source_closure(target.source, partials)
+        for partial_name, partial_source in closure.items():
+            if partial_name == "__main__":
+                continue
+            for description in check_template_source(partial_name, partial_source):
+                aggregated.setdefault((partial_name, description), []).append("source")
         assigned_names = _assigned_variable_names(closure)
         condition_groups = tuple(
             frozenset(group - assigned_names)
@@ -707,7 +729,7 @@ def main(argv: list[str] | None = None) -> int:
 
     Returns:
         ``0`` when every template x scenario renders cleanly and passes
-        all five checks, ``1`` otherwise.
+        all six checks, ``1`` otherwise.
     """
     del argv
     problems = collect_violations()
@@ -720,8 +742,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "Every packaged prompt template must render without unresolved Jinja "
             "markers, missing includes, duplicated headings/paragraphs, or doubled "
-            "label/blank-run defects. Fix the template or its realistic scenario "
-            "mapping."
+            "label/blank-run defects, and must not reference removed template "
+            "variables. Fix the template or its realistic scenario mapping."
         )
         return 1
     print(

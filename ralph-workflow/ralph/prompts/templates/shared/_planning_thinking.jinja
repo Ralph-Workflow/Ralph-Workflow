@@ -4,19 +4,39 @@
 
 Plan in this order:
 
-1. **Orient** — identify the requested outcome and relevant repository areas.
-2. **Characterize** — establish current behavior from repository evidence.
-3. **Change** — name concrete edits and real prerequisites.
-4. **Partition** — parallel work is the default. Split two or more independent
+1. **Orient** — identify the requested outcomes, constraints, non-goals, and
+   observable acceptance criteria. Separate confirmed requirements from safe
+   assumptions and consequential unresolved choices.
+2. **Characterize** — establish current behavior from fresh repository evidence.
+   Read critical files yourself after delegated discovery; trace the current call
+   or data flow, affected contracts, existing patterns, and real verification
+   entry points. Current files outrank stale prompt or plan claims.
+3. **Design** — state the chosen approach: the smallest coherent design. Give its rationale and
+   consequential tradeoffs; mention alternatives only when the choice materially
+   affects implementation. Cover interfaces and end-to-end integration without
+   prescribing speculative internals.
+4. **Change** — map every requested outcome to concrete edits, an acceptance
+   observation, and runnable proof. This requirement-to-work-to-proof traceability
+   must expose omitted requirements and generic verification such as "run tests."
+5. **Risk** — cover compatibility, migration, rollback, failure handling, security,
+   and performance only when the request or repository evidence implicates them.
+   State scope boundaries and the relevant edge cases; do not add ceremonial
+   sections or speculative work.
+6. **Partition** — parallel work is the default. Split two or more independent
    areas or files into units. A wholly linear plan explains the real coupling:
    each step consumes the previous step's output.
-5. **Verify** — name runnable proof for the outcome.
+7. **Verify and adapt** — name focused checks plus integrated end-to-end proof.
+   State each replanning trigger: new evidence that invalidates an assumption,
+   interface, dependency, ownership boundary, or acceptance check updates the
+   affected units and schedule without dropping the original outcome.
 
-The recommended convention is `## Work Units`: each unit names its responsibility
-and owned `Directories:` and/or exact `Paths:`, with `Depends on:` only for a real
-prerequisite. Put shared contracts in a producer unit before their consumers,
-and plan one integration step after fan-in. Steps name touched files and how to
-check them. This is executor guidance, not a required document shape.
+The recommended convention is `## Work Units`: each unit is a self-contained
+executor handoff naming its outcome, relevant current behavior, owned
+`Directories:` and/or exact `Paths:`, consumed or produced interface constraints,
+real `Depends on:` prerequisites, focused acceptance evidence, and compact return
+format. Put shared contracts in a producer unit before their consumers, and plan
+one integration step after fan-in. This is executor guidance, not a required document shape;
+scale detail to complexity and uncertainty.
 
 End the plan with the unmistakable heading
 `## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST`. Every independently runnable

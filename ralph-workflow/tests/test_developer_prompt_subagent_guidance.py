@@ -1,4 +1,4 @@
-"""Rendered parallel-execution guidance asserts role-aware dispatch contracts.
+"""Rendered parallel-execution guidance asserts coordinator dispatch contracts.
 
 The shared partials must produce role-aware prose on the public rendering
 surface (``prompt_developer_iteration_xml_with_context`` with a
@@ -6,14 +6,10 @@ surface (``prompt_developer_iteration_xml_with_context`` with a
 rendered-output assertions catch template regressions that source grep
 misses, and they survive partial rewording.
 
-The contract has two halves:
-* Coordinator renderings (regular, continuation, fallback) must surface
+Coordinator renderings (regular, continuation, fallback) must surface
   the parallel-by-default anchors AND keep the existing four shared
   contract behaviors (independent ready steps, queue/local progress,
   exposed-tool discipline, stopped-writer transfer).
-* Worker renderings (``worker_developer.jinja``, continuation+worker,
-  fallback+worker) must keep their assignment-local framing and must
-  NOT receive the coordinator-only orchestration anchors.
 
 The feedback-path contract (Unit 1 S-2/S-3) adds a second dimension:
 * Coordinator renders with ``ANALYSIS_FEEDBACK_STATUS=request_changes``
@@ -21,12 +17,6 @@ The feedback-path contract (Unit 1 S-2/S-3) adds a second dimension:
   dispatch every ready unit in parallel) and the explicit-plan-reason
   anchor. The unconditional "the analysis above splits" claim and the
   optional "may split ... When it does" framing must never appear.
-* Worker renders with the same feedback path must keep their
-  assignment-local recovery framing and must NOT receive the
-  coordinator-only orchestration sentence. The role-aware guard
-  (``{% if not IS_WORKER %}``) is the only mechanism that separates
-  the two halves; a future template regression that drops the guard
-  would re-leak the sentence into a worker.
 """
 
 from __future__ import annotations
@@ -93,26 +83,6 @@ _PARTIAL_SOURCE_NEGATIVES: tuple[str, ...] = (
     "runtime limit",
 )
 
-# Worker-only prohibitions: the continuation and first-iteration templates
-# must NOT leak coordinator dispatch or coordinator pre-submit review
-# mandates to worker renderings.
-_WORKER_DISPATCH_PROHIBITION = "dispatch independent ready groups"
-_WORKER_REVIEW_PROHIBITION = "independent read-only sub-agent"
-_WORKER_TRANSFER_PROHIBITION = "stopped-writer transfer"
-
-# Worker-only retention: workers must keep an assignment-local recovery
-# framing so the partial-progress-escape removal does not strip their
-# "within your assignment" guard. The exact phrasing is intentionally
-# flexible — a strict verbatim contract would over-fit a stylistic
-# choice; the contract is "workers stay assignment-scoped", which can
-# be expressed several ways without weakening the guard.
-_WORKER_ASSIGNMENT_LOCAL_CLAUSES = (
-    "within your assignment",
-    "the assigned unit",
-    "your scope",
-    "the assigned work unit",
-)
-
 # Distinct ownership/waves protections: the shared parallel-execution
 # partial must keep the exact-path ownership, waves, and protected-path
 # sanitization language on the coordinator rendering.
@@ -120,7 +90,7 @@ _PROTECTED_ROOTS = (".agent", ".git", ".worktrees")
 _OWNERSHIP_FIELDS = ("Paths:", "Directories:", "Files:")
 
 
-def _render(template_name: str, tmp_path: Path, *, is_worker: bool) -> str:
+def _render(template_name: str, tmp_path: Path) -> str:
     """Render one development prompt surface to a whitespace-normalized form."""
     return " ".join(
         prompt_developer_iteration_xml_with_context(
@@ -128,9 +98,6 @@ def _render(template_name: str, tmp_path: Path, *, is_worker: bool) -> str:
             inputs=DeveloperPromptInputs(
                 prompt_content="Implement the requested change.",
                 plan_content="### [S-1] Implement the assigned change",
-                work_unit_id="unit" if is_worker else "",
-                work_unit_description="Implement the assigned change" if is_worker else "",
-                work_unit_directories="src" if is_worker else "",
             ),
             workspace=MemoryWorkspace(root=str(tmp_path)),
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
@@ -143,7 +110,6 @@ def _render_raw_with_caps(
     template_name: str,
     tmp_path: Path,
     *,
-    is_worker: bool,
     session_caps: SessionCapabilities,
 ) -> str:
     """Render one development prompt surface verbatim, with newlines preserved.
@@ -157,9 +123,6 @@ def _render_raw_with_caps(
         inputs=DeveloperPromptInputs(
             prompt_content="Implement the requested change.",
             plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
         ),
         workspace=MemoryWorkspace(root=str(tmp_path)),
         session_caps=session_caps,
@@ -171,7 +134,6 @@ def _render_with_feedback(
     template_name: str,
     tmp_path: Path,
     *,
-    is_worker: bool,
     analysis_feedback_status: str,
     analysis_feedback_content: str,
 ) -> str:
@@ -189,9 +151,6 @@ def _render_with_feedback(
         inputs=DeveloperPromptInputs(
             prompt_content="Implement the requested change.",
             plan_content="### [S-1] Implement the assigned change",
-            work_unit_id="unit" if is_worker else "",
-            work_unit_description="Implement the assigned change" if is_worker else "",
-            work_unit_directories="src" if is_worker else "",
             analysis_feedback_status=analysis_feedback_status,
             analysis_feedback_content=analysis_feedback_content,
         ),
@@ -229,70 +188,38 @@ def _extract_parallel_section(rendered: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("template_name", "is_worker"),
+    "template_name",
     (
-        ("developer_iteration.jinja", False),
-        ("developer_iteration_continuation.jinja", False),
-        ("developer_iteration_fallback.jinja", False),
+        "developer_iteration.jinja",
+        "developer_iteration_continuation.jinja",
+        "developer_iteration_fallback.jinja",
     ),
 )
 def test_rendered_parallel_execution_contracts_match_role(
-    tmp_path: Path, template_name: str, *, is_worker: bool
+    tmp_path: Path, template_name: str
 ) -> None:
     """S-1/S-2: every surface renders role-aware parallel-execution prose.
 
     Coordinator renderings must surface the four shared-contract behaviors
     (independent ready steps, queue/local progress, exposed-tool discipline,
     stopped-writer transfer) AND every coordinator-only pinned anchor from
-    the parallel-by-default rewrite. Worker renderings must retain
-    assignment-local recovery framing and must NOT receive any
-    coordinator-only pinned anchor (orchestration language must never reach
-    a worker), in addition to the existing dispatch / review /
-    stopped-writer-transfer prohibitions.
+    the parallel-by-default rewrite.
     """
-    rendered = _render(template_name, tmp_path, is_worker=is_worker)
+    rendered = _render(template_name, tmp_path)
     rendered_lower = rendered.lower()
-
-    if is_worker:
-        # Workers never dispatch or coordinate other units; the shared
-        # worker verification partial already enforces this, and the
-        # continuation/fallback templates must keep the role guard.
-        assert _WORKER_DISPATCH_PROHIBITION not in rendered
-        assert _WORKER_TRANSFER_PROHIBITION not in rendered
-        assert _WORKER_REVIEW_PROHIBITION not in rendered
-        # Workers retain assignment-local recovery framing.
-        assert any(clause in rendered for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES), (
-            f"worker lost assignment-local recovery framing in {template_name}"
-        )
-        # Coordinator-only pinned anchors must NEVER reach a worker. If
-        # any of these leak into a worker rendering, the worker would
-        # start orchestrating siblings, which is a contract violation.
-        leaked = [pin for pin in _COORDINATOR_PINS_REQUIRED if pin in rendered]
-        assert not leaked, (
-            f"worker rendering {template_name!r} leaked coordinator-only "
-            f"orchestration anchors: {leaked!r}"
-        )
-    else:
-        # Coordinator surfaces must keep the four contract anchors. The
-        # exact phrasing is intentionally avoided — the shared partial
-        # may reword — but the contract anchors are non-negotiable.
-        assert _COORDINATOR_INDEPENDENT_READY in rendered_lower
-        assert _COORDINATOR_QUEUE_OR_LOCAL in rendered_lower
-        assert _COORDINATOR_EXPOSED_TOOLS in rendered_lower
-        assert _COORDINATOR_STOPPED_WRITER in rendered_lower
-        # Distinct ownership/waves protections stay visible.
-        for token in _PROTECTED_ROOTS:
-            assert token in rendered, f"protected root {token!r} missing in {template_name}"
-        for token in _OWNERSHIP_FIELDS:
-            assert token in rendered, f"ownership token {token!r} missing in {template_name}"
-        # Parallel-by-default pinned anchors must surface on every
-        # coordinator rendering. The contract is the single source of
-        # truth for the rewrite.
-        missing = [pin for pin in _COORDINATOR_PINS_REQUIRED if pin not in rendered]
-        assert not missing, (
-            f"coordinator rendering {template_name!r} missing pinned "
-            f"parallel-by-default anchors: {missing!r}"
-        )
+    assert _COORDINATOR_INDEPENDENT_READY in rendered_lower
+    assert _COORDINATOR_QUEUE_OR_LOCAL in rendered_lower
+    assert _COORDINATOR_EXPOSED_TOOLS in rendered_lower
+    assert _COORDINATOR_STOPPED_WRITER in rendered_lower
+    for token in _PROTECTED_ROOTS:
+        assert token in rendered, f"protected root {token!r} missing in {template_name}"
+    for token in _OWNERSHIP_FIELDS:
+        assert token in rendered, f"ownership token {token!r} missing in {template_name}"
+    missing = [pin for pin in _COORDINATOR_PINS_REQUIRED if pin not in rendered]
+    assert not missing, (
+        f"coordinator rendering {template_name!r} missing pinned "
+        f"parallel-by-default anchors: {missing!r}"
+    )
 
 
 def test_shared_parallel_partial_keeps_sanitization_and_waves() -> None:
@@ -399,10 +326,10 @@ def test_coordinator_parallel_section_is_capability_invariant(
     alternate_caps = _maximally_different_caps()
 
     default_rendered = _render_raw_with_caps(
-        template_name, tmp_path, is_worker=False, session_caps=default_caps
+        template_name, tmp_path, session_caps=default_caps
     )
     alternate_rendered = _render_raw_with_caps(
-        template_name, tmp_path, is_worker=False, session_caps=alternate_caps
+        template_name, tmp_path, session_caps=alternate_caps
     )
 
     default_section = _extract_parallel_section(default_rendered)
@@ -470,7 +397,7 @@ def test_coordinator_full_render_excludes_removed_fallback_phrases(
         _maximally_different_caps(),
     ):
         rendered = _render_raw_with_caps(
-            template_name, tmp_path, is_worker=False, session_caps=caps
+            template_name, tmp_path, session_caps=caps
         )
         for forbidden in _COORDINATOR_RENDERED_NEGATIVES:
             assert forbidden not in rendered, (
@@ -488,10 +415,6 @@ def test_coordinator_full_render_excludes_removed_fallback_phrases(
 # units" anchor is the conditional accuracy (no false "the analysis
 # above splits" claim when the feedback does not mention units).
 #
-# The full follow-plan sentence appears in non-worker renders of all
-# three coordinator templates, with a worker render that strips it
-# via the ``{% if not IS_WORKER %}`` guard. The set of literals is
-# intentionally split into one exact-verbatim sentence and two
 # sub-anchors so a future partial rewrite that splits the sentence
 # into shorter paragraphs still satisfies the contract.
 _FEEDBACK_PATH_FOLLOW_PLAN_SENTENCE = (
@@ -516,18 +439,6 @@ _FEEDBACK_PATH_WHEN_IT_DOES = "When it does, dispatch each unit in parallel"
 # in coordinator renders; the fix collapses it to a single well-formed
 # `` `partial` `` code span.
 _FEEDBACK_PATH_BROKEN_BACKTICK = "`partial``"
-# Worker retention anchors: workers must keep an assignment-local
-# follow-plan phrase even with feedback present. The exact wording
-# is intentionally loose; the contract is "the worker template still
-# gets a follow-plan that names its assignment, not the whole plan".
-_WORKER_FEEDBACK_RETENTION_CLAUSES = (
-    "the assigned unit",
-    "Implement and verify only",
-    "Do not inspect repo-wide status",
-    "coordinate other units",
-)
-
-
 @pytest.mark.parametrize("template_name", _COORDINATOR_TEMPLATES)
 def test_feedback_path_mandatory_wording_in_coordinator_renders(
     tmp_path: Path, template_name: str
@@ -547,7 +458,6 @@ def test_feedback_path_mandatory_wording_in_coordinator_renders(
     rendered = _render_with_feedback(
         template_name,
         tmp_path,
-        is_worker=False,
         analysis_feedback_status="request_changes",
         analysis_feedback_content=(
             "Add a unit-aware guard to the S-2 and S-3 follow-plan branch "
@@ -603,7 +513,6 @@ def test_feedback_path_renders_accurately_when_feedback_omits_units(
     rendered = _render_with_feedback(
         template_name,
         tmp_path,
-        is_worker=False,
         analysis_feedback_status="request_changes",
         analysis_feedback_content=(
             "Tighten the typed contract on the render helper. The current "
@@ -626,68 +535,3 @@ def test_feedback_path_renders_accurately_when_feedback_omits_units(
     assert _FEEDBACK_PATH_FALSE_CLAIM not in rendered
     assert _FEEDBACK_PATH_OPTIONAL_MAY_SPLIT not in rendered
     assert _FEEDBACK_PATH_WHEN_IT_DOES not in rendered
-
-
-_WORKER_FEEDBACK_TEMPLATES: tuple[str, ...] = (
-    "worker_developer.jinja",
-    "developer_iteration_continuation.jinja",
-    "developer_iteration_fallback.jinja",
-)
-
-
-@pytest.mark.parametrize("template_name", _WORKER_FEEDBACK_TEMPLATES)
-def test_feedback_path_worker_renders_omit_coordinator_orchestration(
-    tmp_path: Path, template_name: str
-) -> None:
-    """PA-001/PA-003: workers must never receive the coordinator
-    follow-plan sentence, even when ``request_changes`` feedback is
-    present.
-
-    The role-aware guard ``{% if not IS_WORKER %}`` around the
-    S-2/S-3 sentence is the only mechanism that separates coordinator
-    orchestration from worker assignment-local recovery framing. A
-    future template regression that drops the guard (or moves the
-    sentence outside the guard) would re-leak MUST-style
-    dispatch-and-fanout language to a worker, who would then start
-    orchestrating siblings \u2014 a contract violation. This test
-    pins both halves: the sentence must be absent, and the existing
-    assignment-local retention clauses must still be present.
-    """
-    rendered = _render_with_feedback(
-        template_name,
-        tmp_path,
-        is_worker=True,
-        analysis_feedback_status="request_changes",
-        analysis_feedback_content=(
-            "Your previous attempt missed the typed contract fix; retry "
-            "with a narrower Workspace protocol."
-        ),
-    )
-
-    # Coordinator-only orchestration anchors must be ABSENT.
-    assert _FEEDBACK_PATH_FOLLOW_PLAN_SENTENCE not in rendered, (
-        f"worker {template_name!r} received the coordinator follow-plan "
-        f"sentence \u2014 the {{% if not IS_WORKER %}} guard was dropped"
-    )
-    assert _FEEDBACK_PATH_MUST_ANCHOR not in rendered, (
-        f"worker {template_name!r} received the MUST follow-plan anchor"
-    )
-    assert _FEEDBACK_PATH_EXPLICIT_REASON_ANCHOR not in rendered, (
-        f"worker {template_name!r} received the explicit-plan-reason anchor"
-    )
-    # Optional-parallelism phrases must be absent too; they would
-    # reach a worker if the unconditional path leaked.
-    assert _FEEDBACK_PATH_FALSE_CLAIM not in rendered
-    assert _FEEDBACK_PATH_OPTIONAL_MAY_SPLIT not in rendered
-    assert _FEEDBACK_PATH_WHEN_IT_DOES not in rendered
-    # Worker assignment-local retention must remain. The render helper
-    # injects the work_unit_id "unit" and directories "src"; the
-    # template must keep the worker-scope contract even when feedback
-    # is present, which is the regression scenario S-2/S-3 was
-    # specifically designed to prevent.
-    retained = [c for c in _WORKER_FEEDBACK_RETENTION_CLAUSES if c in rendered]
-    assert retained, (
-        f"worker {template_name!r} lost its assignment-local retention "
-        f"anchors under request_changes feedback; the role guard must "
-        f"only suppress the coordinator sentence, not the worker frame"
-    )

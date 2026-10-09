@@ -15,6 +15,8 @@ your own words; the validator only checks the frontmatter ``status`` enum.
 {{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
+{% include 'shared/_development_execution_envelope.j2' %}
+
 Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Delegate independent evidence gathering to concurrent read-only subagents; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
 
 ### Verification fan-out
@@ -39,8 +41,26 @@ The validator only checks the frontmatter ``status`` enum. The body is the next 
 
 When the status is not ``completed`` (both ``request_changes`` and ``failed``):
 - Describe what fell short and how you know (commands run, what was observed, concrete evidence).
-- Provide a plan for fixing it, written the way the planning agent writes a plan.
-- Split the remaining work into independent units with clear ownership and per-unit checks, so the next agent can dispatch them in parallel rather than handing each unit back as a separate ``partial`` decision.
+- Provide an executor-ready continuation plan for the remaining requested outcomes,
+  grounded in current repository evidence rather than the prior developer's account.
+- State the chosen approach and consequential rationale. Preserve
+  requirement-to-work-to-proof traceability: each unmet outcome maps to owned
+  changes, an observable acceptance check, and runnable evidence.
+- Cover applicable compatibility, migration, rollback, failure, security,
+  performance, interface, and scope-boundary consequences without adding
+  irrelevant boilerplate. Include focused checks and integrated end-to-end proof.
+- Make every self-contained unit a bounded context packet: remaining outcome,
+  relevant current behavior, exact ownership, consumed or produced contracts,
+  real dependencies, focused acceptance evidence, and compact return format.
+- State replanning triggers for new evidence that invalidates an assumption,
+  interface, dependency, ownership boundary, or acceptance check.
+- Split the remaining work into independent units so the next agent can dispatch it in parallel
+  rather than handing each unit back as a separate ``partial`` decision. End with
+  `## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST`, naming `Initial wave:`,
+  `Queued ready:`, later dependency waves, and `Why not parallel:` when fewer than
+  two units can start. Fit the capacity-limited critical path and integration,
+  verification, and artifact reserve inside the development-phase budget above;
+  total plan size alone is not a defect.
 
 For ``request_changes``: localized unmet work is actionable in this development cycle; the fix plan and parallel units guide the next implementation pass.
 For ``failed``: record stronger or not-evaluable evidence (a criterion that is impossible, contradictory, or has no safe actionable route). Describe what fell short and the evidence, explain why no safe actionable continuation exists under current evidence, and outline any recoverable resolution units for the next agent to investigate and resolve. A ``failed`` decision adds an explicit mandate for the next agent to determine whether and how the failure can be resolved, without treating the label itself as a pipeline failure.

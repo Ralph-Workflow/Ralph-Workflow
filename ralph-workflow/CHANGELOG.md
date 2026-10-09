@@ -54,6 +54,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(planning): make plans evidence-grounded, traceable execution contracts** — planning now maps requested outcomes through current repository behavior and a chosen design to observable proof, scales applicable risk analysis to the task, and names evidence-driven replanning triggers while retaining the capacity-aware parallel dispatch manifest. Locked by `tests/test_planning_prompt_thinking_first.py` and `tests/test_planning_subagent_guidance.py`.
+
 - **fix(prompts): make planned parallelism an explicit, capacity-aware first development action** — planning and analysis receive the configured development timebox and worker cap, require context-sized units plus a fan-in reserve, and name an initial ready wave or concrete coupling; developers reconcile and dispatch that wave before editing. Locked by `tests/test_planning_prompt_step_tools.py`, `tests/test_prompt_materialize_2.py`, and `tests/test_developer_plan_reconciliation.py`.
 
 - **fix(integration): preserve completed commits during retained recovery** — durable ownership blocks ordinary dispatch even on a clean worktree; recovery finishes pending integration before the next phase, and integration failures use bounded backoff without charging the commit agent. Locked by `tests/test_retained_resolution_handoff.py` and `tests/test_recovery_dispatch_backoff.py`.

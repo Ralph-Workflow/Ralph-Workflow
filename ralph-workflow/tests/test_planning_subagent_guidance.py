@@ -63,6 +63,13 @@ def test_planning_analysis_requires_an_executor_visible_dispatch_decision() -> N
     assert "Do not return `request_changes` merely because a plan is" in rendered
     assert "lack confidence" in rendered
     assert "oversized total workload is acceptable" in rendered
+    assert "requirement-to-work-to-proof traceability" in rendered
+    assert "chosen approach" in rendered
+    assert "unsupported assumption" in rendered
+    assert "generic verification" in rendered
+    assert "applicable compatibility, migration, rollback, failure, security" in rendered
+    assert "replanning triggers" in rendered
+    assert "style preference" in rendered
 
 
 def test_planning_analysis_handles_unknown_timebox_and_one_worker_capacity() -> None:

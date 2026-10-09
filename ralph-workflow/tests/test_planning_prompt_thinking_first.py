@@ -63,6 +63,15 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
         "fit inside the development-phase budget",
         "critical path",
         "divided and parallelized enough",
+        "requested outcomes, constraints, non-goals",
+        "current call or data flow",
+        "chosen approach",
+        "consequential tradeoffs",
+        "acceptance observation",
+        "requirement-to-work-to-proof",
+        "compatibility, migration, rollback, failure handling, security, and performance",
+        "only when the request or repository evidence implicates them",
+        "replanning trigger",
     ):
         assert required in normalized
     for forbidden in (
