@@ -268,19 +268,9 @@ The exact guidance and worked example live in
 
 ## Unplanned Work in the development-result artifact
 
-A `development_result` artifact may include an optional `## Unplanned
-Work` section to record work required by the request but omitted from
-the plan, such as a contract mismatch or a verification gap discovered
-during implementation. Each `- [UW-N]` bullet names the request criterion,
-the action taken and changed paths, a stable `path:line` or
-`path:line-line` anchor, and reproducible proof with its observed result.
-Complete and verify omitted required work in the current development
-phase; recording an item does not defer it to a later iteration.
-
-`## Unplanned Work` is **not** a substitute for `## Plan Items Proven`
-or `## Analysis Items Addressed`: the bracketed IDs there are anchors,
-not plan-step references, and are not routed to proof validation.
-`status: completed` requires every required plan item to be proven
-through the regular sections and every request criterion to be satisfied.
-The optional section records additional work without inventing plan-step
-IDs or changing the completion contract.
+A `development_result` artifact may record work required by the request but
+omitted from the plan, such as a contract mismatch or a verification gap discovered
+during implementation. The developer describes the criterion, changed paths,
+and reproducible proof directly in the free-form body. Complete and verify omitted
+required work in the current development phase; recording an item does not defer
+it to a later iteration.

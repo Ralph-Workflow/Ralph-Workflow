@@ -50,9 +50,6 @@ type: development_analysis_decision
 status: request_changes
 ---
 
-## Summary
-- [SUM-1] One criterion is not met.
-
 The focused regression test for oversized indexes is missing; the
 rest of the work is sound. `pytest tests/test_foo.py -q` reports
 18 passed but no oversized-index case.

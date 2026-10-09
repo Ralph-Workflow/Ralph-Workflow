@@ -136,7 +136,6 @@ Common fields include:
 - `commit_policy`
 - `parallelization`
 - `artifact_history`
-- `artifact_proof_policy`
 
 Roles include:
 
@@ -214,13 +213,12 @@ When the gate admits a development result, the analysis agent produces a
 decision artifact with one of three statuses. The pipeline routes each status
 through the phase's `decisions` table:
 
-- **`completed`** — all criterion verdicts are `met`; the result advances to
-  the success route.
-- **`request_changes`** — actionable development work remains. Every finding
-  must include a `Remaining work:` statement naming the executable change, a
-  concrete repository `Location:` (path, optionally with line/span), and
-  identify either `Criterion:` or `Plan reference: [S-n]`. Placeholder
-  locations such as `unknown` or `n/a` are rejected. The result loops back to
+- **`completed`** — all criterion verdicts are met and no necessary plan
+  work remains; the result advances to the success route.
+- **`request_changes`** — localized unmet work is actionable in this
+  development cycle. The body describes what fell short, cites evidence,
+  provides a planner-style fix plan, and splits remaining work into
+  independent units to dispatch in parallel. The result loops back to
   development.
 - **`failed`** — the analyzer found stronger or not-evaluable evidence, such
   as an impossible, contradictory, or unsafe condition. Under bundled defaults
@@ -300,16 +298,16 @@ main session.
 
 Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, etc.). When AGY is selected for two or more work units, routing follows the same supported agent_subagents path: `agy agents` reported no sub-agents on the measured stock v1.1.8 install, but that is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). AGY parallel runs fail observably only when the measured subagent dispatch or result evidence is missing or uncorrelated, never merely because `agy agents` lists nothing. Subagents and parallel agents are always available; the planning prompt never falls back to a sequential capability branch.
 
-The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and produces the matching `plan_items_proven` evidence. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
+The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and reports what was done in the development result. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
 
 ### How plans express parallelization intent
 
 A plan communicates parallelization intent to the executing agent through two shapes. Both are **agent-facing intent**, not Ralph fan-out instructions:
 
-- `work_units` — same-workspace agent-driven chunks. Each unit's ownership combines `Paths:` (exact files) and `Directories:` (the declared directory limits), or — when the unit declares neither — its steps' `Files:` targets. The executor drops assignments under `.agent`, `.git`, and `.worktrees` (and their descendants) from the effective scope; ownership that resolves to those roots stays in the main session. The executing agent dispatches a sub-agent per unit, scoped to the unit's effective ownership, and produces the matching `plan_items_proven` evidence.
+- `work_units` — same-workspace agent-driven chunks. Each unit's ownership combines `Paths:` (exact files) and `Directories:` (the declared directory limits), or — when the unit declares neither — its steps' `Files:` targets. The executor drops assignments under `.agent`, `.git`, and `.worktrees` (and their descendants) from the effective scope; ownership that resolves to those roots stays in the main session. The executing agent dispatches a sub-agent per unit, scoped to the unit's effective ownership, and reports the outcome in the development result.
 - `parallel_plan` — read-mostly chunks (e.g. parallel exploration, investigation, or doc analysis) where the executing agent's sub-agents work on disjoint inputs and the planner defines the per-unit scope contract. The same combined `Paths:` and `Directories:` ownership, step `Files:` fallback, and protected-root sanitization apply.
 
-A plan with no parallelizable work remains just as expressible as before — omit both shapes and the executing agent runs the plan sequentially. A plan with no usable extracted step or unit IDs is still executed as one prose plan; the development result proves it with exactly one `- [plan] <proof>` entry.
+A plan with no parallelizable work remains just as expressible as before — omit both shapes and the executing agent runs the plan sequentially. A plan with no usable extracted step or unit IDs is still executed as one prose plan; the developer reports the outcome in plain language in the development result.
 
 ### How the executing agent dispatches sub-agents
 
@@ -318,8 +316,8 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 1. Reads each unit's effective ownership (`Paths:` plus `Directories:`, or the unit's steps' `Files:` targets when neither is declared).
 2. Builds a wave of ready units whose dependencies are satisfied. The `max_parallel_workers` cap limits concurrent units in one wave, not the total unit count — later ready units run after earlier ones release.
 3. Serializes conflicting ownership (file equality, directory ancestry, or directory/file containment) across waves; disjoint files in the same directory may run together.
-4. Dispatches a sub-agent per ready unit, scoped to that unit's exact ownership, and collects the unit's `plan_items_proven` evidence.
-5. Aggregates each sub-agent's `plan_items_proven` evidence into the `development_result` artifact, proving every work unit and every unowned step the runtime demands.
+4. Dispatches a sub-agent per ready unit, scoped to that unit's exact ownership, and collects the unit's verification evidence.
+5. Summarizes the completed work and verification evidence in the `development_result` artifact.
 
 For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). The bundled dispatch path is `agent_subagents`; Ralph-managed fan-out is dormant and must be re-armed explicitly per phase. There is no linear capability fallback in the planning prompt: every configured agent is treated as supporting sub-agents and parallel agents.
 
@@ -530,28 +528,13 @@ without charging pre-resume time.
 
 #### Artifact validation after the warning threshold
 
-When the runtime determines that the 80% threshold has been reached, a
-`partial` or `failed` development result must include an `## Incomplete Work` section.
-Each incomplete-work item must use a stable-ID bracket (e.g. `[S-4]`), a
-`Reason:` field explaining why the step is incomplete or infeasible, and
-an `Evidence:` field with a reproducible location (file, test, or
-command). Both fields go on **indented continuation lines** under the
-item, spelled with their leading capital. Items missing any of these
-three are rejected by artifact validation, and a bullet carrying no
-stable-ID bracket is rejected rather than silently dropped, so silent
-omission is not accepted. A warned `completed`
-result is checked too: it must carry a `## Plan Items Proven` section
-naming what was proved, so declaring completion is not a way around the
-requirement to show your work. Validation cannot detect a fabricated
-proof — what it enforces is that a claim made under warning is
-accompanied by one.
-
-Whether the cycle warned is decided by the runtime, not by the reporting
-agent. Artifact validation reads the published warning epoch
-(`RALPH_CYCLE_WARN_EPOCH`). A self-declared `cycle_timebox_warned: true`
-frontmatter flag is also honoured, so a result validated outside its
-warned invocation, such as a replay or hand-written report, keeps the
-stricter reading.
+When the runtime determines that the 80% threshold has been reached, the
+development timebox warning is published to alert the agent to wrap up
+implementation and complete verification before the hard cut. The
+`development_result` artifact remains free-form below the frontmatter;
+the validator checks only the frontmatter `status` enum regardless of whether
+the threshold has warned. Coverage and readiness are judged by development
+analysis.
 
 The bundled workflow declares a sensible default; no customization is
 required.

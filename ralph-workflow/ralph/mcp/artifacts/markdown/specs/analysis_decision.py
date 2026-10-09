@@ -41,8 +41,8 @@ _REQUIRED_VERDICT_FIELDS = (
 )
 #: planning_analysis_decision verdicts are the only ones that must
 #: include ``Cost:``; the planning contract treats the cost of the
-#: missed split as part of the verdict, while development and policy
-#: decisions document what remains via ``Remaining work:`` and never
+#: missed split as part of the verdict, while policy decisions document
+#: what remains via ``Remaining work:`` and never
 #: duplicate the cost on every verdict.
 _PLANNING_VERDICT_FIELDS = (*_REQUIRED_VERDICT_FIELDS, "Cost:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
@@ -344,7 +344,7 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  
                     fix_section.line,
                     "How To Fix",
                     "ANALYSIS011",
-                    "verification decisions must omit How To Fix; remedies are inline in the verdict's 'Proposed revision:' (planning) or 'Remaining work:' (development) field on the next pass, so a separate remediation section would split one rule across two places",
+                    "verification decisions must omit How To Fix; remedies are inline in the verdict's 'Proposed revision:' (planning) or 'Remaining work:' (policy remediation) field on the next pass, so a separate remediation section would split one rule across two places",
                 )
             )
     else:

@@ -55,9 +55,9 @@ the same time. The mapping must list, for every item in `PROMPT`:
   cover it (file:line where the gap was identified, what plan change
   closes it).
 
-Complete uncovered request criteria within the current scope and record their
-criterion, changed paths, and reproducible proof in `## Unplanned Work`.
-Only a concrete external blocker justifies a continuation gap or `Next steps:`;
+Complete uncovered request criteria within the current scope and record the
+criterion, changed paths, and reproducible proof in the result body.
+Only a concrete external blocker justifies a continuation gap;
 the missing plan step alone does not justify deferring required work.
 {% endif %}
 
@@ -88,7 +88,7 @@ status: completed
 ---
 
 ## Summary
-- [SUM-1] Implemented the requested fix and verified it.
+- Implemented the requested fix and verified it.
 
 Wrote what I did, what changed, and how I verified it. The validator
 only checks the frontmatter ``status``; the body is the next agent's

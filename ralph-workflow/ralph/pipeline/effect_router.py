@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.commit_cleanup import is_recognized_secret_path
-from ralph.git.operations import has_uncommitted_changes, list_changed_paths
+from ralph.git.operations import has_staged_changes, has_uncommitted_changes, list_changed_paths
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -346,10 +346,16 @@ def _is_empty_commit_phase(
     workspace_root: Path,
     *,
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+    has_staged_changes_fn: Callable[[Path], bool] = has_staged_changes,
 ) -> bool | None:
     try:
         if not has_uncommitted_changes_fn(workspace_root):
             return True
+        try:
+            if has_staged_changes_fn(workspace_root):
+                return False
+        except Exception:
+            pass
         return not any(
             not is_recognized_secret_path(path) and not is_agent_internal_path(path)
             for path in list_changed_paths(workspace_root)

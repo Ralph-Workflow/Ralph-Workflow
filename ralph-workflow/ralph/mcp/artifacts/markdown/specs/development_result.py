@@ -50,8 +50,6 @@ def _to_content(document: ParsedDocument) -> Content:
         "status": document.frontmatter["status"],
         "summary": "",
         "files_changed": "",
-        "plan_items_proven": [],
-        "analysis_items_addressed": [],
     }
     summary_section = document.section("Summary")
     if summary_section is not None:

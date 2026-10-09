@@ -400,14 +400,6 @@ local override set, use `ralph --init-local-config` explicitly.
 - post-commit routes — what happens after a commit-producing step
 - parallel execution — how independent extracted work units can fan out concurrently in safe waves
 
-The development phase supports a proof policy block:
-
-```toml
-[phases.development.artifact_proof_policy]
-require_plan_proof = true
-require_analysis_proof = true
-```
-
 Each phase can declare a `display_style` override to control its banner colour. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
 
 ## `artifacts.toml` in plain language

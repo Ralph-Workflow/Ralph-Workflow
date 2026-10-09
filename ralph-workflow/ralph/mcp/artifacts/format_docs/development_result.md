@@ -50,7 +50,7 @@ status: completed
 ---
 
 ## Summary
-- [SUM-1] Implemented and verified the requested behavior.
+- Implemented and verified the requested behavior.
 
 Wrote what I did, what changed, and what I verified. The body is
 free-form; the validator only checks the frontmatter ``status``.

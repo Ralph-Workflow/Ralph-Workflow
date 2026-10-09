@@ -636,30 +636,24 @@ class TestResolvedPolicyStatus:
 
 
 class TestWebSearchCapabilitySupport:
-    @pytest.mark.parametrize(
-        "drain",
-        [
+    def test_web_search_in_granted_drains(self) -> None:
+        for drain in (
             SessionDrain.PLANNING,
             SessionDrain.DEVELOPMENT,
             SessionDrain.DEVELOPMENT_ANALYSIS,
             SessionDrain.REVIEW,
             SessionDrain.REVIEW_ANALYSIS,
             SessionDrain.FIX,
-        ],
-    )
-    def test_web_search_in_granted_drains(self, drain: SessionDrain) -> None:
-        assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
+        ):
+            assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
 
-    @pytest.mark.parametrize(
-        "drain",
-        [
+    def test_web_search_not_granted_to_other_drains(self) -> None:
+        for drain in (
             SessionDrain.COMMIT,
             SessionDrain.DEVELOPMENT_COMMIT,
             SessionDrain.REVIEW_COMMIT,
-        ],
-    )
-    def test_web_search_not_granted_to_other_drains(self, drain: SessionDrain) -> None:
-        assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
+        ):
+            assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
 
 
 # =============================================================================
@@ -737,21 +731,18 @@ class TestWebVisitCapability:
         )
         assert result.is_allowed() is False
 
-    @pytest.mark.parametrize(
-        "drain",
-        [d for d in SessionDrain if d not in _COMMIT_DRAINS],
-    )
-    def test_web_visit_granted_to_non_commit_drains(self, drain: SessionDrain) -> None:
-        assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
-            f"SessionDrain.{drain.name} is missing Capability.WEB_VISIT"
-        )
+    def test_web_visit_granted_to_non_commit_drains(self) -> None:
+        for drain in [d for d in SessionDrain if d not in _COMMIT_DRAINS]:
+            assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
+                f"SessionDrain.{drain.name} is missing Capability.WEB_VISIT"
+            )
 
-    @pytest.mark.parametrize("drain", sorted(_COMMIT_DRAINS))
-    def test_web_visit_not_granted_to_commit_drains(self, drain: SessionDrain) -> None:
-        assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
-            f"SessionDrain.{drain.name} should not have Capability.WEB_VISIT "
-            "(commit-class drains are web-restricted)"
-        )
+    def test_web_visit_not_granted_to_commit_drains(self) -> None:
+        for drain in sorted(_COMMIT_DRAINS):
+            assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
+                f"SessionDrain.{drain.name} should not have Capability.WEB_VISIT "
+                "(commit-class drains are web-restricted)"
+            )
 
 
 # =============================================================================
@@ -947,24 +938,24 @@ class TestWorkspaceNewCapabilities:
     # Drain-coverage: metadata_read (all drains), edit/delete (dev/fix only)
     # ------------------------------------------------------------------
 
-    @pytest.mark.parametrize("drain", list(SessionDrain))
-    def test_workspace_metadata_read_granted_to_all_drains(self, drain: SessionDrain) -> None:
-        assert CapabilitySet.defaults_for_drain(drain).contains(
-            Capability.WORKSPACE_METADATA_READ
-        ), f"SessionDrain.{drain.name} is missing Capability.WORKSPACE_METADATA_READ"
+    def test_workspace_metadata_read_granted_to_all_drains(self) -> None:
+        for drain in SessionDrain:
+            assert CapabilitySet.defaults_for_drain(drain).contains(
+                Capability.WORKSPACE_METADATA_READ
+            ), f"SessionDrain.{drain.name} is missing Capability.WORKSPACE_METADATA_READ"
 
-    @pytest.mark.parametrize("drain", list(SessionDrain))
-    def test_workspace_edit_granted_only_to_dev_and_fix(self, drain: SessionDrain) -> None:
-        expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
-        granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_EDIT)
-        assert granted is expected, (
-            f"SessionDrain.{drain.name}: WORKSPACE_EDIT grant expected={expected}"
-        )
+    def test_workspace_edit_granted_only_to_dev_and_fix(self) -> None:
+        for drain in SessionDrain:
+            expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
+            granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_EDIT)
+            assert granted is expected, (
+                f"SessionDrain.{drain.name}: WORKSPACE_EDIT grant expected={expected}"
+            )
 
-    @pytest.mark.parametrize("drain", list(SessionDrain))
-    def test_workspace_delete_granted_only_to_dev_and_fix(self, drain: SessionDrain) -> None:
-        expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
-        granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_DELETE)
-        assert granted is expected, (
-            f"SessionDrain.{drain.name}: WORKSPACE_DELETE grant expected={expected}"
-        )
+    def test_workspace_delete_granted_only_to_dev_and_fix(self) -> None:
+        for drain in SessionDrain:
+            expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
+            granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_DELETE)
+            assert granted is expected, (
+                f"SessionDrain.{drain.name}: WORKSPACE_DELETE grant expected={expected}"
+            )

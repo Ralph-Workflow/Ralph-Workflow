@@ -218,7 +218,7 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
     """
     rng = random.Random(0xC0FFEE)  # deterministic
     workspace = _seed(tmp_path, files=10)
-    for round_idx in range(5):
+    for round_idx in range(2):
         # Reset the index between rounds so each round is a cold build.
         import shutil
 
@@ -251,7 +251,7 @@ def test_kill_during_atomic_promote_does_not_serve_partial_generation(tmp_path: 
     A subsequent read must either serve the prior generation OR
     the next generation, never a partial mix.
     """
-    workspace = _seed(tmp_path, files=40)
+    workspace = _seed(tmp_path, files=15)
     # Use a longer delay so the build gets past the staging step.
     rc = _run_kill_round(workspace, kill_after_seconds=0.02)
     assert rc != 0

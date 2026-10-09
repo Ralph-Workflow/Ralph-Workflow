@@ -1044,8 +1044,11 @@ class TestNoModuleLevelDisplayContext:
                 continue
             if any(s in str(rel) for s in excluded_substrs):
                 continue
-            for lineno, line in enumerate(_read(path).splitlines(), start=1):
-                if "DisplayContext" in line and _DISPLAY_CONTEXT_CONSTRUCTION_RE.search(line):
+            content = _read(path)
+            if "DisplayContext" not in content:
+                continue
+            for lineno, line in enumerate(content.splitlines(), start=1):
+                if _DISPLAY_CONTEXT_CONSTRUCTION_RE.search(line):
                     violations.append(f"{rel}:{lineno}:{line.rstrip()}")
         assert not violations, "Module-level DisplayContext(...) construction found:\n" + "\n".join(
             violations
@@ -1767,6 +1770,8 @@ class TestNoExcludedEmitMethod:
 def _parallel_display_imports(path: pathlib.Path) -> tuple[tuple[int, tuple[str, ...]], ...]:
     """Return AST-accurate direct imports from a file that needs inspection."""
     source = _read(path)
+    if "parallel_display" not in source:
+        return ()
     if not re.search(
         r"from ralph\.display\.parallel_display import(?:\s+emit_|\s*\([^)]*\bemit_)",
         source,
