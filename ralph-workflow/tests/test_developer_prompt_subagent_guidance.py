@@ -272,16 +272,26 @@ def test_native_orchestration_is_authorized_and_missing_support_is_installed() -
     capabilities = (templates / "shared" / "_session_capabilities.jinja").read_text(
         encoding="utf-8"
     )
-    parallel = (templates / "shared" / "_parallel_execution.jinja").read_text(
-        encoding="utf-8"
-    )
+    parallel = (templates / "shared" / "_parallel_execution.jinja").read_text(encoding="utf-8")
     combined = "\n".join((subagents, capabilities, parallel))
 
     assert "native orchestration tools are explicitly authorized" in combined
     assert "install or enable the facility" in combined
-    for native_term in ("agent", "sub-agent", "task", "delegate", "fork", "team", "spawn", "child session"):
+    for native_term in (
+        "agent",
+        "sub-agent",
+        "task",
+        "delegate",
+        "fork",
+        "team",
+        "spawn",
+        "child session",
+    ):
         assert native_term in combined
-    assert "research its supported package, plugin, extension, configuration, or feature mechanism" in parallel
+    assert (
+        "research its supported package, plugin, extension, configuration, or feature mechanism"
+        in parallel
+    )
     assert "examples/extensions/subagent/" in parallel
     assert "index.ts" in parallel and "agents.ts" in parallel
     for repair_anchor in (
@@ -300,16 +310,38 @@ def test_native_orchestration_is_authorized_and_missing_support_is_installed() -
     assert "never impose a brokered-tools-only rule" in parallel
 
 
-def test_worker_prompt_preserves_recursive_native_delegation() -> None:
-    templates = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
-    worker_verification = (templates / "shared" / "_worker_verification.jinja").read_text(
-        encoding="utf-8"
-    )
-    worker_prompt = (templates / "worker_developer.jinja").read_text(encoding="utf-8")
+def test_developer_prompt_preserves_recursive_native_delegation() -> None:
+    """The single-audience developer prompt keeps recursive native sub-agent guidance.
 
-    assert "WORKER DO-NOT-DISPATCH" not in worker_verification
-    assert "Workers never dispatch sub-agents" not in worker_prompt
-    assert "native sub-agent" in worker_verification
+    ``worker_developer.jinja`` and ``shared/_worker_verification.jinja`` were
+    removed when worker orchestration was deprecated. The developer prompt is
+    the only audience now, so recursive native sub-agent delegation and
+    'native sub-agent' language must live in the developer-rendered output.
+    """
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace()
+    session_caps = SessionCapabilities(
+        capabilities=CapabilitySet({Capability.PROCESS_EXEC_BOUNDED}),
+        policy_flags=PolicyFlagSet({PolicyFlag.ALLOW_SHELL}),
+    )
+    inputs = DeveloperPromptInputs(
+        prompt_content="test prompt",
+        plan_content="test plan",
+    )
+    for tmpl in ("developer_iteration_continuation.jinja", "developer_iteration_fallback.jinja"):
+        rendered = prompt_developer_iteration_xml_with_context(
+            context,
+            inputs,
+            workspace,
+            session_caps,
+            template_name=tmpl,
+        )
+        # Single-audience model: no worker-only scope language.
+        assert "WORKER DO-NOT-DISPATCH" not in rendered
+        assert "Workers never dispatch sub-agents" not in rendered
+        # Recursive native sub-agent delegation language is part of the
+        # developer prompt surface.
+        assert "Native sub-agent" in rendered or "native sub-agent" in rendered
 
 
 def test_feedback_role_guidance_uses_worker_identity_not_verdict() -> None:

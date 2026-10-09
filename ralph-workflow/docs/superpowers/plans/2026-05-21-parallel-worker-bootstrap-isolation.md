@@ -1,4 +1,4 @@
-> **Superseded**: worker orchestration is deprecated (see [concepts.md §'Deprecated: Ralph-orchestrated workers'](../sphinx/concepts.md#deprecated-ralph-orchestrated-workers))
+> **Superseded**: worker orchestration is deprecated (see [concepts.md §'Deprecated: Ralph-orchestrated workers'](../../sphinx/concepts.md#deprecated-ralph-orchestrated-workers))
 
 # Parallel Worker Bootstrap Isolation Implementation Plan
 

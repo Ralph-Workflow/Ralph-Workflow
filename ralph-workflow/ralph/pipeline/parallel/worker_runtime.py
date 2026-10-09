@@ -396,6 +396,11 @@ def run_parallel_worker_from_manifest(
     composition path so a parallel worker uses the same injected collaborators as
     the direct run path. They are ignored when an explicit ``pipeline_deps`` bundle
     is supplied.
+
+    .. deprecated::
+        Ralph-orchestrated workers are removed; retained only for the
+        ``ralph_fan_out`` dispatch-mode compatibility surface. See
+        ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
     """
 
     manifest = ParallelWorkerManifest.load(manifest_path)

@@ -1897,6 +1897,8 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     # the operator installed in their own harness. Ralph adds its server; it
     # does not remove theirs. Its OWN --tools/--allowedTools gate stays.
     assert cmd[10:] == [
+        "--tools",
+        ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
         "--allowedTools",
         ",".join(
             [
@@ -2074,7 +2076,12 @@ def test_build_command_claude_keeps_native_orchestration_tools_when_mcp_endpoint
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
         ),
     )
-    assert "--tools" not in cmd
+    # The native orchestration tools (Agent/Task/etc.) must stay available
+    # both in the --tools builtin allowlist AND in --allowedTools so the
+    # sub-agent delegation contract holds while MCP filesystem tools are
+    # funneled through Ralph's MCP surface.
+    tools_index = cmd.index("--tools")
+    assert cmd[tools_index + 1] == ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP)
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
         [claude_tool_name("read_file"), *CLAUDE_NATIVE_TOOLS_TO_KEEP]

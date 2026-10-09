@@ -5,6 +5,8 @@ developer prompts have one audience and must not branch on a worker or coordinat
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.prompts._capability_set import CapabilitySet
 from ralph.prompts._policy_flag import PolicyFlag
@@ -64,3 +66,24 @@ def test_developer_render_context_has_no_is_worker() -> None:
         assert "## PARALLEL EXECUTION" in rendered
         assert "sub-agent" in rendered or "subagent" in rendered
         assert "pre-submit" in rendered or "fresh-context review" in rendered
+
+
+def test_developer_render_context_source_has_no_is_worker_or_work_unit() -> None:
+    """The developer module's source must construct the render context without
+    any IS_WORKER, work_unit_*, or worker_namespace keys. The single-audience
+    contract is enforced at the construction site, not just at the rendered
+    surface, so a future regression that re-introduces the role gate fails
+    here before the user ever sees the prompt."""
+    package_dir = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "developer"
+    for source_path in (package_dir / "__init__.py", package_dir / "developer_prompt_inputs.py"):
+        source = source_path.read_text(encoding="utf-8")
+        lowered = source.lower()
+        assert "is_worker" not in lowered, (
+            f"{source_path.relative_to(package_dir.parent.parent)} reintroduces IS_WORKER"
+        )
+        assert "worker_namespace" not in lowered, (
+            f"{source_path.relative_to(package_dir.parent.parent)} reintroduces worker_namespace"
+        )
+        assert "work_unit_id" not in lowered, (
+            f"{source_path.relative_to(package_dir.parent.parent)} reintroduces work_unit_id"
+        )

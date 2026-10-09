@@ -82,6 +82,11 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ),
     ("Ralph fan-out", "parallelization rework: 'Ralph fan-out' is the legacy dispatch mode name"),
     (
+        "Ralph-orchestrated",
+        "deprecated-worker rework: 'Ralph-orchestrated' is the canonical product term "
+        "for the removed worker execution model (see Deprecated section in concepts.md)",
+    ),
+    (
         "Ralph should run",
         "parallelization rework: contraction of 'Ralph Workflow should run' in planning prompt",
     ),

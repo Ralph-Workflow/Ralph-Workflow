@@ -11,7 +11,16 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseParallelization(_FrozenPolicyModel):
-    """Transition-scoped parallelization policy for a pipeline phase."""
+    """Transition-scoped parallelization policy for a pipeline phase.
+
+    .. deprecated::
+        Ralph-orchestrated workers are removed from the execution model;
+        this model is retained only because ``max_parallel_workers`` and
+        ``dispatch_mode`` still configure the ``ralph_fan_out`` compatibility
+        surface. The bundled default uses ``dispatch_mode='agent_subagents'``
+        so the developer agent owns parallelism through its own sub-agents.
+        See ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
+    """
 
     mode: Literal["same_workspace"] = Field(
         default="same_workspace",

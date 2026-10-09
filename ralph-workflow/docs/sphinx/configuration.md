@@ -68,6 +68,7 @@ If you already know you want the deeper docs, use this map instead of scanning t
 | artifact contracts, decision vocabularies, summary files, or commit-message artifacts | [Advanced Artifact Configuration](advanced-artifact-configuration.md) |
 | MCP servers, web search, crawl, or media/web-visit integrations | [Advanced MCP Configuration](advanced-mcp-configuration.md) |
 | what the active policy means after all config layers resolve | [Policy Explanation](configuration.md#inspecting-the-active-policy) |
+| legacy worker-orchestration settings (`max_parallel_workers`, `work_unit`, `worker_namespace`, `dispatch_mode`) | [Deprecated: Ralph-orchestrated workers](concepts.md#deprecated-ralph-orchestrated-workers) |
 
 ## Which file should I edit?
 

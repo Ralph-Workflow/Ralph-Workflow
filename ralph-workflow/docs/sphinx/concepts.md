@@ -363,17 +363,28 @@ sub-agents using the runtime's task/orchestration tools. The developer
 prompt always contains sub-agent guidance, parallel-execution instructions,
 and the pre-submit review — unconditionally, with no role gate.
 
-The following configuration keys are now accepted for backward compatibility
-but have no effect on the execution model:
+### Configuration and routing behavior
 
-- `max_parallel_workers` in pipeline.toml (superseded by the developer agent's own fan-out)
-- `work_unit` / `worker_namespace` CLI flags (superseded)
+The bundled `dispatch_mode` is `agent_subagents`; the developer agent owns
+sub-agent fan-out end to end. The `ralph_fan_out` value remains accepted
+and routes independent plan units through the same-workspace fan-out
+machinery (passing `max_parallel_workers` into `FanOutEffect`); that path
+is itself deprecated in favor of the developer-agent sub-agent model but
+is preserved for backward compatibility.
 
-The `dispatch_mode` key remains functional:
+- `max_parallel_workers` still configures `ralph_fan_out`; it has no effect
+  under `agent_subagents` (the developer agent's own fan-out cap applies).
+- `work_unit` / `worker_namespace` CLI flags are still rejected by
+  `ralph.prompts.materialize` (the developer execution path is the only
+  live entry point).
 
-- `agent_subagents` (default): the developer agent owns sub-agent fan-out
-- `ralph_fan_out`: Ralph Workflow routes independent plan units through its parallel machinery
-  (this path is also deprecated in favor of the developer-agent sub-agent model)
+### Single-audience prompt contract
+
+The developer prompt renders once per invocation, with a single audience.
+There is no `IS_WORKER` role gate, no worker-only block, and no
+"coordinator" prose; the parallel-execution contract, sub-agent guidance,
+orchestration paragraphs, the "dispatch remaining slices in parallel"
+sentence, and the pre-submit review render unconditionally.
 
 ## Related pages
 

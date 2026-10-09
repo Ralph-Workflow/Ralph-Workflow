@@ -49,9 +49,9 @@ A useful shape is:
   a reproducible command, a `path:line` anchor, or a focused test
   result.
 - For `partial` or `failed`, state the concrete external action or
-  in-scope continuation the next agent should pick up. A coordinator
-  who still owns independent ready slices dispatches them in parallel
-  rather than handing each one back as a separate `partial`.
+  in-scope continuation the next agent should pick up. The developer
+  who still owns independent ready slices dispatches them as parallel
+  sub-agents rather than handing each one back as a separate `partial`.
 
 Coverage of the plan and of the prior analysis is judged by development
 analysis, not checked mechanically here.

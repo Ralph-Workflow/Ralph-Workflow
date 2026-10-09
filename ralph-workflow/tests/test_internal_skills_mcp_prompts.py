@@ -418,7 +418,9 @@ def test_mcp_partial_kept_within_two_added_sentences(drain: SessionDrain) -> Non
     # Hard-bloat guard: the partial source adds exactly two new
     # sentences, no more. Count occurrences of the canonical
     # clarifying sentences — anything beyond 1 per slot is bloat.
-    read_clarifying_count = rendered.count("Use these for parent-session workspace reads and searches")
+    read_clarifying_count = rendered.count(
+        "Use these for parent-session workspace reads and searches"
+    )
     assert read_clarifying_count == 1, (
         f"drain {drain!r}: READ/SEARCH clarifying sentence appears "
         f"{read_clarifying_count} times (expected exactly 1)"

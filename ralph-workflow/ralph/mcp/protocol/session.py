@@ -124,22 +124,47 @@ class McpSession(Protocol):
 
     @property
     def parallel_worker(self) -> bool:
-        """True if the session is a parallel-worker subprocess rather than the main agent."""
+        """True if the session is a parallel-worker subprocess rather than the main agent.
+
+        .. deprecated::
+            Ralph-orchestrated workers are removed; this property only ever
+            returns False on the live execution path and is retained for the
+            ``ralph_fan_out`` dispatch-mode compatibility surface. See
+            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
+        """
         ...
 
     @property
     def edit_area_result(self) -> object:
-        """Cached result of the edit-area validation for this session's worker, if any."""
+        """Cached result of the edit-area validation for this session's worker, if any.
+
+        .. deprecated::
+            Worker-scoped edit areas are no longer allocated; retained for the
+            ``ralph_fan_out`` compatibility surface. See
+            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
+        """
         ...
 
     @property
     def worker_artifact_dir(self) -> Path | None:
-        """Directory the worker writes its per-worker artifact evidence under, or None."""
+        """Directory the worker writes its per-worker artifact evidence under, or None.
+
+        .. deprecated::
+            Per-worker artifact directories are only allocated under the
+            ``ralph_fan_out`` compatibility surface. See
+            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
+        """
         ...
 
     @property
     def worker_namespace(self) -> Path | None:
-        """Per-worker scratch namespace, isolated from sibling workers and the main checkout."""
+        """Per-worker scratch namespace, isolated from sibling workers and the main checkout.
+
+        .. deprecated::
+            Per-worker namespaces are only allocated under the ``ralph_fan_out``
+            compatibility surface. See ``docs/sphinx/concepts.md``
+            §'Deprecated: Ralph-orchestrated workers'.
+        """
         ...
 
     @property
@@ -202,7 +227,14 @@ class McpSession(Protocol):
         ...
 
     def is_parallel_worker(self) -> bool:
-        """Return True if the session is a parallel-worker subprocess rather than the main agent."""
+        """Return True if the session is a parallel-worker subprocess rather than the main agent.
+
+        .. deprecated::
+            Ralph-orchestrated workers are removed; this only ever returns
+            False on the live execution path. Retained for the
+            ``ralph_fan_out`` compatibility surface. See
+            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
+        """
         ...
 
     def check_edit_area(self, path: str, /) -> object:

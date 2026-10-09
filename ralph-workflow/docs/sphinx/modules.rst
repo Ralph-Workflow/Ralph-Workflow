@@ -965,6 +965,12 @@ ralph.pipeline.orchestrator
 ralph.pipeline.parallel
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+.. deprecated::
+   The ``ralph.pipeline.parallel`` package, ``ralph_fan_out`` dispatch mode,
+   and ``max_parallel_workers`` configure the legacy Ralph-orchestrated
+   worker path. Parallelism is now owned by the developer agent's own
+   sub-agents. See `Deprecated: Ralph-orchestrated workers <concepts.html#deprecated-ralph-orchestrated-workers>`__.
+
 .. automodule:: ralph.pipeline.parallel
    :no-members:
 

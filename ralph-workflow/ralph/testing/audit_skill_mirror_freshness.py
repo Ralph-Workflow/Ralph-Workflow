@@ -111,10 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--repo-root",
         default=None,
-        help=(
-            "Override the repository root to audit. Defaults to the "
-            "module's parents[3] walk."
-        ),
+        help=("Override the repository root to audit. Defaults to the module's parents[3] walk."),
     )
     parsed: tuple[argparse.Namespace, list[str]] = parser.parse_known_args(
         argv if argv is not None else []

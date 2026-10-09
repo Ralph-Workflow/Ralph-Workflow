@@ -179,8 +179,7 @@ ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName
 # wedges headless runs.
 # ``codesearch`` used to be listed here and was inert: it is not an opencode tool and
 # appears nowhere in the 1.18.25 binary, so the override named a tool that never existed.
-OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
-)
+OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = ()
 
 # Native orchestration tools that MUST stay enabled when Ralph wires its MCP surface:
 # sub-agent dispatch, skills, todo tracking, and web access. They are auto-allowed in

@@ -530,7 +530,7 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
 
     has_mcp_write = caps.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
     write_clarifying_count = section.count(
-            "These Ralph Workflow edit tools are the parent session's write/edit path"
+        "These Ralph Workflow edit tools are the parent session's write/edit path"
     )
     if has_mcp_write:
         assert write_clarifying_count == 1, (

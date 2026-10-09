@@ -33,9 +33,9 @@ some items is incremental progress, not completion.
 be completed by any developer action available in the current run; use
 `failed` when no safe actionable continuation exists. Neither is a
 shortcut, and neither decides whether the run ends. The `partial` decision
-is role-aware: a coordinator who still owns independent ready slices
-dispatches them in parallel rather than handing each one back as a separate
-`partial`; a worker continues in-scope recovery within the assigned unit.
+is single-audience: the developer who still owns independent ready slices
+dispatches them as parallel sub-agents rather than handing each one back
+as a separate `partial`.
 
 ## Free-Form Body
 
@@ -50,9 +50,9 @@ A useful shape is:
   a reproducible command, a `path:line` anchor, or a focused test
   result.
 - For `partial` or `failed`, state the concrete external action or
-  in-scope continuation the next agent should pick up. A coordinator
-  who still owns independent ready slices dispatches them in parallel
-  rather than handing each one back as a separate `partial`.
+  in-scope continuation the next agent should pick up. The developer
+  who still owns independent ready slices dispatches them as parallel
+  sub-agents rather than handing each one back as a separate `partial`.
 
 Coverage of the plan and of the prior analysis is judged by development
 analysis, not checked mechanically here.
