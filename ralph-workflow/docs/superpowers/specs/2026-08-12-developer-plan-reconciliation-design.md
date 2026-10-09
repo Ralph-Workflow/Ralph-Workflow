@@ -1,5 +1,18 @@
 # Developer plan reconciliation
 
+> **SUPERSEDED** -- This design introduced a closed `Disposition:` vocabulary
+> (`completed` / `adapted` / `not_applicable` / `blocked`), canonical-ID proof
+> coverage, and compact-vs-large execution guidance for the development
+> artifact. The current contract (see
+> `ralph/mcp/artifacts/format_docs/development_result.md` and
+> `ralph/mcp/artifacts/format_docs/development_analysis_decision.md`) is
+> **free-form**: the validator mechanically checks only the frontmatter
+> `status` enum, the body is the next agent's reading matter, and parallel
+> work is the default. The text below is preserved as the historical
+> narrative of the disposition iteration and no longer reflects current
+> requirements. Do not treat any rule in this document as a current
+> obligation.
+
 ## Goal
 
 The development agent must finish small and large plans without treating an

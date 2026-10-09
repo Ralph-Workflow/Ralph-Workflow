@@ -1,6 +1,18 @@
 # Developer plan reconciliation implementation plan
 
-**Outcome:** Development agents execute plans of different sizes, reconcile
+> **SUPERSEDED** -- This plan implemented the disposition-artifact iteration
+> described in `specs/2026-08-12-developer-plan-reconciliation-design.md`.
+> The current contract is **free-form**: the development-result and
+> development-analysis-decision artifacts validate only the frontmatter
+> `status` enum, the body is free-form markdown for the next agent, and
+> parallel work is the default. Steps S-1 through S-8 below are preserved
+> as the historical implementation record of the disposition iteration and
+> no longer describe current obligations. See
+> `ralph/mcp/artifacts/format_docs/development_result.md` and
+> `ralph/mcp/artifacts/format_docs/development_analysis_decision.md` for
+> the current contract.
+
+**Outcome (historical):** Development agents execute plans of different sizes, reconcile
 inaccurate plan items without weakening the request, and submit a validated
 per-item disposition that development analysis audits independently.
 

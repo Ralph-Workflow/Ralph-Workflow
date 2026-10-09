@@ -25,8 +25,13 @@ media delivery (see ``_WIRE_POSITIVE_TRANSPORT_IDS``); the
   ``tests/test_multimodal_evidence.py`` in the default profile.
 
 Every test in this file is marked ``smoke`` AND ``subprocess_e2e``
-so the production test suites (``make verify``, ``make test``, ...)
-never run it. To run the suite manually:
+so the default production suite (``make test``) skips it via the
+``-m "not smoke"`` pytest selector. ``make verify`` DOES run this
+file via the budget-tracked ``make test-verification-smoke`` step
+(see ``Makefile:177-178``), which collects this file with
+``-m "smoke and subprocess_e2e"``; the same shape is also reachable
+standalone via ``make test-multimodal-smoke``. To run the suite
+manually:
 
     pytest tests/test_smoke_multimodal_end_to_end.py \\
         -m "smoke and subprocess_e2e"
@@ -225,17 +230,25 @@ def _end_to_end_test_for_harness(
     positive: bool,
     monkeypatch: pytest.MonkeyPatch,
     cursor_credential: str = "api_key",
+    skip_media: bool = False,
 ) -> SmokeRunResult:
     """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
 
     Configures the harness's ``AgentConfig.cmd`` (or ``RALPH_AGY_BINARY`` /
     ``RALPH_CURSOR_BINARY`` / ``RALPH_OPENCODE_BINARY`` / ``RALPH_KIMI_BINARY``
     env overrides for those four transports) so the harness spawns the
-    multimodal stub as the
-    agent. The ``positive=False`` path sets ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1``
-    so the stub dials the endpoint once and then forges the receipt. The
-    ``MOCK_MULTIMODAL_SKIP_MEDIA=1`` path is exercised by the dedicated
-    ``test_skip_media_multimodal_run_exits_nonzero`` case.
+    multimodal stub as the agent. Three negative shapes are pin-tested:
+
+    - ``positive=True`` (default): the stub issues a full media-call sequence
+      and the multimodal fact grades WIRE.
+    - ``positive=False`` (default): the stub dials the endpoint once and
+      then forges the receipt via ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1``;
+      the multimodal fact must NOT grade WIRE and a named break must fire.
+    - ``skip_media=True``: the stub makes NO media calls at all via
+      ``MOCK_MULTIMODAL_SKIP_MEDIA=1``; the multimodal fact must NOT grade
+      WIRE and a named break must fire. This is a distinct case from the
+      ignore-response shape, and is exercised by the dedicated
+      ``test_skip_media_multimodal_run_exits_nonzero`` case.
     """
     transport_prefix, _cli_cmd, agent_name, redirect_method = _resolve_transport_entry(transport)
     stub_path = _stub_script_path()
@@ -276,7 +289,10 @@ def _end_to_end_test_for_harness(
             monkeypatch.setenv("HOME", str(workspace))
         else:
             raise AssertionError(f"unknown cursor credential mode {cursor_credential!r}")
-    if positive:
+    if skip_media:
+        monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
+        monkeypatch.setenv("MOCK_MULTIMODAL_SKIP_MEDIA", "1")
+    elif positive:
         monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
         monkeypatch.delenv("MOCK_MULTIMODAL_SKIP_MEDIA", raising=False)
     else:
@@ -480,10 +496,20 @@ def test_ignore_response_multimodal_run_exits_nonzero(
 def test_skip_media_multimodal_run_exits_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No-call case: skipping the media tool call entirely fails the smoke run with a named break."""
-    monkeypatch.delenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", raising=False)
-    monkeypatch.setenv("MOCK_MULTIMODAL_SKIP_MEDIA", "1")
-    result = _end_to_end_test_for_harness(tmp_path, "agy", positive=False, monkeypatch=monkeypatch)
+    """No-call case: skipping the media tool call entirely fails the smoke run with a named break.
+
+    Distinct from the ignore-response case (``positive=False``): the stub
+    here never issues a media call at all, so the wire-ledger has no
+    verified record. The multimodal fact must still NOT grade WIRE and a
+    named break must fire.
+    """
+    result = _end_to_end_test_for_harness(
+        tmp_path,
+        "agy",
+        positive=True,
+        monkeypatch=monkeypatch,
+        skip_media=True,
+    )
     assert result.multimodal_tool_used is not None
     assert (
         result.multimodal_tool_used.provenance is not result.multimodal_tool_used.provenance.WIRE
