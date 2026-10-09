@@ -351,11 +351,15 @@ def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> d
         if not base.is_dir():
             raise FileNotFoundError(f"audit root is not a directory: {base}")
         for path in sorted(base.rglob("*.py")):
+            source_bytes = path.read_bytes()
+            name = _module_name(path, package_root)
+            if b"def " not in source_bytes and b"=" not in source_bytes and b"import" not in source_bytes:
+                index[name] = _Module(name=name)
+                continue
             try:
-                tree = ast.parse(path.read_text(encoding="utf-8"))
+                tree = ast.parse(source_bytes)
             except SyntaxError:
                 continue
-            name = _module_name(path, package_root)
             index[name] = _index_module(name, tree)
     return index
 

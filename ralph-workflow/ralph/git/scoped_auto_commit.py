@@ -249,6 +249,16 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     return None
 
 
+def _file_blob_sha(abs_path: Path) -> str | None:
+    """Hash a regular file using Git's blob representation."""
+    try:
+        content_bytes = abs_path.read_bytes()
+    except OSError:
+        return None
+    blob = b"blob " + str(len(content_bytes)).encode("ascii") + b"\x00" + content_bytes
+    return hashlib.sha1(blob).hexdigest()
+
+
 def _symlink_blob_sha(abs_path: Path) -> str | None:
     """Hash a symlink target using Git's blob representation."""
     try:
@@ -317,11 +327,7 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:
     # exactly.
     if abs_path.is_symlink():
         return _symlink_blob_sha(abs_path)
-    try:
-        hashed: object = repo.git.hash_object(abs_path)
-    except (GitCommandError, OSError):
-        return None
-    return (hashed.strip() or None) if isinstance(hashed, str) else None
+    return _file_blob_sha(abs_path)
 
 
 def _resolved_descendant_sha(repo: Repo, rel_path: str) -> str | None:
@@ -363,12 +369,9 @@ def _resolved_descendant_sha(repo: Repo, rel_path: str) -> str | None:
         resolved = (Path(working_dir) / rel_path).resolve(strict=False)
         if not resolved.is_file():
             return None
-        hashed: object = repo.git.hash_object(resolved)
-    except (GitCommandError, OSError, ValueError):
+        return _file_blob_sha(resolved)
+    except (OSError, ValueError):
         return None
-    if not isinstance(hashed, str):
-        return None
-    return hashed.strip() or None
 
 
 def capture_pre_write_contents(
