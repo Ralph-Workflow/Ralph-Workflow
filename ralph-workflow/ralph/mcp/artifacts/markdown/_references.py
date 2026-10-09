@@ -33,10 +33,6 @@ def normalize_id(identifier: str, *, case_sensitive: bool = True) -> str | None:
 # Consumer phrases used by reference validators. Each validator picks the
 # consumer that matches the section it is validating so the diagnostic
 # names the reader that actually breaks on the bad reference.
-_STEP_PROOF_CONSUMER = (
-    "blocking because the development_result 'Plan Items Proven' proof in "
-    "ralph/phases/execution.py cross-references step numbers from this plan"
-)
 _FAN_OUT_CONSUMER = (
     "blocking because the worker fan-out in ralph/pipeline/work_units.py "
     "parses ## Work Units / ## Parallel Plan IDs to scope edits and dispatch units"
@@ -52,11 +48,14 @@ def _consumer_for_section(section: str | None) -> str:
     """Return the named consumer phrase for the section a reference is read in."""
     if section in {"Work Units", "Parallel Plan"}:
         return _FAN_OUT_CONSUMER
-    # Default: development_result proof reads steps / acceptance-criteria
-    # / design references. The reference validator passes through ``section``
-    # from the call site, so any plan-side caller that wants a different
-    # consumer should pass an explicit ``consumer`` to ``validate_references``.
-    return _STEP_PROOF_CONSUMER
+    # Default: the free-form development_result body no longer mechanically
+    # cross-references step numbers, so a step/acceptance-criteria/design
+    # reference outside ## Work Units / ## Parallel Plan is consumed by the
+    # human reader via the development analysis pass, not by a validator.
+    # The reference validator still passes through ``section`` from the call
+    # site so any plan-side caller that wants a different consumer should
+    # pass an explicit ``consumer`` to ``validate_references``.
+    return _FAN_OUT_CONSUMER
 
 
 def validate_unique_ids(
@@ -105,9 +104,10 @@ def validate_references(
     ``references`` maps a target ID to ``(source_id, line, section)`` entries;
     the source ID is intentionally retained for diagnostics rather than used as
     a lookup key. ``consumer`` overrides the consumer phrase selected from
-    the ``section`` argument; pass ``consumer`` for plan step references whose
-    consumer is the development_result proof and whose ``section`` may be
-    ``"Steps"`` (the default ``_consumer_for_section`` already picks that).
+    the ``section`` argument; the free-form development_result body no longer
+    mechanically cross-references step IDs, so for plan-side callers the
+    consumer phrase names the work-unit fan-out reader by default
+    (see ``_consumer_for_section``).
     """
     known = {
         key

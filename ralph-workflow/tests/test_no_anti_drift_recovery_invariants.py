@@ -29,7 +29,17 @@ def _read(path: pathlib.Path) -> str:
 
 
 def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
-    return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+    import os
+
+    results: list[pathlib.Path] = []
+    root_str = str(root)
+    for dirpath, dirnames, filenames in os.walk(root_str):
+        if "__pycache__" in dirnames:
+            dirnames.remove("__pycache__")
+        for fn in filenames:
+            if fn.endswith(".py"):
+                results.append(pathlib.Path(dirpath) / fn)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -51,10 +61,10 @@ class TestFailureClassifierSingleOwner:
         }
         offenders: list[str] = []
         for path in _walk_python_files(RALPH_ROOT):
-            rel = path.relative_to(RALPH_ROOT.parent)
-            if rel in allowed_relative:
+            if b"FailureClassifier(" not in path.read_bytes():
                 continue
-            if "FailureClassifier(" in _read(path):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if rel not in allowed_relative:
                 offenders.append(str(rel))
         assert offenders == [], (
             f"FailureClassifier( is constructed outside the allowed sites: {offenders}."
@@ -161,10 +171,10 @@ class TestRecoveryControllerOwnsBackoff:
     def test_recovery_controller_owns_backoff(self) -> None:
         offenders: list[str] = []
         for path in _walk_python_files(RALPH_ROOT):
-            source = _read(path)
-            if "compute_backoff" not in source and "backoff_ms" not in source:
+            raw = path.read_bytes()
+            if b"compute_backoff" not in raw and b"backoff_ms" not in raw:
                 continue
-            tree = ast.parse(source)
+            tree = ast.parse(raw)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.FunctionDef):
                     continue

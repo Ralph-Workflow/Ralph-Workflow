@@ -1,7 +1,7 @@
 ---
 name: submit-development-result-artifact
-description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a completed result was rejected for a missing section or an unproven plan or analysis item
-version: 2.2.0
+description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact as a free-form body, or when a completed result was rejected for a malformed status value
+version: 3.0.0
 ---
 
 # submit-development-result-artifact
@@ -10,8 +10,9 @@ version: 2.2.0
 
 A development result is one markdown document
 (`artifact_type: "development_result"`) reporting what was done, which
-files changed, and — as stable-ID list items — the proof that plan steps
-and analysis findings were actually addressed.
+files changed, and the verification behind the change. The frontmatter
+`status` is the only field the validator mechanically checks; the body
+is the next agent's reading matter, not a structure the artifact gates on.
 
 Submit with `ralph_submit_md_artifact`; pre-check with
 `ralph_verify_md_artifact`.
@@ -19,115 +20,56 @@ Submit with `ralph_submit_md_artifact`; pre-check with
 ## Document Shape
 
 Frontmatter: `type: development_result` and exactly one closed-vocabulary
-status: `completed`, `partial`, or `failed`. Any other status is invalid and must be
-repaired before submission.
+status: `completed`, `partial`, or `failed`. Any other status is invalid and
+must be repaired before submission.
 
-Most section rules below apply to `status: completed` only. A
-`status: partial` or `status: failed` document is otherwise free-form below the
-frontmatter, with two always-enforced exceptions: `## Summary` with at least
-one item, and — once the run's cycle timebox has warned — `## Incomplete Work`,
-every item carrying a stable-ID bracket, a `Reason:`, and an `Evidence:`. Under
-that same warning a `completed` result must carry `## Plan Items Proven`.
+`status: completed` means the ENTIRE plan is done: every required plan item
+must be implemented or have a proven disposition that preserves every
+request criterion. Completing only some items is incremental progress, not
+completion.
 
-The `## Incomplete Work` section is a CLOSED grammar, not free-form: it accepts only top-level `- [ID] text` bullets and their indented `Reason:` / `Evidence:` lines, in a single section. Prose, other bullet markers, numbered lists, nested entries, extra fields, `### [ID]` sub-blocks and a repeated section are all rejected — not because they are wrong to write, but because the report reads none of them, so accepting them would silently delete the work they describe. Put every remaining item in its own stable-ID bullet.
-Whether the cycle warned is read from the run's own clock, not from anything
-you declare, so the status you pick does not decide whether you are asked to
-show your work. Write whatever best records the attempt. Use `partial` when a safe concrete continuation
-exists, with `## Next Steps` and `## Continuation` (your session ID). Use
-`failed` when no safe developer continuation exists under current evidence or
-authority, and report the blocker without promising another iteration. Neither
-status decides whether the run ends.
+`status: partial` and `status: failed` are accepted at any point. Use
+`partial` when verified progress exists and remaining required work cannot
+be completed by any developer action available in the current run; use
+`failed` when no safe actionable continuation exists. Neither is a
+shortcut, and neither decides whether the run ends. The `partial` decision
+is role-aware: a coordinator who still owns independent ready slices
+dispatches them in parallel rather than handing each one back as a separate
+`partial`; a worker continues in-scope recovery within the assigned unit.
 
-| Section | Required (`completed`) | Items |
-|---|---|---|
-| `## Summary` | yes | exactly 1 |
-| `## Files Changed` | yes | 1+ (one file per item) |
-| `## Plan Items Proven` | proof-policy controlled; required once the cycle timebox has warned | usable extracted references, or one `plan` entry |
-| `## Next Steps` | no | exactly 1 |
-| `## Continuation` | no | exactly 1: the prior session ID |
-| `## Analysis Items Addressed` | no | one per analysis finding addressed |
+## Free-Form Body
 
-## ID-Based Proof References
+There is no required section, no required field label, and no required
+stable ID for individual items. The validator mechanically checks only
+the frontmatter `status` enum; everything else is read by the next agent.
+A useful shape is:
 
-Proof entries reference other artifacts by their stable item IDs — the ID
-goes in the `[ID]` slot and the proof is the item text:
+- One item under `## Summary` describing the outcome in plain language.
+- One `## Files Changed` block listing the paths you touched.
+- For each affected criterion or plan item, a short evidence line citing
+  a reproducible command, a `path:line` anchor, or a focused test
+  result.
+- For `partial` or `failed`, state the concrete external action or
+  in-scope continuation the next agent should pick up. A coordinator
+  who still owns independent ready slices dispatches them in parallel
+  rather than handing each one back as a separate `partial`.
 
-- `## Plan Items Proven`: use the accepted plan's usable extracted step IDs,
-  or, for an explicit Work Units plan, usable unit IDs plus unowned step IDs
-  (including integration). Unit proof covers its owned steps; do not also
-  submit their step IDs. An isolated worker proves its assigned unit ID.
-  When no usable IDs are extracted, use exactly one `[plan]` entry proving
-  the accepted prose plan instead of inventing IDs. The text states concrete
-  evidence. Add an indented
-  `Disposition: completed|adapted|not_applicable|blocked` field. Add an
-  indented `Rationale:` for adapted, not-applicable, or blocked items. A
-  completed result cannot contain blocked work; submit a partial result.
-- `## Analysis Items Addressed`: the item ID is the stable ID of the
-  `## What Came Up Short` finding in the analysis-decision artifact you are
-  answering. The text states concrete evidence that the finding is closed.
+Coverage of the plan and of the prior analysis is judged by development
+analysis, not checked mechanically here.
 
-Copy usable IDs from the source artifact — do not invent or renumber them.
-The single `plan` fallback is for accepted plans without usable IDs only.
-See `.agent/artifact-formats/examples/development_result.md` for that case.
+## Disposition Vocabulary
 
-## Core Flow
+The free-form contract does not require per-step `Disposition:`
+fields or per-finding `Rationale:` lines. Write the disposition in
+your own words in the body if it matters, and let the next analysis
+verdict decide. There is no `## Plan Items Proven` or
+`## Analysis Items Addressed` shape to satisfy; an analysis verdict
+that disagrees is itself the proof check.
 
-1. Write the document. `completed`, `partial`, and `failed` are accepted at
-   any point. For `completed`, every section rule and every plan/analysis proof
-   above is enforced. `partial` is a discouraged last resort: use it only when
-   remaining required work cannot be completed by any developer action
-   available in this run, such as a physical-world action, an operator-only
-   credential or decision, or an external system change outside your
-   authority. Difficulty, elapsed time, an exhausted run budget, or ready work
-   you can still perform does not qualify. For `partial`, `## Summary` is
-   required and — under a
-   cycle-timebox warning — so is `## Incomplete Work`; otherwise lead with what
-   you did, what remains (`## Next Steps`) and your
-   session ID (`## Continuation`) so the next iteration can resume.
-   After submitting `partial`, call `declare_complete` once with
-   `partial_reason` naming the literal impossibility and required external
-   action. A second confirmation call is not required.
-2. Optionally `ralph_verify_md_artifact`, then
-   `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
+## Frontmatter
 
-Worked example:
-
-```markdown
----
-type: development_result
-status: completed
----
-
-## Summary
-
-- [SUM-1] Added the foo() regression test, clamped the index in src/foo.py, and verified the focused suite passes.
-
-## Files Changed
-
-- [F-1] src/foo.py
-- [F-2] tests/test_foo.py
-
-## Plan Items Proven
-
-- [S-1] tests/test_foo.py contains test_clamp_handles_out_of_range_index.
-  Disposition: completed
-- [S-2] src/foo.py clamps the index before lookup while preserving the public foo() signature.
-  Disposition: completed
-
-## Analysis Items Addressed
-
-- [DA-001] pytest tests/test_foo.py -q passes with the new regression test included.
-```
-
-## Error Recovery
-
-- `completed development_result artifacts require summary` (or
-  `... require files_changed`) — fill the missing section, or change
-  `status` to `partial` if the work is not actually done.
-- `Summary must contain exactly one item` / `Next Steps must contain
-  exactly one item` / `Continuation must contain exactly one item` —
-  these sections are single-item; merge extra items into one line.
-- `section requires list items` on `## Files Changed` — list at least one
-  changed file.
-- Duplicate-ID diagnostics in a proof section — each plan step or finding
-  may appear only once; merge the proof text into one item.
+- `type` — required; `development_result`.
+- `status` — required and closed: `completed`, `partial`, or `failed`. Any
+  other value, including `done` or `wrong`, is a hard error. The
+  diagnostic names all accepted values; correct the frontmatter and
+  resubmit.

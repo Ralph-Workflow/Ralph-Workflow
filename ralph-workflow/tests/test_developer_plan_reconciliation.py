@@ -46,8 +46,7 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "dispatch every ready unit concurrently" in prompt
     assert "Reassess the remaining dependency graph after each result" in prompt
     assert "`completed`" in prompt
-    assert "`adapted`" in prompt
-    assert "`not_applicable`" in prompt
+    assert "free-form" in prompt
     assert (
         "Preserve every required plan reference".lower() in prompt.lower()
         or "required plan reference" in prompt

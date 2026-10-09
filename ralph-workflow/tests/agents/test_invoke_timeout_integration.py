@@ -464,7 +464,10 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         _release.wait(timeout=1.0)
         yield from ()
 
-    handle = _FakeManagedHandle(_oscillating_stdout())
+    handle = _FakeManagedHandle(
+        _oscillating_stdout(),
+        on_terminate=_release.set,
+    )
 
     try:
         with pytest.raises(IdleStreamTimeoutError) as exc_info:
@@ -525,7 +528,10 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
         _reader_release.wait(timeout=5.0)
         yield from ()
 
-    handle = _FakeManagedHandle(_blocking_stdout())
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        on_terminate=_reader_release.set,
+    )
     captured_events: list[WaitingStatusEvent] = []
 
     def _listener(event: WaitingStatusEvent) -> None:
@@ -598,7 +604,10 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
         _reader_release.wait(timeout=5.0)
         yield from ()
 
-    handle = _FakeManagedHandle(_blocking_stdout())
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        on_terminate=_reader_release.set,
+    )
     captured_events: list[WaitingStatusEvent] = []
 
     def _listener(event: WaitingStatusEvent) -> None:
@@ -790,6 +799,7 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
         _blocking_stdout(),
         descendant_count=1,
         descendant_oldest_seconds=5.0,
+        on_terminate=_reader_release.set,
     )
 
     # Build a registry with a stale scoped child record.
