@@ -382,6 +382,13 @@ def _capture_run_ctx(
     )
     # Prevent the legacy heartbeat helper from invoking the watcher a second time.
     monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: None)
+    # NOTE: ``_start_pro_marker_watcher`` is intentionally NOT stubbed here.
+    # Some tests in this class need to install their own
+    # ``_start_pro_marker_watcher`` recording fake (see the
+    # ``marker_watcher_factory`` precedence cases); pytest's monkeypatch
+    # is LIFO, so a stub applied here would shadow those recorders. The
+    # recovery-controller precedence cases (which do NOT install their
+    # own recorder) install a local stub at the test site.
 
     captured: list[tuple[PipelineState, object, str]] = []
 
@@ -650,6 +657,16 @@ class TestInjectionPrecedence:
         )
 
         captured_ctx: list[object] = []
+        # ``_start_pro_marker_watcher`` spawns a real ``ProMarkerWatcher``
+        # daemon thread by default, which would block past the 1 s per-test
+        # SIGALRM cap under full-suite load. Stub it locally; the
+        # ``_capture_run_ctx`` helper intentionally does not stub this
+        # because other tests in this class need to install their own
+        # recording fake. The recovery-controller factory precedence
+        # assertion is unaffected.
+        monkeypatch.setattr(
+            run_loop_module, "_start_pro_marker_watcher", lambda *_a, **_kw: (None, None)
+        )
 
         def _fake_inner_loop(
             inner_state: PipelineState, ctx: object, _prev: str
