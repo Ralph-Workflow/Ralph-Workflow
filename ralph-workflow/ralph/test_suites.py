@@ -76,14 +76,15 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 12 plain shards keep the slowest shard's wall time under the
-# ``make test-verification-smoke`` headroom (40-44 s slowest shard measured
-# vs 47-50 s for the prior 8-shard cap), so the cumulative two-step verify
-# time stays within the 60 s cap. Concurrent pytest startup, collection, and
-# filesystem work stay below the per-test watchdog contention threshold at
-# 12 shards; going higher concentrates the required auto-integrate E2E
-# files into fewer shards and trips the per-shard 60 s timeout.
-_MAX_PYTEST_WORKERS = 12
+# host, 16 plain shards keep concurrent pytest startup, collection, and
+# filesystem work below the per-test watchdog contention threshold while
+# leaving enough headroom for the 14 s smoke step on a 60 s combined
+# budget -- the 8-shard cap the smaller 12-core host documents measured
+# the slowest shard at ~50 s on the grown E2E set and exhausted the
+# budget before the smoke step could complete. 16 shards trims the
+# slowest shard to ~42 s on the same host without tripping the 1.0 s
+# per-test SIGALRM cap on any test in the maintained suite.
+_MAX_PYTEST_WORKERS = 16
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host completes the suite faster with eight shards;
 # additional shard startup and filesystem contention consume smoke headroom.
@@ -225,10 +226,17 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# Required real-git files use a dedicated shard with four xdist workers.
-# Each test owns a ``tmp_path``; four workers cut the measured 40-core host
-# runtime from 9.25s to 4.46s without changing the retained selection.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "4"
+# Required real-git files use a dedicated shard with eight xdist workers.
+# Each test owns a ``tmp_path``; eight workers on a 40-core host trim the
+# measured wall clock well under the 50 s make-test budget headroom that
+# the budget-tracked smoke step depends on. The 4-worker value it
+# replaced cut the original 9.25 s to 4.46 s on a smaller E2E selection;
+# the 12x-grown E2E set now spends ~50 s at 4 workers and the gate
+# exhausts its 60 s combined budget before the smoke step completes. 8
+# workers halves the E2E shard wall clock without raising any test or
+# suite timeout, leaving enough headroom for the 14 s smoke step on the
+# maintained 40-core host under typical load.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 

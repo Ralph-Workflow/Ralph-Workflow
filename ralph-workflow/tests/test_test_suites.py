@@ -127,9 +127,17 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_four() -> None:
-    """Use four workers for the isolated real-git shard on many-core hosts."""
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "4"
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_eight() -> None:
+    """Use eight workers for the isolated real-git shard on many-core hosts.
+
+    The 4-worker value it replaced trimmed the original 9.25 s E2E
+    selection to 4.46 s; the 12x-grown E2E set now spends ~50 s at 4
+    workers and the gate exhausts its 60 s combined budget before the
+    smoke step completes. Eight workers halves the E2E shard wall clock
+    so the make-test step leaves enough headroom for the 14 s smoke
+    step on the maintained 40-core host under typical load.
+    """
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "8"
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

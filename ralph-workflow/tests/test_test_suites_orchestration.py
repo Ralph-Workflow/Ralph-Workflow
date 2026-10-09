@@ -122,23 +122,24 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (12, "12"),
-        (16, "12"),
-        (32, "12"),
-        (64, "12"),
+        (12, "8"),
+        (16, "16"),
+        (32, "16"),
+        (64, "16"),
     ),
 )
-def test_auto_worker_count_uses_verified_twelve_shard_cap(
+def test_auto_worker_count_uses_verified_sixteen_shard_cap(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps shards at the verified twelve-worker limit.
+    """Auto profile caps shards at the verified sixteen-worker limit.
 
-    Twelve shards keep the maintained 40-core host's slowest shard under the
-    ``make test-verification-smoke`` headroom (40-44 s measured vs 47-50 s
-    for the prior 8-shard cap) so the cumulative two-step verify time
-    stays within the 60 s cap while preserving exact-once selection.
+    Sixteen shards keep the maintained 40-core host's full selected suite
+    inside the immutable 60 s combined budget while preserving
+    exact-once selection. The 8-shard cap the smaller 12-core host
+    documents measured the slowest shard at ~50 s on the grown E2E set
+    and exhausted the budget before the smoke step could complete.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
@@ -639,11 +640,19 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses four workers for isolated real-git tests."""
+    """The dedicated E2E shard uses eight workers for isolated real-git tests.
+
+    The 4-worker value it replaced trimmed the original 9.25 s E2E
+    selection to 4.46 s; the 12x-grown E2E set now spends ~50 s at 4
+    workers and the gate exhausts its 60 s combined budget before the
+    smoke step completes. Eight workers halves the E2E shard wall
+    clock so the make-test step leaves enough headroom for the 14 s
+    smoke step on the maintained 40-core host under typical load.
+    """
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
     spawner = _StubSpawner([])
@@ -674,7 +683,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     assert dedicated_command[3] == "tests"
     assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "4"
+    assert dedicated_command[xdist_index + 1] == "8"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 
