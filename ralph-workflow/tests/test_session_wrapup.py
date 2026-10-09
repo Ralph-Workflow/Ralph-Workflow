@@ -130,26 +130,22 @@ def test_development_wrapup_notice_states_remaining_minutes_when_epochs_publishe
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-6: MCP deadline delivery preserves main dispatch and worker scope."""
+    """S-6: MCP deadline delivery surfaces remaining minutes and parallel-dispatch
+    guidance to the developer. Ralph-orchestrated workers are removed; the
+    notice is now single-audience (developer only) and ignores worker_namespace."""
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
 
     now = time.time()
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(now - 600.0))
     monkeypatch.setenv(DEV_DEADLINE_EPOCH_ENV, repr(now + 1200.0))
 
-    for worker_namespace in (None, tmp_path / "worker"):
-        server = _server(tmp_path, worker_namespace=worker_namespace)
-        notice = _text(_call(server, "read_file"))
-        flat = " ".join(notice.split())
-        assert "DEVELOPMENT-TIMEBOX WARNING" in notice
-        assert "minutes remaining" in flat
-        assert "submit the development result before the cut" in flat
-        if worker_namespace is None:
-            assert "independent ready group" in flat
-        else:
-            assert "independent ready group" not in flat
-            assert "only your assigned work unit" in flat
-            assert "Do not spawn sub-agents" in flat
+    server = _server(tmp_path, worker_namespace=None)
+    notice = _text(_call(server, "read_file"))
+    flat = " ".join(notice.split())
+    assert "DEVELOPMENT-TIMEBOX WARNING" in notice
+    assert "minutes remaining" in flat
+    assert "submit the development result before the cut" in flat
+    assert "independent ready group" in flat
 
 
 def test_development_wrapup_notice_keeps_static_text_without_epochs(

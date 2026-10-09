@@ -64,3 +64,18 @@ statements stay identical, and the docs build has no warning. Actual: `make
 verify` passed; it ran Sphinx, lint, type checking, render-integrity,
 artifact-example, prompt-single-sourcing, and the remaining mandatory audits.
 Its combined test elapsed time was 37.90 seconds of the 60-second budget.
+
+
+## Single-audience developer prompts (2026-07-11)
+
+Developer prompts have **one audience**: the single developer agent.
+They must not branch on a worker or coordinator role. Specifically:
+
+- Templates must not reference `IS_WORKER`, `is_worker`, or any worker-role variable
+- No `{% if IS_WORKER %}` or `{% if not IS_WORKER %}` blocks
+- No "worker scope", "coordinator dispatch", or "assigned unit" wording that assumes Ralph-orchestrated workers
+- Parallelism guidance is unconditional and always rendered
+
+Ralph Workflow previously supported a worker-orchestration model. See
+`docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'`
+for why it was removed.

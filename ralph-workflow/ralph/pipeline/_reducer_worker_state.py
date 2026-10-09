@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Worker state transition handlers for the pipeline reducer.
 
 These pure functions update WorkerState entries in PipelineState when

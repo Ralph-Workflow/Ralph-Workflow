@@ -66,13 +66,9 @@ current run. Examples include a physical-world action such as
 unplugging a power cable, an operator-only credential or decision, or
 an external system change outside the developer's authority.
 Difficulty, elapsed time, an exhausted run budget, or ready work the
-developer can still perform does not qualify. The `partial` decision
-itself is role-aware: a coordinator who still owns independent ready
-slices dispatches them in parallel rather than handing each one back
-as a separate `partial`; a worker continues in-scope recovery within the
-assigned unit per `shared/_no_exemption_for_failures.j2` (the worker
-contract forbids dispatch, so the same "dispatch in parallel" rule
-does not apply to a worker reading this format doc). After submitting
+developer can still perform does not qualify. A developer who still
+owns independent ready slices dispatches them in parallel rather than
+handing each one back as a separate `partial`. After submitting
 `partial`, call `declare_complete` once with `partial_reason` naming
 that literal impossibility and required external action; no second
 confirmation call is required. Use `failed` when no safe actionable

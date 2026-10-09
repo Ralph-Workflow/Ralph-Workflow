@@ -20,7 +20,6 @@ _TEMPLATE_NAMES = (
     "developer_iteration.jinja",
     "developer_iteration_continuation.jinja",
     "developer_iteration_fallback.jinja",
-    "worker_developer.jinja",
     "development_analysis.jinja",
 )
 _INCLUDE = "{% include 'shared/_no_exemption_for_failures.j2' %}"
@@ -56,14 +55,14 @@ def test_development_analysis_keeps_verdicts_independent_of_failure_provenance()
 def test_no_template_sentence_starts_lowercase() -> None:
     """S-13 (a): no sentence in the touched templates starts lowercase.
 
-    The S-13 brief names exactly five touched files: the four shared partials
-    plus worker_developer.jinja. Other templates are out of scope for this
-    consolidation.
+    The S-13 brief names the four shared partials plus
+    developer_iteration.jinja (worker_developer.jinja was removed in the
+    worker-orchestration deprecation). Other templates are out of scope for
+    this consolidation.
     """
     import re
 
     touched = (
-        _TEMPLATES_DIR / "worker_developer.jinja",
         _TEMPLATES_DIR / "shared" / "_no_exemption_for_failures.j2",
         _TEMPLATES_DIR / "shared" / "_run_budget.j2",
         _TEMPLATES_DIR / "shared" / "_verification_commitments.j2",
@@ -122,9 +121,9 @@ def test_partial_results_rule_is_single_sourced() -> None:
 _SIZE_RULE = "Task size alone must not produce an assessment-only handoff"
 _FIRST_INCREMENT_RULE = "Select and perform the first safe, testable increment"
 # The old partial-progress escape clause that the S-1 / U-1 work MUST
-# remove. Surface area: every rendered coordinator and worker development
-# prompt. Phrased verbatim from the pre-change guidance partial so a
-# regression to the old wording is loud, not silent.
+# remove. Surface area: every rendered development prompt. Phrased verbatim
+# from the pre-change guidance partial so a regression to the old wording
+# is loud, not silent.
 _OLD_PARTIAL_PROGRESS_ESCAPE = (
     "retry only with a new evidence-based hypothesis or report partial progress"
 )
@@ -136,38 +135,24 @@ _ACTIONABLE_RECOVERY_CLAUSES = (
     "continue other independent ready work",
     "new evidence-based hypothesis",
 )
-# Worker-only assignment-local recovery clause the shared guidance MUST keep
-# visible on every worker-rendered surface, so workers do not lose the
-# "within your assignment" framing once the partial-progress escape is
-# removed.
-_WORKER_ASSIGNMENT_LOCAL_CLAUSES = (
-    "within your assignment",
-    "the assigned unit",
-    "your scope",
-)
-# Coordinator-only pre-submit review mandate the continuation/first-iteration
-# templates must NOT leak to worker renderings.
-_COORDINATOR_REVIEW_MANDATE = "independent read-only sub-agent"
 
 
 @pytest.mark.parametrize(
-    ("template_name", "is_worker"),
+    "template_name",
     (
-        ("developer_iteration.jinja", False),
-        ("developer_iteration_continuation.jinja", False),
-        ("developer_iteration_fallback.jinja", False),
+        "developer_iteration.jinja",
+        "developer_iteration_continuation.jinja",
+        "developer_iteration_fallback.jinja",
     ),
 )
 def test_rendered_development_surfaces_require_size_based_execution(
-    tmp_path: Path, template_name: str, *, is_worker: bool
+    tmp_path: Path, template_name: str
 ) -> None:
     """Regression: large-scope tasks must not produce a zero-work handoff.
 
     The shared guidance must place the size-based prohibition and the
     first-increment instruction before ``EXECUTION PLAN`` on every
-    coordinator/worker fresh, continuation, and fallback surface, and they
-    must appear exactly once per surface. Workers stay assignment-scoped and
-    do not receive the coordinator's dispatch directive.
+    development surface, and they must appear exactly once per surface.
     """
     rendered = " ".join(
         prompt_developer_iteration_xml_with_context(
@@ -175,9 +160,6 @@ def test_rendered_development_surfaces_require_size_based_execution(
             inputs=DeveloperPromptInputs(
                 prompt_content="Implement the requested change.",
                 plan_content="### [S-1] Implement the assigned change",
-                work_unit_id="unit" if is_worker else "",
-                work_unit_description="Implement the assigned change" if is_worker else "",
-                work_unit_directories="src" if is_worker else "",
             ),
             workspace=MemoryWorkspace(root=str(tmp_path)),
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
@@ -188,39 +170,27 @@ def test_rendered_development_surfaces_require_size_based_execution(
     assert rendered.count(_SIZE_RULE) == 1
     assert rendered.count(_FIRST_INCREMENT_RULE) == 1
     assert rendered.index(_SIZE_RULE) < rendered.index("EXECUTION PLAN")
-    if is_worker:
-        # Workers must not receive the coordinator's dispatch directive.
-        # The old literal ("dispatch independent ready groups") was the
-        # optional-dispatch opener; the parallel-by-default rewrite
-        # replaced it with the mandatory "dispatch every ready unit
-        # concurrently in one wave" wording, which is also coordinator-
-        # only and must stay out of the worker rendering.
-        assert "dispatch independent ready groups" not in rendered
-        assert "dispatch every ready unit concurrently" not in rendered
-        assert "stopped-writer transfer" not in rendered
-        assert _COORDINATOR_REVIEW_MANDATE not in rendered
-    else:
-        # Coordinator surfaces must state the parallel-by-default
-        # dispatch directive verbatim; this is the shared wording
-        # contract anchor that proves the rewrite.
-        assert "dispatch every ready unit concurrently" in rendered
+    # Developer surfaces must state the parallel-by-default dispatch directive
+    # verbatim; this is the shared wording contract anchor that proves the
+    # rewrite.
+    assert "dispatch every ready unit concurrently" in rendered
 
 
 @pytest.mark.parametrize(
-    ("template_name", "is_worker"),
+    "template_name",
     (
-        ("developer_iteration.jinja", False),
-        ("developer_iteration_continuation.jinja", False),
-        ("developer_iteration_fallback.jinja", False),
+        "developer_iteration.jinja",
+        "developer_iteration_continuation.jinja",
+        "developer_iteration_fallback.jinja",
     ),
 )
 def test_rendered_development_surfaces_replace_partial_progress_escape_with_recovery_loop(
-    tmp_path: Path, template_name: str, *, is_worker: bool
+    tmp_path: Path, template_name: str
 ) -> None:
     """S-1/S-2: every rendered surface must replace the old partial-progress
-    escape with an actionable recovery loop and keep role-appropriate
-    prose. The old escape phrase is the unique verbatim string that bound
-    the prior guidance; removing it is the contract U-1 implements.
+    escape with an actionable recovery loop. The old escape phrase is the
+    unique verbatim string that bound the prior guidance; removing it is the
+    contract U-1 implements.
     """
     rendered = " ".join(
         prompt_developer_iteration_xml_with_context(
@@ -228,9 +198,6 @@ def test_rendered_development_surfaces_replace_partial_progress_escape_with_reco
             inputs=DeveloperPromptInputs(
                 prompt_content="Implement the requested change.",
                 plan_content="### [S-1] Implement the assigned change",
-                work_unit_id="unit" if is_worker else "",
-                work_unit_description="Implement the assigned change" if is_worker else "",
-                work_unit_directories="src" if is_worker else "",
             ),
             workspace=MemoryWorkspace(root=str(tmp_path)),
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
@@ -240,7 +207,7 @@ def test_rendered_development_surfaces_replace_partial_progress_escape_with_reco
 
     # The unconditional partial-progress escape is gone from every surface.
     assert _OLD_PARTIAL_PROGRESS_ESCAPE not in rendered, (
-        f"stale partial-progress escape in {template_name} (is_worker={is_worker})"
+        f"stale partial-progress escape in {template_name}"
     )
 
     # Actionable recovery replaces the escape on every surface — at least
@@ -248,25 +215,8 @@ def test_rendered_development_surfaces_replace_partial_progress_escape_with_reco
     # must never read as a permission to abandon the plan.
     rendered_lower = rendered.lower()
     assert any(clause in rendered for clause in _ACTIONABLE_RECOVERY_CLAUSES), (
-        f"no actionable recovery clause rendered for {template_name} (is_worker={is_worker})"
+        f"no actionable recovery clause rendered for {template_name}"
     )
     # "local failure" / "ready work" co-occurrence rejects any rephrasing
     # that still treats a local failure as a global stop signal.
-    assert "local failure" in rendered_lower, (
-        f"local-failure framing missing in {template_name} (is_worker={is_worker})"
-    )
-
-    if is_worker:
-        # Workers never get coordinator dispatch or coordinator pre-submit
-        # review mandates — and the partial-progress escape must not be
-        # replaced by a worker-only escape either. The dispatch directive
-        # (old "dispatch independent ready groups" OR new "dispatch every
-        # ready unit concurrently") is coordinator-only and must not
-        # leak into a worker rendering.
-        assert "dispatch independent ready groups" not in rendered
-        assert "dispatch every ready unit concurrently" not in rendered
-        assert "stopped-writer transfer" not in rendered
-        assert _COORDINATOR_REVIEW_MANDATE not in rendered
-        assert any(clause in rendered for clause in _WORKER_ASSIGNMENT_LOCAL_CLAUSES), (
-            f"worker lost assignment-local recovery framing in {template_name}"
-        )
+    assert "local failure" in rendered_lower, f"local-failure framing missing in {template_name}"

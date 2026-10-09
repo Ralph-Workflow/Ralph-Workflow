@@ -30,7 +30,7 @@ a failed approach, and reports a partial result when necessary work is blocked.
 Keep compact plans direct and large independent groups concurrent. Include the
 same verified-delivery and run-budget commitments in continuation prompts.
 
-Verify: render initial, continuation, worker, and fallback prompts and assert
+Verify: render initial, continuation, and fallback prompts and assert
 on observable shared behavior and ordering rather than duplicated prose.
 
 ### [S-4] Make development analysis audit plan deviations independently

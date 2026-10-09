@@ -351,6 +351,30 @@ An unbounded MCP call hangs the MCP server thread and starves the agent of outpu
 
 When the watchdog or a timeout fires, the runtime hands control to the recovery layer: the watchdog emits the diagnostic and marks the session as `recoverable` or `non-recoverable`; the recovery controller consults policy for the recovery budget; if budget remains, the runtime retries the phase with the recovery prompt template; if budget is exhausted, the run declares `budget-exceeded` and the terminal artifact is the most recent partial artifact. See [Recovery](recovery.md) for the full recovery controller contract.
 
+## Deprecated: Ralph Workflow-orchestrated workers {#deprecated-ralph-orchestrated-workers}
+
+Ralph Workflow previously supported a worker-orchestration model where
+Ralph Workflow itself split a plan into work units and dispatched parallel
+"worker" agents. **That model is deprecated.**
+
+Parallelism is now owned by the developer agent's own sub-agents. Ralph Workflow
+runs a single developer agent; that agent fans independent work out to
+sub-agents using the runtime's task/orchestration tools. The developer
+prompt always contains sub-agent guidance, parallel-execution instructions,
+and the pre-submit review — unconditionally, with no role gate.
+
+The following configuration keys are now accepted for backward compatibility
+but have no effect on the execution model:
+
+- `max_parallel_workers` in pipeline.toml (superseded by the developer agent's own fan-out)
+- `work_unit` / `worker_namespace` CLI flags (superseded)
+
+The `dispatch_mode` key remains functional:
+
+- `agent_subagents` (default): the developer agent owns sub-agent fan-out
+- `ralph_fan_out`: Ralph Workflow routes independent plan units through its parallel machinery
+  (this path is also deprecated in favor of the developer-agent sub-agent model)
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — first-run walkthrough

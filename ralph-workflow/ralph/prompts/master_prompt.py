@@ -98,6 +98,9 @@ def _sync_product_criteria_file(
     *,
     workspace_root: Path,
     default_product_criteria: str | None,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path:
@@ -187,11 +190,17 @@ def _sync_product_criteria_file(
 
 
 def worker_product_criteria_path(worker_namespace: Path) -> Path:
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     """Return the worker-local mirror path for PRODUCT_CRITERIA.md."""
     return worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
 
 
 def worker_master_prompt_path(worker_namespace: Path, phase: str) -> Path:
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     """Return the worker-local master prompt materialization path."""
     normalized = phase.replace("/", "_").replace(" ", "_")
     return worker_namespace / "tmp" / f"{normalized}_master_prompt.md"

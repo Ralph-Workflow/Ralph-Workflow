@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Immutable pipeline state model.
 
 This module defines PipelineState - the single source of truth for pipeline

@@ -1,6 +1,5 @@
 """Runtime extraction keeps arbitrary plans safe without judging their shape."""
 
-import json
 from pathlib import Path
 
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
@@ -82,24 +81,9 @@ Files:
     }
 
 
-def test_worker_prompt_carries_exact_file_ownership() -> None:
-    workspace = MemoryWorkspace()
-    prompt = prompt_developer_iteration_xml_with_context(
-        TemplateContext.default(),
-        DeveloperPromptInputs(
-            prompt_content="Implement requested change",
-            plan_content="Implement the file and demonstrate its observable correctness.",
-            work_unit_id="one",
-            work_unit_paths='["src/one.py"]',
-        ),
-        workspace,
-        SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name="worker_developer.jinja",
-    )
-    assert "src/one.py" in prompt
-
-
 def test_worker_file_scope_never_includes_the_parent_directory() -> None:
+    # Deprecated: WorkspaceScope.for_same_workspace_worker is removed with
+    # Ralph-orchestrated workers (see docs/sphinx/concepts.md).
     scope = WorkspaceScope.for_same_workspace_worker(
         repo_root=Path("/workspace"),
         allowed_directories=(),
@@ -131,39 +115,6 @@ def test_rendered_developer_guidance_uses_unit_plus_unowned_step_proof() -> None
     assert "frontmatter" in prompt.lower()
     assert "Unit proof covers its owned steps" not in prompt
     assert "every work unit AND every step the plan owns" not in prompt
-
-
-def test_protected_ownership_is_absent_from_rendered_worker_scope() -> None:
-    parsed = parse_work_units_from_artifact(
-        {
-            "work_units": [
-                {
-                    "unit_id": "one",
-                    "directories": [".agent/secret", ".git/hooks", "src"],
-                    "paths": [".worktrees/secret.py", "tests/one.py"],
-                }
-            ],
-        }
-    )
-    assert parsed is not None
-    unit = parsed.work_units[0]
-    prompt = prompt_developer_iteration_xml_with_context(
-        TemplateContext.default(),
-        DeveloperPromptInputs(
-            prompt_content="Implement the requested behavior",
-            plan_content="Implement independent units and integrate their results with focused verification.",
-            work_unit_id=unit.unit_id,
-            work_unit_directories=json.dumps(unit.allowed_directories),
-            work_unit_paths=json.dumps(unit.paths),
-        ),
-        MemoryWorkspace(),
-        SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name="worker_developer.jinja",
-    )
-    assert '["src"]' in prompt
-    assert '["tests/one.py"]' in prompt
-    for forbidden in (".agent/secret", ".git/hooks", ".worktrees/secret.py"):
-        assert forbidden not in prompt
 
 
 def test_mixed_unit_sections_preserve_cross_section_step_dependencies() -> None:

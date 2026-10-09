@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Worker execution state model for parallel pipeline workers."""
 
 from datetime import datetime

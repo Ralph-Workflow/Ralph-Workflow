@@ -1,3 +1,6 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
 """ParallelCoordinator and supporting helpers for fan-out execution."""
 
 from __future__ import annotations

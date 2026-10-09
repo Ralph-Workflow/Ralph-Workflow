@@ -323,6 +323,8 @@ The planning prompts recommend work units for independent responsibilities, shar
 
 ### Deprecated worker compatibility
 
+See [concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'](concepts.md#deprecated-ralph-orchestrated-workers) for the full explanation of the removed model and its replacement.
+
 Ralph-managed workers, worker-specific templates, worker/unit prompt branches,
 and the `ralph_fan_out` dispatch mode are deprecated compatibility surfaces.
 New workflows must use the single developer-template execution path with

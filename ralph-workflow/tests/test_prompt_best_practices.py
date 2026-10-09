@@ -8,7 +8,6 @@ from ralph.prompts.template_registry import packaged_template_root
 _TEMPLATE_NAMES = (
     "planning.jinja",
     "planning_analysis.jinja",
-    "worker_developer.jinja",
     "developer_iteration.jinja",
     "development_analysis.jinja",
     "commit_cleanup.jinja",
@@ -63,9 +62,9 @@ def test_verification_guidance_is_single_sourced() -> None:
 
 
 def test_developer_iteration_guidance_defaults_to_completion() -> None:
-    """All four dev-iteration templates share this partial, so this single
+    """All three dev-iteration templates share this partial, so this single
     check covers developer_iteration.jinja, developer_iteration_continuation.jinja,
-    developer_iteration_fallback.jinja, and worker_developer.jinja."""
+    and developer_iteration_fallback.jinja."""
     templates = _templates()
     guidance = templates["shared/_developer_iteration_guidance"]
 

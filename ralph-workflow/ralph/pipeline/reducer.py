@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Pure reducer: (state, event, policy) -> (new_state, effects).
 
 No I/O, no side effects, fully deterministic.

@@ -51,7 +51,7 @@ def session_warning_scope(before_warning: bool) -> Iterator[None]:
         _SESSION_BEFORE_WARNING.reset(token)
 
 
-def development_wrapup_notice(*, is_worker: bool = False) -> str:
+def development_wrapup_notice() -> str:
     """Return the phase-wide development-timebox wind-down notice."""
     # S-6: when the pipeline has published the development timebox, surface
     # the concrete remaining minutes, suggest dispatching an independent
@@ -64,10 +64,7 @@ def development_wrapup_notice(*, is_worker: bool = False) -> str:
 
     remaining_minutes = max(0, int((deadline_epoch - _time.time()) // 60))
     action = (
-        "complete and verify only your assigned work unit within its allowed paths. "
-        "Do not spawn sub-agents, coordinate other units, or integrate the whole plan; "
-        if is_worker
-        else "if actionable plan work remains, dispatch an **independent ready group** "
+        "if actionable plan work remains, dispatch an **independent ready group** "
         "(steps with no `Depends on:` path between any pair and pairwise disjoint "
         "`Files:` lists) concurrently rather than trimming scope, then "
     )

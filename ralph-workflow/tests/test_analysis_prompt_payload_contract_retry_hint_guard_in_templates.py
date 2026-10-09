@@ -28,7 +28,6 @@ _RETRY_HINT_TEMPLATES = (
     "policy_remediation.jinja",
     "policy_remediation_analysis.jinja",
     "developer_iteration.jinja",
-    "worker_developer.jinja",
 )
 _TEMPLATE_DRAINS = {
     "planning.jinja": SessionDrain.PLANNING,
@@ -41,7 +40,6 @@ _TEMPLATE_DRAINS = {
     "policy_remediation.jinja": SessionDrain.DEVELOPMENT,
     "policy_remediation_analysis.jinja": SessionDrain.ANALYSIS,
     "developer_iteration.jinja": SessionDrain.DEVELOPMENT,
-    "worker_developer.jinja": SessionDrain.DEVELOPMENT,
 }
 
 
@@ -66,8 +64,6 @@ def _render(name: str, last_retry_error: str) -> str:
         "PRIOR_RESULT_MARKDOWN": "",
         "PRIOR_SESSION_ID": "",
         "IS_CONTINUATION": "",
-        "WORKER_NAMESPACE": "",
-        "WORKER_FALLBACK_PATH": "",
         "ARTIFACT_HISTORY_PATH": "",
         "ARTIFACT_HISTORY_DIR": "",
         "SKILLS_INLINE_CONTENT": "",
@@ -95,15 +91,6 @@ def _render(name: str, last_retry_error: str) -> str:
         "verify_tool_names": "ralph_verify_md_artifact",
         "declare_complete_tool_names": "declare_complete",
         "artifact_type": "policy_remediation_analysis_decision",
-        "unit_id": "S-2",
-        "description": "Repair the validation failure.",
-        "allowed_directories": "ralph-workflow/",
-        # Role-aware flag supplied by the development prompt helper.
-        # This test renders templates directly with a minimal variable
-        # set; the role-aware guard in the shared guidance needs an
-        # explicit value. The non-empty ``unit_id`` is a step id, not
-        # a worker unit, so the coordinator branch is the right pick.
-        "IS_WORKER": "",
     }
     return render_template(context.registry.get_template(name), variables, context.partials)
 
@@ -128,12 +115,10 @@ class TestRetryHintGuardInTemplates:
         rendered = _render(name, retry_error)
 
         assert rendered.startswith(retry_error)
-        if name in {"developer_iteration.jinja", "worker_developer.jinja"}:
+        if name == "developer_iteration.jinja":
             assert "PREVIOUS ATTEMPT ERROR:" in rendered
             assert "SPEC001: missing required field" in rendered
-        expected_footer_count = (
-            2 if name in {"developer_iteration.jinja", "worker_developer.jinja"} else 1
-        )
+        expected_footer_count = 2 if name == "developer_iteration.jinja" else 1
         assert rendered.count(build_validation_retry_footer()) == expected_footer_count
 
     @pytest.mark.parametrize("name", _RETRY_HINT_TEMPLATES)

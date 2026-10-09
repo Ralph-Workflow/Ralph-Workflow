@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Shared session-bridge construction for the main pipeline and plumbing commands.
 
 This module is the single owner of ``AgentSession`` + ``FsWorkspace`` +

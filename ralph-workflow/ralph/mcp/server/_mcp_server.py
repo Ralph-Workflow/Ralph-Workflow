@@ -792,11 +792,7 @@ class McpServer:
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_notice(
             payload,
-            (
-                lambda: development_wrapup_notice(
-                    is_worker=self._session.worker_namespace is not None
-                )
-            )
+            development_wrapup_notice
             if development_warning_is_active(now_epoch=time.time())
             else None,
         )

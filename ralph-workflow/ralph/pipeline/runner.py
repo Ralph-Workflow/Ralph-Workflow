@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Pipeline runner: orchestration glue that wires extracted submodules together.
 
 This module coordinates effect dispatch, step execution, and policy resolution.

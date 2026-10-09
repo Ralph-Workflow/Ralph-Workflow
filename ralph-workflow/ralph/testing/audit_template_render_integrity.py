@@ -136,7 +136,6 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "ISSUES": ("Issue I-1 remains unresolved.",),
     "ISSUES_PATH": (".agent/tmp/issues.md",),
     "IS_CONTINUATION": ("true",),
-    "IS_WORKER": ("true",),
     "LAST_RETRY_ERROR": ("Previous submission failed validation.",),
     "OPTIONAL_CONTEXT_PATHS": ("- `.agent/artifacts/development_result.md`",),
     "PRIOR_RESULT_STATUS": ("partial",),
@@ -175,7 +174,6 @@ _TOP_LEVEL_DRAINS: dict[str, SessionDrain] = {
     "planning_fallback": SessionDrain.PLANNING,
     "policy_remediation": SessionDrain.DEVELOPMENT,
     "policy_remediation_analysis": SessionDrain.ANALYSIS,
-    "worker_developer": SessionDrain.DEVELOPMENT,
 }
 
 _ARTIFACT_SUBMISSION_HARNESS = """\
@@ -645,8 +643,7 @@ def check_template_source(template_name: str, source: str) -> list[str]:
     if _DEPRECATED_WORKER_ROLE_VARIABLE not in source:
         return []
     return [
-        "forbidden deprecated template variable "
-        f"{_DEPRECATED_WORKER_ROLE_VARIABLE!r} in source"
+        f"forbidden deprecated template variable {_DEPRECATED_WORKER_ROLE_VARIABLE!r} in source"
     ]
 
 

@@ -42,7 +42,6 @@ _PHASE_PROFILE_FIXTURES: tuple[tuple[str, str, SessionDrain], ...] = (
     ("planning.jinja", "planning", SessionDrain.PLANNING),
     ("development_analysis.jinja", "development_analysis", SessionDrain.DEVELOPMENT_ANALYSIS),
     ("developer_iteration.jinja", "developer_iteration", SessionDrain.DEVELOPMENT),
-    ("worker_developer.jinja", "worker_developer", SessionDrain.DEVELOPMENT),
 )
 
 
@@ -71,7 +70,6 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
         "LAST_RETRY_ERROR": "",
         "IS_CONTINUATION": "",
         "PRIOR_RESULT_STATUS": "",
-        "WORKER_NAMESPACE": "",
         "ARTIFACT_HISTORY_PATH": "",
         "ARTIFACT_HISTORY_DIR": "",
         "FIX_RESULT": "",
@@ -88,16 +86,6 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "",
         "ISSUES": "",
         "ISSUES_PATH": "",
-        "unit_id": "",
-        "description": "",
-        "allowed_directories": "",
-        "WORKER_FALLBACK_PATH": "",
-        # Role-aware flag supplied by the development prompt helper.
-        # This test renders templates directly with a minimal variable
-        # set; pin the coordinator default (``unit_id`` empty) so the
-        # role-aware guard resolves consistently. Worker-only templates
-        # (``worker_developer.jinja``) flip this to ``"true"`` below.
-        "IS_WORKER": "",
     }
     vars_map = {**base_vars, **template_variables.capability_template_variables(caps, flags)}
     return render_template(tmpl, vars_map, context.partials)
@@ -258,7 +246,7 @@ def test_planning_drain_advertises_explore_index_tools() -> None:
 def test_development_drain_advertises_web_search_when_granted() -> None:
     """Development drains that grant web.search must name web_search + visit_url."""
     visible = _visible_tool_strings(SessionDrain.DEVELOPMENT)
-    rendered = _render_phase("worker_developer.jinja", SessionDrain.DEVELOPMENT)
+    rendered = _render_phase("developer_iteration.jinja", SessionDrain.DEVELOPMENT)
     section = _extract_mcp_section(rendered)
     if "web_search" in visible:
         assert "web_search" in section
@@ -291,7 +279,6 @@ _ALL_MCP_INCLUSION_TEMPLATES: tuple[tuple[str, SessionDrain], ...] = (
     ("planning", SessionDrain.PLANNING),
     ("planning_analysis", SessionDrain.ANALYSIS),
     ("planning_edit", SessionDrain.PLANNING),
-    ("worker_developer", SessionDrain.DEVELOPMENT),
 )
 
 

@@ -66,11 +66,6 @@ def prompt_developer_iteration_xml_with_context(
     is_continuation = inputs.is_continuation or (
         template_name == "developer_iteration_continuation.jinja"
     )
-    worker_fallback_path = (
-        str(Path(inputs.worker_namespace) / "tmp" / "development_result.md")
-        if inputs.worker_namespace
-        else ""
-    )
 
     base_vars: dict[str, str] = {
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
@@ -82,13 +77,7 @@ def prompt_developer_iteration_xml_with_context(
         "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
-        "unit_id": inputs.work_unit_id,
-        "description": inputs.work_unit_description,
-        "allowed_directories": inputs.work_unit_directories or "(none)",
-        "paths": inputs.work_unit_paths or "(none)",
         "IS_CONTINUATION": "true" if is_continuation else "",
-        "WORKER_NAMESPACE": inputs.worker_namespace,
-        "WORKER_FALLBACK_PATH": worker_fallback_path,
     }
     # remaining-minutes and force-cut sentence. The run-budget partial
     # uses these to render the concrete countdown when the pipeline has

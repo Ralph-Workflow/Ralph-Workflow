@@ -60,9 +60,7 @@ def test_rejects_deprecated_worker_role_conditional() -> None:
 
     descriptions = check_template_source("example", source)
 
-    assert descriptions == [
-        f"forbidden deprecated template variable {forbidden_name!r} in source"
-    ]
+    assert descriptions == [f"forbidden deprecated template variable {forbidden_name!r} in source"]
 
 
 def test_detects_duplicated_heading_outside_code_fences() -> None:

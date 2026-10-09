@@ -18,6 +18,9 @@ def phase_payload_variables(
     phase: str,
     workspace_root: Path,
     values: dict[str, str],
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, str]:
@@ -53,6 +56,9 @@ def persist_product_criteria(
     workspace_root: Path,
     prompt_content: str | None,
     *,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:

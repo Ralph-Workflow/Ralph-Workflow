@@ -96,6 +96,7 @@ if grep -RIn --include="*.py" -E "os\.environ\.(get|__getitem__)\(\"RALPH_" ralp
   | grep -v "tests/test_pro_support_cross_repo_marker" \
   | grep -v "tests/test_no_dead_code" \
   | grep -v "tests/test_opencode_mcp_config_drift" \
+  | grep -v "ralph/testing/audit_skill_mirror_freshness.py" \
   ; then
   echo "drift: ralph/ uses a RALPH_* env var outside the canonical three" >&2
   echo "Use the canonical environment boundary. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements." >&2

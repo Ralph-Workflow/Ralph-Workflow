@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Factory helpers for building per-worker MCP session bundles.
 
 Provides ``build_worker_session``, which constructs an ``AgentSession``,

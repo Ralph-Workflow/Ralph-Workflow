@@ -97,7 +97,6 @@ def test_developer_fallback_calls_completion_before_runtime_promotion(
     "template_name",
     (
         "developer_iteration_fallback.jinja",
-        "worker_developer.jinja",
         "shared/_artifact_submission.j2",
     ),
 )

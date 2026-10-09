@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import typing
 from dataclasses import dataclass
@@ -43,7 +42,6 @@ from ralph.pipeline.phase_entry_cleaner import (
 from ralph.pipeline.phase_entry_cleaner import (
     is_fresh_phase_entry,
 )
-from ralph.pipeline.work_units import sanitize_ownership_paths
 from ralph.policy.models import ROLE_REVIEW
 from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
@@ -603,23 +601,6 @@ def _render_developer_prompt(
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             has_docs_mcp=has_docs_mcp,
-            work_unit_id=options.work_unit.unit_id if options.work_unit else "",
-            work_unit_description=(
-                _worker_description(options.work_unit) if options.work_unit else ""
-            ),
-            work_unit_directories=(
-                json.dumps(
-                    sanitize_ownership_paths(options.work_unit.allowed_directories), indent=2
-                )
-                if options.work_unit
-                else ""
-            ),
-            work_unit_paths=(
-                json.dumps(sanitize_ownership_paths(options.work_unit.paths), indent=2)
-                if options.work_unit
-                else ""
-            ),
-            worker_namespace=str(options.worker_namespace or ""),
             is_continuation=is_continuation,
             dev_warn_epoch=dev_warn_epoch,
             dev_deadline_epoch=dev_deadline_epoch,
@@ -710,6 +691,9 @@ def _render_template_based_prompt(
 
 
 def _worker_description(unit: WorkUnit) -> str:
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     """Return the complete unit assignment, including any bound plan steps."""
     if not unit.step_ids:
         return unit.description

@@ -1,3 +1,5 @@
+> **Superseded**: worker orchestration is deprecated (see [concepts.md §'Deprecated: Ralph-orchestrated workers'](../sphinx/concepts.md#deprecated-ralph-orchestrated-workers))
+
 # Parallel Worker Bootstrap Isolation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

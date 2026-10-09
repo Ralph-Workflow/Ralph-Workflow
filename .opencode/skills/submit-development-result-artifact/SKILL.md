@@ -32,10 +32,9 @@ some items is incremental progress, not completion.
 `partial` when verified progress exists and remaining required work cannot
 be completed by any developer action available in the current run; use
 `failed` when no safe actionable continuation exists. Neither is a
-shortcut, and neither decides whether the run ends. The `partial` decision
-is role-aware: a coordinator who still owns independent ready slices
-dispatches them in parallel rather than handing each one back as a separate
-`partial`; a worker continues in-scope recovery within the assigned unit.
+shortcut, and neither decides whether the run ends. A developer who still
+owns independent ready slices dispatches them in parallel rather than
+handing each one back as a separate `partial`.
 
 ## Free-Form Body
 

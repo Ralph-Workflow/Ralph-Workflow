@@ -24,6 +24,9 @@ def prompt_dump_path(phase: str) -> str:
 
 
 def worker_prompt_dump_path(worker_namespace: Path, phase: str) -> Path:
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     """Return the worker-local prompt dump path for a phase."""
     return worker_namespace / "tmp" / f"{_normalized_phase(phase)}_prompt.md"
 
@@ -34,6 +37,9 @@ def multimodal_sidecar_path(phase: str) -> str:
 
 
 def worker_multimodal_sidecar_path(worker_namespace: Path, phase: str) -> Path:
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     """Return the worker-local multimodal handoff sidecar path for a phase."""
     return worker_namespace / "tmp" / f"{_normalized_phase(phase)}_multimodal_handoff.json"
 
@@ -82,6 +88,9 @@ def write_multimodal_sidecar(
     phase: str,
     entries: list[MultimodalSidecarEntry],
     *,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> None:
     """Persist the phase multimodal handoff sidecar for shared or worker-local prompts."""
@@ -102,6 +111,9 @@ def clear_multimodal_sidecar(
     workspace: Workspace,
     phase: str,
     *,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> None:
     """Remove the multimodal handoff sidecar for a shared or worker-local prompt."""
@@ -184,6 +196,9 @@ def dump_rendered_prompt(
     phase: str,
     prompt: str,
     *,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> str:
     """Write the rendered prompt to the debug dump path and return the path."""

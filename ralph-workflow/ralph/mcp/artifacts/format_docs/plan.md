@@ -38,21 +38,9 @@ the concrete shared file or prerequisite output that forces serialization.
 This makes the first dispatch an explicit executor action instead of an
 inference from plan order.
 
-The planning prompt supplies the configured development-phase timebox and worker
-cap. Retries and loopbacks consume that same timebox rather than receiving a
-fresh budget. Use them to size self-contained worker context packets and estimate the critical
-path, including cap-induced queues. Leave an explicit coordinator reserve for
-fan-in, integration repair, full verification, and artifact submission. If the
-total plan is large but parallel decomposition keeps that bounded critical path
-inside the budget, the plan remains valid. If the runtime does not expose a
-numerical token limit, do not invent one; bound
-context through narrow ownership and compact worker returns instead.
+The planning prompt supplies the configured development-phase timebox. Retries and loopbacks consume that same timebox rather than receiving a fresh budget. Use them to size self-contained unit context packets and estimate the critical path, including cap-induced queues. Leave an explicit reserve for fan-in, integration repair, full verification, and artifact submission. If the total plan is large but parallel decomposition keeps that bounded critical path inside the budget, the plan remains valid. If the runtime does not expose a numerical token limit, do not invent one; bound context through narrow ownership and compact unit returns instead.
 
-At execution, ownership combines `Paths:` and `Directories:`; if neither is
-declared, the unit's steps' `Files:` supply the scope. Conflicting scopes run
-sequentially, and units beyond worker capacity run in waves. Protected paths
-are dropped from worker briefs. Unknown scope and unextractable work stay
-with the main session; none of these execution safeguards rejects the plan.
+At execution, ownership combines `Paths:` and `Directories:`; if neither is declared, the unit's steps' `Files:` supply the scope. Conflicting scopes run sequentially, and additional ready units run in later waves. Protected paths are dropped from unit briefs. Unknown scope and unextractable work stays with the main session; none of these execution safeguards rejects the plan.
 
 ## Recommended parallel example
 

@@ -119,24 +119,7 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
     for _ in (None,):
         prompt = render_template(
             context.registry.get_template("developer_iteration_fallback"),
-            {
-                **base,
-                "unit_id": "api",
-                "description": "Implement API",
-                "allowed_directories": "src/api",
-                "WORKER_NAMESPACE": ".agent/workers/api",
-                "WORKER_FALLBACK_PATH": ".agent/workers/api/tmp/development_result.md",
-                # The brokered fallback is the static coordinator
-                # safety net used when ``prompt_developer_iteration_xml_with_context``
-                # cannot render the regular template. The direct
-                # ``render_template`` call bypasses the helper that
-                # would otherwise derive ``IS_WORKER`` from
-                # ``work_unit_id``; pin the coordinator role here so
-                # the role-aware guard keeps the pre-submit review
-                # paragraph (which this test asserts) and the
-                # coverage-check prose on the rendered output.
-                "IS_WORKER": "",
-            },
+            base,
             context.partials,
         )
         assert "## Plan fidelity" in prompt

@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 def render_commit_cleanup_prompt(
     phase: str,
     workspace_root: Path,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None,
     prompt_content: str | None,
     product_criteria_path: str,
@@ -84,6 +87,9 @@ def render_commit_cleanup_prompt(
 def _read_and_clear_retry_hint(
     workspace_root: Path,
     phase: str,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None,
     pipeline_policy: PipelinePolicy | None,
 ) -> str:

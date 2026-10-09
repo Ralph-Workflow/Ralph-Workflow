@@ -37,7 +37,6 @@ SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
     "developer_iteration_continuation.jinja",
     "development_analysis.jinja",
     "planning_analysis.jinja",
-    "worker_developer.jinja",
 )
 
 _CALL_RE = re.compile(

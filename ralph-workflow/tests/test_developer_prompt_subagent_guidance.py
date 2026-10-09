@@ -389,12 +389,8 @@ def test_coordinator_parallel_section_is_capability_invariant(
     default_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
     alternate_caps = _maximally_different_caps()
 
-    default_rendered = _render_raw_with_caps(
-        template_name, tmp_path, session_caps=default_caps
-    )
-    alternate_rendered = _render_raw_with_caps(
-        template_name, tmp_path, session_caps=alternate_caps
-    )
+    default_rendered = _render_raw_with_caps(template_name, tmp_path, session_caps=default_caps)
+    alternate_rendered = _render_raw_with_caps(template_name, tmp_path, session_caps=alternate_caps)
 
     default_section = _extract_parallel_section(default_rendered)
     alternate_section = _extract_parallel_section(alternate_rendered)
@@ -460,9 +456,7 @@ def test_coordinator_full_render_excludes_removed_fallback_phrases(
         SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         _maximally_different_caps(),
     ):
-        rendered = _render_raw_with_caps(
-            template_name, tmp_path, session_caps=caps
-        )
+        rendered = _render_raw_with_caps(template_name, tmp_path, session_caps=caps)
         for forbidden in _COORDINATOR_RENDERED_NEGATIVES:
             assert forbidden not in rendered, (
                 f"full {template_name!r} render contains forbidden phrase "
@@ -503,6 +497,8 @@ _FEEDBACK_PATH_WHEN_IT_DOES = "When it does, dispatch each unit in parallel"
 # in coordinator renders; the fix collapses it to a single well-formed
 # `` `partial` `` code span.
 _FEEDBACK_PATH_BROKEN_BACKTICK = "`partial``"
+
+
 @pytest.mark.parametrize("template_name", _COORDINATOR_TEMPLATES)
 def test_feedback_path_mandatory_wording_in_coordinator_renders(
     tmp_path: Path, template_name: str

@@ -1,3 +1,4 @@
+# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
 """Early worker-runtime seam for dedicated parallel worker execution.
 
 A manifest-launched worker deliberately does NOT enter the shared run

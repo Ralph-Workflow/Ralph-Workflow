@@ -40,7 +40,6 @@ SKEW_SENSITIVE_TEMPLATES = (
     "developer_iteration.jinja",
     "developer_iteration_fallback.jinja",
     "developer_iteration_continuation.jinja",
-    "worker_developer.jinja",
 )
 
 BASE_VARIABLES = {
@@ -52,12 +51,7 @@ BASE_VARIABLES = {
     "SKILLS_INLINE_CONTENT": "",
     "HAS_DOCS_MCP": "",
     "DOCS_MCP_PORT": "localhost:6280",
-    "unit_id": "",
-    "description": "",
-    "allowed_directories": "",
     "IS_CONTINUATION": "",
-    "WORKER_NAMESPACE": "",
-    "WORKER_FALLBACK_PATH": "",
     "PRODUCT_CRITERIA": "",
     "PRODUCT_CRITERIA_PATH": "/workspace/.agent/PRODUCT_CRITERIA.md",
     "PLAN": "Step 1",
@@ -66,12 +60,6 @@ BASE_VARIABLES = {
     "ANALYSIS_FEEDBACK_PATH": "",
     "ARTIFACT_HISTORY_PATH": "",
     "ARTIFACT_HISTORY_DIR": "",
-    # Role-aware flag supplied by the development prompt helper. The
-    # skew test renders templates with a stale variable set; this
-    # entry mirrors the helper's coordinator default (``unit_id``
-    # empty) so the role-aware guard resolves consistently under both
-    # the fresh and stale variable regimes.
-    "IS_WORKER": "",
 }
 
 
