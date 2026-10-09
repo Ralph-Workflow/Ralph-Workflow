@@ -96,6 +96,7 @@ def test_pending_diff_shows_only_uncommitted_work(tmp_git_repo: Path) -> None:
     assert "committed.py" not in diff
 
 
+@pytest.mark.timeout_seconds(8.0)
 def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
     tmp_git_repo: Path,
 ) -> None:

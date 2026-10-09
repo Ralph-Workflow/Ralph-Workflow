@@ -36,6 +36,8 @@ from ralph.testing.audit_skill_mirror_freshness import (
     main as audit_main,
 )
 
+pytestmark = pytest.mark.timeout_seconds(2.0)
+
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 

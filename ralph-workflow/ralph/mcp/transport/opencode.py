@@ -12,7 +12,6 @@ from loguru import logger
 
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
-    OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_KEEP,
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
@@ -152,11 +151,9 @@ def build_opencode_provider_config(
     existing_tools = config_obj.get("tools", {})
     if not isinstance(existing_tools, dict):
         existing_tools = {}
-    disable_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_DISABLE, False)
     orchestration_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_KEEP, True)
     config_obj["tools"] = {
         **cast("dict[str, object]", existing_tools),
-        **disable_overrides,
         **orchestration_overrides,
     }
 

@@ -71,7 +71,6 @@ from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     CLAUDE_NATIVE_TOOLS_TO_KEEP,
     CODEX_NATIVE_FEATURE_OVERRIDES,
-    OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_KEEP,
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
@@ -3056,15 +3055,6 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
 
 
 # === consolidated from test_agents_invoke_3.py ===
-def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
-    result = merge_opencode_config_content(None, "http://localhost:0/mcp")
-    parsed = _agents_invoke_3_json_object(result)
-    tools = must_mapping(parsed["tools"])
-    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
-        assert tools[name] is False, f"Expected {name} to be False"
-
-
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _agents_invoke_3_json_object(result)
@@ -3072,14 +3062,8 @@ def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> N
     permission = must_mapping(parsed["permission"])
     for name in ("task", "skill", "todowrite", "webfetch", "websearch"):
         assert name in OPENCODE_NATIVE_TOOLS_TO_KEEP
-        assert name not in OPENCODE_NATIVE_TOOLS_TO_DISABLE
         assert tools[name] is True, f"Expected {name} to be force-enabled"
         assert permission[name] == "allow", f"Expected {name} to be auto-allowed"
-
-
-# === consolidated from test_agents_invoke_3.py ===
-def test_opencode_config_keep_and_disable_lists_are_disjoint() -> None:
-    assert not set(OPENCODE_NATIVE_TOOLS_TO_KEEP) & set(OPENCODE_NATIVE_TOOLS_TO_DISABLE)
 
 
 # === consolidated from test_agents_invoke_3.py ===
@@ -3107,8 +3091,6 @@ def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     tools = must_mapping(parsed["tools"])
     ui = must_mapping(parsed["ui"])
     assert tools["custom_plugin_tool"] is True
-    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
-        assert tools[name] is False
     assert ui["theme"] == "dark"
 
 
@@ -3264,8 +3246,7 @@ def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
     tools = must_mapping(parsed["tools"])
     assert mcp_config["ralph"]
     assert permission["ralph_*"] == "allow"
-    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
-        assert tools[name] is False
+    assert tools == dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_KEEP, True)
 
 
 # === consolidated from test_agents_invoke_3.py ===

@@ -125,6 +125,7 @@ def test_write_agent_retry_prompt_new_session_with_id_does_not_inline(
     assert "continue from where you left off" in content.lower()
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_write_agent_retry_prompt_none_defaults_to_fresh_style(
     tmp_path: Path,
 ) -> None:

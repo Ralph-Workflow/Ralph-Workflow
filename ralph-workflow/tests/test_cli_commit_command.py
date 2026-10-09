@@ -524,6 +524,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     assert calls == [None, "sess-post-tool"]
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_generate_commit_message_retries_repeated_post_tool_empty_response_until_success(
     tmp_path: Path,
 ) -> None:

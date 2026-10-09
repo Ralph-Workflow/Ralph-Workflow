@@ -31,6 +31,8 @@ import stat
 import time
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     build_explore_index,
@@ -45,6 +47,8 @@ from ralph.mcp.explore.recovery import (
 from ralph.mcp.explore.serving import CANONICAL_REASON_CODES
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
+
+pytestmark = pytest.mark.timeout_seconds(2.0)
 
 # --- shared workspace / session / handler helpers --------------------------
 
@@ -213,6 +217,7 @@ def test_f1_missing_index_parity_reason_budget_recovery_status() -> None:
 # --- F2: deleted mid-run -------------------------------------------------
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_f2_deleted_index_parity_reason_budget_recovery_status() -> None:
     """F2: deleted index mid-run → live parity, no_committed_generation, ≤1s, recovery."""
     with _TmpWorkspace() as (tmp_path, workspace):

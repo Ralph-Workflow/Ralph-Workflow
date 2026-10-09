@@ -16,6 +16,8 @@ from ralph.mcp.explore.handlers import (
 )
 from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT
 
+pytestmark = pytest.mark.timeout_seconds(2.0)
+
 # Local alias so the bounded-accumulator tests read naturally.
 handle_ralph_graph_local = handle_ralph_graph
 

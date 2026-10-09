@@ -25,6 +25,8 @@ from ralph.mcp.tools.names import (
     RALPH_REINDEX_TOOL,
 )
 
+pytestmark = pytest.mark.timeout_seconds(2.0)
+
 
 class _FakeSession:
     def __init__(self, explore_index=None) -> None:
@@ -85,6 +87,7 @@ def test_ralph_graph_is_listed_with_explore_tools() -> None:
     assert RALPH_REINDEX_TOOL in names
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_graph_neighbors_returns_prompt_exact_bounded_evidence_backed_edges(
     tmp_path: Path,
 ) -> None:
@@ -280,6 +283,7 @@ def test_graph_rejects_invalid_change_kind(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_graph_rejects_limit_out_of_range(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)

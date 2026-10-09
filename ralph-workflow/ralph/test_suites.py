@@ -1193,9 +1193,10 @@ def run_test_suites(
             "tests/workspace/test_workspace_product_baselines.py",
             "tests/test_kimi_wire_provenance.py",
             "tests/test_mcp_endpoint_functional_sweep.py",
-            "tests/test_planning_phase_2026_08_06_regression.py",
-            "tests/test_config_bootstrap.py",
             "tests/test_auto_integrate_resolving_rebase_record.py",
+            "tests/test_evidence_provenance_lattice.py",
+            "tests/test_explore_fault_matrix.py",
+            "tests/unit/test_explore_pipeline_invariants.py",
         }
     )
     serial_files = tuple(path for path in selected_files if path in serial_test_files)

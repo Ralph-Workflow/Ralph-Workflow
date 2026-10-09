@@ -116,6 +116,7 @@ def test_pipeline_audit_finds_no_bypasses_in_isolation() -> None:
     assert findings == [], f"Pipeline bypasses found: {findings}"
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_pipeline_fallback_promotion_uses_canonical_helper(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

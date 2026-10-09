@@ -15,6 +15,8 @@ from ralph.pipeline import run_loop
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 
+pytestmark = pytest.mark.timeout_seconds(2.0)
+
 if TYPE_CHECKING:
     from pathlib import Path
 

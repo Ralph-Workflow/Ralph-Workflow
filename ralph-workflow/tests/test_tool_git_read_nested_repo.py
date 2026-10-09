@@ -54,6 +54,7 @@ def _assert_warning(result: ToolResult, path: Path, root: Path) -> None:
     assert str(root.resolve()) in text
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_handler_warns_on_cwd_outside_workspace(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     external = tmp_path / "external_repo"

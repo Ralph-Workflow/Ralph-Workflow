@@ -10,10 +10,9 @@ PLANNING MODE
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
-Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
-the only workspace path; native write tools are prohibited. Planning is
-read-only. Delegate exploration, research, and verification to read-only
-subagents.
+Planning is read-only in the parent session. Native sub-agents retain their
+harness's native workspace and execution tools within their assigned read-only
+scope. Delegate exploration, research, and verification to read-only subagents.
 
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {% include 'shared/_subagents.j2' %}

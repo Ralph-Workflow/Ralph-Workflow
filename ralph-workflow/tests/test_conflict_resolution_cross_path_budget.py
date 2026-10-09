@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
@@ -12,9 +13,6 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     resolver_allowed,
 )
 from ralph.pipeline.rebase_state import RebaseState
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
@@ -218,6 +216,7 @@ def test_remote_refresh_failure_still_books_conflict_budget(
     assert result is not None
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

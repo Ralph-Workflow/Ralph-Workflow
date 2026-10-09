@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from pathspec import GitIgnoreSpec
-
-if TYPE_CHECKING:
-    import pytest
 
 import ralph.config.loader as loader_module
 import ralph.policy
@@ -28,6 +25,8 @@ from ralph.policy.loader import (
     load_policy,
 )
 from ralph.workspace.scope import WorkspaceScope
+
+pytestmark = pytest.mark.timeout_seconds(2.0)
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
 #: Nine files regenerated before ``ralph-workflow-agents.toml`` was split
@@ -836,6 +835,7 @@ def test_global_template_missing_active_drain_heals_on_first_run_startup(
 # identifier ``completion_sentinel_*.json``).
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
     """``ensure_local_configs`` must seed ``.git/info/exclude`` with canonical patterns."""
     repo_root = tmp_git_repo

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
 from ralph.mcp.explore.lifecycle import (
     DEFAULT_HOOK_TIMEOUT_MS,
@@ -14,6 +16,8 @@ from ralph.mcp.explore.lifecycle import (
     is_execution_phase_for_refresh,
 )
 from ralph.mcp.explore.store import ExploreStore
+
+pytestmark = pytest.mark.timeout_seconds(2.0)
 
 
 class _Index:
@@ -205,6 +209,7 @@ def test_lifecycle_regression_requeues_observed_path_when_dirty_handoff_is_unava
     store.close()
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_lifecycle_success_recovers_requeued_awareness_freshness(tmp_path: Path) -> None:
     """S-3 regression: a successful later boundary clears a failed-handoff stale state."""
     workspace = _seed_workspace(tmp_path)

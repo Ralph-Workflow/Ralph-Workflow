@@ -1,18 +1,8 @@
-"""Regression coverage: Claude's native-tool restriction must fail CLOSED.
+"""Regression coverage for additive Claude MCP permissions.
 
-Ralph hands Claude an explicit ``--tools`` / ``--allowedTools`` pair that
-funnels filesystem and exec work through Ralph's MCP surface, and Ralph's
-prompt tells the agent its native tools are disabled.
-
-Those restriction flags were emitted only when the discovered MCP tool list
-was non-empty, and a failed ``tools/list`` (slow MCP start, dropped
-connection) was swallowed into an empty tuple with a `warning`. A transient
-discovery failure therefore produced the exact opposite of the intended
-posture: every native Claude tool enabled, while the prompt still claimed
-they were off.
-
-Empty-because-discovery-failed must not be indistinguishable from
-empty-because-there-are-no-tools.
+Ralph pre-approves its MCP tools without restricting Claude's native tools.
+MCP discovery must still fail closed because an incomplete allow-list can
+silently prevent access to required Ralph tools.
 """
 
 from __future__ import annotations
@@ -78,11 +68,10 @@ def test_claude_regression_tool_restriction_fails_closed_when_discovery_fails(
     assert _ENDPOINT in message
 
 
-def test_claude_tool_restriction_is_emitted_when_discovery_succeeds(
+def test_claude_mcp_permissions_do_not_restrict_native_tools(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The positive control: a working ``tools/list`` still restricts the toolset."""
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["read_file", "ralph_submit_md_artifact"],
@@ -91,7 +80,7 @@ def test_claude_tool_restriction_is_emitted_when_discovery_succeeds(
     argv = _claude_argv(_claude_config(), tmp_path)
 
     assert "--allowedTools" in argv
-    assert "--tools" in argv
+    assert "--tools" not in argv
 
 
 def test_claude_regression_operator_mcp_servers_are_not_stripped(
@@ -111,8 +100,7 @@ def test_claude_regression_operator_mcp_servers_are_not_stripped(
 
     Without the strict flag Claude loads Ralph's ``--mcp-config`` file IN
     ADDITION to its own sources, which is the intended posture: add ours,
-    keep theirs. Ralph's own ``--tools`` / ``--allowedTools`` restriction is
-    unaffected and still applies.
+    keep theirs. Ralph's additive ``--allowedTools`` approvals still apply.
     """
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",

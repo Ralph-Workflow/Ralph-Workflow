@@ -22,19 +22,7 @@ In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Wo
 Claude Code supports CLI flags that together restrict the native toolset of a session:
 
 - Ralph Workflow does not pass `--tools`; Claude's native tool pool remains available to the parent and its sub-agents. `--allowedTools` pre-approves Ralph Workflow MCP tools and native orchestration lifecycle tools without restricting other native tools.
-- `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads every config source Claude itself loads — each enabled plugin's `<plugin-root>/.mcp.json` (enablement from `~/.claude/settings.json` `enabledPlugins`, install paths from `~/.claude/plugins/installed_plugins.json`), `~/.claude.json` `mcpServers` (user scope), workspace `.mcp.json` (project scope), workspace `.claude.json`, and `~/.claude.json` `projects.<workspace>.mcpServers` (local scope, where a plain `claude mcp add` writes) — to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry. Plugin-provided servers are namespaced `plugin_<plugin>_<server>`, mirroring Claude's own `plugin:<plugin>:<server>`, so a plugin server cannot silently replace a same-named user server. A project-scope server the operator declined is skipped: Claude records that refusal per project in `~/.claude.json` as `projects.<workspace>.disabledMcpjsonServers`, and re-exposing such a server as a Ralph Workflow proxy would hand the agent a capability the operator withheld. That list names `.mcp.json` entries only, so a same-named user-scope or local-scope server is a different server and is still discovered and proxied. Unsafe mode (`--unsafe`) runs the same discovery and merges the result into the generated config alongside the Ralph Workflow entry, instead of proxying it.
-
-Claude.ai account connectors (configured at `claude.ai/customize/connectors`, listed by `claude mcp list` as `claude.ai <Name>`) have no on-disk definition, so `--strict-mcp-config` removes them and Ralph Workflow cannot proxy them back. Because that removal would otherwise be invisible, Ralph Workflow runs `claude mcp list` once per run, compares what Claude actually has against what it discovered, and logs a WARNING naming every server the run is taking away:
-
-```
-Claude has 4 MCP server(s) Ralph Workflow cannot re-expose and this run will not
-have: claude.ai Notion, claude.ai Gmail, claude.ai Google Drive, claude.ai Google
-Calendar. Ralph Workflow passes --strict-mcp-config, which makes its own
---mcp-config the only MCP source Claude reads, and these servers have no on-disk
-definition for Ralph Workflow to proxy back ... Run `claude mcp list` to see them.
-```
-
-The probe is best-effort and bounded to 20 seconds: a `claude` CLI that is missing, slow, or exits non-zero produces no report rather than a failed run, and the result is memoized so the subprocess runs once per run rather than once per agent cycle. The report is deliberately not a hard failure — an operator who does not need those connectors can ignore it — but it is never silent.
+- Ralph Workflow does not pass `--strict-mcp-config`. Claude therefore retains its configured global, workspace, plugin-provided, session, and account-connected MCP sources alongside Ralph Workflow's generated `--mcp-config` entry. Ralph Workflow may also discover on-disk upstream definitions for its own proxied aliases, but that discovery is additive and does not remove the provider-native source.
 
 Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint, plus the orchestration keep-list. It does not pass `--tools`, so native workspace and execution tools remain available.
 
@@ -104,10 +92,9 @@ result in `tmp/agy-source-of-truth.txt`.
 
 ### Claude Code
 
-- **Claude.ai account connectors are unrecoverable, but they are reported.** Connectors enabled at `claude.ai/customize/connectors` are delivered to the CLI by the signed-in account, not by any file on disk, so there is nothing for Ralph Workflow to discover and re-expose. `--strict-mcp-config` removes them for the duration of the run. Same for session-only plugins passed as `--plugin-dir` / `--plugin-url` to a different invocation. Ralph Workflow cannot give them back, so it names them in a once-per-run WARNING built from `claude mcp list` (see the Claude Code section above) rather than removing them silently.
-- **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph Workflow avoids this by using a `--tools` keep-list instead of a disallowed-list approach.
+- **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph Workflow does not use a disallowed-list or a restrictive `--tools` keep-list.
 - **Bug #13077**: `--allowedTools` wildcards do not match MCP tools. Ralph Workflow avoids wildcard-based Claude approvals and instead derives an exact per-session Ralph Workflow MCP allowlist from the live runtime endpoint.
-- **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph Workflow now passes a non-empty `--tools` keep-list, which sidesteps the empty-string variant of this bug; the prompt-size caveat is retained here in case the restriction is ever tightened back to `--tools ""`. Ralph Workflow's system prompt is under 1 KB.
+- **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph Workflow does not pass `--tools`, so this empty-string combination is not used.
 
 ### OpenCode
 
@@ -130,8 +117,8 @@ Ralph Workflow's test suite covers enforcement through agent invocation tests:
 - **`tests/test_agents_invoke_1.py`** through **`tests/test_agents_invoke_5.py`** verify Claude, OpenCode, Codex, and AGY invocation enforcement.
 - **`tests/test_agy_execution_contract.py`** proves AGY uses `AgyExecutionStrategy` with `supports_session_continuation()=False` and `supports_completion_enforcement()=True`, and that clean exit without `declare_complete` raises `AgentInvocationError` (non-retryable — no retry loop).
 - **`tests/test_agy_runner_no_retry.py`** verifies that AGY missing-completion reaches `AGENT_FAILURE` via the `check_process_result` seam with exactly one invoke attempt (no retry loop), and that a completion-evidenced AGY run is accepted by the runner, returning `PipelineEvent.AGENT_SUCCESS`.
-- **`tests/mcp/test_claude_transport.py`** verifies Claude upstream discovery across all five sources, the `plugin_<plugin>_<server>` namespacing, the `disabledMcpjsonServers` precedence (a declined project server is dropped while a same-named user-scope server survives), and the once-per-run report of the servers `--strict-mcp-config` strips but Ralph Workflow cannot proxy back.
-- **`tests/agents/invoke/test_claude_strict_mcp_config_gap.py`** verifies that building the Claude command emits that report by server name, and that the `claude mcp list` probe backing it runs once per run rather than once per agent cycle.
+- **`tests/mcp/test_claude_transport.py`** verifies Claude upstream discovery across all five on-disk sources, the `plugin_<plugin>_<server>` namespacing, and the `disabledMcpjsonServers` precedence (a declined project server is dropped while a same-named user-scope server survives).
+- **`tests/agents/invoke/test_claude_strict_mcp_config_gap.py`** verifies that building the Claude command does not pass `--strict-mcp-config`, preserving provider-native MCP sources.
 - **`tests/mcp/test_agy_transport.py`** verifies the AGY transport helpers, including `serverUrl` normalization for HTTP upstream servers.
 - **`tests/test_agy_workspace_mcp.py`** verifies workspace-level MCP config injection/restore and that the written config is Ralph Workflow-only.
 - **`tests/agents/test_invoke_mcp_merge.py`** verifies `invoke_agent()` writes and restores `.agents/mcp_config.json` with only the Ralph Workflow entry.
@@ -149,7 +136,7 @@ pytest tests/test_agents_invoke_1.py tests/test_agents_invoke_2.py tests/test_ag
 
 ### MCP Reachability Preflight
 
-With MCP-only enforcement active, agents that encounter an unreachable MCP server have no native fallback. Claude Code, OpenCode, Codex, and Google Anti Gravity will all produce output when their only available tools are unavailable, but that output will not be useful and may be silently wrong.
+An unreachable required MCP server can still prevent an agent from submitting Ralph Workflow artifacts even though its native tools remain available.
 
 Ralph Workflow ships a built-in MCP reachability preflight via `ralph --check-mcp`. Running this command validates all configured MCP servers and exits with code 0 on success or non-zero on failure. The preflight is implemented in `ralph/cli/main.py` (`handle_check_mcp`) and calls `validate_custom_mcp_servers` from `ralph/pipeline/runner.py`, which probes each configured server for reachability. Running `ralph --check-mcp` before the first AGY (or any agent) run is the recommended way to catch unreachable MCP servers before they produce confusing agent failures.
 

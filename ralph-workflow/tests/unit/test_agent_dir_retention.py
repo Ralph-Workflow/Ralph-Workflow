@@ -7,6 +7,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.workspace.agent_dir_retention import RetentionPassCoordinator, sweep_agent_dir
 
@@ -130,6 +132,7 @@ def test_missing_agent_dir_is_noop(tmp_path: Path) -> None:
     assert sweep_agent_dir(tmp_path, keep_run_id=None) == 0
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_sweep_also_prunes_aged_db_rows(tmp_path: Path) -> None:
     """RFC-013 P3: the sweep also prunes aged rows in ``.agent/state.db``
     so DB rows do not accumulate alongside file bookkeeping."""

@@ -345,6 +345,49 @@ class TestResolveInvocationRuntimeParity:
             assert result.server_env is None
             assert result.mcp_endpoint is None
 
+    @pytest.mark.parametrize(
+        ("base_depth", "extra_depth", "expected_depth"),
+        [
+            ("8", None, "8"),
+            ("8", "12", "12"),
+            ("8", "0", "3"),
+            ("8", "invalid", "3"),
+            (None, None, "3"),
+        ],
+    )
+    def test_claude_resolver_preserves_or_repairs_subagent_depth(
+        self,
+        base_depth: str | None,
+        extra_depth: str | None,
+        expected_depth: str,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        base_env = (
+            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": base_depth}
+            if base_depth is not None
+            else {}
+        )
+        extra_env = (
+            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": extra_depth}
+            if extra_depth is not None
+            else {}
+        )
+        monkeypatch.setattr(
+            "ralph.agents.invoke.load_existing_claude_upstream_servers",
+            lambda _workspace_path: [],
+        )
+
+        result = resolve_invocation_runtime(
+            AgentConfig(cmd="test-agent", transport=AgentTransport.CLAUDE),
+            extra_env=extra_env,
+            workspace_path=tmp_path,
+            _base_env=base_env,
+        )
+
+        assert result.agent_env is not None
+        assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == expected_depth
+
     @pytest.mark.parametrize("has_endpoint", [False])
     def test_generic_resolver_parity(
         self,
