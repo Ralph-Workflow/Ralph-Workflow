@@ -66,11 +66,13 @@ Inspect this history when you want to understand what has been tried before
 and what development-analysis feedback they received.
 {% endif %}
 
+{% if not IS_WORKER %}
 {% include 'shared/_subagents.j2' %}
 
 ## PARALLEL EXECUTION (required by default)
 
 {% include 'shared/_parallel_execution.j2' %}
+{% endif %}
 
 Launch a read-only request-versus-plan coverage check while implementing the
 first ready step. Complete uncovered request criteria and report their
@@ -84,9 +86,11 @@ These identifiers are tool calls, not commands to type into a native shell.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
+{% if not IS_WORKER %}
 Before submitting on every iteration, run an independent read-only pre-submit
 review against the request, execution plan, continuation context, and proof
 contract. Submit only after every required gap is closed.
+{% endif %}
 
 ## Development result artifact contract
 

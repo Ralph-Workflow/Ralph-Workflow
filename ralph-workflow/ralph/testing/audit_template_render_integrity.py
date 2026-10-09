@@ -136,6 +136,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "ISSUES": ("Issue I-1 remains unresolved.",),
     "ISSUES_PATH": (".agent/tmp/issues.md",),
     "IS_CONTINUATION": ("true",),
+    "IS_WORKER": ("", "true"),
     "LAST_RETRY_ERROR": ("Previous submission failed validation.",),
     "OPTIONAL_CONTEXT_PATHS": ("- `.agent/artifacts/development_result.md`",),
     "PRIOR_RESULT_STATUS": ("partial",),

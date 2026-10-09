@@ -86,6 +86,11 @@ def prompt_developer_iteration_xml_with_context(
         "description": inputs.work_unit_description,
         "allowed_directories": inputs.work_unit_directories or "(none)",
         "paths": inputs.work_unit_paths or "(none)",
+        # Role-aware flag for shared partials. A worker prompt carries a
+        # non-empty ``work_unit_id``; the coordinator inputs use "".
+        # The truthy-string form lets Jinja ``{% if not IS_WORKER %}``
+        # skip coordinator-only blocks on worker renders.
+        "IS_WORKER": "true" if inputs.work_unit_id else "",
         "IS_CONTINUATION": "true" if is_continuation else "",
         "WORKER_NAMESPACE": inputs.worker_namespace,
         "WORKER_FALLBACK_PATH": worker_fallback_path,

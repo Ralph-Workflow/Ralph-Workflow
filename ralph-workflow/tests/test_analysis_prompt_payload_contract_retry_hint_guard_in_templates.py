@@ -98,6 +98,12 @@ def _render(name: str, last_retry_error: str) -> str:
         "unit_id": "S-2",
         "description": "Repair the validation failure.",
         "allowed_directories": "ralph-workflow/",
+        # Role-aware flag supplied by the development prompt helper.
+        # This test renders templates directly with a minimal variable
+        # set; the role-aware guard in the shared guidance needs an
+        # explicit value. The non-empty ``unit_id`` is a step id, not
+        # a worker unit, so the coordinator branch is the right pick.
+        "IS_WORKER": "",
     }
     return render_template(context.registry.get_template(name), variables, context.partials)
 

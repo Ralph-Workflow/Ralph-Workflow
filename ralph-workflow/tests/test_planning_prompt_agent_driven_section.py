@@ -25,5 +25,10 @@ def test_submission_shape_is_optional() -> None:
 
 def test_analysis_reviews_substance() -> None:
     source = _source("planning_analysis.jinja")
-    assert "coverage, truthfulness, actionability, parallel" in source
+    # The substantive-criteria list is line-wrapped in the source;
+    # normalize whitespace so the wrap does not break the match. The
+    # substance must still be present (no reformat, no removal); this
+    # is a wrap-tolerant check, not a formatting grade.
+    normalized = " ".join(source.split())
+    assert "coverage, truthfulness, actionability, parallel" in normalized
     assert "Do not grade formatting" in source

@@ -92,6 +92,12 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
         "description": "",
         "allowed_directories": "",
         "WORKER_FALLBACK_PATH": "",
+        # Role-aware flag supplied by the development prompt helper.
+        # This test renders templates directly with a minimal variable
+        # set; pin the coordinator default (``unit_id`` empty) so the
+        # role-aware guard resolves consistently. Worker-only templates
+        # (``worker_developer.jinja``) flip this to ``"true"`` below.
+        "IS_WORKER": "",
     }
     vars_map = {**base_vars, **template_variables.capability_template_variables(caps, flags)}
     return render_template(tmpl, vars_map, context.partials)
