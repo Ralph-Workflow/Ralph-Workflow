@@ -20,7 +20,14 @@ def test_development_result_invalid_status_frontmatter_keeps_free_form_guidance(
     """Free-form contract: a bad frontmatter status is repaired via document-edit wording."""
     hint = build_validation_retry_hint(
         "development_result",
-        [Diagnostic(1, "Frontmatter", "DEV002", "status must be one of ['completed', 'partial', 'failed']")],
+        [
+            Diagnostic(
+                1,
+                "Frontmatter",
+                "DEV002",
+                "status must be one of ['completed', 'partial', 'failed']",
+            )
+        ],
     )
     lowered = hint.lower()
 

@@ -167,8 +167,10 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
         # shared/_analysis_context.jinja.
         assert "do not propose remedies in this decision" not in rendered
         assert "proposed unit split" not in rendered
-        assert "split the remaining work into independent units" in rendered.lower() or \
-            "split the remaining work" in rendered.lower()
+        assert (
+            "split the remaining work into independent units" in rendered.lower()
+            or "split the remaining work" in rendered.lower()
+        )
 
 
 def test_development_verifier_excludes_implementer_account() -> None:

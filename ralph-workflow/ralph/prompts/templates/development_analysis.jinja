@@ -45,18 +45,6 @@ Choose the outcome from fresh evidence, not the developer's status:
 
 The validator only checks the frontmatter ``status`` enum. The body is the next agent's reading matter; write it in your own words. A useful pattern is to describe what fell short, the evidence that supports the judgement, and (for ``request_changes``) the leftover work the next agent should pick up. ``request_changes`` is the only safe status when localized unmet work is actionable in this development cycle — split the remaining work into independent units and dispatch them in parallel rather than handing each one back as a separate ``partial`` decision. A whole-change review of the implementation belongs here, too: the parallel pieces fit together, nothing outside the plan regressed, no unrelated scope, and the change follows repository policy.
 
-## Criteria and verdicts
-
-{% include 'shared/_criterion_verification_procedure.j2' %}
-
-Use one stable `DA-###` item per criterion in `## Criterion Verdicts`. For
-`completed`, every criterion must be `met` with evidence and no counterexample
-found; a completed decision does not need `## What Came Up Short` items. For
-`request_changes` or `failed`, each localized non-met verdict is mirrored in
-`## What Came Up Short` with a `Remaining work:` line so the next agent knows
-what to fix. A `not evaluable` criterion requires `failed`. Do not add
-`## How To Fix` (development analysis is read-only).
-
 {% set development_decision_example %}
 ---
 type: development_analysis_decision

@@ -130,9 +130,10 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
             target = _finding_target(item.text)
             if target is not None:
                 finding_targets.setdefault(item.identifier, target)
+    summary_items = _item_texts(document, "Summary")
     return {
         "status": document.frontmatter["status"],
-        "summary": _item_texts(document, "Summary")[0],
+        "summary": summary_items[0] if summary_items else "",
         "what_came_up_short": [item.text for item in shortfall_items],
         "finding_ids": [item.identifier for item in shortfall_items],
         "finding_targets": finding_targets,
@@ -149,32 +150,20 @@ def _to_content_development(document: ParsedDocument) -> dict[str, object]:
 
     The body is free-form below the frontmatter; ``summary`` is the
     first Summary item when present so downstream code (history
-    snapshots, displays) keeps something to read. Optional structured
-    sections (Criterion Verdicts, What Came Up Short, How To Fix) are
-    still extracted when present so callers that previously relied on
-    them continue to work; the validator does NOT require them.
+    snapshots, displays) keeps something to read. A free-form
+    development decision may omit every section.
     """
-    shortfall_section = document.section("What Came Up Short")
-    shortfall_items = () if shortfall_section is None else shortfall_section.items
-    verdict_section = document.section("Criterion Verdicts")
-    verdict_items = () if verdict_section is None else verdict_section.items
-    how_to_fix = document.section("How To Fix")
-    finding_targets: dict[str, str] = {}
-    for item in shortfall_items:
-        target = _finding_target(item.text)
-        if target is not None:
-            finding_targets[item.identifier] = target
+    summary_items = _item_texts(document, "Summary")
+    summary = summary_items[0] if summary_items else ""
     return {
         "status": document.frontmatter["status"],
-        "summary": _item_texts(document, "Summary")[0],
-        "what_came_up_short": [item.text for item in shortfall_items],
-        "finding_ids": [item.identifier for item in shortfall_items],
-        "finding_targets": finding_targets,
-        "criterion_verdicts": [item.text for item in verdict_items],
-        "criterion_verdict_ids": [item.identifier for item in verdict_items],
-        "how_to_fix": []
-        if how_to_fix is None
-        else [f"{item.identifier}: {item.text}" for item in how_to_fix.items],
+        "summary": summary,
+        "what_came_up_short": [],
+        "finding_ids": [],
+        "finding_targets": {},
+        "criterion_verdicts": [],
+        "criterion_verdict_ids": [],
+        "how_to_fix": [],
     }
 
 
@@ -194,26 +183,16 @@ def _normalize_development(content: dict[str, object]) -> dict[str, object]:
     and a status-specific ``what_came_up_short``; bypass both for the
     free-form development contract. The ``type`` field is preserved so
     downstream consumers (history snapshots, displays) keep their
-    artifact-type discriminator. Optional structured-section data
-    (criterion verdicts, what-came-up-short items) is preserved so
-    callers that previously relied on it continue to work — the
-    validator only requires the frontmatter ``status`` and a summary.
+    artifact-type discriminator.
     """
     raw_status = content.get("status")
     if not isinstance(raw_status, str) or raw_status not in _STATUSES:
         raise ValueError(f"status must be one of {list(_STATUSES)!r}")
-    normalized: dict[str, object] = {
+    return {
         "type": "development_analysis_decision",
         "status": raw_status,
         "summary": content.get("summary", "") or "",
-        "what_came_up_short": content.get("what_came_up_short", []) or [],
-        "finding_ids": content.get("finding_ids", []) or [],
-        "finding_targets": content.get("finding_targets", {}) or {},
-        "criterion_verdicts": content.get("criterion_verdicts", []) or [],
-        "criterion_verdict_ids": content.get("criterion_verdict_ids", []) or [],
-        "how_to_fix": content.get("how_to_fix", []) or [],
     }
-    return normalized
 
 
 def _validation_diagnostic(item_line: int, section: str, rule_id: str, message: str) -> Diagnostic:
@@ -627,7 +606,9 @@ def _spec_development() -> MdArtifactSpec:
 
 
 ANALYSIS_DECISION_SPECS = tuple(
-    _spec_development() if artifact_type == "development_analysis_decision" else _spec(artifact_type)
+    _spec_development()
+    if artifact_type == "development_analysis_decision"
+    else _spec(artifact_type)
     for artifact_type in _ANALYSIS_TYPES
 )
 

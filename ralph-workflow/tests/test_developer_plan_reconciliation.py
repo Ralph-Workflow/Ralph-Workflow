@@ -48,7 +48,10 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "`completed`" in prompt
     assert "`adapted`" in prompt
     assert "`not_applicable`" in prompt
-    assert "Preserve every required plan reference".lower() in prompt.lower() or "required plan reference" in prompt
+    assert (
+        "Preserve every required plan reference".lower() in prompt.lower()
+        or "required plan reference" in prompt
+    )
     assert "Difficulty, elapsed time" in prompt
     assert "status: partial" in prompt
 

@@ -1310,7 +1310,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # contract used by planning / development / policy / review
         # decisions. Branching on ``artifact_type`` keeps the per-type
         # logic local and easier to read than a dispatch table would be.
-        ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 408),
+        ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 387),
         # wt-14: ``execution.py`` keeps a ``from contextlib import suppress``
         # next to its only user because the top-level import would shadow
         # the existing module-level ``suppress`` alias used elsewhere in

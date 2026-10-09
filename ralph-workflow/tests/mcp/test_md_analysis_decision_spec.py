@@ -347,4 +347,3 @@ Some body.
     content, diagnostics = parse_and_validate(document, get_spec("development_analysis_decision"))
     assert content == {}
     assert any(diagnostic.severity == "error" for diagnostic in diagnostics)
-

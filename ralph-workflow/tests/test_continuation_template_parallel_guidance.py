@@ -32,9 +32,9 @@ _PARALLEL_EXECUTION_PARTIAL = _TEMPLATES_DIR / "shared" / "_parallel_execution.j
 _REQUIRED_ANCHORS: tuple[str, ...] = (
     "Parallel execution of independent ready units is required by default",
     "dispatch every ready unit concurrently",
-    "Sequential execution requires an explicit plan reason or a missing sub-agent tool",
+    "Sequential execution requires an explicit plan reason",
     "not a reason to stop, hand back, split the task, or return `partial`",
-    "which plan text or runtime limit forced it",
+    "which plan text forced it",
     "## PARALLEL EXECUTION (required by default)",
 )
 
@@ -117,13 +117,26 @@ def test_continuation_template_drops_optional_dispatch_relic() -> None:
     """The rewrite must remove the old optional-dispatch opening so the
     continuation template never reverts to "when the plan declares…".
     The narrowed guard targets the exact optional-opening literal; the
-    bounded-sequential fallback sentence ("When the runtime cannot
-    dispatch declared units") is intentionally allowed to survive.
+    queue-in-waves wording ("queue the remaining ready units") is the
+    surviving cap-exhaustion replacement and is asserted separately.
     """
     source = _read_continuation_template()
     assert _RELIC_OPTIONAL_DISPATCH not in source, (
         "continuation template must not keep the optional-dispatch opening"
     )
+    # The S-1 edit 4 split must survive in the partial: a full cap
+    # queues remaining ready units; the ownership / malformed-graph
+    # safeguards stay. None of the removed fallback phrases remain.
+    assert "queue the remaining ready units" in source
+    assert "ownership unresolvable" in source
+    assert "malformed" in source
+    for forbidden in (
+        "or a missing sub-agent tool",
+        "bounded-sequential",
+        "no native sub-agent / task tool is exposed",
+        "runtime limit",
+    ):
+        assert forbidden not in source, f"continuation template/partial re-introduced {forbidden!r}"
 
 
 def test_continuation_template_mentions_sub_agents() -> None:
