@@ -80,20 +80,18 @@ in-phase revision; on validation failure it also keeps the draft for repair. A d
 character cap is rejected without modifying the existing draft. Draft persistence
 lives in `ralph.mcp.artifacts.md_draft_io`.
 
-## Proof policy
+## Development result contract
 
-The development phase can also enforce proof requirements through `[phases.development.artifact_proof_policy]` in `pipeline.toml`.
-
-```toml
-[phases.development.artifact_proof_policy]
-require_plan_proof = true
-require_analysis_proof = true
-```
-
-The bundled defaults enable both checks. Omitting the block in a project-local policy inherits the bundled defaults; to disable proof enforcement, set both fields to `false` explicitly in `.agent/pipeline.toml`.
-
-- `require_plan_proof` requires `plan_items_proven` to cover all usable step IDs for serial execution, or usable unit IDs plus unowned steps for unit-based integration. Unit proof covers its owned steps; an isolated worker proves its assigned unit. When no usable IDs are extracted, exactly one `[plan]` proof covers the prose plan.
-- `require_analysis_proof` controls whether `analysis_items_addressed` must cover prior `how_to_fix` items when analysis feedback exists.
+The `development_result` artifact is free-form below the frontmatter. The
+frontmatter `status` enum (`completed` / `partial` / `failed`) is the only
+field the validator mechanically checks; routing and continuation prompts
+read it. The body is the next agent's reading matter: the developer writes
+in their own words what they did, what changed, how the change was verified,
+and what remains. Plan coverage and prior `development_analysis_decision`
+coverage are judged by development analysis, not matched mechanically here.
+A useful shape is one `## Summary` item, a `## Files Changed` block listing
+the paths touched, and short evidence lines for affected criteria, but no
+specific section or field is required.
 
 ## Validation
 

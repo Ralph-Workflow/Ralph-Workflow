@@ -31,6 +31,9 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
   ANALYSIS_FEEDBACK,
   ANALYSIS_FEEDBACK_PATH
 ) }}
+{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'request_changes' %}
+DEVELOPER FOLLOW-PLAN: The analysis above may split the remaining work into independent units with ownership and per-unit checks. When it does, dispatch each unit in parallel rather than handling them sequentially in this session or handing them back one at a time as a separate `partial` result.
+{% endif %}
 {% endif %}
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
 FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.

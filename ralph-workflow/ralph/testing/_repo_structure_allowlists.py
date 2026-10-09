@@ -1329,6 +1329,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/git/scoped_auto_commit.py", 248),
         ("ralph/git/scoped_auto_commit.py", 537),
         ("ralph/git/scoped_auto_commit.py", 943),
+        # analysis_decision: the structured decision validator
+        # returns early for every per-type branch (planning / review /
+        # policy) and every status (completed / request_changes /
+        # failed); the early returns are the contract.
+        ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 322),
         ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/cli_integration.py", 555),
         ("ralph/project_policy/cli_integration.py", 558),

@@ -21,8 +21,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest
-
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 
@@ -43,7 +41,9 @@ class _ReplacingCountingBackend(FileBackend):
     def exists(self, path: Path) -> bool:
         return path in self._files
 
-    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    def mkdir(
+        self, path: Path, *, parents: bool = False, exist_ok: bool = False
+    ) -> None:
         del path, parents, exist_ok
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
@@ -114,14 +114,20 @@ def test_atomic_write_concurrent_writers_publish_independent_final_bytes() -> No
     assert results.count(True) >= 1
     # The helper performs at most one replace per true publication; the
     # destination bytes always equal one of the caller's payloads.
-    assert backend._files[destination] in {"alpha-payload", "beta-payload", "gamma-payload"}
+    assert backend._files[destination] in {
+        "alpha-payload",
+        "beta-payload",
+        "gamma-payload",
+    }
     # No two writers used the same staging file name; every writer
     # derived its own random suffix.
     staging_paths = {call[0] for call in backend.write_text_calls}
     assert len(staging_paths) == len(backend.write_text_calls)
 
 
-def test_atomic_write_concurrent_identical_writers_skip_redundant_publications() -> None:
+def test_atomic_write_concurrent_identical_writers_skip_redundant_publications() -> (
+    None
+):
     """B4: a no-op concurrent cycle produces zero publications and zero replaces.
 
     When every concurrent writer publishes the same payload and the

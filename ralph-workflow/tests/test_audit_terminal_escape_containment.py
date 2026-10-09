@@ -869,6 +869,7 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
         ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
     ),
 )
+@pytest.mark.timeout_seconds(5)
 def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -889,6 +890,7 @@ def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     assert required_literal in capsys.readouterr().out
 
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize(
     "forbidden_literal",
     ("?1049l", "?1047l", "?47l", "[2J", "[3J", "[H", "[1;1H", "tcflush"),

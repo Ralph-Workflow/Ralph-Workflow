@@ -18,6 +18,7 @@ def test_recipe_docstring_references_canonical_doc() -> None:
     documented one would silently pass tests while docs drift.
     """
     from pathlib import Path
+
     this_file = Path(__file__).resolve()
     text = this_file.read_text(encoding="utf-8")
     assert "adding-a-new-agent.md" in text, (

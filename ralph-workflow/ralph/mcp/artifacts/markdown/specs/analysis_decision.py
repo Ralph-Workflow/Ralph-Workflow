@@ -20,10 +20,7 @@ from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_analysis_decision_content
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
-    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _ANALYSIS_TYPES = (
     "planning_analysis_decision",
@@ -86,12 +83,9 @@ def _extract_verdict(text: str) -> str | None:
 
 _EVIDENCE_PATTERN = re.compile(r"Evidence:\s*(.*?)(?=\s*Location:|$)", re.IGNORECASE)
 _LOCATION_PATTERN = re.compile(r"Location:\s*(.*?)\s*$", re.IGNORECASE)
-_REMAINING_WORK_PATTERN = re.compile(r"Remaining work:\s*(.+)", re.IGNORECASE)
 _PLAN_REFERENCE_PATTERN = re.compile(r"Plan reference:\s*\[[^\]]+\]", re.IGNORECASE)
-_PLACEHOLDER_LOCATIONS = frozenset({"unknown", "n/a", "none", "tbd", "not provided", ""})
 _VERIFICATION_ID_PATTERNS = {
     "planning_analysis_decision": re.compile(r"PA-[0-9]+"),
-    "development_analysis_decision": re.compile(r"DA-[0-9]+"),
     "policy_remediation_analysis_decision": re.compile(r"PR-[0-9]+"),
 }
 
@@ -326,65 +320,16 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
     return diagnostics
 
 
-def _validate_request_changes_predicate(
-    what_items: Sequence[ParsedItem],
-) -> list[Diagnostic]:
-    """Validate that every request_changes finding carries actionable remaining work.
+def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  # noqa: PLR0911 - structured per-type branches
+    """Structured per-type validator for non-development analysis decisions.
 
-    Each localized shortfall must independently identify a criterion or plan
-    reference, a concrete repository location, and non-empty remaining work.
-    A single well-formed finding does not redeem a sibling that lacks any
-    of the three — every item is checked.
+    Development analysis decisions short-circuit at the top of the
+    function (the free-form contract is enforced by ``_spec_development``),
+    so the rest of the body owns the structured planning / review /
+    policy contracts. Returns an empty list when the structured
+    contract is satisfied, or one or more ``Diagnostic`` entries that
+    name the line, section, and rule that was violated.
     """
-    diagnostics: list[Diagnostic] = []
-    # Location in What Came Up Short may be followed by Remaining work:, so
-    # stop the capture there rather than consuming the rest of the line.
-    loc_re = re.compile(r"Location:\s*(.*?)(?=\s*Remaining work:|$)", re.IGNORECASE)
-    for item in what_items:
-        remaining_match = _REMAINING_WORK_PATTERN.search(item.text)
-        if remaining_match is None:
-            diagnostics.append(
-                _validation_diagnostic(
-                    item.line,
-                    "What Came Up Short",
-                    "ANALYSIS015",
-                    "request_changes finding must include a non-empty 'Remaining work:' statement",
-                )
-            )
-        loc_match = loc_re.search(item.text)
-        if loc_match is None:
-            diagnostics.append(
-                _validation_diagnostic(
-                    item.line,
-                    "What Came Up Short",
-                    "ANALYSIS016",
-                    "request_changes finding must include a concrete 'Location:' repository path",
-                )
-            )
-        else:
-            location = str(loc_match.group(1)).strip().rstrip(".").casefold()
-            if location in _PLACEHOLDER_LOCATIONS:
-                diagnostics.append(
-                    _validation_diagnostic(
-                        item.line,
-                        "What Came Up Short",
-                        "ANALYSIS016",
-                        "request_changes finding Location: must be a concrete repository path, not a placeholder",
-                    )
-                )
-        if "Criterion:" not in item.text and _PLAN_REFERENCE_PATTERN.search(item.text) is None:
-            diagnostics.append(
-                _validation_diagnostic(
-                    item.line,
-                    "What Came Up Short",
-                    "ANALYSIS017",
-                    "request_changes finding must identify 'Criterion:' or a 'Plan reference: [<stable id>]' the plan uses",
-                )
-            )
-    return diagnostics
-
-
-def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  # noqa: PLR0911 - structured per-type branches for shared spec
     artifact_type = document.frontmatter["type"]
     status = document.frontmatter["status"]
     if artifact_type == "development_analysis_decision":
@@ -527,8 +472,6 @@ def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:  
             and _extract_verdict(v_item.text)
             != _extract_verdict(shortfall_item_by_id[v_item.identifier].text)
         )
-        if artifact_type == "development_analysis_decision" and status == "request_changes":
-            diagnostics.extend(_validate_request_changes_predicate(what_items))
         return diagnostics
     if artifact_type != "review_analysis_decision":
         return diagnostics

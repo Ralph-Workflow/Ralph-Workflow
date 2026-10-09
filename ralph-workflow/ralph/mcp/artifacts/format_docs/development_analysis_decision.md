@@ -54,15 +54,22 @@ status: request_changes
 - [SUM-1] One criterion is not met.
 
 The focused regression test for oversized indexes is missing; the
-rest of the work is sound. A developer cycle should add a
-parametrized oversized-index case to `tests/test_foo.py` and re-run
-the focused tests.
+rest of the work is sound. `pytest tests/test_foo.py -q` reports
+18 passed but no oversized-index case.
 
-`pytest tests/test_foo.py -q` shows 18 passed but no oversized-index
-case. The remaining work splits into one independent unit that a
-worker can pick up: WU-X — add the parametrized oversized-index test
-case at `tests/test_foo.py`; check is `pytest tests/test_foo.py -q
--k oversized` exits 0 with at least one new oversized case.
+The remaining work splits into three independent units that the
+next agent should dispatch in parallel, rather than handing each
+unit back as a separate `partial`:
+
+- WU-1 — owner `tests/test_foo.py`. Add a parametrized
+  oversized-index case there. Unit check: `pytest tests/test_foo.py
+  -q -k oversized` exits 0 with at least one new oversized case.
+- WU-2 — owner `src/index.py`. Cap the index lookup at the
+  configured maximum. Unit check: `pytest tests/test_index_cap.py
+  -q` exits 0.
+- WU-3 — owner `docs/index-limits.md`. Document the new cap and the
+  operator-facing error message. Unit check: the doc renders
+  without a Sphinx warning in the bounded docs build.
 ```
 
 The body is the next agent's reading matter; the validator only
@@ -71,6 +78,8 @@ example, not a required form. For a `request_changes` decision the
 useful shape is a planner-style fix plan: name the gap, cite the
 evidence, and split the remaining work into independent units with
 ownership and a per-unit check, then dispatch the units in parallel.
+A `failed` decision follows the same shape but explains why no safe
+actionable continuation exists.
 
 See `.agent/artifact-formats/examples/development_analysis_decision.md`
 for the validator-backed complete example.

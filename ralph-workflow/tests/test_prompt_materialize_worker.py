@@ -173,6 +173,92 @@ status: request_changes
     assert "you MUST NOT submit the artifact or declare completion" in rendered
 
 
+@pytest.mark.timeout_seconds(10)
+@pytest.mark.parametrize(
+    ("shape_label", "body"),
+    (
+        pytest.param(
+            "unheaded_prose",
+            "Worker-local implementation is incomplete and the focused test\n"
+            "still fails. Operator follow-up needed before another pass.\n",
+            id="unheaded_prose",
+        ),
+        pytest.param(
+            "arbitrary_headings",
+            "## What was tried\n"
+            "Tried two retries; both still leak the test fixture.\n\n"
+            "## Why it is blocked\n"
+            "Cannot reproduce in this checkout without a developer\n"
+            "with shell access.\n",
+            id="arbitrary_headings",
+        ),
+        pytest.param(
+            "legacy_shaped",
+            "## Summary\n- [SUM-1] Worker-local implementation is incomplete.\n"
+            "## Files Changed\n- [FC-1] src/api/main.py\n"
+            "## Next Steps\n- [NEXT-1] Finish the worker-local API test.\n"
+            "## Continuation\n- [CONT-1] worker-session-7\n",
+            id="legacy_shaped",
+        ),
+    ),
+)
+def test_worker_partial_result_renders_whole_body_for_every_shape(
+    tmp_path: Path,
+    shape_label: str,
+    body: str,
+) -> None:
+    """The continuation prompt must carry the partial body verbatim regardless of shape.
+
+    The development_result artifact is free-form: the next agent reads
+    the original markdown, not extracted summary fields. Whether the
+    prior agent wrote unheaded prose, used arbitrary headings, or
+    kept the legacy Summary / Files Changed / Next Steps / Continuation
+    shape, the rendered worker continuation prompt must contain the
+    full body verbatim.
+    """
+    workspace = MemoryWorkspace(root=tmp_path)
+    workspace.write("PROMPT.md", "Implement the requested behavior.")
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\n---\n## API Subplan\n"
+        "### [S-1] Implement API\nImplement it.\n\nType: action\n",
+    )
+    worker_namespace = tmp_path / ".agent" / "workers" / "api"
+    worker_partial = f"---\ntype: development_result\nstatus: partial\n---\n{body}"
+    workspace.write(
+        str(worker_namespace / "artifacts" / "development_result.md"),
+        worker_partial,
+    )
+    policy = load_policy(tmp_path / ".agent")
+    unit = WorkUnit(
+        unit_id="api",
+        description="Implement the API",
+        allowed_directories=["src/api"],
+        step_ids=["S-1"],
+    )
+
+    path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
+        worker_namespace=worker_namespace,
+        work_unit=unit,
+    )
+    rendered = workspace.read(path)
+
+    assert "PRIOR WORKER RESULT \u2014 PARTIAL \u2014 NOT COMPLETE" in rendered
+    # Whole body must appear verbatim, not just a snippet.
+    assert body in rendered, (
+        f"shape={shape_label}: continuation prompt dropped the original body "
+        f"\u2014 expected to find the prior partial body verbatim"
+    )
+    assert "Workers never dispatch sub-agents" in rendered
+    assert "unit's focused verification" in rendered
+
+
 def test_worker_partial_result_takes_precedence_over_shared_continuation_context(
     tmp_path: Path,
 ) -> None:

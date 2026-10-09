@@ -16,6 +16,7 @@ pre-validation for plan and development_result drains.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -412,10 +413,3 @@ def _find_plan_producing_phase(
                 if phase_def.drain == contract.drain:
                     return phase_name
     return pipeline_policy.entry_phase
-
-
-# Reuse ``contextlib.suppress`` locally so the call sites read like the
-# rest of the codebase. Importing it at module top would shadow the
-# function name; the file is short enough to keep the import next to
-# its only user.
-from contextlib import suppress  # noqa: E402

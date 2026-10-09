@@ -1,7 +1,5 @@
 """Direct cache signature test."""
 
-import json
-
 from ralph.language_detector import get_project_stack
 from ralph.project_policy import cache as policy_cache
 from ralph.project_policy import evidence as policy_evidence
@@ -27,4 +25,4 @@ def test_cache_signature_round_trip() -> None:
     # Read the cache
     result = policy_cache.read_cached_ready(ws, stack)
     print(f"=== read_cached_ready: {result} ===")
-    assert result, f"Cache should be fresh; got sig mismatch"
+    assert result, "Cache should be fresh; got sig mismatch"
