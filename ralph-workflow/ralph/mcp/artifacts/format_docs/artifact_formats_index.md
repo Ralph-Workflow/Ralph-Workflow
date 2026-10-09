@@ -36,8 +36,13 @@ similar to the draft — edit in place instead.
 
 ## Shared grammar
 
-The rules below apply to non-plan artifacts. For plans, see the sanity-only
-boundary under Errors vs warnings and the optional guidance in `plan.md`.
+The rules below apply to non-plan artifacts whose body is structured. The
+`development_result` and `development_analysis_decision` artifacts are
+free-form — only their frontmatter `status` is mechanically validated, and
+the body grammar (section shape, list-item shape, ID format, content-out-
+of-section, unsupported headings) does NOT apply. For plans, see the
+sanity-only boundary under Errors vs warnings and the optional guidance in
+`plan.md`.
 
 ```markdown
 ---
@@ -60,8 +65,10 @@ key: value
   sections require items and which accept descriptive body prose.
 - IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within each consumed
   section that validates list items.
-- Blank lines are ignored. Content outside a section, malformed frontmatter,
-  and unsupported heading shapes remain errors.
+- Blank lines are ignored. For structured artifacts, content outside a
+  section, malformed frontmatter, and unsupported heading shapes remain
+  errors. Free-form development bodies (see the exemption above) skip
+  these checks entirely.
 - Unknown descriptive frontmatter fields and sections are accepted. Typed
   consumers ignore those extensions; known consumed fields and sections
   remain subject to the exact per-type rules.
@@ -75,6 +82,14 @@ UTF-8 bytes, or obviously non-plan text such as a refusal or placeholder.
 Readable plan prose with at least ten words is accepted within that size limit;
 extraction is best effort and the planning analyzer judges quality.
 Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
+
+The `development_result` and `development_analysis_decision` artifacts
+inherit the frontmatter-only validation noted under Shared grammar: any
+markdown body is accepted, and the body-grammar diagnostics
+(MD001–MD004 — content outside a section, unsupported heading shapes,
+list-item shape, section content shape) are not produced. The validator
+still emits a diagnostic for an unrecognized or missing `status` value
+because routing depends on it.
 
 ## Supported artifact types
 
