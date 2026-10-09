@@ -55,6 +55,8 @@ def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) ->
     """Keep fake agent-process tests independent of real provider credentials."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder")
     monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
+    monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
+    monkeypatch.delenv("RALPH_MCP_RUN_ID", raising=False)
 
 
 @pytest.fixture(autouse=True)

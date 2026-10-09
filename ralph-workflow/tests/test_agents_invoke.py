@@ -2754,6 +2754,7 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
 
     with pytest.raises(AgentInvocationError) as exc_info:
         list(
