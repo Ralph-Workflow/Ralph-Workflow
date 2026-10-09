@@ -195,6 +195,7 @@ def _merge_codex_config(
     merged = dict(base)
     if endpoint:
         merged["features"] = {**_mapping_at(base, "features"), **_ralph_feature_overrides()}
+        merged["agents"] = {**_mapping_at(base, "agents"), "enabled": True}
         # Restricted mode hides every operator upstream: Ralph loads them
         # itself and re-exposes them as proxied tools. Unsafe mode keeps them,
         # minus any stale Ralph entry the live endpoint replaces.
@@ -337,12 +338,6 @@ def prepare_codex_home_with_upstreams(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
-    if endpoint:
-        logger.warning(
-            "Codex MCP tool restriction is best-effort: apply_patch and core "
-            "editing primitives cannot be disabled. See "
-            "ralph-workflow/docs/sphinx/mcp-tool-restriction.md."
-        )
     config_path = codex_root / "config.toml"
     try:
         config_text, upstreams = _synthesize_codex_config(

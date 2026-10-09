@@ -43,8 +43,8 @@ IMPORTANT: The previous attempt did not complete successfully.
 {% if not IS_CONTINUATION %}
 ## FIRST-ITERATION COVERAGE CHECK (request versus plan)
 
-Launch a read-only coverage check subagent while the main session starts
-the first ready step. Map **every concrete deliverable in the request** to a
+Launch a read-only coverage check subagent alongside the initial dispatch wave.
+The main session must not take a ready implementation unit. Map **every concrete deliverable in the request** to a
 plan reference or an uncovered criterion. Delegate independent library lookups at
 the same time. The mapping must list, for every item in `PROMPT`:
 

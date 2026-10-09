@@ -458,7 +458,7 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
     # those phases the artifact-tools assertion below accepts the
     # placeholder names elsewhere in the prompt body. We therefore
     # require the read/SEARCH clarifying line regardless.
-    assert "Use these for every workspace read or search" in section, (
+    assert "Use these for parent-session workspace reads and searches" in section, (
         f"{template_stem} MCP section missing the brokered read/search "
         f"clarifying sentence; rendered section:\n{section}"
     )
@@ -543,7 +543,7 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
 
     has_mcp_write = caps.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
     write_clarifying_count = section.count(
-        "These Ralph Workflow edit tools are the ONLY permitted write/edit path"
+            "These Ralph Workflow edit tools are the parent session's write/edit path"
     )
     if has_mcp_write:
         assert write_clarifying_count == 1, (
@@ -564,7 +564,7 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
     # one. A regression that drops the universal sentence leaves
     # a read-only phase unable to reject native write tools.
     universal_brokered_count = section.count(
-        "BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path"
+        "PARENT SESSION ONLY: the brokered-only workspace rule does not apply to native sub-agents"
     )
     assert universal_brokered_count == 1, (
         f"{template_stem} (drain {drain.value}) rendered the universal "

@@ -27,8 +27,8 @@ Usage:
 Exit 0 = clean, 1 = at least one mirror diverges from the bundled content.
 
 The repository root defaults to the module's own ``parents[3]`` walk.
-Override with ``--repo-root PATH`` (or ``RALPH_AUDIT_REPO_ROOT=...``) to
-audit a non-default location. The override is what makes isolated
+Override with ``--repo-root PATH`` to audit a non-default location. The
+override is what makes isolated
 black-box CLI tests portable: they build a temporary tree under
 ``tmp_path`` and pass it as the override.
 """
@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import sys
 from pathlib import Path
 
@@ -57,15 +56,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 def _resolve_repo_root(cli_override: str | None = None) -> Path:
     """Resolve the repository root for the audit run.
 
-    Precedence: explicit ``cli_override`` (from ``--repo-root``) >
-    ``RALPH_AUDIT_REPO_ROOT`` environment variable > module-level
-    ``_REPO_ROOT`` (the ``parents[3]`` walk).
+    An explicit ``cli_override`` (from ``--repo-root``) takes precedence
+    over the module-level ``_REPO_ROOT`` (the ``parents[3]`` walk).
     """
     if cli_override:
         return Path(cli_override).resolve()
-    env_root = os.environ.get("RALPH_AUDIT_REPO_ROOT")
-    if env_root:
-        return Path(env_root).resolve()
     return _REPO_ROOT
 
 
@@ -118,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Override the repository root to audit. Defaults to the "
-            "module's parents[3] walk. Accepts RALPH_AUDIT_REPO_ROOT."
+            "module's parents[3] walk."
         ),
     )
     parsed: tuple[argparse.Namespace, list[str]] = parser.parse_known_args(

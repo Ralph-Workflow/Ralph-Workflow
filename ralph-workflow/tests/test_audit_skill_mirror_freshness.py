@@ -8,8 +8,8 @@ project-scope skill-root prefixes. Without it, future refactors could
 silently leave a divergent mirror and re-introduce the removed
 structured contract (the wt-013 regression).
 
-The audit accepts ``--repo-root PATH`` (or ``RALPH_AUDIT_REPO_ROOT``)
-so tests can drive the actual CLI subprocess against an isolated
+The audit accepts ``--repo-root PATH`` so tests can drive the actual CLI
+subprocess against an isolated
 ``tmp_path`` tree covering the matching / missing / divergent shapes.
 That makes the test portable: it runs from any checkout without a
 hardcoded absolute path. The audit's own internal default still uses
@@ -81,7 +81,7 @@ def _run_cli_against_isolated_workspace(workspace_root: Path) -> subprocess.Comp
         text=True,
         timeout=30,
         check=False,
-        cwd=str(workspace_root),
+        cwd=str(Path(__file__).resolve().parents[1]),
     )
 
 
@@ -286,7 +286,7 @@ def test_audit_subprocess_cli_exits_zero_against_clean_repo() -> None:
         text=True,
         timeout=30,
         check=False,
-        cwd=str(audit_module._REPO_ROOT),
+        cwd=str(Path(__file__).resolve().parents[1]),
     )
     assert result.returncode == 0, f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
     assert "OK" in result.stdout

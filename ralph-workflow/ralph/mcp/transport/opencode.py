@@ -153,7 +153,12 @@ def build_opencode_provider_config(
     if not isinstance(existing_tools, dict):
         existing_tools = {}
     disable_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_DISABLE, False)
-    config_obj["tools"] = {**cast("dict[str, object]", existing_tools), **disable_overrides}
+    orchestration_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_KEEP, True)
+    config_obj["tools"] = {
+        **cast("dict[str, object]", existing_tools),
+        **disable_overrides,
+        **orchestration_overrides,
+    }
 
     config_obj.setdefault("$schema", "https://opencode.ai/config.json")
     return json.dumps(config_obj, sort_keys=True), upstreams

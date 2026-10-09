@@ -1897,8 +1897,6 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     # the operator installed in their own harness. Ralph adds its server; it
     # does not remove theirs. Its OWN --tools/--allowedTools gate stays.
     assert cmd[10:] == [
-        "--tools",
-        ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
         "--allowedTools",
         ",".join(
             [
@@ -2076,11 +2074,7 @@ def test_build_command_claude_keeps_native_orchestration_tools_when_mcp_endpoint
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
         ),
     )
-    tools_idx = cmd.index("--tools")
-    assert cmd[tools_idx + 1] == ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP)
-    assert "Task" in cmd[tools_idx + 1]
-    assert "Agent" in cmd[tools_idx + 1]
-    assert "Skill" in cmd[tools_idx + 1]
+    assert "--tools" not in cmd
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
         [claude_tool_name("read_file"), *CLAUDE_NATIVE_TOOLS_TO_KEEP]
@@ -3072,7 +3066,7 @@ def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> N
     for name in ("task", "skill", "todowrite", "webfetch", "websearch"):
         assert name in OPENCODE_NATIVE_TOOLS_TO_KEEP
         assert name not in OPENCODE_NATIVE_TOOLS_TO_DISABLE
-        assert tools.get(name) is not False, f"Expected {name} to stay enabled"
+        assert tools[name] is True, f"Expected {name} to be force-enabled"
         assert permission[name] == "allow", f"Expected {name} to be auto-allowed"
 
 
@@ -3082,12 +3076,20 @@ def test_opencode_config_keep_and_disable_lists_are_disjoint() -> None:
 
 
 # === consolidated from test_agents_invoke_3.py ===
-def test_opencode_config_tools_disable_overrides_user_enables() -> None:
+def test_opencode_config_preserves_native_tool_enables() -> None:
     existing = '{"tools": {"bash": true}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _agents_invoke_3_json_object(result)
     tools = must_mapping(parsed["tools"])
-    assert tools["bash"] is False, "MCP policy must override user enable"
+    assert tools["bash"] is True, "Ralph Workflow must not disable native tools"
+
+
+def test_opencode_config_native_task_enable_overrides_user_disable() -> None:
+    existing = '{"tools": {"task": false}}'
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _agents_invoke_3_json_object(result)
+    tools = must_mapping(parsed["tools"])
+    assert tools["task"] is True
 
 
 # === consolidated from test_agents_invoke_3.py ===
@@ -3662,6 +3664,8 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
         nested = must_mapping(parsed[section])
         assert nested[subkey] is (value == "true"), f"Expected {key} = {value}"
     assert features["multi_agent"] is True, "Sub-agents must stay enabled"
+    agents = must_mapping(parsed["agents"])
+    assert agents["enabled"] is True, "Native agent orchestration must stay enabled"
     assert "web_search" not in parsed, "web_search must not be force-disabled"
     assert "web_search" not in features
 
@@ -3700,10 +3704,11 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     parsed = _agents_invoke_3_toml_object(config_text)
     features = must_mapping(parsed["features"])
     assert features["foo"] is True, "Existing feature should be preserved"
-    assert features["shell_tool"] is False
+    assert features["shell_tool"] is True
     assert features["multi_agent"] is True
-    assert features["undo"] is False
-    assert features["apps"] is False
+    assert must_mapping(parsed["agents"])["enabled"] is True
+    assert features["undo"] is True
+    assert features["apps"] is True
 
 
 # === consolidated from test_agents_invoke_4.py ===
@@ -3951,7 +3956,7 @@ def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
 
 
 # === consolidated from test_agents_invoke_4.py ===
-def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) -> None:
+def test_codex_does_not_warn_about_intentional_native_tools(tmp_path: Path) -> None:
     buf = io.StringIO()
     logger.remove()
     handler_id = logger.add(buf, level="WARNING")
@@ -3963,8 +3968,7 @@ def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) 
             master_prompt_file=None,
         )
         output = buf.getvalue()
-        assert "best-effort" in output, f"Expected 'best-effort' in warning, got: {output!r}"
-        assert "Codex" in output, f"Expected 'Codex' in warning, got: {output!r}"
+        assert "tool restriction" not in output
     finally:
         logger.remove(handler_id)
 

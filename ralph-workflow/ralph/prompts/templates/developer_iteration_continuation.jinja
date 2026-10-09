@@ -26,17 +26,11 @@ IMPLEMENTATION MODE — CONTINUATION
 
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
-{% if not IS_WORKER %}
 {% include 'shared/_subagents.j2' %}
-{% endif %}
 
 {% if ANALYSIS_FEEDBACK|default('') or ANALYSIS_FEEDBACK_PATH|default('') %}
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
-{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'request_changes' %}
 Developer follow-plan: when the analysis above or the authoritative plan identifies independent units, you MUST follow that division and dispatch every ready unit in parallel — never handle them sequentially in this session or hand them back one at a time as a separate `partial` result. Sequential execution requires an explicit plan reason (declared coupling or `Depends on:` chains).
-{% else %}
-Worker follow-plan: when the analysis above or the authoritative plan identifies independent units, the assigned unit is your scope — Implement and verify only the assigned unit, do not inspect repo-wide status, and do not coordinate other units.
-{% endif %}
 {% endif %}
 
 {% if ANALYSIS_FEEDBACK_STATUS|default('') == 'failed' %}
@@ -63,7 +57,6 @@ Continuation reference: {{ PRIOR_SESSION_ID }}
 
 {% include 'shared/_artifact_history.j2' %}
 
-{% if not IS_WORKER %}
 ## PARALLEL EXECUTION (required by default)
 
 A continuation must keep parallelizing remaining ready work; being a continuation
@@ -72,7 +65,6 @@ units and dependencies, then dispatch every ready unit in one wave before
 starting this session's own implementation.
 
 {% include 'shared/_parallel_execution.j2' %}
-{% endif %}
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% set DOCS_LOOKUP_PHASE = 'development' %}
@@ -81,12 +73,10 @@ starting this session's own implementation.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
-{% if not IS_WORKER %}
 Before submitting, check remaining work against the plan, continuation context,
 and proof contract. Run a fresh-context review as an independent read-only sub-agent
 on every iteration. Do not submit with an open gap. Until that review closes the remaining gap,
 you MUST NOT submit the artifact or declare completion.
-{% endif %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

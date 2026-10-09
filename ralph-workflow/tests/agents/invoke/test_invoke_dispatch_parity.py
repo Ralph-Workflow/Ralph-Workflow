@@ -158,12 +158,15 @@ class TestResolveInvocationRuntimeParity:
         )
 
         assert isinstance(result, ResolvedInvocationRuntime)
+        assert isinstance(result.agent_env, dict)
+        assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == "3"
+        assert result.agent_env["CLAUDE_CODE_FORK_SUBAGENT"] == "1"
+        assert result.agent_env["CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS"] == "0"
+        assert result.agent_env["CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS"] == "0"
         if has_endpoint:
-            assert isinstance(result.agent_env, dict)
             assert isinstance(result.server_env, dict)
             assert result.mcp_endpoint == endpoint
         else:
-            assert result.agent_env is None
             assert result.server_env is None
             assert result.mcp_endpoint is None
 
@@ -330,12 +333,15 @@ class TestResolveInvocationRuntimeParity:
         )
 
         assert isinstance(result, ResolvedInvocationRuntime)
+        assert isinstance(result.agent_env, dict)
+        assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == "3"
+        assert result.agent_env["CLAUDE_CODE_FORK_SUBAGENT"] == "1"
+        assert result.agent_env["CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS"] == "0"
+        assert result.agent_env["CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS"] == "0"
         if has_endpoint:
-            assert isinstance(result.agent_env, dict)
             assert isinstance(result.server_env, dict)
             assert result.mcp_endpoint == endpoint
         else:
-            assert result.agent_env is None
             assert result.server_env is None
             assert result.mcp_endpoint is None
 
@@ -416,7 +422,11 @@ class TestResolveInvocationRuntimeParity:
         )
 
         assert isinstance(result, ResolvedInvocationRuntime)
-        assert result.agent_env is None
+        if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
+            assert isinstance(result.agent_env, dict)
+            assert result.agent_env["CLAUDE_CODE_FORK_SUBAGENT"] == "1"
+        else:
+            assert result.agent_env is None
         assert result.server_env is None
         assert result.mcp_endpoint is None
 

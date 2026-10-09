@@ -131,7 +131,7 @@ def test_wipe_and_rebuild_produces_equivalent_search_results(
     store = ExploreStore(store_dir)
     try:
         first = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
-        assert first.status == "ok"
+        assert first.status == "ok", first.error_summary
         assert first.parse_count >= 8
 
         session = _FakeSession(explore_index=build_sqlite_index_handle(store))
@@ -155,7 +155,7 @@ def test_wipe_and_rebuild_produces_equivalent_search_results(
             workspace,
             options=ReindexOptions(mode="full", timeout_ms=5000),
         )
-        assert rebuilt.status == "ok"
+        assert rebuilt.status == "ok", rebuilt.error_summary
         assert rebuilt.parse_count >= 8
 
         session = _FakeSession(explore_index=build_sqlite_index_handle(store))

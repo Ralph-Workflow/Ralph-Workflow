@@ -81,9 +81,7 @@ main session relies on; repair a brief missing any field before dispatch.
    for implementers, from the unit's `Directories:` and/or `Paths:`, or its
    steps' `Files:` when neither is declared. Include assigned step IDs if
    present. Anything outside scope is the main session's responsibility.
-3. **Tools.** The Ralph Workflow brokered MCP tools only. Native shell,
-   native write tools, and editor commands are prohibited. State this
-   explicitly in the brief.
+3. **Tools.** Sub-agents use the runtime's native tools directly, including native read, write, shell, edit, launch, wait, inspect, collect, and stop facilities. Ralph Workflow MCP tools are additive, not an exclusive or brokered path for sub-agents. Whatever the runtime calls its orchestration surface (agent, sub-agent, task, delegate, fork, team, spawn, or child session), sub-agents may recursively delegate independent work. State this explicitly in the brief.
 4. **Prohibitions.** No git commit, no status markdown files, no writes
    outside scope, no coordination of other units, no integration of the
    whole plan, no artifact submission unless the brief names

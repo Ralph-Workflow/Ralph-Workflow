@@ -543,11 +543,19 @@ class ClaudeRuntimeResolver:
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
+        runtime_env.update(
+            {
+                "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3",
+                "CLAUDE_CODE_FORK_SUBAGENT": "1",
+                "CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS": "0",
+                "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS": "0",
+            }
+        )
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
 
         if not endpoint:
-            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+            return ResolvedInvocationRuntime(agent_env=runtime_env)
 
         _apply_upstream_env(
             _invoke_module().load_existing_claude_upstream_servers(workspace_path),

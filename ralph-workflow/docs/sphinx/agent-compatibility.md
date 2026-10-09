@@ -123,7 +123,7 @@ json_parser = "generic"
 - **Install / auth**: <https://pi.dev/docs/latest/usage>
 - **Transport**: `pi`
 - **Flags**: `--mode json`, `--approve`, and `--session {}`
-- **Constraint**: Ralph Workflow adds `--no-builtin-tools --extension <path>` when it configures Pi's MCP extension.
+- **Native tools**: Ralph Workflow adds only `--extension <path>` for its MCP bridge. It does not pass `--no-builtin-tools`, and it preserves configured command arguments, so installed native extensions remain available. Pi's bundled `examples/extensions/subagent/` provides the official `subagent` tool. Install both `index.ts` and `agents.ts` under `~/.pi/agent/extensions/subagent/` plus its definitions under `~/.pi/agent/agents/`, or pass its `index.ts` through `--extension`. The developer prompt injects this setup path when the tool is absent instead of treating absence as permission to implement independent units in the parent session.
 
 ### Cursor (Cursor)
 
@@ -144,7 +144,7 @@ json_parser = "generic"
 - **Flags**: `-p <prompt-file>`, `--output-format stream-json`, `-m <model>` via the `kimi/<model>` alias, and `-S <session-id>` for session resume (fresh v0.36.1 probe: `-S, --session [id] Resume a session`; the legacy `-r` spelling from stale kimi-cli docs is not a v0.36.1 option and is never emitted)
 - **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; config default `kimi-code/kimi-for-coding`, set in wt-063 — it was `kimi-code/k3-256k` before). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
 - **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
-- **Sub-agents**: no sub-agent dispatch surface; delegation is declared `EXPLICIT_UNSUPPORTED`.
+- **Native orchestration**: current Kimi Code exposes `Agent`, `TaskOutput`, `TaskWait`, and `TaskStop`; its experimental fork mode is a separate optional facility. The older measured v0.36.1 build did not advertise those tools. Ralph Workflow does not disable native Kimi tools. An older installed build must be updated or must report the concrete version blocker rather than silently implement ready work in the parent session.
 - **Smoke**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding` (the default alias).
 - **Model cost comparison** (re-measured 2026-08-17 against the official model table at <https://www.kimi.com/code/docs/en/kimi-code/models>; availability and quota notes as stated there):
 

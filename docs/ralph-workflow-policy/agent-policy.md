@@ -45,6 +45,12 @@ obligations, and the documentation update obligations.
   multimodal endpoints off to work around a harness limitation --
   any ``[media] enabled = false`` config is INERT (criterion 1) and
   is not a supported opt-out.
+* Every development agent is an orchestrator. Ralph MUST preserve and authorize
+  the running harness's native sub-agent spawn and lifecycle tools. It MUST NOT
+  disable those tools or impose broker-only workspace access on native sub-agents. Extension-based
+  runtimes are instructed to install or enable their native sub-agent facility
+  when absent; missing delegation never silently turns independent work into
+  parent-session implementation.
 
 ## Project facts to resolve
 

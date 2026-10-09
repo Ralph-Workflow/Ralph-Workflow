@@ -4,14 +4,12 @@ Your mission in this invocation is to COMPLETE the entire execution plan, not me
 Task size alone must not produce an assessment-only handoff, refusal, or request to
 split the task without advancing available work. Select and perform the first safe,
 testable increment, verify it, and continue the execution loop.
-{% if not IS_WORKER %}
 Parallel dispatch of independent ready units is required, not optional, and plan
 size is a cue to fan out further rather than to stop or hand back. Start with the
 dependency graph and dispatch every ready unit concurrently in one wave before
 starting implementation yourself. Work as an orchestration loop: accept each
 finished unit's proof, release its dependents, and dispatch newly ready work
-while you implement only your own assigned scope and resolve shared decisions.
-{% endif %}
+while you perform coordinator integration and resolve shared decisions.
 Small, proven increments are the execution method; they are never a reason to
 stop. Do not stop and hand back while ready work remains, and do not submit
 while any required ready work remains. `status:
@@ -19,17 +17,6 @@ completed` is permitted only when every required plan reference is proven and th
 Treat `partial`, `blocked`, or `failed` as a last resort. The canonical rule
 for when each is permitted lives in `shared/_no_exemption_for_failures.j2`
 — refer to it before deciding between `completed`, `partial`, or `failed`.
-
-{% if IS_WORKER %}
-## Worker scope reminder
-
-You are executing the assigned unit only. Implement and verify only the assigned
-unit; the rest of the plan is owned by sibling workers and the coordinator. Do
-not inspect repo-wide status to infer success, coordinate other units, integrate
-the whole plan, or modify another worker's namespace. The full worker scope,
-allowed directories, and exact paths are listed in the WORKER SCOPE section of
-your prompt. Your submitted result is persisted under your own worker namespace.
-{% endif %}
 
 ## Plan fidelity
 
@@ -39,9 +26,9 @@ performed broad exploration, so check only assumptions needed for the next
 ready item. Depart from a plan item only when fresh evidence proves its route
 inaccurate, already satisfied, or not applicable.
 
-Preserve every required plan reference in the result. The result body is free-form markdown; the frontmatter `status` is the only field the validator mechanically checks. In your own words, say what you did, what changed, how you verified it, and what remains — coverage of the plan and of the prior analysis is judged by development analysis, not checked here. A useful shape is a one-item `## Summary`, a `## Files Changed` block, short evidence lines for each affected criterion or plan item (a reproducible command, a `path:line` anchor, or a focused test result), and, for `partial` or `failed`, a concrete next step the next agent should pick up. {% if not IS_WORKER %}A coordinator who still owns independent ready slices dispatches them in parallel rather than handing each one back as a separate `partial`. {% endif %}Difficulty, elapsed time, an unrelated passing check, or unsupported speculation does not justify stopping short. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
+Preserve every required plan reference in the result. The result body is free-form markdown; the frontmatter `status` is the only field the validator mechanically checks. In your own words, say what you did, what changed, how you verified it, and what remains — coverage of the plan and of the prior analysis is judged by development analysis, not checked here. A useful shape is a one-item `## Summary`, a `## Files Changed` block, short evidence lines for each affected criterion or plan item (a reproducible command, a `path:line` anchor, or a focused test result), and, for `partial` or `failed`, a concrete next step the next agent should pick up. A coordinator who still owns independent ready slices dispatches them in parallel rather than handing each one back as a separate `partial`. Difficulty, elapsed time, an unrelated passing check, or unsupported speculation does not justify stopping short. A blocked item with a safe concrete continuation requires `status: partial`; a block with no safe developer action under current evidence or authority requires `status: failed`. Neither permits a completion claim.
 
-{% if not IS_WORKER %}Before editing, inventory the plan references and dependencies, then dispatch every ready unit concurrently in one wave before starting your own implementation. Assign disjoint ownership before implementing your own ready reference while other units and read-only helpers run. Run focused verification on stable inputs and capture each reference's evidence in your own words. Reassess the remaining dependency graph after each result and dispatch newly ready work as their dependencies clear. After a failed approach, inspect the concrete evidence and choose a materially different hypothesis, a narrower increment, or a permitted reassignment; keep going on other independent ready work. A local failure does not authorize partial while any available action can advance the plan. Never repeat an unchanged failing action indefinitely. Before completion, account for every required reference exactly once and satisfy the verification commitments.{% endif %}
+Before editing, inventory the plan references and dependencies, then dispatch every ready unit concurrently in one wave before starting coordinator integration. Assign disjoint ownership and keep implementation in native sub-agents while read-only helpers run. Run focused verification on stable inputs and capture each reference's evidence in your own words. Reassess the remaining dependency graph after each result and dispatch newly ready work as their dependencies clear. After a failed approach, inspect the concrete evidence and choose a materially different hypothesis, a narrower increment, or a permitted reassignment; keep going on other independent ready work. A local failure does not authorize partial while any available action can advance the plan. Never repeat an unchanged failing action indefinitely. Before completion, account for every required reference exactly once and satisfy the verification commitments.
 
 ## Visual review (when the change touches the UI)
 

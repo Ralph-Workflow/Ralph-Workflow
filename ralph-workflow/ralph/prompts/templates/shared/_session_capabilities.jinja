@@ -5,5 +5,10 @@ SESSION CAPABILITIES (Granted by Ralph Workflow)
 
 These define the brokered operations Ralph Workflow authorizes. Treat actions outside
 them as prohibited even when a particular runtime cannot technically hide all
-native tools.
+native tools; native orchestration tools are explicitly authorized regardless
+of whether the runtime calls them agents, sub-agents, tasks, delegates, forks,
+teams, spawns, or child sessions. Use the runtime's corresponding launch,
+wait, inspect, collect, and stop tools for delegation.
+Native sub-agents use their runtime's native execution and workspace tools;
+do not impose the parent session's broker-only tool path on them.
 {% endif %}

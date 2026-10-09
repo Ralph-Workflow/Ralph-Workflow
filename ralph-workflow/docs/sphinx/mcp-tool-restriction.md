@@ -1,18 +1,14 @@
 # MCP Tool Restriction Guarantees
 
-Ralph Workflow enforces MCP-only **file and shell** tooling by disabling the native filesystem/exec tools at the CLI and config layer, while keeping each agent's native **orchestration** tools — sub-agents/tasks, skills, todo tracking, and web fetch/search — enabled. This document describes how that enforcement works for each supported CLI, known limitations, and how to verify it is active.
+Ralph Workflow adds its MCP tools without disabling the harness's native tool surface. This preserves native orchestration and the native file, shell, edit, lifecycle, and recursive-delegation tools required by sub-agents. This document describes the additive configuration for each supported CLI.
 
 ## 1. Overview
 
-Ralph Workflow is designed as an opinionated AI agent orchestration framework rooted in the Ralph Workflow loop, where every tool call should produce an auditable action with a traceable identity. Native file and shell tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph Workflow's audit trail, capability mapping, and policy enforcement.
+Ralph Workflow's MCP surface remains available for audited operations, but it is additive. Native sub-agents are not Ralph Workflow workers and are not forced through a Ralph Workflow broker-only tool path.
 
-Native orchestration tools do not write to the workspace directly, so they stay enabled: sub-agent/task dispatch (required for parallel plan execution), skills, todo tracking, and web fetch/search. Sub-agents spawned inside a Ralph Workflow-wired session inherit the same tool restriction and the same Ralph Workflow MCP surface, so their file and shell operations remain brokered.
-
-Ralph Workflow's prompts claim "Native file and shell tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend, and where config preservation is separate from strict policy enforcement:
-
-- **Claude Code** receives `--tools "Agent,Task,Skill,TodoWrite,WebFetch,WebSearch"` (the orchestration keep-list; every other built-in is removed) plus a strict-MCP-config that contains only the Ralph Workflow MCP server.
-- **OpenCode** receives a config payload that explicitly sets each native filesystem/exec tool to `false` and auto-allows the orchestration keep-list.
-- **Codex** receives a TOML config that preserves existing sections, disables filesystem/exec-adjacent features, and explicitly enables `multi_agent`; core editing primitives cannot be fully removed.
+- **Claude Code** receives additive MCP and permission flags without `--tools`, so its native tool pool remains intact.
+- **OpenCode** keeps its existing native tool configuration and force-enables `task` plus its permission.
+- **Codex** explicitly enables native shell, undo, apps, `multi_agent`, and `agents.enabled`.
 - **Google Anti Gravity** uses the Ralph Workflow-owned MCP proxy contract and reads existing user config files for upstream discovery, but does not have a documented environment-variable home override.
 
 ### Strict Ralph Workflow Authority Mode
@@ -21,11 +17,11 @@ In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Wo
 
 ## 2. Per-CLI Guarantees
 
-### Claude Code - Full Enforcement
+### Claude Code - Additive Native Tools
 
 Claude Code supports CLI flags that together restrict the native toolset of a session:
 
-- `--tools "Agent,Task,Skill,TodoWrite,WebFetch,WebSearch"` - Restricts the built-in toolset to the orchestration keep-list (`CLAUDE_NATIVE_TOOLS_TO_KEEP` in `ralph/mcp/tools/names.py`); every filesystem/exec built-in (`Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, …) is removed. MCP tools are unaffected by `--tools`. The sub-agent dispatcher was renamed `Task` → `Agent` in claude v2.1.63; unknown names in `--tools` are silently ignored, so listing both keeps every CLI version covered. Sub-agents inherit the parent session's tool restriction and MCP servers unless their own definition overrides them.
+- Ralph Workflow does not pass `--tools`; Claude's native tool pool remains available to the parent and its sub-agents. `--allowedTools` pre-approves Ralph Workflow MCP tools and native orchestration lifecycle tools without restricting other native tools.
 - `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads every config source Claude itself loads — each enabled plugin's `<plugin-root>/.mcp.json` (enablement from `~/.claude/settings.json` `enabledPlugins`, install paths from `~/.claude/plugins/installed_plugins.json`), `~/.claude.json` `mcpServers` (user scope), workspace `.mcp.json` (project scope), workspace `.claude.json`, and `~/.claude.json` `projects.<workspace>.mcpServers` (local scope, where a plain `claude mcp add` writes) — to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry. Plugin-provided servers are namespaced `plugin_<plugin>_<server>`, mirroring Claude's own `plugin:<plugin>:<server>`, so a plugin server cannot silently replace a same-named user server. A project-scope server the operator declined is skipped: Claude records that refusal per project in `~/.claude.json` as `projects.<workspace>.disabledMcpjsonServers`, and re-exposing such a server as a Ralph Workflow proxy would hand the agent a capability the operator withheld. That list names `.mcp.json` entries only, so a same-named user-scope or local-scope server is a different server and is still discovered and proxied. Unsafe mode (`--unsafe`) runs the same discovery and merges the result into the generated config alongside the Ralph Workflow entry, instead of proxying it.
 
 Claude.ai account connectors (configured at `claude.ai/customize/connectors`, listed by `claude mcp list` as `claude.ai <Name>`) have no on-disk definition, so `--strict-mcp-config` removes them and Ralph Workflow cannot proxy them back. Because that removal would otherwise be invisible, Ralph Workflow runs `claude mcp list` once per run, compares what Claude actually has against what it discovered, and logs a WARNING naming every server the run is taking away:
@@ -40,19 +36,13 @@ definition for Ralph Workflow to proxy back ... Run `claude mcp list` to see the
 
 The probe is best-effort and bounded to 20 seconds: a `claude` CLI that is missing, slow, or exits non-zero produces no report rather than a failed run, and the result is memoized so the subprocess runs once per run rather than once per agent cycle. The report is deliberately not a hard failure — an operator who does not need those connectors can ignore it — but it is never silent.
 
-Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint, plus the orchestration keep-list. `--allowedTools` only grants permissions — it cannot re-enable a tool that `--tools` removed — so the keep-list must appear in `--tools` to stay available and in `--allowedTools` to run without approval prompts. Ralph Workflow still remains the real policy boundary: provider approval only removes Claude-side prompts, while `ToolBridge` metadata and session capabilities decide whether the forwarded call is actually allowed.
+Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint, plus the orchestration keep-list. It does not pass `--tools`, so native workspace and execution tools remain available.
 
 Reference: https://docs.anthropic.com/en/docs/claude-code/cli-reference
 
-### OpenCode - Full Enforcement
+### OpenCode - Additive Native Tools
 
-OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables the 10 native filesystem/exec tools by setting each to `false`:
-
-```
-bash, edit, glob, grep, list, lsp, patch, question, read, write
-```
-
-(`question` is disabled because it prompts the user and wedges headless runs.)
+OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow preserves the existing native tool map rather than writing `false` overrides.
 
 The orchestration keep-list stays enabled and is auto-allowed in the generated `permission` section so it cannot wedge a headless run on an approval prompt (`OPENCODE_NATIVE_TOOLS_TO_KEEP` in `ralph/mcp/tools/names.py`):
 
@@ -60,14 +50,7 @@ The orchestration keep-list stays enabled and is auto-allowed in the generated `
 skill, task, todowrite, webfetch, websearch
 ```
 
-The key mechanism is dict-spread merge:
-
-```python
-disable_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_DISABLE, False)
-config_obj["tools"] = {**existing_tools, **disable_overrides}
-```
-
-Because Ralph Workflow's disable entries come after the spread of existing user config, Ralph Workflow's `false` values win over any user-provided `tools.bash: true`. The MCP policy overrides user enables while still preserving unrelated `permission` and non-native `tools` entries.
+The generated configuration preserves existing native tool entries and overlays only positive orchestration enables.
 
 The `mcp` field Ralph Workflow writes into `OPENCODE_CONFIG_CONTENT` names only the Ralph Workflow MCP server, but that does **not** make it the only MCP server the session gets. OpenCode's config loader (`Config.loadInstanceState`, verified against the installed 1.18.25 binary) folds its sources together with a deep merge — global `opencode.json`, then `OPENCODE_CONFIG`, then project configs, then `.opencode/*`, then `OPENCODE_CONFIG_CONTENT` — and `mcp` is merged key-by-key rather than replaced. The operator's own servers therefore survive alongside the Ralph Workflow entry. Running `opencode debug config` with a Ralph Workflow-shaped `OPENCODE_CONFIG_CONTENT` shows the operator's servers and `ralph` together in the resolved `mcp` map.
 
@@ -80,13 +63,13 @@ Reference: https://opencode.ai/docs
 Codex is configured via a `config.toml` file, and Ralph Workflow points `CODEX_HOME` at a run-scoped directory of its own. Because that replaces the operator's `~/.codex/config.toml` rather than layering on top of it, `prepare_codex_home()` (in `ralph/mcp/transport/codex.py`) has to combine the two: it parses the operator's config with `tomllib`, layers Ralph Workflow's settings over the resulting mapping, and re-serializes the merge with `tomli_w`. Merging mappings rather than splicing text is deliberate -- TOML rejects a duplicate key, and a mapping cannot hold one, so no combination of operator settings can produce a config Codex refuses to load. Every operator key Ralph Workflow does not own is carried through untouched; the keys it does own are `model_instructions_file`, the `[mcp_servers]` table, and the following entries of `[features]` (`CODEX_NATIVE_FEATURE_OVERRIDES` in `ralph/mcp/tools/names.py`):
 
 ```
-features.shell_tool = false
+features.shell_tool = true
 features.multi_agent = true
-features.undo = false
-features.apps = false
+features.undo = true
+features.apps = true
 ```
 
-`multi_agent` is explicitly **enabled** so Codex keeps its native sub-agent dispatch. `web_search` is no longer force-disabled; it is left at Codex's native default. These settings reduce the attack surface, but **`apply_patch` and core file-editing primitives cannot be disabled**. Codex has no comprehensive MCP-only mode and no `--tools` CLI flag equivalent. When an MCP endpoint is wired to Codex, Ralph Workflow logs a WARNING at every invocation:
+`multi_agent` and `agents.enabled` are explicitly enabled so Codex keeps its native sub-agent dispatch. Native shell, undo, apps, apply-patch, and core editing primitives remain enabled.
 
 ```
 Codex MCP tool restriction is best-effort: apply_patch and core editing primitives cannot be disabled.

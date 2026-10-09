@@ -1188,20 +1188,32 @@ def run_test_suites(
         subprocess_e2e_only=subprocess_e2e_only,
     )
 
+    serial_test_files = frozenset(
+        {
+            "tests/workspace/test_workspace_product_baselines.py",
+            "tests/test_kimi_wire_provenance.py",
+            "tests/test_mcp_endpoint_functional_sweep.py",
+            "tests/test_planning_phase_2026_08_06_regression.py",
+            "tests/test_config_bootstrap.py",
+            "tests/test_auto_integrate_resolving_rebase_record.py",
+        }
+    )
+    serial_files = tuple(path for path in selected_files if path in serial_test_files)
+    parallel_files = tuple(path for path in selected_files if path not in serial_files)
     shards = partition_selected_files(
-        selected_files,
+        parallel_files,
         worker_count=int(_pytest_workers()),
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     if required_e2e_shard:
         validate_exact_file_assignment(
-            (*selected_files, *required_e2e_shard), (*shards, required_e2e_shard)
+            (*selected_files, *required_e2e_shard), (serial_files, *shards, required_e2e_shard)
         )
     else:
-        validate_exact_file_assignment(selected_files, shards)
+        validate_exact_file_assignment(selected_files, (serial_files, *shards))
     print(
         f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
-        f"{len(shards) + bool(required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
+        f"{len(shards) + bool(required_e2e_shard) + bool(serial_files)} shards in {monotonic() - started_at:.2f}s",
         flush=True,
     )
     temp_directory_prefix: str
@@ -1222,6 +1234,27 @@ def run_test_suites(
         basetemp_path = Path(basetemp_root)
         successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
         empty_selection_returncode = 5 if profile is not None else None
+        serial_result: int | None = None
+        if serial_files:
+            serial_basetemp = basetemp_path / "serial"
+            serial_basetemp.mkdir()
+            serial_result = _run_shards(
+                (serial_files,),
+                cwd=cwd,
+                env=env,
+                basetemp_root=serial_basetemp,
+                deadline=deadline,
+                started_at=started_at,
+                spawner=spawner,
+                monotonic=monotonic,
+                wait=wait,
+                marker_expression=marker_expression,
+                xdist_workers="0",
+                successful_returncodes=successful_returncodes,
+                empty_selection_returncode=empty_selection_returncode,
+            )
+            if serial_result not in successful_returncodes:
+                return serial_result
         run_required_concurrently = bool(required_e2e_shard and not subprocess_e2e_only)
         all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
         general_result = _run_shards(
@@ -1245,7 +1278,7 @@ def run_test_suites(
         if general_result not in successful_returncodes:
             return general_result
         if not required_e2e_shard or run_required_concurrently:
-            return general_result
+            return 0 if serial_result == 0 else general_result
         return _run_shards(
             (required_e2e_shard,),
             cwd=cwd,

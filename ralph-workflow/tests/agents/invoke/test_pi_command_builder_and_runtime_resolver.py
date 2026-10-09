@@ -333,7 +333,6 @@ class TestPiCommandBuilder:
         ]
 
     def test_mcp_endpoint_loads_generated_extension_before_prompt(self, tmp_path: Path) -> None:
-        """Pi receives Ralph MCP tools through a generated extension."""
         prompt_file = _make_prompt(tmp_path)
         extension_path = pi_mcp_extension_path(tmp_path)
         cmd = PiCommandBuilder().build(
@@ -349,12 +348,25 @@ class TestPiCommandBuilder:
             "pi",
             "--mode",
             "json",
-            "--no-builtin-tools",
             "--extension",
             str(extension_path),
             "--approve",
             "hello world",
         ]
+
+    def test_custom_command_keeps_extension_arguments(self, tmp_path: Path) -> None:
+        prompt_file = _make_prompt(tmp_path)
+        config = _pi_config().model_copy(
+            update={"cmd": "pi --extension /opt/pi-subagents/index.js"}
+        )
+
+        cmd = PiCommandBuilder().build(
+            config,
+            prompt_file,
+            options=BuildCommandOptions(workspace_path=tmp_path),
+        )
+
+        assert cmd[:3] == ["pi", "--extension", "/opt/pi-subagents/index.js"]
 
 
 class TestPiRuntimeResolver:

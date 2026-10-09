@@ -164,14 +164,15 @@ def _build_pi() -> DelegationCapability:
     """Pi (pi.dev) delegation declaration."""
     return DelegationCapability(
         transport=AgentTransport.PI,
-        stance=DelegationStance.EXPLICIT_UNSUPPORTED,
+        stance=DelegationStance.SUPPORTED,
         mechanism=(
-            "No documented sub-agent dispatch surface; the Pi transport "
-            "wires MCP through a generated extension only"
+            "Pi's official subagent extension registers a native 'subagent' "
+            "tool with single, parallel, and chain modes; Ralph preserves "
+            "configured extension arguments and extension discovery"
         ),
         citation=(
-            "ralph-workflow/ralph/config/agent_transport.py (PI docstring); "
-            "ralph-workflow/ralph/mcp/transport/pi.py"
+            "earendil-works/pi@42a3497d03ad17e308a2299fa824727894f2c0ec "
+            "packages/coding-agent/examples/extensions/subagent/index.ts:471-479"
         ),
     )
 
@@ -193,16 +194,15 @@ def _build_kimi() -> DelegationCapability:
     """Kimi Code CLI delegation declaration."""
     return DelegationCapability(
         transport=AgentTransport.KIMI,
-        stance=DelegationStance.EXPLICIT_UNSUPPORTED,
+        stance=DelegationStance.SUPPORTED,
         mechanism=(
-            "No documented sub-agent dispatch surface; the measured "
-            "kimi-code model capabilities (thinking, always_thinking, "
-            "image_in, tool_use) expose no sub-agent tool and the "
-            "headless transport wires MCP through the config surface only"
+            "Current Kimi Code provides native Agent, TaskOutput, TaskStop, "
+            "and TaskWait tools; historical v0.36.1 did not advertise them. "
+            "Ralph preserves the native tool surface while wiring MCP"
         ),
         citation=(
-            "ralph-workflow/ralph/config/agent_transport.py "
-            "(KIMI docstring); ralph-workflow/ralph/mcp/transport/kimi.py"
+            "MoonshotAI/kimi-code@419aced0e97fa04b75f8f71b089e1667f6de6d0a "
+            "packages/agent-core-v2/src/agent/tools/agentTool.ts:682-685"
         ),
     )
 

@@ -356,8 +356,6 @@ def _extend_claude_transport_flags(
     if build_options.allowed_mcp_tool_names:
         cmd.extend(
             [
-                "--tools",
-                ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
                 "--allowedTools",
                 ",".join((*build_options.allowed_mcp_tool_names, *CLAUDE_NATIVE_TOOLS_TO_KEEP)),
             ]
@@ -768,6 +766,7 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
         positional_prompt=True,
         print_flag=None,
         extra_flags_before_prompt=(),
+        cmd_argv_override=True,
     )
 
     def __init__(self) -> None:
@@ -788,7 +787,7 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
         if extension_path is None and options.mcp_endpoint and options.workspace_path is not None:
             extension_path = str(pi_mcp_extension_path(options.workspace_path))
         if extension_path is not None:
-            cmd.extend(["--no-builtin-tools", "--extension", extension_path])
+            cmd.extend(["--extension", extension_path])
 
         cmd.extend(self._build_yolo_session_flags(config, options))
         if options.verbose and config.verbose_flag:

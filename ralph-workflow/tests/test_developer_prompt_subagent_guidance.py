@@ -43,7 +43,7 @@ from ralph.workspace.memory import MemoryWorkspace
 # stopped-writer transfer) plus the parallel-by-default mandatory wording.
 _COORDINATOR_INDEPENDENT_READY = "independent ready"
 _COORDINATOR_QUEUE_OR_LOCAL = "queue"
-_COORDINATOR_EXPOSED_TOOLS = "exposed"
+_COORDINATOR_EXPOSED_TOOLS = "native orchestration facility"
 _COORDINATOR_STOPPED_WRITER = "stopped"
 
 # Coordinator-only pinned anchors (exact literals). These must surface on
@@ -264,6 +264,70 @@ def test_shared_parallel_partial_keeps_sanitization_and_waves() -> None:
         assert forbidden not in source, (
             f"parallel partial re-introduced removed fallback phrase {forbidden!r}"
         )
+
+
+def test_native_orchestration_is_authorized_and_missing_support_is_installed() -> None:
+    templates = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
+    subagents = (templates / "shared" / "_subagents.j2").read_text(encoding="utf-8")
+    capabilities = (templates / "shared" / "_session_capabilities.jinja").read_text(
+        encoding="utf-8"
+    )
+    parallel = (templates / "shared" / "_parallel_execution.jinja").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join((subagents, capabilities, parallel))
+
+    assert "native orchestration tools are explicitly authorized" in combined
+    assert "install or enable the facility" in combined
+    for native_term in ("agent", "sub-agent", "task", "delegate", "fork", "team", "spawn", "child session"):
+        assert native_term in combined
+    assert "research its supported package, plugin, extension, configuration, or feature mechanism" in parallel
+    assert "examples/extensions/subagent/" in parallel
+    assert "index.ts" in parallel and "agents.ts" in parallel
+    for repair_anchor in (
+        "features.multi_agent",
+        "agents.enabled",
+        "tools.task",
+        "permission.task",
+        "disabledTools",
+        "TaskWait",
+        "invoke_subagent",
+    ):
+        assert repair_anchor in parallel
+    assert "must not become main-session implementation" in combined
+    assert "Sub-agents use the runtime's native tools directly" in subagents
+    assert "not an exclusive or brokered path for sub-agents" in subagents
+    assert "never impose a brokered-tools-only rule" in parallel
+
+
+def test_worker_prompt_preserves_recursive_native_delegation() -> None:
+    templates = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
+    worker_verification = (templates / "shared" / "_worker_verification.jinja").read_text(
+        encoding="utf-8"
+    )
+    worker_prompt = (templates / "worker_developer.jinja").read_text(encoding="utf-8")
+
+    assert "WORKER DO-NOT-DISPATCH" not in worker_verification
+    assert "Workers never dispatch sub-agents" not in worker_prompt
+    assert "native sub-agent" in worker_verification
+
+
+def test_feedback_role_guidance_uses_worker_identity_not_verdict() -> None:
+    templates = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
+    for filename in (
+        "developer_iteration_continuation.jinja",
+        "developer_iteration_fallback.jinja",
+    ):
+        source = (templates / filename).read_text(encoding="utf-8")
+        assert "IS_WORKER" not in source
+        assert "{% if ANALYSIS_FEEDBACK_STATUS|default('') == 'request_changes' %}" not in source
+
+
+def test_coverage_check_does_not_authorize_local_unit_implementation() -> None:
+    templates = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
+    for filename in ("developer_iteration.jinja", "developer_iteration_fallback.jinja"):
+        source = (templates / filename).read_text(encoding="utf-8")
+        assert "while the main session starts the first ready step" not in source
 
 
 # Coordinator templates that must satisfy the capability-input

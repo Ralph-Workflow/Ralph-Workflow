@@ -180,16 +180,6 @@ ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName
 # ``codesearch`` used to be listed here and was inert: it is not an opencode tool and
 # appears nowhere in the 1.18.25 binary, so the override named a tool that never existed.
 OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
-    "bash",
-    "edit",
-    "glob",
-    "grep",
-    "list",
-    "lsp",
-    "patch",
-    "question",
-    "read",
-    "write",
 )
 
 # Native orchestration tools that MUST stay enabled when Ralph wires its MCP surface:
@@ -210,6 +200,9 @@ OPENCODE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
 CLAUDE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "Agent",
     "Task",
+    "TaskOutput",
+    "TaskStop",
+    "SendMessage",
     "Skill",
     "TodoWrite",
     "WebFetch",
@@ -222,10 +215,10 @@ CLAUDE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
 # is explicitly enabled. web_search is intentionally absent: it is left at Codex's
 # native default rather than force-disabled.
 CODEX_NATIVE_FEATURE_OVERRIDES: tuple[tuple[str, str], ...] = (
-    ("features.shell_tool", "false"),
+    ("features.shell_tool", "true"),
     ("features.multi_agent", "true"),
-    ("features.undo", "false"),
-    ("features.apps", "false"),
+    ("features.undo", "true"),
+    ("features.apps", "true"),
 )
 
 

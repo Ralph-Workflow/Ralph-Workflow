@@ -317,7 +317,7 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 4. Dispatches a sub-agent per ready unit, scoped to that unit's exact ownership, and collects the unit's verification evidence.
 5. Summarizes the completed work and verification evidence in the `development_result` artifact.
 
-For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). The bundled and supported dispatch path is `agent_subagents`; Ralph-managed fan-out is deprecated and cannot be re-armed through prompt materialization. There is no linear capability fallback in the planning prompt: every configured agent is treated as supporting sub-agents and parallel agents.
+Ralph preserves and explicitly authorizes each harness's native orchestration surface: Claude Agent/Task, Codex `spawn_agent`, OpenCode `task`, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, and installed extension-based facilities such as Pi sub-agent packages. Claude's lifecycle tools remain allowlisted, Codex multi-agent support is forced on, OpenCode orchestration tools are force-enabled and auto-allowed, and Pi's built-ins plus configured extensions are no longer suppressed. The bundled dispatch path is `agent_subagents`; Ralph-managed fan-out is deprecated and cannot be re-armed through prompt materialization. When an extension-based runtime lacks delegation, the developer must install or enable its native facility before dispatch, or report a concrete installation blocker. Missing support is never a silent license to implement independent units sequentially in the parent session.
 
 The planning prompts recommend work units for independent responsibilities, shared contracts before consumers, and integration after fan-in. This is execution guidance, not a required plan format. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance. The shared `shared/_parallel_execution.jinja` partial codifies the same wave / ownership / sanitization rules for the executing agent.
 
@@ -688,13 +688,15 @@ same ready group. Unknown ownership, malformed dependency graphs, and
 unextractable unit IDs stay in the main session; the executor never invents
 broad worker writes to bypass ownership uncertainty.
 
-The executor uses only the orchestration tools actually exposed by the
-running runtime. A full dispatch slot is a queued wave plus useful local
-work on the next safe increment, not idle abandonment. When no native
-sub-agent or task tool is exposed for an attempt, the executor falls back
-to bounded sequential progress on the same dependency graph: pick the next
-ready reference, implement it, verify it, and continue. Sequencing is not
-permission to give up; it is the same plan executed step at a time.
+The developer uses the native orchestration tools exposed by the running
+runtime. Native sub-agents use the harness's native workspace and execution
+tools directly; Ralph Workflow MCP tools are additive. If an extension-based runtime does not expose delegation,
+the developer installs or enables its native sub-agent facility before
+dispatch. A full dispatch slot queues later waves while the parent performs
+orchestrator work such as fan-in and integration; it does not take a ready
+implementation unit back into the parent session. A genuinely impossible
+installation is reported as a concrete blocker instead of becoming an
+unreported sequential fallback.
 
 Before transferring ownership from one writer to another, the executor
 confirms the former writer has actually stopped — the assignment is closed,

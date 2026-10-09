@@ -372,7 +372,7 @@ def test_mcp_partial_states_edit_tools_only_write_path(drain: SessionDrain) -> N
     caps, _flags = template_variables.default_caps_and_flags_for_drain(drain)
     has_mcp_write = caps.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
     if has_mcp_write:
-        assert "ONLY permitted write/edit path" in rendered, (
+        assert "parent session's write/edit path" in rendered, (
             f"drain {drain!r} has workspace write but the partial does not "
             f"state the edit-tools-only rule"
         )
@@ -380,7 +380,7 @@ def test_mcp_partial_states_edit_tools_only_write_path(drain: SessionDrain) -> N
         # Drain grants no write capability: the partial must omit the
         # WRITE section entirely rather than asserting the rule for a
         # tool the agent cannot call.
-        assert "ONLY permitted write/edit path" not in rendered, (
+        assert "parent session's write/edit path" not in rendered, (
             f"drain {drain!r} has no workspace write but the partial "
             f"still asserts the edit-tools-only rule"
         )
@@ -408,23 +408,23 @@ def test_mcp_partial_kept_within_two_added_sentences(drain: SessionDrain) -> Non
     # is granted) below WRITE. Pin the substring presence; the plan
     # budget is "no net growth beyond two sentences" — keep the
     # contract simple by asserting each sentence is exactly one line.
-    assert "Use these for every workspace read or search" in rendered, (
+    assert "Use these for parent-session workspace reads and searches" in rendered, (
         f"drain {drain!r}: READ/SEARCH clarifying sentence missing"
     )
     if has_mcp_write:
         assert (
-            "These Ralph Workflow edit tools are the ONLY permitted write/edit path" in rendered
+            "These Ralph Workflow edit tools are the parent session's write/edit path" in rendered
         ), f"drain {drain!r}: WRITE clarifying sentence missing"
     # Hard-bloat guard: the partial source adds exactly two new
     # sentences, no more. Count occurrences of the canonical
     # clarifying sentences — anything beyond 1 per slot is bloat.
-    read_clarifying_count = rendered.count("Use these for every workspace read or search")
+    read_clarifying_count = rendered.count("Use these for parent-session workspace reads and searches")
     assert read_clarifying_count == 1, (
         f"drain {drain!r}: READ/SEARCH clarifying sentence appears "
         f"{read_clarifying_count} times (expected exactly 1)"
     )
     write_clarifying_count = rendered.count(
-        "These Ralph Workflow edit tools are the ONLY permitted write/edit path"
+        "These Ralph Workflow edit tools are the parent session's write/edit path"
     )
     if has_mcp_write:
         assert write_clarifying_count == 1, (
@@ -460,4 +460,4 @@ def test_mcp_partial_identical_across_phase_templates() -> None:
     for tool in sorted(visible):
         assert f"`{tool}`" in rendered, f"visible tool {tool!r} not rendered in the shared partial"
     # And the edit-tools-only sentence is present.
-    assert "ONLY permitted write/edit path" in rendered
+    assert "parent session's write/edit path" in rendered
