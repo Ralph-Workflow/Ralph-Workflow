@@ -1,8 +1,7 @@
 {% include 'shared/_validation_failure.j2' -%}
 Decide whether every required item in the unchanged request and plan is done,
-then submit one evidence-backed decision artifact. The implementation is not
-complete unless every required plan item is complete or has a proven
-`adapted` or `not_applicable` disposition that preserves all request criteria.
+then submit one evidence-backed decision artifact. Describe the verdict in
+your own words; the validator only checks the frontmatter ``status`` enum.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -24,18 +23,11 @@ Fan out read-only verification across independent criterion groups, one subagent
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any verdict is written.
 
-Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion. Independently classify every required plan reference as completed, adapted, not applicable, or blocked:
-
-- `adapted`: fresh evidence required a different route and the intended outcome still holds.
-- `not_applicable`: the plan assumption conflicts with or is already satisfied by the worktree, while every affected request criterion remains covered.
-- `blocked`: necessary work remains and cannot currently be completed.
-
-Do not reject a correct implementation only because an inaccurate plan step changed. Derive each disposition from PROMPT, PLAN, and fresh workspace evidence.
+Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion.
 
 Choose the outcome from fresh evidence, not the developer's status:
 
-- `completed`: every unchanged request criterion is met, every required plan
-  item has been individually proven, and no necessary plan work remains.
+- `completed`: every unchanged request criterion is met and no necessary plan work remains.
 - `request_changes`: localized unmet work is actionable in this development cycle. The body describes what fell short, what evidence supports it, and what the next agent should do.
 - `failed`: a criterion is impossible, contradictory, or not evaluable, or necessary work has no safe actionable route.
 

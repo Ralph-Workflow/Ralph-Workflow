@@ -88,7 +88,7 @@ _MAX_PYTEST_WORKERS = 16
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host completes the suite faster with eight shards;
 # additional shard startup and filesystem contention consume smoke headroom.
-_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 12
+_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 8-shard CI profile the shard-saturated

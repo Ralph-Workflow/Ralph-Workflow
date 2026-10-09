@@ -32,43 +32,10 @@ The developer follows the plan unless fresh workspace evidence shows that a
 step's route or premise is inaccurate. It must not rewrite the request,
 acceptance criteria, or intended outcome to fit the implementation.
 
-Every required plan-step or work-unit ID receives exactly one disposition in
-the development result:
-
-- `completed`: the item was necessary and followed substantially as written.
-- `adapted`: the item was necessary, but evidence required a different route
-  that achieves the same intended outcome.
-- `not_applicable`: the item is unnecessary because its premise is false, its
-  outcome is already satisfied, or another necessary item demonstrably
-  supersedes it without weakening a request criterion.
-- `blocked`: the item remains necessary but cannot be completed with the
-  available authority, evidence, or environment.
-
-A completed result may contain `completed`, `adapted`, and `not_applicable`
-items. It may not contain `blocked`; blocked necessary work requires a partial
-result. Every plan ID remains present even when it is not applicable.
-
-## Evidence contract
-
-Each plan proof carries a `Disposition:` field. A `completed` proof cites the
-changed or observed location and the focused verification. An `adapted` proof
-also states the inaccurate plan assumption and proves that the alternate route
-preserves the intended outcome.
-
-A `not_applicable` proof must identify:
-
-1. the plan assumption that does not hold;
-2. fresh evidence that contradicts the premise or proves the outcome already
-   exists;
-3. why omitting the step leaves every request criterion covered; and
-4. a location or command from which a verifier can re-derive the evidence.
-
-Difficulty, elapsed time, a passing unrelated gate, or an unsupported claim
-that another step covers the work never justifies `not_applicable`. The
-artifact validator enforces the closed disposition vocabulary and rejects a
-completed result containing `blocked`. Semantic sufficiency remains the
-development analyzer's job because a structural validator cannot decide
-whether evidence actually supports a repository claim.
+The disposition-based reconciliation rules and evidence contracts originally defined here
+have been removed. The current contract is free-form: see
+`ralph/mcp/artifacts/format_docs/development_result.md` and
+`ralph/mcp/artifacts/format_docs/development_analysis_decision.md`.
 
 ## Execution behavior
 
@@ -94,19 +61,13 @@ not proof.
 
 ## Analyzer behavior
 
-Development analysis answers two separate questions:
+Development analysis answers whether the implementation satisfies every unchanged request
+and plan acceptance criterion using fresh evidence.
 
-1. Does the implementation satisfy every unchanged request and plan acceptance
-   criterion using fresh evidence?
-2. Is every `adapted` or `not_applicable` plan disposition supported by
-   re-derivable evidence without reducing request coverage?
-
-The analyzer independently derives plan dispositions from the request, plan,
-and current workspace. It must not use the implementer's disposition, summary,
-rationale, proof, or completion claim as evidence. A literal departure from an
-inaccurate implementation route is not itself a defect. An unjustified
-`not_applicable`, an alternate route that misses the original outcome, or a
-completed result containing uncovered necessary work requires changes.
+The analyzer independently evaluates the request, plan, and current workspace.
+It must not use the implementer's summary, rationale, proof, or completion claim
+as evidence. A literal departure from an inaccurate implementation route is not
+itself a defect. Uncovered necessary work requires changes.
 
 The analyzer selects its cycle outcome from fresh evidence rather than the
 developer's label. It returns `completed` when the request criteria are met and
@@ -141,28 +102,17 @@ meaning consistently.
 
 ## Compatibility and scope
 
-The markdown section name and stable plan IDs remain unchanged. The new
-`Disposition:` field is required for completed development results, making old
-in-flight completed drafts fail with a repairable diagnostic rather than being
-silently misread. Partial results remain free-form so a constrained agent can
-always report honest progress.
-
-This change updates the development-result model, markdown mapping and format
-documentation, developer and worker prompt variants, development analyzer, and
-their behavioral tests. It does not let developers edit plan artifacts, change
-request criteria, weaken proof coverage, or bypass final verification.
+The original disposition field and required proof structure have been removed.
+See `ralph/mcp/artifacts/format_docs/development_result.md` for the current contract.
 
 ## Verification design
 
 Black-box tests cover:
 
-- all four dispositions parse through the public markdown artifact seam;
-- unknown or missing dispositions fail completed results;
-- `blocked` fails a completed result but remains available in a partial handoff;
-- proof coverage still requires every canonical plan or work-unit ID;
-- initial, continuation, worker, and fallback prompts share the reconciliation
+- valid status with free-form markdown body parses through the public artifact seam;
+- initial, continuation, worker, and fallback prompts share the execution
   loop and do not duplicate divergent rules;
-- the analyzer independently audits adapted and not-applicable items;
+- the analyzer independently audits the implementation against request criteria;
 - terminal analyzer outcomes close and commit the current cycle, then route to
   fresh planning whenever global cycle budget remains;
 - exhausted global budget and explicit cancellation are the only run-ending
@@ -239,7 +189,7 @@ research basis and a bounded interpretation:
 | Keep shared guidance short and adjacent to the active plan | Lost in the Middle | Long-context retrieval is position-sensitive, so critical instructions should be concise and salient. |
 | Use independent work units concurrently only when coordination is worthwhile | SWE-bench; SWE-agent; long-software-task measurements | Multi-file tasks benefit from explicit interfaces and verifiable decomposition; mandatory delegation for compact work is not supported. |
 | Require focused tool evidence and a final repository gate | CRITIC; Cannot Self-Correct Yet | External feedback is safer than relying on intrinsic self-correction alone. |
-| Have analysis independently re-derive criteria and dispositions | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
+| Have analysis independently re-derive criteria | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
 | Approve partial/failed handoffs when fresh evidence shows no necessary work remains | ReAct; CRITIC | Outcome should follow observed task state, not the producer's label. |
 | Retry only actionable localized gaps inside one cycle; close the cycle and replan impossible or non-evaluable outcomes | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported, while a fresh plan may expose a different route. |
 

@@ -165,11 +165,13 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
 
     assert "plan step is an implementation route" in prompt
     assert "not a new product requirement" in prompt
-    assert "Independently classify" in prompt
-    assert "adapted" in prompt
-    assert "not applicable" in prompt
-    assert "Do not reject a correct implementation only because" in prompt
-    assert "required plan reference" in prompt
+    # Free-form contract: the prompt no longer hard-codes per-step
+    # classifications (``adapted`` / ``not_applicable`` / ``blocked``) as
+    # required disposition vocabulary. The whole-change review and the
+    # parallel-unit fix-plan shape still survive.
+    assert "Independently classify" not in prompt
+    assert "Do not reject a correct implementation only because" not in prompt
+    assert "validator only checks the frontmatter" in prompt
     assert "Choose the outcome from fresh evidence" in prompt
     assert "localized unmet work is actionable" in prompt
     assert "`failed` records stronger or not-evaluable evidence" in prompt

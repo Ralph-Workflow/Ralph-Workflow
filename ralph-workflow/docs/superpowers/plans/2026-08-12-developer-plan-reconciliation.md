@@ -13,27 +13,14 @@
 > the current contract.
 
 **Outcome (historical):** Development agents execute plans of different sizes, reconcile
-inaccurate plan items without weakening the request, and submit a validated
-per-item disposition that development analysis audits independently.
+inaccurate plan items without weakening the request, and submit an evidence-backed
+result that development analysis audits independently.
 
-### [S-1] Characterize the disposition artifact contract
+### [S-1] Characterize the artifact contract (superseded)
 
-Add black-box markdown and model tests for the closed `completed`, `adapted`,
-`not_applicable`, and `blocked` vocabulary. Require a disposition on every plan
-proof in a completed result and reject `blocked` completion claims while
-keeping partial results free-form.
-
-Verify: run the focused development-result artifact tests and observe the new
-cases fail before production changes, then pass afterward.
-
-### [S-2] Preserve canonical proof coverage with dispositions
-
-Update proof parsing and validation without changing stable plan/work-unit ID
-coverage. Ensure every canonical ID still appears exactly once and disposition
-metadata cannot bypass missing, duplicate, or unknown-ID failures.
-
-Verify: run the focused execution proof tests, including linear, work-unit,
-worker, and fan-in cases.
+The disposition and canonical-ID coverage rules originally implemented in S-1 and S-2 have been
+removed. See `ralph/mcp/artifacts/format_docs/development_result.md` and
+`ralph/mcp/artifacts/format_docs/development_analysis_decision.md` for the current free-form contract.
 
 ### [S-3] Give every developer prompt one progress and reconciliation loop
 

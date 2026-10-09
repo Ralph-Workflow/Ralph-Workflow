@@ -211,7 +211,7 @@ immediately editable.
 | Artifact type | Submitted by | Description |
 |---------------|-------------|-------------|
 | `plan` | planning agent | Structured implementation plan with steps, summary, and optional work units |
-| `development_result` | developer agent | Proof-bearing implementation result with summary, changed files, proof entries, and partial-result continuation fields |
+| `development_result` | developer agent | Free-form implementation result; the validator mechanically checks only the frontmatter `status` enum and accepts any markdown body |
 | `issues` | reviewer agent | List of issues found during review, each with severity and fix guidance |
 | `fix_result` | fix agent | Summary of fixes applied and residual issues |
 | `commit_message` | commit agent | Conventional commit message for the changes |

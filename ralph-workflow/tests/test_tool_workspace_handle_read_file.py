@@ -76,13 +76,13 @@ class TestHandleReadFile:
         assert snapshot.content is None
 
     def test_missing_capability_raises(self) -> None:
-        ws = MagicMock()
+        ws = MemoryWorkspace()
 
         with pytest.raises(CapabilityDeniedError):
             handle_read_file(MockSession(), ws, {"path": "file.txt"})
 
     def test_missing_path_raises(self) -> None:
-        ws = MagicMock()
+        ws = MemoryWorkspace()
 
         with pytest.raises(InvalidParamsError):
             handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {})
