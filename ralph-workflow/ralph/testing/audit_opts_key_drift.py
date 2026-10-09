@@ -353,7 +353,11 @@ def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> d
         for path in sorted(base.rglob("*.py")):
             source_bytes = path.read_bytes()
             name = _module_name(path, package_root)
-            if b"def " not in source_bytes and b"=" not in source_bytes and b"import" not in source_bytes:
+            if (
+                b"def " not in source_bytes
+                and b"=" not in source_bytes
+                and b"import" not in source_bytes
+            ):
                 index[name] = _Module(name=name)
                 continue
             try:
