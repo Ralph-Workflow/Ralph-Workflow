@@ -61,14 +61,12 @@ Only a concrete external blocker justifies a continuation gap;
 the missing plan step alone does not justify deferring required work.
 {% endif %}
 
-{% if not IS_WORKER %}
 Before submitting, run the cheap independent pre-submit review against the
 plan and proof contract — an open gap must close before the artifact is
 submitted or completion is declared. Run the review as an independent
 read-only sub-agent with fresh context on every iteration. Until that
 review closes the remaining gap, you MUST NOT submit the artifact or
 declare completion.
-{% endif %}
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% set DOCS_LOOKUP_PHASE = 'development' %}

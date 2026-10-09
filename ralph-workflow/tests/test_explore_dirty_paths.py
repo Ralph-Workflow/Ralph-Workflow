@@ -28,6 +28,8 @@ from ralph.mcp.tools.workspace._write_handlers import (
     handle_write_file,
 )
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _FakeSession:
     """Minimal session stub exposing explore_index."""

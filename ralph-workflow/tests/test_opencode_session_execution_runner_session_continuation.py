@@ -26,11 +26,11 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
-
-    import pytest
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._session_fake_mcp_bridge import _FakeMcpBridge
 from tests._session_registry_factory import _RegistryFactory
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5

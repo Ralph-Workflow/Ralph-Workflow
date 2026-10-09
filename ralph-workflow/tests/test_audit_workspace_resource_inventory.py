@@ -5,7 +5,8 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.testing import audit_filesystem_polling_invocation as polling_audit
 from ralph.testing import audit_workspace_resource_inventory as audit
@@ -13,8 +14,7 @@ from ralph.testing.audit_workspace_resource_inventory import (
     WorkspaceResourceInventoryViolation,
 )
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _no_op_discovery(_package_root: Path) -> list[tuple[str, str]]:

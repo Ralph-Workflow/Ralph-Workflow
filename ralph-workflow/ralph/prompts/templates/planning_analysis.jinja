@@ -15,14 +15,19 @@ Verify that the submitted plan is truthful and executable.
 
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
+{% include 'shared/_development_execution_envelope.j2' %}
+
 Read the submitted plan, the request, and cited repository areas. Check claims
 against fresh evidence. Do not grade formatting, headings, field presence, or
-unit syntax; do not grade document shape, IDs, caps, directory disjointness, or
-the planner's account as proof.
+unit syntax; do not grade document shape or IDs. Worker capacity, ownership
+conflicts, dependency waves, and execution fit are substantive and must be
+graded. The planner's account is not proof.
 
 ## Review contract
 
-Return criterion-level verdicts, not a holistic quality score. Review coverage, truthfulness, actionability, parallel decomposition, and execution conflicts as these five substantive criteria:
+Return criterion-level verdicts, not a holistic quality score. Review coverage,
+truthfulness, actionability, parallel decomposition, execution fit, and execution
+conflicts as these six substantive criteria:
 
 1. **coverage** — The plan addresses every part of the request.
 2. **truthfulness** — Paths, commands, and current-behavior claims match the repository.
@@ -35,7 +40,31 @@ Return criterion-level verdicts, not a holistic quality score. Review coverage, 
    prerequisites. Each proposed unit names the files or directories it owns
    (literal `Paths:` / `Directories:` fields or unambiguous prose), its own
    focused check, and is sized for one agent.
-5. **execution conflicts** — Concurrent units do not write the same file, and
+   The plan must also contain an executor-visible dispatch decision: its initial
+   ready set names at least two independent units and its initial dispatch wave
+   respects the worker cap, or `Why not parallel:` cites concrete repository
+   evidence or a configured one-worker cap for why serial dispatch is required.
+   Reject a plan that leaves the initial ready set or dispatch wave implicit.
+5. **execution fit** — Evaluate the complete plan against the developer
+   execution envelope above. Unit scopes must be self-contained enough for one
+   worker context packet, worker returns must be bounded for coordinator fan-in,
+   the initial and queued waves must respect the worker cap, and the estimated
+   critical path must include cap-induced queues and leave an explicit reserve
+   for integration, full verification, and artifact submission within one
+   development-phase budget. Total plan size is not a defect when enough of it
+   runs in parallel. Do not return `request_changes` merely because a plan is
+   large, complicated, difficult to estimate, or because you lack confidence
+   that it will finish. Request changes only when evidence identifies a concrete
+   serial bottleneck, dependency wave, ownership conflict, or cap-induced queue
+   that pushes the critical path beyond the budget; name the split or dependency
+   reduction that removes that bottleneck. Never approve on the unsupported hope
+   that the developer will simply work faster.
+   Approval means the plan is parallelized enough that the developer can follow
+   its dispatch waves, use subagents, and complete within the configured time;
+   an oversized total workload is acceptable when its bounded critical path fits.
+   When no numerical timebox is configured, report time fit as not numerically
+   evaluable and still judge context packets, wave capacity, and fan-in reserve.
+6. **execution conflicts** — Concurrent units do not write the same file, and
    no consumer precedes its shared-contract producer.
 
 Delegate independent checks to read-only subagents. Treat their output as leads,

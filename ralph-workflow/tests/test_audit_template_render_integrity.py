@@ -116,13 +116,13 @@ def test_condition_discovery_combines_ancestor_and_nested_branch_inputs() -> Non
         {
             "sample": (
                 "{% if PRIOR_RESULT_STATUS %}"
-                "{% if IS_WORKER %}worker{% else %}parent{% endif %}"
+                "{% if NESTED_FLAG %}enabled{% else %}disabled{% endif %}"
                 "{% endif %}"
             )
         }
     )
 
-    assert frozenset({"IS_WORKER", "PRIOR_RESULT_STATUS"}) in groups
+    assert frozenset({"NESTED_FLAG", "PRIOR_RESULT_STATUS"}) in groups
 
 
 def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities() -> None:
@@ -131,7 +131,6 @@ def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities
             "HAS_MCP_WRITE",
             "ISSUES",
             "ISSUES_PATH",
-            "IS_WORKER",
             "PRIOR_RESULT_STATUS",
             "SKILLS_INLINE_CONTENT",
             "shipped_skills_mode",
@@ -144,7 +143,6 @@ def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities
     assert by_name["baseline"] == {
         "ISSUES": "",
         "ISSUES_PATH": "",
-        "IS_WORKER": "",
         "PRIOR_RESULT_STATUS": "",
         "SKILLS_INLINE_CONTENT": "",
         "shipped_skills_mode": "",
@@ -154,9 +152,6 @@ def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities
     assert by_name["shipped_skills_mode=planning"]["shipped_skills_mode"] == "planning"
     assert by_name["shipped_skills_mode=development"]["shipped_skills_mode"] == "development"
     assert by_name["show_plan_edit_guidance=on"]["show_plan_edit_guidance"] == "true"
-    worker_prior = by_name["IS_WORKER=on+PRIOR_RESULT_STATUS=on"]
-    assert worker_prior["IS_WORKER"] == "true"
-    assert worker_prior["PRIOR_RESULT_STATUS"] == "partial"
     assert all(
         not (overrides["ISSUES"] and overrides["ISSUES_PATH"]) for overrides in by_name.values()
     )
@@ -165,17 +160,16 @@ def test_branch_scenarios_cover_nested_combinations_without_forging_capabilities
 def test_branch_scenarios_cross_nested_paths_with_independent_call_gates() -> None:
     scenarios = dict(
         _branch_scenarios(
-            {"IS_WORKER", "LAST_RETRY_ERROR", "PRIOR_RESULT_STATUS"},
+            {"LAST_RETRY_ERROR", "PRIOR_RESULT_STATUS"},
             condition_groups=(
-                frozenset({"IS_WORKER", "PRIOR_RESULT_STATUS"}),
+                frozenset({"PRIOR_RESULT_STATUS"}),
                 frozenset({"LAST_RETRY_ERROR"}),
             ),
         )
     )
 
-    combined = scenarios["IS_WORKER=on+LAST_RETRY_ERROR=on+PRIOR_RESULT_STATUS=on"]
+    combined = scenarios["LAST_RETRY_ERROR=on+PRIOR_RESULT_STATUS=on"]
     assert combined == {
-        "IS_WORKER": "true",
         "LAST_RETRY_ERROR": "Previous submission failed validation.",
         "PRIOR_RESULT_STATUS": "partial",
     }

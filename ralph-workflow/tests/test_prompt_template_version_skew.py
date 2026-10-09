@@ -55,7 +55,6 @@ BASE_VARIABLES = {
     "unit_id": "",
     "description": "",
     "allowed_directories": "",
-    "IS_WORKER": "",
     "IS_CONTINUATION": "",
     "WORKER_NAMESPACE": "",
     "WORKER_FALLBACK_PATH": "",

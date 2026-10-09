@@ -207,28 +207,20 @@ def test_parallel_workers_would_collide_on_shared_prompt_and_checkpoint_files_wi
         workspace_scope=workspace_scope,
     )
 
-    assert sorted(prompt_writes) == sorted(
-        [
-            str(tmp_path / ".agent" / "workers" / "unit-a" / "tmp" / "development_prompt.md"),
-            str(tmp_path / ".agent" / "workers" / "unit-b" / "tmp" / "development_prompt.md"),
-        ]
-    )
+    assert prompt_writes == []
     worker_checkpoint_a = tmp_path / ".agent" / "workers" / "unit-a" / "tmp" / "checkpoint.json"
     worker_checkpoint_b = tmp_path / ".agent" / "workers" / "unit-b" / "tmp" / "checkpoint.json"
     shared_checkpoint = tmp_path / ".agent" / "checkpoint.json"
     prompt_a = tmp_path / ".agent" / "workers" / "unit-a" / "tmp" / "development_prompt.md"
     prompt_b = tmp_path / ".agent" / "workers" / "unit-b" / "tmp" / "development_prompt.md"
-    assert checkpoint_writes.count(worker_checkpoint_a) == 1
-    assert checkpoint_writes.count(worker_checkpoint_b) == 1
+    assert checkpoint_writes.count(worker_checkpoint_a) == 0
+    assert checkpoint_writes.count(worker_checkpoint_b) == 0
     assert checkpoint_writes.count(CHECKPOINT_PATH) <= 1
     assert not shared_checkpoint.exists()
-    assert worker_checkpoint_a.exists()
-    assert worker_checkpoint_b.exists()
-    assert prompt_a.read_text(encoding="utf-8") != prompt_b.read_text(encoding="utf-8")
-    assert "Work unit unit-a" in prompt_a.read_text(encoding="utf-8")
-    assert '"src/unit-a"' in prompt_a.read_text(encoding="utf-8")
-    assert "Work unit unit-b" in prompt_b.read_text(encoding="utf-8")
-    assert '"src/unit-b"' in prompt_b.read_text(encoding="utf-8")
+    assert not worker_checkpoint_a.exists()
+    assert not worker_checkpoint_b.exists()
+    assert not prompt_a.exists()
+    assert not prompt_b.exists()
 
 
 def test_parallel_worker_mode_does_not_call_shared_pipeline_preflight(

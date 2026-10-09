@@ -234,9 +234,6 @@ def _extract_parallel_section(rendered: str) -> str:
         ("developer_iteration.jinja", False),
         ("developer_iteration_continuation.jinja", False),
         ("developer_iteration_fallback.jinja", False),
-        ("worker_developer.jinja", True),
-        ("developer_iteration_continuation.jinja", True),
-        ("developer_iteration_fallback.jinja", True),
     ),
 )
 def test_rendered_parallel_execution_contracts_match_role(

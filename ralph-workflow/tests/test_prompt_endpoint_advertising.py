@@ -69,7 +69,6 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
         "ANALYSIS_FEEDBACK": "",
         "ANALYSIS_FEEDBACK_PATH": ".agent/artifacts/analysis_feedback.md",
         "LAST_RETRY_ERROR": "",
-        "IS_WORKER": "",
         "IS_CONTINUATION": "",
         "PRIOR_RESULT_STATUS": "",
         "WORKER_NAMESPACE": "",

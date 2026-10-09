@@ -16,6 +16,25 @@ Parallel work is recommended by default. When independent work exists, use
 exact `Paths:`, real prerequisites, shared contracts before their consumers,
 and integration after fan-in. A wholly linear plan explains the coupling.
 
+Finish with the visually explicit heading
+`## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST`. Prefix independently runnable
+unit titles with `PARALLEL:` and dependency-gated work with `AFTER:`. Under
+`Initial wave:`, name every unit that can start immediately, then name the later waves released by each
+prerequisite. If fewer than two units can start, add `Why not parallel:` with
+the concrete shared file or prerequisite output that forces serialization.
+This makes the first dispatch an explicit executor action instead of an
+inference from plan order.
+
+The planning prompt supplies the configured development-phase timebox and worker
+cap. Retries and loopbacks consume that same timebox rather than receiving a
+fresh budget. Use them to size self-contained worker context packets and estimate the critical
+path, including cap-induced queues. Leave an explicit coordinator reserve for
+fan-in, integration repair, full verification, and artifact submission. If the
+total plan is large but parallel decomposition keeps that bounded critical path
+inside the budget, the plan remains valid. If the runtime does not expose a
+numerical token limit, do not invent one; bound
+context through narrow ownership and compact worker returns instead.
+
 At execution, ownership combines `Paths:` and `Directories:`; if neither is
 declared, the unit's steps' `Files:` supply the scope. Conflicting scopes run
 sequentially, and units beyond worker capacity run in waves. Protected paths

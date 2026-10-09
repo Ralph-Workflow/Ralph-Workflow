@@ -24,10 +24,6 @@ _CONTINUATION_TEMPLATE = _TEMPLATES_DIR / "developer_iteration_continuation.jinj
 # template via this partial; the heading itself stays in the template.
 _PARALLEL_EXECUTION_PARTIAL = _TEMPLATES_DIR / "shared" / "_parallel_execution.jinja"
 
-# Pinned mandatory anchors (exact literals, no normalization). Every
-# coordinator developer template + the parallel-execution partial must
-# carry these; the worker templates and the IS_WORKER branches must
-# carry none of the coordinator-only ones.
 _REQUIRED_ANCHORS: tuple[str, ...] = (
     "Parallel execution of independent ready units is required by default",
     "dispatch every ready unit concurrently",
@@ -175,4 +171,4 @@ def test_continuation_template_states_continuation_keeps_parallelizing() -> None
     assert "continuation" in continuation_source
     assert "paralleliz" in continuation_source
     # The continuation preamble must be inside the non-worker branch.
-    assert "{% if not IS_WORKER %}" in continuation_source
+    assert "{% include 'shared/_subagents.j2' %}" in continuation_source

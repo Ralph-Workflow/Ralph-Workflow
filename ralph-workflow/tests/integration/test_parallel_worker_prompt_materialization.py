@@ -1,14 +1,8 @@
-"""Parallel worker bootstrap must read shared workspace inputs.
-
-The worker's *agent* is write-restricted to its allowed directories plus its
-namespace, but the worker bootstrap itself is trusted orchestrator code: it
-must read shared inputs at the repo root (PROMPT.md, plan artifacts) to
-materialize the worker prompt, exactly like the serial pipeline does.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.display.context import make_display_context
 from ralph.pipeline.events import PipelineEvent
@@ -19,8 +13,6 @@ from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
 
 def _write_plan_artifact(root: Path) -> None:
     artifact_dir = root / ".agent" / "artifacts"
@@ -28,7 +20,7 @@ def _write_plan_artifact(root: Path) -> None:
     (artifact_dir / "plan.md").write_text(MINIMAL_PLAN_MARKDOWN, encoding="utf-8")
 
 
-def test_worker_materializes_prompt_from_shared_workspace_inputs(
+def test_deprecated_worker_prompt_materialization_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -75,14 +67,11 @@ def test_worker_materializes_prompt_from_shared_workspace_inputs(
         lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
-    exit_code = worker_runtime.run_parallel_worker_from_manifest(
-        manifest_path=manifest_path,
-        display_context=make_display_context(),
-    )
+    with pytest.raises(ValueError, match="worker and work-unit execution is deprecated"):
+        worker_runtime.run_parallel_worker_from_manifest(
+            manifest_path=manifest_path,
+            display_context=make_display_context(),
+        )
 
-    assert exit_code == 0
-    assert executed == [str(prompt_file)]
-    rendered = prompt_file.read_text(encoding="utf-8")
-    assert "unit-a" in rendered
-    assert "Module A" in rendered
-    assert "src/a" in rendered
+    assert executed == []
+    assert not prompt_file.exists()

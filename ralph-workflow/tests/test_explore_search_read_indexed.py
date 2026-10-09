@@ -18,6 +18,8 @@ from ralph.mcp.tools.workspace._read_handlers import (
     handle_search_files,
 )
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _FakeSession:
     def __init__(self, explore_index=None):

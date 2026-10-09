@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import typing
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -198,12 +198,9 @@ def materialize_prompt_for_phase(
                 ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
     opts = options or PromptPhaseOptions()
-    if opts.work_unit is not None and opts.worker_namespace is None:
-        opts = replace(
-            opts,
-            worker_namespace=(
-                context.workspace_root / ".agent" / "workers" / opts.work_unit.unit_id
-            ),
+    if opts.work_unit is not None or opts.worker_namespace is not None:
+        raise ValueError(
+            "worker and work-unit execution is deprecated; use the developer execution path"
         )
     prompt = _render_prompt_for_phase(context, opts)
     path = dump_rendered_prompt(
@@ -437,6 +434,16 @@ def _append_retry_footer(rendered: str, last_retry_error: str) -> str:
 append_retry_footer = _append_retry_footer
 
 
+def _development_execution_envelope(pipeline_policy: PipelinePolicy) -> tuple[str, str]:
+    """Return the development timebox minutes and concurrent-worker cap."""
+    timebox = pipeline_policy.development_timebox
+    development = pipeline_policy.phases.get("development")
+    parallelization = development.parallelization if development is not None else None
+    budget_minutes = f"{timebox.duration_seconds / 60:g}" if timebox is not None else "unknown"
+    worker_cap = str(parallelization.max_parallel_workers) if parallelization is not None else "1"
+    return budget_minutes, worker_cap
+
+
 def _render_planning_prompt(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -469,6 +476,9 @@ def _render_planning_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    development_budget_minutes, development_worker_cap = _development_execution_envelope(
+        context.pipeline_policy
+    )
     rendered = prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -491,6 +501,8 @@ def _render_planning_prompt(
             last_retry_error=last_retry_error,
             skills_inline_content=skills_inline_content,
             has_docs_mcp=has_docs_mcp,
+            development_budget_minutes=development_budget_minutes,
+            development_max_parallel_workers=development_worker_cap,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -536,8 +548,6 @@ def _render_developer_prompt(
         loopback_template_name = _loopback_template_name_for_phase(phase_def)
         if loopback_template_name:
             template_name = loopback_template_name
-    if options.work_unit is not None:
-        template_name = "worker_developer.jinja"
     dev_artifact_history_path = _resolve_and_clear_dev_artifact_history(
         workspace_root=workspace_root,
         phase_def=phase_def,
@@ -686,6 +696,11 @@ def _render_template_based_prompt(
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
+    development_budget_minutes, development_worker_cap = _development_execution_envelope(
+        pipeline_policy
+    )
+    variables["DEVELOPMENT_BUDGET_MINUTES"] = development_budget_minutes
+    variables["DEVELOPMENT_MAX_PARALLEL_WORKERS"] = development_worker_cap
     rendered = render_template(
         template,
         _merged_variables(variables, session_caps),

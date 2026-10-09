@@ -274,10 +274,9 @@ confirmed two subagents actually dispatched and completed in parallel through
 those tools (see
 [Agent Compatibility](agent-compatibility.md#agy) and the git-tracked
 `tests/display/_fixtures/agy_wire_provenance.md`).
-Ralph-managed fan-out is dormant. To opt back into the legacy worker flow,
-override with `dispatch_mode = "ralph_fan_out"` and the pipeline falls back
-to the same-workspace worker model with the coordination tool and per-worker
-artifact namespaces.
+Ralph-managed fan-out is deprecated. `dispatch_mode = "ralph_fan_out"` is
+retained only as a recognized compatibility value; worker prompt
+materialization fails closed instead of starting that legacy execution route.
 
 Use this when you want a planning artifact to split work into multiple development units.
 `max_parallel_workers` bounds simultaneous workers; additional ready units run in
@@ -289,16 +288,15 @@ main session.
 
 ## Parallel execution (agent-driven)
 
-> **Ralph-managed fan-out is dormant in this build.** The operator-facing
-> parallel configuration above remains accurate for downstream callers
-> that invoke their own parallel agents; the Ralph-managed fan-out
-> feature is not exercised by `make verify`.
+> **Ralph-managed fan-out is deprecated in this build.** The compatibility
+> policy value remains parseable, but worker prompt materialization rejects it;
+> it is not an alternate execution route.
 
 ### What changed
 
 Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, etc.). When AGY is selected for two or more work units, routing follows the same supported agent_subagents path: `agy agents` reported no sub-agents on the measured stock v1.1.8 install, but that is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). AGY parallel runs fail observably only when the measured subagent dispatch or result evidence is missing or uncorrelated, never merely because `agy agents` lists nothing. Subagents and parallel agents are always available; the planning prompt never falls back to a sequential capability branch.
 
-The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and reports what was done in the development result. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
+The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and reports what was done in the development result. Ralph-managed fan-out is deprecated in this build: the compatibility policy value remains parseable, but worker prompt materialization rejects it.
 
 ### How plans express parallelization intent
 
@@ -319,13 +317,20 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 4. Dispatches a sub-agent per ready unit, scoped to that unit's exact ownership, and collects the unit's verification evidence.
 5. Summarizes the completed work and verification evidence in the `development_result` artifact.
 
-For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). The bundled dispatch path is `agent_subagents`; Ralph-managed fan-out is dormant and must be re-armed explicitly per phase. There is no linear capability fallback in the planning prompt: every configured agent is treated as supporting sub-agents and parallel agents.
+For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). The bundled and supported dispatch path is `agent_subagents`; Ralph-managed fan-out is deprecated and cannot be re-armed through prompt materialization. There is no linear capability fallback in the planning prompt: every configured agent is treated as supporting sub-agents and parallel agents.
 
 The planning prompts recommend work units for independent responsibilities, shared contracts before consumers, and integration after fan-in. This is execution guidance, not a required plan format. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance. The shared `shared/_parallel_execution.jinja` partial codifies the same wave / ownership / sanitization rules for the executing agent.
 
-### Re-arming Ralph-managed fan-out (dormant)
+### Deprecated worker compatibility
 
-Ralph-managed fan-out is retained in policy for future use. To opt back into the same-workspace worker model, set the development phase's `parallelization.dispatch_mode` to `ralph_fan_out` in `pipeline.toml`:
+Ralph-managed workers, worker-specific templates, worker/unit prompt branches,
+and the `ralph_fan_out` dispatch mode are deprecated compatibility surfaces.
+New workflows must use the single developer-template execution path with
+agent-native subagents. `work_units` and `parallel_plan` remain readable for
+existing plans, but must not select a separate worker prompt or execution
+contract.
+
+Existing configuration may still contain the recognized compatibility value:
 
 ```toml
 [phases.development.parallelization]
@@ -335,9 +340,10 @@ max_parallel_workers = 4
 max_work_units = 50
 ```
 
-Under `ralph_fan_out` the pipeline falls back to the legacy worker flow. The same-workspace model means there are no separate per-worker checkouts and no post-development merge step: workers share the checkout and are isolated from each other with path restrictions (`Paths:` / `Directories:` / `Files:` ownership, sanitized for `.agent`, `.git`, and `.worktrees`) and per-worker artifact namespaces. Per-worker state is scoped to `.agent/workers/<unit_id>/` (artifacts, logs, tmp, handoffs). Per-worker prompt payloads are written under `.agent/workers/<unit_id>/tmp/prompt_payloads/` so concurrent workers cannot overwrite each other's payload files. Workers coordinate through the `mcp__ralph__coordinate` tool exposed by the MCP server.
-
-The bundled default does not enable this path; the override is explicit and per-phase. See the `[phases.<name>.parallelization]` reference above for the full configuration.
+This value is rejected when it reaches worker prompt materialization. It is
+documented so operators can identify and migrate stale configuration, not as a
+usable execution route. Replace it with `dispatch_mode = "agent_subagents"` so
+the developer agent dispatches the plan through its native subagent tools.
 
 ### Policy v2 migration note (historical)
 

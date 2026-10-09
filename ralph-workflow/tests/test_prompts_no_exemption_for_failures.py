@@ -156,9 +156,6 @@ _COORDINATOR_REVIEW_MANDATE = "independent read-only sub-agent"
         ("developer_iteration.jinja", False),
         ("developer_iteration_continuation.jinja", False),
         ("developer_iteration_fallback.jinja", False),
-        ("worker_developer.jinja", True),
-        ("developer_iteration_continuation.jinja", True),
-        ("developer_iteration_fallback.jinja", True),
     ),
 )
 def test_rendered_development_surfaces_require_size_based_execution(
@@ -215,9 +212,6 @@ def test_rendered_development_surfaces_require_size_based_execution(
         ("developer_iteration.jinja", False),
         ("developer_iteration_continuation.jinja", False),
         ("developer_iteration_fallback.jinja", False),
-        ("worker_developer.jinja", True),
-        ("developer_iteration_continuation.jinja", True),
-        ("developer_iteration_fallback.jinja", True),
     ),
 )
 def test_rendered_development_surfaces_replace_partial_progress_escape_with_recovery_loop(

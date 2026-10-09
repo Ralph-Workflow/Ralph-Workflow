@@ -1,8 +1,8 @@
 {% include 'shared/_validation_failure.j2' -%}
-{% if IS_WORKER %}Complete the entire assigned work unit.{% else %}Complete the entire assigned plan.{% endif %}
+Complete the entire assigned plan.
 Use small, proven increments as the method, not as a stopping point.
 
-IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
+IMPLEMENTATION MODE
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -12,11 +12,7 @@ IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 {% include 'shared/_development_skills.j2' %}
-{% if IS_WORKER %}
-{% include 'shared/_worker_verification.j2' %}
-{% else %}
 {% include 'shared/_verification_commitments.j2' %}
-{% endif %}
 {% include 'shared/_run_budget.j2' %}
 
 {{ render_payload_section("ORIGINAL REQUEST", PRODUCT_CRITERIA, PRODUCT_CRITERIA_PATH) }}
@@ -41,7 +37,7 @@ Developer follow-plan: when the analysis above or the authoritative plan identif
 FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how it can be resolved, and perform the resolution when actionable. Never skip it or treat the `failed` decision label as a pipeline failure.
 {% endif %}
 {% if PRIOR_RESULT_STATUS %}
-PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
+PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 The body below is the original partial result markdown, carried whole
@@ -58,38 +54,6 @@ Continuation reference: {{PRIOR_SESSION_ID}}
 {% endif %}
 {% endif %}
 
-{% if IS_WORKER %}
-## WORKER SCOPE
-
-**Unit ID**: {{unit_id}}
-
-### Assignment
-
-{{description}}
-
-### Allowed directories
-
-These are the only paths outside `.agent/workers/{{unit_id}}/` that you may
-modify:
-
-{{allowed_directories}}
-
-### Allowed exact paths
-
-These exact files are also within your scope. Do not widen an exact-file
-assignment to its parent directory:
-
-{{paths|default('(none)')}}
-
-Keep prompt payloads, logs, artifacts, and fallback output under
-`{{WORKER_NAMESPACE}}/`. Do not modify another worker's namespace. Implement
-and verify only `{{unit_id}}`. Do not coordinate or integrate the whole plan.
-
-Your submitted result is persisted at
-`{{WORKER_NAMESPACE}}/artifacts/development_result.md`, with its downstream
-handoff at `{{WORKER_NAMESPACE}}/handoffs/DEVELOPMENT_RESULT.md`.
-{% endif %}
-
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% set DOCS_LOOKUP_PHASE = 'development' %}
 {% include 'shared/_docs_lookup.j2' %}
@@ -104,7 +68,6 @@ Inspect this history when you want to understand what has been tried before
 and what development-analysis feedback they received.
 {% endif %}
 
-{% if not IS_WORKER %}
 {% include 'shared/_subagents.j2' %}
 
 ## PARALLEL EXECUTION (required by default)
@@ -114,7 +77,6 @@ and what development-analysis feedback they received.
 Launch a read-only request-versus-plan coverage check while implementing the
 first ready step. Complete uncovered request criteria and report their
 criterion, changed paths, and reproducible proof in the result body.
-{% endif %}
 
 Use runtime-native orchestration, skill, todo, or web tools only when exposed.
 All file and shell operations use Ralph Workflow's brokered tools.
@@ -122,28 +84,11 @@ Call `{{EXEC_TOOL_NAME}}` through the runtime's tool mechanism for shell
 commands, and call `{{REPORT_PROGRESS_TOOL_NAME}}` there to report status.
 These identifiers are tool calls, not commands to type into a native shell.
 
-{% if IS_WORKER %}
-YOUR TASK
-
-Complete only the assigned unit `{{unit_id}}`. Follow neighboring project
-patterns, keep changes inside the allowed directories, add or update focused
-tests for behavior changes, and run the narrow formatter/linter/type/test
-checks relevant to this unit. Never weaken a quality gate. `status: partial`
-and `status: failed` are last-resort outcomes governed by the canonical
-`shared/_no_exemption_for_failures.j2` rule; difficulty, an exhausted
-iteration budget, or "I cannot finish in this session" do not on their own
-authorize either. When the assigned unit cannot be completed, submit a
-truthful partial result with the concrete blocker and one next step only
-when no safe worker-local developer action could advance it further.
-{% endif %}
-
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
-{% if not IS_WORKER %}
 Before submitting on every iteration, run an independent read-only pre-submit
 review against the request, execution plan, continuation context, and proof
 contract. Submit only after every required gap is closed.
-{% endif %}
 
 ## Development result artifact contract
 
@@ -161,4 +106,4 @@ status: completed
 Wrote what I did, what changed, and how I verified it. The body is
 free-form; the validator only checks the frontmatter ``status``.
 {% endset %}
-{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path=(WORKER_FALLBACK_PATH if IS_WORKER else '.agent/tmp/development_result.md')) }}
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, fallback_path='.agent/tmp/development_result.md') }}

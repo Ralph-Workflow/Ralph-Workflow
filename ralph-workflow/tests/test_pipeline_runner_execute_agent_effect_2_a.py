@@ -37,6 +37,8 @@ from tests._pipeline_deps_factory import make_recording_bridge_factory, make_tes
 from tests._pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
 from tests._pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 

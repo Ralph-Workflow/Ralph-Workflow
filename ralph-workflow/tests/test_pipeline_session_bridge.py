@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
@@ -27,6 +29,8 @@ from ralph.pipeline.session_bridge import (
     scoped_reset_tool_registry_callback,
 )
 from ralph.workspace.memory import MemoryWorkspace
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from pathlib import Path

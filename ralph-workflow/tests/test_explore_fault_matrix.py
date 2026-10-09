@@ -23,7 +23,9 @@ import sqlite3
 import stat
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import ralph.mcp.explore.recovery as recovery_module
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     build_explore_index,
@@ -38,6 +40,9 @@ from ralph.mcp.explore.recovery import (
 from ralph.mcp.explore.serving import CANONICAL_REASON_CODES
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class _FakeSession:
@@ -514,8 +519,11 @@ def test_f16_regex_falls_through_to_live_grep(tmp_path: Path) -> None:
 # --- F17: timeout ----------------------------------------------------------
 
 
-def test_f17_timeout_exceeded_returns_incomplete_bounded(tmp_path: Path) -> None:
+def test_f17_timeout_exceeded_returns_incomplete_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """F17: a reindex past its deadline falls through as timeout_exceeded."""
+    monkeypatch.setattr(recovery_module, "_ensure_drain_thread", lambda: None)
     workspace = _seed_workspace(tmp_path)
     for i in range(80):
         (workspace / f"extra_{i:02d}.py").write_text(f"def extra_{i}():\n    return {i}\n")

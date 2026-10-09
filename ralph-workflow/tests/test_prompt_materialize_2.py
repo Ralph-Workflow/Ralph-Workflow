@@ -92,8 +92,7 @@ def test_prompt_materialize_regression_real_validator_context_enters_planning_ed
     assert workspace.exists(".agent/artifacts/.plan.draft.md")
 
 
-def test_worker_planning_validator_context_enters_only_worker_prompt(tmp_path: Path) -> None:
-    """A rejected worker plan is recoverable from the next worker planning prompt."""
+def test_deprecated_worker_planning_prompt_fails_closed(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Repair the existing worker plan")
     workspace.write(".agent/PLAN.md", "---\ntype: plan\n---\n## Outcome\nRetained prior plan.\n")
@@ -110,33 +109,28 @@ def test_worker_planning_validator_context_enters_only_worker_prompt(tmp_path: P
         session, workspace, {"artifact_type": "plan", "content": invalid}
     )
     assert rejected.is_error is True
-    payload = json.loads(rejected.content[0].text)
-    diagnostic = next(item for item in payload["diagnostics"] if item["severity"] == "error")
     worker_hint = str(worker_namespace / "tmp" / "last_retry_error_planning.txt")
     worker_draft = str(worker_namespace / "artifacts" / ".plan.draft.md")
     assert workspace.exists(worker_hint)
     assert workspace.exists(worker_draft)
 
     policy = load_policy(tmp_path / ".agent")
-    prompt_path = materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="planning",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-            worker_namespace=worker_namespace,
-            previous_phase="planning",
-        ),
-    )
+    with pytest.raises(ValueError, match="worker and work-unit execution is deprecated"):
+        materialize_prompt_for_phase(
+            PromptPhaseContext(
+                phase="planning",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+                worker_namespace=worker_namespace,
+                previous_phase="planning",
+            ),
+        )
 
-    rendered = workspace.read(prompt_path)
-    assert diagnostic["rule_id"] in rendered
-    assert f"line {diagnostic['line']}" in rendered
-    assert "ralph_edit_md_artifact" in rendered
     assert workspace.exists(worker_hint)
     assert workspace.exists(worker_draft)
     assert workspace.read(coordinator_hint) == "COORDINATOR RETRY CONTEXT"
@@ -681,6 +675,25 @@ def test_materialize_planning_analysis_renders_plan_payload(
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
+    assert policy.pipeline.development_timebox is not None
+    development = policy.pipeline.phases["development"]
+    assert development.parallelization is not None
+    phases = dict(policy.pipeline.phases)
+    phases["development"] = development.model_copy(
+        update={
+            "parallelization": development.parallelization.model_copy(
+                update={"max_parallel_workers": 4}
+            )
+        }
+    )
+    pipeline = policy.pipeline.model_copy(
+        update={
+            "development_timebox": policy.pipeline.development_timebox.model_copy(
+                update={"duration_seconds": 1980.0}
+            ),
+            "phases": phases,
+        }
+    )
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Analyze the plan")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\nFresh plan context.\n")
@@ -690,7 +703,7 @@ def test_materialize_planning_analysis_renders_plan_payload(
         PromptPhaseContext(
             phase="planning_analysis",
             workspace=workspace,
-            pipeline_policy=policy.pipeline,
+            pipeline_policy=pipeline,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS),
             workspace_root=tmp_path,
         ),
@@ -702,6 +715,10 @@ def test_materialize_planning_analysis_renders_plan_payload(
     rendered = workspace.read(prompt_path)
     assert ".agent/artifacts/plan.json" not in rendered
     assert "Read the submitted plan" in rendered
+    assert "33 minutes" in rendered
+    assert "4 concurrent workers" in rendered
+    assert "cap-induced queues" in rendered
+    assert "context packet" in rendered
 
 
 def test_materialize_development_falls_back_to_plan_artifact_markdown(

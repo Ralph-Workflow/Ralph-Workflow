@@ -77,10 +77,8 @@ def test_parallel_mode_doc_mentions_worker_artifact_evidence(parallel_mode_doc: 
 
 
 def test_parallel_mode_doc_mentions_worker_namespace(parallel_mode_doc: str) -> None:
-    assert ".agent/workers" in parallel_mode_doc, (
-        "advanced-pipeline-configuration.md must mention "
-        ".agent/workers/ as the per-worker namespace"
-    )
+    assert "Deprecated worker compatibility" in parallel_mode_doc
+    assert "worker-specific templates" in parallel_mode_doc
 
 
 def test_parallel_mode_doc_does_not_mention_git_status_fallback(parallel_mode_doc: str) -> None:

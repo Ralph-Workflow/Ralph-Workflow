@@ -26,7 +26,7 @@ IMPLEMENTATION MODE — CONTINUATION
 
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
-{% if not IS_WORKER %}{% include 'shared/_subagents.j2' %}{% endif %}
+{% include 'shared/_subagents.j2' %}
 
 {% if ANALYSIS_FEEDBACK|default('') or ANALYSIS_FEEDBACK_PATH|default('') %}
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
@@ -61,7 +61,6 @@ Continuation reference: {{ PRIOR_SESSION_ID }}
 
 {% include 'shared/_artifact_history.j2' %}
 
-{% if not IS_WORKER %}
 ## PARALLEL EXECUTION (required by default)
 
 A continuation must keep parallelizing remaining ready work; being a continuation
@@ -70,7 +69,6 @@ units and dependencies, then dispatch every ready unit in one wave before
 starting this session's own implementation.
 
 {% include 'shared/_parallel_execution.j2' %}
-{% endif %}
 
 {% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% set DOCS_LOOKUP_PHASE = 'development' %}
@@ -80,17 +78,10 @@ starting this session's own implementation.
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
 
-{% if not IS_WORKER %}
 Before submitting, check remaining work against the plan, continuation context,
 and proof contract. Run a fresh-context review as an independent read-only sub-agent
 on every iteration. Do not submit with an open gap. Until that review closes the remaining gap,
 you MUST NOT submit the artifact or declare completion.
-{% else %}
-Before submitting a continuation, re-check the unit against its assignment and
-proof contract sequentially in this session. Workers never dispatch sub-agents
-or coordinate other units, so the same review is done by you in-session. Until
-the gap is closed, you MUST NOT submit the artifact or declare completion.
-{% endif %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

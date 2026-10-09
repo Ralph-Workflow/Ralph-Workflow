@@ -97,16 +97,10 @@ def _is_whitelisted(path: Path) -> bool:
 
 
 class TestNamespacedPayloadDocs:
-    def test_parallel_mode_doc_mentions_worker_namespaced_payloads(self) -> None:
-        """advanced-pipeline-configuration.md must document that per-worker prompt
-        payloads are namespaced."""
+    def test_parallel_mode_doc_deprecates_worker_namespaced_payloads(self) -> None:
         doc = _DOC_PATH.read_text(encoding="utf-8")
-        assert ".agent/workers/<unit_id>/tmp/prompt_payloads/" in doc, (
-            "advanced-pipeline-configuration.md must state that per-worker "
-            "prompt payloads are written under "
-            ".agent/workers/<unit_id>/tmp/prompt_payloads/ "
-            "(concurrent-worker collision prevention)"
-        )
+        assert "worker/unit prompt branches" in doc
+        assert "must not select a separate worker prompt" in doc
 
     def test_parallel_mode_doc_no_future_tense_worktree(self) -> None:
         """advanced-pipeline-configuration.md must not describe worktree as a future

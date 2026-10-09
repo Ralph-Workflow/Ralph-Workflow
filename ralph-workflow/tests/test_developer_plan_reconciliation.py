@@ -44,6 +44,10 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     # in one wave" wording. The new anchor is the shared-wording
     # contract proof that the rewrite took.
     assert "dispatch every ready unit concurrently" in prompt
+    assert "### FIRST ACTION: dispatch the initial wave" in prompt
+    assert "Before editing any implementation file" in prompt
+    assert "one batch of parallel tool calls" in " ".join(prompt.split())
+    assert "Do not merely describe the wave" in prompt
     assert "Reassess the remaining dependency graph after each result" in prompt
     assert "`completed`" in prompt
     assert "free-form" in prompt
@@ -112,12 +116,11 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         "IS_CONTINUATION": "1",
     }
 
-    for is_worker in (False, True):
+    for _ in (None,):
         prompt = render_template(
             context.registry.get_template("developer_iteration_fallback"),
             {
                 **base,
-                "IS_WORKER": "1" if is_worker else "",
                 "unit_id": "api",
                 "description": "Implement API",
                 "allowed_directories": "src/api",
@@ -128,23 +131,13 @@ def test_brokered_fallback_preserves_plan_loop_and_delivery_commitments() -> Non
         )
         assert "## Plan fidelity" in prompt
         assert "bounded" in prompt
-        if is_worker:
-            assert "## WORKER-SCOPED VERIFICATION" in prompt
-            assert "Workers never dispatch sub-agents" in prompt
-            assert "full gate before completion" not in prompt
-        else:
-            assert "## Verification" in prompt
-            assert "independent read-only pre-submit" in prompt
-            assert "request-versus-plan coverage check" in prompt
+        assert "## Verification" in prompt
+        assert "independent read-only pre-submit" in prompt
+        assert "request-versus-plan coverage check" in prompt
         assert "MUST use at least one sub-agent as a hard gate" not in prompt
         assert "## Completion is the default outcome" in prompt
         assert "last resort" in prompt
-        expected_scope = (
-            "the assigned unit is proven"
-            if is_worker
-            else "every required plan reference is proven"
-        )
-        assert expected_scope in prompt
+        assert "every required plan reference is proven" in prompt
 
 
 def test_development_analyzer_separates_request_criteria_from_plan_routes() -> None:

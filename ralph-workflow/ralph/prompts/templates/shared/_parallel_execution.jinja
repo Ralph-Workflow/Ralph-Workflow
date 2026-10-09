@@ -1,8 +1,23 @@
 Parallel execution of independent ready units is required by default. Execute only coupled steps in the main session. Before starting any implementation, inventory units and dependencies, then dispatch every ready unit concurrently in one wave to sub-agents. The main session owns shared contracts, integration, cross-unit verification, and artifact submission; workers own only their declared files. Plans without declared units but with independent ready steps (real dependencies, exact authorized ownership) are treated as the same ready group and dispatched too. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
 
+### FIRST ACTION: dispatch the initial wave
+
+Before editing any implementation file, read the plan's parallel dispatch
+manifest and launch every unit in `Initial wave:` in one batch of parallel tool
+calls, up to the worker cap. First reconcile the manifest against the current plan:
+exclude already-completed units, require every dependency to be satisfied, and
+serialize ownership conflicts. Do not merely describe the wave, announce an intent
+to delegate, or begin the first unit locally. If the plan has no manifest,
+derive the ready set once from explicit dependencies and ownership, dispatch it,
+and record the missing manifest as a plan gap. Keep capacity overflow in
+`Queued ready:`; it is ready work, not a dependency. When `Why not parallel:`
+names real coupling or a one-worker cap and fewer than two units can dispatch,
+verify that claim against the plan and configured capacity before proceeding
+sequentially.
+
 Keep dispatch slots full: when a unit finishes, validate its proof, release its dependents, and dispatch them immediately. Recompute readiness after each result; list order alone is not a dependency. Dispatching is always subject to the worker cap, ownership rules, and wave queuing below — required-by-default never overrides those safety rules.
 
-Sequential execution requires an explicit plan reason. It is permitted only when the plan explicitly declares the work sequential or coupled (a wholly linear plan that explains its coupling, or `Depends on:` chains). A plan that looks too ambitious to finish in one session is not a reason to stop, hand back, split the task, or return `partial` — that is the cue to fan out further, not to stop. If the developer executes sequentially while the plan declares two or more independent ready units, the development result must state `which plan text forced it`; "it was simpler" is not a valid reason.
+Sequential execution requires an explicit plan reason. It is permitted only when the plan explicitly declares the work sequential or coupled (a wholly linear plan that explains its coupling, or `Depends on:` chains). A plan that looks too ambitious to finish in one session is not a reason to stop, hand back, split the task, or return `partial`; that is the cue to fan out further, not to stop. If the developer executes sequentially while the plan declares two or more independent ready units, the development result must state which plan text forced it; "it was simpler" is not a valid reason.
 
 Use only the orchestration tools actually exposed by the running runtime. A full dispatch slot means a queued wave plus useful local work on the next safe increment, never idle abandonment. When every dispatch slot is full, queue the remaining ready units and dispatch them in waves as slots free — never drop them and never broaden ownership. When the runtime genuinely cannot dispatch a declared unit (ownership unresolvable, malformed dependency graph), keep that unit in the main session rather than broadening scope.
 

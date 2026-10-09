@@ -38,6 +38,8 @@ from ralph.mcp.explore.store import (
     FileRow,
 )
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class FakeClock:
     """Test clock with a controllable time."""

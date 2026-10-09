@@ -22,6 +22,8 @@ from ralph.pipeline.conflict_resolution.progress import (
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, record_landed_stop
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 #: Identity of the rebase these tests pretend is paused in the worktree.
 _FEATURE_SHA = "feature000000000000000000000000000000001"
 _TARGET_SHA = "target0000000000000000000000000000000002"

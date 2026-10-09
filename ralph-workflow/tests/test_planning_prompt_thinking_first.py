@@ -25,6 +25,8 @@ def _render_planner(name: str) -> str:
             "DOCS_MCP_PORT": "localhost:6280",
             "LAST_RETRY_ERROR": "",
             "SKILLS_INLINE_CONTENT": "",
+            "DEVELOPMENT_BUDGET_MINUTES": "90",
+            "DEVELOPMENT_MAX_PARALLEL_WORKERS": "8",
         },
         context.partials,
     )
@@ -50,6 +52,17 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
         "integration",
         "fan-in",
         "Subagents and parallel agents are always available",
+        "## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST",
+        "PARALLEL:",
+        "AFTER:",
+        "Initial wave:",
+        "Why not parallel:",
+        "Do not make the executor infer",
+        "90 minutes",
+        "8 concurrent workers",
+        "fit inside the development-phase budget",
+        "critical path",
+        "divided and parallelized enough",
     ):
         assert required in normalized
     for forbidden in (

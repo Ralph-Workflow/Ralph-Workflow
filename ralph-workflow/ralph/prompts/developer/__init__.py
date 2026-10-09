@@ -45,6 +45,8 @@ class PlanningPromptInputs:
     last_retry_error: str = ""
     skills_inline_content: str = ""
     has_docs_mcp: bool = False
+    development_budget_minutes: str = "unknown"
+    development_max_parallel_workers: str = "unknown"
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -61,7 +63,6 @@ def prompt_developer_iteration_xml_with_context(
         ".agent/PRODUCT_CRITERIA.md"
     )
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
-    is_worker = bool(inputs.work_unit_id)
     is_continuation = inputs.is_continuation or (
         template_name == "developer_iteration_continuation.jinja"
     )
@@ -85,7 +86,6 @@ def prompt_developer_iteration_xml_with_context(
         "description": inputs.work_unit_description,
         "allowed_directories": inputs.work_unit_directories or "(none)",
         "paths": inputs.work_unit_paths or "(none)",
-        "IS_WORKER": "true" if is_worker else "",
         "IS_CONTINUATION": "true" if is_continuation else "",
         "WORKER_NAMESPACE": inputs.worker_namespace,
         "WORKER_FALLBACK_PATH": worker_fallback_path,
@@ -169,6 +169,8 @@ def prompt_planning_xml_with_context(
         "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
+        "DEVELOPMENT_BUDGET_MINUTES": inputs.development_budget_minutes,
+        "DEVELOPMENT_MAX_PARALLEL_WORKERS": inputs.development_max_parallel_workers,
     }
     base_vars.update(
         _product_criteria_variables(
@@ -223,6 +225,8 @@ def prompt_planning_xml_with_context(
             ),
             "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
             "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
+            "DEVELOPMENT_BUDGET_MINUTES": inputs.development_budget_minutes,
+            "DEVELOPMENT_MAX_PARALLEL_WORKERS": inputs.development_max_parallel_workers,
         }
         return _render_static_fallback(
             context,

@@ -14,6 +14,8 @@ from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._content import get_skill_content
 from ralph.skills._installer import install_baseline_skills
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 @pytest.fixture(autouse=True)
 def _isolate_baseline_install_from_user_siblings(

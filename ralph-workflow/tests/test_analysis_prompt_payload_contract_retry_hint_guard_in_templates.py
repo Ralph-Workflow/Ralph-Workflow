@@ -65,7 +65,6 @@ def _render(name: str, last_retry_error: str) -> str:
         "PRIOR_RESULT_STATUS": "",
         "PRIOR_RESULT_MARKDOWN": "",
         "PRIOR_SESSION_ID": "",
-        "IS_WORKER": "",
         "IS_CONTINUATION": "",
         "WORKER_NAMESPACE": "",
         "WORKER_FALLBACK_PATH": "",
