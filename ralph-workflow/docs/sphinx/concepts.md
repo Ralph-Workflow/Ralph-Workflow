@@ -366,21 +366,25 @@ and the pre-submit review — unconditionally, with no role gate.
 ### Configuration and routing behavior
 
 The bundled `dispatch_mode` is `agent_subagents`; the developer agent owns
-sub-agent fan-out end to end. The `ralph_fan_out` value remains accepted
-and routes independent plan units through the same-workspace fan-out
-machinery (passing `max_parallel_workers` into `FanOutEffect`); that path
-is itself deprecated in favor of the developer-agent sub-agent model but
-is preserved for backward compatibility.
+sub-agent fan-out end to end. The deprecated `ralph_fan_out` exhibits a
+two-stage compatibility behavior: `ralph_fan_out` remains parseable and
+routes independent plan units through the same-workspace fan-out machinery
+into `FanOutEffect` (passing `max_parallel_workers`), preserving configuration
+and routing compatibility. However, routing compatibility is distinct from
+successful end-to-end worker execution: downstream, the legacy worker prompt
+materialization path fails closed (`ValueError` when materializing worker
+prompts, because worker prompt execution is deprecated). The developer
+execution path under `agent_subagents` is the only live end-to-end execution
+route.
 
 - Under `agent_subagents`, `max_parallel_workers` is published to the
   developer prompt as `DEVELOPMENT_MAX_PARALLEL_WORKERS` and used as the
   advertised per-phase ceiling for the developer's own sub-agent fan-out.
-  Under the deprecated `ralph_fan_out` it still configures `FanOutEffect`'s
-  worker pool (the per-phase cap is the same in both modes, only the
-  consumer changes).
-- Non-null `work_unit` and `worker_namespace` materialization inputs are
-  rejected by `ralph.prompts.materialize` (the developer execution path is
-  the only live entry point). They are not CLI flags and were never
+  Under the deprecated `ralph_fan_out`, it still configures `FanOutEffect`'s
+  worker pool during routing, but workers cannot execute end to end.
+- Non-null `work_unit` and `worker_namespace` materialization inputs fail closed
+  with `ValueError` in `ralph.prompts.materialize` (the developer execution
+  path is the only live entry point). They are not CLI flags and were never
   operator-facing; they are historical `PromptPhaseOptions` /
   `materialize_master_prompt` kwargs retained for backward compatibility.
 

@@ -871,7 +871,7 @@ def main(
         typer.Option(
             "--parallel-worker-manifest",
             hidden=True,
-            help="Internal worker bootstrap manifest path.",
+            help="Internal worker bootstrap manifest path (Deprecated; see docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers').",
         ),
     ] = None,
     check_policy: Annotated[

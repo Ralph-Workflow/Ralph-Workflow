@@ -274,9 +274,13 @@ confirmed two subagents actually dispatched and completed in parallel through
 those tools (see
 [Agent Compatibility](agent-compatibility.md#agy) and the git-tracked
 `tests/display/_fixtures/agy_wire_provenance.md`).
-Ralph-managed fan-out is deprecated. `dispatch_mode = "ralph_fan_out"` is
-retained only as a recognized compatibility value; worker prompt
-materialization fails closed instead of starting that legacy execution route.
+Ralph-managed fan-out is deprecated. `dispatch_mode = "ralph_fan_out"` exhibits
+a two-stage compatibility behavior: it remains parseable and routes to
+`FanOutEffect` (preserving config and routing compatibility), while the legacy
+worker prompt materialization path fails closed (`ValueError` when materializing
+worker prompts, because worker prompt execution is deprecated). Distinguishing
+routing compatibility from successful end-to-end worker execution is essential:
+routing compatibility is preserved, but workers cannot execute end to end.
 
 Use this when you want a planning artifact to split work into multiple development units.
 `max_parallel_workers` bounds simultaneous workers; additional ready units run in
@@ -288,15 +292,17 @@ main session.
 
 ## Parallel execution (agent-driven)
 
-> **Ralph-managed fan-out is deprecated in this build.** The compatibility
-> policy value remains parseable, but worker prompt materialization rejects it;
-> it is not an alternate execution route.
+> **Ralph-managed fan-out is deprecated in this build.** The `ralph_fan_out`
+> value remains parseable and routes to `FanOutEffect` (preserving config and
+> routing compatibility), while downstream worker prompt materialization
+> fails closed (`ValueError` when materializing worker prompts); routing
+> compatibility does not provide end-to-end worker execution.
 
 ### What changed
 
 Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY `define_subagent` / `invoke_subagent` / `manage_subagents`, etc.). When AGY is selected for two or more work units, routing follows the same supported agent_subagents path: `agy agents` reported no sub-agents on the measured stock v1.1.8 install, but that is a *subcommand listing* observation, not proof AGY lacks subagent capability -- a later v1.1.10 live-binary measurement found `define_subagent` / `invoke_subagent` / `manage_subagents` in AGY's own tool list and confirmed two subagents dispatched and completed in parallel through those tools (see [Agent Compatibility](agent-compatibility.md#agy)). AGY parallel runs fail observably only when the measured subagent dispatch or result evidence is missing or uncorrelated, never merely because `agy agents` lists nothing. Subagents and parallel agents are always available; the planning prompt never falls back to a sequential capability branch.
 
-The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and reports what was done in the development result. Ralph-managed fan-out is deprecated in this build: the compatibility policy value remains parseable, but worker prompt materialization rejects it.
+The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and reports what was done in the development result. Ralph-managed fan-out is deprecated in this build: `ralph_fan_out` remains parseable and routes to `FanOutEffect` (preserving config and routing compatibility), but legacy worker prompt materialization fails closed (`ValueError`).
 
 ### How plans express parallelization intent
 
@@ -342,10 +348,17 @@ max_parallel_workers = 4
 max_work_units = 50
 ```
 
-This value is rejected when it reaches worker prompt materialization. It is
-documented so operators can identify and migrate stale configuration, not as a
-usable execution route. Replace it with `dispatch_mode = "agent_subagents"` so
-the developer agent dispatches the plan through its native subagent tools.
+This configuration preserves two-stage compatibility behavior: `ralph_fan_out`
+remains parseable and routes to `FanOutEffect` (preserving config and routing
+compatibility), while the legacy worker prompt materialization path fails
+closed (`ValueError` when materializing worker prompts, because worker prompt
+execution is deprecated). Distinguishing routing compatibility from successful
+end-to-end worker execution makes clear that while stale pipeline configurations
+parse and route without an immediate configuration error, workers cannot
+execute to completion. It is documented so operators can identify and migrate
+stale configuration, not as a usable execution route. Replace it with
+`dispatch_mode = "agent_subagents"` so the developer agent dispatches the plan
+through its native subagent tools.
 
 ### Policy v2 migration note (historical)
 

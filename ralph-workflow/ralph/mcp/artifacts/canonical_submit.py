@@ -350,7 +350,12 @@ def _clear_worker_artifacts(
     worker_namespace: Path,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Clear stale canonical, handoff, and fallback documents for one worker."""
+    """Clear stale canonical, handoff, and fallback documents for one worker.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution
+    model; parallelism is owned by the developer agent's own sub-agents.
+    See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     artifact_dir = worker_namespace / "artifacts"
     handoff_dir = worker_namespace / "handoffs"
     _clear_fallback_artifacts(

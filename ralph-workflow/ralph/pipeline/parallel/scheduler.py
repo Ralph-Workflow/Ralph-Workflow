@@ -1,5 +1,13 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Conflict-safe wave scheduler for parallel work-unit execution."""
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""Conflict-safe wave scheduler for parallel work-unit execution.
+
+.. deprecated::
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""
 
 from pathlib import PurePosixPath
 
@@ -33,7 +41,13 @@ def schedule_next_wave(
     currently_running: set[str],
     max_workers: int,
 ) -> list[WorkUnit]:
-    """Return ready work units that can be launched in the next wave."""
+    """Return ready work units that can be launched in the next wave.
+
+    .. deprecated::
+        Deprecated: Ralph-orchestrated workers are removed from the execution model;
+        parallelism is owned by the developer agent's own sub-agents. See
+        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     available_slots = max_workers - len(currently_running)
     if available_slots <= 0:
         return []

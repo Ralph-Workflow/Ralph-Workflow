@@ -1,4 +1,13 @@
-"""Bundle of assembled session resources for a parallel worker."""
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""Bundle of assembled session resources for a parallel worker.
+
+.. deprecated::
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +32,12 @@ class _ExploreIndexOwner(Protocol):
 
 @dataclass(frozen=True)
 class WorkerSessionBundle:
-    """Assembled session, MCP server handle, and workspace scope for a parallel worker."""
+    """Assembled session, MCP server handle, and workspace scope for a parallel worker.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
 
     session: AgentSession
     mcp_handle: McpServerHandle

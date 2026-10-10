@@ -1,5 +1,13 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Typed manifest model for a single parallel worker run."""
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""Typed manifest model for a single parallel worker run.
+
+.. deprecated::
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +23,13 @@ if TYPE_CHECKING:
 
 
 class ParallelWorkerManifest(RalphBaseModel):
-    """Serializable manifest describing one isolated worker invocation."""
+    """Serializable manifest describing one isolated worker invocation.
+
+    .. deprecated::
+        Deprecated: Ralph-orchestrated workers are removed from the execution model;
+        parallelism is owned by the developer agent's own sub-agents. See
+        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
 
     unit_id: str
     description: str
@@ -33,10 +47,23 @@ class ParallelWorkerManifest(RalphBaseModel):
 
     @classmethod
     def load(cls, manifest_path: Path) -> ParallelWorkerManifest:
+        """Load manifest from json file.
+
+        .. deprecated::
+            Deprecated: Ralph-orchestrated workers are removed from the execution model;
+            parallelism is owned by the developer agent's own sub-agents. See
+            docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+        """
         return cls.model_validate_json(manifest_path.read_text(encoding="utf-8"))
 
     def to_work_unit(self) -> WorkUnit:
-        """Return the manifest payload as a WorkUnit for worker execution."""
+        """Return the manifest payload as a WorkUnit for worker execution.
+
+        .. deprecated::
+            Deprecated: Ralph-orchestrated workers are removed from the execution model;
+            parallelism is owned by the developer agent's own sub-agents. See
+            docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+        """
 
         return WorkUnit(
             unit_id=self.unit_id,

@@ -465,6 +465,10 @@ def handle_coordinate(
 ) -> ToolResult:
     """Coordinate parallel worker activities.
 
+    Deprecated: Ralph-orchestrated workers are removed from the execution
+    model; parallelism is owned by the developer agent's own sub-agents.
+    See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+
     Args:
         session: Agent session; must declare ``artifact.plan_write``.
         _workspace: Unused; kept for tool-handler signature parity.

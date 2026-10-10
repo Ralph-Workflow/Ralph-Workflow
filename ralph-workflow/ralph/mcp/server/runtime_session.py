@@ -417,6 +417,10 @@ class FileBackedSession:
     def worker_artifact_dir(self) -> Path | None:
         """Return worker artifact dir from environment variable.
 
+        Deprecated: Ralph-orchestrated workers are removed from the execution
+        model; parallelism is owned by the developer agent's own sub-agents.
+        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+
         For parallel workers, the parent process sets WORKER_ARTIFACT_DIR
         in the subprocess environment. This property reads that value so that
         artifact submission can route to the correct per-worker namespace.
@@ -431,6 +435,12 @@ class FileBackedSession:
 
     @property
     def worker_namespace(self) -> Path | None:
+        """Return worker namespace path if configured.
+
+        Deprecated: Ralph-orchestrated workers are removed from the execution
+        model; parallelism is owned by the developer agent's own sub-agents.
+        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+        """
         payload_raw = self._load().get("worker_namespace")
         if isinstance(payload_raw, str) and payload_raw:
             return Path(payload_raw)
@@ -490,6 +500,12 @@ class FileBackedSession:
 
     @property
     def parallel_worker(self) -> bool:
+        """Return whether session is running as a parallel worker.
+
+        Deprecated: Ralph-orchestrated workers are removed from the execution
+        model; parallelism is owned by the developer agent's own sub-agents.
+        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+        """
         return self.is_parallel_worker()
 
     @property
@@ -553,6 +569,12 @@ class FileBackedSession:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
 
     def is_parallel_worker(self) -> bool:
+        """Return True if the session is a parallel-worker subprocess.
+
+        Deprecated: Ralph-orchestrated workers are removed from the execution
+        model; parallelism is owned by the developer agent's own sub-agents.
+        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+        """
         payload_raw = self._load().get("parallel_worker", False)
         return bool(payload_raw) or self.worker_artifact_dir is not None
 

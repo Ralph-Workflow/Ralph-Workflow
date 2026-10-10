@@ -1,4 +1,13 @@
-"""Per-worker log sink helpers for Ralph Workflow."""
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""Per-worker log sink helpers for Ralph Workflow.
+
+.. deprecated::
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +23,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerSinkHandle:
-    """Handle returned by ``bind_worker_sink`` to identify a per-worker loguru sink."""
+    """Handle returned by ``bind_worker_sink`` to identify a per-worker loguru sink.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
 
     sink_id: int
     log_path: Path
@@ -25,7 +39,12 @@ def bind_worker_sink(
     log_dir: Path,
     run_id: str = "default",
 ) -> WorkerSinkHandle:
-    """Add a per-worker loguru sink that filters to ``unit_id`` and returns its handle."""
+    """Add a per-worker loguru sink that filters to ``unit_id`` and returns its handle.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     worker_log_dir = log_dir / run_id / "workers"
     worker_log_dir.mkdir(parents=True, exist_ok=True)
     log_path = worker_log_dir / f"unit-{unit_id}.log"
@@ -46,7 +65,12 @@ def bind_worker_sink(
 
 
 def remove_worker_sink(handle: WorkerSinkHandle) -> None:
-    """Remove the per-worker loguru sink identified by ``handle``."""
+    """Remove the per-worker loguru sink identified by ``handle``.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     logger.remove(handle.sink_id)
 
 

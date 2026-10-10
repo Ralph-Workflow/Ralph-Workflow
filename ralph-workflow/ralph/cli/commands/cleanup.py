@@ -32,6 +32,10 @@ def cleanup(
 ) -> None:
     """Remove stale per-worker namespaces under .agent/workers/ after a hard-kill.
 
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+
     In same-workspace parallel mode, each worker writes to .agent/workers/<unit_id>/.
     These directories are normally cleaned up automatically, but a hard-kill may
     leave them behind.

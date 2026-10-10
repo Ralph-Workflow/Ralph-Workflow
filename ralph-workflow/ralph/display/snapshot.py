@@ -199,6 +199,12 @@ def snapshot_from_state(
 
 
 def _snapshot_workers(state: PipelineState) -> tuple[WorkerSnapshot, ...]:
+    """Capture snapshot of worker states.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     worker_states = state.worker_states
     seen: set[str] = set()
     snapshots: list[WorkerSnapshot] = []
@@ -219,6 +225,12 @@ def _snapshot_workers(state: PipelineState) -> tuple[WorkerSnapshot, ...]:
 
 
 def _snapshot_worker(description: str, worker: WorkerState) -> WorkerSnapshot:
+    """Capture snapshot of a single worker.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     status = worker.status.value if isinstance(worker.status, WorkerStatus) else str(worker.status)
     return WorkerSnapshot(
         unit_id=worker.unit_id,

@@ -1,4 +1,13 @@
-"""Optional runtime context injected into each parallel worker."""
+# Deprecated: Ralph-orchestrated workers are removed from the execution model;
+# parallelism is owned by the developer agent's own sub-agents.
+# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""Optional runtime context injected into each parallel worker.
+
+.. deprecated::
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +22,13 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerContext:
-    """Optional runtime context injected into each parallel worker."""
+    """Optional runtime context injected into each parallel worker.
+
+    .. deprecated::
+        Deprecated: Ralph-orchestrated workers are removed from the execution model;
+        parallelism is owned by the developer agent's own sub-agents. See
+        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
 
     log: WorkerLog | None = None
     same_workspace: SameWorkspaceContext | None = None

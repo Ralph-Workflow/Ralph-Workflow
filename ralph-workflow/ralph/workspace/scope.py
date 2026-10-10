@@ -205,6 +205,10 @@ class WorkspaceScope:
     ) -> WorkspaceScope:
         """Build a worker-scoped view of the shared checkout.
 
+        Deprecated: Ralph-orchestrated workers are removed from the execution model;
+        parallelism is owned by the developer agent's own sub-agents. See
+        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+
         The root stays at ``repo_root`` (no per-worker root reassignment). Each
         allowed directory is resolved relative to ``repo_root``. The
         ``worker_namespace`` is always added so the worker can write its own

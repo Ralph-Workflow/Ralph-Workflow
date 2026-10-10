@@ -123,7 +123,12 @@ def list_dir_entries(workspace: Workspace, path: str) -> list[str]:
 
 
 def is_parallel_worker(session: object) -> bool:
-    """Return True when the active session is a parallel fan-out worker."""
+    """Return True when the active session is a parallel fan-out worker.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
+    """
     flag = _attribute_value(session, "is_parallel_worker", False)
     if callable(flag):
         try:
@@ -136,6 +141,10 @@ def is_parallel_worker(session: object) -> bool:
 
 def check_edit_area_restriction(session: object, path: str) -> None:
     """Enforce the parallel-worker edit-area restriction for ``path``.
+
+    Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    parallelism is owned by the developer agent's own sub-agents. See
+    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
 
     Raises:
         CapabilityDeniedError: If the session is a parallel worker and the
