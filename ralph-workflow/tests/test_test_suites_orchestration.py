@@ -331,6 +331,7 @@ def test_scheduler_hypothesis_regression_runs_before_parallel_shards(
         spawner=spawner,
         file_discoverer=lambda _cwd: (
             "tests/test_alpha.py",
+            "tests/test_auto_integrate_boundary_cleanliness.py",
             "tests/test_bootstrap_auto_seed_gitignore.py",
             "tests/test_explore_fault_matrix_full.py",
             "tests/test_explore_handlers.py",
@@ -344,6 +345,7 @@ def test_scheduler_hypothesis_regression_runs_before_parallel_shards(
     assert exit_code == 0
     assert spawner.manifest_files == [
         (
+            "tests/test_auto_integrate_boundary_cleanliness.py",
             "tests/test_bootstrap_auto_seed_gitignore.py",
             "tests/test_explore_fault_matrix_full.py",
             "tests/test_explore_handlers.py",
