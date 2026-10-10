@@ -364,14 +364,10 @@ class TestResolveInvocationRuntimeParity:
         tmp_path: Path,
     ) -> None:
         base_env = (
-            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": base_depth}
-            if base_depth is not None
-            else {}
+            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": base_depth} if base_depth is not None else {}
         )
         extra_env = (
-            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": extra_depth}
-            if extra_depth is not None
-            else {}
+            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": extra_depth} if extra_depth is not None else {}
         )
         monkeypatch.setattr(
             "ralph.agents.invoke.load_existing_claude_upstream_servers",

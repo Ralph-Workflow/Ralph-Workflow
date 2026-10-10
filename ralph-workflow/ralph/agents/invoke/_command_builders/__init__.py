@@ -356,8 +356,6 @@ def _extend_claude_transport_flags(
     if build_options.allowed_mcp_tool_names:
         cmd.extend(
             [
-                "--tools",
-                ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
                 "--allowedTools",
                 ",".join((*build_options.allowed_mcp_tool_names, *CLAUDE_NATIVE_TOOLS_TO_KEEP)),
             ]
