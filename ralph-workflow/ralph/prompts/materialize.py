@@ -133,10 +133,18 @@ class PromptPhaseOptions:
     """Optional inputs for prompt materialization with sensible defaults."""
 
     artifacts_policy: ArtifactsPolicy | None = None
+
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
+
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     work_unit: WorkUnit | None = None
 
 
@@ -688,16 +696,6 @@ def _render_template_based_prompt(
         tmpl_ctx.partials,
     )
     return _append_retry_footer(rendered, last_retry_error)
-
-
-def _worker_description(unit: WorkUnit) -> str:
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-    """Return the complete unit assignment, including any bound plan steps."""
-    if not unit.step_ids:
-        return unit.description
-    return f"{unit.description}\n\nAssigned plan steps: {', '.join(unit.step_ids)}"
 
 
 # Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code

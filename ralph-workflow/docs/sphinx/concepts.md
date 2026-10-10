@@ -372,11 +372,17 @@ machinery (passing `max_parallel_workers` into `FanOutEffect`); that path
 is itself deprecated in favor of the developer-agent sub-agent model but
 is preserved for backward compatibility.
 
-- `max_parallel_workers` still configures `ralph_fan_out`; it has no effect
-  under `agent_subagents` (the developer agent's own fan-out cap applies).
-- `work_unit` / `worker_namespace` CLI flags are still rejected by
-  `ralph.prompts.materialize` (the developer execution path is the only
-  live entry point).
+- Under `agent_subagents`, `max_parallel_workers` is published to the
+  developer prompt as `DEVELOPMENT_MAX_PARALLEL_WORKERS` and used as the
+  advertised per-phase ceiling for the developer's own sub-agent fan-out.
+  Under the deprecated `ralph_fan_out` it still configures `FanOutEffect`'s
+  worker pool (the per-phase cap is the same in both modes, only the
+  consumer changes).
+- Non-null `work_unit` and `worker_namespace` materialization inputs are
+  rejected by `ralph.prompts.materialize` (the developer execution path is
+  the only live entry point). They are not CLI flags and were never
+  operator-facing; they are historical `PromptPhaseOptions` /
+  `materialize_master_prompt` kwargs retained for backward compatibility.
 
 ### Single-audience prompt contract
 

@@ -23,11 +23,14 @@ an assumption, contract, dependency, ownership boundary, or acceptance check.
 Scale detail to the task; do not add speculative internals or irrelevant sections.
 
 Parallel work is recommended by default. When independent work exists, use
-`## Work Units` as a helpful convention. Units may name `Directories:` and/or
-exact `Paths:`, real prerequisites, relevant current behavior, consumed or
-produced interface constraints, focused acceptance evidence, a compact return
-format, shared contracts before their consumers, and integration after fan-in.
-A wholly linear plan explains the coupling.
+`## Work Units` as a helpful convention. **Work Units are a planning aid for
+the developer agent's own sub-agent fan-out: they describe how the developer
+agent should split and dispatch independent work to its sub-agents and do not
+instruct Ralph Workflow to start, schedule, or coordinate workers.** Units may
+name `Directories:` and/or exact `Paths:`, real prerequisites, relevant current
+behavior, consumed or produced interface constraints, focused acceptance
+evidence, a compact return format, shared contracts before their consumers, and
+integration after fan-in. A wholly linear plan explains the coupling.
 
 Finish with the visually explicit heading
 `## PARALLEL EXECUTION PLAN — DISPATCH MANIFEST`. Prefix independently runnable

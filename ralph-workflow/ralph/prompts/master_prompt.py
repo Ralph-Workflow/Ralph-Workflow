@@ -41,6 +41,9 @@ def materialize_master_prompt(
     workspace_root: Path,
     name: str,
     default_product_criteria: str | None = None,
+    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
+    # parallelism is owned by the developer agent's own sub-agents.
+    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     planning_style: bool = False,
     backend: FileBackend = DEFAULT_FILE_BACKEND,

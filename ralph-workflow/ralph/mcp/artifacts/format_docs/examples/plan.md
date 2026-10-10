@@ -10,6 +10,11 @@ This example illustrates decomposition, not evidence that the work is complete.
 
 ## Work Units
 
+> **Work Units are a planning aid for the developer agent's own sub-agent
+> fan-out:** they describe how the developer agent should split and dispatch
+> independent work to its sub-agents and do not instruct Ralph Workflow to
+> start, schedule, or coordinate workers.
+
 - [U-1] Shared ownership contract
   Paths: ralph/pipeline/work_unit.py, ralph/pipeline/work_units.py, tests/test_work_units.py
 

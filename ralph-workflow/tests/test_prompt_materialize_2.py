@@ -716,7 +716,7 @@ def test_materialize_planning_analysis_renders_plan_payload(
     assert ".agent/artifacts/plan.json" not in rendered
     assert "Read the submitted plan" in rendered
     assert "33 minutes" in rendered
-    assert "4 concurrent workers" in rendered
+    assert "4 concurrent sub-agents" in rendered
     assert "cap-induced queues" in rendered
     assert "context packet" in rendered
 

@@ -56,7 +56,7 @@ def test_planning_analysis_requires_an_executor_visible_dispatch_decision() -> N
     assert "initial ready set" in rendered
     assert "Why not parallel" in rendered
     assert "90 minutes" in rendered
-    assert "8 concurrent workers" in rendered
+    assert "8 concurrent sub-agents" in rendered
     assert "fit inside the development-phase budget" in rendered
     assert "parallelized enough" in rendered
     assert "use subagents" in rendered
@@ -79,5 +79,5 @@ def test_planning_analysis_handles_unknown_timebox_and_one_worker_capacity() -> 
 
     assert "no numerical development timebox is configured" in rendered
     assert "not numerically evaluable" in rendered
-    assert "at most 1 concurrent workers" in rendered
+    assert "at most 1 concurrent sub-agents" in rendered
     assert "configured one-worker cap" in rendered

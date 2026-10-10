@@ -52,5 +52,5 @@ def test_rendered_planning_prompt_names_canonical_tools(tmp_path: Path) -> None:
     assert "ralph_verify_md_artifact" in rendered
     assert "executor guidance, not a required document shape" in " ".join(rendered.split())
     assert "42 minutes" in rendered
-    assert "3 concurrent workers" in rendered
+    assert "3 concurrent sub-agents" in rendered
     assert "max_work_units" not in rendered

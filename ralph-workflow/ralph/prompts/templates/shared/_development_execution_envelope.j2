@@ -13,20 +13,20 @@ The implementation plan must fit the developer's actual execution context:
 - no numerical development timebox is configured, so the plan must state that
   execution fit is not numerically evaluable and use self-contained units;
 {% endif %}
-- at most {{ development_worker_cap }} concurrent workers are available;
+- at most {{ development_worker_cap }} concurrent sub-agents may run in parallel;
 - integration, full verification, and artifact submission must finish inside
   that development-phase budget.
 
-Size each unit so one worker can understand, implement, and run its focused
+Size each unit so one sub-agent can understand, implement, and run its focused
 proof from a self-contained context packet without exhausting one agent
 context. That packet must name the objective, owned paths, dependencies already
 satisfied, relevant request and plan references, and focused proof. Use
-delegation to keep discovery and unit implementation out of the coordinator's
-context, and keep worker returns compact enough for fan-in: changed files,
+delegation to keep discovery and unit implementation out of the developer agent's main-session
+context, and keep sub-agent returns compact enough for fan-in: changed files,
 commands and outcomes, unresolved risks, and no raw discovery transcript.
 
-Estimate the critical path, including waves forced by the worker cap and real
-dependencies, not the sum of parallel branches. Reserve explicit coordinator
+Estimate the critical path, including waves forced by the sub-agent cap and real
+dependencies, not the sum of parallel branches. Reserve explicit developer agent
 time and context for fan-in, conflict repair, full verification, and artifact
 submission. The plan is acceptable only when it is divided and parallelized
 enough for that critical path plus the reserve to fit inside the
@@ -35,5 +35,5 @@ can walk the manifest, dispatch subagents wave by wave, and finish on time. The
 total workload may be much larger than one agent could finish sequentially;
 judge the bounded critical path, not total size or subjective confidence. Do not invent a token
 count: the runtime does not expose one here, so use the bounded phase budget,
-self-contained worker packets, and bounded return summaries as the context-fit
+self-contained sub-agent packets, and bounded return summaries as the context-fit
 constraints.

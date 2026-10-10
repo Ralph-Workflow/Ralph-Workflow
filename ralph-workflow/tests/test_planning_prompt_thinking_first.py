@@ -59,7 +59,7 @@ def test_rendered_planners_recommend_parallel_work_without_format_rules(name: st
         "Why not parallel:",
         "Do not make the executor infer",
         "90 minutes",
-        "8 concurrent workers",
+        "8 concurrent sub-agents",
         "fit inside the development-phase budget",
         "critical path",
         "divided and parallelized enough",
