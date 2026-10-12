@@ -136,6 +136,12 @@ def _make_change_tracker(workspace: Path, key: str) -> WorkspaceChangeCoalescer:
     )
 
 
+def _mark_workspace_event_queue_overflow(workspace: Path) -> None:
+    awareness_for_workspace(workspace).set_freshness(
+        "stale", cause="workspace_event_queue_overflow"
+    )
+
+
 def _create_watchdog_observer() -> _ObserverProtocol | None:
     """Construct a watchdog observer when the optional dependency is installed."""
     try:
@@ -423,9 +429,7 @@ class WorkspaceMonitor:
         event_queue = getattr(observer, "event_queue", None)
         if isinstance(event_queue, _DroppingEventQueue):
             event_queue.set_overflow_callback(
-                lambda: awareness_for_workspace(self._workspace).set_freshness(
-                    "stale", cause="workspace_event_queue_overflow"
-                )
+                partial(_mark_workspace_event_queue_overflow, self._workspace)
             )
         return True
 
