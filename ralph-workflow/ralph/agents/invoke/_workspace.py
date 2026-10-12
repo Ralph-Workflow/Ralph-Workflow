@@ -9,6 +9,7 @@ import time
 import weakref
 from collections.abc import Callable
 from contextlib import suppress
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
@@ -21,14 +22,14 @@ from ralph.agents.invoke._callback_arity import (
     VALID_CALLBACK_ARITIES,
     callback_arity,
 )
-from ralph.agents.invoke._has_dest_path import _HasDestPath
-from ralph.agents.invoke._has_src_path import _HasSrcPath
+from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
 from ralph.agents.invoke._watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
     DirectoryCounter,
     call_within_budget,
     watch_capacity_is_predicted,
 )
+from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.workspace._cross_process_watch_lock import (
     CrossProcessWatchLock,
     WatchLockIOError,
@@ -91,19 +92,14 @@ def _is_within_workspace(workspace: Path, src_path: str) -> bool:
     return True
 
 
-def _make_change_tracker(workspace: Path, key: str) -> object:
-    class _ChangeTrackerHandler:
-        def dispatch(self, event: object) -> None:
-            self.on_any_event(event)
-
-        def on_any_event(self, event: object) -> None:
-            if isinstance(event, _HasSrcPath) and _is_within_workspace(workspace, event.src_path):
-                WorkspaceMonitor._record_event_for_key(key, event.src_path)
-                return
-            if isinstance(event, _HasDestPath) and _is_within_workspace(workspace, event.dest_path):
-                WorkspaceMonitor._record_event_for_key(key, event.dest_path)
-
-    return _ChangeTrackerHandler()
+def _make_change_tracker(workspace: Path, key: str) -> WorkspaceChangeCoalescer:
+    return WorkspaceChangeCoalescer(
+        deliver=lambda path: WorkspaceMonitor._record_event_for_key(key, path),
+        is_within=lambda path: _is_within_workspace(workspace, path),
+        on_overflow=lambda: awareness_for_workspace(workspace).set_freshness(
+            "stale", cause="workspace_event_overflow"
+        ),
+    )
 
 
 def _create_watchdog_observer() -> _ObserverProtocol | None:
@@ -278,6 +274,7 @@ class WorkspaceMonitor:
         self._shared_consumer = False
         self._prior_lock_holder: str | None = None
         self._shared_awareness_io_error: SharedAwarenessError | None = None
+        self._sidecar_publisher: ThrottledSidecarPublisher | None = None
         self._awareness_status: dict[str, object] = live_fallback_status("unavailable")
 
     def start(self) -> None:
@@ -563,17 +560,17 @@ class WorkspaceMonitor:
         if self._shared_awareness_io_error is not None:
             self._activate_live_fallback("shared_awareness_io_failed")
             return
-        sidecar = shared_awareness_for_workspace(self._workspace)
         try:
             relative = Path(src_path).absolute().relative_to(self._workspace.absolute())
         except ValueError:
             return
-        try:
-            sidecar.publish_changes([relative.as_posix()])
-        except SharedAwarenessError as exc:
-            with suppress(SharedAwarenessError):
-                sidecar.publish_error(str(exc))
-            self._activate_live_fallback("shared_awareness_io_failed")
+        if self._sidecar_publisher is None:
+            self._sidecar_publisher = ThrottledSidecarPublisher(
+                sidecar=partial(shared_awareness_for_workspace, self._workspace),
+                now=self._now,
+                on_failure=self._activate_live_fallback,
+            )
+        self._sidecar_publisher.add(relative.as_posix())
 
     def stop(self) -> None:
         """Stop monitoring the workspace and release its watch on every exit path.
@@ -602,6 +599,9 @@ class WorkspaceMonitor:
         key = self._shared_key
         self._started = False
         self._shared_key = None
+        if self._sidecar_publisher is not None:
+            self._sidecar_publisher.close()
+            self._sidecar_publisher = None
         self._observer = None
         self._handler = None
         observer: _ObserverProtocol | None = None
@@ -615,6 +615,8 @@ class WorkspaceMonitor:
                         self._shared_watches.pop(key, None)
                         observer = shared.observer
                         cross_process_owner_id = shared.cross_process_owner_id
+                        if isinstance(shared.handler, WorkspaceChangeCoalescer):
+                            shared.handler.close()
         if observer is not None:
             self._stop_observer(observer)
             release_workspace_awareness(self._workspace)
@@ -896,14 +898,11 @@ class WorkspaceMonitor:
     def dispatch_event(self, event: object) -> None:
         """Dispatch a watchdog-style event through the per-monitor handler.
 
-        Exposed for black-box tests that drive the handler directly
-        with a synthetic event (FakeEvent). Production callers do not
-        need this -- the watchdog backend dispatches events into the
-        handler returned by ``_make_change_tracker(self)`` itself.
-
-        The handler routes in-root source paths, or an in-root move
-        destination when the source is outside, through ``record_event``;
-        this mirrors the production watchdog dispatch path.
+        Exposed for black-box tests that drive the handler directly with a
+        synthetic event (FakeEvent); in production watchdog dispatches into
+        the handler from ``_make_change_tracker``. The handler coalesces
+        events, so this seam drains it at once: in-root source paths, or an
+        in-root move destination, reach ``record_event`` synchronously.
 
         Args:
             event: A watchdog-style event object. The handler
@@ -916,6 +915,8 @@ class WorkspaceMonitor:
             "_HandlerWithDispatch", self._handler
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         handler.dispatch(event)
+        if isinstance(handler, WorkspaceChangeCoalescer):
+            handler.flush()
 
     @property
     def awareness_status(self) -> dict[str, object]:
