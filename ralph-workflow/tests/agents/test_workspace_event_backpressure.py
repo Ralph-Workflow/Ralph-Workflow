@@ -12,8 +12,8 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from ralph.agents.invoke._workspace import _DroppingEventQueue, _create_watchdog_observer
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
+from ralph.agents.invoke._workspace import _create_watchdog_observer, _DroppingEventQueue
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.workspace._shared_awareness import SharedAwarenessError, SharedAwarenessSidecar
 

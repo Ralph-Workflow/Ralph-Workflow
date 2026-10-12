@@ -57,6 +57,8 @@ if TYPE_CHECKING:
     class _ObserverProtocol(_HasStop, Protocol):
         """Protocol for watchdog Observer-like objects used by this module."""
 
+        _event_queue: _EventQueueProtocol
+
         @property
         def event_queue(self) -> _EventQueueProtocol: ...
         def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
@@ -69,6 +71,7 @@ if TYPE_CHECKING:
         """Typed accessor for the optional watchdog.observers module."""
 
         Observer: type[_ObserverProtocol]
+
 
 #: How long tearing a watch down may take before the caller stops
 #: waiting for it. Teardown runs on the launch thread inside ``start()``,
@@ -99,10 +102,8 @@ class _DroppingEventQueue(Queue[object]):
             super().task_done()
         except Empty:
             pass
-        try:
+        with suppress(Full):
             super().put(item, block=False)
-        except Full:
-            pass
         if self._on_overflow is not None:
             self._on_overflow()
 
@@ -152,7 +153,7 @@ def _create_watchdog_observer() -> _ObserverProtocol | None:
     except ImportError:
         return None
     observer = observers_module.Observer()
-    setattr(observer, "_event_queue", _DroppingEventQueue(_MAX_WATCHDOG_EVENT_QUEUE))
+    observer._event_queue = _DroppingEventQueue(_MAX_WATCHDOG_EVENT_QUEUE)
     return observer
 
 
