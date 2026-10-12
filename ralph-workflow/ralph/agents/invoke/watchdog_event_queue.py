@@ -1,3 +1,5 @@
+"""Bound watchdog event ingestion without blocking its upstream reader."""
+
 from __future__ import annotations
 
 from contextlib import suppress

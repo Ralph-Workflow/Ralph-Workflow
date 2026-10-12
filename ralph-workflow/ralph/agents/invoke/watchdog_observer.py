@@ -1,3 +1,5 @@
+"""Construct optional watchdog observers with bounded event ingestion."""
+
 from __future__ import annotations
 
 import importlib
