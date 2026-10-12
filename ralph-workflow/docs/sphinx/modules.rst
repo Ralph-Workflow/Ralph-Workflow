@@ -1957,6 +1957,20 @@ ralph.agents.invoke.opencode_subagent_sessions
    :members:
    :show-inheritance:
 
+ralph.agents.invoke.watchdog_event_queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.watchdog_event_queue
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.watchdog_observer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.watchdog_observer
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers
 ~~~~~~~~~~~~~~~~~~~~
 
