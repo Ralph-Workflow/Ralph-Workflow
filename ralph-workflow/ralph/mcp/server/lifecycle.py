@@ -25,6 +25,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
+from ralph.mcp.protocol.env import MCP_OWNER_PID_ENV
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     mcp_preflight_timeout_from_env,
@@ -755,6 +756,7 @@ def _reserve_port() -> int:
 def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
+    env[MCP_OWNER_PID_ENV] = str(os.getpid())
     package_root = str(_PACKAGE_ROOT)
     # The MCP server subprocess runs ``sys.executable -m ralph.mcp.server``
     # and MUST resolve the SAME package tree the parent imported

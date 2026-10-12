@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +51,7 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
+from ralph.mcp.protocol.env import MCP_OWNER_PID_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server._activity_relay_sender import (
     ActivityRelaySender,
@@ -85,7 +88,7 @@ from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, MutableMapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
 
@@ -348,6 +351,40 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
+def exit_when_owner_exits(
+    env: MutableMapping[str, str],
+    *,
+    get_parent_pid: Callable[[], int] = os.getppid,
+    sleep: Callable[[float], None] = time.sleep,
+    exit_process: Callable[[int], None] = os._exit,
+) -> threading.Thread | None:
+    """Exit this server once the Ralph process that spawned it is gone.
+
+    A server spawned by the lifecycle is stopped by its owner, so an owner
+    killed without that cleanup (SIGKILL, a crashed test worker) used to
+    leave the server running indefinitely. The owner names itself in
+    ``RALPH_MCP_OWNER_PID``; while it is still our parent, a daemon thread
+    watches for reparenting and exits the process. Standalone launches
+    (``ralph-mcp`` without the variable) are left alone.
+
+    Returns:
+        The watcher thread, or ``None`` when there is no owner to watch.
+    """
+    raw_owner = env.pop(MCP_OWNER_PID_ENV, "")
+    if not raw_owner.isdigit() or int(raw_owner) != get_parent_pid():
+        return None
+    owner = int(raw_owner)
+
+    def watch() -> None:
+        while get_parent_pid() == owner:
+            sleep(1.0)
+        exit_process(0)
+
+    watcher = threading.Thread(target=watch, name="mcp-owner-watch", daemon=True)
+    watcher.start()
+    return watcher
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """CLI entrypoint for the standalone Ralph MCP HTTP server.
 
@@ -378,6 +415,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         environment variables.
     """
     sanitize_process_environment()
+    exit_when_owner_exits(os.environ)
     args = parse_args(argv)
     run_standalone_server(
         cast(
@@ -409,6 +447,7 @@ __all__ = [
     "ServerState",
     "__version__",
     "build_standalone_http_server",
+    "exit_when_owner_exits",
     "load_runtime_upstream_servers",
     "main",
     "parse_args",

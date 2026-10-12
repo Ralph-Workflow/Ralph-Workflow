@@ -31,6 +31,9 @@ class McpEnvVar(StrEnum):
     # reuse cycle names: both timers can be active for the same invocation.
     DEV_WARN_EPOCH = "RALPH_DEV_WARN_EPOCH"
     DEV_DEADLINE_EPOCH = "RALPH_DEV_DEADLINE_EPOCH"
+    # PID of the Ralph process that spawned this MCP server; the server exits
+    # once it is reparented away from it instead of running orphaned.
+    OWNER_PID = "RALPH_MCP_OWNER_PID"
     REQUEST_TIMEOUT_MS = "RALPH_MCP_REQUEST_TIMEOUT_MS"
 
 
@@ -39,6 +42,7 @@ MCP_RUN_ID_ENV = McpEnvVar.RUN_ID
 AGENT_LABEL_SCOPE_ENV = McpEnvVar.AGENT_LABEL_SCOPE
 MCP_SESSION_ENV = McpEnvVar.SESSION
 MCP_SESSION_FILE_ENV = McpEnvVar.SESSION_FILE
+MCP_OWNER_PID_ENV = McpEnvVar.OWNER_PID
 MCP_PREFLIGHT_TIMEOUT_MS_ENV = McpEnvVar.PREFLIGHT_TIMEOUT_MS
 MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV = McpEnvVar.UPSTREAM_PROBE_TIMEOUT_MS
 MCP_SUPERVISION_INTERVAL_MS_ENV = McpEnvVar.SUPERVISION_INTERVAL_MS
