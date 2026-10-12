@@ -56,13 +56,24 @@ if TYPE_CHECKING:
     class _ObserverProtocol(_HasStop, Protocol):
         """Protocol for watchdog Observer-like objects used by this module."""
 
+        @property
+        def event_queue(self) -> _EventQueueProtocol: ...
         def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
         def start(self) -> None: ...
+
+    class _EventQueueProtocol(Protocol):
+        maxsize: int
+
+    class _EventQueueFactory(Protocol):
+        def __call__(self, *, maxsize: int) -> _EventQueueProtocol: ...
 
     class _WatchdogObserversModule(Protocol):
         """Typed accessor for the optional watchdog.observers module."""
 
         Observer: type[_ObserverProtocol]
+
+    class _WatchdogApiModule(Protocol):
+        EventQueue: _EventQueueFactory
 
 
 #: How long tearing a watch down may take before the caller stops
@@ -71,6 +82,7 @@ if TYPE_CHECKING:
 STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
+_MAX_WATCHDOG_EVENT_QUEUE = 4096
 
 
 #: Union of the two valid on_event callback signatures. A callback
@@ -109,9 +121,15 @@ def _create_watchdog_observer() -> _ObserverProtocol | None:
             "_WatchdogObserversModule",
             importlib.import_module("watchdog.observers"),
         )
+        api_module = cast(
+            "_WatchdogApiModule",
+            importlib.import_module("watchdog.observers.api"),
+        )
     except ImportError:
         return None
-    return observers_module.Observer()
+    observer = observers_module.Observer()
+    setattr(observer, "_event_queue", api_module.EventQueue(maxsize=_MAX_WATCHDOG_EVENT_QUEUE))
+    return observer
 
 
 class _SharedWorkspaceWatch:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+from ralph.agents.invoke._workspace import _create_watchdog_observer
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.workspace._shared_awareness import SharedAwarenessError, SharedAwarenessSidecar
@@ -122,6 +123,13 @@ def test_blocked_drain_never_spawns_concurrent_drain_threads(tmp_path: Path) -> 
     assert peak == 1
     release.set()
     coalescer.close()
+
+
+def test_watchdog_queue_has_hard_backpressure_cap() -> None:
+    observer = _create_watchdog_observer()
+
+    assert observer is not None
+    assert observer.event_queue.maxsize > 0
 
 
 class _Sidecar(SharedAwarenessSidecar):
