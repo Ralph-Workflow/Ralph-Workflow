@@ -13,8 +13,9 @@ import threading
 from pathlib import Path
 
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
-from ralph.agents.invoke._workspace import _create_watchdog_observer, _DroppingEventQueue
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
+from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
+from ralph.agents.invoke.watchdog_observer import create_watchdog_observer
 from ralph.workspace._shared_awareness import SharedAwarenessError, SharedAwarenessSidecar
 
 
@@ -126,7 +127,7 @@ def test_blocked_drain_never_spawns_concurrent_drain_threads(tmp_path: Path) -> 
 
 
 def test_watchdog_queue_has_hard_backpressure_cap() -> None:
-    observer = _create_watchdog_observer()
+    observer = create_watchdog_observer()
 
     assert observer is not None
     assert observer.event_queue.maxsize > 0
@@ -134,7 +135,7 @@ def test_watchdog_queue_has_hard_backpressure_cap() -> None:
 
 def test_watchdog_queue_drops_without_blocking_and_reports_overflow() -> None:
     overflows: list[bool] = []
-    event_queue = _DroppingEventQueue(maxsize=1)
+    event_queue = DroppingEventQueue(maxsize=1)
     event_queue.set_overflow_callback(lambda: overflows.append(True))
 
     event_queue.put("first")

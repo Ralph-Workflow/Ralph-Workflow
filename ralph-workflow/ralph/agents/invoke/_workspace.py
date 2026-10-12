@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import importlib
 import threading
 import time
 import weakref
@@ -11,8 +10,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from functools import partial
 from pathlib import Path, PurePosixPath
-from queue import Empty, Full, Queue
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from loguru import logger
 
@@ -31,6 +29,8 @@ from ralph.agents.invoke._watch_capacity import (
     watch_capacity_is_predicted,
 )
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
+from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
+from ralph.agents.invoke.watchdog_observer import ObserverProtocol, create_watchdog_observer
 from ralph.workspace._cross_process_watch_lock import (
     CrossProcessWatchLock,
     WatchLockIOError,
@@ -44,34 +44,13 @@ from ralph.workspace._shared_awareness import (
 )
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
+_create_watchdog_observer = create_watchdog_observer
+
 if TYPE_CHECKING:
+    from queue import Queue
+
     from ralph.agents.invoke._handler_with_dispatch import _HandlerWithDispatch
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
-
-    class _HasStop(Protocol):
-        """Protocol for watchdog Observer-like objects that have a stop method."""
-
-        def stop(self) -> None: ...
-        def join(self, _timeout: float | None = None) -> None: ...
-
-    class _ObserverProtocol(_HasStop, Protocol):
-        """Protocol for watchdog Observer-like objects used by this module."""
-
-        _event_queue: _EventQueueProtocol
-
-        @property
-        def event_queue(self) -> _EventQueueProtocol: ...
-        def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
-        def start(self) -> None: ...
-
-    class _EventQueueProtocol(Protocol):
-        maxsize: int
-
-    class _WatchdogObserversModule(Protocol):
-        """Typed accessor for the optional watchdog.observers module."""
-
-        Observer: type[_ObserverProtocol]
-
 
 #: How long tearing a watch down may take before the caller stops
 #: waiting for it. Teardown runs on the launch thread inside ``start()``,
@@ -79,35 +58,6 @@ if TYPE_CHECKING:
 STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
-_MAX_WATCHDOG_EVENT_QUEUE = 4096
-
-
-class _DroppingEventQueue(Queue[object]):
-    def __init__(self, maxsize: int) -> None:
-        super().__init__(maxsize=maxsize)
-        self._on_overflow: Callable[[], None] | None = None
-
-    def set_overflow_callback(self, callback: Callable[[], None]) -> None:
-        self._on_overflow = callback
-
-    def put(self, item: object, block: bool = True, timeout: float | None = None) -> None:
-        del block, timeout
-        try:
-            super().put(item, block=False)
-            return
-        except Full:
-            pass
-        try:
-            super().get(block=False)
-            super().task_done()
-        except Empty:
-            pass
-        with suppress(Full):
-            super().put(item, block=False)
-        if self._on_overflow is not None:
-            self._on_overflow()
-
-
 #: Union of the two valid on_event callback signatures. A callback
 #: with no required positional args (the legacy 0-arg binding) is
 #: accepted for backward compatibility; a callback with exactly 2
@@ -143,20 +93,6 @@ def _mark_workspace_event_queue_overflow(workspace: Path) -> None:
     )
 
 
-def _create_watchdog_observer() -> _ObserverProtocol | None:
-    """Construct a watchdog observer when the optional dependency is installed."""
-    try:
-        observers_module = cast(
-            "_WatchdogObserversModule",
-            importlib.import_module("watchdog.observers"),
-        )
-    except ImportError:
-        return None
-    observer = observers_module.Observer()
-    observer._event_queue = _DroppingEventQueue(_MAX_WATCHDOG_EVENT_QUEUE)
-    return observer
-
-
 class _SharedWorkspaceWatch:
     """One observer plus weak leases for a canonical workspace root.
 
@@ -168,7 +104,7 @@ class _SharedWorkspaceWatch:
 
     def __init__(
         self,
-        observer: _ObserverProtocol,
+        observer: ObserverProtocol,
         handler: object,
         *,
         cross_process_owner_id: str | None = None,
@@ -272,7 +208,7 @@ class WorkspaceMonitor:
                 ``None`` detects the Linux host value when monitoring starts.
         """
         self._workspace = workspace_path
-        self._observer: _ObserverProtocol | None = None
+        self._observer: ObserverProtocol | None = None
         self._shared_key: str | None = None
         self._started = False
         self._event_count = 0
@@ -428,15 +364,15 @@ class WorkspaceMonitor:
         self._observer = observer
         self._handler = _make_change_tracker(self._workspace, key)
         event_queue = cast(
-            "_EventQueueProtocol | None", getattr(observer, "event_queue", None)
+            "Queue[object] | None", getattr(observer, "event_queue", None)
         )  # cast-policy: seam: optional watchdog/fake observer attribute
-        if isinstance(event_queue, _DroppingEventQueue):
+        if isinstance(event_queue, DroppingEventQueue):
             event_queue.set_overflow_callback(
                 partial(_mark_workspace_event_queue_overflow, self._workspace)
             )
         return True
 
-    def _start_observer_within_budget(self, observer: _ObserverProtocol) -> bool:
+    def _start_observer_within_budget(self, observer: ObserverProtocol) -> bool:
         """Start the scheduled watch, giving up if it takes too long.
 
         Bounding the capacity ESTIMATE is not bounding the walk it
@@ -510,7 +446,7 @@ class WorkspaceMonitor:
         self._release_cross_process_watch_lock()
         self._activate_live_fallback("watch_start_timed_out")
 
-    def _abort_unexpected_watch_start(self, observer: _ObserverProtocol) -> None:
+    def _abort_unexpected_watch_start(self, observer: ObserverProtocol) -> None:
         """Release partially started watch resources before propagating an error."""
         with suppress(BaseException):
             self._stop_observer(observer)
@@ -519,7 +455,7 @@ class WorkspaceMonitor:
         self._release_cross_process_watch_lock()
 
     def _register_new_shared_watch(
-        self, key: str, observer: _ObserverProtocol, handler: object
+        self, key: str, observer: ObserverProtocol, handler: object
     ) -> None:
         """Publish a successfully started shared observer to all local leases."""
         shared = _SharedWorkspaceWatch(
@@ -654,7 +590,7 @@ class WorkspaceMonitor:
             self._sidecar_publisher = None
         self._observer = None
         self._handler = None
-        observer: _ObserverProtocol | None = None
+        observer: ObserverProtocol | None = None
         handler_to_close: WorkspaceChangeCoalescer | None = None
         cross_process_owner_id: str | None = None
         if key is not None:
@@ -703,7 +639,7 @@ class WorkspaceMonitor:
         )
 
     @classmethod
-    def _stop_observer(cls, observer: _ObserverProtocol) -> None:
+    def _stop_observer(cls, observer: ObserverProtocol) -> None:
         """Tear a watch down without letting the teardown park the caller.
 
         ``observer.join(5)`` reads like the bound here, but the
@@ -742,7 +678,7 @@ class WorkspaceMonitor:
             kind, message = failed[0]
             raise kind(message)
 
-    def _abort_start_on_oserror(self, exc: OSError, observer: _ObserverProtocol) -> None:
+    def _abort_start_on_oserror(self, exc: OSError, observer: ObserverProtocol) -> None:
         """Clean up after an OSError during observer start.
 
         Tears down the partially-started observer, releases the
