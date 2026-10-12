@@ -427,7 +427,9 @@ class WorkspaceMonitor:
             return False
         self._observer = observer
         self._handler = _make_change_tracker(self._workspace, key)
-        event_queue = getattr(observer, "event_queue", None)
+        event_queue = cast(
+            "_EventQueueProtocol | None", getattr(observer, "event_queue", None)
+        )  # cast-policy: seam: optional watchdog/fake observer attribute
         if isinstance(event_queue, _DroppingEventQueue):
             event_queue.set_overflow_callback(
                 partial(_mark_workspace_event_queue_overflow, self._workspace)
