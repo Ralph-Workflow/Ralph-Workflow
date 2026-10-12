@@ -118,4 +118,4 @@ class WorkspaceChangeCoalescer:
                 self._timer.cancel()
                 self._timer = None
             self._pending.clear()
-        self._drain_finished.wait()
+        self._drain_finished.wait()  # mcp-timeout-ok: teardown waits for the sole active drain
