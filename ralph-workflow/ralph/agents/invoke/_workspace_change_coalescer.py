@@ -118,4 +118,4 @@ class WorkspaceChangeCoalescer:
                 self._timer.cancel()
                 self._timer = None
             self._pending.clear()
-        self._drain_finished.wait(timeout=5.0)
+        self._drain_finished.wait()

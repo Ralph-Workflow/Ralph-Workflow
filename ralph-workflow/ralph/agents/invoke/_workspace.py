@@ -11,6 +11,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from functools import partial
 from pathlib import Path, PurePosixPath
+from queue import Empty, Full, Queue
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from loguru import logger
@@ -64,17 +65,10 @@ if TYPE_CHECKING:
     class _EventQueueProtocol(Protocol):
         maxsize: int
 
-    class _EventQueueFactory(Protocol):
-        def __call__(self, *, maxsize: int) -> _EventQueueProtocol: ...
-
     class _WatchdogObserversModule(Protocol):
         """Typed accessor for the optional watchdog.observers module."""
 
         Observer: type[_ObserverProtocol]
-
-    class _WatchdogApiModule(Protocol):
-        EventQueue: _EventQueueFactory
-
 
 #: How long tearing a watch down may take before the caller stops
 #: waiting for it. Teardown runs on the launch thread inside ``start()``,
@@ -83,6 +77,34 @@ STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
 _MAX_WATCHDOG_EVENT_QUEUE = 4096
+
+
+class _DroppingEventQueue(Queue[object]):
+    def __init__(self, maxsize: int) -> None:
+        super().__init__(maxsize=maxsize)
+        self._on_overflow: Callable[[], None] | None = None
+
+    def set_overflow_callback(self, callback: Callable[[], None]) -> None:
+        self._on_overflow = callback
+
+    def put(self, item: object, block: bool = True, timeout: float | None = None) -> None:
+        del block, timeout
+        try:
+            super().put(item, block=False)
+            return
+        except Full:
+            pass
+        try:
+            super().get(block=False)
+            super().task_done()
+        except Empty:
+            pass
+        try:
+            super().put(item, block=False)
+        except Full:
+            pass
+        if self._on_overflow is not None:
+            self._on_overflow()
 
 
 #: Union of the two valid on_event callback signatures. A callback
@@ -121,14 +143,10 @@ def _create_watchdog_observer() -> _ObserverProtocol | None:
             "_WatchdogObserversModule",
             importlib.import_module("watchdog.observers"),
         )
-        api_module = cast(
-            "_WatchdogApiModule",
-            importlib.import_module("watchdog.observers.api"),
-        )
     except ImportError:
         return None
     observer = observers_module.Observer()
-    setattr(observer, "_event_queue", api_module.EventQueue(maxsize=_MAX_WATCHDOG_EVENT_QUEUE))
+    setattr(observer, "_event_queue", _DroppingEventQueue(_MAX_WATCHDOG_EVENT_QUEUE))
     return observer
 
 
@@ -402,6 +420,13 @@ class WorkspaceMonitor:
             return False
         self._observer = observer
         self._handler = _make_change_tracker(self._workspace, key)
+        event_queue = getattr(observer, "event_queue", None)
+        if isinstance(event_queue, _DroppingEventQueue):
+            event_queue.set_overflow_callback(
+                lambda: awareness_for_workspace(self._workspace).set_freshness(
+                    "stale", cause="workspace_event_queue_overflow"
+                )
+            )
         return True
 
     def _start_observer_within_budget(self, observer: _ObserverProtocol) -> bool:
@@ -623,6 +648,7 @@ class WorkspaceMonitor:
         self._observer = None
         self._handler = None
         observer: _ObserverProtocol | None = None
+        handler_to_close: WorkspaceChangeCoalescer | None = None
         cross_process_owner_id: str | None = None
         if key is not None:
             with self._shared_lock:
@@ -634,9 +660,11 @@ class WorkspaceMonitor:
                         observer = shared.observer
                         cross_process_owner_id = shared.cross_process_owner_id
                         if isinstance(shared.handler, WorkspaceChangeCoalescer):
-                            shared.handler.close()
+                            handler_to_close = shared.handler
         if observer is not None:
             self._stop_observer(observer)
+            if handler_to_close is not None:
+                handler_to_close.close()
             release_workspace_awareness(self._workspace)
             remove_shared_awareness_sidecar(self._workspace)
         # S-10: release the cross-process watch lock only when the final

@@ -12,7 +12,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from ralph.agents.invoke._workspace import _create_watchdog_observer
+from ralph.agents.invoke._workspace import _DroppingEventQueue, _create_watchdog_observer
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.workspace._shared_awareness import SharedAwarenessError, SharedAwarenessSidecar
@@ -130,6 +130,18 @@ def test_watchdog_queue_has_hard_backpressure_cap() -> None:
 
     assert observer is not None
     assert observer.event_queue.maxsize > 0
+
+
+def test_watchdog_queue_drops_without_blocking_and_reports_overflow() -> None:
+    overflows: list[bool] = []
+    event_queue = _DroppingEventQueue(maxsize=1)
+    event_queue.set_overflow_callback(lambda: overflows.append(True))
+
+    event_queue.put("first")
+    event_queue.put("second")
+
+    assert event_queue.get_nowait() == "second"
+    assert overflows == [True]
 
 
 class _Sidecar(SharedAwarenessSidecar):
