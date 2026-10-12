@@ -54,7 +54,15 @@ class WorkspaceChangeCoalescer:
         self._pending: dict[tuple[str, str | None], None] = {}  # bounded-accumulator-ok: capped
         self._overflowed = False
         self._timer: threading.Timer | None = None
+        self._draining = False
+        self._drain_finished = threading.Event()
+        self._drain_finished.set()
         self._closed = False
+
+    def _schedule_drain_locked(self) -> None:
+        self._timer = threading.Timer(CHANGE_DRAIN_INTERVAL_SECONDS, self.flush)
+        self._timer.daemon = True
+        self._timer.start()
 
     def dispatch(self, event: object) -> None:
         """watchdog entry point."""
@@ -73,25 +81,34 @@ class WorkspaceChangeCoalescer:
                 self._pending[change] = None
             else:
                 self._overflowed = True
-            if self._timer is None:
-                self._timer = threading.Timer(CHANGE_DRAIN_INTERVAL_SECONDS, self.flush)
-                self._timer.daemon = True
-                self._timer.start()
+            if self._timer is None and not self._draining:
+                self._schedule_drain_locked()
 
     def flush(self) -> None:
         """Deliver every pending change: the source path, else an in-root destination."""
         with self._lock:
+            if self._closed or self._draining:
+                return
             self._timer = None
+            self._draining = True
+            self._drain_finished.clear()
             changes = list(self._pending)
             self._pending.clear()
             overflowed, self._overflowed = self._overflowed, False
-        if overflowed:
-            self._on_overflow()
-        for src_path, dest_path in changes:
-            if self._is_within(src_path):
-                self._deliver(src_path)
-            elif dest_path is not None and self._is_within(dest_path):
-                self._deliver(dest_path)
+        try:
+            if overflowed:
+                self._on_overflow()
+            for src_path, dest_path in changes:
+                if self._is_within(src_path):
+                    self._deliver(src_path)
+                elif dest_path is not None and self._is_within(dest_path):
+                    self._deliver(dest_path)
+        finally:
+            with self._lock:
+                self._draining = False
+                self._drain_finished.set()
+                if not self._closed and self._pending and self._timer is None:
+                    self._schedule_drain_locked()
 
     def close(self) -> None:
         """Stop accepting events and cancel any scheduled drain."""
@@ -101,3 +118,4 @@ class WorkspaceChangeCoalescer:
                 self._timer.cancel()
                 self._timer = None
             self._pending.clear()
+        self._drain_finished.wait(timeout=5.0)

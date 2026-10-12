@@ -45,9 +45,17 @@ def test_standalone_server_without_owner_is_not_watched() -> None:
     assert exit_when_owner_exits({}, get_parent_pid=lambda: 1) is None
 
 
-def test_owner_that_is_not_the_parent_is_ignored() -> None:
-    """A stale or forwarded owner PID never arms the watcher."""
+def test_server_exits_when_owner_died_before_watcher_started() -> None:
     env = {MCP_OWNER_PID_ENV: "100"}
+    exits: list[int] = []
 
-    assert exit_when_owner_exits(env, get_parent_pid=lambda: 200) is None
+    assert (
+        exit_when_owner_exits(
+            env,
+            get_parent_pid=lambda: 200,
+            exit_process=exits.append,
+        )
+        is None
+    )
+    assert exits == [0]
     assert MCP_OWNER_PID_ENV not in env

@@ -371,9 +371,12 @@ def exit_when_owner_exits(
         The watcher thread, or ``None`` when there is no owner to watch.
     """
     raw_owner = env.pop(MCP_OWNER_PID_ENV, "")
-    if not raw_owner.isdigit() or int(raw_owner) != get_parent_pid():
+    if not raw_owner.isdigit():
         return None
     owner = int(raw_owner)
+    if owner != get_parent_pid():
+        exit_process(0)
+        return None
 
     def watch() -> None:
         while get_parent_pid() == owner:

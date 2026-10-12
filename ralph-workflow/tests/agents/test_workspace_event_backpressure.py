@@ -9,6 +9,7 @@ records the change, and sidecar rewrites are coalesced.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
@@ -86,6 +87,41 @@ def test_closed_coalescer_drops_late_events(tmp_path: Path) -> None:
     coalescer.flush()
 
     assert recorded == []
+
+
+def test_blocked_drain_never_spawns_concurrent_drain_threads(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    active = 0
+    peak = 0
+    active_lock = threading.Lock()
+
+    def deliver(_path: str) -> None:
+        nonlocal active, peak
+        with active_lock:
+            active += 1
+            peak = max(peak, active)
+        entered.set()
+        release.wait(timeout=5)
+        with active_lock:
+            active -= 1
+
+    coalescer = WorkspaceChangeCoalescer(
+        deliver=deliver,
+        is_within=lambda _path: True,
+        on_overflow=lambda: None,
+        max_pending=1,
+    )
+    coalescer.dispatch(_Event(str(tmp_path / "first.py")))
+    assert entered.wait(timeout=2)
+
+    for index in range(4):
+        coalescer.dispatch(_Event(str(tmp_path / f"next-{index}.py")))
+        threading.Event().wait(0.12)
+
+    assert peak == 1
+    release.set()
+    coalescer.close()
 
 
 class _Sidecar(SharedAwarenessSidecar):
