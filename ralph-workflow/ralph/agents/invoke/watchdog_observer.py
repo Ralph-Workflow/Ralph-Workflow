@@ -14,6 +14,8 @@ MAX_WATCHDOG_EVENT_QUEUE = 4096
 
 
 class ObserverProtocol(Protocol):
+    """Describe the watchdog observer surface used by workspace monitoring."""
+
     _event_queue: Queue[object]
 
     @property
@@ -25,6 +27,8 @@ class ObserverProtocol(Protocol):
 
 
 def create_watchdog_observer() -> ObserverProtocol | None:
+    """Create a watchdog observer with a bounded queue when watchdog is installed."""
+
     class _WatchdogObserversModule(Protocol):
         Observer: type[ObserverProtocol]
 
