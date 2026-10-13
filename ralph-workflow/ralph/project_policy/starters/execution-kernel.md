@@ -82,11 +82,11 @@ policy on every change is the symptom the kernel explicitly rules out.
 Domain starters reduce their `## AI execution instructions` to
 domain-specific steps plus a one-line pointer to this kernel. They
 do not rephrase the five rules. The "## Guard inventory" section on
-each starter records the per-domain guards, each with a five-cell
-row: Guard, Owner, Protected outcome, Detected condition, Retirement
-trigger (B9). The inventory is the only way a domain rule survives a
-kernel bump; a rule in body prose without an inventory row is not
-enforceable.
+each starter records the per-domain guards, each with a six-cell
+row: Guard, Owner, Protected outcome, Detected condition, Claim scope,
+Retirement trigger (B7, B9). The inventory is the only way a domain
+rule survives a kernel bump; a rule in body prose without an
+inventory row is not enforceable.
 
 ## Claim-scope rule
 
@@ -118,7 +118,7 @@ on portfolio parse.
 | Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | RALPH-COMMAND: present and exit-code recorded | when a claim-presentation proof replaces the recorded evidence with a published artifact |
 | Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | gate script returns non-zero on collection error, missing tool, or timeout | when the same defect cannot recur (e.g. the tool is no longer wired) |
 | Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | per-step / per-suite / per-attempt timeout declared and enforced | when the action is no longer long-running or is retired |
-| No weakening of checks | Verification owner | no `# noqa`, `# type: ignore`, lowered threshold, or removed time limit lands in the tree | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
+| No weakening of checks | Verification owner | no global silencer, blanket ignore, or removed time limit lands in the tree; the rule bans BYPASS MECHANISMS (per-file ignore, blanket `# noqa`, raised budgets, removed limits, lowered thresholds), NOT the narrow, owned, tool-supported suppressions that the typechecking ratchet governs | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
 | Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | result body contains an explicit "unverified" annotation for every claim without backing | when every claim is automatically backed (the kernel achieves this) |
 
 ## Project facts to resolve

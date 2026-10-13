@@ -148,10 +148,10 @@ and are never rephrased in domain starters. The second is evidence-backed,
 selectively applicable domain controls — each domain policy is loaded
 only when its declared trigger fires. The default for a conditional
 domain is "do not load it". Every applicable starter records its guards
-in a `## Guard inventory` table: one row per guard with five cells
-(Guard, Owner, Protected outcome, Detected condition, Retirement
-trigger). A rule that appears only in prose, without an inventory row,
-is not enforceable.
+in a `## Guard inventory` table: one row per guard with six cells
+(Guard, Owner, Protected outcome, Detected condition, Claim scope,
+Retirement trigger). A rule that appears only in prose, without an
+inventory row, is not enforceable.
 
 Readiness is reported in three dimensions. `structure_complete`
 means the validator is clean — it is the caching gate; a NOT-READY

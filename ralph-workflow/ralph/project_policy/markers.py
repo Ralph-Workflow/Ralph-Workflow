@@ -25,11 +25,87 @@ from typing import Final
 
 # Schema versioning
 #
-#   ... (21 more lines)
-
-#   3. Portfolio schema bumped v1 -> v2: every control adds ``detects`` and
-#      ``retirement_trigger``; the claim-scope rule applies to the
-#   ... (10 more lines)
+# v3 (2026-08-08) changed the policy contract in TWO ways, and both bind
+# existing projects - ``_check_required_fact_keys`` derives its required set
+# live from the bundled starter, so a starter's fact lines are contract, not
+# content.
+#
+# 1. Two new REQUIRED headings carrying rules no other section can hold:
+#    "Suite admission" in the testing policy (which criteria become automated
+#    tests at all, and where the rest are verified instead) and "Gate lanes"
+#    in the verification policy (the declared home for a check that cannot
+#    meet the default gate's constraints).
+# 2. A revised RALPH-FACT key set in those two starters: testing gained
+#    parallel_execution_mechanism, slow_test_report_command,
+#    suite_test_count_command, assertion_quality_check,
+#    supported_platform_matrix, external_dependency_test_approach,
+#    clean_clone_setup_command, quarantine_mechanism_expiry_and_max_size and
+#    suite_review_cadence_and_owner; verification gained fast_path_command,
+#    fast_path_selection_mechanism, gate_parallelism_mechanism,
+#    gate_cache_mechanism_and_key and gate_duration_report_location.
+#    The project's named profiles are recorded ONCE, in verification's
+#    required_verification_profiles, so the two policies cannot drift.
+#
+# Consequence for an existing v2 project: it validates NOT READY until a
+# remediation pass resolves the new keys and adds the two headings, or the
+# pack is frozen at v2. That is the point of the marker bump - it forces the
+# upgrade-or-freeze consent gate rather than changing files under the user.
+#
+# v4 (backfill) - minor hardening only (the 60 s test-budget fence, the
+# fabrication guard).  No content-contract change for v3 projects; a
+# frozen-at-v3 pack keeps validating under v4 because every required
+# field and heading stayed the same.  The bump exists to carry the
+# test-budget invariant into the marker record so the audit can prove
+# the fence is policy, not convention.
+#
+# v5 (current) reframes the shipped policy as a small outcome-oriented
+# execution kernel plus evidence-backed, selectively applicable controls.
+# It is a major content change:
+#
+#   1. New mandatory core file ``execution-kernel.md`` carrying the five
+#      kernel rules (truthful evidence, fail-closed verification, bounded
+#      execution, no weakening of checks, explicit unverified-claim
+#      reporting), the precedence over domain policies, the
+#      selective-applicability rule, and the claim-scope rule.
+#   2. Every applicable starter (core and conditional) MUST carry a
+#      ``## Guard inventory`` section in the pinned markdown-table grammar
+#      (header ``| Guard | Owner | Protected outcome | Detected condition |
+#      Claim scope | Retirement trigger |``; one row per guard; six non-empty
+#      cells).  The ``Claim scope`` column is a v5 requirement: every guard
+#      row MUST name the narrow claim its detector actually supports, so a
+#      row's ``Protected outcome`` cannot drift into a broad world-claim.
+#      A starter without the table - or with a malformed table - fails
+#      the validator with a stable RWP-INVENTORY:* finding.
+#   3. Portfolio schema bumped v1 -> v2: every control adds the required
+#      fields ``detects`` (the observable condition the detector actually
+#      reports) and ``retirement_trigger`` (when to retire the control).
+#      A control whose ``protected_outcome`` carries a broad-guarantee
+#      phrase that does NOT also appear in ``detects`` is rejected
+#      (claim-scope rule). Frozen v1 packs keep v1 validation so the
+#      user keeps the work; the upgrade-or-freeze gate forces a choice.
+#   4. Readiness reporting splits into three dimensions
+#      (structure_complete, implementation_verified,
+#      outcome_evidence_reviewed) on all four surfaces (CLI, status
+#      bar, AGENTS.md block, remediation prompt). Structural READY
+#      remains the cache gate; semantic correctness is now
+#      reported separately.
+#   5. Stale starter generations retired; the gate-script starter
+#      switches from prose-freeze to meaning-freeze (C3).
+#   6. Body ratchet declarations in a starter MUST be linked to a
+#      Guard inventory row by an inline ``<!-- ralph-control: <id> -->``
+#      token at the end of the declaring sentence, where ``<id>`` is the
+#      backticked control id at the start of a Guard cell. Uncovered
+#      declarations and orphan row ids are rejected with stable
+#      ``RWP-INVENTORY:RATCHET-UNCOVERED`` /
+#      ``RWP-INVENTORY:CONTROL-ORPHAN`` findings (B9).
+#
+# Consequence for an existing v4 project: it validates NOT READY until
+# a remediation pass adopts v5, or the pack is frozen at v4 through the
+# existing upgrade-or-freeze consent gate (``_schema_upgrade.py``).
+# Frozen v4 packs are validated against the v4 required-file manifest
+# (the original eleven core files) - only files introduced AFTER v4
+# are exempt, never the existing core files, so a frozen v4 pack
+# missing ``security-policy.md`` stays NOT READY.
 SCHEMA_VERSION: Final[str] = "v5"
 POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v5 -->"
 POLICY_CONTRACT_VERSION: Final[str] = "2026-10-12.1"
@@ -703,7 +779,8 @@ MIGRATION_HEADING_RECOGNIZERS: Final[tuple[str, ...]] = (
 # ``{target}`` is replaced with the destination canonical file name; an
 #   ... (2 more lines)
 MIGRATED_MARKER_TEMPLATE: Final[str] = (
-    "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/{target} -->")
+    "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/{target} -->"
+)
 
 # The target-independent prefix of the migrated marker. `--redo-policy` strips
 # every line carrying it: the marker points at a canonical file the reset has
@@ -743,7 +820,15 @@ CONTROL_ORPHAN_FINDING_ID: Final[str] = "RWP-INVENTORY:CONTROL-ORPHAN"
 
 # Guard inventory grammar. Every applicable starter (core and conditional)
 # MUST carry a ``## Guard inventory`` section whose body is a markdown
-#   ... (12 more lines)
+# table with the exact header below (case-insensitive match). The body is
+# a row-per-guard table with six non-empty cells. The validator parses
+# the table via :func:`ralph.project_policy._guard_inventory._parse_guard_inventory`
+# and emits a stable RWP-INVENTORY:* finding on a missing or malformed
+# table. The grammar is pinned here so the parser and the starters share
+# one source of truth. The sixth column ``Claim scope`` is the v5
+# outcome-oriented kernel's B7 requirement: every guard row MUST name
+# the narrow claim its detector actually supports, so a row's
+# ``Protected outcome`` cannot drift into a broad world-claim.
 GUARD_INVENTORY_HEADING: Final[str] = "## Guard inventory"
 GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
     "Guard",

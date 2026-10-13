@@ -286,3 +286,106 @@ def test_public_validator_emits_empty_claim_scope_finding() -> None:
         content, path="clean-code-policy.md", filename="clean-code-policy.md"
     )
     assert any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings)
+
+
+# --- B9: sentence-aware adversarial fixtures (wt-15-policy feedback) -----
+
+
+def test_untagged_ratchet_cannot_borrow_next_sentence_token() -> None:
+    """An untagged ratchet line cannot borrow a token from a different sentence.
+
+    The grammar refuses to look ahead past a sentence boundary:
+    a ratchet line that ends a sentence (``... reviewed change.``)
+    refuses any look-ahead at all, so the next line's
+    ``<!-- ralph-control: id -->`` cannot be borrowed. A
+    separate ``CONTROL-ORPHAN`` finding is emitted for the
+    unmatched id.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "The dynamic-boundary set is ratcheted; it MUST NOT grow "
+            "absent a reviewed change.\n"
+            "A different sentence. <!-- ralph-control: my-id -->\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` dynamic boundary set",
+            owner="owner",
+            protected="the dynamic-boundary set stays at its ratcheted size",
+            detected="the audit lists the dynamic-boundary set per file",
+            retirement="when retired",
+            scope="the audit's dynamic-boundary count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    # The untagged ratchet is rejected, the id is orphan.
+    assert any(f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]
+    assert any(
+        f.requirement_id == f"{markers.CONTROL_ORPHAN_FINDING_ID}:my-id" for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_two_ratchets_two_sentences_one_token_rejected() -> None:
+    """Two ratchets in two distinct sentences with one token is rejected.
+
+    The grammar requires one control token per ratchet sentence
+    when a line carries two ratchet phrases in two distinct
+    sentences (separated by ``.``). A single token covers only
+    the first ratchet; the second is rejected with the stable
+    ``RWP-INVENTORY:RATCHET-UNCOVERED`` finding id.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "The dynamic-boundary set is ratcheted. "
+            "Suppression count MUST NOT increase. "
+            "<!-- ralph-control: my-id -->\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` dynamic boundary set",
+            owner="owner",
+            protected="the dynamic-boundary set stays at its ratcheted size",
+            detected="the audit lists the dynamic-boundary set per file",
+            retirement="when retired",
+            scope="the audit's dynamic-boundary count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    # One uncovered (the second ratchet) and zero orphans (the
+    # one token is consumed by the first ratchet).
+    uncovered = [f for f in findings if f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID]
+    assert len(uncovered) == 1, [f.requirement_id for f in findings]
+
+
+def test_two_ratchets_same_sentence_one_token_accepted() -> None:
+    """Two ratchets in the SAME sentence with one token is accepted.
+
+    The grammar collapses multiple ratchet phrases in the same
+    sentence (separated by ``;``, not by ``.``) into one
+    declaration; a single token at the end of the sentence
+    covers both phrases.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "The dynamic-boundary set is ratcheted; it MUST NOT grow "
+            "absent a reviewed change. <!-- ralph-control: my-id -->\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` dynamic boundary set",
+            owner="owner",
+            protected="the dynamic-boundary set stays at its ratcheted size",
+            detected="the audit lists the dynamic-boundary set per file",
+            retirement="when retired",
+            scope="the audit's dynamic-boundary count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert not any(
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(
+        f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]

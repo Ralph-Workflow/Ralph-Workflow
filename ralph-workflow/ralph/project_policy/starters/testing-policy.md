@@ -85,7 +85,10 @@ Suite admission, and fixing the production seam.
       more genuinely-fast tests that satisfies rule 16, and only once
       measured runtime crosses 80% of the current budget with every test
       still fast. A suite under budget MUST NOT relax toward the guide or
-      cap: both are ceilings, never entitlements.
+      cap: both are ceilings, never entitlements. The suite budget is
+      ratcheted at the recorded `suite_time_budget`; the budget MUST NOT
+      grow absent a reviewed change.
+      <!-- ralph-control: suite-budget-ratchet -->
 11. A PERFORMANCE failure is a HARD failure, at least as serious as a
     functional one: a functional failure is one broken behavior, a slow or
     hanging suite is usually a broken ARCHITECTURE that keeps producing
@@ -376,6 +379,7 @@ reinstated to raise a count or percentage.
 | Deterministic seam | Test owner | tests run deterministic clock / network / DNS / filesystem / process seams without evasion | test injects the seam; no test depends on ambient clock, network, or filesystem properties | test injects the seam | when the seam is no longer needed (the production code is pure) |
 | Browser budget, not cardinality | Test owner | the default-lane browser time budget is a measured value plus a distinct-risk inventory | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification | RALPH-FACT browser_budget_seconds declared | when the project stops using a browser at all |
 | Narrowest observable boundary | Test owner | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible | no test imports a private symbol solely to invoke it | when the rule is restated as a kernel-level constraint |
+| `suite-budget-ratchet` Suite budget ratchet | Test owner | the default suite time budget shrinks freely; growth is rejected absent a reviewed change | the recorded suite_time_budget is at or below its prior recorded value; growth is absent a reviewed change | the current suite_time_budget value per project | when the ratchet is retired by the kernel |
 
 ## Project facts to resolve
 
