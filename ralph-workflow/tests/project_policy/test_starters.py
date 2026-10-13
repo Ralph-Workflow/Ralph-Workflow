@@ -250,6 +250,18 @@ def test_standard_quality_gates_are_mandatory_when_supported() -> None:
     assert "does not make a supported gate inapplicable" in verification
 
 
+def test_testing_policy_has_browser_time_budget_rule() -> None:
+    """Browser-time budget admission language must appear verbatim so that
+    new browser journeys are routed correctly against the aggregate ceiling."""
+    content = starters.read_starter("testing-policy.md")
+    assert "BROWSER-TIME BUDGET" in content
+    assert "browser_budget_seconds" in content
+    assert "aggregate ceiling" in content.lower()
+    assert "default_budget_seconds" in content
+    # The rule must preserve the no-raise constraint.
+    assert "never raised" in content or "never" in content
+
+
 def test_typechecking_policy_does_not_prescribe_products_or_exclude_first_party_code() -> None:
     content = starters.read_starter("typechecking-policy.md")
     defaults = content.split("## Default requirements", 1)[1].split(

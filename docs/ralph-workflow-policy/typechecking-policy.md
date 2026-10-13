@@ -38,8 +38,13 @@ or inapplicable (with a reason and the stack change that would re-open it).
 * Untyped third-party dependencies MUST be stubbed at the project's
   type boundary, NOT silenced globally. A blanket `ignore_missing_imports`
   is forbidden and is detected by `ralph/testing/audit_typecheck_bypass.py`.
-* `# type: ignore` is forbidden in test files; tests MUST be fully
-  typed. This is enforced by `ralph/testing/audit_typecheck_bypass.py`.
+* Test files MUST be fully typed. The mypy target is `mypy ralph/`, which
+  excludes `ralph-workflow/tests/` by directory selection (not by inline
+  suppression). The zero-tolerance rule for `# type: ignore` in tests is
+  enforced by `ralph/testing/audit_typecheck_bypass.py` scanning test sources
+  directly. Both facts hold: mypy does not type-check tests by target, and
+  the audit rejects any new `# type: ignore` line a test file would have
+  introduced.
 
 ### Type assertions and casts
 
@@ -109,9 +114,37 @@ RALPH-FACT: excluded_language_evidence: TypeScript / .ts and .tsx are absent fro
 RALPH-FACT: type_modeling_conventions: project defaults documented in ralph-workflow/ralph/pydantic_validation_errors.py and ralph-workflow/ralph/logging_models.py — pydantic-validated typed models at trust boundaries, structured loguru records for cross-module log payloads, frozen dataclasses for recovery-classifier outputs. Plain strings and dict[str, Any] are reserved for serialization and parsing layers; once data crosses a trust boundary it MUST land in a typed model.
 RALPH-FACT: sanctioned_dynamic_boundaries: enumerated at the trust boundaries only — `subprocess_e2e` subprocess NDJSON stream parsers under ralph-workflow/ralph/parsers/ (raw dict input narrowed via ralph-workflow/ralph/parsers/*.py with pydantic models), the MCP JSON envelope parser at ralph-workflow/ralph/mcp/server/_fallback_http_handler.py, and the Claude/OpenCode stream parsers under ralph-workflow/ralph/agents/invoke.py. Each boundary is annotated with a typed adapter that narrows the raw payload to a pydantic model BEFORE first-party code consumes it. New dynamic boundaries require a documented addition to this fact plus a typed adapter, and the resource-lifecycle audit (`ralph/testing/audit_resource_lifecycle.py`) flags new `# type: ignore` usage outside these locations.
 
+## Guard inventory
+
+This section records every named guard, rule, and MUST requirement in this
+policy with inline metadata: the named owner responsible for it, the
+defect it prevents (protected outcome), and the concrete event that
+retires or triggers review of it.
+
+| Guard | Owner | Protected outcome | Retirement / review trigger |
+|-------|-------|-------------------|------------------------------|
+| RALPH-LANG declaration | project-policy owner | Language detected but not type-checked; gate silently skipped | All detected languages have a declared gate |
+| Suppression specificity (error code + rationale) | project-policy owner | Blanket `# type: ignore` masking unknown errors; regressions invisible | `enable_error_code = ignore-without-code` removed from mypy.ini |
+| Blanket `ignore_missing_imports` forbidden | project-policy owner | Missing types from third-party libs masked at every call site | New first-party dependency ships without stubs or inline types |
+| Test files zero `# type: ignore` | project-policy owner | Tests pass with type errors in production code, masking regressions | `mypy ralph/` target expanded to cover tests/ |
+| Assertions confined to three permitted positions | project-policy owner | Unverified type casts accepted as truth; runtime type errors surface in production | New assertion-position category identified in production code |
+| External data shape assertion forbidden | project-policy owner | Deserialized data assumed correctly shaped; runtime KeyError/AttributeError in production | Trust boundary parser retired or replaced |
+| Assertions prohibited in tests | project-policy owner | Test asserts a cast instead of fixing an under-typed API; production code remains untyped | Production API reaching full type coverage |
+| `enable_error_code = ignore-without-code` never weakened | project-policy owner | Blanket ignores reintroduced without detection | `warn_unused_ignores` or `enable_error_code` removed from mypy.ini |
+| CI gate integration (`make verify`) | project-policy owner | Type errors merged to main; no automated catch | CI pipeline retired or `make verify` removed from gate |
+| Suppression baseline ratchet (0 in-tree ignores) | project-policy owner | `# type: ignore` proliferates across the codebase unchecked | Baseline reset to 0 documented as a deliberate exception in this policy |
+| Type assertions use runtime checks where possible | project-policy owner | Assertion lies about proven facts; checker and runtime disagree | Project adopts runtime-checkable protocol for the same boundary |
+| Untyped boundary helper named and documented | project-policy owner | Assertion copied to call sites; same leak replicated everywhere | Typed adapter lands for the same boundary |
+| Sanctioned dynamic boundaries enumerated | project-policy owner | New dynamic boundary added without a typed adapter; raw dicts flow into first-party code | `audit_resource_lifecycle.py` flags `# type: ignore` outside enumerated boundaries |
+| Strictness level (`--strict` + disallow-ANY family) | project-policy owner | Stricter flags weakened to make a failing check pass; type safety degrades | Any flag in the disallow-ANY family removed from mypy.ini |
+| Exclusion via configuration (not inline suppression) | project-policy owner | Inline suppression added to generated/vendored code; re-generated or updated code silently untyped | Generated code moved to a stubbed package |
+| `disallow_untyped_defs` and `disallow_incomplete_defs` | project-policy owner | New files added without type annotations; partial coverage accepted | Project adopts pyright strict mode |
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
+
+When working in this domain, the agent additionally MUST:
 
 * DECLARE one `RALPH-LANG:` block per language with the exact checker
   command. Do not invent languages; do not omit detected languages.

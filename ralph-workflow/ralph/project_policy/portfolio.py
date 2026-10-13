@@ -50,6 +50,7 @@ _ALLOWED_CONTEXT = frozenset(
     }
 )
 _ALLOWED_LANE = frozenset({"id", "owner", "trigger"})
+_ALLOWED_COST_BASIS = frozenset({"measured", "estimate"})
 _ALLOWED_CONTROL = frozenset(
     {
         "id",
@@ -64,6 +65,7 @@ _ALLOWED_CONTROL = frozenset(
         "lifecycle",
         "disposition",
         "removed-tests",
+        "cost_basis",
     }
 )
 _ALLOWED_PROFILE = frozenset({"id", "version", "requires", "controls", "incompatible_with"})
@@ -102,6 +104,7 @@ class _Control:
     evidence: str
     lifecycle: str
     disposition: str
+    cost_basis: str
     removed_tests: str | None = None
 
 
@@ -244,6 +247,9 @@ def _parse_controls(root: Mapping[str, object], lane_ids: frozenset[str]) -> dic
             removed_tests_value = removed_tests_raw
         else:
             raise _error(f"control {control_id} removed-tests must be a string")
+        cost_basis_raw = table.get("cost_basis")
+        if not isinstance(cost_basis_raw, str) or cost_basis_raw not in _ALLOWED_COST_BASIS:
+            raise _error(f"control {control_id} requires cost_basis = 'measured' or 'estimate'")
         controls[control_id] = _Control(
             id=control_id,
             protected_outcome=outcome,
@@ -256,6 +262,7 @@ def _parse_controls(root: Mapping[str, object], lane_ids: frozenset[str]) -> dic
             evidence=evidence,
             lifecycle=_text(table, "lifecycle", f"control {control_id}"),
             disposition=disposition,
+            cost_basis=cost_basis_raw,
             removed_tests=removed_tests_value,
         )
     return controls

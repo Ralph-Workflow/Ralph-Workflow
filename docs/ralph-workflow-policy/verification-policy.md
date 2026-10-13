@@ -17,6 +17,16 @@ ralph.verify`, which owns the 60-second combined test budget and the
 per-step timeouts (see `ralph/verify.py:_VERIFY_STEPS` /
 `_TOTAL_TEST_BUDGET_SECONDS`).
 
+## Precedence and loading
+
+The shared execution rules, the loading direction, the local-tightening review
+rule, and the precedence that resolves cross-file conflicts live in
+`docs/ralph-workflow-policy/execution-kernel.md` (v1). Every reference in this
+file to those rules is to the kernel; the kernel is the source of truth, this
+file is the domain extension. The NAMED PROFILE lane (Suite admission) is the
+authoritative route for repeatable but non-default checks; undeclared named
+profiles are unrouted criteria.
+
 ## Bounded policy portfolio
 
 Project-policy schema v4 adds one canonical manifest:
@@ -184,18 +194,28 @@ RALPH-FACT: gate_duration_report_location: successful `make -C ralph-workflow ve
 RALPH-FACT: gate_lane_review_cadence_and_owner: RALPH-PENDING (assumed 2026-08-09); review trigger: once named lane owners and a recurring review cadence are declared; existing policy review is event-driven when gate topology changes
 RALPH-FACT: gate_parallelism_mechanism: `ralph.verify.run_verify()` executes `_VERIFY_STEPS` serially; its `make test` step delegates to `ralph.test_suites`, which concurrently runs CPU-capped file shards selected by `PYTEST_WORKERS` and optionally bounded xdist workers per shard
 
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Retirement / review trigger |
+|---|---|---|---|
+| Authoritative entry point (`make -C ralph-workflow verify`) | Verification owner | One canonical gate list; no shadow verify targets drift from `_VERIFY_STEPS` | When a new step is added/removed from `ralph/verify.py:_VERIFY_STEPS` |
+| Mandatory gate list (ruff, mypy strict, test, audits, social proof) | Verification owner | No critical category is silently omitted | New category added to verification discipline |
+| No documented impossibility | Verification owner | Every documented gate is runnable on a clean clone | Project stack changes |
+| No exemption for any red gate | Verification owner | Pre-existing failures are not deferred to a later PR | Whenever a red gate is observed |
+| 60 s combined test budget is immutable | Verification owner | Default-lane cost cannot grow without an offsetting decision | Budget breach attempt |
+| Fast-path <= 10 s | Verification owner | Inner-loop feedback stays bounded | New default-lane cost added |
+| Slow gate is a defect | Verification owner | Timeouts are diagnosed at the source | New default-lane cost or timeout observed |
+| Lane declared or deleted | Verification owner | A check cannot rot in an opt-in suite the default gate excludes | New check added; new named profile declared |
+| Named-profile declared with five fields | Verification owner | A non-default check is routed through a real runnable command with owner, trigger, fails-hard-when-run, and last-run date | Named profile added or removed |
+| Required auto-integration registry | Verification owner | Real-git tests stay in the default profile without inflating the subprocess-e2e suite | New real-git test added or removed |
+| Aggregate budget enforcement (`_TOTAL_TEST_BUDGET_SECONDS = 60.0`) | Verification owner | The 60 s ceiling cannot be circumvented by splitting, renaming, or env vars | Any change to budget tracking |
+| Bypass-detection audits (lint + typecheck) | Verification owner | `# noqa` and `# type: ignore` weakening cannot pass verify | Audit allowlist edited |
+| Repo-structure audit | Verification owner | File length, public-class, and import discipline are enforced | New structural rule added |
+| Social-proof gate | Verification owner | Public-facing markdown cannot carry fabricated claims | Wordlist or scope changed |
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
-
-* ENSURE every gate listed here is actually runnable in the
-  environment. Document any gate that cannot run and the reason.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the authoritative entry point, gate order, or
-  bypass-detection audit.
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 * FIX every failure the gate reports, including failures the agent did
   not introduce and failures in code the agent never touched. On
   encountering a pre-existing red gate, the agent MUST repair it (or,

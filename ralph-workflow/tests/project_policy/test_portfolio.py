@@ -17,6 +17,7 @@ def _control(
     cost: float = 1.0,
     owner: str = "quality",
     disposition: str = "KEEP",
+    cost_basis: str = "estimate",
 ) -> str:
     protected = outcome or f"{control_id} outcome"
     return f"""
@@ -29,6 +30,7 @@ owner = "{owner}"
 trigger = "every change"
 lane = "{lane}"
 marginal_cost_seconds = {cost}
+cost_basis = "{cost_basis}"
 evidence = "artifact:{control_id}"
 lifecycle = "review when protected outcome changes"
 disposition = "{disposition}"

@@ -67,6 +67,16 @@ def test_condensed_agents_block_mentions_policies_evolve() -> None:
     assert len(content[begin:end].splitlines()) <= 10, "block must stay short"
 
 
+def test_testing_policy_browser_budget_language() -> None:
+    """The testing-policy.md starter must carry the browser-time budget
+    admission rule verbatim so remediation agents implement it correctly."""
+    path = _STARTERS_DIR / "testing-policy.md"
+    content = path.read_text(encoding="utf-8")
+    assert "BROWSER-TIME BUDGET" in content
+    assert "browser_budget_seconds" in content
+    assert "RALPH-FACT: browser_budget_seconds: PROJECT-FACT-UNRESOLVED" in content
+
+
 def test_condensed_agents_block_carries_pending_resolution_mandate() -> None:
     """The ready block is the ONLY dev-cycle-facing surface that makes resolving
     RALPH-PENDING deferrals an ongoing obligation. Because RALPH-PENDING is

@@ -25,9 +25,12 @@ treated as a distribution artefact, not a behaviour surface).
   tests that reach into private internals are permitted only when no
   observable surface can express the regression.
 * When a behaviour cannot be expressed through the public surface
-  cleanly, the agent MUST refactor the production boundary (extract an
-  interface, add a seam, return a typed value) so a black-box test is
-  possible. Defaulting to white-box coupling is a design defect.
+  cleanly, the agent tests at the narrowest useful observable boundary.
+  Refactoring the production boundary to expose a test-only seam is
+  permitted only when a real cohesion, dependency, or I/O-seam problem is
+  being fixed; inventing a public API solely to accommodate a test is
+  forbidden. Clock, network, process, and similar dependency seams remain
+  justified when they enable deterministic behavioral testing.
 * Narrower unit tests are appropriate for pure functions, parsers,
   validators, and decision tables where every branch is reachable from
   the function's signature alone.
@@ -42,9 +45,10 @@ treated as a distribution artefact, not a behaviour surface).
 * Every bug fix MUST add a regression test that fails on the bug and
   passes on the fix. The test name MUST encode the regression so
   future readers understand the contract.
-* Every new behaviour MUST add at least one positive test (the behaviour
-  works as documented) and one negative test (the behaviour rejects
-  invalid input).
+* Every new behaviour in the automated lane MUST add positive
+  coverage. Negative coverage is mandatory where rejection, failure,
+  permission, boundary, or recovery behaviour exists and is not already
+  protected. Other lanes record evidence there.
 * Smoke tests (`@pytest.mark.smoke`) are one-off manual debug harnesses
   for a SPECIFIC agent issue. They MUST NOT run in any suite. Excluded
   by default in `pytest.ini` (`addopts = -m "not smoke"`).
@@ -150,7 +154,9 @@ RALPH-FACT: visual_verdict_artifact: design_verdict
 
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
+
+When working in this domain, the agent additionally MUST:
 
 * WRITE the test before the production change when fixing a bug or
   adding behaviour; watch it fail for the expected reason first.
@@ -225,6 +231,34 @@ splitting or quarantining tests:
   deterministic lower-level tests can replace slow real-world setup. Preserve
   the smallest higher-layer test that covers the boundary the lower layer
   cannot.
+
+## Guard inventory
+
+Each guard (MUST / MUST NOT / required behaviour) is listed with its
+owner, the defect it prevents, and the event that re-evaluates it.
+
+| Guard | Owner | Protected outcome | Retirement / review trigger |
+|-------|-------|-------------------|----------------------------|
+| The test suite MUST be black-box by default | policy-authoring agent | Private-internal coupling breaking on refactor | Any white-box test that has no observable-surface alternative |
+| Tests MUST be deterministic | policy-authoring agent | Non-deterministic suites masking real regressions | Any flakiness attributed to real time, filesystem, network, or singleton state |
+| Every bug fix MUST add a regression test with a parseable name | policy-authoring agent | The same regression recurring without signal | Any regression test that outlives the bug it encodes |
+| Every new behaviour in the automated lane MUST add positive coverage | policy-authoring agent | Undetected behaviour loss on future changes | Any new behaviour routed to a non-default lane that has no owner or evidence |
+| Negative coverage is mandatory where rejection, failure, permission, boundary, or recovery behaviour exists | policy-authoring agent | Invalid inputs, permission gaps, and error paths silently breaking | Any negative test whose guarded path is subsequently protected by a lower-layer test |
+| Smoke tests MUST NOT run in any suite | policy-authoring agent | One-off debug harnesses polluting the regression gate | `@pytest.mark.smoke` being removed from `pytest.ini` `addopts` |
+| An addition to the default lane is admissible only when it has distinct fault sensitivity | policy-authoring agent | Test suite inflation without corresponding risk reduction | The 60-second combined budget being raised |
+| A criterion that could meet default constraints MUST NOT be routed elsewhere to dodge the work | policy-authoring agent | Routing difficult tests to lighter lanes to avoid building seams | Any lane-3 or lane-4 test that could run in-process with an injectable fake |
+| Automation MUST NOT supply the verdict for perceptual/ergonomic/editorial criteria | policy-authoring agent | Machine verdicts on human judgment producing false failures | Any automated assertion on terminal output, prose accuracy, or visual layout |
+| An agent MUST write the test before the production change | policy-authoring agent | Production code shipping before a regression is captured | Any bug fix committed without a corresponding test file |
+| An agent MUST NOT weaken the testing gate | policy-authoring agent | Tests skipped or thresholds lowered to pass a change | Any skip, xfail, `--continue-on-collection-errors`, or coverage-threshold reduction |
+| An agent MUST NOT introduce real `time.sleep()`, real filesystem I/O, or real network I/O in tests not marked `subprocess_e2e` or `live_agy` | policy-authoring agent | Non-deterministic or slow tests in the default suite | Any in-process test tagged `subprocess_e2e` or `live_agy` |
+| An agent MUST NOT mark a test `smoke` to dodge the budget | policy-authoring agent | Debug harnesses excluded from the suite to hide budget problems | `@pytest.mark.smoke` being added to the default mark expression |
+| An agent MUST NOT add `@pytest.mark.skip` / `xfail` without an issue link and documented rationale | policy-authoring agent | Silent test suppression obscuring unresolved defects | Any quarantine entry without a linked issue or resolution date |
+| An agent MUST NOT treat a slow or hanging suite as a cost to absorb | policy-authoring agent | Architectural coupling being normalised as a tooling problem | Any timeout raise, suite split, or skip of a slow/hanging test |
+| The 60-second combined budget is a HARD CAP | policy-authoring agent | Budget raises enabling continued architectural coupling | `_TOTAL_TEST_BUDGET_SECONDS` in `ralph/verify.py` being raised |
+| Exceptions expire at the next policy review | policy-authoring agent | Stale exceptions remaining in policy after their rationale disappears | Any exception without an updated rationale at the next policy review |
+| This policy MUST be reviewed when the test framework, runner, or command changes | policy-authoring agent | Policy diverging from project reality after tooling changes | Any change to `RALPH-FACT` lines in this file |
+| Conflicts between this policy and established project practice are resolved in favour of the project | policy-authoring agent | This policy overriding verified project reality | Any change to `RALPH-FACT` lines in this file |
+| An amendment MUST NOT subvert the intent of this policy | policy-authoring agent | Requirements being weakened to make a failing change pass | Any reduction in a MUST requirement without a documented exception |
 
 ## Verification
 

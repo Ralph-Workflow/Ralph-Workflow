@@ -49,31 +49,19 @@ RALPH-FACT: release_notes_path: ralph-workflow/CHANGELOG.md (canonical) plus the
 RALPH-FACT: docstring_convention: PEP 257 + Google-style sections (Args:, Returns:, Raises:, Example:) on every public function / class / module. Module docstrings are non-empty for every module under `ralph/` (enforced by `ralph.testing.audit_public_docstrings`). Sphinx `.. automodule::` directives render the same docstrings into the operator manual; a docstring edit updates both surfaces at once.
 RALPH-FACT: example_verification_command: `make -C ralph-workflow docs-linkcheck` runs Sphinx's link-check over the operator manual (`uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck`). For non-Sphinx route pages (README.md, START_HERE.md, docs/README.md, ralph-workflow/docs/README.md) the project ships `scripts/check_route_page_links.py` (head + GET, 10 s per-request timeout, http://PROMPT.md and docs.claude.com excluded per ralph-workflow/docs/sphinx/conf.py). Both run as part of the maintainer's release preflight.
 
+## Guard inventory
+
+- **no-fabrication**: owner=policy-authoring agent; protected outcome=fabricated capabilities, dependencies, adoption claims, or unsupported technical statements in documentation; trigger=when fabrication_guard.py thresholds or public-facing markdown scope changes.
+- **behaviour-change-updates-docs**: owner=policy-authoring agent; protected outcome=stale documentation outlasting behaviour changes; trigger=when a documentation surface or the canonical location map changes.
+- **remove-duplicate-contravention**: owner=policy-authoring agent; protected outcome=contradictory or duplicated documentation silently retained; trigger=when documentation surfaces are reorganised.
+- **example-verified**: owner=policy-authoring agent; protected outcome=examples in docs that do not match actual behaviour; trigger=when example_verification_command changes.
+- **accurate-docstrings**: owner=policy-authoring agent; protected outcome=public APIs with missing or inaccurate docstrings; trigger=when audit_public_docstrings changes.
+- **config-options-documented**: owner=policy-authoring agent; protected outcome=configuration options listed without defaults, valid ranges, or effects; trigger=when a new config option is added.
+- **changelog-complete**: owner=policy-authoring agent; protected outcome=user-visible changes not enumerated in release notes; trigger=when CHANGELOG convention changes.
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
-
-* UPDATE affected documentation in the same change that alters
-  behaviour.
-* REMOVE duplicated or contradictory documentation; do not silently
-  duplicate.
-* VERIFY that every example command actually runs and produces the
-  documented output.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes a documentation location, the docstring
-  convention, or the example verification command.
-
-An agent MUST NOT:
-
-* Fabricate capabilities, dependencies, adoption claims, or unsupported
-  technical statements. The fabrication guard
-  (`scripts/fabrication_guard.py` level 1/2/3) is the authoritative
-  detector for public-facing markdown.
-* Leave known drift between code and documentation for a later fix.
-* Add duplicated copies of authoritative content.
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 
 ## Verification
 

@@ -249,6 +249,16 @@ slow, and untrusted.
    ratio, an RFC, a wire format, a schema — belongs here even when the
    surrounding judgment is perceptual: the threshold is stable across
    redesigns, so only the taste question goes to review.
+
+   - BROWSER-TIME BUDGET: the default-lane browser time budget is a measured
+     value (declared in this policy's `RALPH-FACT: browser_budget_seconds`).
+     BELOW the measured budget, a new browser journey is admitted WITHOUT any
+     mandatory time offset elsewhere in the lane. AT or OVER the measured
+     budget, admission requires BOTH a time offset elsewhere in the lane AND
+     a distinct-risk justification naming the browser-only risk the retained
+     journey covers that no other check covers. The aggregate ceiling
+     (`default_budget_seconds`) is never raised; the rule only changes how
+     new browser journeys are admitted against the ceiling.
 2. HUMAN REVIEW — use when the criterion is perceptual, aesthetic,
    ergonomic, or editorial with no published standard behind it: visual
    balance, whether wording reads in the product's voice, whether a layout
@@ -378,6 +388,7 @@ RALPH-FACT: flake_policy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: quarantine_mechanism_expiry_and_max_size: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: suite_review_cadence_and_owner: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: browser_budget_seconds: PROJECT-FACT-UNRESOLVED
 
 Three prerequisite facts exist and are NOT interchangeable:
 `clean_clone_setup_command` is the one-time bootstrap taking a fresh clone

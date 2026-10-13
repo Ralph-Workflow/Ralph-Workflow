@@ -79,27 +79,21 @@ RALPH-FACT: dead_code_detection_per_language: Python -> `make -C ralph-workflow 
 RALPH-FACT: retained_compatibility_inventory: zero retained first-party compatibility paths in the Python source. The legacy Rust pointer under docs/legacy-rust/ is a read-only historical pointer, not compiled into the project. The skills-package distribution wrapper is the single thin distribution layer and is rebuilt with each release. The shell-script `scripts/verify_social_proof.py` is a documented backward-compat wrapper that re-exports `scripts/fabrication_guard.py` (per its module docstring), kept solely as the historical entry point for consumers of the older script name; it is scheduled to be removed once external consumers migrate. Migration / compatibility shims declared in the clean-code policy (`ralph/pro_support/`) are not compatibility paths: they are infrastructure code that bridges known third-party transport quirks, not preserved re-implementations of removed first-party behaviour. Deleted first-party code is recovered via git, not via a retained compatibility layer.
 RALPH-FACT: live_entry_point_annotation_inventory: zero live-entry annotations in current code. The only framework/plugin-registry / FFI-style entry points (Claude / OpenCode / Codex / Cursor / Pi stream parsers under ralph-workflow/ralph/agents/invoke.py, the MCP JSON envelope parser at ralph-workflow/ralph/mcp/server/_fallback_http_handler.py, and the subprocess NDJSON stream parsers under ralph-workflow/ralph/parsers/) are all imported eagerly by the ralph CLI and are reachable through the standard `python -m ralph` import graph — verified by the `import-graph` reachability check in ralph-workflow/ralph/agents/invoke.py. New live-entry annotations are accepted only when the entry point is a verified reflection / plugin / FFI / dynamic-dispatch surface with a documented consumer and removal trigger.
 
+## Guard inventory
+
+- **ecosystem-best-practice-linter**: owner=policy-authoring agent; protected outcome=linter chosen to pass existing code rather than enforce best practice; trigger=when a new language is added to the project.
+- **ralph-lang-declaration**: owner=policy-authoring agent; protected outcome=detected languages without declared lint gates; trigger=when a new language file is added.
+- **specific-error-code-suppression**: owner=policy-authoring agent; protected outcome=bare `# noqa` or blanket suppressions that hide violations; trigger=when audit_lint_bypass.py changes.
+- **per-file-ignore-listed**: owner=policy-authoring agent; protected outcome=global rule silencing without per-file rationale; trigger=when per-file-ignores change.
+- **no-dead-code**: owner=policy-authoring agent; protected outcome=obsolete code retained indefinitely instead of deleted; trigger=when a new language or dead-code tool is added.
+- **dead-code-fix-at-source**: owner=policy-authoring agent; protected outcome=dead-code findings hidden with ignores, tricks, or exclusions rather than fixed; trigger=when dead-code detection tooling changes.
+- **live-entry-evidence**: owner=policy-authoring agent; protected outcome=speculative live-entry annotations without verified consumers; trigger=when a new framework/plugin/FFI surface is added.
+- **no-speculative-compatibility-paths**: owner=policy-authoring agent; protected outcome=unowned compatibility shims retained indefinitely; trigger=when pro_support additions are proposed.
+- **no-lower-strictness**: owner=policy-authoring agent; protected outcome=lint strictness lowered to make a failing check pass; trigger=when ruff rule set or per-file-ignores change.
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
-
-* DECLARE one `RALPH-LANG:` block per language with the exact linter
-  command.
-* PREFER existing tooling. Adding a new linter requires a documented
-  rationale.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the linter, rule set, formatter, or
-  suppression policy.
-
-An agent MUST NOT:
-
-* Add `per-file-ignores`, `extend-per-file-ignores`, or any other
-  global rule silencing without a per-file rationale.
-* Use bare `# noqa` without a specific error code.
-* Lower the lint strictness level to obtain a passing result.
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 
 ## Verification
 

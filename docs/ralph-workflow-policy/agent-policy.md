@@ -65,25 +65,21 @@ RALPH-FACT: failure_reporting_contract: failures are classified by `ralph/recove
 RALPH-FACT: documentation_update_obligation: every behaviour change updates affected markdown in the same workflow. The canonical fabric is `ralph-workflow/docs/sphinx/` (Sphinx operator manual) and `docs/ralph-workflow-policy/` (canonical policy). User-facing surfaces (`README.md`, `START_HERE.md`, `docs/README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`) route readers to those canonical homes; a behaviour change MUST not leave those surfaces pointing at stale prose. The fabrication guard governs every edit to public-facing markdown, not just claims files.
 RALPH-FACT: policy_applicability_index: maps every required policy file to the agent surface that owns it. `testing-policy.md` -> Claude Code / OpenCode / Codex / Pi (development and fix phases). `typechecking-policy.md` and `linting-policy.md` -> any agent that edits Python. `dependency-policy.md` -> any agent that touches pyproject.toml / uv.lock. `verification-policy.md` -> the CI surface (GitHub Actions runs `make verify` on the primary repository; Codeberg / Woodpecker continues it on the mirror); called by every agent before completion. `agent-policy.md` -> every AI agent; self-referential. `clean-code-policy.md` -> every AI agent on first-party code. `documentation-policy.md` -> any agent that writes user-facing markdown. `security-policy.md` -> any agent that touches subprocess, filesystem, network, or credential code under ralph-workflow/ralph/. `architecture-policy.md` -> any agent that crosses component boundaries. The index is the single source of truth for "which policy applies to this change" and is re-evaluated on every new component added under ralph-workflow/ralph/.
 
+## Guard inventory
+
+- **read-prerequisites**: owner=policy-authoring agent; protected outcome=agent makes informed changes without violating project conventions; trigger=when AGENTS.md or a canonical policy file is renamed or removed.
+- **policy-applicability**: owner=policy-authoring agent; protected outcome=agent applies the correct policy set for each touched file; trigger=when a new policy file is added or when a new component is added under ralph/.
+- **gate-run-before-claim**: owner=policy-authoring agent; protected outcome=no false-positive compliance claims; trigger=when the verify command or its exit semantics change.
+- **accurate-failure-reporting**: owner=policy-authoring agent; protected outcome=failures are classified and reported accurately, not collapsed into generic errors; trigger=when the failure classifier or retry contract changes.
+- **documentation-update-in-same-workflow**: owner=policy-authoring agent; protected outcome=no stale docs outlasting behaviour changes; trigger=when the canonical doc surface or the documentation_update_obligation fact changes.
+- **fabrication-guard-adherence**: owner=policy-authoring agent; protected outcome=no fabricated capabilities, dependency claims, or adoption statements in public-facing markdown; trigger=when the fabrication_guard.py thresholds or scope changes.
+- **canonical-policy-directory-preserved**: owner=policy-authoring agent; protected outcome=single source of truth for quality policy is never fragmented; trigger=when a new policy-adjacent directory is created.
+- **multimodal-endpoint-assumption**: owner=policy-authoring agent; protected outcome=UI/UX changes do not work around harness limitations by disabling multimodal endpoints; trigger=when multimodal MCP endpoints are added or removed.
+- **native-subagent-spawn-preserved**: owner=policy-authoring agent; protected outcome=native subagent facilities are not broker-disabled; trigger=when a delegation or workspace-access restriction is proposed.
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
-
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) and affected
-  documentation in the same workflow that changes the supported agents,
-  dispatch command, or review process.
-
-An agent MUST NOT:
-
-* Claim a passing gate that was not actually run.
-* Weaken a check to obtain a passing result.
-* Fabricate capabilities, dependency characteristics, or adoption
-  claims.
-* Bypass the fabrication guard with `--no-verify`; doing so is
-  itself fabrication (per AGENTS.md § Non-negotiables).
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 
 ## Verification
 

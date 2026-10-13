@@ -49,28 +49,22 @@ RALPH-FACT: ci_install_command: CI installs `uv` and runs `cd ralph-workflow && 
 RALPH-FACT: dependency_evaluation_record: each existing runtime dependency is recorded in ralph-workflow/pyproject.toml `[project].dependencies` and was evaluated against four criteria: (1) the upstream is actively maintained (last release within 18 months), (2) the wheel carries type information (or a sibling `types-*` package is declared in dev extras), (3) the license is on the ralph-workflow-pyproject AGPL-3.0-or-later compatible list (MIT / BSD / Apache-2.0 / ISC / MPL-2.0 / PSF / LGPL), and (4) the dependency is the smallest maintained option that satisfies the bound API. Recorded dependencies include httpx (HTTP client), pydantic (data model), typer + rich-click (CLI), rich (terminal), mcp (MCP transport), loguru (logging), tqdm (progress bars), gitpython (git ops), sentry-sdk (error reporting, opt-in), watchdog (filesystem events), jinja2 (templating), readability-lxml + selectolax (HTML extraction), and tomli-w (TOML serialization: the stdlib ships tomllib, which reads TOML but cannot write it, and Ralph must emit a merged config.toml for the Codex CLI; MIT, ships py.typed, maintained by the author of tomli/stdlib tomllib). No BSL/SSPL/Elastic/BUSL/non-OSI licence is present.
 RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed by `ralph-workflow/uv.lock`, not by direct inspection. CI installs `uv` and invokes `make verify`; every Python command in that gate uses `uv run`, which resolves the checkout environment from the lockfile. `make dev` validates the lock and runs only locked sync commands in its staged `rdev` snapshot, not in CI. Adding a new top-level dependency requires the four-criteria evaluation in `dependency_evaluation_record`; transitive dependencies arrive through that resolution rather than direct declaration.
 
+## Guard inventory
+
+- **typed-dependency-preferred**: owner=policy-authoring agent; protected outcome=added dependencies that lack type information and cause type-checking gaps; trigger=when a new Python dependency is added.
+- **small-local-over-large-dep**: owner=policy-authoring agent; protected outcome=disproportionate dependency bloat for trivial functionality; trigger=when a new top-level dependency is proposed.
+- **lockfile-reproducibility**: owner=policy-authoring agent; protected outcome=CI installs a different resolution than developer environments; trigger=when the lockfile format or CI install command changes.
+- **security-advisory-tracking**: owner=policy-authoring agent; protected outcome=known critical CVEs are not tracked and block releases; trigger=when a new runtime dependency is added.
+- **license-compatibility-verified**: owner=policy-authoring agent; protected outcome=incompatible licenses merged into the project; trigger=when license allowlist changes.
+- **verification-command-paired**: owner=policy-authoring agent; protected outcome=no dependency added without a declared verification gate; trigger=when the dependency manifest changes.
+- **no-unmaintained-license-add**: owner=policy-authoring agent; protected outcome=dependencies without maintainers, licenses, or recent releases added; trigger=when dependency_evaluation_record changes.
+- **lockfile-update-required**: owner=policy-authoring agent; protected outcome=manifest updated without lockfile causing resolution drift; trigger=when uv or lockfile tooling changes.
+- **security-audit-command-override-exception**: owner=policy-authoring agent; protected outcome=security audit bypassed without documented rationale; trigger=when Bandit is pinned or the verify step changes.
+- **non-osi-license-exception**: owner=policy-authoring agent; protected outcome=non-OSI/source-available licenses merged without documented exception; trigger=when license allowlist changes.
+
 ## AI execution instructions
 
-To follow this policy, an agent making any change MUST:
-
-* INSPECT the manifest and lockfile before adding a dependency.
-* PREFER maintained, typed, well-licensed dependencies.
-* AVOID adding a dependency for what a few lines of stdlib can express.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the package manager, lockfile format, license
-  allowlist, or security audit command.
-
-An agent MUST NOT:
-
-* Add a dependency that lacks a maintainer, license, or recent release.
-* Skip the lockfile update.
-* Override the security audit command without a documented exception.
-* Add a non-OSI / source-available license (BSL, SSPL, BUSL, Elastic)
-  without a documented exception with license, scope, owner, and review
-  date.
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 
 ## Verification
 

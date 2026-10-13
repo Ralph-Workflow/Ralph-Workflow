@@ -4,9 +4,14 @@
 policy starter, its requirements are NORMATIVE STANDARD TEXT, not a template
 to rewrite: a remediation agent READS this file and OBEYS it when writing gate
 scripts. Resolve ONLY the three facts under "Project facts to resolve" and the
-one line under "Verification", then delete this banner. Do NOT reword,
-condense, or relax the requirement sections — doing so is a policy violation,
-not an amendment. -->
+one line under "Verification", then delete this banner. Rewording or
+condensing the requirement sections is permitted when the meaning and the
+failure-sensitivity of every requirement are preserved. The protected
+properties are meaning (every MUST, every failure mode, every cited
+incident) and failure sensitivity (a reworded rule that a real failure
+no longer catches is a regression). The current text is the authoritative
+form; if a reworded form differs in meaning, the reworded form loses and
+the current text is restored. -->
 
 # Gate Script Policy
 
@@ -186,8 +191,12 @@ An agent MUST NOT:
 * Weaken, disable, or delete a gate script so that a failing change passes.
 * "Fix" a working gate script because the checks it runs report real failures.
   A red gate reporting a real problem is the gate doing its job.
-* Reword, condense, or relax the requirement sections of this policy. They are
-  the normative standard, not a draft.
+* Reword or condense the requirement sections in a way that changes the meaning
+  or weakens the failure sensitivity of any requirement. Tightening (adding a
+  stricter rule) is always permitted; relaxing (dropping a MUST, dropping a
+  failure mode, dropping a citation) is not. The text on disk is the
+  authoritative form; if a reworded form differs in meaning, the reworded form
+  loses.
 
 ## Verification
 

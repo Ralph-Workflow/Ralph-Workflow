@@ -30,6 +30,7 @@ def _control(
     owner: str = "maintainers",
     disposition: str = "KEEP",
     evidence: str = _EVIDENCE,
+    cost_basis: str = "estimate",
 ) -> str:
     return f"""
 [[controls]]
@@ -41,6 +42,7 @@ owner = "{owner}"
 trigger = "declared risk"
 lane = "{lane}"
 marginal_cost_seconds = {cost}
+cost_basis = "{cost_basis}"
 evidence = "{evidence}"
 lifecycle = "review when risk or contract changes"
 disposition = "{disposition}"

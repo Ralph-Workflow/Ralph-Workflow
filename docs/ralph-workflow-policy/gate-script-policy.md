@@ -50,7 +50,10 @@ A gate script is code. It is held to the same standard as the code it checks.
 * **Wired in or deleted.** Every gate script MUST be reachable from the
   authoritative verification entry point declared in the verification policy.
   A check that runs only in an opt-in suite the default gate excludes WILL rot
-  unnoticed: either wire it in, or delete it.
+  unnoticed: either wire it in, declare it as a named profile in the verification
+  policy (Suite admission NAMED PROFILE lane) with its own owner and trigger, or
+  delete it. An undeclared named profile is an unrouted criterion and remains a
+  violation of this rule.
 * **No hollow gates.** A script that technically exits 0 while verifying
   nothing — `echo ok`, a test target matching zero tests, a linter pointed at
   an empty directory — is non-compliant. The gate MUST actually exercise the
@@ -143,43 +146,38 @@ RALPH-FACT: known_gate_corpus_defects: `scripts/verify_claims.sh` hard-codes `/h
 
 RALPH-FACT: formula_check_gate: `make -C ralph-workflow formula-check` invokes `scripts/packaging_operations.sh formula-check`, which runs `ruby -c Formula/ralph-workflow.rb`. Ruby absence emits an actionable citation to this policy's Default requirements and returns 127; an invalid formula propagates Ruby's non-zero status. `make -C ralph-workflow verify` requires this gate before docs, drift, and Python verification; GitHub CI provisions Ruby 3.3.6 via `ruby/setup-ruby@v1`, and the maintained Codeberg image installs Ruby before `make verify`. Black-box subprocess coverage in `ralph-workflow/tests/test_packaging_operations.py` exercises missing-Ruby, successful-Ruby, and rejected-formula behavior in the declared subprocess-e2e profile.
 
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Retirement / review trigger |
+|---|---|---|---|
+| Exit-code contract | Gate script author | Gate reports accurate pass/fail; no false confidence from swallowed errors | Shell dialect change; new platform added to `supported_platforms` |
+| Strict mode | Gate script author | Unset variables and pipeline failures fail the gate, not silently | ShellCheck pinning in `ralph-workflow/pyproject.toml` |
+| Bounded | Gate script author | Gate cannot hang forever; 60 s combined budget is respected | New default-lane cost added |
+| Deterministic and offline | Gate script author | Gate result is stable and reproducible; no weather dependency | Network-backed check is declared as a named profile |
+| No phantom dependencies | Gate script author | Every tool, flag, package, and path the script calls actually exists | Script directory or task runner changes |
+| Reproducible by a human | Gate script author | A developer with a clean clone can run every gate | New gate added or existing gate moved |
+| Scripts are tested code | Gate script author | Gate failure path is exercised; untested gates are detected | Test coverage gap found; test file added or removed |
+| Wired in or deleted | Gate script author | Every gate is reachable from the authoritative entry point; no rot in opt-in suites | Named profile declared, wired in, or deleted |
+| No hollow gates | Gate script author | Gate verifies something real; no `echo ok` gates | Gate corpus review |
+| Gate script owns only its own correctness | Gate script author | Working gate is not "fixed" to make a failing project pass | Gate script edited to paper over project failures |
+| Failure output | Gate script author | Failing gate teaches the reader how to fix it and cites the governing policy | Gate failure message is unfollowable or missing citation |
+| Timeout output | Gate script author | Timeout cites time-budget policy; is not "fixed" by weakening the gate | Gate times out without citing policy |
+| Security — no embedded secrets | Gate script author | Secrets do not leak into process listings or CI logs | New gate added; CI log review |
+| Security — no piping remote code | Gate script author | Gate does not fetch and execute unverified remote code | New install command added |
+| Security — no unpinned remote code | Gate script author | Gate fetches only versioned, verified code with a bounded timeout | New network dependency added |
+| Security — temp file permissions | Gate script author | Temp files are not world-writable | New temp file creation added |
+| Security — no security weakening | Gate script author | Gate does not disable signature verification, skip hooks, or add bypass flags | Gate corpus review |
+| Cross-platform | Gate script author | Gate runs correctly on all `supported_platforms` without POSIX-only assumptions | `supported_platforms` changes |
+| Windows-specific bindings | Gate script author | Windows gate exercises CRLF handling, path quoting, no hardcoded `/`, and is tested in CI | Windows added to `supported_platforms` |
+
 ## AI execution instructions
 
-**Who the gate scripts' failure output is for.** When a gate fails it prints the
-policy requirement for fixing the failure, and cites it (see "Failure output").
-That instruction is addressed to **development agents working on the project's
-code**. It is explicitly NOT addressed to a policy-authoring agent — an agent
-whose task is to record this project's policy is FILLING OUT A FORM, and must not
-be diverted into repairing the project's tests, types, or lint findings because a
-script it probed told it to. A policy-authoring agent that runs a gate as a
-bounded probe reads only ONE thing from the result: did the gate RESOLVE. It
-ignores the citation, the fix instructions, and the exit code.
-
-To follow this policy, an agent writing or changing a gate script MUST:
-
-* VERIFY every tool, flag, package, and path the script references actually
-  exists before declaring the script done. Never invent one.
-* GIVE the script the exit-code contract and strict mode required above.
-* MAKE the script print, on failure, the governing policy requirement and a
-  followable citation to the policy file that states it — and on timeout, the
-  time-budget requirements specifically.
-* COVER the script with a test that proves it both passes AND fails correctly.
-* WIRE the script into the authoritative verification entry point in the same
-  change that creates it.
-* CHECK the script against `supported_platforms` before claiming compliance.
-* UPDATE this policy's facts in the same workflow that changes the shell
-  dialect, the script directory, or the supported platforms.
-
-An agent MUST NOT:
-
-* Write a gate script that fails open, or that exits 0 on internal error.
-* Invent a tool, flag, or dependency the project does not have.
-* Create a hollow gate solely to satisfy a policy requirement.
-* Weaken, disable, or delete a gate script so that a failing change passes.
-* "Fix" a working gate script because the checks it runs report real failures.
-  A red gate reporting a real problem is the gate doing its job.
-* Reword, condense, or relax the requirement sections of this policy. They are
-  the normative standard, not a draft.
+Shared execution rules (truthful evidence, run every declared gate and report
+actual outcome, do not weaken gates, update facts in the same workflow, honest
+failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1).
+This file adds only its domain outcomes, facts, triggers, and exceptions. When
+a rule in this file conflicts with the kernel, the kernel wins and this file
+is amended.
 
 ## Verification
 
