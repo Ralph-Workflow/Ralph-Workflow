@@ -64,6 +64,7 @@ def commit_policy_changes(
     workspace_scope: WorkspaceScope,
     pre_run_dirty: frozenset[str] | None,
 ) -> None:
+    """Commit generated policy files while preserving paths dirty before the run."""
     auto_commit_policy_changes(workspace_scope, pre_run_dirty)
 
 

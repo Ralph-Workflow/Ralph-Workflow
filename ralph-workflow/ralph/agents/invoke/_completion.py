@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import KW_ONLY, dataclass, field, replace
+from dataclasses import KW_ONLY, dataclass, field
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
-from ralph.agents.completion_signals import (
-    CompletionSignals,
-    _check_completion_sentinel,
-    evaluate_completion,
-)
+from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
@@ -26,6 +22,7 @@ from ralph.agents.idle_watchdog._circumstantial_evidence import (
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agy_incomplete_exit_error import raise_missing_completion_evidence
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
+from ralph.agents.invoke._completion_evidence import apply_sentinel_signal
 from ralph.agents.invoke._completion_exit_status import (
     credentials_failure_needs_broken_exit,
     looks_like_credentials_failure,
@@ -40,6 +37,7 @@ from ralph.agents.invoke._implicit_completion import is_implicit_development_exi
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -48,7 +46,6 @@ from ralph.agents.invoke._session import (
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
-from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
@@ -369,69 +366,50 @@ class CompletionCheckOptions:
     agy_cli_log_path: Path | None = None
 
 
-def _apply_sentinel_signal(
-    signals: CompletionSignals,
-    opts: CompletionCheckOptions,
-    *,
-    sentinel_run_id: str | None,
-) -> CompletionSignals:
-    """Run the configured sentinel check and merge the result into ``signals``.
+def _agy_has_terminal_completion_evidence(
+    output: list[str], opts: CompletionCheckOptions | None
+) -> bool:
+    if (
+        opts is None
+        or opts.workspace_path is None
+        or opts.execution_strategy is None
+        or not opts.execution_strategy.supports_incomplete_exit_reprompt()
+    ):
+        return False
+    evaluate = opts.evaluate_completion_fn or evaluate_completion
+    signals = evaluate(
+        opts.workspace_path,
+        output,
+        required_artifact=opts.required_artifact,
+        run_id=_completion_run_id(opts),
+        sentinel_secret=opts.sentinel_secret,
+        receipt_secret=opts.receipt_secret,
+    )
+    return completion_signals_terminal(
+        apply_sentinel_signal(signals, opts, sentinel_run_id=_completion_run_id(opts))
+    )
 
-    When ``opts._sentinel_check_fn`` is set (unit-test stub) it is
-    called without any kwargs because its signature is fixed at
-    ``(Path, str | None) -> bool``. When it is not set, the live
-    ``_check_completion_sentinel`` is called with the
-    ``sentinel_secret`` kwarg so the broker-owned HMAC is verified
-    on the read path (RFC-013 P3). Extracted from
-    ``check_process_result`` to keep its branch count under the
-    PLR0912 cap. ``opts.workspace_path`` is ``Path`` at this point
-    (the caller checks ``opts.workspace_path is not None`` before
-    entering the session-continuation / completion-enforcement
-    branches that reach this helper).
-    """
-    workspace: Path = cast(
-        "Path", opts.workspace_path
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    if opts._sentinel_check_fn is not None:
-        sentinel_found = opts._sentinel_check_fn(
-            workspace,
-            sentinel_run_id,
+
+def _raise_quota_unless_agy_completed(
+    agent_name: str,
+    stderr_text: str,
+    parsed_output: list[str] | None,
+    opts: CompletionCheckOptions | None,
+) -> None:
+    try:
+        raise_if_quota_exhausted(
+            agent_name,
+            stderr_text,
+            parsed_output,
+            include_output=False,
         )
-    else:
-        sentinel_found = _check_completion_sentinel(
-            workspace,
-            sentinel_run_id,
-            sentinel_secret=opts.sentinel_secret,
+    except QuotaExhaustedError:
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=bool(opts and opts.explicit_completion_seen),
         )
-    if sentinel_found:
-        sentinel_evidence = Evidence(
-            holds=True,
-            provenance=Provenance.WORKSPACE_EFFECT,
-            detail=(
-                "completion sentinel present (graded at "
-                "WORKSPACE_EFFECT; upgrade to WIRE via smoke_evidence "
-                "grading when wire ledger is in scope)"
-            ),
-        )
-        return replace(
-            signals,
-            explicit_complete=True,
-            completion_sentinel_present=sentinel_evidence,
-            completion_sentinel_evidence=sentinel_evidence,
-        )
-    if not signals.explicit_complete:
-        absent_evidence = Evidence(
-            holds=False,
-            provenance=Provenance.ABSENT,
-            detail="completion sentinel not present",
-        )
-        return replace(
-            signals,
-            explicit_complete=False,
-            completion_sentinel_present=absent_evidence,
-            completion_sentinel_evidence=absent_evidence,
-        )
-    return signals
+        if not _agy_has_terminal_completion_evidence(bounded_output, opts):
+            raise
 
 
 def _wait_for_completion_grace(
@@ -653,12 +631,6 @@ def check_process_result(
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
-    raise_if_quota_exhausted(
-        agent_name,
-        stderr_text,
-        parsed_output,
-        include_output=returncode != 0,
-    )
     if returncode != 0:
         issuer_method = cast(
             "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
@@ -668,6 +640,14 @@ def check_process_result(
         bounded_output = _bounded_output_lines(
             parsed_output or [],
             explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
+        )
+        if _agy_has_terminal_completion_evidence(bounded_output, check_options):
+            return
+        raise_if_quota_exhausted(
+            agent_name,
+            stderr_text,
+            parsed_output,
+            include_output=True,
         )
         if not intentional:
             _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
@@ -713,6 +693,13 @@ def check_process_result(
         )
         raise exc
 
+    _raise_quota_unless_agy_completed(
+        agent_name,
+        stderr_text,
+        parsed_output,
+        check_options,
+    )
+
     opts = check_options
     if opts is not None and not opts.requires_completion_evidence:
         bounded_output = _bounded_output_lines(
@@ -751,7 +738,7 @@ def check_process_result(
             sentinel_secret=opts.sentinel_secret,
             receipt_secret=opts.receipt_secret,
         )
-        signals = _apply_sentinel_signal(
+        signals = apply_sentinel_signal(
             signals,
             opts,
             sentinel_run_id=_completion_run_id(opts),
@@ -862,7 +849,7 @@ def check_process_result(
             sentinel_secret=opts.sentinel_secret,
             receipt_secret=opts.receipt_secret,
         )
-        signals = _apply_sentinel_signal(
+        signals = apply_sentinel_signal(
             signals,
             opts,
             sentinel_run_id=_completion_run_id(opts),

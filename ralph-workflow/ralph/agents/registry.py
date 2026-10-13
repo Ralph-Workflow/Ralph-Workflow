@@ -47,7 +47,7 @@ Side effects:
 Invariants:
 
 - The registry's keys are the agent names policy references (e.g.
-  ``claude-headless``, ``agy/gemini-3.6-flash-low``). The registry
+  ``claude-headless``, ``agy/gemini-3.8-flash-low``). The registry
   does not silently rename or normalize these strings.
 - The registry does not silently drop unknown agent names; resolution
   raises :class:`ralph.agents.unknown_agent_error.UnknownAgentError`.
@@ -199,7 +199,7 @@ def agy_alias_help() -> str:
     return (
         f"Available AGY models: {', '.join(agy_published_models())}. "
         "Effort suffixes are not supported when a model is given explicitly; "
-        "use the bare published model ID (e.g. agy/gemini-3.6-flash-low)."
+        "use the bare published model ID (e.g. agy/gemini-3.8-flash-low)."
     )
 
 

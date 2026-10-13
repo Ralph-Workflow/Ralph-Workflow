@@ -180,14 +180,16 @@ AGY live smoke is a manual paid diagnostic, not a routine verification step:
 python -m ralph smoke-interactive-agy
 ```
 
-The command defaults to `agy/gemini-3.6-flash-low`, a conservative low-tier
-choice by model name; AGY price ordering is unverified. Each invocation is one
-`agy --print` run for one smoke prompt, one at a time, with AGY's observed
-default 5-minute print timeout; a billed amount requires the unrun pricing
-probe. It reports file, session, parser-event, tool-activity, and artifact
-signals. Treat any missing signal as a failed diagnostic, not a successful run.
+With no `--agent`, the command selects the first AGY entry in the effective
+development chain and otherwise falls back to bare `agy`, which uses the
+operator-configured model. Pass `--agent agy/gemini-3.8-flash-low` to pin the
+currently published low-tier Gemini model. AGY price ordering is unverified.
+Each invocation is one `agy --print` run for one smoke prompt, one at a time,
+with Ralph's bounded `--print-timeout 2h`. It reports file, session,
+parser-event, tool-activity, and artifact signals. Treat any missing signal as
+a failed diagnostic, not a successful run.
 
-The v1.1.8 manual record observed acceptance of the exact published ID
+The v1.1.8 manual record observed acceptance of the then-published ID
 `gemini-3.6-flash-low` and stream-json `init`, `step_update`, and successful
 `result` events. The latest smoke exited 0 after
 creating the requested file and showing plain-text parser/tool activity without

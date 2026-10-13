@@ -41,6 +41,18 @@ SMOKE_COMMAND_DRAINS: Mapping[str, DrainName] = dict.fromkeys(
 
 CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS: tuple[str, ...] = ()
 
+_BARE_AGENT_BY_TRANSPORT: Mapping[AgentTransport, str] = {
+    AgentTransport.AGY: "agy",
+    AgentTransport.CLAUDE: "claude-headless",
+    AgentTransport.CLAUDE_INTERACTIVE: "claude",
+    AgentTransport.CODEX: "codex",
+    AgentTransport.CURSOR: "cursor",
+    AgentTransport.KIMI: "kimi",
+    AgentTransport.NANOCODER: "nanocoder",
+    AgentTransport.OPENCODE: "opencode",
+    AgentTransport.PI: "pi",
+}
+
 
 def resolve_default_smoke_agent(
     transport: AgentTransport,
@@ -58,13 +70,22 @@ def resolve_default_smoke_agent(
     try:
         chain = ChainManager(agents_policy).chain_for_drain(drain)
     except DrainNotBoundError:
+        chain = None
+    if chain is not None:
+        for alias in chain.agents:
+            agent_config = lookup(alias)
+            if (
+                agent_config is not None
+                and agent_config.transport is transport
+                and (command_prefix is None or agent_config.cmd.startswith(command_prefix))
+            ):
+                return alias
+    bare_alias = _BARE_AGENT_BY_TRANSPORT.get(transport)
+    if bare_alias is None:
         return None
-    for alias in chain.agents:
-        agent_config = lookup(alias)
-        if (
-            agent_config is not None
-            and agent_config.transport is transport
-            and (command_prefix is None or agent_config.cmd.startswith(command_prefix))
-        ):
-            return alias
-    return None
+    bare_config = lookup(bare_alias)
+    if bare_config is None or (
+        command_prefix is not None and not bare_config.cmd.startswith(command_prefix)
+    ):
+        return None
+    return bare_alias

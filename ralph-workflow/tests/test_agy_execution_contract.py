@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from typing import TYPE_CHECKING
 
 import pytest
@@ -138,6 +139,78 @@ def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
             captured_session_id="abc",
         ),
     )
+
+
+def test_agy_post_completion_provider_error_preserves_verified_success(
+    tmp_path: Path,
+) -> None:
+    """A provider error after durable completion cannot replay completed work.
+
+    Regression: a live AGY run submitted its artifact and called
+    ``declare_complete``, then AGY emitted ``Malformed function call: Function
+    call is empty`` and exited nonzero. Ralph discarded the authenticated
+    completion evidence and unnecessarily reran the development phase.
+    """
+    run_id = "agy-post-completion-error"
+    sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+
+    check_process_result(
+        _FakeHandle(returncode=1),
+        "agy",
+        [
+            f"Task declared complete: session_id={run_id}, summary=done, timestamp=1",
+            "Malformed function call: Function call is empty - no input to parse.",
+        ],
+        CompletionCheckOptions(
+            execution_strategy=strategy_for_transport(AgentTransport.AGY),
+            workspace_path=tmp_path,
+            captured_session_id=run_id,
+        ),
+    )
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_agy_post_completion_quota_error_preserves_verified_success(
+    tmp_path: Path,
+    returncode: int,
+) -> None:
+    """A quota diagnostic after durable completion cannot replay completed work."""
+    run_id = "agy-post-completion-quota"
+    sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+    handle = _FakeHandle(returncode=returncode)
+    handle.stderr = StringIO("RESOURCE_EXHAUSTED: quota exceeded")
+
+    check_process_result(
+        handle,
+        "agy",
+        [f"Task declared complete: session_id={run_id}, summary=done, timestamp=1"],
+        CompletionCheckOptions(
+            execution_strategy=strategy_for_transport(AgentTransport.AGY),
+            workspace_path=tmp_path,
+            captured_session_id=run_id,
+        ),
+    )
+
+
+def test_agy_provider_error_without_verified_completion_still_fails(
+    tmp_path: Path,
+) -> None:
+    """A nonzero AGY exit remains fatal when durable completion is absent."""
+    with pytest.raises(AgentInvocationError):
+        check_process_result(
+            _FakeHandle(returncode=1),
+            "agy",
+            ["Malformed function call: Function call is empty - no input to parse."],
+            CompletionCheckOptions(
+                execution_strategy=strategy_for_transport(AgentTransport.AGY),
+                workspace_path=tmp_path,
+                captured_session_id="agy-no-completion",
+            ),
+        )
 
 
 def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> None:

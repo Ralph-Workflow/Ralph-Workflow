@@ -53,7 +53,7 @@ def test_opencode_smoke_default_comes_from_the_development_policy_chain() -> Non
     assert resolved == "opencode/minimax/MiniMax-M3"
 
 
-def test_opencode_smoke_default_rejects_development_chain_without_opencode_agent() -> None:
+def test_opencode_smoke_default_falls_back_when_chain_has_no_opencode_agent() -> None:
     config = UnifiedConfig()
     agents_policy = AgentsPolicy(
         agent_chains={"smoke-development": AgentChainConfig(agents=["claude/sonnet"])},
@@ -68,11 +68,11 @@ def test_opencode_smoke_default_rejects_development_chain_without_opencode_agent
             lookup,
             drain="development",
         )
-        is None
+        == "opencode"
     )
 
 
-def test_opencode_smoke_default_requires_development_policy_binding() -> None:
+def test_opencode_smoke_default_falls_back_without_development_policy_binding() -> None:
     config = UnifiedConfig()
     agents_policy = AgentsPolicy(
         agent_chains={"unbound": AgentChainConfig(agents=["opencode/minimax/MiniMax-M3"])},
@@ -86,5 +86,5 @@ def test_opencode_smoke_default_requires_development_policy_binding() -> None:
             lookup,
             drain="development",
         )
-        is None
+        == "opencode"
     )

@@ -1312,7 +1312,7 @@ def smoke_interactive_agy(
     agent: str | None = typer.Option(
         None,
         help=(
-            "AGY model alias to smoke (e.g. agy/gemini-3.6-flash-low). "
+            "AGY model alias to smoke (e.g. agy/gemini-3.8-flash-low). "
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="AGY", bare="agy")
         ),
     ),

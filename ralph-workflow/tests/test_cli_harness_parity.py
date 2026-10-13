@@ -148,7 +148,7 @@ def test_default_resolves_to_the_development_policy_chain_alias() -> None:
 
 
 @pytest.mark.timeout_seconds(3)
-def test_default_fails_when_the_development_policy_chain_has_no_transport_match() -> None:
+def test_default_uses_bare_transport_when_the_development_policy_chain_has_no_match() -> None:
     config = UnifiedConfig()
     agents_policy = AgentsPolicy(
         agent_chains={"smoke-development": AgentChainConfig(agents=["claude/sonnet"])},
@@ -160,12 +160,12 @@ def test_default_fails_when_the_development_policy_chain_has_no_transport_match(
         resolve_default_smoke_agent(
             AgentTransport.OPENCODE, agents_policy, lookup, drain="development"
         )
-        is None
+        == "opencode"
     )
 
 
 @pytest.mark.timeout_seconds(3)
-def test_opencode_smoke_regression_returns_actionable_failure_when_policy_lacks_transport(
+def test_opencode_smoke_uses_bare_agent_when_policy_lacks_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = UnifiedConfig()
@@ -180,10 +180,18 @@ def test_opencode_smoke_regression_returns_actionable_failure_when_policy_lacks_
         "load_agents_policy_for_workspace_scope",
         lambda *_args, **_kwargs: agents_policy,
     )
+    captured: dict[str, object] = {}
+
+    def fake_harness(agent_name: str, **_kwargs: object) -> int:
+        captured["agent_name"] = agent_name
+        return 0
+
+    monkeypatch.setattr(smoke_module, "smoke_harness_agent_command", fake_harness)
 
     exit_code = smoke_module.smoke_interactive_opencode_command(display_context=None)
 
-    assert exit_code == 2
+    assert exit_code == 0
+    assert captured["agent_name"] == "opencode"
 
 
 @pytest.mark.timeout_seconds(3)

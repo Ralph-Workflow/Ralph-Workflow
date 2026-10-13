@@ -4117,6 +4117,13 @@ ralph.project_policy.remediation
    :members:
    :show-inheritance:
 
+ralph.project_policy.finalization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.finalization
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

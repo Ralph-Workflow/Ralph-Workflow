@@ -214,7 +214,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
     # ``condense_placeholder_block`` runs, so an agent edit to AGENTS.md
     # in flight is SKIPPED (not committed in the policy chore commit).
     Invariant(
-        rel_path="project_policy/cli_integration.py",
+        rel_path="project_policy/finalization.py",
         present=(
             "commit_policy_writes",
             "condense_placeholder_block",

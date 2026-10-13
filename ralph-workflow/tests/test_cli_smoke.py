@@ -38,7 +38,7 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     grade_verdict,
 )
 from ralph.pipeline.plumbing.smoke_plumbing import is_mock_agy_override
-from ralph.policy.models._agent_chain_config import AgentChainConfig
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
@@ -227,6 +227,14 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
 
     monkeypatch.setattr(smoke_module, "resolve_workspace_scope", _resolve_workspace_scope)
     monkeypatch.setattr(smoke_module, "load_config", _load_config)
+    monkeypatch.setattr(
+        smoke_module,
+        "load_agents_policy_for_workspace_scope",
+        lambda *_args, **_kwargs: AgentsPolicy(
+            agent_chains={"smoke-development": AgentChainConfig(agents=["claude/haiku"])},
+            agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
+        ),
+    )
 
     interactive = AgentConfig(
         cmd="claude",
@@ -417,6 +425,14 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
         "load_config",
         lambda *_a, **_k: UnifiedConfig(
             agent_chains={"default": AgentChainConfig(agents=["claude/haiku"])}
+        ),
+    )
+    monkeypatch.setattr(
+        smoke_module,
+        "load_agents_policy_for_workspace_scope",
+        lambda *_args, **_kwargs: AgentsPolicy(
+            agent_chains={"smoke-development": AgentChainConfig(agents=["claude/haiku"])},
+            agent_drains={"development": AgentDrainConfig(chain="smoke-development")},
         ),
     )
     monkeypatch.setattr(
