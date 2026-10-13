@@ -190,6 +190,15 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # rot silently. In-budget on the 60s combined verify budget.
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
+    # wt-15-policy (U1): the 460-test parametrized display module is too
+    # heavy for a 16-shard LPT partition: it lands on a low-file-count
+    # shard and is the wall-clock bottleneck (verified ~27s for the
+    # shard carrying it vs ~22s for the others on the 40-core host).
+    # Moving it here lets the E2E shard's eight xdist workers absorb
+    # the parametrization fan-out, so the slowest general shard and
+    # the E2E shard both fit inside the 60-second combined budget
+    # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    "tests/test_display_generated_scenes.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

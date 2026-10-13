@@ -74,6 +74,14 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # rot silently. In-budget on the 60s combined verify budget.
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
+    # wt-15-policy (U1): the 460-test parametrized display module is too
+    # heavy for the 16-shard LPT partition (it lands on the slowest
+    # low-file-count shard, costing ~5s of wall clock on a 40-core host).
+    # Moving it here lets the E2E shard's eight xdist workers absorb
+    # the parametrization fan-out, so the slowest general shard and
+    # the E2E shard both fit inside the 60-second combined budget
+    # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    "tests/test_display_generated_scenes.py",
 )
 
 

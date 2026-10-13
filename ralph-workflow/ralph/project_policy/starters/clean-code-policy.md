@@ -37,7 +37,9 @@ code.
   log once at the owning handling boundary and redact sensitive context.
 * Test friction MUST prompt investigation. Refactor only when it reveals a
   real cohesion, dependency, or I/O-seam problem; do not create an artificial
-  public seam solely for a test.
+  public seam solely for a test. Test at the narrowest useful observable
+  boundary; never expose implementation or add wrappers to evade it
+  (`execution-kernel.md`).
 * Generated and vendored code MUST be identifiable and MAY be excluded from
   generic checks with a documented reason. First-party migration and
   compatibility code remain subject to applicable quality gates.
