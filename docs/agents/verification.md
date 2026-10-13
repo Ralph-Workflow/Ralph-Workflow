@@ -11,7 +11,7 @@ The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make 
 
 ## Project-policy portfolio
 
-Policy schema v4 requires
+Policy schema v5 (current, see `markers.SCHEMA_VERSION`; currently v5) requires
 `docs/ralph-workflow-policy/policy-portfolio.toml`. Its schema, composition
 order, limits, control fields, exception rules, and evidence contract are
 defined once in
@@ -25,7 +25,7 @@ python -m pytest ralph-workflow/tests/project_policy/test_policy_docs_schema_con
 ```
 
 Then run the canonical completion command above. The focused tests prove the
-v4 markers and seeded manifest; `make verify` proves repository-wide
+v5 markers and seeded manifest; `make verify` proves repository-wide
 integration. A process exit by itself does not prove a material behavior claim:
 retain the public-surface artifact and its immutable subject/run IDs, validated
 oracle, and independent verdict.

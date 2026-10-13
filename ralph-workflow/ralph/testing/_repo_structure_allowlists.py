@@ -654,6 +654,19 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.project_policy",
             ("_prompt_ui",),
         ),
+        # wt-15-policy WU-5: the authentic v4 consent-flow integration
+        # suite exercises the public ``_maybe_resolve_schema_upgrade``
+        # route against an unmodified v4 corpus (v4 marker, v1 portfolio)
+        # to prove the unattended refusal path and the interactive
+        # upgrade/freeze consent choices. The private module is the only
+        # entry point; adding a public re-export would duplicate the
+        # existing ``cli_integration._maybe_resolve_schema_upgrade`` call
+        # site purely for testability.
+        (
+            "tests/project_policy/test_authentic_v4_consent_flow.py",
+            "ralph.project_policy",
+            ("_prompt_ui", "_schema_upgrade"),
+        ),
         (
             "tests/test_policy_remediation_completion_evidence.py",
             "ralph.cli.commands._load_result",

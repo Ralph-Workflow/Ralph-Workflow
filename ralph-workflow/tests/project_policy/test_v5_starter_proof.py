@@ -234,6 +234,51 @@ def test_domain_starters_do_not_duplicate_kernel_truthful_evidence_rule() -> Non
     assert "never report a command that was not run" in kernel.lower()
 
 
+def test_b10_kernel_owned_concepts_not_re_derived_inline() -> None:
+    """B10 anti-duplication: the five kernel rules must not be re-derived
+    verbatim in any domain starter body prose (excluding the kernel's own
+    ## AI execution instructions pointer section).
+
+    The kernel's Protected outcome cells and AI execution instructions carry
+    the canonical phrasing. A domain starter that re-uses any of these
+    phrases verbatim is duplicating kernel-owned content.
+
+    Rules covered:
+    1. Truthful evidence: "report the actual outcome", "never report a command"
+    2. Fail-closed verification: "a check that cannot run blocks the run"
+    3. Bounded execution: "every long-running action carries a runner-enforced cap"
+    4. No weakening of checks: "the only lawful way past a red gate"
+    5. Explicit unverified-claim: "mark it explicitly as unverified"
+    """
+    domain_starters = [
+        name
+        for name in starters.STARTER_NAMES
+        if name != "execution-kernel.md" and name.endswith(".md")
+    ]
+    pinned_prohibited_phrases = (
+        # Rule 1: Truthful evidence
+        "report the actual outcome",
+        "never report a command",
+        "never report a command that was not run",
+        # Rule 2: Fail-closed verification
+        "a check that cannot run blocks the run",
+        # Rule 3: Bounded execution
+        "every long-running action carries a runner-enforced cap",
+        # Rule 4: No weakening of checks
+        "the only lawful way past a red gate",
+        # Rule 5: Explicit unverified-claim reporting
+        "mark it explicitly as unverified",
+    )
+    for name in domain_starters:
+        content = starters.read_starter(name)
+        lower_content = " ".join(content.split()).lower()
+        for phrase in pinned_prohibited_phrases:
+            assert phrase not in lower_content, (
+                f"{name} duplicates kernel-owned phrase {phrase!r}; "
+                f"kernel rule must not be re-derived in domain starter prose"
+            )
+
+
 def test_architecture_starter_uses_generic_resource_lifecycle_guard() -> None:
     """WU-4: architecture starter ships generic policy, not Ralph-repo-specific
     audit script prescriptions.
@@ -254,35 +299,79 @@ def test_testing_cheapest_layer_rule_14_present() -> None:
     assert "Shape the suite so the cheapest" in normalized
 
 
-def test_testing_guard_rows_name_real_boundary_and_browser_budget() -> None:
-    """Closes audit GAP A4: the Real-boundary set and Browser budget, not
-    cardinality guard rows must appear by name in the testing starter's
-    guard inventory so future edits cannot drop or rename them.
+def test_testing_guard_rows_real_boundary_set_substantive_prose() -> None:
+    """Closes audit GAP A4: the Real-boundary set guard row's Protected
+    outcome cell must name the substantive defect class ("risks are covered
+    at the real boundary") so the row label alone does not pass.
+
+    The test fails if either the row label is removed OR the substantive
+    prose describing the real-boundary risk class is stripped to generic text.
     """
     content = starters.read_starter("testing-policy.md")
     normalized = " ".join(content.split())
+    # Row label must exist (prevents label-only stub)
     assert "Real-boundary set" in normalized
-    assert "Browser budget, not cardinality" in normalized
+    # Substantive Protected outcome prose: the defect class is named
+    # ("browser / database / network-adapter / packaging / subprocess risks
+    # are covered at the real boundary")
+    assert "at the real boundary" in normalized
 
 
-def test_testing_guard_row_narrowest_observable_boundary_present() -> None:
-    """Closes audit GAP B4: the Narrowest observable boundary guard row
-    must appear by name so the private-symbol / wrapper-for-test ban is
-    anchored to a durable row label.
+def test_testing_guard_rows_browser_budget_substantive_prose() -> None:
+    """Closes audit GAP A4: the Browser budget, not cardinality guard row's
+    Protected outcome cell must name the substantive defect class
+    ("distinct-risk inventory") so the row label alone does not pass.
+
+    The test fails if either the row label is removed OR the distinct-risk
+    inventory prose is stripped.
     """
     content = starters.read_starter("testing-policy.md")
     normalized = " ".join(content.split())
+    # Row label must exist
+    assert "Browser budget, not cardinality" in normalized
+    # Substantive Protected outcome prose: the defect class is named
+    # ("the default-lane browser time budget is a measured value plus a
+    # distinct-risk inventory")
+    assert "distinct-risk inventory" in normalized
+
+
+def test_testing_guard_row_narrowest_observable_boundary_substantive_prose() -> None:
+    """Closes audit GAP B4: the Narrowest observable boundary guard row's
+    Protected outcome cell must name the substantive defect class
+    ("exposing a private method or adding a wrapper solely to satisfy a test
+    is a violation") so the row label alone does not pass.
+
+    The test fails if either the row label is removed OR the private-symbol /
+    wrapper-for-test ban prose is stripped.
+    """
+    content = starters.read_starter("testing-policy.md")
+    normalized = " ".join(content.split())
+    # Row label must exist
     assert "Narrowest observable boundary" in normalized
+    # Substantive Protected outcome prose: the defect class is named
+    # ("exposing a private method or adding a wrapper solely to satisfy a
+    # test is a violation")
+    assert "private method" in normalized
+    assert "wrapper solely" in normalized
 
 
-def test_typechecking_guard_row_unknown_at_untrusted_boundaries_present() -> None:
-    """Closes audit GAP B6: the Unknown at untrusted boundaries guard row
-    must appear by name so the ``unknown``-at-untrusted-boundary carve-out
-    is anchored to a durable row label.
+def test_typechecking_guard_row_unknown_at_untrusted_boundaries_substantive_prose() -> None:
+    """Closes audit GAP B6: the Unknown at untrusted boundaries guard row's
+    Protected outcome cell must name the substantive defect class
+    ("TypeScript `unknown` is allowed at untrusted boundaries with immediate
+    narrowing") so the row label alone does not pass.
+
+    The test fails if either the row label is removed OR the "immediate
+    narrowing" prose is stripped.
     """
     content = starters.read_starter("typechecking-policy.md")
     normalized = " ".join(content.split())
+    # Row label must exist
     assert "Unknown at untrusted boundaries" in normalized
+    # Substantive Protected outcome prose: the defect class is named
+    # ("TypeScript `unknown` is allowed at untrusted boundaries with
+    # immediate narrowing")
+    assert "immediate narrowing" in normalized
 
 
 def test_clean_code_syntax_proxy_ban_present() -> None:

@@ -188,7 +188,7 @@ person or team, not a role the author occupies by default.
 
 | Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
 |---|---|---|---|---|
-| Bounded run budget | Verification owner | every gate and every long-running action carries a runner-enforced cap | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | when the combined budget is retired by the kernel |
+| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | when the combined budget is retired by the kernel |
 | No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | when the project stops generating high-churn evidence |
 | Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | when every named profile is retired |
 | Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | when every behavior claim is provable at a cheaper deterministic layer |

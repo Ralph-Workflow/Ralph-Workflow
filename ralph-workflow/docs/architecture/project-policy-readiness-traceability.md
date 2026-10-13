@@ -7,8 +7,8 @@ Readiness is now reported across **three dimensions**, not two:
 | Dimension | What it proves | When it flips True |
 |---|---|---|
 | `structure_complete` | The deterministic validator passes — every required core file exists with the right schema marker, headings, facts, commands, citations, and guard inventory. | When `validators.validate_readiness` returns an empty findings list. |
-| `implementation_verified` | Every declared `RALPH-COMMAND` gate ran to exit 0 AND the recorded `policy_content_hash` matches the current readiness-evidence signature. A ledger recorded against a pre-edit policy tree cannot certify the present policy. | When every recorded outcome has `exit_code == 0` and the policy-content hash matches. |
-| `outcome_evidence_reviewed` | The recorded outcomes cover every declared gate (command-completeness) AND the analysis agent returned `completed`. A declared gate that was never probed is an unreviewed gate. | When every declared `RALPH-COMMAND` is in the ledger AND analysis blessed the policy. |
+| `implementation_verified` | Every recorded outcome has `exit_code == 0` AND the recorded `policy_content_hash` matches the current readiness-evidence signature. A ledger recorded against a pre-edit policy tree cannot certify the present policy. Hash-bound and recorded-outcome-bounded, NOT declared-gate-bounded. | When every recorded outcome has `exit_code == 0` and the recorded `policy_content_hash` matches the current hash. |
+| `outcome_evidence_reviewed` | True iff `implementation_verified` AND every declared `RALPH-COMMAND` appears in the recorded-outcome ledger (command-completeness). The analysis/approval gate is a separate pipeline gate, not a dimension flip. | When `implementation_verified` is True AND every declared `RALPH-COMMAND` is in the ledger. |
 
 `structure_complete` is the **caching gate**: the project enters READY only when
 this dimension is True. `implementation_verified` and

@@ -156,11 +156,17 @@ is not enforceable.
 Readiness is reported in three dimensions. `structure_complete`
 means the validator is clean — it is the caching gate; a NOT-READY
 project is not cached. `implementation_verified` means every recorded
-gate ran to exit 0 against the current policy content hash.
-`outcome_evidence_reviewed` means every declared gate is in the ledger
-and a review blessed the policy. Structural READY gates the cache;
-semantic correctness is reported separately on all four surfaces:
-CLI emit, status bar, AGENTS.md block, and the remediation prompt.
+gate ran to exit 0 AND the recorded `policy_content_hash` matches the
+current readiness-evidence signature (hash-bound; recorded-outcome
+not declared-gate bounded). `outcome_evidence_reviewed` means
+`implementation_verified` AND every declared `RALPH-COMMAND` appears in
+the ledger (command-completeness); the analysis/approval gate is a
+separate pipeline gate and is not a dimension of this assessment.
+Structural READY gates the cache; semantic correctness is reported
+separately on all four surfaces: CLI emit, status bar, AGENTS.md
+block, and the remediation prompt.
+See `ralph/project_policy/pipeline_driver.py:244-285` for the
+exact definitions.
 The surfaces and the v5 model are documented in
 `docs/architecture/project-policy-readiness-traceability.md`.
 

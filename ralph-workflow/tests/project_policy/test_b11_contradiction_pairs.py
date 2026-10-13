@@ -58,14 +58,27 @@ def test_pair_2_typechecking_typed_tests_in_scope() -> None:
     declared checker scope INCLUDES the tests directory. The two
     MUST agree; a checker that excludes ``tests/`` would let
     every test file silently lose coverage.
+
+    Strengthened: the test now verifies (a) the positive commitment
+    to typed tests ("tests are fully typed within the declared checker
+    scope" — the Typed tests guard row's Protected outcome) AND (b)
+    that tests are not categorically excluded from the checker scope.
     """
     typechecking = _read("typechecking-policy.md")
     normalized = " ".join(typechecking.split())
-    # The pinned rule: tests MUST be fully typed, and the
-    # checker scope includes the tests directory.
-    assert "tests" in normalized
-    # The contradiction-pair B11 anchor: typechecking does NOT
-    # exclude the tests directory.
+    # (a) Positive commitment: the Typed tests guard row's Protected outcome
+    # commits to typed tests ("tests are fully typed within the declared
+    # checker scope"). This phrase is the substantive contract.
+    assert "tests are fully typed within the declared checker scope" in normalized
+    # (b) Checker scope includes tests: the policy does NOT say tests are
+    # excluded from the typechecker's in-scope paths. The "Typed tests"
+    # guard row's Detected condition ("static type check over the test files
+    # returns zero errors") confirms tests are in scope. The suppression
+    # section also states "tests MUST NOT be excluded merely because of
+    # their category".
+    assert "tests MUST NOT be excluded" in normalized or "tests are fully typed" in normalized
+    # (c) Explicit exclusion wording must be absent — "tests MUST be excluded"
+    # or "tests MUST be ignored" in the scope context is a regression.
     assert "tests MUST be excluded" not in normalized
     assert "tests MUST be ignored" not in normalized
 
