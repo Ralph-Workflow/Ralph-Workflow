@@ -7,13 +7,14 @@ order never affects the returned portfolio.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 from ralph.project_policy.markers import PORTFOLIO_PATH, PORTFOLIO_SCHEMA_VERSION
 from ralph.project_policy.models import PortfolioError
@@ -24,6 +25,12 @@ MAX_PROFILES: Final[int] = 16
 MAX_LANES: Final[int] = 16
 MAX_EXCEPTIONS: Final[int] = 16
 MAX_CONTEXT_VALUES: Final[int] = 16
+
+# Same strict, narrow contract as the citation ``path:`` field. The
+# regex restricts the value to a scheme-less relative path so a
+# portfolio control cannot smuggle a URL, whitespace, or a ``..``
+# escape past the existence check.
+_PORTFOLIO_PATH_VALUE_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_\-./]*$")
 _ALLOWED_ROOT = frozenset(
     {
         "schema_version",
@@ -62,16 +69,18 @@ _ALLOWED_CONTROL = frozenset(
         "lane",
         "marginal_cost_seconds",
         "evidence",
+        "evidence_path",
         "lifecycle",
         "disposition",
         "removed-tests",
         "cost_basis",
     }
 )
+_OPTIONAL_CONTROL = frozenset({"evidence_path", "removed-tests"})
 _ALLOWED_PROFILE = frozenset({"id", "version", "requires", "controls", "incompatible_with"})
 _ALLOWED_TIGHTENING = frozenset({"controls"})
 _ALLOWED_EXCEPTION = frozenset({"id", "control", "owner", "reason", "review_trigger", "expires"})
-_REQUIRED_CONTROL = _ALLOWED_CONTROL - frozenset({"removed-tests"})
+_REQUIRED_CONTROL = _ALLOWED_CONTROL - _OPTIONAL_CONTROL
 _RISK_VALUES = {
     "impact": frozenset({"low", "medium", "high", "critical"}),
     "likelihood": frozenset({"low", "medium", "high"}),
@@ -154,6 +163,57 @@ def _reject_unknown(table: Mapping[str, object], allowed: frozenset[str], label:
         raise _error(f"unknown {label} field: {unknown[0]}")
 
 
+def _parse_evidence_path(
+    table: Mapping[str, object],
+    *,
+    workspace_exists: Callable[[str], bool] | None,
+) -> str | None:
+    """Return the optional ``evidence_path`` value when it should be existence-checked.
+
+    The portfolio control's evidence is REQUIRED as a prose string
+    (existing behaviour, unchanged). The optional ``evidence_path``
+    field is additive: it names a repository-local path that
+    existence-checks against the workspace root. A value that fails
+    the strict regex OR names a non-existent path is reported as
+    malformed / missing so a portfolio cannot pass with a stale
+    citation.
+    """
+    raw = table.get("evidence_path")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    if not _PORTFOLIO_PATH_VALUE_RE.match(raw.strip()):
+        return raw.strip()
+    return raw.strip()
+
+
+def _validate_evidence_path(
+    control_id: str,
+    table: Mapping[str, object],
+    *,
+    workspace_exists: Callable[[str], bool] | None,
+) -> None:
+    """Run the optional ``evidence_path`` existence check.
+
+    The ``evidence`` field stays a prose string (existing contract);
+    the explicit ``evidence_path`` field is the additive trigger that
+    activates the existence check. A malformed value OR a path that
+    does not exist under the repository root fails the parse closed.
+    """
+    evidence_path = _parse_evidence_path(table, workspace_exists=workspace_exists)
+    if evidence_path is None:
+        return
+    if not _PORTFOLIO_PATH_VALUE_RE.match(evidence_path):
+        raise _error(
+            f"control {control_id} evidence_path {evidence_path!r} is not a "
+            "scheme-less relative path under the repository root"
+        )
+    if workspace_exists is not None and not workspace_exists(evidence_path):
+        raise _error(
+            f"control {control_id} cites evidence_path {evidence_path!r} "
+            "that does not resolve under the repository root"
+        )
+
+
 def _text(table: Mapping[str, object], key: str, label: str) -> str:
     value = table.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -209,7 +269,12 @@ def _parse_lanes(root: Mapping[str, object]) -> tuple[_Lane, ...]:
     return tuple(sorted(lanes, key=_lane_id))
 
 
-def _parse_controls(root: Mapping[str, object], lane_ids: frozenset[str]) -> dict[str, _Control]:
+def _parse_controls(
+    root: Mapping[str, object],
+    lane_ids: frozenset[str],
+    *,
+    workspace_exists: Callable[[str], bool] | None = None,
+) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
     for table in _table_list(root, "controls", MAX_CONTROLS):
@@ -232,6 +297,9 @@ def _parse_controls(root: Mapping[str, object], lane_ids: frozenset[str]) -> dic
         evidence = _text(table, "evidence", f"control {control_id}")
         if any(token in evidence.lower() for token in _FORBIDDEN_EVIDENCE):
             raise _error(f"control {control_id} requires inspectable evidence/oracle")
+        # Optional ``evidence_path`` existence check. Extracted into a
+        # helper to keep the parser's branch count bounded.
+        _validate_evidence_path(control_id, table, workspace_exists=workspace_exists)
         outcome = _text(table, "protected_outcome", f"control {control_id}")
         if outcome in outcomes:
             raise _error(
@@ -393,8 +461,21 @@ def _apply_exceptions(
     return tuple(sorted(retained)), tuple(sorted(applied))
 
 
-def parse_portfolio_toml(content: str, *, today: date | None = None) -> PolicyPortfolio:
-    """Parse, validate, and deterministically compose one portfolio manifest."""
+def parse_portfolio_toml(
+    content: str,
+    *,
+    today: date | None = None,
+    workspace_exists: Callable[[str], bool] | None = None,
+) -> PolicyPortfolio:
+    """Parse, validate, and deterministically compose one portfolio manifest.
+
+    ``workspace_exists`` is the production-side resolver for the
+    optional ``evidence_path`` existence check. The production ingress
+    in :func:`ralph.project_policy.validators._check_portfolio` always
+    supplies it; unit tests that exercise the parser in isolation may
+    omit it, in which case the existence check degrades to a no-op
+    while the strict shape validation still runs.
+    """
 
     if len(content.encode("utf-8")) > MAX_PORTFOLIO_BYTES:
         raise _error(f"portfolio exceeds {MAX_PORTFOLIO_BYTES} bytes")
@@ -411,7 +492,11 @@ def parse_portfolio_toml(content: str, *, today: date | None = None) -> PolicyPo
     context_tuple = _parse_context(root.get("context", {}))
     context = dict(context_tuple)
     lanes = _parse_lanes(root)
-    controls = _parse_controls(root, frozenset(lane.id for lane in lanes))
+    controls = _parse_controls(
+        root,
+        frozenset(lane.id for lane in lanes),
+        workspace_exists=workspace_exists,
+    )
     profiles = _parse_profiles(root)
     selected_ids, selected_profiles = _selected_control_ids(root, profiles, context)
     missing = sorted(set(selected_ids) - set(controls))

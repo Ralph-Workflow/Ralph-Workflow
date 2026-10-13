@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 from ralph.project_policy._status import ReadinessStatus
 
 if TYPE_CHECKING:
+    from ralph.project_policy._command_outcome import CommandOutcome
     from ralph.project_policy._findings import PolicyFinding
+    from ralph.project_policy._readiness_assessment import ReadinessAssessment
 
 
 @dataclass
@@ -21,6 +23,16 @@ class ReadinessResult:
     migrated_sources: list[str] = field(default_factory=list)
     commands_run: list[str] = field(default_factory=list)
     report_lines: list[str] = field(default_factory=list)
+    # Optional: the strict execution-evidence ledger ingested from the
+    # analysis-phase artifact. Empty tuple when no ledger is supplied
+    # (the default) so existing call sites that never emit the section
+    # keep working unchanged.
+    command_outcomes: tuple[CommandOutcome, ...] = field(default_factory=tuple)
+    # Optional: the three-dimension readiness assessment. ``None`` means
+    # no assessment was computed for this run; an explicit all-false
+    # :class:`ReadinessAssessment` is what a run that DID compute one
+    # reports when every dimension is unverified.
+    assessment: ReadinessAssessment | None = None
 
     def is_ready(self) -> bool:
         return self.status is ReadinessStatus.READY
@@ -38,6 +50,16 @@ class ReadinessResult:
         if self.report_lines:
             return list(self.report_lines)
         lines: list[str] = [f"project-policy-readiness: {self.status.value}"]
+        if self.assessment is not None:
+            lines.append(
+                "readiness-assessment: "
+                + ", ".join(
+                    f"{name}={'true' if value else 'false'}"
+                    for name, value in self.assessment.as_dict().items()
+                )
+            )
+        if self.command_outcomes:
+            lines.append(f"command_outcomes: {len(self.command_outcomes)}")
         if self.findings:
             lines.append(f"findings: {len(self.findings)}")
             for finding in self.findings:

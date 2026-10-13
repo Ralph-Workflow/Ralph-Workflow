@@ -1338,16 +1338,24 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/cli_integration.py", 555),
         ("ralph/project_policy/cli_integration.py", 558),
         ("ralph/project_policy/cli_integration.py", 559),
-        ("ralph/project_policy/preflight.py", 185),
-        ("ralph/project_policy/preflight.py", 191),
-        ("ralph/project_policy/preflight.py", 223),
+        ("ralph/project_policy/preflight.py", 188),
+        ("ralph/project_policy/preflight.py", 194),
         ("ralph/project_policy/preflight.py", 226),
-        ("ralph/project_policy/preflight.py", 227),
-        ("ralph/project_policy/preflight.py", 228),
-        ("ralph/project_policy/preflight.py", 250),
-        ("ralph/project_policy/preflight.py", 254),
-        ("ralph/project_policy/preflight.py", 262),
-        ("ralph/project_policy/preflight.py", 269),
+        ("ralph/project_policy/preflight.py", 229),
+        ("ralph/project_policy/preflight.py", 230),
+        ("ralph/project_policy/preflight.py", 253),
+        ("ralph/project_policy/preflight.py", 257),
+        ("ralph/project_policy/preflight.py", 265),
+        ("ralph/project_policy/preflight.py", 272),
+        # wt-15: lazy import of ``_content_checks`` from the validator's
+        # research-basis and per-file wrappers publishes the citation
+        # ``path:`` workspace seam without creating a
+        # validators<->_content_checks import cycle. The cycle is
+        # necessary because the workspace slot is module-level on
+        # ``_content_checks`` so unit tests can exercise the citation
+        # shape without setting it.
+        ("ralph/project_policy/validators.py", 282),
+        ("ralph/project_policy/validators.py", 320),
         ("ralph/skills/_installer.py", 112),
         ("ralph/skills/_installer.py", 114),
         ("ralph/skills/manager.py", 213),

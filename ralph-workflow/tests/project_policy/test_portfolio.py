@@ -239,6 +239,85 @@ def test_default_budget_overflow_fails_closed() -> None:
         )
 
 
+def test_missing_cost_basis_fails_closed() -> None:
+    """A control without an explicit ``cost_basis`` field must be rejected
+    at parse time; the missing-keyword feedback is the regression for the
+    analysis finding that required the explicit cost-basis labelling to
+    be enforced by a regression test, not by the type system alone.
+    """
+    stripped = _control("kernel").replace('\ncost_basis = "estimate"\n', "\n")
+    with pytest.raises(PortfolioError, match="cost_basis"):
+        parse_portfolio_toml(
+            _manifest(controls=stripped),
+            today=date(2026, 9, 11),
+        )
+
+
+def test_invalid_cost_basis_value_fails_closed() -> None:
+    """A control with a ``cost_basis`` outside the allowed enum
+    (``measured`` | ``estimate``) must be rejected at parse time.
+    """
+    bogus = _control("kernel", cost_basis="guessed")
+    with pytest.raises(PortfolioError, match="cost_basis"):
+        parse_portfolio_toml(
+            _manifest(controls=bogus),
+            today=date(2026, 9, 11),
+        )
+
+
+def test_measured_cost_basis_is_accepted() -> None:
+    """A control explicitly labelled ``cost_basis = "measured"`` parses
+    cleanly and is the positive case the regression defends.
+    """
+    measured = _control("kernel", cost_basis="measured")
+    portfolio = parse_portfolio_toml(
+        _manifest(controls=measured),
+        today=date(2026, 9, 11),
+    )
+    assert portfolio.controls[0].cost_basis == "measured"
+
+
+def test_evidence_path_to_existing_file_passes() -> None:
+    """A control that adds an ``evidence_path`` field naming an existing
+    repository file is accepted; the existence check is positive.
+    """
+    extra = 'evidence_path = "tests/test_portfolio.py"\n'
+    injected = _control("kernel") + extra
+    portfolio = parse_portfolio_toml(
+        _manifest(controls=injected),
+        today=date(2026, 9, 11),
+        workspace_exists=lambda _path: True,
+    )
+    assert portfolio.controls[0].id == "kernel"
+
+
+def test_evidence_path_to_missing_file_fails_closed() -> None:
+    """A control that names a non-existent ``evidence_path`` is rejected
+    at parse time; this is the production-side seam for the
+    citation-existence contract on portfolio evidence.
+    """
+    injected = _control("kernel") + 'evidence_path = "tests/__nonexistent__.py"\n'
+    with pytest.raises(PortfolioError, match="evidence_path"):
+        parse_portfolio_toml(
+            _manifest(controls=injected),
+            today=date(2026, 9, 11),
+            workspace_exists=lambda _path: False,
+        )
+
+
+def test_evidence_path_malformed_fails_closed() -> None:
+    """A control that names a non-relative ``evidence_path`` is rejected
+    at parse time; the strict regex matches the citation contract.
+    """
+    injected = _control("kernel") + 'evidence_path = "https://example.com/foo.py"\n'
+    with pytest.raises(PortfolioError, match="evidence_path"):
+        parse_portfolio_toml(
+            _manifest(controls=injected),
+            today=date(2026, 9, 11),
+            workspace_exists=lambda _path: True,
+        )
+
+
 def test_relabeled_duplicate_cost_in_another_lane_fails_closed() -> None:
     duplicate = _control(
         "renamed",

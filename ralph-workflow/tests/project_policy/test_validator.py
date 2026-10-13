@@ -392,6 +392,163 @@ def test_citation_field_missing_emits_finding() -> None:
     )
 
 
+def _insert_citation_into_research_basis(ws: MemoryWorkspace, path: str, addition: str) -> None:
+    """Insert a citation block inside the ``## Research basis`` section.
+
+    The validator's :func:`_citation_blocks` helper slices the file
+    between ``## Research basis`` and the next H2 heading. Appending
+    the new block at the END of the file places it past the next
+    H2 and the validator never sees it; the helpers below insert
+    the block immediately after the existing first citation block,
+    still inside the Research basis section.
+    """
+    content = ws.read(path)
+    lines = content.splitlines()
+    start_idx: int | None = None
+    for idx, line in enumerate(lines):
+        if line.strip().lower() == "## research basis":
+            start_idx = idx + 1
+            break
+    if start_idx is None:
+        # No Research basis section: append one at the end.
+        ws.write(path, content.rstrip("\n") + "\n\n## Research basis\n\n" + addition.lstrip())
+        return
+    # Find the end of the first citation block: walk forward until a
+    # blank line followed by either another citation (starts with
+    # ``-``) or the next H2. Insert just before the H2 boundary.
+    end_idx = len(lines)
+    for idx in range(start_idx, len(lines)):
+        line = lines[idx]
+        if line.startswith("## ") and idx > start_idx:
+            end_idx = idx
+            break
+    insertion = ("\n" + addition.strip("\n") + "\n\n").lstrip("\n")
+    new_lines = [*lines[:end_idx], insertion, *lines[end_idx:]]
+    ws.write(path, "\n".join(new_lines) + "\n")
+
+
+def test_citation_explicit_path_to_existing_file_passes() -> None:
+    """An explicit `path:` key that resolves to a real file is accepted
+    by the citation existence check; the shape check still has to pass.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    ws.write("tests/test_validator.py", "# real file")
+    _insert_citation_into_research_basis(
+        ws,
+        path,
+        (
+            "- publisher: In-tree test fixture\n"
+            "  title: explicit path acceptance\n"
+            "  http: https://example.com\n"
+            "  review date: 2026-01-01\n"
+            "  path: tests/test_validator.py\n"
+        ),
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    citation_findings = [
+        f
+        for f in findings
+        if f.path == path and "block-" in f.requirement_id and "path-" in f.requirement_id
+    ]
+    assert citation_findings == [], (
+        f"real-path citation must not produce a path-missing finding, got {citation_findings}"
+    )
+
+
+def test_citation_explicit_path_to_missing_file_fails_validation() -> None:
+    """An explicit `path:` key that names a nonexistent file must fail
+    the readiness validation with a stable `path-missing` finding.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    _insert_citation_into_research_basis(
+        ws,
+        path,
+        (
+            "- publisher: Imaginary\n"
+            "  title: explicit path failure\n"
+            "  http: https://example.com\n"
+            "  review date: 2026-01-01\n"
+            "  path: tests/__nonexistent_file__.py\n"
+        ),
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    matching = [
+        f
+        for f in findings
+        if f.path == path
+        and f.requirement_id.startswith(markers.ID_CITATION_MISSING)
+        and "path-missing" in f.requirement_id
+    ]
+    assert matching, f"missing-path citation must surface a path-missing finding, got {findings}"
+
+
+def test_citation_explicit_path_with_https_url_is_ignored() -> None:
+    """A prose value of the form 'https://...' must NOT be treated as
+    a repository-local path; the citation shape check still applies,
+    and the existence check is skipped.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    _insert_citation_into_research_basis(
+        ws,
+        path,
+        (
+            "- publisher: prose value, no explicit `path:` key\n"
+            "  title: https-only citation\n"
+            "  http: https://example.com\n"
+            "  review date: 2026-01-01\n"
+        ),
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    path_findings = [f for f in findings if f.path == path and "path-" in f.requirement_id]
+    assert path_findings == [], (
+        f"prose-only citation must not trigger the existence check, got {path_findings}"
+    )
+
+
+def test_citation_explicit_path_malformed_value_fails_validation() -> None:
+    """A `path:` value with characters outside the allowed set (e.g.
+    a scheme, whitespace, or `..` escapes) must fail with a stable
+    `path-malformed` finding rather than being silently accepted.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    _insert_citation_into_research_basis(
+        ws,
+        path,
+        (
+            "- publisher: bad path\n"
+            "  title: malformed path\n"
+            "  http: https://example.com\n"
+            "  review date: 2026-01-01\n"
+            "  path: https://example.com/foo.py\n"
+        ),
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    matching = [
+        f
+        for f in findings
+        if f.path == path
+        and f.requirement_id.startswith(markers.ID_CITATION_MISSING)
+        and "path-malformed" in f.requirement_id
+    ]
+    assert matching, f"malformed path must surface a path-malformed finding, got {findings}"
+
+
 def test_design_system_required_emits_design_system_finding() -> None:
     ws = MemoryWorkspace()
     _seed_agents_md(ws)

@@ -54,6 +54,11 @@ from ralph.phases.artifacts import (
 )
 from ralph.phases.required_artifacts import retry_hint_path
 from ralph.project_policy import markers
+from ralph.project_policy._assessment import (
+    extract_evidence_section,
+    parse_execution_evidence,
+)
+from ralph.project_policy._assessment_error import EvidenceParseError
 from ralph.project_policy.analysis_decision import AnalysisDecision
 from ralph.project_policy.pipeline_graph import (
     DECISION_FAILED,
@@ -67,6 +72,7 @@ from ralph.prompts.template_registry import (
 )
 
 if TYPE_CHECKING:
+    from ralph.project_policy._command_outcome import CommandOutcome
     from ralph.workspace.protocol import Workspace
 
 #: Packaged Jinja template holding the analysis prompt body.
@@ -263,6 +269,28 @@ def run_analysis_phase(
     return decision
 
 
+def read_execution_outcomes(workspace: Workspace) -> tuple[CommandOutcome, ...]:
+    """Read the strict ``RALPH-EVIDENCE:`` ledger from the analysis artifact.
+
+    The analysis agent is the only producer of this ledger (its
+    ``process.exec_bounded`` access makes it the only safe place to
+    actually run a gate). A malformed ledger is treated as no ledger
+    rather than as a hard parse error at this ingestion boundary --
+    parse errors are surfaced in the report lines from the consuming
+    call site so a degraded run can still report the failure cleanly.
+    """
+    if not workspace.exists(ANALYSIS_ARTIFACT_REL_PATH):
+        return ()
+    raw = workspace.read(ANALYSIS_ARTIFACT_REL_PATH)
+    section = extract_evidence_section(raw)
+    if not section:
+        return ()
+    try:
+        return parse_execution_evidence(section)
+    except EvidenceParseError:
+        return ()
+
+
 __all__ = [
     "ANALYSIS_ARTIFACT_REL_PATH",
     "ANALYSIS_ARTIFACT_TYPE",
@@ -271,5 +299,6 @@ __all__ = [
     "InvokePolicyAgent",
     "clear_stale_decision",
     "read_analysis_decision",
+    "read_execution_outcomes",
     "run_analysis_phase",
 ]

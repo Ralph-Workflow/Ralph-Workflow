@@ -93,8 +93,11 @@ def run_policy_readiness_preflight(
 
     if cache.read_cached_ready(workspace, stack):
         # READY (cached): no emit here either; run-loop owns the brief line.
+        cached_assessment, cached_outcomes = cache.read_cached_assessment(workspace, stack)
         return ReadinessResult(
             status=ReadinessStatus.READY,
+            command_outcomes=cached_outcomes,
+            assessment=cached_assessment,
             report_lines=["project-policy-readiness: ready (cached)"],
         )
 

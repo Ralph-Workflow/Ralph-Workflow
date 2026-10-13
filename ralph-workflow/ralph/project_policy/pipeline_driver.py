@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.project_policy import analysis, remediation, validators
+from ralph.project_policy._readiness_assessment import ReadinessAssessment
 from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 from ralph.project_policy.pipeline_graph import (
     DEFAULT_ANALYSIS_CAP,
@@ -51,6 +52,7 @@ from ralph.project_policy.pipeline_graph import (
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy._command_outcome import CommandOutcome
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.analysis_decision import AnalysisDecision
     from ralph.workspace.protocol import Workspace
@@ -62,7 +64,11 @@ def _noop_emit(message: str) -> None:
     """Default emit callback used when no display is injected."""
 
 
-def _not_ready(findings: list[PolicyFinding], reason: str) -> ReadinessResult:
+def _not_ready(
+    findings: list[PolicyFinding],
+    reason: str,
+    command_outcomes: tuple[CommandOutcome, ...] = (),
+) -> ReadinessResult:
     """Build the result for a policy that could not be made ready.
 
     The status is BLOCKED, but BLOCKED does NOT mean "abort the run" -- it means
@@ -74,6 +80,8 @@ def _not_ready(findings: list[PolicyFinding], reason: str) -> ReadinessResult:
     return ReadinessResult(
         status=ReadinessStatus.BLOCKED,
         findings=findings,
+        command_outcomes=command_outcomes,
+        assessment=ReadinessAssessment(structure_complete=not bool(findings)),
         report_lines=[reason, *remediation.render_blocked_report(findings)],
     )
 
@@ -192,6 +200,47 @@ def run_policy_pipeline(
     return _finish(workspace, stack, current, blessed=blessed, emit=emit)
 
 
+def _assess(
+    workspace: Workspace,
+    stack: ProjectStack,
+    findings: list[PolicyFinding],
+    outcomes: tuple[CommandOutcome, ...],
+) -> ReadinessAssessment:
+    """Compute the three-dimension readiness assessment.
+
+    Every dimension defaults to ``False``; the function only flips
+    booleans when the strict evidence contract is satisfied. The
+    assessment is additive: it travels with the result and the cache
+    alongside the existing structural and approval gates.
+    """
+    structure_complete = not bool(findings)
+    implementation_verified = bool(outcomes) and all(outcome.exit_code == 0 for outcome in outcomes)
+    # ``outcome_evidence_reviewed`` is additive: it is True when at
+    # least one command outcome is recorded AND none of the declared
+    # outcomes failed. A failed run is not reviewed; the assessment
+    # fails closed.
+    outcome_evidence_reviewed = implementation_verified
+    del stack, workspace  # the dimensions are derived from findings + outcomes alone
+    return ReadinessAssessment(
+        structure_complete=structure_complete,
+        implementation_verified=implementation_verified,
+        outcome_evidence_reviewed=outcome_evidence_reviewed,
+    )
+
+
+def _collect_command_outcomes(workspace: Workspace) -> tuple[CommandOutcome, ...]:
+    """Read the analysis-artifact ledger through the strict parser.
+
+    A malformed ledger degrades to an empty tuple (no partial credit);
+    the producer is responsible for emitting well-formed lines, and
+    the driver treats a missing or invalid ledger as "not verified".
+    """
+    raw_artifact = analysis.read_execution_outcomes(workspace)
+    if raw_artifact:
+        return raw_artifact
+    return ()
+
+
 def _route_after_remediation(
     current: list[PolicyFinding],
     iteration: int,
@@ -241,6 +290,7 @@ def _finish(
     the workspace after the last validation. Cheap insurance on the one decision
     that gets cached.
     """
+    command_outcomes = _collect_command_outcomes(workspace)
     if not blessed:
         emit(
             "project-policy-readiness: could not reach a ready policy; "
@@ -249,13 +299,20 @@ def _finish(
         return _not_ready(
             current,
             "project-policy-readiness: analysis budget exhausted",
+            command_outcomes=command_outcomes,
         )
 
     remaining = validators.validate_readiness(workspace, stack)
     if remaining:
-        return _not_ready(
-            remaining,
-            "project-policy-readiness: analysis approved but the validator still reports findings",
+        return ReadinessResult(
+            status=ReadinessStatus.BLOCKED,
+            findings=remaining,
+            command_outcomes=command_outcomes,
+            assessment=_assess(workspace, stack, remaining, command_outcomes),
+            report_lines=[
+                "project-policy-readiness: analysis approved but the validator still reports findings",
+                *remediation.render_blocked_report(remaining),
+            ],
         )
 
     # Cache write is owned by the OUTER boundary in
@@ -272,6 +329,8 @@ def _finish(
     emit("project-policy-readiness: ready (validator clean, analysis approved)")
     return ReadinessResult(
         status=ReadinessStatus.READY,
+        command_outcomes=command_outcomes,
+        assessment=_assess(workspace, stack, [], command_outcomes),
         report_lines=["project-policy-readiness: ready"],
     )
 

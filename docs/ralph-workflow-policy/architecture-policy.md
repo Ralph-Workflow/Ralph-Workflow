@@ -104,9 +104,6 @@ When working in this domain, the agent additionally MUST:
   dependency_direction, forbidden_dependencies, state_ownership,
   external_io_boundaries, durable_contracts, runtime_and_deployment_views,
   major_data_flows) in the same workflow that changes the architecture.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
 
 An agent MUST NOT:
 

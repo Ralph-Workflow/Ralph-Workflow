@@ -164,12 +164,6 @@ When working in this domain, the agent additionally MUST:
   new testing dependency when the existing stack can express the case.
 * AVOID adding a dependency, abstraction, or numeric target without
   demonstrated need from a failing test or observed behaviour.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the test command, framework, or isolation
-  strategy.
 
 An agent MUST NOT:
 

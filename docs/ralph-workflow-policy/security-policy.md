@@ -189,12 +189,6 @@ When working in this domain, the agent additionally MUST:
   `semgrep` for Python, `gitleaks` or `detect-secrets` for secrets,
   `gosec` for Go, `cargo geiger` for unsafe-Rust auditing) over novel
   tooling; adding a new scanner requires a documented rationale.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (surfaces, facts, commands, requirements) in the
-  same workflow that adds an input surface, a language, a subprocess or
-  filesystem interaction, an auth decision, or a deployment target.
 
 An agent MUST NOT:
 

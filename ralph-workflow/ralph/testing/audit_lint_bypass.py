@@ -133,6 +133,10 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
         "_installer_candidates",
         "PLC0415",
     ),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
+    (
+        "validators",
+        "PLC0415",
+    ),  # wt-15 -- lazy import of _content_checks to publish the citation-path workspace seam
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators

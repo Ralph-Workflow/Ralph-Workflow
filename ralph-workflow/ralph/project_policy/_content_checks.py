@@ -40,6 +40,17 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
+# Module-level slot that the production ingress
+# (:func:`ralph.project_policy.validators._check_research_basis`) fills
+# with the workspace seam before any citation check runs. Unit tests
+# that exercise the citation shape directly do not set the slot; the
+# helper degrades to a shape-only check in that case so the existing
+# behaviour is preserved. Storing a single workspace avoids threading
+# a parameter through every internal helper while still keeping the
+# existence check honest.
+_CITATION_PATH_WORKSPACE: list[Workspace | None] = [None]
+
+
 def _fact_key(line: str) -> str | None:
     match = re.fullmatch(r"RALPH-FACT:\s*([^:]+):\s*\S.*", line)
     return str(match.group(1)).strip() if match else None
@@ -190,7 +201,78 @@ def _check_research_basis(content: str, path: str, filename: str) -> list[Policy
     return findings
 
 
-def _check_individual_citations(blocks: list[str], path: str, filename: str) -> list[PolicyFinding]:
+# Strict, narrow contract for an explicit repository-local citation:
+# the value inside an explicit ``path:`` key. Anything else (prose
+# sentences, ``https://`` URLs, ordinary ``http:`` fields, and the
+# default required fields) is NEVER treated as a path. The regex is
+# deliberately conservative: a leading character from the small allowed
+# set, then characters from a slightly larger allowed set, no
+# whitespace, no scheme, no control characters, no characters that
+# would let a path escape the repository root.
+_CITATION_PATH_VALUE_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_\-./]*$")
+
+
+def _check_citation_path(
+    fields: dict[str, str], index: int, *, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Return a finding if the citation declares an explicit ``path:`` that does not exist.
+
+    The existence check is ONLY activated by an explicit ``path:`` key
+    in the citation block. Prose ``evidence:`` values, ``http:`` URLs,
+    and the default required fields keep their previous shape validation
+    with no filesystem lookup. The check is the production-side seam
+    for the citation-existence contract: a project that names a
+    non-existent repository path in a citation block cannot reach
+    READY until the path is created or the citation is removed.
+    """
+    raw = fields.get("path")
+    if not raw:
+        return []
+    if not _CITATION_PATH_VALUE_RE.match(raw):
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CITATION_MISSING}:{filename}:block-{index}:path-malformed",
+                path=path,
+                missing_evidence=(
+                    f"Research basis citation {index} declares an explicit `path:` value "
+                    f"{raw!r} that is not a scheme-less relative path"
+                ),
+                required_outcome=(
+                    f"replace the `path:` value in citation {index} with a scheme-less "
+                    "relative path under the repository root, or remove the `path:` key"
+                ),
+            )
+        ]
+    workspace = _CITATION_PATH_WORKSPACE[0] if _CITATION_PATH_WORKSPACE else None
+    if workspace is None:
+        # No workspace seam in scope (validator is called by tests that
+        # do not exercise the production ingress): skip the existence
+        # check so unit tests of the citation shape still pass without a
+        # workspace. The production ingress in
+        # ``validators._check_research_basis`` always supplies a workspace.
+        return []
+    if workspace.exists(raw):
+        return []
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_CITATION_MISSING}:{filename}:block-{index}:path-missing",
+            path=path,
+            missing_evidence=(
+                f"Research basis citation {index} declares an explicit `path: {raw}` "
+                "that does not resolve under the repository root"
+            ),
+            required_outcome=(
+                f"create the cited file at `{raw}`, or remove the `path:` key from citation {index}"
+            ),
+        )
+    ]
+
+
+def _check_individual_citations(
+    blocks: list[str],
+    path: str,
+    filename: str,
+) -> list[PolicyFinding]:
     """Validate every citation block contains the required fields."""
     findings: list[PolicyFinding] = []
     for index, block in enumerate(blocks, start=1):
@@ -209,6 +291,11 @@ def _check_individual_citations(blocks: list[str], path: str, filename: str) -> 
             re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields.get("review date", ""))
         )
         if not missing and valid_url and valid_date:
+            # The shape check passed. Run the optional repository-local
+            # `path:` existence check next; a missing or malformed path
+            # adds its own finding without invalidating the citation
+            # shape itself.
+            findings.extend(_check_citation_path(fields, index, path=path, filename=filename))
             continue
         findings.append(
             PolicyFinding(

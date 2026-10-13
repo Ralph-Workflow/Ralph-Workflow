@@ -150,12 +150,6 @@ When working in this domain, the agent additionally MUST:
   command. Do not invent languages; do not omit detected languages.
 * PREFER existing tooling and configuration. Adding a new type checker
   requires a documented rationale and a benchmarked benefit.
-* RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the type checker, strictness level, or
-  exclusion patterns.
 
 An agent MUST NOT:
 

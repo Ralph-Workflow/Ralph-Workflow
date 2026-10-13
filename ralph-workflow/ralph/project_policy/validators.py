@@ -266,7 +266,27 @@ def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[P
             )
         ]
     content = workspace.read(path)
-    return _validate_existing_policy_file(content, path, filename)
+    return _validate_existing_policy_file_with_workspace(workspace, content, path, filename)
+
+
+def _validate_existing_policy_file_with_workspace(
+    workspace: Workspace, content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Like :func:`_validate_existing_policy_file` but also publishes the workspace seam.
+
+    The workspace seam is required by the citation ``path:`` existence
+    check (see :data:`_content_checks._CITATION_PATH_WORKSPACE`). The
+    publication is scoped to the lifetime of the call so concurrent
+    validators and unit tests do not see a stale reference.
+    """
+    from ralph.project_policy import _content_checks  # noqa: PLC0415
+
+    previous = _content_checks._CITATION_PATH_WORKSPACE[0]
+    _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
+    try:
+        return _validate_existing_policy_file(content, path, filename)
+    finally:
+        _content_checks._CITATION_PATH_WORKSPACE[0] = previous
 
 
 def _validate_existing_policy_file(content: str, path: str, filename: str) -> list[PolicyFinding]:
@@ -283,6 +303,28 @@ def _validate_existing_policy_file(content: str, path: str, filename: str) -> li
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     return findings
+
+
+def _check_research_basis_with_workspace(
+    workspace: Workspace, content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Run the research-basis check with the workspace seam in scope for the citation path check.
+
+    The workspace is published to the module-level slot
+    (:data:`_content_checks._CITATION_PATH_WORKSPACE`) only for the
+    duration of the call, so unit tests that bypass the validator
+    ingress are not perturbed.
+    """
+    # Local import: avoids validator<->_content_checks cycle while
+    # ruff can still see the symbol through TYPE_CHECKING.
+    from ralph.project_policy import _content_checks  # noqa: PLC0415
+
+    previous = _content_checks._CITATION_PATH_WORKSPACE[0]
+    _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
+    try:
+        return _content_checks._check_research_basis(content, path, filename)
+    finally:
+        _content_checks._CITATION_PATH_WORKSPACE[0] = previous
 
 
 def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
@@ -548,7 +590,7 @@ def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
             )
         ]
     try:
-        parse_portfolio_toml(workspace.read(path))
+        parse_portfolio_toml(workspace.read(path), workspace_exists=workspace.exists)
     except PortfolioError as exc:
         return [
             PolicyFinding(

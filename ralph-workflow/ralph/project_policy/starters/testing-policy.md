@@ -230,9 +230,12 @@ Before adding a test or check, search for the nearest existing coverage and
 record exactly one `REMOVE`, `MERGE`, `REPLACE`, or `KEEP` disposition for the
 nearest control. Route distinct coverage to the cheapest sufficient layer.
 Every default-lane addition MUST be budget-neutral through a recorded removal,
-merge, or replacement; never raise the aggregate ceiling. Give every retained
-control an owner and retention review trigger so obsolete ceremony is removed
-without deleting a red test to obtain green.
+merge, or replacement; never raise the aggregate ceiling. The
+browser-time carve-out in the AUTOMATED TEST lane below is the only exception
+to "every addition" — the carve-out never raises the aggregate ceiling
+either, it only relaxes the mandatory-offset requirement. Give every
+retained control an owner and retention review trigger so obsolete ceremony
+is removed without deleting a red test to obtain green.
 
 Route each acceptance criterion to one lane — or to a named destination
 recorded with an owner — and record the routing where the change is

@@ -262,6 +262,32 @@ def test_testing_policy_has_browser_time_budget_rule() -> None:
     assert "never raised" in content or "never" in content
 
 
+def test_testing_policy_browser_budget_two_states_are_unambiguous() -> None:
+    """The browser-time budget rule has two admission states and a
+    never-raise constraint; the prose must distinguish the states AND
+    declare the no-raise rule without the older "every addition needs
+    an offset" wording contradicting the new below-budget carve-out.
+    """
+    content = starters.read_starter("testing-policy.md")
+    normalized = " ".join(content.split())
+    # Two states, both present and not silently collapsed.
+    assert "BELOW the measured budget" in normalized
+    assert "AT or OVER the measured budget" in normalized
+    # Below-budget admission does NOT require a mandatory offset.
+    assert "WITHOUT any mandatory time offset" in normalized
+    # At/over-budget admission requires BOTH an offset and a
+    # distinct-risk justification (the second part of the AND).
+    assert "BOTH a time offset" in normalized
+    assert "distinct-risk justification" in normalized
+    # The aggregate ceiling is never raised -- explicit on its own
+    # line so a future editor cannot silently relax it.
+    assert "never raised" in normalized
+    # The general budget-neutrality rule carries an explicit
+    # browser-time carve-out so the two prose passages cannot be read
+    # to disagree.
+    assert "browser-time carve-out" in normalized or "carve-out" in normalized
+
+
 def test_typechecking_policy_does_not_prescribe_products_or_exclude_first_party_code() -> None:
     content = starters.read_starter("typechecking-policy.md")
     defaults = content.split("## Default requirements", 1)[1].split(
