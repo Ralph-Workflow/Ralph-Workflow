@@ -242,3 +242,55 @@ def test_architecture_starter_uses_generic_resource_lifecycle_guard() -> None:
     assert "Process and resource ownership" in arch
     assert "resource-lifecycle checks return zero findings" in arch
     assert "audit_resource_lifecycle" not in arch
+
+
+def test_testing_cheapest_layer_rule_14_present() -> None:
+    """Closes audit GAP A3: the cheapest-layer rule (rule 14) must appear
+    verbatim so future edits cannot collapse the stack-ratio guidance into
+    a generic one-liner.
+    """
+    content = starters.read_starter("testing-policy.md")
+    normalized = " ".join(content.split())
+    assert "Shape the suite so the cheapest" in normalized
+
+
+def test_testing_guard_rows_name_real_boundary_and_browser_budget() -> None:
+    """Closes audit GAP A4: the Real-boundary set and Browser budget, not
+    cardinality guard rows must appear by name in the testing starter's
+    guard inventory so future edits cannot drop or rename them.
+    """
+    content = starters.read_starter("testing-policy.md")
+    normalized = " ".join(content.split())
+    assert "Real-boundary set" in normalized
+    assert "Browser budget, not cardinality" in normalized
+
+
+def test_testing_guard_row_narrowest_observable_boundary_present() -> None:
+    """Closes audit GAP B4: the Narrowest observable boundary guard row
+    must appear by name so the private-symbol / wrapper-for-test ban is
+    anchored to a durable row label.
+    """
+    content = starters.read_starter("testing-policy.md")
+    normalized = " ".join(content.split())
+    assert "Narrowest observable boundary" in normalized
+
+
+def test_typechecking_guard_row_unknown_at_untrusted_boundaries_present() -> None:
+    """Closes audit GAP B6: the Unknown at untrusted boundaries guard row
+    must appear by name so the ``unknown``-at-untrusted-boundary carve-out
+    is anchored to a durable row label.
+    """
+    content = starters.read_starter("typechecking-policy.md")
+    normalized = " ".join(content.split())
+    assert "Unknown at untrusted boundaries" in normalized
+
+
+def test_clean_code_syntax_proxy_ban_present() -> None:
+    """Closes audit GAP C1: the Syntax-proxy ban guard row and the
+    accompanying prose (private method renamed to public solely) must
+    appear verbatim so the ban is anchored to a durable row label.
+    """
+    content = starters.read_starter("clean-code-policy.md")
+    normalized = " ".join(content.split())
+    assert "Syntax-proxy ban" in normalized
+    assert "private method is renamed to public solely" in normalized

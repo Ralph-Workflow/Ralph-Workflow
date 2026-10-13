@@ -132,6 +132,45 @@ lives in
 [`docs/agents/deterministic-auto-commit.md`](docs/agents/deterministic-auto-commit.md)
 and is pinned by the `audit_skill_auto_commit` gate step.
 
+## Shipped policy pack and readiness (v5)
+
+The shipped policy pack is the starter templates and readiness
+machinery in `ralph/project_policy/`. Those files live inside the
+ralph-workflow package. Ralph Workflow copies them into the user project as
+`docs/ralph-workflow-policy/`, `AGENTS.md`, and `CLAUDE.md`; those
+three surfaces are auto-updated by the engine and are never hand-edited.
+
+The v5 model is two layers. The first is a small outcome-oriented
+execution kernel: five generic rules (truthful evidence, fail-closed
+verification, bounded execution, no weakening of checks, explicit
+unverified-claim reporting) that ship once in `execution-kernel.md`
+and are never rephrased in domain starters. The second is evidence-backed,
+selectively applicable domain controls — each domain policy is loaded
+only when its declared trigger fires. The default for a conditional
+domain is "do not load it". Every applicable starter records its guards
+in a `## Guard inventory` table: one row per guard with five cells
+(Guard, Owner, Protected outcome, Detected condition, Retirement
+trigger). A rule that appears only in prose, without an inventory row,
+is not enforceable.
+
+Readiness is reported in three dimensions. `structure_complete`
+means the validator is clean — it is the caching gate; a NOT-READY
+project is not cached. `implementation_verified` means every recorded
+gate ran to exit 0 against the current policy content hash.
+`outcome_evidence_reviewed` means every declared gate is in the ledger
+and a review blessed the policy. Structural READY gates the cache;
+semantic correctness is reported separately on all four surfaces:
+CLI emit, status bar, AGENTS.md block, and the remediation prompt.
+The surfaces and the v5 model are documented in
+`docs/architecture/project-policy-readiness-traceability.md`.
+
+The v5 revision reframes the shipped policy as a small outcome-oriented
+execution kernel plus evidence-backed, selectively applicable controls;
+see the v5 history entry in `ralph/project_policy/markers.py` for the
+rationale and the v4-to-v5 consequence. The revision's outcomes are
+measured against v4 in a paired replay; see
+`docs/plans/policy-v5-paired-replay-plan.md` for the plan.
+
 ## Project home
 
 - **Repository:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

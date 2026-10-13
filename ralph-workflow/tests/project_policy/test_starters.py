@@ -520,3 +520,19 @@ def test_seed_portfolio_into_writes_only_when_absent() -> None:
     assert starters.seed_starter_into(ws, "policy-portfolio.toml") is False
     assert ws.read(markers.PORTFOLIO_PATH) == "customized"
     assert original
+
+
+def test_starter_names_set_equals_disk_listing() -> None:
+    """Closes audit GAP C4: the set of starter names returned by
+    iter_starter_names() must exactly match the ``.md`` files on disk
+    so a stale file added to the starters directory but not listed in
+    STARTER_NAMES escapes detection.
+    """
+    from pathlib import Path
+
+    starters_dir = Path(starters.__file__).parent
+    disk_md_names = {p.name for p in starters_dir.iterdir() if p.suffix == ".md"}
+    assert set(starters.iter_starter_names()) == disk_md_names
+    # policy-portfolio.toml is also bundled and must be present on disk.
+    disk_all_names = {p.name for p in starters_dir.iterdir()}
+    assert "policy-portfolio.toml" in disk_all_names
