@@ -168,8 +168,7 @@ To follow this policy, an agent making any change MUST:
   in research or remediation guidance are non-normative examples, not
   interchangeable requirements.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (surfaces, facts, commands, requirements) in the
   same workflow that adds an input surface, a language, a subprocess or
   filesystem interaction, an auth decision, or a deployment target.

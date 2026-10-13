@@ -259,8 +259,7 @@ On every change:
    (rules 13, 15).
 2. ENSURE every gate listed here is runnable in the environment. Document
    any that cannot run, and why.
-3. RUN every `RALPH-COMMAND:` gate below and report the actual outcome.
-   Never report a command that was not run, and disclose any result served
+3. RUN every `RALPH-COMMAND:` gate below, disclosing any result served
    from a cache rather than a fresh run (rule 17).
 4. RECORD the observed full-gate duration when it changes materially, and
    justify any verification cost the change adds (rule 16).

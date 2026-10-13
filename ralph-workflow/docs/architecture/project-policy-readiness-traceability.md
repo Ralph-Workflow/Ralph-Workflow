@@ -33,10 +33,10 @@ READY is not presented as semantic correctness.
 
 | Surface | File | What the user sees |
 |---|---|---|
-| CLI emit | `ralph/project_policy/cli_integration.py` | "ready (structure complete, implementation verified, outcome evidence reviewed)" — or a per-dimension breakdown when one is False. |
-| Status bar | `ralph/project_policy/status_bar.py` | The footer carries the per-dimension state during the run, not a single READY/NOT-READY label. |
-| AGENTS.md managed block | `ralph/project_policy/agents_md.py` | The READY template reports the three dimensions so an agent reading AGENTS.md sees the current state. |
-| Remediation prompt | `ralph/project_policy/remediation.py` + `analysis.py` | The prompt names the dimension that is not True and asks the agent to address it; the analysis decision is gated on the same dimensions. |
+| CLI emit | `ralph/project_policy/cli_integration.py` | `readiness-assessment: structure_complete=..., implementation_verified=..., outcome_evidence_reviewed=...`, plus a note naming the specific false dimensions when `structure_complete` is true but semantic verification is incomplete. |
+| Status bar | `ralph/project_policy/status_bar.py` | The footer carries the per-dimension state during the run (`Policy: S*/I*/O*` or dash variants), not a single READY/NOT-READY label. |
+| AGENTS.md managed block | `ralph/project_policy/agents_md.py` | The condensed READY block reports all three dimensions (`structure complete=..., implementation verified=..., outcome evidence reviewed=...` or `unknown`), distinguishing structural READY from semantic correctness. |
+| Remediation prompt | `ralph/project_policy/remediation.py` + `analysis.py` | The materialized prompts report the current values (`Current readiness: structure_complete=..., implementation_verified=..., outcome_evidence_reviewed=...` or `unknown`), keeping agents informed of what has been verified. |
 
 `structural READY remains the cache gate` — a project is not READY if
 `structure_complete` is False. A project is `READY` if all three are

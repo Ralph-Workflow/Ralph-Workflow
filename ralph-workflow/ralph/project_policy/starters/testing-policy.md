@@ -460,8 +460,7 @@ follow the rule, do not re-derive it.
    dependency the existing stack can express.
 6. RETIRE superseded coverage in the same change, only from recorded green,
    saying what went and why (rules 29 and Test optimization and retirement).
-7. RUN every `RALPH-COMMAND:` gate below and report the actual outcome.
-   Never report a command that was not run.
+7. RUN every `RALPH-COMMAND:` gate below.
 8. UPDATE this policy when the test command, framework, isolation strategy,
    mocking approach, parallelism mechanism, profile set, or budget changes.
 

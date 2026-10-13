@@ -207,3 +207,38 @@ def test_kernel_marks_known_threat_surfaces() -> None:
     # the heading is present (the rows are validated by the
     # parser in test_v5_kernel.py).
     assert markers.GUARD_INVENTORY_HEADING in content
+
+
+def test_domain_starters_do_not_duplicate_kernel_truthful_evidence_rule() -> None:
+    """B10: generic kernel rules (truthful evidence reporting, running gates,
+    never reporting an unrun command) belong in execution-kernel.md alone.
+    No domain starter may re-derive them in body prose.
+    """
+    domain_starters = [
+        name
+        for name in starters.STARTER_NAMES
+        if name != "execution-kernel.md" and name.endswith(".md")
+    ]
+    pinned_prohibited_phrases = (
+        "report the actual outcome",
+        "never report a command",
+        "never report a command that was not run",
+    )
+    for name in domain_starters:
+        content = starters.read_starter(name)
+        lower_content = " ".join(content.split()).lower()
+        for phrase in pinned_prohibited_phrases:
+            assert phrase not in lower_content, f"{name} duplicates kernel-owned phrase {phrase!r}"
+    # The kernel itself MUST declare the rule.
+    kernel = starters.read_starter("execution-kernel.md")
+    assert "never report a command that was not run" in kernel.lower()
+
+
+def test_architecture_starter_uses_generic_resource_lifecycle_guard() -> None:
+    """WU-4: architecture starter ships generic policy, not Ralph-repo-specific
+    audit script prescriptions.
+    """
+    arch = starters.read_starter("architecture-policy.md")
+    assert "Process and resource ownership" in arch
+    assert "resource-lifecycle checks return zero findings" in arch
+    assert "audit_resource_lifecycle" not in arch

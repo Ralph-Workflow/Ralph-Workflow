@@ -84,8 +84,7 @@ To follow this policy, an agent making any change MUST:
   APIs over new visual primitives.
 * ADD new reusable patterns to the design system, not across screens.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes the design system, theme, tokens, or styling
   architecture.

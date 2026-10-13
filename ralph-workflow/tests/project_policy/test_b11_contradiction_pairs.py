@@ -72,11 +72,11 @@ def test_pair_2_typechecking_typed_tests_in_scope() -> None:
 
 def test_pair_3_verification_named_profiles_versus_gate_script_default() -> None:
     """Pair 3: verification permits owned named profiles (the
-    gate lanes), and the gate-script starter MUST permit
-    meaning-preserving rewording rather than freezing the gate
-    script verbatim. The two agree: the default entry point is
-    the declared route, but a named profile is a first-class
-    lane, not a deletion candidate.
+    gate lanes), and the gate-script starter MUST permit declared,
+    owned, triggered named profiles rather than requiring every check
+    to be wired into the default entry point or deleted. The two agree:
+    the default entry point is authoritative, but a declared named
+    profile is a first-class route, not a deletion candidate.
     """
     verification = _read("verification-policy.md")
     gate_script = _read("gate-script-policy.md")
@@ -84,15 +84,14 @@ def test_pair_3_verification_named_profiles_versus_gate_script_default() -> None
     # candidate — ``NAMED PROFILE`` is the canonical lane name.
     verification_norm = verification
     assert "NAMED PROFILE" in verification_norm or "named profile" in verification.lower()
-    # gate-script: the banner and the prohibited-actions list
-    # both permit meaning-preserving rewording; a named profile
-    # is not a contradiction with the default entry point
-    # because named profiles are first-class lanes in the
-    # verification policy. The pair's anchor is the explicit
-    # ban on prose-freeze (``never freezes prose`` is the
-    # B11-fix marker).
-    assert "meaning" in gate_script.lower()
-    assert "freeze" in gate_script.lower() or "frozen" in gate_script.lower()
+    # gate-script: MUST permit declared named profiles and MUST NOT
+    # claim "either wire it in, or delete it".
+    gate_script_lower = gate_script.lower()
+    assert "either wire it in, or delete it" not in gate_script_lower
+    assert "either wire it in or delete it" not in gate_script_lower
+    assert "named profile" in gate_script_lower
+    assert "meaning" in gate_script_lower
+    assert "freeze" in gate_script_lower or "frozen" in gate_script_lower
 
 
 def test_pair_4_clean_code_versus_architecture_one_implementation() -> None:

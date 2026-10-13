@@ -147,6 +147,9 @@ def run_policy_pipeline(
                 # agent runs so the footer reflects the live progress (and
                 # not a hardcoded ``Dev 1/N`` placeholder).
                 on_remediation_attempt(iteration + 1)
+                current_assessment = _assess(
+                    workspace, stack, current, _collect_command_outcomes(workspace)
+                )
                 current = remediation.run_remediation_phase(
                     workspace,
                     stack,
@@ -154,6 +157,7 @@ def run_policy_pipeline(
                     invoke_agent=invoke_agent,
                     analysis_feedback=feedback,
                     emit=emit,
+                    assessment=current_assessment,
                 )
                 feedback = None
                 phase = _route_after_remediation(current, iteration, analysis_cap, emit)
@@ -178,7 +182,15 @@ def run_policy_pipeline(
                 phase = PHASE_REMEDIATION
                 continue
 
-            decision = analysis.run_analysis_phase(workspace, invoke_agent=invoke_agent, emit=emit)
+            current_assessment = _assess(
+                workspace, stack, current, _collect_command_outcomes(workspace)
+            )
+            decision = analysis.run_analysis_phase(
+                workspace,
+                invoke_agent=invoke_agent,
+                emit=emit,
+                assessment=current_assessment,
+            )
             route = resolve_decision(decision.status)
             if route.reset_loop:
                 iteration = 0

@@ -125,8 +125,7 @@ To follow this policy, an agent making any change MUST:
 * PREFER existing tooling. Adding a new linter requires a documented
   rationale.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes the linter, rule set, formatter, or
   suppression policy.

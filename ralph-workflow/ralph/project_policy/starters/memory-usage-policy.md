@@ -83,8 +83,7 @@ To follow this policy, an agent making any change MUST:
   changes affecting allocation, retention, lifecycle, or volume-driven state.
 * PREFER existing lifecycle patterns over new collections.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes a cache, an accumulator cap, a soak test, or a
   leak detector.

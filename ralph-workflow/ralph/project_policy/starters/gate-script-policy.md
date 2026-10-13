@@ -59,10 +59,13 @@ A gate script is code. It is held to the same standard as the code it checks.
   that it passes when it should AND that it FAILS when it should. A gate whose
   failure path was never exercised is an untested gate. A script too tangled
   to test is a script to refactor.
-* **Wired in or deleted.** Every gate script MUST be reachable from the
-  authoritative verification entry point declared in the verification policy.
-  A check that runs only in an opt-in suite the default gate excludes WILL rot
-  unnoticed: either wire it in, or delete it.
+* **Wired into default or declared named profile.** Every gate script MUST be
+  reachable from the authoritative verification entry point declared in the
+  verification policy, or belong to a declared, owned, and triggered named
+  profile specified in the verification policy. A check that runs only in an
+  unowned, untriggered opt-in suite the verification policy does not declare
+  will rot unnoticed: wire it into the default gate or a declared named
+  profile, or delete it.
 * **No hollow gates.** A script that technically exits 0 while verifying
   nothing — `echo ok`, a test target matching zero tests, a linter pointed at
   an empty directory — is non-compliant. The gate MUST actually exercise the

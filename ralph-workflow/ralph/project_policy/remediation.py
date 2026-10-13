@@ -49,6 +49,7 @@ PROMPT_TEMPLATE_NAME: str = "policy_remediation.jinja"
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy._readiness_assessment import ReadinessAssessment
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.analysis_decision import AnalysisDecision
     from ralph.project_policy.models import PolicyFinding
@@ -96,6 +97,7 @@ def _render_prompt(
     analysis_feedback: AnalysisDecision | None = None,
     *,
     workspace: Workspace | None = None,
+    assessment: ReadinessAssessment | None = None,
 ) -> str:
     """Build the remediation prompt text.
 
@@ -114,7 +116,16 @@ def _render_prompt(
     feedback_lines = analysis_feedback.feedback_lines() if analysis_feedback is not None else []
     if analysis_feedback is not None and analysis_feedback.summary:
         feedback_lines.insert(0, f"- summary: {analysis_feedback.summary}")
+    if assessment is not None:
+        sc = "true" if assessment.structure_complete else "false"
+        iv = "true" if assessment.implementation_verified else "false"
+        oer = "true" if assessment.outcome_evidence_reviewed else "false"
+    else:
+        sc = iv = oer = "unknown"
     variables = {
+        "readiness_structure_complete": sc,
+        "readiness_implementation_verified": iv,
+        "readiness_outcome_evidence_reviewed": oer,
         "findings_block": _serialize_findings(findings),
         "analysis_feedback_block": "\n".join(feedback_lines),
         "analysis_feedback_status": (
@@ -171,6 +182,7 @@ def run_remediation_phase(
     invoke_agent: InvokePolicyAgent,
     analysis_feedback: AnalysisDecision | None = None,
     emit: EmitFn = _noop_emit,
+    assessment: ReadinessAssessment | None = None,
 ) -> list[PolicyFinding]:
     """Run ONE remediation phase and return the REVALIDATED findings.
 
@@ -199,7 +211,9 @@ def run_remediation_phase(
             Propagated to the driver, which stops looping but still lets the run
             continue.
     """
-    prompt_text = _render_prompt(findings, analysis_feedback, workspace=workspace)
+    prompt_text = _render_prompt(
+        findings, analysis_feedback, workspace=workspace, assessment=assessment
+    )
     prompt_path = _write_prompt(workspace, prompt_text)
     emit(f"project-policy-readiness: invoking remediation agent ({len(findings)} open findings)")
     success = bool(invoke_agent(phase=PHASE_REMEDIATION, prompt_path=prompt_path))

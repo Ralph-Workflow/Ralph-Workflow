@@ -87,8 +87,7 @@ there — do not re-derive them here.
 To follow this policy, an agent making any change MUST:
 
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) and affected
   documentation in the same workflow that changes the supported agents,
   dispatch command, or review process.

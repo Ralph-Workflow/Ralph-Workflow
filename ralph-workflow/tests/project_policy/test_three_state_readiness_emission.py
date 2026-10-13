@@ -16,9 +16,21 @@ back to a single READY/BLOCKED projection is a regression.
 
 from __future__ import annotations
 
-from ralph.project_policy import agents_md, cli_integration, markers
+from pathlib import Path
+
+import pytest
+
+from ralph.project_policy import (
+    agents_md,
+    analysis,
+    cli_integration,
+    markers,
+    remediation,
+)
 from ralph.project_policy._readiness_assessment import ReadinessAssessment
 from ralph.project_policy.status_bar import format_readiness_footer_label
+from ralph.workspace.memory import MemoryWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 
 def test_readiness_assessment_dimensions_are_all_default_false() -> None:
@@ -196,3 +208,145 @@ def test_cli_integration_module_imports_readiness_emission() -> None:
     assert "structural READY is NOT semantic" in src
     # The new footer push must be wired in the same module.
     assert "push_readiness_assessment_status_bar" in src
+
+
+@pytest.mark.parametrize(
+    ("sc", "iv", "oer", "expected_dims", "expected_note_fragment", "forbidden_note_fragment"),
+    [
+        (
+            True,
+            True,
+            False,
+            "structure_complete=true, implementation_verified=true, outcome_evidence_reviewed=false",
+            "outcome evidence reviewed is still false",
+            "implementation verified",
+        ),
+        (
+            True,
+            False,
+            True,
+            "structure_complete=true, implementation_verified=false, outcome_evidence_reviewed=true",
+            "implementation verified is still false",
+            "outcome evidence reviewed",
+        ),
+        (
+            True,
+            False,
+            False,
+            "structure_complete=true, implementation_verified=false, outcome_evidence_reviewed=false",
+            "implementation verified and outcome evidence reviewed are still false",
+            None,
+        ),
+        (
+            True,
+            True,
+            True,
+            "structure_complete=true, implementation_verified=true, outcome_evidence_reviewed=true",
+            None,
+            "readiness-assessment-note",
+        ),
+        (
+            False,
+            False,
+            False,
+            "structure_complete=false, implementation_verified=false, outcome_evidence_reviewed=false",
+            None,
+            "readiness-assessment-note",
+        ),
+    ],
+)
+def test_emit_readiness_assessment_derives_truthful_notes(
+    sc: bool,
+    iv: bool,
+    oer: bool,
+    expected_dims: str,
+    expected_note_fragment: str | None,
+    forbidden_note_fragment: str | None,
+) -> None:
+    """Observable CLI emit: the readiness assessment note must name ONLY the
+    dimensions that are actually false.
+    """
+    emitted: list[str] = []
+    scope = WorkspaceScope(Path())
+    assessment = ReadinessAssessment(
+        structure_complete=sc,
+        implementation_verified=iv,
+        outcome_evidence_reviewed=oer,
+    )
+    cli_integration._emit_and_push_readiness_assessment(
+        emitted.append,
+        display=None,
+        workspace_scope=scope,
+        assessment=assessment,
+        push_status=False,
+    )
+    assert any(expected_dims in line for line in emitted)
+    if expected_note_fragment is not None:
+        note_line = next(line for line in emitted if "readiness-assessment-note:" in line)
+        assert expected_note_fragment in note_line
+        if forbidden_note_fragment is not None:
+            assert forbidden_note_fragment not in note_line
+    else:
+        assert not any("readiness-assessment-note:" in line for line in emitted)
+
+
+def test_agents_md_condense_reports_dimension_values() -> None:
+    """The condensed AGENTS.md block reports current dimension values."""
+    ws = MemoryWorkspace()
+    ws.write(markers.AGENTS_MD, "# User intro\n")
+    agents_md.bootstrap(ws)
+
+    # Condense with explicit mixed assessment:
+    assessment = ReadinessAssessment(
+        structure_complete=True,
+        implementation_verified=True,
+        outcome_evidence_reviewed=False,
+    )
+    agents_md.condense_placeholder_block(ws, assessment=assessment)
+    content = ws.read(markers.AGENTS_MD)
+    assert "structure complete=true" in content
+    assert "implementation verified=true" in content
+    assert "outcome evidence reviewed=false" in content
+
+    # Condense with None assessment:
+    ws2 = MemoryWorkspace()
+    ws2.write(markers.AGENTS_MD, "# User intro\n")
+    agents_md.bootstrap(ws2)
+    agents_md.condense_placeholder_block(ws2, assessment=None)
+    content2 = ws2.read(markers.AGENTS_MD)
+    assert "structure complete=unknown" in content2
+    assert "implementation verified=unknown" in content2
+    assert "outcome evidence reviewed=unknown" in content2
+
+
+def test_remediation_and_analysis_prompts_render_dimension_values() -> None:
+    """Remediation and analysis prompts report current dimension values."""
+    ws = MemoryWorkspace()
+    assessment = ReadinessAssessment(
+        structure_complete=True,
+        implementation_verified=True,
+        outcome_evidence_reviewed=False,
+    )
+    # Remediation prompt with assessment:
+    rem_prompt = remediation._render_prompt([], workspace=ws, assessment=assessment)
+    assert "structure_complete=true" in rem_prompt
+    assert "implementation_verified=true" in rem_prompt
+    assert "outcome_evidence_reviewed=false" in rem_prompt
+
+    # Remediation prompt without assessment (defaults to unknown):
+    rem_prompt_none = remediation._render_prompt([], workspace=ws, assessment=None)
+    assert "structure_complete=unknown" in rem_prompt_none
+    assert "implementation_verified=unknown" in rem_prompt_none
+    assert "outcome_evidence_reviewed=unknown" in rem_prompt_none
+
+    # Analysis prompt with assessment:
+    analysis_prompt = analysis._render_prompt(ws, assessment=assessment)
+    assert "structure_complete=true" in analysis_prompt
+    assert "implementation_verified=true" in analysis_prompt
+    assert "outcome_evidence_reviewed=false" in analysis_prompt
+
+    # Analysis prompt without assessment:
+    analysis_prompt_none = analysis._render_prompt(ws, assessment=None)
+    assert "structure_complete=unknown" in analysis_prompt_none
+    assert "implementation_verified=unknown" in analysis_prompt_none
+    assert "outcome_evidence_reviewed=unknown" in analysis_prompt_none

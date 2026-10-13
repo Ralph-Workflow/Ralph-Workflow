@@ -46,6 +46,7 @@ closed. Omitting the section leaves the run's readiness dimensions all-false.
 
 ## Three-state readiness (v5)
 
+Current readiness: structure_complete={{ readiness_structure_complete | default('unknown') }}, implementation_verified={{ readiness_implementation_verified | default('unknown') }}, outcome_evidence_reviewed={{ readiness_outcome_evidence_reviewed | default('unknown') }}.
 The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded in the execution evidence ledger). A structural READY is the caching gate; structural READY is NOT semantic correctness. The execution evidence you collect certifies implementation verification and outcome review, which are surfaced in the CLI emit and status bar footer as `Policy: S*/I*/O*`.
 
 ## Decision artifact

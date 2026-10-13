@@ -87,8 +87,7 @@ To follow this policy, an agent making any change MUST:
 * PREFER existing UX patterns over new patterns.
 * RECORD the UX review evidence appropriate to the change.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes the navigation, form, state, or
   destructive-action pattern.

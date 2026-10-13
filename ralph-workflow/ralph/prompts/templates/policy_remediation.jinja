@@ -70,4 +70,5 @@ Finish after resolving every listed finding. Report changed files, migrations, e
 
 ## Three-state readiness (v5)
 
+Current readiness: structure_complete={{ readiness_structure_complete | default('unknown') }}, implementation_verified={{ readiness_implementation_verified | default('unknown') }}, outcome_evidence_reviewed={{ readiness_outcome_evidence_reviewed | default('unknown') }}.
 The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded). A structural READY is the caching gate; structural READY is NOT semantic correctness. Your job closes the structural dimension; the runtime and the analysis phase own the other two and surface them in the CLI emit and the status bar footer as `Policy: S*/I*/O*`. Do not present a structural-READY remediation as semantic correctness.

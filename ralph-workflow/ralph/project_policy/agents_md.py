@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 from ralph.project_policy import markers
 
 if TYPE_CHECKING:
+    from ralph.project_policy._readiness_assessment import ReadinessAssessment
     from ralph.workspace.protocol import Workspace
 
 # Placeholder AGENTS.md content shipped on a fresh project. It instructs the
@@ -93,6 +94,7 @@ whitespace, or case changes do not satisfy any requirement.
 # agent- or user-rewritten block never contains it and is preserved.
 _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 
+
 # Concise managed block written once the project is READY. The bootstrap
 # placeholder above is TEMPORARY scaffolding for the first remediation agent;
 # leaving its long instruction list in AGENTS.md forever would bury the
@@ -107,16 +109,28 @@ _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 # two-state "READY / not READY" projection. A structural READY is
 # the caching gate; semantic correctness is the agent's
 # responsibility and is reported separately.
-_AGENTS_READY_TEMPLATE = """{begin}
+class _AgentsReadyTemplate(str):
+    """String template that defaults readiness dimensions to 'unknown'."""
+
+    def format(self, *args: object, **kwargs: object) -> str:
+        kwargs.setdefault("structure_complete", "unknown")
+        kwargs.setdefault("implementation_verified", "unknown")
+        kwargs.setdefault("outcome_evidence_reviewed", "unknown")
+        return super().format(*args, **kwargs)
+
+
+_AGENTS_READY_TEMPLATE = _AgentsReadyTemplate(
+    """{begin}
 This project follows Ralph Workflow quality policies. Before any change, read {canonical_dir} and load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
 Run declared RALPH-COMMAND gates; read {canonical_dir}gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
 Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral.
 Give non-default work an owner, trigger, lane, evidence, and review condition. Material claims need a predeclared public-surface observation tied to an immutable subject and run, preserved artifact, validated oracle, and independent verdict.
 Telemetry, provenance, private-state inspection, and agent narration are not correctness proof. These are living documents: keep facts current without amending policy intent.
 Resolve RALPH-PENDING lines whose review trigger is met; leaving a resolvable item is a violation. Dead code is prohibited; remove it — rewriting later is better than retaining it.
-Readiness reports THREE dimensions, not two: structure complete (validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), outcome evidence reviewed (every declared gate recorded). A structural READY is the caching gate; structural READY is NOT semantic correctness.
+Readiness reports THREE dimensions, not two: structure complete={structure_complete}, implementation verified={implementation_verified}, outcome evidence reviewed={outcome_evidence_reviewed}. A structural READY is the caching gate; structural READY is NOT semantic correctness.
 {end}
 """
+)
 
 # CLAUDE.md minimal content. Point Claude-compatible agents at AGENTS.md
 # without overriding any of its directives.
@@ -272,7 +286,10 @@ def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
     return [markers.CLAUDE_MD]
 
 
-def condense_placeholder_block(workspace: Workspace) -> list[str]:
+def condense_placeholder_block(
+    workspace: Workspace,
+    assessment: ReadinessAssessment | None = None,
+) -> list[str]:
     """Replace an untouched bootstrap placeholder block with the concise form.
 
     Called after the project reaches READY. The bootstrap placeholder is
@@ -294,10 +311,19 @@ def condense_placeholder_block(workspace: Workspace) -> list[str]:
     body = content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN) : end_idx]
     if _PLACEHOLDER_SENTINEL not in body:
         return []
+    if assessment is not None:
+        sc = "true" if assessment.structure_complete else "false"
+        iv = "true" if assessment.implementation_verified else "false"
+        oer = "true" if assessment.outcome_evidence_reviewed else "false"
+    else:
+        sc = iv = oer = "unknown"
     ready_block = _AGENTS_READY_TEMPLATE.format(
         begin=markers.AGENTS_BLOCK_BEGIN,
         end=markers.AGENTS_BLOCK_END,
         canonical_dir=markers.CANONICAL_DIR,
+        structure_complete=sc,
+        implementation_verified=iv,
+        outcome_evidence_reviewed=oer,
     ).strip()
     block_end = end_idx + len(markers.AGENTS_BLOCK_END)
     workspace.write(

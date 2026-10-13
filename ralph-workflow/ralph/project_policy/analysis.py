@@ -73,6 +73,7 @@ from ralph.prompts.template_registry import (
 
 if TYPE_CHECKING:
     from ralph.project_policy._command_outcome import CommandOutcome
+    from ralph.project_policy._readiness_assessment import ReadinessAssessment
     from ralph.workspace.protocol import Workspace
 
 #: Packaged Jinja template holding the analysis prompt body.
@@ -129,7 +130,10 @@ def _transport_tool_names(tool_name: RalphToolName) -> str:
     )
 
 
-def _render_prompt(workspace: Workspace) -> str:
+def _render_prompt(
+    workspace: Workspace,
+    assessment: ReadinessAssessment | None = None,
+) -> str:
     """Build the analysis prompt text.
 
     The agent is handed the canonical directory and the gate-script policy path
@@ -137,7 +141,16 @@ def _render_prompt(workspace: Workspace) -> str:
     making it go and look is the point -- an agent told what a file says will
     happily confirm it.
     """
+    if assessment is not None:
+        sc = "true" if assessment.structure_complete else "false"
+        iv = "true" if assessment.implementation_verified else "false"
+        oer = "true" if assessment.outcome_evidence_reviewed else "false"
+    else:
+        sc = iv = oer = "unknown"
     variables = {
+        "readiness_structure_complete": sc,
+        "readiness_implementation_verified": iv,
+        "readiness_outcome_evidence_reviewed": oer,
         "canonical_dir": markers.CANONICAL_DIR,
         "portfolio_path": markers.PORTFOLIO_PATH,
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
@@ -241,6 +254,7 @@ def run_analysis_phase(
     *,
     invoke_agent: InvokePolicyAgent,
     emit: EmitFn = _noop_emit,
+    assessment: ReadinessAssessment | None = None,
 ) -> AnalysisDecision:
     """Run one analysis phase and return its decision.
 
@@ -250,7 +264,7 @@ def run_analysis_phase(
     ``failed`` -- which routes back to remediation rather than forward to done.
     """
     clear_stale_decision(workspace)
-    prompt_path = _write_prompt(workspace, _render_prompt(workspace))
+    prompt_path = _write_prompt(workspace, _render_prompt(workspace, assessment=assessment))
 
     success = bool(invoke_agent(phase=PHASE_ANALYSIS, prompt_path=prompt_path))
     decision = read_analysis_decision(workspace)

@@ -784,11 +784,17 @@ def _emit_and_push_readiness_assessment(
         if assessment.structure_complete and not (
             assessment.implementation_verified and assessment.outcome_evidence_reviewed
         ):
+            false_dims: list[str] = []
+            if not assessment.implementation_verified:
+                false_dims.append("implementation verified")
+            if not assessment.outcome_evidence_reviewed:
+                false_dims.append("outcome evidence reviewed")
+            verb = "is" if len(false_dims) == 1 else "are"
+            dims_str = " and ".join(false_dims)
             emit(
                 "readiness-assessment-note: structural READY is the "
                 "caching gate; structural READY is NOT semantic "
-                "correctness (implementation verified and outcome "
-                "evidence reviewed are still false)"
+                f"correctness ({dims_str} {verb} still false)"
             )
     if display is not None and push_status:
         run_started_monotonic: float | None = None

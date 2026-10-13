@@ -108,7 +108,7 @@ def finalize_ready_state(
     """
     pre_contents = capture_pre_write_contents(workspace_scope.root, [AGENTS_MD])
     try:
-        policy_agents_md.condense_placeholder_block(workspace)
+        policy_agents_md.condense_placeholder_block(workspace, assessment=assessment)
     except Exception as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
     try:

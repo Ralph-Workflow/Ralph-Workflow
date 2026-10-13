@@ -82,8 +82,7 @@ To follow this policy, an agent making any change MUST:
 * PRESERVE correctness, readability, and maintainability during
   optimization.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
-  claiming the change complies, and report the actual outcome. Never
-  report a command that was not run.
+  claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes a benchmark, a budget, a profiling tool, or the
   representative workload.
