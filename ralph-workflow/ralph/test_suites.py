@@ -1262,7 +1262,17 @@ def run_test_suites(
             )
             if serial_result not in successful_returncodes:
                 return serial_result
-        run_required_concurrently = bool(required_e2e_shard and not subprocess_e2e_only)
+        # wt-15 policy: the real-git E2E shard must run AFTER the general
+        # shards. When the E2E shard is spawned in the same wave as the 15
+        # general shards, its 8 xdist workers compete with the 15 general
+        # pytest processes for CPU bandwidth; on the maintained 40-core
+        # host the contended wall clock exceeds the immutable 60 s combined
+        # budget even though the E2E selection only spends ~22 s in
+        # isolation. Running the E2E shard after the general wave gives it
+        # the full host and fits the gate: 17 s general + 22 s E2E = 39 s
+        # total. The sequential ordering is a runner-architecture change;
+        # the 60 s combined budget in ralph/verify.py is preserved.
+        run_required_concurrently = False
         all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
         general_result = _run_shards(
             all_shards,

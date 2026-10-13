@@ -212,9 +212,7 @@ def test_a2_deterministic_seams_in_testing_starter() -> None:
     )
     rows = _parse_inventory("testing-policy.md")
     seam_rows = [
-        row
-        for row in rows
-        if all(w in row["protected_outcome"].lower() for w in seam_words)
+        row for row in rows if all(w in row["protected_outcome"].lower() for w in seam_words)
     ]
     assert seam_rows, (
         "testing starter guard-inventory missing a row whose "
