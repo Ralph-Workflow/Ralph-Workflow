@@ -268,6 +268,17 @@ On every change:
 6. UPDATE this policy when the entry point, gate order, selection or caching
    mechanism, profile set, or bypass-detection audit changes.
 
+## High-churn evidence (B8)
+
+Volatile reports (per-run test logs, mutation-analysis dumps, coverage
+HTML, snapshot diffs) and large generated inventories go to ignored paths
+under `/tmp` or to CI artifacts. Commit only compact, deterministic,
+human-reviewable baselines whose diffs carry meaning: the
+`verification_time_budget` fact, the recorded gate-lane review with its
+dated evidence, and reviewable gate results. A reviewer who pulls the change
+must see a single small diff against a known baseline, not a thousand-line
+inventory of auto-generated noise.
+
 An agent MUST NOT:
 
 * Add a "verification" command that does not exercise every default-gate

@@ -118,14 +118,13 @@ delete this comment. -->
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the authoritative
-verification gate. Report the actual command output.
+verification gate.
 
 ## Exceptions
 
-Truthful reporting, non-fabrication, applicable verification, and the ban on
-weakening checks are never exemptible. A specific automation may omit only a
-named gate that is technically irrelevant to its bounded scope, with rationale,
-owner, and review date.
+A specific automation may omit only a named gate that is technically
+irrelevant to its bounded scope, with rationale, owner, and review date.
+Kernel rules are non-exemptible per `execution-kernel.md`.
 
 ## Maintenance triggers
 

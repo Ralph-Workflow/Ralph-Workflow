@@ -24,6 +24,10 @@ architecture without imposing a named pattern or directory layout.
 * New abstractions MUST solve a demonstrated boundary, volatility, testing, or
   reuse need; implementation count alone neither requires nor forbids an
   abstraction.
+* Durable contracts (registries, classifiers, name lists) are conditional on
+  crossing a documented system boundary where external or decoupled consumers
+  depend on them; internal-only implementations need not enter named
+  registries or classifiers solely because a starter pattern exists.
 * Material, hard-to-reverse architectural decisions MUST be recorded durably.
 * Architecture MUST be evaluated against explicit quality-attribute scenarios,
   stakeholder needs, operational context, and known tradeoffs rather than a
@@ -77,10 +81,7 @@ Agents MUST inspect the component map before moving responsibilities, preserve
 dependency direction, update affected decision records, and remove superseded
 architecture rather than leaving parallel paths. Agents MUST identify affected
 quality attributes, runtime/data-flow views, and tradeoffs before claiming an
-architectural change is fit. Agents MUST run declared commands, perform
-declared reviews, report unavailable evidence as a blocker, and update changed
-facts. Agents MUST NOT invent components, decisions, quality targets, or review
-evidence.
+architectural change is fit.
 
 ## Verification
 

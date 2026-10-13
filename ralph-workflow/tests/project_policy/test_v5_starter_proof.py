@@ -73,6 +73,19 @@ def test_testing_high_churn_evidence_section_present() -> None:
     assert "ignored paths" in normalized or "CI artifacts" in normalized
 
 
+def test_verification_high_churn_evidence_section_present() -> None:
+    """B8: the verification starter must have a high-churn evidence
+    section so volatile reports and large generated inventories
+    never reach human review as a thousand-line commit.
+    """
+    content = starters.read_starter("verification-policy.md")
+    normalized = " ".join(content.split())
+    assert "## High-churn evidence" in normalized
+    assert "per-run" in normalized
+    assert "mutation" in normalized or "coverage" in normalized
+    assert "ignored paths" in normalized or "CI artifacts" in normalized
+
+
 def test_testing_kernel_pointer_is_present() -> None:
     """B10: the testing starter's AI execution instructions must
     point to ``execution-kernel.md`` for the five generic rules
@@ -290,12 +303,19 @@ def test_architecture_starter_uses_generic_resource_lifecycle_guard() -> None:
 
 
 def test_testing_cheapest_layer_rule_14_present() -> None:
-    """Closes audit GAP A3: the cheapest-layer rule (rule 14) must appear
-    verbatim so future edits cannot collapse the stack-ratio guidance into
-    a generic one-liner.
+    """Closes audit GAP A3: rule 12 (every bug fix in automated lane must add
+    a regression test that fails on the bug and passes on the fix) AND
+    rule 14 (cheapest layer) must appear verbatim so future edits cannot
+    collapse either requirement into a generic one-liner.
     """
     content = starters.read_starter("testing-policy.md")
     normalized = " ".join(content.split())
+    # Rule 12: regression test for bug fix in automated lane
+    assert (
+        "Every bug fix to behaviour in the automated lane MUST add a regression test that fails on the bug and passes on the fix"
+        in normalized
+    )
+    # Rule 14: cheapest layer
     assert "Shape the suite so the cheapest" in normalized
 
 

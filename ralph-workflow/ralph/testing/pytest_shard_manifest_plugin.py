@@ -82,9 +82,12 @@ def load_shard_manifest(manifest_path: Path) -> ShardManifest:
 
 def _project_relative_path(path: Path, *, root: Path) -> str | None:
     try:
-        return path.resolve().relative_to(root).as_posix()
+        return path.relative_to(root).as_posix()
     except ValueError:
-        return None
+        try:
+            return path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            return None
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

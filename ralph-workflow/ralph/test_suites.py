@@ -238,6 +238,10 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 # maintained 40-core host under typical load.
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
+_DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
+    "tests/test_display_generated_scenes.py": 460,
+    "tests/test_brand_naming.py": 78,
+}
 
 
 if not EXCLUSIVE_SUBPROCESS_E2E_FILES:
@@ -621,13 +625,17 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
         if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
             source = source_bytes.decode("utf-8")
             _cache_source(path, source)
-            _FILE_WEIGHT_CACHE[path] = _fast_test_count(source)
+            _FILE_WEIGHT_CACHE[path] = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(
+                path
+            ) or _fast_test_count(source)
             discovered.append(path)
             continue
         source = source_bytes.decode("utf-8")
         if not _is_module_subprocess_e2e(source, filename=path):
             _cache_source(path, source)
-            _FILE_WEIGHT_CACHE[path] = estimate_test_file_weight(source)
+            _FILE_WEIGHT_CACHE[path] = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(
+                path
+            ) or estimate_test_file_weight(source)
             discovered.append(path)
     selected = tuple(discovered)
     validate_required_auto_integrate_selection(selected)
@@ -773,6 +781,9 @@ def _fast_test_count(source: str) -> int:
 
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:
+    override = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(relative_path)
+    if override is not None:
+        return override
     # Reuse the parser cache populated by ``discover_test_files`` to avoid
     # re-reading and re-parsing the same source files during shard weight
     # computation. Without this cache, each shard load pays the cost of an
@@ -1191,18 +1202,12 @@ def run_test_suites(
     serial_test_files = frozenset(
         {
             "tests/workspace/test_workspace_product_baselines.py",
-            "tests/test_kimi_wire_provenance.py",
-            "tests/test_mcp_endpoint_functional_sweep.py",
-            "tests/test_auto_integrate_resolving_rebase_record.py",
             "tests/test_auto_integrate_boundary_cleanliness.py",
             "tests/test_bootstrap_auto_seed_gitignore.py",
-            "tests/test_evidence_provenance_lattice.py",
-            "tests/test_explore_fault_matrix.py",
             "tests/test_explore_fault_matrix_full.py",
             "tests/test_explore_handlers.py",
             "tests/test_scheduler.py",
             "tests/test_tool_git_read_handle_git_status.py",
-            "tests/unit/test_explore_pipeline_invariants.py",
         }
     )
     serial_files = tuple(path for path in selected_files if path in serial_test_files)
@@ -1295,7 +1300,7 @@ def run_test_suites(
         if general_result not in successful_returncodes:
             return general_result
         if not required_e2e_shard or run_required_concurrently:
-            return 0 if serial_result == 0 else general_result
+            return general_result
         return _run_shards(
             (required_e2e_shard,),
             cwd=cwd,

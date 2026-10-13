@@ -62,9 +62,9 @@ From `ralph/project_policy/starters/policy-portfolio.toml:2` (verbatim TOML key)
 
 The B5 experiment measures both limits independently.
 
-`browser_budget_seconds` (the `RALPH-FACT` key at `testing-policy.md:422`) is the **default-lane BROWSER time budget** — the measured value used for the BELOW / AT-or-OVER admission decision. Each pack declares its own resolved value at `docs/ralph-workflow-policy/testing-policy.md` under the same `RALPH-FACT: browser_budget_seconds:` key.
+`browser_budget_seconds` (the `RALPH-FACT` key at `testing-policy.md:422`) is the **default-lane BROWSER time budget** — the measured value used for the BELOW / AT-or-OVER admission decision for distinct browser journeys. Each pack declares its own resolved value at `docs/ralph-workflow-policy/testing-policy.md` under the same `RALPH-FACT: browser_budget_seconds:` key.
 
-`default_budget_seconds` (the TOML key at `policy-portfolio.toml:2`, value `60.0`) is the **AGGREGATE test-budget ceiling** — the never-raised cap on total default-lane browser time, carried by the portfolio. The plan holds this constant at `60.0` for both packs; the experiment does NOT raise it.
+`default_budget_seconds` (the TOML key at `policy-portfolio.toml:2`, value `60.0`) is the **AGGREGATE test-budget ceiling** — the never-raised cap on total default-lane test execution time (covering browser, unit, and integration tests combined), carried by the portfolio. The plan holds this constant at `60.0` for both packs; the experiment does NOT raise it.
 
 #### 3a. Browser-lane budget falsification (per the BELOW/AT-or-OVER rule)
 
@@ -76,9 +76,9 @@ The experiment runs two task arms on the browser-sensitive category, on the same
 
 #### 3b. Aggregate ceiling falsification
 
-**Falsified if:** total default-lane browser time exceeds `default_budget_seconds` (`60.0`) under **either** admission rule.
+**Falsified if:** total default-lane test execution time exceeds `default_budget_seconds` (`60.0`) in any run under **either** admission rule, or if default-lane browser time alone breaches that aggregate ceiling.
 
-The aggregate ceiling is never raised by any experimental admission rule. Any run whose total default-lane browser time exceeds `60.0` seconds falsifies this outcome regardless of which admission rule was applied. The measurement is a wall-clock sum of all browser-journey times recorded in `tmp/policy-v5-replay-runs/<run_id>/browser-timing.jsonl` (see §8.3).
+The aggregate ceiling is never raised by any experimental admission rule. Any run whose total default-lane test time exceeds `60.0` seconds falsifies this outcome regardless of which admission rule was applied. The per-run browser timing is recorded in `tmp/policy-v5-replay-runs/<run_id>/browser-timing.jsonl` (see §8.3).
 
 ---
 
@@ -86,13 +86,13 @@ The aggregate ceiling is never raised by any experimental admission rule. Any ru
 
 | Constant | Value | Held constant by (path:line) |
 |---|---|---|
-| Model | Same model, same version, frozen prompt | Pinned by the harness env `RALPH_AGENT_MODEL` exported in the runner wrapper script (`scripts/policy_v5_replay_run.sh`); runner refuses to start if the value is absent or differs from the pinned id (script line 14-18) |
+| Model | Same model, same version, frozen prompt | Pinned by the harness env `RALPH_AGENT_MODEL` to be exported in the planned replay runner wrapper script (`scripts/policy_v5_replay_run.sh`, explicit future prerequisite); runner specification requires refusing to start if the value is absent or differs from the pinned id |
 | Harness | Same test harness (pytest per test file; Playwright for browser category only) | `ralph/testing/pytest_timeout_plugin.py:1-30` enforces the per-test 1 s SIGALRM cap; `Makefile:52` pins `PYTEST_SUITE_TIMEOUT_SECONDS=60`; `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS=60` is the immutable combined cap |
 | Tools | Same toolchain versions (python 3.14, node from `runtime_environment.py`, browser from `tests/visual_capture/`) | `Makefile:88` exports `VIRTUAL_ENV`; `pyproject.toml` pins `requires-python` and dependency set; `tests/test_runtime_environment.py:1-30` snapshots the runtime so a drift fails the run before scoring starts |
 | Time budget | 60-second aggregate ceiling, never raised | `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS` is module-level `Final[int] = 60`; `policy-portfolio.toml:2` `default_budget_seconds = 60.0`; `Makefile:60-72` comments the immutability |
 | Immutable behavioral checks | Kernel rules (truthful evidence, fail-closed verification, bounded execution, no weakening of checks, explicit unverified-claim reporting) | `ralph/project_policy/starters/execution-kernel.md:1-200` carries the five rules; every starter's `## AI execution instructions` MUST NOT restate them (`markers.py:REQUIRED_HEADINGS` plus B10 in `execution-kernel.md`); `tests/project_policy/test_kernel_rules_proof.py:1-200` is the focused proof |
 
-**Shared budget reminder:** the 60-second ceiling is the AGGREGATE cap (`policy-portfolio.toml:2`). No experimental admission rule raises it. A run whose default-lane browser time exceeds 60.0 s falsifies §3b regardless of admission rule.
+**Shared budget reminder:** the 60-second ceiling is the AGGREGATE cap (`policy-portfolio.toml:2`) across all default-lane tests. No experimental admission rule raises it. A run whose total default-lane test execution time exceeds 60.0 s falsifies §3b regardless of admission rule.
 
 Operational tunable items (per replay): run count, task selection within categories, reviewer assignment (blinding).
 
@@ -139,7 +139,7 @@ Each individual agent run (one task, one pack) is capped at **30 minutes wall-cl
 
 ### 7.1 Per-metric definition
 
-Every metric is graded by a blind reviewer (or, where the metric is mechanical, by the aggregator script `scripts/policy_v5_replay_score.py`). Each row names the artifact that produces the value.
+Every metric is graded by a blind reviewer (or, where the metric is mechanical, by the planned scoring aggregator script `scripts/policy_v5_replay_score.py`, an explicit future prerequisite whose decision logic is specified in §9 and verified by `tests/test_policy_v5_replay_decision.py`). Each row names the artifact that produces the value.
 
 | # | Metric | Unit | Scale | Direction | Source artifact | Blind-scoring rubric (0–3) |
 |---|---|---|---|---|---|---|
@@ -155,38 +155,76 @@ Every metric is graded by a blind reviewer (or, where the metric is mechanical, 
 
 ### 7.2 Per-metric keep / restore / redesign decision
 
-For each of M1, M2, M3, M4, M5, M6, M7 the rule is:
+The direction of improvement is metric-specific:
+- **Higher is better:** M1 (correctness), M3 (security), M4 (abstractions), M6 (truthfulness).
+  - `v5 > v4` → `IMPROVE`
+  - `v5 < v4` → `RESTORE`
+  - `v5 == v4` → `KEEP_TIE`
+- **Lower is better:** M2 (regressions), M5 (duplicate tests), M7 (human rework), M8 (elapsed time), M9 (inference cost).
+  - `v5 < v4` → `IMPROVE`
+  - `v5 > v4` → `RESTORE`
+  - `v5 == v4` → `KEEP_TIE`
 
 ```
-per_metric_decision(v4, v5, metric_value):
-    if v5.metric < v4.metric:   return RESTORE
-    if v5.metric == v4.metric:  return KEEP_TIE
-    if v5.metric > v4.metric:   return IMPROVE
+per_metric_decision(v4_val, v5_val, metric_name):
+    if metric_name in {"M1", "M3", "M4", "M6"}:
+        if v5_val > v4_val:   return IMPROVE
+        if v5_val < v4_val:   return RESTORE
+        return KEEP_TIE
+    if metric_name in {"M2", "M5", "M7", "M8", "M9"}:
+        if v5_val < v4_val:   return IMPROVE
+        if v5_val > v4_val:   return RESTORE
+        return KEEP_TIE
 ```
 
-M8 and M9 are **secondary** metrics: they never trigger RESTORE on their own, but if v5 strictly improves the primary set (M1–M7) AND v5.M8 + v5.M9 > 1.25 × (v4.M8 + v4.M9) — i.e. v5 spent more than 25% additional wall-clock-or-tokens to reach the same primary outcome — the decision for the run is REDESIGN (rebuild the change cheaper).
+**Protected regressions (M2):** ANY increase in regressions (`v5.M2 > v4.M2`) MUST veto retention and return `KEEP_FALSE` immediately.
+
+**Dimensional cost comparisons (M8 and M9):**
+M8 is wall-clock seconds; M9 is prompt+completion token count. They are dimensionally distinct units: seconds and tokens MUST NOT be added together (an expression such as `v5.M8 + v5.M9` is invalid and rejected). Instead, evaluate the wall-clock ratio (`v5.M8 / v4.M8`) and token ratio (`v5.M9 / v4.M9`) independently as separate secondary dimensions; redesign (`KEEP_TRUE_REDESIGN`) is triggered if either ratio exceeds 1.25x (i.e. more than 25% cost inflation in either time or tokens).
 
 ### 7.3 Aggregate rule
 
 ```
-decide(per_run_decisions):
-    restores    = count(== RESTORE,  per_run_decisions)
-    improves    = count(== IMPROVE,  per_run_decisions)
-    redesigns   = count(== REDESIGN, per_run_decisions)
-    ties        = count(== KEEP_TIE, per_run_decisions)
+decide(v4, v5, per_run):
+    # 1. Protected regressions veto retention
+    if v5.M2 > v4.M2 or per_run.get("kernel_rule_regression", False):
+        return KEEP_FALSE
 
-    if restores >= 1:                      return KEEP_FALSE
-    if redesigns >= 1:                     return KEEP_FALSE   # not on the primary axis
-    if improves >= 1 and ties == 7:         return KEEP_TRUE_REDESIGN   # only ties, no regressions
-    if improves >= 1 and ties < 7:         return KEEP_TRUE
-    if improves == 0:                      return KEEP_FALSE   # no metric improved
+    # 2. Evaluate primary metrics (M1–M7)
+    restores = count(== RESTORE,  primary_decisions)
+    improves = count(== IMPROVE,  primary_decisions)
+    ties     = count(== KEEP_TIE, primary_decisions)
+
+    if restores >= 1:
+        return KEEP_FALSE
+
+    # 3. Independent secondary cost ratios (never sum seconds + tokens)
+    time_ratio  = v5.M8 / v4.M8  (if v4.M8 > 0 else 1.0)
+    token_ratio = v5.M9 / v4.M9  (if v4.M9 > 0 else 1.0)
+    cost_exceeded = (time_ratio > 1.25) or (token_ratio > 1.25)
+
+    # 4. Final resolution
+    if improves >= 1:
+        if cost_exceeded:
+            return KEEP_TRUE_REDESIGN
+        return KEEP_TRUE
+
+    if ties == 7 and not cost_exceeded:
+        # Equal primary outcomes with lower time/cost handled consistently
+        has_cost_improvement = (v5.M8 < v4.M8 and token_ratio <= 1.0) or \
+                               (v5.M9 < v4.M9 and time_ratio <= 1.0) or \
+                               (v5.M8 < v4.M8 and v5.M9 < v4.M9)
+        if has_cost_improvement:
+            return KEEP_TRUE
+
+    return KEEP_FALSE
 ```
 
-`KEEP_TRUE` → v5 ships. `KEEP_TRUE_REDESIGN` → v5 ships but the unchanged axis is queued for redesign. `KEEP_FALSE` → restore v4, redesign, re-run.
+`KEEP_TRUE` → v5 ships. `KEEP_TRUE_REDESIGN` → v5 ships but secondary cost inflation (> 1.25x in time or tokens) queues the change for redesign before the next policy bump. `KEEP_FALSE` → restore v4, redesign, re-run.
 
 ### 7.4 Tie-break: protected outcomes dominate
 
-A regression in M2 ("regressions") that touches a kernel rule (truthful evidence, fail-closed verification, bounded execution, no weakening of checks, explicit unverified-claim reporting) forces `KEEP_FALSE` regardless of M1–M7 totals. The kernel rules are owned by `ralph/project_policy/starters/execution-kernel.md` and are protected from per-change renegotiation.
+ANY increase in regressions in M2 (`v5.M2 > v4.M2`), or any regression in a kernel rule (truthful evidence, fail-closed verification, bounded execution, no weakening of checks, explicit unverified-claim reporting), forces `KEEP_FALSE` regardless of other primary scores. The kernel rules are owned by `ralph/project_policy/starters/execution-kernel.md` and are protected from per-change renegotiation.
 
 ### 7.5 Retired controls
 
@@ -230,7 +268,7 @@ Where:
 
 ### 8.3 Per-run browser timing (for §3b)
 
-For the browser-sensitive category only, the decorator ALSO appends one row per Playwright invocation to `tmp/policy-v5-replay-runs/<run_id>/browser-timing.jsonl` with `{test_id, browser, start_ts, end_ts, total_ms}`. The sum of `total_ms` over the run is the per-run browser time; the sum across all 36 (or 60) runs is the aggregate default-lane browser time. The aggregate is compared to `default_budget_seconds` (`60.0`, `policy-portfolio.toml:2`) — if it exceeds the ceiling, §3b is falsified for that run.
+For the browser-sensitive category only, the decorator ALSO appends one row per Playwright invocation to `tmp/policy-v5-replay-runs/<run_id>/browser-timing.jsonl` with `{test_id, browser, start_ts, end_ts, total_ms}`. The sum of `total_ms` over the run is the per-run browser time. In each individual run, this browser time plus the non-browser test suite execution time is checked against the aggregate ceiling `default_budget_seconds` (`60.0`, `policy-portfolio.toml:2`). In addition, the per-run browser time is compared against `browser_budget_seconds` to verify compliance with the BELOW / AT-or-OVER admission rule for that run. If total default-lane verification time exceeds 60.0 s in any run, §3b is falsified for that run.
 
 ### 8.4 What the ledger records vs. what it does not
 
@@ -244,43 +282,94 @@ A starter whose trigger did not fire during the run — yet whose name appears i
 
 ### 8.6 Tool catalog: the read observation is the only new instrumentation
 
-No new tool, no new seam, no new persisted state. The decorator is one Python file: `ralph/mcp/tools/workspace/_read_handlers.py:221` (`handle_read_file`) and `:844` (`handle_read_multiple_files`) gain a logging decorator that writes one line to the per-run ledger when `RALPH_V5_REPLAY_RUN_ID` is set. The decorator is registered in `scripts/policy_v5_replay_run.sh` line 21-24 by exporting the env var before launching the harness.
+No new tool, no new seam, no new persisted state. The decorator is one Python file: `ralph/mcp/tools/workspace/_read_handlers.py:221` (`handle_read_file`) and `:844` (`handle_read_multiple_files`) gain a logging decorator that writes one line to the per-run ledger when `RALPH_V5_REPLAY_RUN_ID` is set. The decorator is designed to be registered by exporting `RALPH_V5_REPLAY_RUN_ID` before launching the harness (to be automated in the planned replay runner wrapper script `scripts/policy_v5_replay_run.sh`, an explicit future prerequisite).
 
 ---
 
 ## 9. Keep-or-restore rule (code-expressible)
 
-The rule is encoded in `scripts/policy_v5_replay_score.py` and is expressible as:
+The decision rule is implemented and verified by the executable test suite `tests/test_policy_v5_replay_decision.py`, planned for packaging into the scoring aggregator script `scripts/policy_v5_replay_score.py` (explicit future prerequisite), and expressible as:
 
 ```python
-def decide(per_run: dict[str, int], v4: dict[str, int], v5: dict[str, int]) -> str:
-    # Primary metrics M1-M7. Higher is better.
-    primary = ["M1", "M2", "M3", "M4", "M5", "M6", "M7"]
-    # Tie-break: any regression in a kernel-rule protected outcome forces KEEP_FALSE.
-    if v5["M2"] > v4["M2"] and per_run.get("kernel_rule_regression", False):
+from collections.abc import Mapping
+
+HIGHER_IS_BETTER: frozenset[str] = frozenset({"M1", "M3", "M4", "M6"})
+LOWER_IS_BETTER: frozenset[str] = frozenset({"M2", "M5", "M7", "M8", "M9"})
+PRIMARY_METRICS: tuple[str, ...] = ("M1", "M2", "M3", "M4", "M5", "M6", "M7")
+
+
+def per_metric_decision(v4_val: float | int, v5_val: float | int, metric_name: str) -> str:
+    if metric_name in HIGHER_IS_BETTER:
+        if v5_val > v4_val:
+            return "IMPROVE"
+        if v5_val < v4_val:
+            return "RESTORE"
+        return "KEEP_TIE"
+    if metric_name in LOWER_IS_BETTER:
+        if v5_val < v4_val:
+            return "IMPROVE"
+        if v5_val > v4_val:
+            return "RESTORE"
+        return "KEEP_TIE"
+    raise ValueError(f"Unknown metric: {metric_name}")
+
+
+def decide(
+    v4: Mapping[str, float | int],
+    v5: Mapping[str, float | int],
+    per_run: Mapping[str, object] | None = None,
+) -> str:
+    # 1. Protected regressions (M2): ANY increase in regressions vetoes retention.
+    v4_m2 = float(v4.get("M2", 0))
+    v5_m2 = float(v5.get("M2", 0))
+    if v5_m2 > v4_m2 or bool(per_run and per_run.get("kernel_rule_regression", False)):
         return "KEEP_FALSE"
-    # Per-metric decision.
+
+    # 2. Evaluate primary metrics (M1-M7) with metric-specific directions.
     n_restore, n_improve, n_tie = 0, 0, 0
-    for m in primary:
-        if v5[m] < v4[m]: n_restore += 1
-        elif v5[m] > v4[m]: n_improve += 1
-        else: n_tie += 1
-    # Secondary M8 + M9: cap at 1.25x v4 cost to keep.
-    cost_ratio = (v5["M8"] + v5["M9"]) / max(1, v4["M8"] + v4["M9"])
+    for m in PRIMARY_METRICS:
+        res = per_metric_decision(float(v4.get(m, 0)), float(v5.get(m, 0)), m)
+        if res == "RESTORE":
+            n_restore += 1
+        elif res == "IMPROVE":
+            n_improve += 1
+        else:
+            n_tie += 1
+
     if n_restore >= 1:
         return "KEEP_FALSE"
-    if n_improve == 0:
-        return "KEEP_FALSE"
-    if cost_ratio > 1.25 and n_tie == 7:
-        return "KEEP_TRUE_REDESIGN"
-    if n_tie == 7:
-        return "KEEP_TRUE_REDESIGN"
-    return "KEEP_TRUE"
+
+    # 3. Dimensional cost comparisons (M8 seconds, M9 tokens).
+    # Evaluated independently; do NOT sum seconds and tokens together.
+    v4_m8 = float(v4.get("M8", 0.0))
+    v5_m8 = float(v5.get("M8", 0.0))
+    time_ratio = (v5_m8 / v4_m8) if v4_m8 > 0.0 else 1.0
+
+    v4_m9 = float(v4.get("M9", 0))
+    v5_m9 = float(v5.get("M9", 0))
+    token_ratio = (v5_m9 / v4_m9) if v4_m9 > 0.0 else 1.0
+
+    cost_exceeded = (time_ratio > 1.25) or (token_ratio > 1.25)
+
+    # 4. Resolve decision.
+    if n_improve >= 1:
+        return "KEEP_TRUE_REDESIGN" if cost_exceeded else "KEEP_TRUE"
+
+    if n_tie == 7 and not cost_exceeded:
+        has_cost_improvement = (
+            (v5_m8 < v4_m8 and token_ratio <= 1.0)
+            or (v5_m9 < v4_m9 and time_ratio <= 1.0)
+            or (v5_m8 < v4_m8 and v5_m9 < v4_m9)
+        )
+        if has_cost_improvement:
+            return "KEEP_TRUE"
+
+    return "KEEP_FALSE"
 ```
 
 **Restore signal (KEEP_FALSE):** Restore v4, redesign the change, re-run. "Keep most of it" is not a valid outcome.
 
-**Finer redesign signal (KEEP_TRUE_REDESIGN):** v5 ships, but the unchanged axis is queued for redesign before the next policy bump.
+**Finer redesign signal (KEEP_TRUE_REDESIGN):** v5 ships, but the unchanged axis or secondary cost inflation is queued for redesign before the next policy bump.
 
 **Retired controls:** Any v5 control that was retired and whose protected failure reappears in the v5 run is added back before v5 ships (§7.5).
 
@@ -291,7 +380,7 @@ def decide(per_run: dict[str, int], v4: dict[str, int], v5: dict[str, int]) -> s
 The reviewer panel receives a **redacted input package** that does not disclose which response is v4 or v5:
 
 **Package contents:**
-1. **read.log** — the per-run policy-file-read ledger (`tmp/policy-v5-replay-runs/<run_id>/read.log`). Both v4 and v5 runs are included; filenames use treatment codes only (see item 3).
+1. **Sanitized read.log / exposure ledger** — the per-run policy-file-read ledger (`tmp/policy-v5-replay-runs/<run_id>/read.log`). Because v5 references `execution-kernel.md` and selectively loaded conditional starters that could unblind reviewers, the unblinded coordinator anonymizes starter paths (e.g. `policy-doc-A`, `policy-doc-B`) before presenting this ledger to reviewers, or evaluates selective-applicability (B2) violations mechanically via aggregator scripts.
 2. **Scored rubric** — the nine-metric rubric (§7 table) with scores for each run, labeled by treatment code.
 3. **Treatment-code assignment** — an unblinded coordinator (not on the review panel) holds the mapping:
 
@@ -325,11 +414,11 @@ Replay is a **separate phase** with its own timebox. It is not part of the v5 im
 
 ## D. Task snapshots and immutable behavioral checks
 
-Each category uses a real pinned snapshot: a real commit ref, a real working-copy command, a real test-file oracle. Snapshots are constructed by `scripts/policy_v5_replay_freeze.sh` (the only fixture-construction script; the body is below in §D.0). After construction, the snapshot is hashed; the hash is the only artifact reviewed. No `locked/*` branches are referenced; the previous draft's `locked/feature-add-feature-flag` etc. did not exist in the tree and were replaced with concrete pinned commands.
+Each category uses a real pinned snapshot: a real commit ref, a real working-copy command, a real test-file oracle. Snapshots are constructed following the fixture-construction procedure defined below in §D.0 (planned as `scripts/policy_v5_replay_freeze.sh`, an explicit future prerequisite script whose reference implementation is provided below). After construction, the snapshot is hashed; the hash is the only artifact reviewed. No `locked/*` branches are referenced; the previous draft's `locked/feature-add-feature-flag` etc. did not exist in the tree and were replaced with concrete pinned commands.
 
-### D.0 Fixture-construction script: `scripts/policy_v5_replay_freeze.sh`
+### D.0 Fixture-construction script: `scripts/policy_v5_replay_freeze.sh` (future prerequisite)
 
-The script is the single source of fixture construction. It is run once per snapshot, before the replay run that uses that snapshot.
+The script specification below defines the reference fixture construction. When implemented as `scripts/policy_v5_replay_freeze.sh` (or executed manually via bash), it serves as the single source of fixture construction before a replay run that uses that snapshot.
 
 ```
 #!/usr/bin/env bash
@@ -368,9 +457,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.1 Feature
 
 **Snapshot 1 — `add-feature-flag-journey`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh feature add-feature-flag-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh feature add-feature-flag-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** add a new end-to-end journey under a new feature flag (`tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py`), verify guard-inventory accuracy.
-- **Real artifact oracle:** `tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py::test_pipeline_happy_path_completes` (proves the new flag's pipeline transition runs to completion).
+- **Real artifact oracle:** `tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py::TestPipelinePhaseTransitions::test_planning_analysis_routes_to_development` (proves the new flag's pipeline transition runs to completion).
 - **Real test-file oracle:** `tests/project_policy/test_policy_auto_commit.py::test_policy_auto_commit_subject_and_scoped_staging` (proves the policy chore commit subject and scoped staging are still correct under the new flag).
 - **Immutable behavioral checks:**
   ```
@@ -382,10 +471,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `new-auth-provider-journey`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh feature new-auth-provider-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh feature new-auth-provider-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** add a browser journey exercising a new OAuth2 provider integration (`tests/test_subprocess_env_secret_isolation.py` is the secrets-bound proof oracle; the journey itself is the real-artifact oracle).
-- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_secrets_do_not_leak` (proves the new auth journey preserves the secret-isolation invariant).
-- **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_secret_isolation_asserts_no_env_leak` (proves the run does not regress the existing isolation proof).
+- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the broker secret is stripped in child environments).
+- **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_caller_cannot_override_strip` (proves caller cannot override the broker secret strip).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short              # must exit 0
@@ -397,10 +486,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.2 Regression
 
 **Snapshot 1 — `smoke-test-regression`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh regression smoke-test-regression c67e7536fe8b97831c72d3e5d87644c26b4b2342`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh regression smoke-test-regression c67e7536fe8b97831c72d3e5d87644c26b4b2342`
 - **Per-arm task:** re-run a previously failing smoke-test fixture to confirm protected outcomes are still enforced.
-- **Real artifact oracle:** `tests/test_smoke_canonical_path.py::test_canonical_path_end_to_end` (the canonical smoke proof, runs against the v4 baseline first, then again under v5 to prove no regression).
-- **Real test-file oracle:** `tests/test_smoke_plumbing_uses_canonical_submit.py::test_plumbing_uses_canonical_submit` (proves the canonical artifact submission path is unchanged).
+- **Real artifact oracle:** `tests/test_smoke_canonical_path.py::test_smoke_claude_branch_end_to_end_uses_canonical_submit` (the canonical smoke proof, runs against the v4 baseline first, then again under v5 to prove no regression).
+- **Real test-file oracle:** `tests/test_smoke_plumbing_uses_canonical_submit.py::test_smoke_plumbing_claude_branch_stamps_canonical_receipt` (proves the canonical artifact submission path is unchanged).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_smoke_canonical_path.py tests/test_smoke_plumbing_uses_canonical_submit.py -q   # must exit 0
@@ -410,10 +499,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `auth-token-regression`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh regression auth-token-regression c67e7536fe8b97831c72d3e5d87644c26b4b2342`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh regression auth-token-regression c67e7536fe8b97831c72d3e5d87644c26b4b2342`
 - **Per-arm task:** re-run a session that previously failed due to a token-expiry edge case.
-- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_secret_token_never_in_command_line` (proves the token-expiry regression is covered).
-- **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_secrets_do_not_leak` (proves the broader isolation invariant).
+- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the broker secret is stripped in child environments).
+- **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_caller_cannot_override_strip` (proves caller cannot override the broker secret strip).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short            # must exit 0
@@ -425,10 +514,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.3 Refactor
 
 **Snapshot 1 — `rename-service-boundary`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh refactor rename-service-boundary f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh refactor rename-service-boundary f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** rename a service boundary (`HandleX` → `CoordinatorX`) and update all affected stubs; verify guard-inventory accuracy.
-- **Real artifact oracle:** `tests/test_pipeline_factory.py::test_pipeline_factory_resolves_phase_handlers` (proves the phase-handler resolution still finds the renamed boundary).
-- **Real test-file oracle:** `tests/test_pipeline_factory_default.py::test_pipeline_factory_default_phase_chain` (proves the default phase chain is unchanged).
+- **Real artifact oracle:** `tests/test_pipeline_factory.py::TestPipelineDepsCollaborators::test_bridge_factory_collaborator_is_overridable` (proves the phase collaborators resolve after the boundary refactor).
+- **Real test-file oracle:** `tests/test_pipeline_factory_default.py::TestDefaultPipelineFactoryBuild::test_build_returns_pipeline_deps_with_production_defaults` (proves default pipeline composition is unchanged).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_pipeline_factory.py tests/test_pipeline_factory_default.py -q --tb=short   # must exit 0
@@ -438,10 +527,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `extract-helper-module`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh refactor extract-helper-module f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh refactor extract-helper-module f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** extract a shared helper from two modules; update all call sites.
-- **Real artifact oracle:** `tests/test_pipeline_deps_composition.py::test_pipeline_deps_compose` (proves the extracted helper composes correctly).
-- **Real test-file oracle:** `tests/test_pipeline_orchestration_flow.py::test_pipeline_orchestration_runs_phases_in_order` (proves orchestration order is unchanged after the extraction).
+- **Real artifact oracle:** `tests/test_pipeline_deps_composition.py::test_build_default_pipeline_deps_returns_valid_pipeline_deps` (proves the extracted helper composes correctly).
+- **Real test-file oracle:** `tests/test_pipeline_orchestration_flow.py::test_full_pipeline_transitions_from_planning_to_complete` (proves orchestration order is unchanged after the extraction).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_pipeline_deps_composition.py tests/test_pipeline_orchestration_flow.py -q   # must exit 0
@@ -453,9 +542,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.4 Integration-heavy
 
 **Snapshot 1 — `multi-step-api-chain`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh integration-heavy multi-step-api-chain f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh integration-heavy multi-step-api-chain f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** multi-step API call chain with auth headers, token refresh, and retry logic.
-- **Real artifact oracle:** `tests/integration/test_pipeline_multi_cycle_memory_regression.py::test_pipeline_multi_cycle_memory_stable` (proves the multi-step chain does not leak memory across cycles).
+- **Real artifact oracle:** `tests/integration/test_pipeline_multi_cycle_memory_regression.py::test_pipeline_multi_cycle_memory_regression_no_drift` (proves the multi-step chain does not leak memory across cycles).
 - **Real test-file oracle:** `tests/integration/test_commit_cleanup_rock_solid.py::test_handle_commit_cleanup_phase_rock_solid` (proves the commit cleanup phase survives the multi-step run).
 - **Immutable behavioral checks:**
   ```
@@ -466,9 +555,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `db-migration-plus-query`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh integration-heavy db-migration-plus-query f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh integration-heavy db-migration-plus-query f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** schema migration followed by a query that depends on the new columns.
-- **Real artifact oracle:** `tests/integration/test_pipeline_final_commit_cleanup_to_final_commit_e2e.py::test_pipeline_final_cleanup_to_commit_end_to_end` (proves the cleanup-to-commit transition survives the migration+query chain).
+- **Real artifact oracle:** `tests/integration/test_pipeline_final_commit_cleanup_to_final_commit_e2e.py::test_pipeline_final_cleanup_to_final_commit_end_to_end` (proves the cleanup-to-commit transition survives the migration+query chain).
 - **Real test-file oracle:** `tests/test_commit_cleanup_diff.py::test_commit_cleanup_diff_respects_gitignore` (proves the diff step still respects the ignore rules after the migration).
 - **Immutable behavioral checks:**
   ```
@@ -481,10 +570,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.5 Security-sensitive
 
 **Snapshot 1 — `token-handling-path`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh security-sensitive token-handling-path f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh security-sensitive token-handling-path f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** exercise token generation, storage, and refresh paths; verify no secrets in logs.
-- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_secrets_do_not_leak` (proves the token path does not leak secrets).
-- **Real test-file oracle:** `tests/test_tool_exec_check_network_exfiltration.py::test_tool_exec_check_network_exfiltration_rejects_payload` (proves the network-exfiltration check still fires on the token path).
+- **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the token path does not leak secrets).
+- **Real test-file oracle:** `tests/test_tool_exec_check_network_exfiltration.py::TestCheckNetworkExfiltration::test_curl_to_external_url_is_blacklisted` (proves the network-exfiltration check still fires on the token path).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_subprocess_env_secret_isolation.py tests/test_tool_exec_check_network_exfiltration.py -q --tb=short   # must exit 0
@@ -495,10 +584,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `input-sanitization-path`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh security-sensitive input-sanitization-path f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh security-sensitive input-sanitization-path f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** submit payloads with injection patterns; verify sanitization is applied end-to-end.
-- **Real artifact oracle:** `tests/test_tool_exec_check_container_escape.py::test_tool_exec_check_container_escape_blocks_payload` (proves container-escape-style inputs are blocked).
-- **Real test-file oracle:** `tests/test_tool_exec_check_privilege_escalation.py::test_tool_exec_check_privilege_escalation_blocks_payload` (proves privilege-escalation-style inputs are blocked).
+- **Real artifact oracle:** `tests/test_tool_exec_check_container_escape.py::TestCheckContainerEscape::test_docker_is_blacklisted` (proves container-escape-style inputs are blocked).
+- **Real test-file oracle:** `tests/test_tool_exec_check_privilege_escalation.py::TestCheckPrivilegeEscalation::test_sudo_is_blacklisted` (proves privilege-escalation-style inputs are blocked).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_tool_exec_check_container_escape.py tests/test_tool_exec_check_privilege_escalation.py -q --tb=short   # must exit 0
@@ -510,10 +599,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 ### D.6 Browser-sensitive
 
 **Snapshot 1 — `dom-interaction-journey`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh browser-sensitive dom-interaction-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh browser-sensitive dom-interaction-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** E2E journey exercising click, hover, and DOM-state assertions via Playwright.
-- **Real artifact oracle:** `tests/test_visual_capture.py::test_visual_capture_matrix_round_trip` (proves the capture matrix round-trips a DOM-state journey).
-- **Real test-file oracle:** `tests/test_visual_capture_lifecycle.py::test_capture_lifecycle_before_state_immutable` (proves the before-state is immutable across runs).
+- **Real artifact oracle:** `tests/test_visual_capture.py::test_handle_media_capture_appends_ledger_records` (proves the capture matrix round-trips a DOM-state journey).
+- **Real test-file oracle:** `tests/test_visual_capture_lifecycle.py::test_retained_capture_set_round_trips_cells` (proves the before-state is immutable across runs).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_visual_capture.py tests/test_visual_capture_lifecycle.py -q --tb=short   # must exit 0
@@ -523,10 +612,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
   ```
 
 **Snapshot 2 — `network-timing-journey`**
-- **Construction:** `scripts/policy_v5_replay_freeze.sh browser-sensitive network-timing-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
+- **Construction:** Planned command (via future prerequisite `scripts/policy_v5_replay_freeze.sh` or manual execution): `bash scripts/policy_v5_replay_freeze.sh browser-sensitive network-timing-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90`
 - **Per-arm task:** E2E journey asserting on network request timing and resource load ordering.
-- **Real artifact oracle:** `tests/test_visual_pipeline_lifecycle.py::test_visual_pipeline_lifecycle_runs_through_phases` (proves the visual pipeline lifecycle survives the network-timing journey).
-- **Real test-file oracle:** `tests/test_visual_verdict.py::test_visual_verdict_three_input_boundary` (proves the three-input verdict boundary is preserved).
+- **Real artifact oracle:** `tests/test_visual_pipeline_lifecycle.py::test_visual_lifecycle_regression_runner_retains_before_and_recaptures_after` (proves the visual pipeline lifecycle survives the network-timing journey).
+- **Real test-file oracle:** `tests/test_visual_verdict.py::test_verdict_accepts_exactly_three_inputs` (proves the three-input verdict boundary is preserved).
 - **Immutable behavioral checks:**
   ```
   pytest tests/test_visual_pipeline_lifecycle.py tests/test_visual_verdict.py -q --tb=short   # must exit 0

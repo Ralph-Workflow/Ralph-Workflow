@@ -29,8 +29,8 @@ KERNEL_RULES: tuple[str, ...] = (
     "truthful evidence",
     "fail-closed verification",
     "bounded execution",
-    "weakening of checks",
-    "unverified",
+    "no weakening of checks",
+    "explicit unverified-claim reporting",
 )
 
 
@@ -63,16 +63,21 @@ def _parse_inventory(name: str) -> list[dict[str, str]]:
 
 def test_kernel_starter_carries_all_five_rules() -> None:
     """The execution-kernel starter carries the five kernel rule
-    phrases. A regression that drops one is a v5 contract
-    violation: the kernel is the single source of the generic
-    rules and any other starter that needs them MUST load from
-    here.
+    phrases within its '## Kernel rules' section. Extracting that
+    section must yield all five rules so that removing the section
+    causes the test to fail.
     """
     content = _kernel()
-    normalized = " ".join(content.split()).lower()
+    heading = "## Kernel rules"
+    assert heading in content, f"kernel starter missing {heading!r} section"
+    start = content.index(heading) + len(heading)
+    rest = content[start:]
+    next_heading = rest.find("\n## ")
+    section = rest[:next_heading] if next_heading != -1 else rest
+    normalized = " ".join(section.split()).lower()
     for rule in KERNEL_RULES:
         assert rule.lower() in normalized, (
-            f"kernel starter missing the {rule!r} rule; the "
+            f"## Kernel rules section missing the {rule!r} rule; the "
             f"five-rule contract is the v5 deliverable"
         )
 

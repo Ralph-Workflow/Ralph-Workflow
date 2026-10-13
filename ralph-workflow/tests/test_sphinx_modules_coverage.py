@@ -114,6 +114,7 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_filesystem_polling_invocation": "test infrastructure, not public API",
     "testing.audit_log_sink_buffering": "test infrastructure, not public API",
 }
+_EXCLUDED_PREFIXES = tuple(f"{name}." for name in _EXCLUDED)
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset(
     {
@@ -137,7 +138,8 @@ _TOP_LEVEL_SECTION_HEADERS = frozenset(
 )
 
 
-def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> list[str]:
+@cache
+def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> tuple[str, ...]:
     """Walk root and return all public module/package names.
 
     A public name is a directory with __init__.py or a .py file (not starting
@@ -161,7 +163,7 @@ def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> list[str]
                 child_prefix = prefix + entry.name + "." if prefix else entry.name + "."
                 results.append(prefix + entry.name if prefix else entry.name)
                 results.extend(_walk_public_modules_and_packages(entry, child_prefix))
-    return results
+    return tuple(results)
 
 
 def _extract_documented_modules(modules_rst_text: str) -> set[str]:
@@ -227,7 +229,7 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
 
     # Filter out excluded namespaces
     def is_excluded(name: str) -> bool:
-        return any(name == excluded or name.startswith(excluded + ".") for excluded in _EXCLUDED)
+        return name in _EXCLUDED or name.startswith(_EXCLUDED_PREFIXES)
 
     public_names = [n for n in all_names if not is_excluded(n)]
 
@@ -313,7 +315,7 @@ def _documented_public_targets() -> list[str]:
     all_names = _walk_public_modules_and_packages(_RALPH_ROOT)
 
     def is_excluded(name: str) -> bool:
-        return any(name == excluded or name.startswith(excluded + ".") for excluded in _EXCLUDED)
+        return name in _EXCLUDED or name.startswith(_EXCLUDED_PREFIXES)
 
     public_names = {n for n in all_names if not is_excluded(n)}
     return sorted(documented & public_names)

@@ -110,29 +110,30 @@ def test_pair_3_verification_named_profiles_versus_gate_script_default() -> None
 def test_pair_4_clean_code_versus_architecture_one_implementation() -> None:
     """Pair 4: clean-code and architecture agree that a
     one-implementation abstraction is premature unless it pays
-    for itself. The two starters must NOT disagree about
-    whether a one-call-site interface is justified.
+    for itself. The two starters must agree that implementation
+    count alone neither requires nor forbids an abstraction, and
+    that new abstractions require demonstrated boundary, volatility,
+    testing, or reuse value/need.
     """
     clean_code = _read("clean-code-policy.md")
     architecture = _read("architecture-policy.md")
     cc_norm = " ".join(clean_code.split()).lower()
     arch_norm = " ".join(architecture.split()).lower()
-    # Both starters anchor the conditional rule: an abstraction
-    # is not justified by a single implementation; the
-    # architecture starter also names ``durable_contracts`` as a
-    # cross-boundary concern, not a same-boundary abstraction.
-    cc_anchors = ("one implementation", "premature", "single caller")
-    arch_anchors = ("one implementation", "premature", "durable_contracts")
-    assert any(a in cc_norm for a in cc_anchors), (
-        "clean-code starter does not name a one-implementation / "
-        "premature-abstraction anchor; pair 4 has no anchor on the "
-        "clean-code side"
+
+    phrase = "implementation count alone neither requires nor forbids"
+    assert phrase in cc_norm, (
+        f"clean-code starter does not state {phrase!r}; pair 4 agreement missing on clean-code side"
     )
-    assert any(a in arch_norm for a in arch_anchors), (
-        "architecture starter does not name a one-implementation / "
-        "durable-contracts anchor; pair 4 has no anchor on the "
-        "architecture side"
+    assert phrase in arch_norm, (
+        f"architecture starter does not state {phrase!r}; "
+        "pair 4 agreement missing on architecture side"
     )
+
+    for surface_norm, starter_name in ((cc_norm, "clean-code"), (arch_norm, "architecture")):
+        assert "boundary, volatility, testing, or reuse" in surface_norm, (
+            f"{starter_name} starter missing demonstrated boundary, volatility, "
+            "testing, or reuse requirement"
+        )
 
 
 def test_pair_5_security_secret_scanning_uses_credential_scanner() -> None:

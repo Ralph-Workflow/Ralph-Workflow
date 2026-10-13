@@ -105,6 +105,12 @@ _WIRE_FORM_SCAN_ROOTS: tuple[pathlib.Path, ...] = (
 
 @pytest.fixture(scope="session", autouse=True)
 def _prewarm_wire_form_scan_cache() -> None:
+    for path in _walk_python_files(RALPH_ROOT):
+        try:
+            _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+    _legacy_console_display_references()
     for root in _WIRE_FORM_SCAN_ROOTS:
         for path in _walk_python_files(root):
             try:
@@ -203,10 +209,7 @@ class TestDisplayIsOnlyParallelDisplay:
 
     def test_no_isinstance_check_against_legacy_console_display(self) -> None:
         """No production code may use `isinstance(x, LegacyConsoleDisplay)`."""
-        for path in _walk_python_files(RALPH_ROOT):
-            source = _read(path)
-            if "LegacyConsoleDisplay" not in source:
-                continue
+        for path in _legacy_console_display_references():
             tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
