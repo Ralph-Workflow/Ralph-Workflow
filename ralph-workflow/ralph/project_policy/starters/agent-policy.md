@@ -164,8 +164,8 @@ while its mandatory outcomes remain protected.
 This policy is a living document. Keep its domain-specific facts, commands,
 requirements, and review triggers aligned with verified project reality.
 Shared amendment admission and retention are governed once by
-`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT be
-weakened to obtain a passing result.
+`policy-portfolio.toml`; generic rule protection and non-weakening are
+governed by `execution-kernel.md §Kernel rules`.
 
 ## Ralph markers
 

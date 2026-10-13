@@ -20,6 +20,10 @@ A2 protections:
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from ralph.project_policy import markers, starters
 
 # The five kernel rule phrases (lowercased). Each must appear in
@@ -31,6 +35,33 @@ KERNEL_RULES: tuple[str, ...] = (
     "bounded execution",
     "no weakening of checks",
     "explicit unverified-claim reporting",
+)
+
+# Substantive mandatory obligation phrases required for each kernel rule.
+# A rule is not satisfied merely by its title; its statement must carry
+# the substantive requirement phrasing so that substituting retirement or
+# placeholder prose causes a test failure (A1).
+KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS: dict[str, tuple[str, ...]] = {
+    "truthful evidence": ("must be backed by a record",),
+    "fail-closed verification": (
+        "run does not proceed",
+        "hard failure",
+    ),
+    "bounded execution": ("hard cap",),
+    "no weakening of checks": (
+        "never the gate",
+        "violation",
+    ),
+    "explicit unverified-claim reporting": ("must mark it explicitly as unverified",),
+}
+
+# Negation, retirement, and deprecation phrases that MUST NOT appear
+# in any kernel rule statement.
+KERNEL_RULE_RETIREMENT_PHRASES: tuple[str, ...] = (
+    "retired",
+    "deprecated",
+    "no longer required",
+    "optional",
 )
 
 
@@ -61,25 +92,101 @@ def _parse_inventory(name: str) -> list[dict[str, str]]:
     return rows
 
 
-def test_kernel_starter_carries_all_five_rules() -> None:
-    """The execution-kernel starter carries the five kernel rule
-    phrases within its '## Kernel rules' section. Extracting that
-    section must yield all five rules so that removing the section
-    causes the test to fail.
-    """
-    content = _kernel()
+def _extract_kernel_rules_section(content: str) -> str:
     heading = "## Kernel rules"
     assert heading in content, f"kernel starter missing {heading!r} section"
     start = content.index(heading) + len(heading)
     rest = content[start:]
     next_heading = rest.find("\n## ")
-    section = rest[:next_heading] if next_heading != -1 else rest
-    normalized = " ".join(section.split()).lower()
+    return rest[:next_heading] if next_heading != -1 else rest
+
+
+def _extract_rule_statements(section: str) -> dict[str, str]:
+    """Extract individual rule statements mapped by their normalized rule name."""
+    pattern = re.compile(r"(\d+\.\s+\*\*(.*?)\*\*[\s\S]*?)(?=\n\d+\.\s+\*\*|\Z)")
+    rules: dict[str, str] = {}
+    for match in pattern.finditer(section):
+        block: str = match.group(1)
+        raw_title: str = match.group(2)
+        title: str = raw_title.rstrip(".").strip().lower()
+        rules[title] = " ".join(block.split())
+    return rules
+
+
+def _verify_rule_statement(
+    rule_name: str,
+    statement: str,
+    obligations: tuple[str, ...],
+    retirement_phrases: tuple[str, ...] = KERNEL_RULE_RETIREMENT_PHRASES,
+) -> None:
+    """Verify that a single rule statement carries substantive obligations and no retirement phrases."""
+    normalized = statement.lower()
+    for obligation in obligations:
+        assert obligation.lower() in normalized, (
+            f"Rule {rule_name!r} missing substantive mandatory obligation: {obligation!r}"
+        )
+    for phrase in retirement_phrases:
+        assert phrase.lower() not in normalized, (
+            f"Rule {rule_name!r} statement contains prohibited retirement phrase: {phrase!r}"
+        )
+
+
+def test_kernel_starter_carries_all_five_rules() -> None:
+    """The execution-kernel starter carries the five kernel rule
+    phrases within its '## Kernel rules' section. Extracting that
+    section must yield all five rules, assert substantive mandatory
+    obligations for EACH rule, and verify that negation/retirement
+    phrases do not appear in the rule statements (A1 fault-sensitive
+    regression proof).
+    """
+    content = _kernel()
+    section = _extract_kernel_rules_section(content)
+    rules = _extract_rule_statements(section)
+
     for rule in KERNEL_RULES:
-        assert rule.lower() in normalized, (
+        assert rule in rules, (
             f"## Kernel rules section missing the {rule!r} rule; the "
             f"five-rule contract is the v5 deliverable"
         )
+        statement = rules[rule]
+        obligations = KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS.get(rule, ())
+        _verify_rule_statement(rule, statement, obligations)
+
+
+def test_kernel_rules_proof_is_fault_sensitive_to_missing_rule() -> None:
+    """Fault sensitivity: omitting any of the 5 rules fails the proof."""
+    content = _kernel()
+    section = _extract_kernel_rules_section(content)
+    rules = _extract_rule_statements(section)
+    for rule in KERNEL_RULES:
+        mutated_rules = {k: v for k, v in rules.items() if k != rule}
+        with pytest.raises(AssertionError, match="missing the .* rule"):
+            for r in KERNEL_RULES:
+                assert r in mutated_rules, f"## Kernel rules section missing the {r!r} rule"
+
+
+def test_kernel_rules_proof_is_fault_sensitive_to_stripped_obligation() -> None:
+    """Fault sensitivity: replacing substantive obligations with generic prose fails the proof."""
+    for rule, obligations in KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS.items():
+        hollow_statement = f"1. **{rule.title()}.** Generic filler without substantive obligation."
+        with pytest.raises(AssertionError, match="missing substantive mandatory obligation"):
+            _verify_rule_statement(rule, hollow_statement, obligations)
+
+
+@pytest.mark.parametrize("retirement_phrase", KERNEL_RULE_RETIREMENT_PHRASES)
+def test_kernel_rules_proof_is_fault_sensitive_to_retirement_phrases(
+    retirement_phrase: str,
+) -> None:
+    """Fault sensitivity: inserting retirement/negation phrases fails the proof."""
+    content = _kernel()
+    section = _extract_kernel_rules_section(content)
+    rules = _extract_rule_statements(section)
+    for rule in KERNEL_RULES:
+        statement = rules[rule]
+        mutated_statement = f"{statement} Note: this rule is {retirement_phrase}."
+        obligations = KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS.get(rule, ())
+        with pytest.raises(AssertionError, match="prohibited retirement phrase"):
+            _verify_rule_statement(rule, mutated_statement, obligations)
 
 
 def test_kernel_starter_declares_precedence_over_domain_policies() -> None:
@@ -246,4 +353,53 @@ def test_a2_schema_data_integrity_in_data_storage_starter() -> None:
     assert schema_rows, (
         "data-storage starter guard-inventory missing a schema / "
         "data-integrity row; A2 protection (6) has no guard"
+    )
+
+
+def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer() -> None:
+    """B10: Domain starters must not repeat the generic 'weakened to obtain a
+    passing result' phrase in their living document contracts (or anywhere in prose).
+    Instead, they must point to execution-kernel.md (§Kernel rules) as the single
+    authority for non-weakening and generic rule protection.
+    """
+    domain_starters = [
+        name
+        for name in starters.STARTER_NAMES
+        if name != "execution-kernel.md" and name.endswith(".md")
+    ]
+    assert len(domain_starters) >= 20, "Expected at least 20 domain starters"
+
+    generic_weakened_phrase = "weakened to obtain a passing result"
+    pointer_sentence = (
+        "Shared amendment admission and retention are governed once by "
+        "`policy-portfolio.toml`; generic rule protection and non-weakening are "
+        "governed by `execution-kernel.md §Kernel rules`."
+    )
+
+    for name in domain_starters:
+        content = _starter(name)
+        lower_content = " ".join(content.split()).lower()
+        normalized_content = " ".join(content.split())
+
+        # 1. Must NOT contain the generic duplicated phrase
+        assert generic_weakened_phrase not in lower_content, (
+            f"{name} duplicates the generic kernel rule phrase "
+            f"{generic_weakened_phrase!r} in its body; B10 requires pointing "
+            f"to execution-kernel.md instead"
+        )
+
+        # 2. Must contain the kernel pointer in the Living document contract section
+        assert "execution-kernel.md" in normalized_content, (
+            f"{name} missing execution-kernel.md pointer"
+        )
+        assert pointer_sentence in normalized_content, (
+            f"{name} missing canonical living document kernel pointer sentence: "
+            f"{pointer_sentence!r}"
+        )
+
+    # 3. execution-kernel.md remains the single authority that retains the rule
+    kernel_content = _kernel()
+    normalized_kernel = " ".join(kernel_content.split()).lower()
+    assert generic_weakened_phrase in normalized_kernel, (
+        "execution-kernel.md must retain the canonical non-weakening rule"
     )

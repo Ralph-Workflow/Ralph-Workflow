@@ -232,13 +232,13 @@ Any v5 control that was retired between v4 and v5, AND whose protected failure r
 
 ---
 
-## 8. Per-run policy-file-read capture
+## 8. Per-run policy exposure capture
 
 ### 8.1 What is actually observable (and what is not)
 
 `ralph.project_policy.starters.read_starter(name)` (`ralph/project_policy/starters/__init__.py:81-88`) returns **cached bundled content** for VALIDATION and SEEDING (its only callers are `ralph/project_policy/_content_checks.py:67` and the workspace seed path at `__init__.py:113-122`). It does NOT observe whether an installed starter was loaded into an agent's context at run time.
 
-The actual agent-context file-read seam is the MCP `workspace.read_file` handler at `ralph/mcp/tools/workspace/_read_handlers.py:221` (and the multi-file sibling `handle_read_multiple_files` at `_read_handlers.py:844`). The agent's harness invokes this handler every time it materializes a workspace file; the handler calls `workspace.read(path)` against the canonical policy directory `markers.CANONICAL_DIR` (i.e. `docs/ralph-workflow-policy/`).
+The actual agent-context file-read seam is the MCP `workspace.read_file` handler at `ralph/mcp/tools/workspace/_read_handlers.py:221` (and the multi-file sibling `handle_read_multiple_files` at `_read_handlers.py:844`). The agent's harness invokes this handler every time it materializes a workspace file; the handler calls `workspace.read(path)` against the canonical policy directory `markers.CANONICAL_DIR` (i.e. `docs/ralph-workflow-policy/`). In addition, harness prompt construction injects managed blocks and system instructions, which are captured as defined in §8.4.
 
 ### 8.2 Capture mechanism
 
@@ -270,11 +270,37 @@ Where:
 
 For the browser-sensitive category only, the decorator ALSO appends one row per Playwright invocation to `tmp/policy-v5-replay-runs/<run_id>/browser-timing.jsonl` with `{test_id, browser, start_ts, end_ts, total_ms}`. The sum of `total_ms` over the run is the per-run browser time. In each individual run, this browser time plus the non-browser test suite execution time is checked against the aggregate ceiling `default_budget_seconds` (`60.0`, `policy-portfolio.toml:2`). In addition, the per-run browser time is compared against `browser_budget_seconds` to verify compliance with the BELOW / AT-or-OVER admission rule for that run. If total default-lane verification time exceeds 60.0 s in any run, §3b is falsified for that run.
 
-### 8.4 What the ledger records vs. what it does not
+### 8.4 Comprehensive policy exposure observation
 
-- The ledger records every path the agent's harness materialized via `workspace.read_file` / `workspace.read_multiple_files`. It does NOT record kernel-level filesystem reads (e.g. `open()` invoked from inside a Python script the agent ran) — those are not agent exposure to policy content, they are tool output.
-- The ledger does NOT include the agent's prompt-injected context, the test-run log, or the agent's tool output. None of these are "policy file reads".
-- Directory listings via `handle_list_directory` (`_read_handlers.py:1104+`) are NOT counted as policy file reads; only actual file reads count. "Directory size is not a proxy."
+Faithful measurement of policy exposure requires observing all channels through which policy enters the agent's context, rather than only on-demand workspace file reads. Policy exposure observation covers:
+
+1. **Prompt-injected policy capture (`injected-policy.log`):**
+   Prompt-injected policy (e.g. `AGENTS.md` managed blocks, system prompts, injected starters, or initial instruction templates) is captured at harness initialization and appended to:
+   ```
+   tmp/policy-v5-replay-runs/<run_id>/injected-policy.log
+   ```
+   **Format (one line per injected block):**
+   ```
+   <timestamp> <source_channel> <policy_name_or_section> <token_or_byte_count>
+   ```
+   Where:
+   - `<timestamp>` is ISO-8601 UTC to the millisecond (e.g. `2025-06-20T14:32:01.001Z`),
+   - `<source_channel>` names the injection channel (`system_prompt`, `managed_block:AGENTS.md`, or `starter_injection:<filename>`),
+   - `<policy_name_or_section>` identifies the injected policy artifact or section,
+   - `<token_or_byte_count>` is the integer byte or token count returned to the agent.
+
+2. **Observable workspace file reads (`read.log`):**
+   Every workspace file materialized dynamically by the agent via `workspace.read_file` or `workspace.read_multiple_files` is recorded in:
+   ```
+   tmp/policy-v5-replay-runs/<run_id>/read.log
+   ```
+   as defined in §8.2. Directory listings via `handle_list_directory` (`_read_handlers.py:1104+`) and kernel-level filesystem reads by child processes (e.g. `open()` inside a pytest run) are not agent policy exposure and are not counted as policy file reads.
+
+3. **Fail-closed restriction to observable read channels:**
+   To guarantee that policy exposure is fully measured and no policy escapes observation:
+   - Policy content MUST ONLY be provided to the agent via canonical policy files (observed through `read.log`) and recorded injection channels (observed through `injected-policy.log`).
+   - Any unobservable, ambient, or out-of-band policy delivery channel (such as unlogged prompt prefixes, hidden environment variables carrying policy prose, or uninstrumented sidecar file reads) is strictly prohibited.
+   - If an unobservable policy delivery path is detected during harness preflight or replay audit, the runner fails closed, aborts the run, and marks the run invalid in the ledger.
 
 ### 8.5 Selective-applicability judgment (B2)
 
@@ -282,7 +308,7 @@ A starter whose trigger did not fire during the run — yet whose name appears i
 
 ### 8.6 Tool catalog: the read observation is the only new instrumentation
 
-No new tool, no new seam, no new persisted state. The decorator is one Python file: `ralph/mcp/tools/workspace/_read_handlers.py:221` (`handle_read_file`) and `:844` (`handle_read_multiple_files`) gain a logging decorator that writes one line to the per-run ledger when `RALPH_V5_REPLAY_RUN_ID` is set. The decorator is designed to be registered by exporting `RALPH_V5_REPLAY_RUN_ID` before launching the harness (to be automated in the planned replay runner wrapper script `scripts/policy_v5_replay_run.sh`, an explicit future prerequisite).
+No new tool, no new seam, no new persisted state. The decorator is one Python file: `ralph/mcp/tools/workspace/_read_handlers.py:221` (`handle_read_file`) and `:844` (`handle_read_multiple_files`) gain a logging decorator that writes one line to the per-run ledger (`read.log`) when `RALPH_V5_REPLAY_RUN_ID` is set. The decorator is designed to be registered by exporting `RALPH_V5_REPLAY_RUN_ID` before launching the harness (to be automated in the planned replay runner wrapper script `scripts/policy_v5_replay_run.sh`, an explicit future prerequisite). Prompt-injected policy blocks are recorded by the replay runner wrapper script `scripts/policy_v5_replay_run.sh` to `injected-policy.log` before launching the agent conversation.
 
 ---
 
@@ -380,7 +406,7 @@ def decide(
 The reviewer panel receives a **redacted input package** that does not disclose which response is v4 or v5:
 
 **Package contents:**
-1. **Sanitized read.log / exposure ledger** — the per-run policy-file-read ledger (`tmp/policy-v5-replay-runs/<run_id>/read.log`). Because v5 references `execution-kernel.md` and selectively loaded conditional starters that could unblind reviewers, the unblinded coordinator anonymizes starter paths (e.g. `policy-doc-A`, `policy-doc-B`) before presenting this ledger to reviewers, or evaluates selective-applicability (B2) violations mechanically via aggregator scripts.
+1. **Sanitized exposure ledgers** — the per-run policy-file-read ledger (`tmp/policy-v5-replay-runs/<run_id>/read.log`) and prompt-injected policy log (`tmp/policy-v5-replay-runs/<run_id>/injected-policy.log`). Because v5 references `execution-kernel.md` and selectively loaded conditional starters that could unblind reviewers, the unblinded coordinator anonymizes starter paths (e.g. `policy-doc-A`, `policy-doc-B`) before presenting these ledgers to reviewers, or evaluates selective-applicability (B2) violations mechanically via aggregator scripts.
 2. **Scored rubric** — the nine-metric rubric (§7 table) with scores for each run, labeled by treatment code.
 3. **Treatment-code assignment** — an unblinded coordinator (not on the review panel) holds the mapping:
 
@@ -416,11 +442,14 @@ Replay is a **separate phase** with its own timebox. It is not part of the v5 im
 
 Each category uses a real pinned snapshot: a real commit ref, a real working-copy command, a real test-file oracle. Snapshots are constructed following the fixture-construction procedure defined below in §D.0 (planned as `scripts/policy_v5_replay_freeze.sh`, an explicit future prerequisite script whose reference implementation is provided below). After construction, the snapshot is hashed; the hash is the only artifact reviewed. No `locked/*` branches are referenced; the previous draft's `locked/feature-add-feature-flag` etc. did not exist in the tree and were replaced with concrete pinned commands.
 
+> [!NOTE] Working directory convention
+> All test-suite commands below execute in the Python package root (`<snapshot>/ralph-workflow/`, or equivalently prefix `ralph-workflow/` when executing from the repository root). Python one-liners and git commands execute from the snapshot root (`<snapshot>`).
+
 ### D.0 Fixture-construction script: `scripts/policy_v5_replay_freeze.sh` (future prerequisite)
 
 The script specification below defines the reference fixture construction. When implemented as `scripts/policy_v5_replay_freeze.sh` (or executed manually via bash), it serves as the single source of fixture construction before a replay run that uses that snapshot.
 
-```
+```bash
 #!/usr/bin/env bash
 # scripts/policy_v5_replay_freeze.sh
 # Construct a real pinned snapshot for the v5 paired replay.
@@ -438,7 +467,7 @@ git worktree add --detach "${worktree}" "${base_ref}"
 
 # 2. Run the focused suite on the fresh worktree to prove the
 #    snapshot is self-consistent (no pre-existing failure).
-( cd "${worktree}" && \
+( cd "${worktree}/ralph-workflow" && \
   PYTEST_SUITE_TIMEOUT_SECONDS=60 \
   PYTEST_WORKERS=auto \
   python -m pytest -q "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py::test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end" \
@@ -462,10 +491,10 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py::TestPipelinePhaseTransitions::test_planning_analysis_routes_to_development` (proves the new flag's pipeline transition runs to completion).
 - **Real test-file oracle:** `tests/project_policy/test_policy_auto_commit.py::test_policy_auto_commit_subject_and_scoped_staging` (proves the policy chore commit subject and scoped staging are still correct under the new flag).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py -q --tb=short   # must exit 0
-  pytest tests/project_policy/test_policy_auto_commit.py::test_policy_auto_commit_subject_and_scoped_staging -q   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                 # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/integration/test_pipeline_happy_path_pipeline_phase_transitions.py -q --tb=short)   # must exit 0
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/project_policy/test_policy_auto_commit.py::test_policy_auto_commit_subject_and_scoped_staging -q)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                              # no uncommitted changes
   git -C <snapshot> log --oneline -1                                                              # a commit is recorded
   ```
@@ -476,11 +505,11 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the broker secret is stripped in child environments).
 - **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_caller_cannot_override_strip` (proves caller cannot override the broker secret strip).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short              # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                 # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short)              # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                              # no uncommitted changes
-  python -c "from pathlib import Path; import re; t=Path('<snapshot>').read_text(); assert 'client_secret' not in t or 'env' in t.lower()"  # no plaintext secrets in snapshot
+  python -c "from pathlib import Path; py_files = [p for p in Path('<snapshot>/ralph-workflow').rglob('*.py') if '.venv' not in p.parts]; assert py_files; assert not any('client_secret' in p.read_text(errors='ignore') and 'env' not in p.read_text(errors='ignore').lower() for p in py_files)"  # no plaintext secrets in snapshot py files
   ```
 
 ### D.2 Regression
@@ -491,9 +520,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_smoke_canonical_path.py::test_smoke_claude_branch_end_to_end_uses_canonical_submit` (the canonical smoke proof, runs against the v4 baseline first, then again under v5 to prove no regression).
 - **Real test-file oracle:** `tests/test_smoke_plumbing_uses_canonical_submit.py::test_smoke_plumbing_claude_branch_stamps_canonical_receipt` (proves the canonical artifact submission path is unchanged).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_smoke_canonical_path.py tests/test_smoke_plumbing_uses_canonical_submit.py -q   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                  # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_smoke_canonical_path.py tests/test_smoke_plumbing_uses_canonical_submit.py -q)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                               # no uncommitted changes
   python -c "import json; r=json.load(open('<snapshot>/evidence/report.json')); assert r['passed']"  # evidence complete
   ```
@@ -504,11 +533,11 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the broker secret is stripped in child environments).
 - **Real test-file oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_caller_cannot_override_strip` (proves caller cannot override the broker secret strip).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short            # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                               # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_subprocess_env_secret_isolation.py -q --tb=short)            # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                            # no uncommitted changes
-  python -c "from pathlib import Path; t=Path('<snapshot>').read_text(); assert 'expired' in t or 'refresh' in t"  # snapshot encodes the expiry scenario
+  python -c "from pathlib import Path; py_files = [p for p in Path('<snapshot>/ralph-workflow').rglob('*.py') if '.venv' not in p.parts]; assert any('expired' in p.read_text(errors='ignore') or 'refresh' in p.read_text(errors='ignore') for p in py_files)"  # snapshot encodes the expiry scenario
   ```
 
 ### D.3 Refactor
@@ -519,11 +548,11 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_pipeline_factory.py::TestPipelineDepsCollaborators::test_bridge_factory_collaborator_is_overridable` (proves the phase collaborators resolve after the boundary refactor).
 - **Real test-file oracle:** `tests/test_pipeline_factory_default.py::TestDefaultPipelineFactoryBuild::test_build_returns_pipeline_deps_with_production_defaults` (proves default pipeline composition is unchanged).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_pipeline_factory.py tests/test_pipeline_factory_default.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                              # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_pipeline_factory.py tests/test_pipeline_factory_default.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --name-only | grep -E '\.(py|md|toml)$'                              # policy files touched
-  python -c "import ast; ast.parse(open('<snapshot>/ralph/cli/main.py').read())"              # valid syntax on a renamed-boundary file
+  python -c "import ast; ast.parse(open('<snapshot>/ralph-workflow/ralph/cli/main.py').read())"              # valid syntax on a renamed-boundary file
   ```
 
 **Snapshot 2 — `extract-helper-module`**
@@ -532,11 +561,11 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_pipeline_deps_composition.py::test_build_default_pipeline_deps_returns_valid_pipeline_deps` (proves the extracted helper composes correctly).
 - **Real test-file oracle:** `tests/test_pipeline_orchestration_flow.py::test_full_pipeline_transitions_from_planning_to_complete` (proves orchestration order is unchanged after the extraction).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_pipeline_deps_composition.py tests/test_pipeline_orchestration_flow.py -q   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                              # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_pipeline_deps_composition.py tests/test_pipeline_orchestration_flow.py -q)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                           # no uncommitted policy changes
-  python -c "import ast; ast.parse(open('<snapshot>/ralph/pipeline/deps.py').read())"          # valid syntax
+  python -c "import ast; ast.parse(open('<snapshot>/ralph-workflow/ralph/pipeline/deps.py').read())"          # valid syntax
   ```
 
 ### D.4 Integration-heavy
@@ -547,11 +576,11 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/integration/test_pipeline_multi_cycle_memory_regression.py::test_pipeline_multi_cycle_memory_regression_no_drift` (proves the multi-step chain does not leak memory across cycles).
 - **Real test-file oracle:** `tests/integration/test_commit_cleanup_rock_solid.py::test_handle_commit_cleanup_phase_rock_solid` (proves the commit cleanup phase survives the multi-step run).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/integration/test_pipeline_multi_cycle_memory_regression.py tests/integration/test_commit_cleanup_rock_solid.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                                                          # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/integration/test_pipeline_multi_cycle_memory_regression.py tests/integration/test_commit_cleanup_rock_solid.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                                                                       # no uncommitted policy changes
-  python -c "from ralph.mcp.saturated_dispatch import bounded_result; bounded_result('test', max_items=10)"                                # dispatch helper smoke
+  python -c "from ralph.mcp.server import _saturated_dispatch; assert _saturated_dispatch.submit(lambda: 42) == 42"                        # saturated dispatch smoke
   ```
 
 **Snapshot 2 — `db-migration-plus-query`**
@@ -560,9 +589,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/integration/test_pipeline_final_commit_cleanup_to_final_commit_e2e.py::test_pipeline_final_cleanup_to_final_commit_end_to_end` (proves the cleanup-to-commit transition survives the migration+query chain).
 - **Real test-file oracle:** `tests/test_commit_cleanup_diff.py::test_commit_cleanup_diff_respects_gitignore` (proves the diff step still respects the ignore rules after the migration).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/integration/test_pipeline_final_commit_cleanup_to_final_commit_e2e.py tests/test_commit_cleanup_diff.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                                                       # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/integration/test_pipeline_final_commit_cleanup_to_final_commit_e2e.py tests/test_commit_cleanup_diff.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                                                                    # no uncommitted policy changes
   python -c "from pathlib import Path; m=Path('<snapshot>/migrations').glob('*'); assert any(p.suffix in {'.sql','.py'} for p in m)"   # migration artifact present
   ```
@@ -575,9 +604,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_subprocess_env_secret_isolation.py::test_subprocess_env_strips_broker_secret` (proves the token path does not leak secrets).
 - **Real test-file oracle:** `tests/test_tool_exec_check_network_exfiltration.py::TestCheckNetworkExfiltration::test_curl_to_external_url_is_blacklisted` (proves the network-exfiltration check still fires on the token path).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_subprocess_env_secret_isolation.py tests/test_tool_exec_check_network_exfiltration.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                                       # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_subprocess_env_secret_isolation.py tests/test_tool_exec_check_network_exfiltration.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                                                    # no uncommitted policy changes
   python -c "import subprocess,os; r=subprocess.run(['git','-C','<snapshot>','log','--oneline','-1'],capture_output=True,env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}); assert r.returncode==0"  # clean git state
   python -c "import re,sys; t=open('<snapshot>/evidence/transcript.txt').read(); sys.exit(0 if not re.search(r'password\\s*=\\s*[\\\"\\\\'][^\\\"\\\\']+[\\\"\\\\']', t, re.I) else 1)"  # no plaintext password in transcript
@@ -589,9 +618,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_tool_exec_check_container_escape.py::TestCheckContainerEscape::test_docker_is_blacklisted` (proves container-escape-style inputs are blocked).
 - **Real test-file oracle:** `tests/test_tool_exec_check_privilege_escalation.py::TestCheckPrivilegeEscalation::test_sudo_is_blacklisted` (proves privilege-escalation-style inputs are blocked).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_tool_exec_check_container_escape.py tests/test_tool_exec_check_privilege_escalation.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                                                          # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_tool_exec_check_container_escape.py tests/test_tool_exec_check_privilege_escalation.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                                                       # no uncommitted policy changes
   python -c "from pathlib import Path; t=Path('<snapshot>/evidence/payloads.json').read_text(); assert 'drop' in t.lower() or 'union' in t.lower() or 'rm -rf' in t"   # payload set contains injection patterns
   ```
@@ -604,9 +633,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_visual_capture.py::test_handle_media_capture_appends_ledger_records` (proves the capture matrix round-trips a DOM-state journey).
 - **Real test-file oracle:** `tests/test_visual_capture_lifecycle.py::test_retained_capture_set_round_trips_cells` (proves the before-state is immutable across runs).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_visual_capture.py tests/test_visual_capture_lifecycle.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                            # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_visual_capture.py tests/test_visual_capture_lifecycle.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                         # no uncommitted policy changes
   python -c "import json; d=json.load(open('<snapshot>/evidence/capture.json')); assert d['total_browser_time_ms'] < 60000"   # under aggregate ceiling
   ```
@@ -617,9 +646,9 @@ After running the script, the worktree path and its head SHA are recorded in `tm
 - **Real artifact oracle:** `tests/test_visual_pipeline_lifecycle.py::test_visual_lifecycle_regression_runner_retains_before_and_recaptures_after` (proves the visual pipeline lifecycle survives the network-timing journey).
 - **Real test-file oracle:** `tests/test_visual_verdict.py::test_verdict_accepts_exactly_three_inputs` (proves the three-input verdict boundary is preserved).
 - **Immutable behavioral checks:**
-  ```
-  pytest tests/test_visual_pipeline_lifecycle.py tests/test_visual_verdict.py -q --tb=short   # must exit 0
-  python -m ralph.diagnose --workspace <snapshot>                                             # must exit 0
+  ```bash
+  (cd <snapshot>/ralph-workflow && python -m pytest tests/test_visual_pipeline_lifecycle.py tests/test_visual_verdict.py -q --tb=short)   # must exit 0
+  python -c "from pathlib import Path; from ralph.workspace import FsWorkspace; from ralph.language_detector.models import ProjectStack; from ralph.project_policy.validators import validate_readiness; assert not validate_readiness(FsWorkspace(Path('<snapshot>')), ProjectStack(primary_language='Python'))"  # policy readiness
   git -C <snapshot> diff --exit-code                                                          # no uncommitted policy changes
   python -c "import json; d=json.load(open('<snapshot>/evidence/timing.json')); assert d['total_browser_time_ms'] < 60000"   # under aggregate ceiling
   ```

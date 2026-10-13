@@ -279,6 +279,7 @@ def test_b10_kernel_owned_concepts_not_re_derived_inline() -> None:
         "every long-running action carries a runner-enforced cap",
         # Rule 4: No weakening of checks
         "the only lawful way past a red gate",
+        "weakened to obtain a passing result",
         # Rule 5: Explicit unverified-claim reporting
         "mark it explicitly as unverified",
     )
