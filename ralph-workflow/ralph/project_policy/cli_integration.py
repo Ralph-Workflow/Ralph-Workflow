@@ -527,6 +527,8 @@ def _finalize_ready_state(
     pre_run_dirty: frozenset[str] | None = None,
     *,
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
+    assessment: policy_models.ReadinessAssessment | None = None,
+    command_outcomes: tuple[policy_models.CommandOutcome, ...] = (),
 ) -> None:
     """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
     block to its concise form, commit the policy surfaces, then write the
@@ -582,7 +584,13 @@ def _finalize_ready_state(
     except Exception as exc:
         logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
     try:
-        policy_cache.write_cache(workspace, stack, policy_models.ReadinessStatus.READY)
+        policy_cache.write_cache(
+            workspace,
+            stack,
+            policy_models.ReadinessStatus.READY,
+            assessment=assessment,
+            command_outcomes=command_outcomes,
+        )
     except Exception as exc:
         logger.debug("project-policy READY cache write failed (non-fatal): {}", exc)
 
@@ -755,6 +763,8 @@ def _dispatch_preflight_result(
             stack,
             pre_run_dirty,
             commit_policy_updates=commit_policy_updates,
+            assessment=final.assessment,
+            command_outcomes=final.command_outcomes,
         )
         return _EXIT_SUCCESS
     # The NOT-READY route must run the same deterministic scoped commit the

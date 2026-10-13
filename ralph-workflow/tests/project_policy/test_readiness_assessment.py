@@ -15,7 +15,7 @@ import json
 import pytest
 
 from ralph.language_detector.models import ProjectStack
-from ralph.project_policy import analysis, cache, pipeline_driver
+from ralph.project_policy import analysis, cache, evidence, pipeline_driver
 from ralph.project_policy._assessment import (
     extract_evidence_section,
     parse_execution_evidence,
@@ -396,13 +396,19 @@ class _Recorder:
 
 def test_pipeline_ready_carries_assessment_through_to_result() -> None:
     """A READY run with a matching ledger must surface a non-default
-    assessment in the result; the dimensions are evidence-anchored.
+    assessment in the result; the dimensions are evidence-anchored and
+    HASH-BOUND: the ledger's ``policy_content_hash`` must equal the
+    current readiness-evidence signature of the seeded corpus.
     """
     ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+    current_hash = evidence.evidence_signature(ws, stack())
     ledger = (
-        _ledger_line(command="make -C ralph-workflow verify", exit_code=0, content_hash="seed"),
+        _ledger_line(command="make test", exit_code=0, content_hash=current_hash),
+        _ledger_line(command="make bypass-audit", exit_code=0, content_hash=current_hash),
     )
-    agent = _Recorder(ws, decisions=["completed"], ledger=ledger)
+    agent = _Recorder(ws, decisions=["completed"], ledger=ledger, fix_on_call=None)
+    # The corpus is already seeded, so no remediation seeding is needed.
 
     result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
@@ -411,8 +417,25 @@ def test_pipeline_ready_carries_assessment_through_to_result() -> None:
     assert result.assessment.structure_complete is True
     assert result.assessment.implementation_verified is True
     assert result.assessment.outcome_evidence_reviewed is True
-    assert len(result.command_outcomes) == 1
-    assert result.command_outcomes[0].command == "make -C ralph-workflow verify"
+    assert len(result.command_outcomes) == 2
+    assert result.command_outcomes[0].command == "make test"
+
+
+def test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false() -> None:
+    """A ledger whose ``policy_content_hash`` does NOT match the current
+    readiness-evidence signature cannot certify the present policy: the
+    dimension fails closed even with exit_code 0 on every line.
+    """
+    ws = MemoryWorkspace()
+    ledger = (_ledger_line(command="make test", exit_code=0, content_hash="WRONG-HASH"),)
+    agent = _Recorder(ws, decisions=["completed"], ledger=ledger)
+
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
+
+    assert result.status is ReadinessStatus.READY
+    assert result.assessment is not None
+    assert result.assessment.implementation_verified is False
+    assert result.assessment.outcome_evidence_reviewed is False
 
 
 def test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false() -> None:

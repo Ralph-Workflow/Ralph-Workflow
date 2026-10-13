@@ -26,6 +26,24 @@ changes. Treat a green gate only as absence of a counterexample.
 
 For every declared fact, command, marker, and script, use one stable `PR-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Verdicts are exactly `met`, `not met`, or `not evaluable`; cite command output or named file location. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each attributable localized non-met verdict in `## What Came Up Short`; `not evaluable` requires `failed`.
 
+## Execution evidence
+
+Compute the current policy-content hash exactly once, BEFORE running any
+gate, with:
+
+```
+python -c "from ralph.workspace.fs import FsWorkspace; from ralph.language_detector import get_project_stack; from ralph.project_policy import evidence; ws = FsWorkspace('.'); print(evidence.evidence_signature(ws, get_project_stack(ws)))"
+```
+
+Then run every declared `RALPH-COMMAND` and append a `## Execution evidence`
+section to the decision artifact containing ONE line per run, exactly:
+
+`RALPH-EVIDENCE: {"command": "<command>", "exit_code": <int>, "duration_seconds": <float>, "policy_content_hash": "<the hash computed above>"}`
+
+The `policy_content_hash` MUST be the readiness-evidence signature computed
+from the tree you validated; a hash recorded against a different tree fails
+closed. Omitting the section leaves the run's readiness dimensions all-false.
+
 ## Decision artifact
 
 Read `.agent/artifact-formats/policy_remediation_analysis_decision.md`. Include the evidence-citing summary and `## Criterion Verdicts`; omit `## How To Fix`.

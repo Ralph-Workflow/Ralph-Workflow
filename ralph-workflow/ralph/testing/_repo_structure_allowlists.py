@@ -1335,9 +1335,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # failed); the early returns are the contract.
         ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 323),
         ("ralph/cli/commands/_run_start_setup.py", 41),
-        ("ralph/project_policy/cli_integration.py", 555),
-        ("ralph/project_policy/cli_integration.py", 558),
-        ("ralph/project_policy/cli_integration.py", 559),
+        ("ralph/project_policy/cli_integration.py", 557),
+        ("ralph/project_policy/cli_integration.py", 560),
+        ("ralph/project_policy/cli_integration.py", 561),
         ("ralph/project_policy/preflight.py", 188),
         ("ralph/project_policy/preflight.py", 194),
         ("ralph/project_policy/preflight.py", 226),

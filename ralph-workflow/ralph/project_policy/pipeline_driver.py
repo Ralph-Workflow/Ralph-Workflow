@@ -37,7 +37,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ralph.phases.required_artifacts import clear_validation_retry_hint
-from ralph.project_policy import analysis, remediation, validators
+from ralph.project_policy import analysis, evidence, markers, remediation, validators
 from ralph.project_policy._readiness_assessment import ReadinessAssessment
 from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 from ralph.project_policy.pipeline_graph import (
@@ -200,6 +200,35 @@ def run_policy_pipeline(
     return _finish(workspace, stack, current, blessed=blessed, emit=emit)
 
 
+def _combined_policy_content_hash(
+    workspace: Workspace,
+    stack: ProjectStack,
+) -> str:
+    """Return the hash the ledger's ``policy_content_hash`` must carry.
+
+    The value is the readiness-evidence signature (:func:`evidence.evidence_signature`)
+    over every canonical policy file: any edit to any policy produces a
+    different signature, so a ledger recorded against a pre-edit tree
+    cannot certify the post-edit policy. The agent computes the SAME
+    signature with the documented one-liner from the analysis prompt.
+    """
+    return evidence.evidence_signature(workspace, stack)
+
+
+def _declared_gate_commands(workspace: Workspace) -> tuple[str, ...]:
+    """Return every ``RALPH-COMMAND:`` declared across the existing policy corpus."""
+    commands: list[str] = []
+    for path in (f"{markers.CANONICAL_DIR}{name}" for name in markers.CORE_POLICY_FILES):
+        if not workspace.exists(path):
+            continue
+        commands.extend(
+            line[len(markers.COMMAND_MARKER) :].strip()
+            for line in workspace.read(path).splitlines()
+            if line.startswith(markers.COMMAND_MARKER)
+        )
+    return tuple(commands)
+
+
 def _assess(
     workspace: Workspace,
     stack: ProjectStack,
@@ -212,15 +241,32 @@ def _assess(
     booleans when the strict evidence contract is satisfied. The
     assessment is additive: it travels with the result and the cache
     alongside the existing structural and approval gates.
+
+    ``implementation_verified`` is HASH-BOUND: every recorded outcome
+    must exit 0 AND carry the ``policy_content_hash`` matching the
+    CURRENT readiness-evidence signature. A ledger recorded against a
+    policy tree that has since changed cannot certify the present
+    policy, so the dimension fails closed.
     """
     structure_complete = not bool(findings)
-    implementation_verified = bool(outcomes) and all(outcome.exit_code == 0 for outcome in outcomes)
-    # ``outcome_evidence_reviewed`` is additive: it is True when at
-    # least one command outcome is recorded AND none of the declared
-    # outcomes failed. A failed run is not reviewed; the assessment
-    # fails closed.
-    outcome_evidence_reviewed = implementation_verified
-    del stack, workspace  # the dimensions are derived from findings + outcomes alone
+    implementation_verified = False
+    if outcomes:
+        expected_hash = _combined_policy_content_hash(workspace, stack)
+        implementation_verified = all(
+            outcome.exit_code == 0 and outcome.policy_content_hash == expected_hash
+            for outcome in outcomes
+        )
+    # ``outcome_evidence_reviewed`` is additive: it is True when the
+    # recorded outcomes all succeeded AND every ``RALPH-COMMAND:`` the
+    # existing corpus declares appears in the ledger (command-
+    # completeness). A declared gate that was never probed is an
+    # unreviewed gate; the assessment fails closed.
+    outcome_evidence_reviewed = False
+    if implementation_verified:
+        recorded = {outcome.command for outcome in outcomes}
+        outcome_evidence_reviewed = all(
+            command in recorded for command in _declared_gate_commands(workspace)
+        )
     return ReadinessAssessment(
         structure_complete=structure_complete,
         implementation_verified=implementation_verified,
