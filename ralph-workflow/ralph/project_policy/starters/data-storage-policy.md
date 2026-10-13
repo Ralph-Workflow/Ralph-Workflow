@@ -62,6 +62,14 @@ RALPH-FACT: applicability_decision: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the data-storage-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 Agents MUST test forward migration and relevant compatibility behavior,
 preserve data invariants, and document irreversible operations. Agents MUST run
 declared schema/migration gates in safe test environments and update changed

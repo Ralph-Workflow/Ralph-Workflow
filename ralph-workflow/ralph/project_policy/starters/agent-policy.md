@@ -76,6 +76,14 @@ RALPH-FACT: policy_applicability_index: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the agent-specific procedure only. The five generic
+rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 To follow this policy, an agent making any change MUST:
 
 * RUN every `RALPH-COMMAND:` gate declared under Verification before

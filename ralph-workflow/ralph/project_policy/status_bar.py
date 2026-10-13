@@ -32,6 +32,66 @@ if TYPE_CHECKING:
 NEUTRAL_PHASE_LABEL: str = "Running"
 
 
+def format_readiness_footer_label(assessment: object | None) -> str:
+    """Render the three readiness dimensions as a compact footer label.
+
+    The footer shows ``Policy: S/I/O`` where ``S`` is structure complete,
+    ``I`` is implementation verified, and ``O`` is outcome evidence
+    reviewed. A dash (``-``) means false and a dot (``*``) means true, so
+    the operator reads the three-state gate at a glance. ``None`` falls
+    back to ``-- -`` so a missing assessment is visible rather than
+    silently collapsed to all-true. The label is always prefixed
+    ``Policy:`` so it composes with the existing remediation / pipeline
+    labels the rest of the run loop emits.
+    """
+    if assessment is None:
+        return "Policy: -- -"
+    s_attr: object = getattr(assessment, "structure_complete", False)
+    i_attr: object = getattr(assessment, "implementation_verified", False)
+    o_attr: object = getattr(assessment, "outcome_evidence_reviewed", False)
+    s = "S*" if bool(s_attr) else "S-"
+    i = "I*" if bool(i_attr) else "I-"
+    o = "O*" if bool(o_attr) else "O-"
+    return f"Policy: {s}/{i}/{o}"
+
+
+_format_readiness_footer_label = format_readiness_footer_label
+
+
+def push_readiness_assessment_status_bar(
+    display: object,
+    workspace_scope: WorkspaceScope,
+    assessment: object | None,
+    *,
+    run_started_monotonic: float | None = None,
+) -> None:
+    """Render the readiness assessment in the persistent footer.
+
+    Distinct from the remediation label: a run that finishes READY but
+    has not been implementation-verified or outcome-evidence-reviewed
+    still shows a footer line that says so, so the operator never
+    confuses a structural READY (the cache gate) with semantic
+    correctness (the agent's job). Defensive: any display failure is
+    swallowed -- presentation must NEVER block the run.
+    """
+    label = _format_readiness_footer_label(assessment)
+    try:
+        model = StatusBarModel(
+            workspace_root=str(workspace_scope.root),
+            phase_label=label,
+            phase_style=phase_style_for_phase("policy_remediation"),
+            run_started_monotonic=run_started_monotonic,
+        )
+        update = cast(
+            "Callable[[object], None] | None",
+            getattr(display, "update_status_bar", None),
+        )
+        if update is not None:
+            update(model)
+    except Exception as exc:  # defensive: presentation must never block remediation
+        logger.debug("readiness assessment status-bar push failed (non-fatal): {}", exc)
+
+
 def push_remediation_status_bar(
     display: object,
     workspace_scope: WorkspaceScope,

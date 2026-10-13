@@ -56,6 +56,14 @@ RALPH-FACT: applicability_decision: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the privacy-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 Agents MUST trace changed data flows, minimize new collection, avoid production
 data in tests, and update disclosures and controls. Agents MUST run declared
 gates, request owner decisions for jurisdictional or purpose questions, and

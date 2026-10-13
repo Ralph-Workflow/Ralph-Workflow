@@ -9,7 +9,7 @@ in what order) stays in ``validators``.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 from ralph.project_policy import evidence, markers, starters
@@ -147,6 +147,9 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
     return findings
 
 
+_PRE_V5_SCHEMA_VERSION_MAX: Final[int] = 4
+
+
 def _frozen_schema_version(content: str) -> int | None:
     """Return an explicitly frozen older schema version, if well formed."""
     first_line = next((line for line in content.splitlines() if line.strip()), "")
@@ -157,6 +160,9 @@ def _frozen_schema_version(content: str) -> int | None:
 def _check_required_headings(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Validate every required heading is present (case-insensitive)."""
     required = markers.REQUIRED_HEADINGS.get(filename, ())
+    frozen_v = _frozen_schema_version(content)
+    if frozen_v is not None and frozen_v <= _PRE_V5_SCHEMA_VERSION_MAX:
+        required = tuple(h for h in required if h.lower() != "guard inventory")
     headings_present = _headings(content)
     return [
         PolicyFinding(

@@ -118,7 +118,7 @@ on portfolio parse.
 | Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | when a claim-presentation proof replaces the recorded evidence with a published artifact |
 | Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | when the same defect cannot recur (e.g. the tool is no longer wired) |
 | Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | when the action is no longer long-running or is retired |
-| No weakening of checks | Verification owner | no `# noqa`, `# type: ignore`, lowered threshold, or removed time limit lands in the tree | audit_repo_structure + audit_lint_bypass + audit_typecheck_bypass + audit_test_policy all return zero findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
+| No weakening of checks | Verification owner | no `# noqa`, `# type: ignore`, lowered threshold, or removed time limit lands in the tree | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
 | Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | when every claim is automatically backed (the kernel achieves this) |
 
 ## Project facts to resolve
@@ -182,9 +182,9 @@ RALPH-REVIEW: review the kernel inventory rows against the project's actual guar
 
 Expected result: a deterministic kernel audit finishing inside its
 enforced budget. On failure report the failing rule name and the
-category — audit_repo_structure, audit_lint_bypass,
-audit_typecheck_bypass, audit_test_policy, audit_resource_lifecycle,
-audit_mcp_timeout, audit_artifact_submission_canonical_path.
+category — repository structure, lint bypasses, typecheck bypasses,
+test policy, resource lifecycles, timeouts, or artifact submission
+boundaries.
 
 ## Maintenance triggers
 
@@ -247,15 +247,3 @@ be weakened to obtain a passing result.
   http: https://www.pearson.com/en-us/subject-catalog/p/test-driven-development-by-example/P200000009421/9780321146533
   review date: 2026-09-30
 
-## Living document contract
-
-This kernel is a living document. Keep its rules, inventory, facts,
-commands, and review triggers aligned with verified project reality.
-Shared amendment admission and retention are governed once by
-`policy-portfolio.toml`; mandatory outcomes remain protected and MUST NOT
-be weakened to obtain a passing result.
-
-## Ralph markers
-
-* Policy id: `<!-- ralph-policy-id: execution-kernel.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`

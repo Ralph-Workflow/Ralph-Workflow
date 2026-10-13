@@ -138,6 +138,20 @@ RALPH-FACT: finding_waiver_convention: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the security-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here. The same five threat surfaces
+this section names (security, authorization and tenant/scope
+boundaries, destructive operations, process/resource ownership,
+schema/data integrity) carry matching `## Guard inventory` rows below;
+a row whose `Protected outcome` carries a broad phrase that does
+NOT also appear in `Detected condition` is rejected by the claim-scope
+predicate.
+
 To follow this policy, an agent making any change MUST:
 
 * CHECK every change that touches a declared threat surface against

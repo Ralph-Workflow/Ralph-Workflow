@@ -166,6 +166,17 @@ RALPH-FACT: script_directory: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the gate-script-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here. The banner and the
+prohibited-actions list below protect meaning and failure
+sensitivity, not prose volume: a meaning-preserving rewrite is a
+fix, not a violation.
+
 **Who the gate scripts' failure output is for.** When a gate fails it prints the
 policy requirement for fixing the failure, and cites it (see "Failure output").
 That instruction is addressed to **development agents working on the project's

@@ -63,6 +63,14 @@ RALPH-FACT: applicability_decision: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the release-deployment-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 Agents MUST verify the exact artifact, preserve provenance, account for
 migrations, and record release and rollback evidence. Agents MUST run the
 required profile for the artifact or environment and update changed facts.

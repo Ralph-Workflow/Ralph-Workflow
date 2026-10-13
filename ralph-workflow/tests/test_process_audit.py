@@ -117,6 +117,13 @@ TESTS_ALLOWLIST: set[str] = {
     # sources). Mirrors the existing allowlist pattern for audit
     # test files that maintain POS|CO process-marker literals.
     "test_idle_watchdog.py",
+    # v4 corpus test reads starter content from a tagged git
+    # ref so the v4 manifest is exercised against an authentic
+    # v4 corpus, not a synthesized marker shell. The whole
+    # module is marked ``subprocess_e2e`` to opt out of the
+    # default budget; the subprocess call mirrors the
+    # real-git corpus tests under test_auto_integrate.py.
+    "test_v4_corpus_authentic.py",
     # drives an end-to-end psutil children-recursion regression by
     # spawning a real python interpreter that itself forks a long-lived
     # child. The test must own the host process directly so the

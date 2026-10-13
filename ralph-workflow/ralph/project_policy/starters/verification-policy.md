@@ -244,6 +244,14 @@ fails-hard-when-run, and last-run date with staleness horizon.
 
 ## AI execution instructions
 
+This section is the verification-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 On every change:
 
 1. RUN the change-scoped fast path first, then the full authoritative gate

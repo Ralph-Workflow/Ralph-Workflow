@@ -75,6 +75,17 @@ RALPH-FACT: dead_code_audit_command: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the clean-code-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here. Exposing a private method or
+adding a wrapper solely to satisfy a test or a ratchet is a violation
+(see `testing-policy.md`, `architecture-policy.md`); the same
+mechanism is never justified here as a clean-code fix.
+
 To follow this policy, an agent making any change MUST:
 
 * PREFER existing project utilities and patterns over new abstractions.

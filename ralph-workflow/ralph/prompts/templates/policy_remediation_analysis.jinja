@@ -44,6 +44,10 @@ The `policy_content_hash` MUST be the readiness-evidence signature computed
 from the tree you validated; a hash recorded against a different tree fails
 closed. Omitting the section leaves the run's readiness dimensions all-false.
 
+## Three-state readiness (v5)
+
+The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded in the execution evidence ledger). A structural READY is the caching gate; structural READY is NOT semantic correctness. The execution evidence you collect certifies implementation verification and outcome review, which are surfaced in the CLI emit and status bar footer as `Policy: S*/I*/O*`.
+
 ## Decision artifact
 
 Read `.agent/artifact-formats/policy_remediation_analysis_decision.md`. Include the evidence-citing summary and `## Criterion Verdicts`; omit `## How To Fix`.

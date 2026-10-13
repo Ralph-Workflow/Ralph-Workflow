@@ -62,6 +62,17 @@ RALPH-FACT: conformance_method: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the architecture-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here. Tests assert at the narrowest
+useful observable boundary (see `testing-policy.md`); exposing a
+private method or adding a wrapper solely to satisfy a test is a
+violation there, not a fitting architectural response here.
+
 Agents MUST inspect the component map before moving responsibilities, preserve
 dependency direction, update affected decision records, and remove superseded
 architecture rather than leaving parallel paths. Agents MUST identify affected

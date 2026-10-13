@@ -270,6 +270,23 @@ def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[P
     return _validate_existing_policy_file_with_workspace(workspace, content, path, filename)
 
 
+def get_citation_workspace_slot() -> Workspace | None:
+    """Return the current workspace bound to the citation-path check slot."""
+    return (
+        _content_checks._CITATION_PATH_WORKSPACE[0]
+        if _content_checks._CITATION_PATH_WORKSPACE
+        else None
+    )
+
+
+def set_citation_workspace_slot(workspace: Workspace | None) -> None:
+    """Set the workspace bound to the citation-path check slot (for testing/isolation)."""
+    if _content_checks._CITATION_PATH_WORKSPACE:
+        _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
+    else:
+        _content_checks._CITATION_PATH_WORKSPACE.append(workspace)
+
+
 def _validate_existing_policy_file_with_workspace(
     workspace: Workspace, content: str, path: str, filename: str
 ) -> list[PolicyFinding]:
@@ -280,9 +297,6 @@ def _validate_existing_policy_file_with_workspace(
     publication is scoped to the lifetime of the call so concurrent
     validators and unit tests do not see a stale reference.
     """
-    _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
-    previous = _content_checks._CITATION_PATH_WORKSPACE[0]
-
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     try:
@@ -295,13 +309,11 @@ def _validate_existing_policy_file(content: str, path: str, filename: str) -> li
     """Validate every check that operates on an existing policy file's content."""
     findings: list[PolicyFinding] = []
     findings.extend(_check_markers(content, path, filename))
-    if _frozen_schema_version(content) is None:
-        findings.extend(_check_required_headings(content, path, filename))
+    findings.extend(_check_required_headings(content, path, filename))
     findings.extend(_check_research_basis(content, path, filename))
     findings.extend(_check_placeholders(content, path, filename))
     findings.extend(_check_pending_facts(content, path, filename))
-    if _frozen_schema_version(content) is None:
-        findings.extend(_check_required_fact_keys(content, path, filename))
+    findings.extend(_check_required_fact_keys(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     # v5 guard-inventory check (B9). Every applicable starter (core and

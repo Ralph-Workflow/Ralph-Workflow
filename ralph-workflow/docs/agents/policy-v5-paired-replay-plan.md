@@ -28,6 +28,7 @@ moved and ones it failed to move:
 | **Refactor** | extract a function without changing behavior | narrowest-boundary rule (testing); clean-code vs. architecture contradiction pair (B11) |
 | **Integration-heavy** | wire a new dependency, add a subprocess call | dependency starter; process / resource ownership (architecture starter) |
 | **Security-sensitive** | add a privileged operation, a tenant-scope boundary, a destructive op | security starter; authorization / tenant / scope rules; destructive-operation safety (A2) |
+| **Browser-sensitive** | add or modify a browser-driven journey (a click flow that genuinely needs a real browser, not a unit-testable contract) | the v5 B5 distinct-risk rule, the B5 admission experiment (cost-neutral offset below the budget), the per-journey distinct-risk justification, the measured `browser_budget_seconds` |
 
 The set is fixed: every replicate sees the same five tasks in the
 same order with the same starting tree (the pre-change snapshot).
@@ -61,15 +62,34 @@ pack is in effect at scoring time.
 
 ## Run count
 
-The replay needs at least **3 runs per pack per category** to
-make the per-category comparison meaningful (n >= 3 is the floor
-for paired-sample significance; more runs are encouraged when the
-timebox allows). The minimum total is 3 * 5 * 2 = **30 runs**;
-the recommended floor is **5 runs per pack per category** (50
-runs) when the project has the budget.
+The replay needs at least **3 runs per pack per category** so the
+per-category mean has at least three observations on each side
+and the simple summary statistics (mean, median, range) describe
+the sample honestly. n >= 3 is NOT a significance floor — a claim
+of paired-sample statistical significance at n = 3 is not
+warranted without a justified test on a measured effect size
+and a pre-registered alpha. The plan reports descriptive
+statistics (mean, median, range, per-category delta) and a
+qualitative rubric; a per-category significance claim requires
+either n >= 10 paired observations or a non-parametric
+test (Wilcoxon signed-rank) reported with its p-value, effect
+size, and confidence interval. The minimum total is 3 * 5 * 2
+= **30 runs**; the recommended floor is **5 runs per pack per
+category** (50 runs) when the project has the budget.
 
-The runs are independent; a run that crashes is replaced, not
-counted.
+The runs are independent; **a run that crashes or times out
+counts as a failure on the pack that caused it, not a sample to
+replace.** Replacing a treatment crash hides the failure that
+the kernel was supposed to catch; the replay's purpose is to
+expose it. The recorded crash/time-out, the host it occurred
+on, and the policy file the run was reading at the crash
+become first-class evidence in the rubric score, scored 0 on
+the dimensions the crash affected.
+
+An invalid run (model harness failure unrelated to the pack,
+network partition, missing tool the run did not bring itself)
+is the only run that is replaced; the replacement is
+treatment-blind and is documented with the reason.
 
 ## Blind scoring rubric
 
@@ -150,6 +170,22 @@ default; 3 runs is the floor; more than 10 runs is rarely
 informative when the rubric stabilizes early. The full replay
 is a separate phase with its own timebox; it is not part of
 the v5 implementation timebox.
+
+## Held-constant and shared budget reminder
+
+The repository's combined 60-second test budget
+(`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`) is the AGGREGATE
+ceiling for the entire `make verify` run on this project. Every
+per-suite timeout (e.g. `PYTEST_SUITE_TIMEOUT_SECONDS`,
+`DEFAULT_SUITE_TIMEOUT_SECONDS`) is a SECONDARY cap only; raising
+it does NOT raise the combined budget. The replay's per-run
+budget is the per-run fraction of the project gate the run
+exercises; the AGGREGATE ceiling is never raised by an
+experimental admission rule, including the B5 cost-neutral
+offset relaxation. A browser journey admitted under the B5
+experiment that, in aggregate across the replay, would push the
+suite over the 60-second budget is a fail-closed admission
+failure, not a "we will save on typecheck" trade.
 
 ## References
 

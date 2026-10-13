@@ -54,6 +54,14 @@ RALPH-FACT: applicability_decision: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
+This section is the reliability-observability-specific procedure only. The five
+generic rules (truthful evidence, fail-closed verification, bounded
+execution, no weakening of checks, explicit unverified-claim
+reporting), the precedence over domain policies, the
+selective-applicability rule, and the claim-scope rule are owned by
+the kernel starter (`execution-kernel.md`) and MUST be loaded from
+there — do not re-derive them here.
+
 Agents MUST model failure paths, bound resource use, preserve diagnostic
 context, and update runbooks and alerts with operational behavior. Agents MUST
 run declared gates, perform declared reviews, and report unavailable

@@ -100,7 +100,14 @@ Suite admission, and fixing the production seam.
     evidence THERE — never nowhere.
 13. Every new behaviour in the automated lane MUST add positive coverage.
     Negative coverage is mandatory where rejection, failure, permission,
-    boundary, or recovery behavior exists. Other lanes record evidence there.
+    boundary, or recovery behavior exists AND that behavior is not
+    already protected by an existing deterministic check (a
+    status-code assertion, a permission-denial unit test, a recovery
+    integration test, a published external contract, a named profile's
+    evidence). Mandatory-negative does NOT duplicate coverage that
+    already exists at the cheapest sufficient layer; cite the existing
+    check that protects the same fault when declining. Other lanes
+    record evidence there.
 14. Shape the suite so the cheapest, most isolated layers carry the most
     cases: many fast tests at the lowest layer a behavior supports, fewer
     integration tests across a seam, a thin cap of end-to-end. The ratio is
@@ -255,13 +262,24 @@ slow, and untrusted.
 
    - BROWSER-TIME BUDGET: the default-lane browser time budget is a measured
      value (declared in this policy's `RALPH-FACT: browser_budget_seconds`).
-     BELOW the measured budget, a new browser journey is admitted WITHOUT any
-     mandatory time offset elsewhere in the lane. AT or OVER the measured
-     budget, admission requires BOTH a time offset elsewhere in the lane AND
-     a distinct-risk justification naming the browser-only risk the retained
-     journey covers that no other check covers. The aggregate ceiling
-     (`default_budget_seconds`) is never raised; the rule only changes how
-     new browser journeys are admitted against the ceiling.
+     EVERY retained browser journey — whether admitted below the budget
+     or at/over it — MUST cover a distinct browser-only risk that no
+     other check (unit, integration, contract, named profile) covers; the
+     journey's ticket MUST name that risk and the existing check that
+     fails to substitute for it. A retained journey whose distinct
+     browser-only risk is replaced by a cheaper test must be retired.
+     BELOW the measured budget, a new browser journey is admitted WITHOUT
+     any mandatory time offset elsewhere in the lane; the
+     distinct-browser-only-risk requirement above is the only
+     qualification, and the cost-neutral offset rule (every admitted
+     default-lane addition MUST be budget-neutral through a recorded
+     REMOVE / MERGE / REPLACE) is the only experimental relaxation. AT
+     or OVER the measured budget, admission requires BOTH a time offset
+     elsewhere in the lane AND a distinct-risk justification naming
+     the browser-only risk the retained journey covers that no other
+     check covers. The aggregate ceiling (`default_budget_seconds`) is
+     never raised; the rule only changes how new browser journeys are
+     admitted against the ceiling.
 2. HUMAN REVIEW — use when the criterion is perceptual, aesthetic,
    ergonomic, or editorial with no published standard behind it: visual
    balance, whether wording reads in the product's voice, whether a layout
@@ -415,6 +433,14 @@ Named non-default profiles are recorded once, in the verification policy's
 
 ## AI execution instructions
 
+This section is the testing-specific procedure only. The five generic
+rules (truthful evidence, fail-closed verification, bounded execution,
+no weakening of checks, explicit unverified-claim reporting), the
+precedence over domain policies, the selective-applicability rule,
+and the claim-scope rule are owned by the kernel starter
+(`execution-kernel.md`) and MUST be loaded from there — do not
+re-derive them here.
+
 Work this order on every change. Each step names the rule that governs it;
 follow the rule, do not re-derive it.
 
@@ -438,6 +464,20 @@ follow the rule, do not re-derive it.
    Never report a command that was not run.
 8. UPDATE this policy when the test command, framework, isolation strategy,
    mocking approach, parallelism mechanism, profile set, or budget changes.
+
+## High-churn evidence (B8)
+
+Volatile reports (per-run test logs, mutation-analysis dumps, flaky-test
+quartile charts, generated coverage HTML, snapshot diffs from a clean
+clone) and large generated inventories (per-file generated coverage
+JSON, every test's last-failure timestamp) go to ignored paths under
+`/tmp` or to CI artifacts. Commit only compact, deterministic,
+human-reviewable baselines whose diffs carry meaning: the
+`browser_budget_seconds` fact, the `suite_test_count_command`, the
+recorded suite review with its dated evidence, and a per-change
+mutation score on the changed lines. A reviewer who pulls the change
+must see a single small diff against a known baseline, not a thousand-
+line inventory of auto-generated noise.
 
 An agent MUST NOT:
 
