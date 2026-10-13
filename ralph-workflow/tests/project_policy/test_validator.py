@@ -63,7 +63,7 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
             lines.extend(
                 (
                     "",
-                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |",
+                    "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |",
                     "|---|---|---|---|---|---|",
                     f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed | the count of missing RALPH-FACT lines per file |",
                     "",
@@ -962,7 +962,7 @@ def test_invalid_portfolio_blocks_readiness_with_protected_outcome() -> None:
 
 
 _GI_H = (
-    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |"
+    "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |"
 )
 _GI_S = "|---|---|---|---|---|---|"
 _GI_R = "| g | o | p | d | r | s |"
@@ -979,7 +979,7 @@ _GI_R = "| g | o | p | d | r | s |"
         (f"{_GI_H}\n|---|---|---|---|---|---\n{_GI_R}", "malformed"),
         (f"{_GI_H}\n{_GI_S}\ng | o | p | d | r | s |", "malformed"),
         (f"{_GI_H}\n{_GI_S}\n| g |  | p | d | r | s |", "row-1:empty-owner"),
-        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  | s |", "row-1:empty-retirement_trigger"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  | s |", "CLAIM-SCOPE-MISSING"),
     ],
 )
 def test_guard_inventory_pipe_grammar_and_empty_fields(
@@ -989,5 +989,12 @@ def test_guard_inventory_pipe_grammar_and_empty_fields(
     findings = _content_checks._check_guard_inventory(
         content, "docs/ralph-workflow-policy/testing-policy.md", "testing-policy.md"
     )
-    expected_id = f"{markers.ID_INVENTORY}:testing-policy.md:{expected_suffix}"
+    # The empty-Claim-scope cell maps to the stable v5 contract id
+    # ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` (no filename/row
+    # suffix); every other finding keeps the per-row
+    # ``RWP-INVENTORY:<file>:<suffix>`` shape.
+    if expected_suffix == "CLAIM-SCOPE-MISSING":
+        expected_id = markers.CLAIM_SCOPE_MISSING_FINDING_ID
+    else:
+        expected_id = f"{markers.ID_INVENTORY}:testing-policy.md:{expected_suffix}"
     assert any(f.requirement_id == expected_id for f in findings)

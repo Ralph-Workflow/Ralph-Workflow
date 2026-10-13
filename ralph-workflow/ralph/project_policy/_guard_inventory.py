@@ -183,8 +183,8 @@ def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
                 "owner": cells[1].strip(),
                 "protected_outcome": cells[2].strip(),
                 "detected_condition": cells[3].strip(),
-                "retirement_trigger": cells[4].strip(),
-                "claim_scope": cells[5].strip(),
+                "claim_scope": cells[4].strip(),
+                "retirement_trigger": cells[5].strip(),
             }
         )
     return out
@@ -195,79 +195,172 @@ def _starts_with_heading(content: str, heading: str) -> bool:
     return any(line.strip() == heading for line in content.splitlines())
 
 
-# Sections that are excluded from the ratchet-linkage scan (the rule is
-# only about declarations in the BODY prose, not the inventory table
-# itself or research/citation blocks that legitimately use the
-# ``ratcheted`` / ``ratchet`` / ``MUST NOT grow`` / ``MUST NOT increase``
-# phrases when describing prior decisions or sources).
+# Sections that are excluded from the ratchet-linkage scan (frozen by
+# the v5 plan to the three the plan enumerates). The rule only applies
+# to BODY prose declarations, not the inventory table itself, the
+# ``## Maintenance triggers`` section, or the ``## Research basis``
+# section (both of which legitimately use the ratchet phrases when
+# describing prior decisions or sources). Other sections (e.g. Portfolio
+# ownership, Living document contract, Ralph markers) MUST NOT be
+# excluded — a future edit that adds a ratchet to one of them MUST be
+# caught by the linkage scan.
 _EXCLUDED_SECTION_HEADINGS: Final[tuple[str, ...]] = (
     "## Guard inventory",
     "## Maintenance triggers",
     "## Research basis",
-    "## Portfolio ownership",
-    "## Living document contract",
-    "## Ralph markers",
 )
+
+
+#: HTML-comment prefix pattern. The ratchet scan ignores any line whose
+#: first non-whitespace is ``<!--`` because REPLACE-ME instructions
+#: and remediation prompts use the bare ``ratchet`` token when
+#: describing the rule (e.g. "the ratchet then holds that tighter
+#: number") — those are template instructions, not policy
+#: declarations.
+_HTML_COMMENT_PREFIX: Final[str] = "<!--"
+
+
+def _is_html_comment_line(line: str) -> bool:
+    """Return True if ``line`` is an HTML comment (template instruction)."""
+    return line.lstrip().startswith(_HTML_COMMENT_PREFIX)
+
+
+#: Number of trailing non-blank, non-heading, non-comment lines the
+#: ratchet scan examines for a trailing ``<!-- ralph-control: <id> -->``
+#: token after a ratchet phrase. The shipped corpus frequently
+#: wraps the declaration across two or three lines (the ratchet
+#: phrase on one line, the rationale on the next, the control token
+#: at the end of the last line). Three lines is the empirical upper
+#: bound across the v5 starter set; larger values would let
+#: decorators on unrelated sentences match the same ratchet.
+_RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES: Final[int] = 6
 
 
 def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
     """Return ``(declaration_text, control_id_or_empty)`` per body ratchet.
 
-    A body ratchet declaration is a *paragraph* in the starter body
-    (excluding the Guard inventory table and the
-    :data:`_EXCLUDED_SECTION_HEADINGS` sections) that contains any
-    phrase from :data:`markers.RATCHET_DECLARATION_PHRASES`
-    (case-insensitive). A paragraph is one or more consecutive
-    non-blank, non-heading lines (markdown hard-break semantics). The
-    function returns the joined paragraph text and the captured
-    control id when an inline ``<!-- ralph-control: <id> -->`` token
-    appears anywhere in that paragraph; an empty string when the
-    token is absent.
+    A body ratchet declaration is a single line in the starter body
+    (excluding the Guard inventory table, the three
+    :data:`_EXCLUDED_SECTION_HEADINGS` sections, and HTML comments
+    which carry template instructions, not policy declarations) that
+    contains any phrase from :data:`markers.RATCHET_DECLARATION_PHRASES`
+    (case-insensitive). The v5 plan's per-sentence granularity
+    forbids paragraph-level grouping: a tagged sentence and an
+    adjacent untagged ``MUST NOT increase`` sentence cannot share
+    one row, so the scan is line-based. Numbered lists in shipped
+    starters frequently concatenate many items into one
+    ``paragraph`` (no blank line between numbered items), and the
+    control token may sit on a subsequent line within the same
+    wrapped sentence; the per-line scan looks ahead up to
+    :data:`_RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES` non-blank,
+    non-heading, non-comment lines for the trailing control token
+    so a wrapped declaration is still linked to its row.
+
+    The function returns the line text and the captured control id
+    when an inline ``<!-- ralph-control: <id> -->`` token appears
+    on the same line OR on one of the next few non-blank body
+    lines; an empty string when the token is absent (rejected with
+    stable id ``RWP-INVENTORY:RATCHET-UNCOVERED``).
 
     The grammar is regex-deterministic and excludes the inventory
-    table; :func:`_check_guard_inventory` calls this and emits
-    ``RWP-INVENTORY:RATCHET-UNCOVERED`` for each declaration that has
-    no control id.
+    table plus the three plan-frozen excluded sections plus HTML
+    comments.
     """
     out: list[tuple[str, str]] = []
     in_excluded = False
     in_table = False
+    in_comment = False
     control_re = re.compile(markers.CONTROL_TOKEN_RE)
     phrase_alts = "|".join(re.escape(p) for p in markers.RATCHET_DECLARATION_PHRASES)
-    # The phrases are not all word-shaped (``**Ratchet:**`` ends in
-    # non-word chars) so we use a plain case-insensitive substring
-    # match rather than the usual ``\b...\b`` word-boundary form.
+    # The phrases are not all word-shaped so we use a plain
+    # case-insensitive substring match rather than the usual
+    # ``\b...\b`` word-boundary form. Word boundaries on the
+    # bare ``ratchet`` token would over-match against ``ratchets``
+    # (legitimate plural usage in shipped starters); the substring
+    # form fires on both the singular and the plural because both
+    # refer to the same constraint.
     phrase_re = re.compile(rf"(?i)(?:{phrase_alts})")
-    paragraph: list[str] = []
-    paragraphs: list[str] = []
-    for raw_line in content.splitlines():
+    lines = content.splitlines()
+    total = len(lines)
+    for index, raw_line in enumerate(lines):
         stripped = raw_line.strip()
         if stripped.startswith("#"):
             in_excluded = stripped in _EXCLUDED_SECTION_HEADINGS
             in_table = stripped == markers.GUARD_INVENTORY_HEADING
-            if paragraph:
-                paragraphs.append(" ".join(paragraph))
-                paragraph = []
+            in_comment = False
+            continue
+        # Multi-line HTML comment: track state across lines so
+        # the body lines of a ``<!-- ... -->`` block are skipped
+        # even when they do not start with ``<!--``.
+        if in_comment:
+            if stripped.endswith("-->") and not stripped.startswith(_HTML_COMMENT_PREFIX):
+                in_comment = False
+            continue
+        if _is_html_comment_line(stripped):
+            in_comment = not stripped.endswith("-->")
             continue
         if in_excluded or in_table:
-            if paragraph:
-                paragraphs.append(" ".join(paragraph))
-                paragraph = []
             continue
         if not stripped:
-            if paragraph:
-                paragraphs.append(" ".join(paragraph))
-                paragraph = []
             continue
-        paragraph.append(stripped)
-    if paragraph:
-        paragraphs.append(" ".join(paragraph))
-    for p in paragraphs:
-        if not phrase_re.search(p):
+        if not phrase_re.search(stripped):
             continue
-        match = control_re.search(p)
-        out.append((p, match.group(1) if match else ""))
+        # Same-line control token wins; otherwise look ahead a few
+        # lines for the trailing token of the same wrapped sentence.
+        match = control_re.search(stripped)
+        if match:
+            out.append((stripped, match.group(1)))
+            continue
+        found_token: bool = False
+        token = _find_ratchet_control_token(lines, index, total, control_re, in_comment)
+        if token:
+            out.append((stripped, token))
+            found_token = True
+        if not found_token:
+            out.append((stripped, ""))
     return out
+
+
+def _find_ratchet_control_token(
+    lines: list[str],
+    index: int,
+    total: int,
+    control_re: re.Pattern[str],
+    initial_in_comment: bool,
+) -> str:
+    """Look ahead up to N lines for a ``<!-- ralph-control: <id> -->`` token.
+
+    Returns the captured id when the token appears on the ratchet
+    line or on one of the next non-blank, non-heading lines, OR
+    when the same line is itself a control-token comment. Returns
+    the empty string when no such token is found in the window.
+    """
+    lookahead_comment = initial_in_comment
+    for offset in range(1, _RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES + 1):
+        next_index = index + offset
+        if next_index >= total:
+            return ""
+        next_stripped = lines[next_index].strip()
+        if not next_stripped:
+            return ""
+        if next_stripped.startswith("#"):
+            return ""
+        # A ``<!-- ralph-control: <id> -->`` line IS the control
+        # token (its grammar is a single-line HTML comment), so
+        # it always counts as a match even when other comments
+        # would be skipped.
+        token_match = control_re.search(next_stripped)
+        if token_match:
+            return token_match.group(1)
+        if lookahead_comment:
+            # A multi-line comment ends on a line whose only
+            # end-of-comment marker is the trailing ``-->``; if
+            # that marker is absent we stay inside the comment.
+            lookahead_comment = not next_stripped.endswith("-->")
+            continue
+        if _is_html_comment_line(next_stripped):
+            lookahead_comment = not next_stripped.endswith("-->")
+    return ""
 
 
 def _control_id_for_guard_row(guard_cell: str) -> str | None:
@@ -323,32 +416,58 @@ def _claim_scope_findings(
     return findings
 
 
+def _claim_scope_sentence_count(cell: str) -> int:
+    """Return the number of sentences in a ``Claim scope`` cell.
+
+    The v5 plan freezes the cell to a single sentence; the count is
+    a regex sentence-boundary split (period, exclamation, question
+    mark, or line break) on the trimmed cell. Empty cells return
+    zero. Cells whose last sentence has no terminating punctuation
+    still count as one sentence.
+    """
+    stripped = cell.strip()
+    if not stripped:
+        return 0
+    sentence_endings: list[str] = re.findall(r"[.!?]|\n", stripped)
+    return max(1, len(sentence_endings))
+
+
 def _check_guard_inventory(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Validate the ``## Guard inventory`` table per v5 contract (B9).
 
-    Findings emitted:
+    Findings emitted (stable v5 contract):
 
-    * One finding when the section is missing entirely.
-    * One finding when the header row is malformed (does not match
-      :data:`markers.GUARD_INVENTORY_HEADER`).
-    * One finding per guard-inventory row whose ``Protected outcome``
-      cell carries a broad-guarantee phrase from
-      :data:`markers.CLAIM_SCOPE_PHRASES` that does not also appear in
-      the row's ``Detected condition`` (the deterministic claim-scope
-      rule, B7).
-    * One finding per row with an empty cell in any of the six
-      required columns (the sixth is ``Claim scope``).
-    * One ``RWP-INVENTORY:<file>:ratchet-uncovered`` finding per body
-      ratchet declaration that has no matching control id, and one
-      per body ratchet whose control id does not appear at the start
-      of any Guard cell.
-    * One ``RWP-INVENTORY:<file>:control-orphan`` finding per Guard
-      cell control id that no body declaration names.
-    * One finding per row whose ``Claim scope`` cell carries a
-      broad-guarantee phrase from :data:`markers.CLAIM_SCOPE_PHRASES`
-      that does NOT also appear in the same row's ``Detected
-      condition`` cell (the predicate is applied to the new
-      ``Claim scope`` field too).
+    * ``RWP-INVENTORY:<file>:missing`` when the section is missing
+      entirely.
+    * ``RWP-INVENTORY:<file>:malformed`` when the header row does not
+      match :data:`markers.GUARD_INVENTORY_HEADER`.
+    * ``RWP-INVENTORY:<file>:row-<n>:empty-<column>`` per row with an
+      empty cell in any of the five base columns (the ``Claim scope``
+      column uses the stable :data:`CLAIM_SCOPE_MISSING_FINDING_ID`
+      instead, see below).
+    * ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` per row with an empty
+      ``Claim scope`` cell. The plan freezes the v5 contract id;
+      filename/row suffixes would break black-box tests that pin
+      the id.
+    * ``RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE`` per row whose
+      ``Claim scope`` cell is more than one sentence. The plan
+      freezes the cell to a single sentence; multi-sentence prose
+      is rejected with a stable id.
+    * ``RWP-INVENTORY:<file>:row-<n>:claim-scope`` per row whose
+      ``Protected outcome`` or ``Claim scope`` cell carries a
+      broad-guarantee phrase from
+      :data:`markers.CLAIM_SCOPE_PHRASES` that does not also appear
+      in the row's ``Detected condition`` (the deterministic
+      claim-scope rule, B7).
+    * ``RWP-INVENTORY:RATCHET-UNCOVERED`` per body ratchet sentence
+      that has no inline ``<!-- ralph-control: <id> -->`` token
+      (filename suffix is intentionally absent so the id is stable
+      across files).
+    * ``RWP-INVENTORY:RATCHET-UNCOVERED:<id>`` per body ratchet
+      sentence whose control id does not appear at the start of any
+      Guard cell.
+    * ``RWP-INVENTORY:CONTROL-ORPHAN:<id>`` per Guard cell control
+      id that no body declaration names.
 
     The check returns an empty list when the table is well-formed:
     no findings means the starter is B9-compliant.
@@ -367,7 +486,7 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
                     f"add a `{markers.GUARD_INVENTORY_HEADING}` section "
                     "with the pinned header row and one data row per guard "
                     "(Guard | Owner | Protected outcome | Detected "
-                    "condition | Retirement trigger | Claim scope)"
+                    "condition | Claim scope | Retirement trigger)"
                 ),
             )
         ]
@@ -398,7 +517,6 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
             "protected_outcome",
             "detected_condition",
             "retirement_trigger",
-            "claim_scope",
         ):
             if row[column]:
                 continue
@@ -419,6 +537,49 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
                     ),
                 )
             )
+        # Stable v5 contract: an empty ``Claim scope`` cell emits the
+        # plan-frozen finding id ``RWP-INVENTORY:CLAIM-SCOPE-MISSING``
+        # (no filename/row suffix). A multi-sentence ``Claim scope``
+        # cell emits ``RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE`` for
+        # the same reason.
+        if not row["claim_scope"]:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=markers.CLAIM_SCOPE_MISSING_FINDING_ID,
+                    path=path,
+                    missing_evidence=(
+                        f"{markers.GUARD_INVENTORY_HEADING} row {index} "
+                        "has an empty 'Claim scope' cell; every row MUST "
+                        "name the narrow claim its detector supports"
+                    ),
+                    required_outcome=(
+                        f"fill the 'Claim scope' cell of row {index} with a "
+                        "single-sentence statement of what the detector "
+                        "actually observes"
+                    ),
+                )
+            )
+        elif (
+            _claim_scope_sentence_count(row["claim_scope"])
+            > markers._GUARD_INVENTORY_CLAIM_SCOPE_MAX_SENTENCES
+        ):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID,
+                    path=path,
+                    missing_evidence=(
+                        f"{markers.GUARD_INVENTORY_HEADING} row {index} "
+                        "has a multi-sentence 'Claim scope' cell; the v5 "
+                        "plan freezes the cell to a single sentence so the "
+                        "claim stays narrow and observable"
+                    ),
+                    required_outcome=(
+                        f"rewrite the 'Claim scope' cell of row {index} as "
+                        "exactly one sentence naming what the detector "
+                        "actually observes"
+                    ),
+                )
+            )
         # Apply the deterministic claim-scope rule to each row's
         # ``Protected outcome`` AND ``Claim scope`` cells. The same
         # predicate fires on a broad phrase absent from the row's
@@ -435,26 +596,26 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
         if control_id is not None:
             row_control_ids.add(control_id)
 
-    # Body ratchet declarations: every body line carrying one of the
-    # declared ratchet phrases MUST carry an inline control id, and
-    # the id MUST appear as a backticked control id at the start of
-    # some Guard cell. A body ratchet without a matching row is
-    # RATCHET-UNCOVERED; a row's control id with no body declaration
-    # is CONTROL-ORPHAN.
+    # Body ratchet declarations: every body sentence carrying one of
+    # the declared ratchet phrases MUST carry an inline control id,
+    # and the id MUST appear as a backticked control id at the start
+    # of some Guard cell. A body ratchet without a matching row is
+    # RATCHET-UNCOVERED (stable v5 contract id); a row's control id
+    # with no body declaration is CONTROL-ORPHAN.
     declarations = _ratchet_declarations(content)
     declared_ids = {control_id for _, control_id in declarations if control_id}
     for declaration_text, control_id in declarations:
         if not control_id:
             findings.append(
                 PolicyFinding(
-                    requirement_id=(f"{markers.ID_INVENTORY}:{filename}:ratchet-uncovered"),
+                    requirement_id=markers.RATCHET_UNCOVERED_FINDING_ID,
                     path=path,
                     missing_evidence=(
-                        f"body ratchet declaration is not covered: {declaration_text!r}; "
-                        "every body line naming a ratcheted / MUST NOT grow / "
-                        "MUST NOT increase constraint MUST end with an inline "
-                        "``<!-- ralph-control: <id> -->`` token whose id appears "
-                        "at the start of a Guard inventory cell"
+                        f"body ratchet sentence is not covered: {declaration_text!r}; "
+                        "every body sentence naming a ratcheted / ratchet / "
+                        "MUST NOT grow / MUST NOT increase constraint MUST end "
+                        "with an inline ``<!-- ralph-control: <id> -->`` token "
+                        "whose id appears at the start of a Guard inventory cell"
                     ),
                     required_outcome=(
                         "append ``<!-- ralph-control: <id> -->`` to the declaring "
@@ -467,12 +628,10 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
         if control_id not in row_control_ids:
             findings.append(
                 PolicyFinding(
-                    requirement_id=(
-                        f"{markers.ID_INVENTORY}:{filename}:ratchet-uncovered:{control_id}"
-                    ),
+                    requirement_id=(f"{markers.RATCHET_UNCOVERED_FINDING_ID}:{control_id}"),
                     path=path,
                     missing_evidence=(
-                        f"body ratchet declaration carries control id {control_id!r} "
+                        f"body ratchet sentence carries control id {control_id!r} "
                         "but no Guard inventory row begins with that id; the "
                         "declaration is uncovered"
                     ),
@@ -484,14 +643,14 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
             )
     findings.extend(
         PolicyFinding(
-            requirement_id=(f"{markers.ID_INVENTORY}:{filename}:control-orphan:{orphan_id}"),
+            requirement_id=(f"{markers.CONTROL_ORPHAN_FINDING_ID}:{orphan_id}"),
             path=path,
             missing_evidence=(
                 f"Guard inventory row carries control id {orphan_id!r} but no "
-                "body ratchet declaration names that id; the row is orphaned"
+                "body ratchet sentence names that id; the row is orphaned"
             ),
             required_outcome=(
-                f"add a body ratchet declaration whose inline token is "
+                f"add a body ratchet sentence whose inline token is "
                 f"``<!-- ralph-control: {orphan_id} -->``, or remove the "
                 "backticked id from the Guard cell"
             ),

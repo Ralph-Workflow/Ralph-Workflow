@@ -38,9 +38,9 @@ the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Reversible deployment  | Release owner  | every release is reversible through a recorded rollback command and a recorded last-known-good version  | rollback command is recorded in the release profile; last-known-good version is recorded with the release  | when the project ships only forward-only releases (the rollback is the kernel)  | rollback command is recorded in the release profile |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Reversible deployment | Release owner | every release is reversible through a recorded rollback command and a recorded last-known-good version | rollback command is recorded in the release profile; last-known-good version is recorded with the release | rollback command is recorded in the release profile | when the project ships only forward-only releases (the rollback is the kernel) |
 
 ## Project facts to resolve
 

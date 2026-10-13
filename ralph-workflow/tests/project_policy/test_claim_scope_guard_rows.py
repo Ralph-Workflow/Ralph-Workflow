@@ -25,15 +25,15 @@ from ralph.project_policy.validators import _validate_existing_policy_file
 
 _HEADER = (
     "| Guard | Owner | Protected outcome | Detected condition | "
-    "Retirement trigger | Claim scope |\n"
+    "Claim scope | Retirement trigger |\n"
     "|---|---|---|---|---|---|\n"
 )
 
 
 def _starter_row(
-    guard: str, owner: str, protected: str, detected: str, retirement: str, scope: str
+    guard: str, owner: str, protected: str, detected: str, scope: str, retirement: str
 ) -> str:
-    return f"| {guard} | {owner} | {protected} | {detected} | {retirement} | {scope} |\n"
+    return f"| {guard} | {owner} | {protected} | {detected} | {scope} | {retirement} |\n"
 
 
 def _starter(rows: str) -> str:
@@ -218,5 +218,5 @@ def test_public_validator_rejects_empty_claim_scope_cell() -> None:
     findings = _validate_existing_policy_file(
         content, path="clean-code-policy.md", filename="clean-code-policy.md"
     )
-    matching = [f for f in findings if "empty-claim_scope" in f.requirement_id]
+    matching = [f for f in findings if f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID]
     assert matching

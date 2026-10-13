@@ -69,16 +69,20 @@ def test_guard_inventory_carries_r1_row() -> None:
         or f.requirement_id.endswith(f":ratchet-uncovered:{_R1_ID}")
     ]
     assert not r1_orphans, r1_orphans
-    # And a finding would name the body ratchet if uncovered; ensure
-    # the row's six cells are all non-empty.
-    assert (
-        all(
-            "empty-" not in f.requirement_id
-            for f in findings
-            if f.requirement_id.startswith(f"{markers.ID_INVENTORY}:typechecking-policy.md:row-5")
-        )
-        or True
-    )  # the row's exact index may differ across edits
+    # The R1 row's six cells are all non-empty. The shipped corpus
+    # has five rows; a future edit that drops a cell is a
+    # regression. The row's exact index may differ across edits, so
+    # the assertion checks that no row-1..row-5 finding carries an
+    # empty-cell suffix for ANY of the six columns.
+    empty_cell_findings = [
+        f
+        for f in findings
+        if f.requirement_id.startswith(f"{markers.ID_INVENTORY}:typechecking-policy.md:row-")
+        and "-empty-" in f.requirement_id
+    ]
+    assert not empty_cell_findings, (
+        f"R1 row has empty cells: {[f.requirement_id for f in empty_cell_findings]}"
+    )
 
 
 def test_guard_inventory_carries_r2_row() -> None:

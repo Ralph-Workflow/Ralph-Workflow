@@ -48,10 +48,10 @@ code.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Syntax-proxy ban  | Clean-code owner  | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper  | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule  | when every private-call ratchet is retired  | no private method is renamed to public solely to satisfy a private-call ratchet |
-| Bounded premature abstraction  | Clean-code owner  | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count  | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction  | when the project stops growing the abstraction target  | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | when every private-call ratchet is retired |
+| Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | when the project stops growing the abstraction target |
 
 ## Project facts to resolve
 
@@ -84,9 +84,9 @@ reporting), the precedence over domain policies, the
 selective-applicability rule, and the claim-scope rule are owned by
 the kernel starter (`execution-kernel.md`) and MUST be loaded from
 there — do not re-derive them here. Exposing a private method or
-adding a wrapper solely to satisfy a test or a ratchet is a violation
-(see `testing-policy.md`, `architecture-policy.md`); the same
-mechanism is never justified here as a clean-code fix.
+adding a wrapper solely to satisfy a test or a structural proxy rule
+is a violation (see `testing-policy.md`, `architecture-policy.md`);
+the same mechanism is never justified here as a clean-code fix.
 
 To follow this policy, an agent making any change MUST:
 

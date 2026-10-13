@@ -83,14 +83,16 @@ def complete_policy_body(filename: str) -> str:
             # a Guard inventory table with the pinned header and at least
             # one data row. The Protected outcome cell names a real
             # detector observation so the claim-scope substring predicate
-            # passes. The sixth cell is the ``Claim scope`` field
-            # required by B7.
+            # passes. The fifth cell is the ``Claim scope`` field
+            # required by B7 (per the v5 frozen column order: ``Guard |
+            # Owner | Protected outcome | Detected condition | Claim scope
+            # | Retirement trigger``).
             lines.extend(
                 (
                     "",
-                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |",
+                    "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |",
                     "|---|---|---|---|---|---|",
-                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed | the count of missing RALPH-FACT lines per file |",
+                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | the count of missing RALPH-FACT lines per file | when the test policy is removed |",
                     "",
                 )
             )

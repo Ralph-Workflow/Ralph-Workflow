@@ -31,9 +31,9 @@ reactivation trigger, or remove it through reviewed policy cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Published-standard contrast and semantics  | Accessibility owner  | every contrast, focus, and semantic claim is measured against a published external standard  | test asserts a published standard (WCAG, ARIA, etc.); the standard is named in the test  | when the project ships a non-interactive surface  | test asserts a published standard (WCAG, ARIA, etc.) |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Published-standard contrast and semantics | Accessibility owner | every contrast, focus, and semantic claim is measured against a published external standard | test asserts a published standard (WCAG, ARIA, etc.); the standard is named in the test | test asserts a published standard (WCAG, ARIA, etc.) | when the project ships a non-interactive surface |
 
 ## Project facts to resolve
 

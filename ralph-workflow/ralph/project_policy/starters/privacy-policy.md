@@ -31,9 +31,9 @@ trigger, or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Data classification  | Privacy owner  | every field with personal data is classified in the project's data-classification doc  | data-classification doc enumerates every personal-data field; the doc is reviewed on every schema change  | when the project stops holding personal data  | data-classification doc enumerates every personal-data field |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Data classification | Privacy owner | every field with personal data is classified in the project's data-classification doc | data-classification doc enumerates every personal-data field; the doc is reviewed on every schema change | data-classification doc enumerates every personal-data field | when the project stops holding personal data |
 
 ## Project facts to resolve
 

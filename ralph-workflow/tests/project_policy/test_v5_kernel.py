@@ -118,7 +118,7 @@ def test_guard_inventory_parser_rejects_broad_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
         "|---|---|---|---|---|---|\n"
         "| g | o | dependency direction enforced | missing import-lint | retired | the lint report per file |"
     )
@@ -135,7 +135,7 @@ def test_guard_inventory_parser_accepts_mirrored_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
         "|---|---|---|---|---|---|\n"
         "| g | o | dependency direction enforced | enforced by import-lint on src/ | retired | enforced per import-lint on src/ |"
     )
@@ -152,7 +152,7 @@ def test_guard_inventory_parser_rejects_empty_cells() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
         "|---|---|---|---|---|---|\n"
         "| g |  | some outcome | some detected | some retirement | the report per file |"
     )

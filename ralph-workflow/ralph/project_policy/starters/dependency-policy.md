@@ -39,10 +39,10 @@ lockfile.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Pinned dependencies  | Dependency owner  | every runtime dependency is pinned to an exact version with a lockfile  | lockfile is present and recorded as a verification artifact  | when the project ships only a single transitive closure (e.g. a vendored static binary)  | lockfile is present and recorded as a verification artifact |
-| License compatibility  | Dependency owner  | every dependency is compatible with the project's declared license set  | license audit returns zero incompatible findings  | when the project ships no third-party code  | license audit returns zero incompatible findings |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | when the project ships no third-party code |
 
 ## Project facts to resolve
 

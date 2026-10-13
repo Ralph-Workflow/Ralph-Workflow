@@ -29,9 +29,9 @@ or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Bounded observability budget  | Reliability owner  | every log / trace / metric carries a bounded cardinality and a retention policy  | log / trace / metric cardinality is bounded; retention policy is recorded in the operational doc  | when the project is replaced by a kernel-level observability framework  | log / trace / metric cardinality is bounded |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Bounded observability budget | Reliability owner | every log / trace / metric carries a bounded cardinality and a retention policy | log / trace / metric cardinality is bounded; retention policy is recorded in the operational doc | log / trace / metric cardinality is bounded | when the project is replaced by a kernel-level observability framework |
 
 ## Project facts to resolve
 

@@ -6,18 +6,20 @@ These tests pin the v5 contract on the public readiness validator:
   in every applicable starter's ``## Guard inventory`` table MUST
   carry a non-empty ``Claim scope`` cell. The public validator
   rejects an empty cell with the stable
-  ``RWP-INVENTORY:<file>:row-N:empty-claim_scope`` finding id.
+  ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` finding id, and a
+  multi-sentence cell with the stable
+  ``RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE`` finding id.
 * B7 — the existing claim-scope substring predicate applies to the
   ``Claim scope`` cell too: a broad phrase absent from the row's
   ``Detected condition`` is rejected.
 * B9 — the deterministic body ratchet -> control id -> Guard cell
-  linkage. A body sentence that names a ratcheted / MUST NOT grow /
-  MUST NOT increase constraint MUST end with an inline
-  ``<!-- ralph-control: <id> -->`` token, and a Guard cell that
-  begins with a backticked id MUST be backed by a body declaration.
-  Mismatches are reported with the
-  ``RWP-INVENTORY:<file>:ratchet-uncovered`` /
-  ``RWP-INVENTORY:<file>:control-orphan`` finding ids.
+  linkage. A body line that names a ratcheted / ratchet / MUST NOT
+  grow / MUST NOT increase constraint MUST end (or wrap to within
+  a few lines) with an inline ``<!-- ralph-control: <id> -->`` token,
+  and a Guard cell that begins with a backticked id MUST be backed
+  by a body declaration. Mismatches are reported with the
+  ``RWP-INVENTORY:RATCHET-UNCOVERED`` /
+  ``RWP-INVENTORY:CONTROL-ORPHAN`` finding ids.
 
 The tests build synthetic in-memory starter content via the private
 parser, the public validator, and ``MemoryWorkspace`` (no
@@ -27,18 +29,19 @@ plan's contract.
 
 from __future__ import annotations
 
+from ralph.project_policy import markers
 from ralph.project_policy._guard_inventory import _check_guard_inventory
 from ralph.project_policy.validators import _validate_existing_policy_file
 
 _HEADER = (
     "| Guard | Owner | Protected outcome | Detected condition | "
-    "Retirement trigger | Claim scope |\n"
+    "Claim scope | Retirement trigger |\n"
     "|---|---|---|---|---|---|\n"
 )
 
 
-def _row(guard: str, owner: str, protected: str, detected: str, retirement: str, scope: str) -> str:
-    return f"| {guard} | {owner} | {protected} | {detected} | {retirement} | {scope} |\n"
+def _row(guard: str, owner: str, protected: str, detected: str, scope: str, retirement: str) -> str:
+    return f"| {guard} | {owner} | {protected} | {detected} | {scope} | {retirement} |\n"
 
 
 def _starter(body_before: str, rows: str, body_after: str = "") -> str:
@@ -66,9 +69,7 @@ def test_empty_claim_scope_cell_is_rejected() -> None:
         ),
     )
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
-    assert any(
-        f.requirement_id == "RWP-INVENTORY:synthetic.md:row-1:empty-claim_scope" for f in findings
-    )
+    assert any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings)
 
 
 def test_non_empty_claim_scope_cell_is_accepted() -> None:
@@ -144,7 +145,7 @@ def test_ratchet_declaration_without_control_token_is_uncovered() -> None:
         ),
     )
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
-    assert any(f.requirement_id == "RWP-INVENTORY:synthetic.md:ratchet-uncovered" for f in findings)
+    assert any(f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID for f in findings)
 
 
 def test_ratchet_declaration_with_unmatched_control_id_is_uncovered() -> None:
@@ -171,7 +172,7 @@ def test_ratchet_declaration_with_unmatched_control_id_is_uncovered() -> None:
     )
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
     assert any(
-        f.requirement_id == "RWP-INVENTORY:synthetic.md:ratchet-uncovered:my-id" for f in findings
+        f.requirement_id == f"{markers.RATCHET_UNCOVERED_FINDING_ID}:my-id" for f in findings
     )
 
 
@@ -200,12 +201,9 @@ def test_ratchet_declaration_matched_to_row_is_accepted() -> None:
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
     # No uncovered-ratchet or orphan finding is expected.
     assert not any(
-        f.requirement_id.startswith("RWP-INVENTORY:synthetic.md:ratchet-uncovered")
-        for f in findings
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
     )
-    assert not any(
-        f.requirement_id.startswith("RWP-INVENTORY:synthetic.md:control-orphan") for f in findings
-    )
+    assert not any(f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings)
 
 
 def test_orphan_control_id_in_row_is_rejected() -> None:
@@ -226,7 +224,7 @@ def test_orphan_control_id_in_row_is_rejected() -> None:
     )
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
     assert any(
-        f.requirement_id == "RWP-INVENTORY:synthetic.md:control-orphan:orphan-id" for f in findings
+        f.requirement_id == f"{markers.CONTROL_ORPHAN_FINDING_ID}:orphan-id" for f in findings
     )
 
 
@@ -257,8 +255,7 @@ def test_ratchet_declaration_outside_guard_inventory_excluded() -> None:
     findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
     # The ratchet phrase appears only in the excluded section.
     assert not any(
-        f.requirement_id.startswith("RWP-INVENTORY:synthetic.md:ratchet-uncovered")
-        for f in findings
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
     )
 
 
@@ -288,4 +285,4 @@ def test_public_validator_emits_empty_claim_scope_finding() -> None:
     findings = _validate_existing_policy_file(
         content, path="clean-code-policy.md", filename="clean-code-policy.md"
     )
-    assert any("empty-claim_scope" in f.requirement_id for f in findings)
+    assert any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings)

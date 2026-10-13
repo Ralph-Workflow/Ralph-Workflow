@@ -48,10 +48,10 @@ the truthfulness obligations, and the documentation update obligations.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Selective loading  | Agent owner  | agents load the kernel plus only the policies triggered by the changed surfaces  | agents read the kernel first; agents do not load conditional starters whose trigger has not fired  | when every domain becomes a kernel-level concern  | agents read the kernel first |
-| Three-state reporting  | Agent owner  | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension  | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed  | when the kernel absorbs the three dimensions  | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Selective loading | Agent owner | agents load the kernel plus only the policies triggered by the changed surfaces | agents read the kernel first; agents do not load conditional starters whose trigger has not fired | agents read the kernel first | when every domain becomes a kernel-level concern |
+| Three-state reporting | Agent owner | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | when the kernel absorbs the three dimensions |
 
 ## Project facts to resolve
 

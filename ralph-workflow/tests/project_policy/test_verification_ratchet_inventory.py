@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from ralph.project_policy import markers
-from ralph.project_policy._guard_inventory import _check_guard_inventory
+from ralph.project_policy._guard_inventory import _check_guard_inventory, _parse_guard_inventory
 from ralph.project_policy.starters import read_starter
 from ralph.project_policy.validators import _validate_existing_policy_file
 
@@ -85,6 +85,37 @@ def test_r3_row_detects_unauthorized_budget_growth() -> None:
         )
     ]
     assert not bad, bad
+
+
+def test_r3_row_actually_mentions_verification_time_budget() -> None:
+    """The R3 row's Detected condition MUST literally name the budget fact.
+
+    This is the fault-sensitive check: a future edit that drops the
+    ``verification_time_budget`` phrase from the row's Detected
+    condition (replacing it with a vague "fast" claim) is a
+    regression, and this test fails to prove it. A mutation that
+    removes the phrase from the shipped corpus must produce a
+    failing test.
+    """
+    content = _filled_in_body("verification-policy.md")
+    rows = _parse_guard_inventory(content)
+    r3_rows = [row for row in rows if _R3_ID in row["guard"]]
+    assert len(r3_rows) == 1, (
+        f"verification-policy.md must carry exactly one R3 row, found {len(r3_rows)}"
+    )
+    r3_row = r3_rows[0]
+    assert "verification_time_budget" in r3_row["detected_condition"], (
+        f"R3 row's Detected condition must mention the recorded "
+        f"``verification_time_budget`` fact so the detector observes the actual "
+        f"value, not a vague claim; current cell: {r3_row['detected_condition']!r}"
+    )
+    assert (
+        "prior recorded value" in r3_row["detected_condition"]
+        or "shrinks" in r3_row["detected_condition"]
+    ), (
+        f"R3 row's Detected condition must describe the ratchet semantics "
+        f"(shrinking is free, growth is rejected); current cell: {r3_row['detected_condition']!r}"
+    )
 
 
 def test_public_validator_accepts_filled_in_verification_starter() -> None:

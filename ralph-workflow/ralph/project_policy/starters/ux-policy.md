@@ -45,9 +45,9 @@ interaction behaviour, or usability.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Perceptual judgment routed to human review  | UX owner  | perceptual / aesthetic / editorial judgments are routed to the RALPH-REVIEW: lane, not encoded as a constant  | no UX constant encodes a subjective judgment; the RALPH-REVIEW: line carries the verdict  | when the project stops doing UX-sensitive work  | no UX constant encodes a subjective judgment |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Perceptual judgment routed to human review | UX owner | perceptual / aesthetic / editorial judgments are routed to the RALPH-REVIEW: lane, not encoded as a constant | no UX constant encodes a subjective judgment; the RALPH-REVIEW: line carries the verdict | no UX constant encodes a subjective judgment | when the project stops doing UX-sensitive work |
 
 ## Project facts to resolve
 

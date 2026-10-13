@@ -68,10 +68,10 @@ again if demonstrated need returns than to retain unowned paths indefinitely.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| No lint bypass  | Lint owner  | no `# noqa`, `per-file-ignores`, or `extend-per-file-ignores` lands in the tree  | audit_lint_bypass returns zero findings  | when the rule is restated as a kernel-level constraint  | audit_lint_bypass returns zero findings |
-| Public / wrapper syntax-proxy  | Lint owner  | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix  | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass  | when every private-call ratchet is removed from the policy  | no private method is renamed to public solely to satisfy a private-call ratchet |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| No lint bypass | Lint owner | no `# noqa`, `per-file-ignores`, or `extend-per-file-ignores` lands in the tree | audit_lint_bypass returns zero findings | audit_lint_bypass returns zero findings | when the rule is restated as a kernel-level constraint |
+| Public / wrapper syntax-proxy | Lint owner | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass | no private method is renamed to public solely to satisfy a private-call ratchet | when every private-call ratchet is removed from the policy |
 
 ## Project facts to resolve
 
@@ -114,8 +114,8 @@ reporting), the precedence over domain policies, the
 selective-applicability rule, and the claim-scope rule are owned by
 the kernel starter (`execution-kernel.md`) and MUST be loaded from
 there — do not re-derive them here. A private method made public or
-a wrapper added solely to satisfy a lint ratchet is a violation
-(see `clean-code-policy.md`, `testing-policy.md`), not a
+a wrapper added solely to satisfy a structural proxy lint rule is a
+violation (see `clean-code-policy.md`, `testing-policy.md`), not a
 justified lint pass.
 
 To follow this policy, an agent making any change MUST:

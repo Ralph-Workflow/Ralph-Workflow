@@ -235,17 +235,20 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# Required real-git files use a dedicated shard with eight xdist workers.
-# Each test owns a ``tmp_path``; eight workers on a 40-core host trim the
-# measured wall clock well under the 50 s make-test budget headroom that
-# the budget-tracked smoke step depends on. The 4-worker value it
+# Required real-git files use a dedicated shard with twelve xdist workers.
+# Each test owns a ``tmp_path``; twelve workers on a 40-core host trim
+# the measured wall clock well under the 50 s make-test budget headroom
+# that the budget-tracked smoke step depends on. The 4-worker value it
 # replaced cut the original 9.25 s to 4.46 s on a smaller E2E selection;
 # the 12x-grown E2E set now spends ~50 s at 4 workers and the gate
 # exhausts its 60 s combined budget before the smoke step completes. 8
 # workers halves the E2E shard wall clock without raising any test or
-# suite timeout, leaving enough headroom for the 14 s smoke step on the
-# maintained 40-core host under typical load.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
+# suite timeout, but 12 workers trim the E2E shard further on the
+# maintained 40-core host under typical load, leaving enough headroom
+# for the 14 s smoke step on the 60 s combined budget. The bumped
+# worker count is a runner-architecture change, not a budget-constant
+# change, and the cumulative tracker in ralph/verify.py is preserved.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "12"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_display_generated_scenes.py": 460,

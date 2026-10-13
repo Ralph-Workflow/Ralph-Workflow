@@ -25,96 +25,28 @@ from typing import Final
 
 # Schema versioning
 #
-# v3 (2026-08-08) changed the policy contract in TWO ways, and both bind
-# existing projects — ``_check_required_fact_keys`` derives its required set
-# live from the bundled starter, so a starter's fact lines are contract, not
-# content.
-#
-# 1. Two new REQUIRED headings carrying rules no other section can hold:
-#    "Suite admission" in the testing policy (which criteria become automated
-#    tests at all, and where the rest are verified instead) and "Gate lanes"
-#    in the verification policy (the declared home for a check that cannot
-#    meet the default gate's constraints).
-# 2. A revised RALPH-FACT key set in those two starters: testing gained
-#    parallel_execution_mechanism, slow_test_report_command,
-#    suite_test_count_command, assertion_quality_check,
-#    supported_platform_matrix, external_dependency_test_approach,
-#    clean_clone_setup_command, quarantine_mechanism_expiry_and_max_size and
-#    suite_review_cadence_and_owner; verification gained fast_path_command,
-#    fast_path_selection_mechanism, gate_parallelism_mechanism,
-#    gate_cache_mechanism_and_key and gate_duration_report_location.
-#    The project's named profiles are recorded ONCE, in verification's
-#    required_verification_profiles, so the two policies cannot drift.
-#
-# Consequence for an existing v2 project: it validates NOT READY until a
-# remediation pass resolves the new keys and adds the two headings, or the
-# pack is frozen at v2. That is the point of the marker bump — it forces the
-# upgrade-or-freeze consent gate rather than changing files under the user.
-#
-# v4 (backfill) — minor hardening only (the 60 s test-budget fence, the
-# fabrication guard).  No content-contract change for v3 projects; a
-# frozen-at-v3 pack keeps validating under v4 because every required
-# field and heading stayed the same.  The bump exists to carry the
-# test-budget invariant into the marker record so the audit can prove
-# the fence is policy, not convention.
-#
-# v5 (current) reframes the shipped policy as a small outcome-oriented
-# execution kernel plus evidence-backed, selectively applicable controls.
-# It is a major content change:
-#
-#   1. New mandatory core file ``execution-kernel.md`` carrying the five
-#      kernel rules (truthful evidence, fail-closed verification, bounded
-#      execution, no weakening of checks, explicit unverified-claim
-#      reporting), the precedence over domain policies, the
-#      selective-applicability rule, and the claim-scope rule.
-#   2. Every applicable starter (core and conditional) MUST carry a
-#      ``## Guard inventory`` section in the pinned markdown-table grammar
-#      (header ``| Guard | Owner | Protected outcome | Detected condition |
-#      Retirement trigger |``; one row per guard; five non-empty cells).
-#      A starter without the table — or with a malformed table — fails
-#      the validator with a stable RWP-INVENTORY:* finding.
-#   3. Portfolio schema bumped v1 -> v2: every control adds the required
-#      fields ``detects`` (the observable condition the detector actually
-#      reports) and ``retirement_trigger`` (when to retire the control).
-#      A control whose ``protected_outcome`` carries a broad-guarantee
-#      phrase that does NOT also appear in ``detects`` is rejected
-#      (claim-scope rule). Frozen v1 packs keep v1 validation so the
-#      user keeps the work; the upgrade-or-freeze gate forces a choice.
-#   4. Readiness reporting splits into three dimensions
-#      (structure_complete, implementation_verified,
-#      outcome_evidence_reviewed) on all four surfaces (CLI, status
-#      bar, AGENTS.md block, remediation prompt). Structural READY
-#      remains the cache gate; semantic correctness is now
-#      reported separately.
-#   5. Stale starter generations retired; the gate-script starter
-#      switches from prose-freeze to meaning-freeze (C3).
-#
-# Consequence for an existing v4 project: it validates NOT READY until
-# a remediation pass adopts v5, or the pack is frozen at v4 through the
-# existing upgrade-or-freeze consent gate (``_schema_upgrade.py``).
-# Frozen v4 packs are validated against the v4 required-file manifest
-# (the original eleven core files) — only files introduced AFTER v4
-# are exempt, never the existing core files, so a frozen v4 pack
-# missing ``security-policy.md`` stays NOT READY.
+#   ... (21 more lines)
+
+#   3. Portfolio schema bumped v1 -> v2: every control adds ``detects`` and
+#      ``retirement_trigger``; the claim-scope rule applies to the
+#   ... (10 more lines)
 SCHEMA_VERSION: Final[str] = "v5"
 POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v5 -->"
 POLICY_CONTRACT_VERSION: Final[str] = "2026-10-12.1"
 
-# Opt-out: byte-exact. The opt-out only fires on this exact substring of
-# AGENTS.md; near-miss prose, additional words, or any whitespace/case change
+# Opt-out: byte-exact. The opt-out only fires on this exact substring;
+# near-miss prose, additional words, or any whitespace/case change
 # is treated as a non-match so accidental prose cannot disable the capability.
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
 # Significance heuristic for a pre-existing, marker-free AGENTS.md. The run
 # preflight offers the interactive "skip inline policy" choice only when the
-# file is significant: it contains at least one markdown heading line (a line
-# starting with the prefix below) OR at least the threshold count of
-# non-empty lines. Deterministic line checks only — no NLP, no fuzzy match.
+#   ... (3 more lines)
 SIGNIFICANT_HEADING_PREFIX: Final[str] = "#"
 SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 
-# Managed instruction block in AGENTS.md. The block is bracketed by these two
-# markers so repeated preflights can detect a pre-existing block without
+# Managed instruction block in AGENTS.md, bracketed by these two markers
+# so repeated preflights can detect a pre-existing block without
 # re-appending it (idempotent bootstrap).
 AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
@@ -129,19 +61,9 @@ PORTFOLIO_SCHEMA_VERSION: Final[str] = "v2"
 AGENTS_MD: Final[str] = "AGENTS.md"
 CLAUDE_MD: Final[str] = "CLAUDE.md"
 
-# Core policy files (the twelve always-required for any software project).
-#
-# ``gate-script-policy.md`` is the odd one out: its requirement sections ship
-# COMPLETE as normative standard text rather than as a template to rewrite.
-# The remediation agent READS it and OBEYS it when it writes a gate script,
-# and resolves only its three facts and its one command. See the starter's
-# banner.
-#
-# ``execution-kernel.md`` is the v5 outcome-oriented execution kernel: it
-# holds the five kernel rules, the precedence over domain policies, the
-# selective-applicability rule, and the claim-scope rule. Every other
-# starter shrinks its ``## AI execution instructions`` to domain steps plus
-# a kernel pointer (B10). It is a required core file from v5 onward.
+# Core policy files (the twelve always-required for any software
+# project). ``gate-script-policy.md`` ships its requirement sections
+#   ... (9 more lines)
 CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "execution-kernel.md",
     "testing-policy.md",
@@ -158,14 +80,9 @@ CORE_POLICY_FILES: Final[tuple[str, ...]] = (
 )
 
 
-# Version-specific core-file manifest. The frozen-pack validator consults
-# this to decide which files are mandatory for a given schema version:
-# v4 requires the original eleven; v5 adds ``execution-kernel.md`` to
-# reach twelve. Files introduced AFTER a frozen version are exempt
-# from the missing-core check, but the original core files are NEVER
-# exempt — a frozen v4 pack missing ``security-policy.md`` stays
-# NOT READY. This is the only way the upgrade-or-freeze gate stays
-# honest about preserved controls.
+# Version-specific core-file manifest. v4 requires the original
+# eleven; v5 adds ``execution-kernel.md`` to reach twelve. Files
+#   ... (3 more lines)
 def core_files_for_version(v: str) -> tuple[str, ...]:
     """Return the core-file manifest for schema version ``v``.
 
@@ -183,6 +100,9 @@ def core_files_for_version(v: str) -> tuple[str, ...]:
     return CORE_POLICY_FILES
 
 
+# v4 manifest: the original eleven required core files. Used by the
+# frozen-pack validator so a frozen v4 pack missing a preserved core
+# file (e.g. security-policy.md) stays NOT READY.
 _V4_CORE_FILES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
@@ -197,9 +117,9 @@ _V4_CORE_FILES: Final[tuple[str, ...]] = (
     "architecture-policy.md",
 )
 
-# Conditional policy files keyed by their domain. Each conditional domain is
-# required only when its deterministic signal set (UI framework / CSS family /
-# app framework / router dep / perf signal / memory signal) matches the project.
+# Conditional policy files keyed by their domain. Each conditional
+# domain is required only when its deterministic signal set matches the
+# project (see ``CONDITIONAL_SIGNAL_PATHS`` for the per-domain signal list).
 CONDITIONAL_POLICY_FILES: Final[dict[str, str]] = {
     "design-system": "design-system-policy.md",
     "ux": "ux-policy.md",
@@ -246,18 +166,13 @@ CONDITIONAL_SIGNAL_PATHS: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
-# Required headings per policy file. Every starter AND every project-customized
-# policy must include the listed headings (case-insensitive match against H1/H2
-# lines). The verification policy additionally requires a "Bypass detection"
-# heading because lint/typecheck bypass detection is mandatory when the
-# selected tools permit such checks. The security policy additionally requires
-# a "Threat surfaces" heading because security requirements are app-type
-# specific (memory safety vs CSRF vs subprocess hygiene): the section that
-# enumerates the project's own surfaces must survive every amendment.
+# Required headings per policy file. Every starter AND every
+# project-customized policy must include the listed headings
+#   ... (6 more lines)
 REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     # The execution kernel (v5+) carries the five generic rules once
-    # (truthful evidence, fail-closed verification, bounded execution, no
-    # weakening of checks, explicit unverified-claim reporting), the
+    # (truthful evidence, fail-closed verification, bounded execution,
+    # no weakening of checks, explicit unverified-claim reporting), the
     # precedence over domain policies, the selective-applicability rule,
     # the claim-scope rule, and the guard inventory for kernel rules.
     "execution-kernel.md": (
@@ -277,8 +192,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     # that decides which acceptance criteria become automated tests at all.
     # Without it the policy is a one-way ratchet — every rule obliges MORE
     # coverage and none routes a perceptual, third-party, or unrepeatable
-    # criterion to the lane that actually owns it, so suites accrete tests
-    # that assert subjective judgments or depend on expiring credentials.
+    # criterion to the lane that actually owns it.
     "testing-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -333,8 +247,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     # home for a check that cannot meet the default gate's constraints (live
     # third-party service, device matrix, long soak). Without a lane that
     # demands an owner and a trigger, "wire it in or delete it" leaves such a
-    # check nowhere legitimate to live, so it lands in the default gate and
-    # charges its cost and its outages to every change.
+    # check nowhere legitimate to live, so it lands in the default gate.
     "verification-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -350,10 +263,10 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Ralph markers",
     ),
     # The gate-script policy additionally requires "Security" and
-    # "Cross-platform" headings: a gate script is an execution surface (secrets,
-    # remote code, temp files) and a portability surface (a bash-only gate on a
-    # Windows-supporting project is a broken gate). Both sections must survive
-    # every amendment.
+    # "Cross-platform" headings: a gate script is an execution surface
+    # (secrets, remote code, temp files) and a portability surface
+    # (a bash-only gate on a Windows-supporting project is a broken
+    # gate). Both sections must survive every amendment.
     "gate-script-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -559,65 +472,27 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
 }
 
 # Per-policy identifier prefix. Each canonical file must contain a
-# `<!-- ralph-policy-id: <filename> -->` line (exact-substring match); the
-# validator rejects any file that omits it or whose identifier does not match
-# its filename. There is NO completion marker: a policy file is complete
-# exactly when it carries no template banner, no REPLACE-ME comment, and no
-# placeholder token — completion is the absence of unresolved markers, never
-# a certification comment an agent writes.
+# `<!-- ralph-policy-id: <filename> -->` line (exact-substring match).
+#   ... (4 more lines)
 POLICY_ID_PREFIX: Final[str] = "<!-- ralph-policy-id:"
 
 # Machine-checkable field markers. The validator parses these as line-prefixed
 # facts so policy content can be checked deterministically (no prose NLP).
-#
-#   RALPH-FACT: <key>: <value>          A project-fact field that must be
-#                                       resolved with a real value (not a
-#                                       placeholder token).
-#   RALPH-COMMAND: <command>            A runnable verification command.
-#                                       Must be non-empty and contain no
-#                                       placeholder token.
-#   RALPH-INAPPLICABLE: <reason>        Explicit declaration that a check
-#                                       does not apply to this project; an
-#                                       alternative to RALPH-COMMAND.
-#   RALPH-PENDING: <target> (assumed    A DEFERRAL: the gate or fact applies
-#     <date>); review trigger: <cond>   but cannot be resolved yet (e.g. the
-#                                       tool is not installed, the scanner is
-#                                       not chosen, the fact is too young).
-#                                       Unlike RALPH-INAPPLICABLE (never
-#                                       applies) it reaches readiness so a
-#                                       new project is not blocked, and is
-#                                       resolved by dev-cycle agents when its
-#                                       review trigger fires — NEVER by
-#                                       re-running remediation. As a gate the
-#                                       first token must be an approved tool;
-#                                       as a fact value the RALPH-PENDING
-#                                       sentinel leads. Accepted on EVERY
-#                                       policy, including the mandatory
-#                                       testing/verification gates.
-#   RALPH-LANG: <Language>              Marks a per-language declaration in
-#                                       typecheck/lint starters; the line
-#                                       that follows must include a
-#                                       RALPH-COMMAND, RALPH-INAPPLICABLE, or
-#                                       RALPH-PENDING.
+#   ... (28 more lines)
 FACT_MARKER: Final[str] = "RALPH-FACT:"
 COMMAND_MARKER: Final[str] = "RALPH-COMMAND:"
 INAPPLICABLE_MARKER: Final[str] = "RALPH-INAPPLICABLE:"
 REVIEW_MARKER: Final[str] = "RALPH-REVIEW:"
 LANG_MARKER: Final[str] = "RALPH-LANG:"
-# Deferral marker. The line prefix (``PENDING_MARKER``) introduces a gate-form
-# deferral; the same token without the colon (``PENDING_SENTINEL``) leads a
-# deferred RALPH-FACT value. Deliberately NOT in ``PLACEHOLDER_TOKENS``: a
-# RALPH-PENDING line is a resolved deferral, not an unfilled placeholder, and
-# has its own shape checks (approved tool for the gate form, an ``(assumed
-# <ISO-date>)`` stamp, and a ``review trigger:`` clause).
+# Deferral marker. ``PENDING_MARKER`` (with colon) introduces a gate
+# deferral; ``PENDING_SENTINEL`` (no colon) leads a deferred RALPH-FACT
+#   ... (4 more lines)
 PENDING_MARKER: Final[str] = "RALPH-PENDING:"
 PENDING_SENTINEL: Final[str] = "RALPH-PENDING"
 
 # Tokens that mark a policy line or fact value as unresolved. The validator
 # rejects any policy containing any of these substrings. They are also embedded
-# in starter content so a freshly-seeded starter fails its own validation until
-# the remediation agent replaces them with verified project facts. Adding to
-# this tuple is the only way to forbid a new placeholder.
+#   ... (3 more lines)
 PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
     "TODO",
     "TBD",
@@ -635,35 +510,12 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
 
 # Every starter opens with a RALPH-STARTER-TEMPLATE banner comment that marks
 # the file as an unfilled template. The token is deliberately NOT in
-# PLACEHOLDER_TOKENS: the whole-file placeholder scan reports only the FIRST
-# token it finds, so the banner would be shadowed by PROJECT-FACT-UNRESOLVED
-# in a fresh starter. The dedicated validator check gives the banner its own
-# stable finding id and an actionable required_outcome, so the remediation
-# agent always sees "delete the banner" as an explicit step and a finished
-# policy file carries no template scaffolding.
+#   ... (6 more lines)
 STARTER_TEMPLATE_TOKEN: Final[str] = "RALPH-STARTER-TEMPLATE"
 
-# Approved gate tool executables. The validator checks every RALPH-COMMAND
-# value's first whitespace-separated token against this fixed allowlist. A
-# command whose first token is NOT in this set is rejected with a stable
-# RWP-CMD:* finding so the project cannot satisfy the "executable gate"
-# contract with arbitrary prose. The allowlist is the deterministic
-# machine-checkable command contract required by the analysis feedback:
-# it captures "verified project gate entry form" without consulting an AI.
-#
-# Rationale: the project already exposes well-known gate executables
-# (pytest, mypy, ruff, make, cargo, go, npm, etc.) — these are the only
-# ones whose presence proves the gate is runnable. Adding an entry here
-# expands the allowlist; removing one tightens it. The validator never
-# relies on path I/O to "verify the binary exists" — the executable name
-# being on the allowlist IS the form contract, mirroring how the policy
-# file's wording is checked structurally.
-#
-# Special cases:
-# * ``make`` is accepted with any target (including no target). The make
-#   program itself reports an unknown target at runtime; declaring
-#   ``make <target>`` is the documented gate form, not a contract we can
-#   verify without an AI.
+# Approved gate tool executables. The validator checks every
+# RALPH-COMMAND value's first whitespace-separated token against
+#   ... (11 more lines)
 APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
     {
         "make",
@@ -716,10 +568,9 @@ APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
     }
 )
 
-# Per-citation required fields. The validator parses the Research basis
-# section into per-source citation blocks and checks each block contains tokens
-# for every required field. "http" matches any URL scheme (the URL check is
-# structural, not scheme-specific).
+# Per-citation required fields. The validator parses the Research
+# basis section into per-source citation blocks and checks each block
+#   ... (2 more lines)
 CITATION_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
     "publisher",
     "title",
@@ -727,12 +578,9 @@ CITATION_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
     "review date",
 )
 
-# Conditional-domain signal sets. The evidence module uses these to decide
-# whether a domain-specific policy file is required for a project.
-#
-# UI framework names: matches the strings the language_detector emits for
-# detected frameworks. Adding to this tuple teaches the validator about a new
-# UI framework WITHOUT touching any prose rules.
+# Conditional-domain signal sets. The evidence module uses these to
+# decide whether a domain-specific policy file is required for a
+#   ... (3 more lines)
 UI_FRAMEWORK_SIGNALS: Final[frozenset[str]] = frozenset(
     {
         "React",
@@ -748,9 +596,8 @@ UI_FRAMEWORK_SIGNALS: Final[frozenset[str]] = frozenset(
     }
 )
 
-# CSS-family languages: a project whose secondary languages include any of
-# these triggers a design-system policy. CSS/SCSS/Sass/Less are detected by
-# the language detector via file extensions.
+# CSS-family languages: a project whose secondary languages include
+# any of these triggers a design-system policy.
 CSS_LANGUAGE_SIGNALS: Final[frozenset[str]] = frozenset({"CSS", "SCSS", "Sass", "Less"})
 
 # Stricter signal set for UX: only when the project uses a SPA-style app
@@ -771,8 +618,8 @@ UX_ROUTER_DEP_SIGNALS: Final[tuple[str, ...]] = (
     "@tanstack/router",
 )
 
-# Performance signal file paths (relative to workspace root). Existence of any
-# of these is the deterministic trigger that a performance policy is required.
+# Performance signal file paths (relative to workspace root). Existence
+# of any of these triggers a performance policy.
 PERF_SIGNAL_PATHS: Final[tuple[str, ...]] = (
     "performance-budget.json",
     "lighthouse-budget.json",
@@ -799,7 +646,6 @@ MEMORY_SIGNAL_PATHS: Final[tuple[str, ...]] = (
     "soak-tests/",
 )
 
-# Memory-usage dependency substrings.
 MEMORY_DEP_SIGNALS: Final[tuple[str, ...]] = (
     "memlab",
     "clinic",
@@ -807,15 +653,13 @@ MEMORY_DEP_SIGNALS: Final[tuple[str, ...]] = (
 )
 
 # Migration: a finite candidate inventory the validator inspects for
-# already-existing policy-like content. Every entry is a relative path scanned
-# on the workspace seam (NOT raw Path I/O). Adding a path here means "scan
-# this file for migration candidates on every preflight".
+# already-existing policy-like content. Every entry is a relative path
+# scanned on the workspace seam (NOT raw Path I/O).
 MIGRATION_CANDIDATE_PATHS: Final[tuple[str, ...]] = (
-    # AGENTS.md itself: user-authored policy-like sections in it must be
-    # INTEGRATED into the canonical dir (single source of truth), not left
-    # as a parallel rulebook next to the managed block. The managed block
-    # (placeholder or condensed) contains no headings, so bootstrap output
-    # alone never makes AGENTS.md a candidate.
+    # AGENTS.md: user-authored policy-like sections must be INTEGRATED
+    # into the canonical dir (single source of truth). The managed block
+    # contains no headings, so bootstrap output alone never makes it a
+    # candidate.
     "AGENTS.md",
     "CONTRIBUTING.md",
     "CONTRIBUTING.rst",
@@ -838,10 +682,9 @@ MIGRATION_CANDIDATE_PATHS: Final[tuple[str, ...]] = (
 # explicit candidate list. Files already under CANONICAL_DIR are skipped.
 MIGRATION_DOCS_GLOB_DIR: Final[str] = "docs"
 
-# Exact lowercased heading phrases that mark a doc as a migration candidate.
-# The scanner normalizes H1/H2 lines (strip leading hashes, trim whitespace,
-# lowercase) and looks for a recognizable phrase as a substring. Unrelated
-# mixed-purpose docs (no recognized heading) are never candidates.
+# Lowercased heading phrases that mark a doc as a migration candidate.
+# The scanner normalizes H1/H2 lines (strip leading hashes, trim
+#   ... (2 more lines)
 MIGRATION_HEADING_RECOGNIZERS: Final[tuple[str, ...]] = (
     "test policy",
     "testing policy",
@@ -858,27 +701,23 @@ MIGRATION_HEADING_RECOGNIZERS: Final[tuple[str, ...]] = (
 
 # Exact marker a migrated file embeds to declare itself resolved. The token
 # ``{target}`` is replaced with the destination canonical file name; an
-# RWP-MIGRATE-UNRECONCILED finding persists until the marker is present AND
-# the target file exists.
+#   ... (2 more lines)
 MIGRATED_MARKER_TEMPLATE: Final[str] = (
-    "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/{target} -->"
-)
+    "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/{target} -->")
 
 # The target-independent prefix of the migrated marker. `--redo-policy` strips
 # every line carrying it: the marker points at a canonical file the reset has
-# just deleted, so left in place it would tell the next remediation agent that a
-# legacy document was already reconciled into a file that no longer exists.
+#   ... (2 more lines)
 MIGRATED_MARKER_PREFIX: Final[str] = "<!-- ralph-workflow-policy:migrated ->"
 
-# Cache file path for the change-aware READY cache. Stored under .agent/tmp
-# so it travels with the workspace but stays out of source control.
+# Cache file path for the change-aware READY cache. Stored under
+# .agent/tmp so it travels with the workspace but stays out of source
+# control.
 CACHE_REL_PATH: Final[str] = ".agent/tmp/policy_readiness_cache.json"
 
-# Stable finding-id prefixes. The validator emits exactly one PolicyFinding
-# per (requirement, target); the requirement_id is one of these literal
-# prefixes concatenated with a stable suffix so the SAME id appears in the
-# deterministic validator, the remediation prompt, and the BLOCKED report.
-# External code (e.g. future migrations) can match on these prefixes safely.
+# Stable finding-id prefixes. The validator emits exactly one
+# PolicyFinding per (requirement, target); the requirement_id is one
+#   ... (3 more lines)
 ID_CORE_MISSING: Final[str] = "RWP-CORE"
 ID_CMD_UNUSABLE: Final[str] = "RWP-CMD"
 ID_LANG_COVERAGE: Final[str] = "RWP-LANG"
@@ -894,78 +733,56 @@ ID_MIGRATE: Final[str] = "RWP-MIGRATE-UNRECONCILED"
 ID_PORTFOLIO: Final[str] = "RWP-PORTFOLIO"
 ID_INVENTORY: Final[str] = "RWP-INVENTORY"
 
+# Stable v5 finding ids for the guard-inventory validator. The plan
+# freezes these identifiers so black-box tests can pin the v5 contract
+#   ... (4 more lines)
+CLAIM_SCOPE_MISSING_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MISSING"
+CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE"
+RATCHET_UNCOVERED_FINDING_ID: Final[str] = "RWP-INVENTORY:RATCHET-UNCOVERED"
+CONTROL_ORPHAN_FINDING_ID: Final[str] = "RWP-INVENTORY:CONTROL-ORPHAN"
+
 # Guard inventory grammar. Every applicable starter (core and conditional)
 # MUST carry a ``## Guard inventory`` section whose body is a markdown
-# table with the exact header below (case-insensitive match). The body is
-# a row-per-guard table with six non-empty cells. The validator parses
-# the table via :func:`ralph.project_policy._guard_inventory._parse_guard_inventory`
-# and emits a stable RWP-INVENTORY:* finding on a missing or malformed
-# table. The grammar is pinned here so the parser and the starters share
-# one source of truth. The sixth column ``Claim scope`` is the v5
-# outcome-oriented kernel's B7 requirement: every guard row MUST name
-# the narrow claim its detector actually supports, so a row's
-# ``Protected outcome`` cannot drift into a broad world-claim.
+#   ... (12 more lines)
 GUARD_INVENTORY_HEADING: Final[str] = "## Guard inventory"
 GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
     "Guard",
     "Owner",
     "Protected outcome",
     "Detected condition",
-    "Retirement trigger",
     "Claim scope",
+    "Retirement trigger",
 )
 
-# Body ratchet declaration: a sentence in a starter body that names a
-# project constraint whose value MUST NOT grow / MUST NOT increase
-# absent a reviewed change. The set of phrases is frozen in
-# :data:`RATCHET_DECLARATION_PHRASES`; the validator scans the body
-# of every applicable starter, excluding the Guard inventory table
-# itself and the "Maintenance triggers" / "Research basis" sections,
-# and applies the linkage grammar in
-# :mod:`ralph.project_policy._guard_inventory`. Each declared ratchet
-# MUST carry an inline ``<!-- ralph-control: <id> -->`` token placed at
-# the end of the declaring sentence, where ``<id>`` matches
-# :data:`CONTROL_ID_RE`. A backticked control id at the start of a
-# Guard cell is the covering row; an orphan id (no body declaration)
-# or a body declaration without a matching row is rejected.
-#
-# The grammar intentionally excludes the bare word ``ratchet`` (which
-# appears in shipped starters as a reference, e.g. "satisfy a ratchet
-# is a violation" in clean-code and linting) and uses the stronger
-# phrases that only appear in actual declarations:
-# ``ratcheted``, ``MUST NOT grow``, ``MUST NOT increase``, and the
-# section-style ``Ratchet:`` / ``ratchet:`` line-label that opens a
-# paragraph naming the constraint.
+#: Maximum number of sentences permitted in a guard row's ``Claim scope``
+#: cell. The plan freezes this at one: the cell names the narrow claim
+#: the detector actually supports, never a multi-clause narrative.
+#: Validated as a regex sentence-boundary split (period, exclamation,
+#: question mark, or line break). The constant is exported so the
+#: validator and the project-policy test fixtures share one source of
+#: truth.
+_GUARD_INVENTORY_CLAIM_SCOPE_MAX_SENTENCES: Final[int] = 1
+
+# Body ratchet declaration (B9): a sentence in a starter body that
+# names a project constraint whose value MUST NOT grow / MUST NOT
+#   ... (16 more lines)
 RATCHET_DECLARATION_PHRASES: Final[tuple[str, ...]] = (
     "ratcheted",
+    "ratchet",
     "MUST NOT grow",
     "MUST NOT increase",
-    "Ratchet:",
-    "ratchet:",
-    "**Ratchet:**",
 )
 
-# Grammar (frozen) for the inline control token that links a body
-# ratchet declaration to a Guard inventory row. The token is a
-# single-line HTML comment placed at the end of the declaring
-# sentence; the captured id is the lowercase kebab-case string after
-# the colon. A Guard cell whose text starts with a backticked id
-# `` `<id>` `` (same charset) names the covering row.
+# Grammar (frozen) for the inline control token. A single-line HTML
+# comment placed at the end of the declaring sentence; the captured id
+#   ... (2 more lines)
 CONTROL_TOKEN_RE: Final[str] = r"<!--\s*ralph-control:\s*([a-z0-9-]+)\s*-->"
 CONTROL_ID_RE: Final[str] = r"`([a-z0-9-]+)`"
 
 
-# Claim-scope rule (deterministic substring predicate). A guard-inventory
-# row is REJECTED when its ``Protected outcome`` cell carries any phrase
-# from this list that does NOT also appear in the same row's ``Detected
-# condition`` cell. The rule enforces the v5 outcome-oriented kernel
-# (B7): a broad guarantee (``dependency direction enforced``, ``security
-# guaranteed``, ``all inputs validated``) is a claim about the WORLD,
-# not about a detector, and is rejected unless the detector's
-# observation literally mentions the same phrase. The residual semantic
-# gap beyond substring matching is covered by the step-D human-review
-# rubric. The same predicate is applied to portfolio ``protected_outcome``
-# fields against portfolio ``detects`` fields.
+# Claim-scope rule (deterministic substring predicate). A guard row is
+# REJECTED when its ``Protected outcome`` (or new ``Claim scope``)
+#   ... (6 more lines)
 CLAIM_SCOPE_PHRASES: Final[tuple[str, ...]] = (
     "enforced",
     "guaranteed",
@@ -985,12 +802,15 @@ __all__ = [
     "CACHE_REL_PATH",
     "CANONICAL_DIR",
     "CITATION_REQUIRED_FIELDS",
+    "CLAIM_SCOPE_MISSING_FINDING_ID",
+    "CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID",
     "CLAIM_SCOPE_PHRASES",
     "CLAUDE_MD",
     "COMMAND_MARKER",
     "CONDITIONAL_POLICY_FILES",
     "CONDITIONAL_SIGNAL_PATHS",
     "CONTROL_ID_RE",
+    "CONTROL_ORPHAN_FINDING_ID",
     "CONTROL_TOKEN_RE",
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
@@ -1032,6 +852,7 @@ __all__ = [
     "PORTFOLIO_PATH",
     "PORTFOLIO_SCHEMA_VERSION",
     "RATCHET_DECLARATION_PHRASES",
+    "RATCHET_UNCOVERED_FINDING_ID",
     "REQUIRED_HEADINGS",
     "REVIEW_MARKER",
     "SCHEMA_VERSION",

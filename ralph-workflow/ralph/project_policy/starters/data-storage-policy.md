@@ -38,9 +38,9 @@ trigger, or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
-|---|---|---|---|--- |---|
-| Schema and data integrity  | Data-storage owner  | every schema change, migration, and data-validation rule has a named owner, a reversible change path, and a recorded evidence of the integrity check  | schema change is reviewed by the data-storage owner; migration has a recorded up / down; data-validation test is on the change  | when the project stops using a structured store  | schema change is reviewed by the data-storage owner |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
+|---|---|---|---|---|---|
+| Schema and data integrity | Data-storage owner | every schema change, migration, and data-validation rule has a named owner, a reversible change path, and a recorded evidence of the integrity check | schema change is reviewed by the data-storage owner; migration has a recorded up / down; data-validation test is on the change | schema change is reviewed by the data-storage owner | when the project stops using a structured store |
 
 ## Project facts to resolve
 

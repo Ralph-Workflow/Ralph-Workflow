@@ -1322,6 +1322,58 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.display",
             ("_palette",),
         ),
+        # v5 B7/B9 contract tests: each test exercises a private seam
+        # of the guard-inventory validator at the cheapest
+        # deterministic layer (synthetic in-memory starter content,
+        # no filesystem I/O, no AI). The v5 plan §3 freezes the
+        # contract that the public test surface pins; importing the
+        # private parser helper / private validator seam is the
+        # honest test boundary.
+        (
+            "tests/project_policy/test_guard_inventory_contract.py",
+            "ralph.project_policy._guard_inventory",
+            ("_check_guard_inventory",),
+        ),
+        (
+            "tests/project_policy/test_guard_inventory_contract.py",
+            "ralph.project_policy.validators",
+            ("_validate_existing_policy_file",),
+        ),
+        (
+            "tests/project_policy/test_claim_scope_guard_rows.py",
+            "ralph.project_policy._guard_inventory",
+            ("_check_guard_inventory",),
+        ),
+        (
+            "tests/project_policy/test_claim_scope_guard_rows.py",
+            "ralph.project_policy.validators",
+            ("_validate_existing_policy_file",),
+        ),
+        (
+            "tests/project_policy/test_claim_scope_column_sweep.py",
+            "ralph.project_policy._guard_inventory",
+            ("_parse_guard_inventory",),
+        ),
+        (
+            "tests/project_policy/test_typechecking_ratchet_inventory.py",
+            "ralph.project_policy._guard_inventory",
+            ("_check_guard_inventory",),
+        ),
+        (
+            "tests/project_policy/test_typechecking_ratchet_inventory.py",
+            "ralph.project_policy.validators",
+            ("_validate_existing_policy_file",),
+        ),
+        (
+            "tests/project_policy/test_verification_ratchet_inventory.py",
+            "ralph.project_policy._guard_inventory",
+            ("_check_guard_inventory", "_parse_guard_inventory"),
+        ),
+        (
+            "tests/project_policy/test_verification_ratchet_inventory.py",
+            "ralph.project_policy.validators",
+            ("_validate_existing_policy_file",),
+        ),
     }
 )
 
