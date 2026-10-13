@@ -139,14 +139,42 @@ def test_pair_5_security_secret_scanning_uses_credential_scanner() -> None:
     """Pair 5: security requires secret scanning with a
     credential scanner. The starter MUST NOT point at a non-
     scanner (e.g. a generic grep) as the secret-scanning
-    mechanism.
+    mechanism. Per the B11 product criteria, the failure mode is
+    "security's secret-scanning requirement satisfied by a
+    check that is not a credential scanner" — a check that names
+    "scanner" as a generic concept does NOT satisfy pair 5; the
+    requirement is falsifiable only when the starter names a
+    credential secret-pattern detector and binds it to the
+    secret-scanning mechanism, not just to a research-cited
+    example.
     """
     security = _read("security-policy.md")
     normalized = " ".join(security.split()).lower()
-    # The shipped starter lists real credential scanners in its
-    # RALPH-COMMAND set; the B11 anchor is that the command's
-    # first token is one of them, not a generic grep.
+    # (a) The starter names at least one real credential secret-
+    # pattern detector (gitleaks, detect-secrets, trufflehog,
+    # semgrep) — a generic grep, awk, or ripgrep would not pass.
     scanner_anchors = ("gitleaks", "detect-secrets", "trufflehog", "semgrep")
     assert any(scanner in normalized for scanner in scanner_anchors), (
-        "security starter does not anchor a real credential scanner; pair 5 cannot be satisfied"
+        "security starter does not name a credential secret-"
+        "pattern detector; B11 pair 5 cannot be satisfied by "
+        "keyword presence of 'scanner' alone"
+    )
+    # (b) The starter ties the scanner to the secret-scanning
+    # mechanism with a falsifiable requirement phrase — the
+    # check that is invoked MUST be a credential scanner, not a
+    # generic text search. Without this, the keyword anchor in
+    # (a) could be satisfied by a single REPLACE-ME example.
+    falsifiable_requirement_anchors = (
+        "real credential",
+        "credential / vulnerability scanner",
+        "credential/vulnerability scanner",
+        "credential scanner",
+        "secret scanner",
+        "scanner is runnable",
+    )
+    assert any(phrase in normalized for phrase in falsifiable_requirement_anchors), (
+        "security starter prose does not require a credential "
+        "scanner as the secret-scanning mechanism; the "
+        "requirement is keyword-anchored, not falsifiable — "
+        "B11 pair 5"
     )

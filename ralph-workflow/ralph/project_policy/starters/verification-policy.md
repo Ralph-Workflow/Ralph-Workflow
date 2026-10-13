@@ -272,7 +272,12 @@ An agent MUST NOT:
 
 * Add a "verification" command that does not exercise every default-gate
   check.
-* Weaken a gate to obtain a passing result.
+* Lower the recorded `verification_time_budget` below the project's
+  measured figure, narrow the default gate to skip a documented check,
+  or shrink a per-step timeout past the proven floor to make a slow
+  or failing run pass. The kernel's no-weakening rule (see
+  `execution-kernel.md` §Kernel rules 4) applies in full to every
+  verification-specific decision below.
 * Move a check into a profile, create a new check in a profile, or narrow
   the selected subset, to avoid a red result or a budget breach.
 * Rely on a cache or selection mechanism that can report success without

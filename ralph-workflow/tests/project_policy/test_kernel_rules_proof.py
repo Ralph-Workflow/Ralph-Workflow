@@ -197,22 +197,30 @@ def test_a2_process_resource_ownership_in_architecture_starter() -> None:
 def test_a2_deterministic_seams_in_testing_starter() -> None:
     """A2 protection (5): deterministic clock / network / DNS /
     filesystem / process seams are owned by the testing starter.
+    Every named seam MUST be present, not just one — DNS is
+    required alongside the four I/O seams.
     """
     content = _starter("testing-policy.md")
     normalized = " ".join(content.split()).lower()
-    # The testing starter names at least one deterministic seam
-    # in its body.
-    seam_words = ("clock", "network", "filesystem", "process")
-    assert any(w in normalized for w in seam_words), (
-        "testing starter does not name any deterministic seam"
+    # Every deterministic seam is required in the body, not any
+    # one. A starter that names only clock is not A2-compliant.
+    seam_words = ("clock", "network", "filesystem", "process", "dns")
+    missing = [w for w in seam_words if w not in normalized]
+    assert not missing, (
+        f"testing starter does not name every deterministic seam; "
+        f"missing: {missing!r}; A2 protection (5) requires all five"
     )
     rows = _parse_inventory("testing-policy.md")
     seam_rows = [
-        row for row in rows if any(w in row["protected_outcome"].lower() for w in seam_words)
+        row
+        for row in rows
+        if all(w in row["protected_outcome"].lower() for w in seam_words)
     ]
     assert seam_rows, (
-        "testing starter guard-inventory missing a deterministic "
-        "seam row; A2 protection (5) has no guard"
+        "testing starter guard-inventory missing a row whose "
+        "Protected outcome names every deterministic seam (clock, "
+        "network, filesystem, process, DNS); A2 protection (5) "
+        "has no guard"
     )
 
 
