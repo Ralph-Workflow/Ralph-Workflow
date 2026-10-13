@@ -109,6 +109,8 @@ def _staged_full_reindex(
                 options=inner_opts,
                 cancel=cancel,
             )
+            with suppress(Exception):
+                staging._conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
         finally:
             staging.close()
         if inner_result.status == "cancelled":

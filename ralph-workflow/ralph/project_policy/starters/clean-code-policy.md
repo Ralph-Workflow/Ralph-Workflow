@@ -49,7 +49,7 @@ code.
 | Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
 |---|---|---|---|---|
 | Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | when every private-call ratchet is retired |
-| Bounded premature abstraction | Clean-code owner | a one-implementation abstraction is premature | abstraction exists only when a second implementation exists or is imminent | when the project stops growing the abstraction target |
+| Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | when the project stops growing the abstraction target |
 
 ## Project facts to resolve
 

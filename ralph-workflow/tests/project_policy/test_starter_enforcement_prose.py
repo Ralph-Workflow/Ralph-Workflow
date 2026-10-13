@@ -224,3 +224,51 @@ def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
     assert "inactive conditional domain" in prompt
     assert "stricter" in prompt
     assert "RALPH-STARTER-TEMPLATE" in prompt
+
+
+def test_clean_code_and_architecture_agree_on_abstraction_justification() -> None:
+    """Clean-code and architecture starters must agree that implementation count
+    alone neither requires nor forbids abstraction, and that abstraction is
+    justified by demonstrated boundary, volatility, testing, or reuse value
+    rather than a second implementation count proxy.
+    """
+    clean_code = starters.read_starter("clean-code-policy.md")
+    architecture = starters.read_starter("architecture-policy.md")
+    cc_norm = " ".join(clean_code.split())
+    arch_norm = " ".join(architecture.split())
+
+    # Both starters must agree that implementation count alone neither requires nor forbids abstraction.
+    assert "implementation count alone neither requires nor forbids" in cc_norm
+    assert "implementation count alone neither requires nor forbids" in arch_norm
+
+    # Both starters must justify abstraction by demonstrated boundary, volatility, testing, or reuse.
+    assert "demonstrated boundary, volatility, testing, or reuse value" in cc_norm
+    assert "demonstrated boundary, volatility, testing, or reuse need" in arch_norm
+
+    # Neither starter may use a second-implementation proxy or label a single implementation inherently premature.
+    for text, name in (
+        (clean_code, "clean-code-policy.md"),
+        (architecture, "architecture-policy.md"),
+    ):
+        assert "second implementation" not in text.lower(), (
+            f"{name} must not use a second-implementation proxy for abstraction"
+        )
+        assert "one-implementation abstraction is premature" not in text.lower(), (
+            f"{name} must not declare a one-implementation abstraction inherently premature"
+        )
+
+    # Clean-code guard inventory must align with demonstrated value, not second implementation.
+    abstraction_rows = [
+        line
+        for line in clean_code.splitlines()
+        if "abstraction" in line.lower() and line.strip().startswith("|")
+    ]
+    assert abstraction_rows, "clean-code guard inventory must have an abstraction guard row"
+    for line in abstraction_rows:
+        line_lower = line.lower()
+        assert "second implementation" not in line_lower, (
+            "clean-code abstraction guard row must not use a second-implementation proxy"
+        )
+        assert "demonstrated boundary, volatility, testing, or reuse" in line_lower, (
+            "clean-code abstraction guard row must justify abstraction by demonstrated value"
+        )

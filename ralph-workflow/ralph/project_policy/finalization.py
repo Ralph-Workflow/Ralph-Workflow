@@ -64,7 +64,15 @@ def commit_policy_changes(
     workspace_scope: WorkspaceScope,
     pre_run_dirty: frozenset[str] | None,
 ) -> None:
-    """Commit generated policy files while preserving paths dirty before the run."""
+    """Commit dirty policy surfaces to git after policy finalization.
+
+    Convenience wrapper around :func:`auto_commit_policy_changes` conforming
+    to the :data:`PolicyCommit` callable signature.
+
+    Args:
+        workspace_scope: Scope of the target workspace for git operations.
+        pre_run_dirty: Set of paths dirty before the run, excluded from auto-commit.
+    """
     auto_commit_policy_changes(workspace_scope, pre_run_dirty)
 
 

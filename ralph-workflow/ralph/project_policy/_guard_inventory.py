@@ -24,109 +24,55 @@ import re
 from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
 
-_GUARD_INVENTORY_HEADER_RE = re.compile(r"^\|\s*([A-Za-z ]+?)\s*\|$")
+_MIN_TABLE_ROW_LENGTH = 2
+_MIN_TABLE_LINES = 3
 
 
-def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
-    """Parse the ``## Guard inventory`` table from a starter / project policy.
+def _split_table_row(line: str) -> list[str] | None:
+    """Split a markdown table row into cells, requiring balanced pipes.
 
-    Returns one dict per data row, with the five canonical keys
-    (``guard``, ``owner``, ``protected_outcome``, ``detected_condition``,
-    ``retirement_trigger``) lowercased to canonical form. The header
-    row is matched case-insensitively against
-    :data:`markers.GUARD_INVENTORY_HEADER`; the leading and trailing
-    pipe are stripped and any escape sequence (``\\|``) is unescaped.
-    The function returns an empty list when the section is missing,
-    when the table has no header, or when the header doesn't match —
-    the caller emits a single RWP-INVENTORY:* finding rather than
-    per-row findings in those cases, because the whole table is
-    broken and partial findings would mislead remediation.
+    A leading pipe and unescaped trailing pipe are strictly required.
+    Backslash-pipe (``\\|``) is preserved as a literal pipe in the cell value.
+    If the row lacks a leading pipe or a trailing unescaped pipe, returns
+    ``None``. Empty cells (``||``) become empty strings; whitespace-only
+    cells are returned as whitespace strings so caller can flag empty-cell
+    violations.
     """
-    lines = content.splitlines()
-    try:
-        start = lines.index(markers.GUARD_INVENTORY_HEADING)
-    except ValueError:
-        return []
-    # Collect every consecutive line that looks like a table row
-    # (starts with ``|``); the first such line is the header, the next
-    # is a markdown table separator (which we skip), and the rest are
-    # data rows. We stop as soon as we leave the table (a non-``|`` line
-    # after at least one data row has been collected).
-    rows: list[list[str]] = []
-    saw_data = False
-    for line in lines[start + 1 :]:
-        if not line.lstrip().startswith("|"):
-            if saw_data:
-                break  # left the table
-            continue
-        if _is_table_separator(line):
-            continue  # skip the separator row
-        cells = _split_table_row(line)
-        rows.append(cells)
-        saw_data = True
-    if not rows:
-        return []
-    # First row is the header; the canonical headers must match.
-    header_cells = [c.strip().lower() for c in rows[0]]
-    canonical = [h.lower() for h in markers.GUARD_INVENTORY_HEADER]
-    if header_cells != canonical:
-        return []
-    out: list[dict[str, str]] = []
-    for cells in rows[1:]:
-        if len(cells) != len(canonical):
-            return []  # malformed (off-by-one in cells); treat whole table as broken
-        # Unescape backslash-pipe in cells.
-        unescaped = [c.replace("\\|", "|") for c in cells]
-        out.append(
-            {
-                "guard": unescaped[0].strip(),
-                "owner": unescaped[1].strip(),
-                "protected_outcome": unescaped[2].strip(),
-                "detected_condition": unescaped[3].strip(),
-                "retirement_trigger": unescaped[4].strip(),
-            }
-        )
-    return out
-
-
-def _is_table_separator(line: str) -> bool:
-    """Return True when ``line`` is a markdown table separator (a row of
-    pipes, dashes, and optional colons)."""
     stripped = line.strip()
-    if not stripped.startswith("|") or not stripped.endswith("|"):
-        return False
+    if (
+        len(stripped) < _MIN_TABLE_ROW_LENGTH
+        or not stripped.startswith("|")
+        or not stripped.endswith("|")
+    ):
+        return None
+    # Check that trailing pipe is not escaped by an odd number of backslashes.
+    num_backslashes = 0
+    k = len(stripped) - 2
+    while k >= 0 and stripped[k] == "\\":
+        num_backslashes += 1
+        k -= 1
+    if num_backslashes % 2 == 1:
+        return None
+
     inner = stripped[1:-1]
-    for raw_cell in inner.split("|"):
-        stripped_cell = raw_cell.strip()
-        if not stripped_cell:
-            return False
-        if not re.fullmatch(r":?-+:?|\s*", stripped_cell):
-            return False
-    return True
-
-
-def _split_table_row(line: str) -> list[str]:
-    """Split a markdown table row into cells, preserving escaped pipes.
-
-    A leading and trailing pipe are stripped; backslash-pipe is
-    preserved as a literal pipe in the cell value. Empty cells
-    (``||``) become empty strings; whitespace-only cells are returned
-    as-is so the caller can flag the empty-cell contract violation
-    separately from the table-shape violation.
-    """
-    stripped = line.strip()
-    if stripped.startswith("|"):
-        stripped = stripped[1:]
-    if stripped.endswith("|"):
-        stripped = stripped[:-1]
     cells: list[str] = []
     current: list[str] = []
     i = 0
-    while i < len(stripped):
-        ch = stripped[i]
-        if ch == "\\" and i + 1 < len(stripped) and stripped[i + 1] == "|":
-            current.append("|")
-            i += 2
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "\\":
+            if i + 1 < len(inner):
+                next_ch = inner[i + 1]
+                if next_ch == "\\":
+                    current.append("\\")
+                    i += 2
+                    continue
+                if next_ch == "|":
+                    current.append("|")
+                    i += 2
+                    continue
+            current.append(ch)
+            i += 1
             continue
         if ch == "|":
             cells.append("".join(current))
@@ -137,6 +83,109 @@ def _split_table_row(line: str) -> list[str]:
         i += 1
     cells.append("".join(current))
     return cells
+
+
+def _is_table_separator(line: str, expected_columns: int = 5) -> bool:
+    """Return True when ``line`` is a markdown table separator (a row of
+    pipes, dashes, and optional colons) with exactly ``expected_columns`` cells."""
+    stripped = line.strip()
+    if (
+        len(stripped) < _MIN_TABLE_ROW_LENGTH
+        or not stripped.startswith("|")
+        or not stripped.endswith("|")
+    ):
+        return False
+    num_backslashes = 0
+    k = len(stripped) - 2
+    while k >= 0 and stripped[k] == "\\":
+        num_backslashes += 1
+        k -= 1
+    if num_backslashes % 2 == 1:
+        return False
+    inner = stripped[1:-1]
+    cells = inner.split("|")
+    if len(cells) != expected_columns:
+        return False
+    for raw_cell in cells:
+        stripped_cell = raw_cell.strip()
+        if not stripped_cell:
+            return False
+        if not re.fullmatch(r":?-+:?", stripped_cell):
+            return False
+    return True
+
+
+def _extract_table_lines(content: str) -> list[str] | None:
+    """Extract consecutive non-empty lines from the guard inventory section."""
+    lines = content.splitlines()
+    start = -1
+    for idx, line in enumerate(lines):
+        if line.strip() == markers.GUARD_INVENTORY_HEADING:
+            start = idx
+            break
+    if start == -1:
+        return None
+
+    section_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.lstrip().startswith("#"):
+            break
+        section_lines.append(line)
+
+    table_lines = [line.strip() for line in section_lines if line.strip()]
+    if len(table_lines) < _MIN_TABLE_LINES:
+        return None
+    return table_lines
+
+
+def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
+    """Parse the ``## Guard inventory`` table from a starter / project policy.
+
+    Returns one dict per data row, with the five canonical keys
+    (``guard``, ``owner``, ``protected_outcome``, ``detected_condition``,
+    ``retirement_trigger``) lowercased to canonical form. The header
+    row is matched case-insensitively against
+    :data:`markers.GUARD_INVENTORY_HEADER`; leading and trailing pipes
+    are required, and pipes must be balanced.
+    The function returns an empty list when the section is missing,
+    when the table has no header, when the header doesn't match,
+    when separators or trailing/leading pipes are missing, or when
+    any row is malformed — the caller emits a single RWP-INVENTORY:*
+    finding in those cases so malformed tables fail closed.
+    """
+    table_lines = _extract_table_lines(content)
+    if table_lines is None:
+        return []
+
+    canonical = [h.lower() for h in markers.GUARD_INVENTORY_HEADER]
+
+    # 1. Header row & 2. Separator row
+    header_cells = _split_table_row(table_lines[0])
+    valid_header = (
+        header_cells is not None
+        and len(header_cells) == len(canonical)
+        and [c.strip().lower() for c in header_cells] == canonical
+    )
+    valid_sep = _is_table_separator(table_lines[1], expected_columns=len(canonical))
+    if not (valid_header and valid_sep):
+        return []
+
+    # 3. Data rows: each must have leading/trailing pipe and balanced 5 columns
+    out: list[dict[str, str]] = []
+    for line in table_lines[2:]:
+        cells = _split_table_row(line)
+        if cells is None or len(cells) != len(canonical):
+            return []  # malformed row; fail closed for whole table
+        out.append(
+            {
+                "guard": cells[0].strip(),
+                "owner": cells[1].strip(),
+                "protected_outcome": cells[2].strip(),
+                "detected_condition": cells[3].strip(),
+                "retirement_trigger": cells[4].strip(),
+            }
+        )
+    return out
 
 
 def _starts_with_heading(content: str, heading: str) -> bool:

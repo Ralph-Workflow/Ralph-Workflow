@@ -284,7 +284,6 @@ def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[st
 
     Returns the list of newly-created starter paths.
     """
-    seeded: list[str] = []
     frozen = any(
         workspace.exists(path) and "<!-- ralph-policy-schema: freeze " in workspace.read(path)
         for path in (
@@ -292,7 +291,10 @@ def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[st
             for name in (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
         )
     )
-    if not frozen and starters.seed_starter_into(workspace, starters.PORTFOLIO_STARTER_NAME):
+    if frozen:
+        return []
+    seeded: list[str] = []
+    if starters.seed_starter_into(workspace, starters.PORTFOLIO_STARTER_NAME):
         seeded.append(markers.PORTFOLIO_PATH)
     seeded.extend(
         f"{markers.CANONICAL_DIR}{name}"

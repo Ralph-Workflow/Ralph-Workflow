@@ -17,7 +17,7 @@ operational phase with its own timebox.
 ## Task set (balanced)
 
 The replay runs the same balanced task set on every paired
-replicate, balanced across the five categories that the v4
+replicate, balanced across the six categories that the v4
 research (Expeditions-Core) flagged as the ones policy reliably
 moved and ones it failed to move:
 
@@ -30,7 +30,7 @@ moved and ones it failed to move:
 | **Security-sensitive** | add a privileged operation, a tenant-scope boundary, a destructive op | security starter; authorization / tenant / scope rules; destructive-operation safety (A2) |
 | **Browser-sensitive** | add or modify a browser-driven journey (a click flow that genuinely needs a real browser, not a unit-testable contract) | the v5 B5 distinct-risk rule, the B5 admission experiment (cost-neutral offset below the budget), the per-journey distinct-risk justification, the measured `browser_budget_seconds` |
 
-The set is fixed: every replicate sees the same five tasks in the
+The set is fixed: every replicate sees the same six tasks in the
 same order with the same starting tree (the pre-change snapshot).
 
 ## Held constants
@@ -73,9 +73,9 @@ statistics (mean, median, range, per-category delta) and a
 qualitative rubric; a per-category significance claim requires
 either n >= 10 paired observations or a non-parametric
 test (Wilcoxon signed-rank) reported with its p-value, effect
-size, and confidence interval. The minimum total is 3 * 5 * 2
-= **30 runs**; the recommended floor is **5 runs per pack per
-category** (50 runs) when the project has the budget.
+size, and confidence interval. The minimum total is 6 * 3 * 2
+= **36 runs**; the recommended floor is **5 runs per pack per
+category** (6 * 5 * 2 = 60 runs) when the project has the budget.
 
 The runs are independent; **a run that crashes or times out
 counts as a failure on the pack that caused it, not a sample to

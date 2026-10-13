@@ -23,6 +23,8 @@ from ralph.project_policy.markers import (
 )
 from ralph.project_policy.models import PortfolioError
 
+SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS: Final[frozenset[str]] = frozenset({"v1", "v2"})
+
 MAX_PORTFOLIO_BYTES: Final[int] = 65_536
 MAX_CONTROLS: Final[int] = 64
 MAX_PROFILES: Final[int] = 16
@@ -313,13 +315,19 @@ def _parse_controls(
     root: Mapping[str, object],
     lane_ids: frozenset[str],
     *,
+    schema_version: str = PORTFOLIO_SCHEMA_VERSION,
     workspace_exists: Callable[[str], bool] | None = None,
 ) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
+    required_fields = (
+        _REQUIRED_CONTROL - {"detects", "retirement_trigger"}
+        if schema_version == "v1"
+        else _REQUIRED_CONTROL
+    )
     for table in _table_list(root, "controls", MAX_CONTROLS):
         _reject_unknown(table, _ALLOWED_CONTROL, "control")
-        missing = sorted(_REQUIRED_CONTROL - set(table))
+        missing = sorted(required_fields - set(table))
         if missing:
             raise _error(f"control requires field: {missing[0]}")
         control_id = _text(table, "id", "control")
@@ -358,14 +366,17 @@ def _parse_controls(
         cost_basis_raw = table.get("cost_basis")
         if not isinstance(cost_basis_raw, str) or cost_basis_raw not in _ALLOWED_COST_BASIS:
             raise _error(f"control {control_id} requires cost_basis = 'measured' or 'estimate'")
-        # v2 required fields. ``detects`` and ``retirement_trigger`` are
-        # mandatory on every v2 control; missing or empty values fail the
-        # parse closed.
-        detects = _text(table, "detects", f"control {control_id}")
-        retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
-        # Claim-scope rule (B7). Apply the deterministic substring
-        # predicate against the new required fields.
-        _check_claim_scope(control_id, outcome, detects)
+        if schema_version == "v1":
+            detects_val = table.get("detects")
+            detects = str(detects_val).strip() if isinstance(detects_val, str) else ""
+            retire_val = table.get("retirement_trigger")
+            retirement_trigger = str(retire_val).strip() if isinstance(retire_val, str) else ""
+        else:
+            detects = _text(table, "detects", f"control {control_id}")
+            retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
+            # Claim-scope rule (B7). Apply the deterministic substring
+            # predicate against the new required fields.
+            _check_claim_scope(control_id, outcome, detects)
         controls[control_id] = _Control(
             id=control_id,
             protected_outcome=outcome,
@@ -516,6 +527,7 @@ def parse_portfolio_toml(
     *,
     today: date | None = None,
     workspace_exists: Callable[[str], bool] | None = None,
+    expected_schema_version: str | None = None,
 ) -> PolicyPortfolio:
     """Parse, validate, and deterministically compose one portfolio manifest.
 
@@ -534,8 +546,15 @@ def parse_portfolio_toml(
     except ValueError as exc:
         raise _error(f"invalid portfolio TOML: {exc}") from exc
     _reject_unknown(root, _ALLOWED_ROOT, "root")
-    if root.get("schema_version") != PORTFOLIO_SCHEMA_VERSION:
-        raise _error(f"schema_version must be {PORTFOLIO_SCHEMA_VERSION}")
+    actual_version = root.get("schema_version")
+    if expected_schema_version is not None:
+        if actual_version != expected_schema_version:
+            raise _error(f"schema_version must be {expected_schema_version}")
+        schema_version = expected_schema_version
+    else:
+        if actual_version not in SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS:
+            raise _error(f"schema_version must be {PORTFOLIO_SCHEMA_VERSION}")
+        schema_version = actual_version
     budget = root.get("default_budget_seconds")
     if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
         raise _error("default_budget_seconds must be positive")
@@ -545,6 +564,7 @@ def parse_portfolio_toml(
     controls = _parse_controls(
         root,
         frozenset(lane.id for lane in lanes),
+        schema_version=schema_version,
         workspace_exists=workspace_exists,
     )
     profiles = _parse_profiles(root)
@@ -568,7 +588,7 @@ def parse_portfolio_toml(
             f"aggregate default budget overflow: {default_cost:g}s exceeds {float(budget):g}s"
         )
     return PolicyPortfolio(
-        schema_version=PORTFOLIO_SCHEMA_VERSION,
+        schema_version=schema_version,
         context=context_tuple,
         selected_profiles=selected_profiles,
         lanes=lanes,
@@ -588,6 +608,7 @@ __all__ = [
     "MAX_PROFILES",
     "PORTFOLIO_PATH",
     "PORTFOLIO_SCHEMA_VERSION",
+    "SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS",
     "PolicyPortfolio",
     "parse_portfolio_toml",
 ]

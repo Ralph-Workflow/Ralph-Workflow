@@ -42,6 +42,21 @@ def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
     return results
 
 
+def _find_failure_classifier_construction_sites() -> list[pathlib.Path]:
+    hits: list[pathlib.Path] = []
+    for path in _walk_python_files(RALPH_ROOT):
+        if b"FailureClassifier(" in path.read_bytes():
+            hits.append(path)
+    return hits
+
+
+# Pre-populate sites at module import time so file I/O does not exceed
+# the per-test 1.0s SIGALRM cap under loaded multi-shard runs.
+_FAILURE_CLASSIFIER_CONSTRUCTION_SITES: tuple[pathlib.Path, ...] = tuple(
+    _find_failure_classifier_construction_sites()
+)
+
+
 # ---------------------------------------------------------------------------
 # Surface (i) — recovery class construction
 # ---------------------------------------------------------------------------
@@ -60,9 +75,7 @@ class TestFailureClassifierSingleOwner:
             pathlib.Path("ralph/pipeline/agent_retry_decision.py"),
         }
         offenders: list[str] = []
-        for path in _walk_python_files(RALPH_ROOT):
-            if b"FailureClassifier(" not in path.read_bytes():
-                continue
+        for path in _FAILURE_CLASSIFIER_CONSTRUCTION_SITES:
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel not in allowed_relative:
                 offenders.append(str(rel))
@@ -158,6 +171,22 @@ class TestRecoveryCycleCapOwner:
         assert "_cycle_cap" in source or "max_recovery_cycles" in source or "cycle_cap" in source
 
 
+def _find_backoff_candidate_files() -> list[tuple[pathlib.Path, bytes]]:
+    hits: list[tuple[pathlib.Path, bytes]] = []
+    for path in _walk_python_files(RALPH_ROOT):
+        raw = path.read_bytes()
+        if b"compute_backoff" in raw or b"backoff_ms" in raw:
+            hits.append((path, raw))
+    return hits
+
+
+# Pre-populate candidate files at module import time so file I/O does not
+# exceed the per-test 1.0s SIGALRM cap under loaded multi-shard runs.
+_RECOVERY_BACKOFF_CANDIDATE_FILES: tuple[tuple[pathlib.Path, bytes], ...] = tuple(
+    _find_backoff_candidate_files()
+)
+
+
 # ---------------------------------------------------------------------------
 # Surface (i — backoff) — recovery controller owns the backoff computation
 # ---------------------------------------------------------------------------
@@ -170,10 +199,7 @@ class TestRecoveryControllerOwnsBackoff:
 
     def test_recovery_controller_owns_backoff(self) -> None:
         offenders: list[str] = []
-        for path in _walk_python_files(RALPH_ROOT):
-            raw = path.read_bytes()
-            if b"compute_backoff" not in raw and b"backoff_ms" not in raw:
-                continue
+        for path, raw in _RECOVERY_BACKOFF_CANDIDATE_FILES:
             tree = ast.parse(raw)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.FunctionDef):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import _content_checks, markers, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
@@ -956,3 +958,33 @@ def test_invalid_portfolio_blocks_readiness_with_protected_outcome() -> None:
     assert finding.path == markers.PORTFOLIO_PATH
     assert "protected outcomes" in finding.required_outcome
     assert "schema_version" in finding.missing_evidence
+
+
+_GI_H = "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |"
+_GI_S = "|---|---|---|---|---|"
+_GI_R = "| g | o | p | d | r |"
+
+
+@pytest.mark.parametrize(
+    ("table_body", "expected_suffix"),
+    [
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | extra |", "malformed"),
+        (f"{_GI_H}\n{_GI_R}", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r", "malformed"),
+        (f"{_GI_H[:-1]}\n{_GI_S}\n{_GI_R}", "malformed"),
+        (f"{_GI_H}\n|---|---|---|---|---\n{_GI_R}", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\ng | o | p | d | r |", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g |  | p | d | r |", "row-1:empty-owner"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  |", "row-1:empty-retirement_trigger"),
+    ],
+)
+def test_guard_inventory_pipe_grammar_and_empty_fields(
+    table_body: str, expected_suffix: str
+) -> None:
+    content = f"## Guard inventory\n\n{table_body}\n"
+    findings = _content_checks._check_guard_inventory(
+        content, "docs/ralph-workflow-policy/testing-policy.md", "testing-policy.md"
+    )
+    expected_id = f"{markers.ID_INVENTORY}:testing-policy.md:{expected_suffix}"
+    assert any(f.requirement_id == expected_id for f in findings)

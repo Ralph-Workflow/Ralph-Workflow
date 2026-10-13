@@ -581,19 +581,26 @@ def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
     return findings
 
 
-def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
+def _is_unfrozen_v5_pack(workspace: Workspace, frozen_version: str | None) -> bool:
+    """Return True if workspace represents an active, unfrozen v5 policy pack."""
+    if frozen_version is not None:
+        return False
+    if workspace.exists(f"{markers.CANONICAL_DIR}execution-kernel.md"):
+        return True
+    for name in markers.CORE_POLICY_FILES:
+        path = f"{markers.CANONICAL_DIR}{name}"
+        if workspace.exists(path) and markers.POLICY_SCHEMA_MARKER in workspace.read(path):
+            return True
+    return False
+
+
+def _check_portfolio(
+    workspace: Workspace,
+    *,
+    frozen_version: str | None = None,
+) -> list[PolicyFinding]:
     """Require a valid bounded portfolio manifest."""
     path = markers.PORTFOLIO_PATH
-    frozen_paths = (
-        f"{markers.CANONICAL_DIR}{name}"
-        for name in (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
-    )
-    if any(
-        workspace.exists(policy_path)
-        and _frozen_schema_version(workspace.read(policy_path)) is not None
-        for policy_path in frozen_paths
-    ):
-        return []
     if not workspace.exists(path):
         return [
             PolicyFinding(
@@ -606,8 +613,29 @@ def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
                 ),
             )
         ]
+    content = workspace.read(path)
+    if frozen_version is None:
+        frozen_version = _detect_frozen_version(workspace)
+
+    is_frozen_v4 = frozen_version == "v4"
+    has_v1_marker = bool(re.search(r'schema_version\s*=\s*["\']v1["\']', content))
+    unfrozen_v5 = _is_unfrozen_v5_pack(workspace, frozen_version)
+
+    if unfrozen_v5:
+        expected_version = "v2"
+    elif is_frozen_v4 or has_v1_marker:
+        expected_version = (
+            "v2" if re.search(r'schema_version\s*=\s*["\']v2["\']', content) else "v1"
+        )
+    else:
+        expected_version = "v2"
+
     try:
-        parse_portfolio_toml(workspace.read(path), workspace_exists=workspace.exists)
+        parse_portfolio_toml(
+            content,
+            workspace_exists=workspace.exists,
+            expected_schema_version=expected_version,
+        )
     except PortfolioError as exc:
         return [
             PolicyFinding(
@@ -624,9 +652,9 @@ def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
 
 
 def _detect_frozen_version(workspace: Workspace) -> str | None:
-    """Return the frozen schema version across the canonical core files.
+    """Return the frozen schema version across the canonical policy files.
 
-    Walks every core file in the current manifest and returns the
+    Walks every core and conditional file in the current manifest and returns the
     highest ``freeze vN`` marker it finds (or ``None`` when no file
     is frozen). The validator uses this to switch the manifest a
     frozen pack is validated against: a v4-frozen pack is checked
@@ -634,20 +662,16 @@ def _detect_frozen_version(workspace: Workspace) -> str | None:
     own frozen schema.
     """
     highest: str | None = None
-    for filename in markers.CORE_POLICY_FILES:
+    all_files = (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
+    for filename in all_files:
         path = f"{markers.CANONICAL_DIR}{filename}"
         if not workspace.exists(path):
             continue
-        content = workspace.read(path)
-        first_line = next(
-            (line for line in content.splitlines() if line.strip()),
-            "",
-        )
-        match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v(\d+) -->", first_line)
-        if match is None:
+        v_num = _frozen_schema_version(workspace.read(path))
+        if v_num is None:
             continue
-        version = f"v{match.group(1)}"
-        if highest is None or int(version[1:]) > int(highest[1:]):
+        version = f"v{v_num}"
+        if highest is None or v_num > int(highest[1:]):
             highest = version
     return highest
 
@@ -672,11 +696,11 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     findings: list[PolicyFinding] = []
     findings.extend(_check_agents_md(workspace))
     findings.extend(_check_claude_md(workspace))
-    findings.extend(_check_portfolio(workspace))
+    frozen_version = _detect_frozen_version(workspace)
+    findings.extend(_check_portfolio(workspace, frozen_version=frozen_version))
     # Manifest selection: a frozen pack is validated against its own
     # version's manifest. An unfrozen pack (or a fresh v5 pack) uses
     # the current CORE_POLICY_FILES.
-    frozen_version = _detect_frozen_version(workspace)
     core_manifest = (
         markers.core_files_for_version(frozen_version)
         if frozen_version is not None
