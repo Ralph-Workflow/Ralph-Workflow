@@ -384,3 +384,4 @@ ralph-workflow/.opencode/
 .agent/ralph-explore/
 ralph-workflow/pytest-of-*/
 .omo/*
+ralph-workflow/ralph/project_policy/agents_md.py

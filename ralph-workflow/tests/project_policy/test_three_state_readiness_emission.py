@@ -319,6 +319,81 @@ def test_agents_md_condense_reports_dimension_values() -> None:
     assert "outcome evidence reviewed=unknown" in content2
 
 
+def test_agents_md_condense_refreshes_dimensions_after_first_call() -> None:
+    """Subsequent condense calls refresh the three readiness dimensions.
+
+    Reproduces the v5 readiness refresh regression: after a first
+    condense with all-true dimensions, a later assessment that flips
+    implementation_verified and outcome_evidence_reviewed to false
+    must update the on-disk block; previously the second call was a
+    no-op because the placeholder sentinel had already been removed.
+    """
+    ws = MemoryWorkspace()
+    ws.write(markers.AGENTS_MD, "# User intro\n")
+    agents_md.bootstrap(ws)
+
+    # First condense: all true.
+    first = agents_md.condense_placeholder_block(
+        ws,
+        assessment=ReadinessAssessment(
+            structure_complete=True,
+            implementation_verified=True,
+            outcome_evidence_reviewed=True,
+        ),
+    )
+    assert first == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert "structure complete=true" in content
+    assert "implementation verified=true" in content
+    assert "outcome evidence reviewed=true" in content
+
+    # Second condense: implementation and outcome go false — must refresh.
+    second = agents_md.condense_placeholder_block(
+        ws,
+        assessment=ReadinessAssessment(
+            structure_complete=True,
+            implementation_verified=False,
+            outcome_evidence_reviewed=False,
+        ),
+    )
+    assert second == [markers.AGENTS_MD]
+    refreshed = ws.read(markers.AGENTS_MD)
+    assert "structure complete=true" in refreshed
+    assert "implementation verified=false" in refreshed
+    assert "outcome evidence reviewed=false" in refreshed
+    assert "implementation verified=true" not in refreshed
+    assert "outcome evidence reviewed=true" not in refreshed
+
+    # Idempotent guard: a third call with the same assessment is a no-op.
+    third = agents_md.condense_placeholder_block(
+        ws,
+        assessment=ReadinessAssessment(
+            structure_complete=True,
+            implementation_verified=False,
+            outcome_evidence_reviewed=False,
+        ),
+    )
+    assert third == []
+    assert ws.read(markers.AGENTS_MD) == refreshed
+
+    # User-authored block (no Ralph-managed signature) is preserved.
+    ws_user = MemoryWorkspace()
+    custom = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"Read the policies under {markers.CANONICAL_DIR} first.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws_user.write(markers.AGENTS_MD, custom)
+    assert (
+        agents_md.condense_placeholder_block(
+            ws_user,
+            assessment=ReadinessAssessment(True, False, False),
+        )
+        == []
+    )
+    assert ws_user.read(markers.AGENTS_MD) == custom
+
+
 def test_remediation_and_analysis_prompts_render_dimension_values() -> None:
     """Remediation and analysis prompts report current dimension values."""
     ws = MemoryWorkspace()

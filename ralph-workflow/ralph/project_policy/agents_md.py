@@ -94,6 +94,13 @@ whitespace, or case changes do not satisfy any requirement.
 # agent- or user-rewritten block never contains it and is preserved.
 _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 
+# Distinctive phrase present ONLY in the Ralph-managed condensed block.
+# Used to recognize a block previously written by this module so subsequent
+# remediation/analysis calls can refresh its three readiness dimensions
+# instead of leaving stale values. A user- or agent-rewritten block never
+# contains this phrase and is preserved byte-for-byte.
+_RALPH_MANAGED_SIGNATURE = "Readiness reports THREE dimensions, not two:"
+
 
 # Concise managed block written once the project is READY. The bootstrap
 # placeholder above is TEMPORARY scaffolding for the first remediation agent;
@@ -290,14 +297,22 @@ def condense_placeholder_block(
     workspace: Workspace,
     assessment: ReadinessAssessment | None = None,
 ) -> list[str]:
-    """Replace an untouched bootstrap placeholder block with the concise form.
+    """Condense the bootstrap placeholder, then refresh the ready block.
 
-    Called after the project reaches READY. The bootstrap placeholder is
-    temporary scaffolding for the first remediation agent; once the
-    policies exist and validate, only the short pointer block remains. A
-    block whose body was rewritten (no placeholder sentinel), a missing
-    AGENTS.md, or a malformed block is left untouched — user- and
-    agent-authored content is never clobbered.
+    First call (untouched bootstrap placeholder still in place, OR a
+    previous Ralph-managed ready block whose dimension values need
+    updating): writes the concise ready block carrying the current
+    assessment. The bootstrap placeholder is temporary scaffolding for
+    the first remediation agent; once the policies exist and validate,
+    only the short pointer block remains. Subsequent calls with an
+    unchanged assessment are idempotent and return ``[]``; subsequent
+    calls with a different assessment refresh the three dimension
+    values.
+
+    A block whose body was rewritten by an agent or the user (matches
+    neither the placeholder sentinel nor the Ralph-managed signature),
+    a missing AGENTS.md, or a malformed block is left untouched — user-
+    and agent-authored content is never clobbered.
 
     Returns the changed-file list (``[markers.AGENTS_MD]`` or ``[]``).
     """
@@ -309,7 +324,9 @@ def condense_placeholder_block(
     begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
     end_idx = content.find(markers.AGENTS_BLOCK_END)
     body = content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN) : end_idx]
-    if _PLACEHOLDER_SENTINEL not in body:
+    is_placeholder = _PLACEHOLDER_SENTINEL in body
+    is_ralph_managed = _RALPH_MANAGED_SIGNATURE in body
+    if not (is_placeholder or is_ralph_managed):
         return []
     if assessment is not None:
         sc = "true" if assessment.structure_complete else "false"
@@ -317,6 +334,15 @@ def condense_placeholder_block(
         oer = "true" if assessment.outcome_evidence_reviewed else "false"
     else:
         sc = iv = oer = "unknown"
+    # Idempotent guard: if the body already reports these three values,
+    # skip the rewrite. This keeps repeated calls with the same
+    # assessment cheap and prevents unnecessary diffs.
+    if (
+        f"structure complete={sc}" in body
+        and f"implementation verified={iv}" in body
+        and f"outcome evidence reviewed={oer}" in body
+    ):
+        return []
     ready_block = _AGENTS_READY_TEMPLATE.format(
         begin=markers.AGENTS_BLOCK_BEGIN,
         end=markers.AGENTS_BLOCK_END,

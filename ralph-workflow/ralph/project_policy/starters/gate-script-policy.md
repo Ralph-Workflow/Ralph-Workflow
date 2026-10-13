@@ -36,12 +36,14 @@ A gate script is code. It is held to the same standard as the code it checks.
   fail. It MUST fail **closed**: an unexpected error inside the script is a
   gate FAILURE, never a silent pass. A script that swallows an error and exits
   0 is worse than no gate at all, because it manufactures false confidence.
+  (The Fail-closed verification and Bounded execution kernel rules apply;
+  this starter owns their gate-specific instantiation.)
 * **Strict mode.** A shell gate script MUST enable the strongest available
   error handling for its dialect — for `bash`/`sh`, `set -euo pipefail`; for
   PowerShell, `$ErrorActionPreference = 'Stop'`. An unset variable or a failed
   stage of a pipeline MUST NOT be silently ignored.
 * **Bounded.** Every gate MUST have a timeout. A gate that can hang forever is
-  a broken gate.
+  a broken gate. (Implements the Bounded execution kernel rule.)
 * **Deterministic and offline.** A gate MUST NOT depend on network access
   unless it is explicitly declared as requiring it. A gate whose result
   depends on the weather of the internet is not a gate.
@@ -50,7 +52,8 @@ A gate script is code. It is held to the same standard as the code it checks.
   declared as a prerequisite. A script that calls a command nobody installed,
   or passes a flag the tool does not have, is a BROKEN SCRIPT — not a broken
   environment. Inventing a plausible-looking tool, flag, or package name is
-  fabrication and is forbidden.
+  fabrication and is forbidden. (Implements the Truthful evidence kernel
+  rule.)
 * **Reproducible by a human.** A developer with a clean clone who follows the
   declared prerequisites MUST be able to run every gate. An undeclared setup
   step is a defect in this policy, not a failing of the developer.
@@ -199,8 +202,9 @@ To follow this policy, an agent writing or changing a gate script MUST:
   followable citation to the policy file that states it — and on timeout, the
   time-budget requirements specifically.
 * COVER the script with a test that proves it both passes AND fails correctly.
-* WIRE the script into the authoritative verification entry point in the same
-  change that creates it.
+* WIRE the script into the authoritative verification entry point, or into a
+  declared, owned, and triggered named profile, in the same change that
+  creates it.
 * CHECK the script against `supported_platforms` before claiming compliance.
 * UPDATE this policy's facts in the same workflow that changes the shell
   dialect, the script directory, or the supported platforms.
