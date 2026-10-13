@@ -39,9 +39,9 @@ of documentation belongs.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Single source of truth | Documentation owner | every policy statement lives in exactly one canonical file | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new | when the canonical directory is removed (the kernel absorbs the contract) |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Single source of truth  | Documentation owner  | every policy statement lives in exactly one canonical file  | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new  | when the canonical directory is removed (the kernel absorbs the contract)  | no parallel policy rulebook outside the canonical directory |
 
 ## Project facts to resolve
 

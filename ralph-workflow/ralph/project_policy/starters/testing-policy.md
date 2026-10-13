@@ -369,13 +369,13 @@ reinstated to raise a count or percentage.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Cheapest-layer regression | Test owner | every bug fix to behavior carries a regression test that fails on the bug and passes on the fix | test name encodes the regression; test fails on the bug commit; test passes on the fix commit | when a higher-layer test that pins the same observable contract covers the regression |
-| Real-boundary set | Test owner | browser / database / network-adapter / packaging / subprocess risks are covered at the real boundary | named profile covers each real-boundary risk; per-risk journey present in the profile manifest | when a deterministic, cheaper test covers the same risk class |
-| Deterministic seam | Test owner | tests run deterministic clock / network / DNS / filesystem / process seams without evasion | test injects the seam; no test depends on ambient clock, network, or filesystem properties | when the seam is no longer needed (the production code is pure) |
-| Browser budget, not cardinality | Test owner | the default-lane browser time budget is a measured value plus a distinct-risk inventory | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification | when the project stops using a browser at all |
-| Narrowest observable boundary | Test owner | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible | when the rule is restated as a kernel-level constraint |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Cheapest-layer regression  | Test owner  | every bug fix to behavior carries a regression test that fails on the bug and passes on the fix  | test name encodes the regression; test fails on the bug commit; test passes on the fix commit  | when a higher-layer test that pins the same observable contract covers the regression  | test name encodes the regression |
+| Real-boundary set  | Test owner  | browser / database / network-adapter / packaging / subprocess risks are covered at the real boundary  | named profile covers each real-boundary risk; per-risk journey present in the profile manifest  | when a deterministic, cheaper test covers the same risk class  | named profile covers each real-boundary risk |
+| Deterministic seam  | Test owner  | tests run deterministic clock / network / DNS / filesystem / process seams without evasion  | test injects the seam; no test depends on ambient clock, network, or filesystem properties  | when the seam is no longer needed (the production code is pure)  | test injects the seam |
+| Browser budget, not cardinality  | Test owner  | the default-lane browser time budget is a measured value plus a distinct-risk inventory  | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification  | when the project stops using a browser at all  | RALPH-FACT browser_budget_seconds declared |
+| Narrowest observable boundary  | Test owner  | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation  | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible  | when the rule is restated as a kernel-level constraint  | no test imports a private symbol solely to invoke it |
 
 ## Project facts to resolve
 

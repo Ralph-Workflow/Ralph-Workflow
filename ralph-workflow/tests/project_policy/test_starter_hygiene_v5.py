@@ -27,9 +27,7 @@ from ralph.project_policy.starters import (
     read_starter,
 )
 
-_STARTERS_DIR = (
-    Path(__file__).resolve().parents[2] / "ralph" / "project_policy" / "starters"
-)
+_STARTERS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "project_policy" / "starters"
 
 
 def test_starter_count_matches_loader_truth() -> None:

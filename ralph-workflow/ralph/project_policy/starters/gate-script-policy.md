@@ -146,11 +146,11 @@ artifact or adds a Windows CI job.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Bounded gate execution | Gate-script owner | every gate script exits inside a runner-enforced timeout | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout | when the gate is no longer long-running |
-| No phantom dependencies | Gate-script owner | every gate script runs from a clean clone using only documented setup and secret mechanism | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential | when the gate is retired |
-| Meaning-preserving rewording | Gate-script owner | the gate-script policy protects meaning and failure sensitivity, not wording volume | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose | when the prohibited-actions list is retired by the kernel |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Bounded gate execution  | Gate-script owner  | every gate script exits inside a runner-enforced timeout  | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout  | when the gate is no longer long-running  | gate script uses an approved tool first-token |
+| No phantom dependencies  | Gate-script owner  | every gate script runs from a clean clone using only documented setup and secret mechanism  | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential  | when the gate is retired  | no gate script hard-codes a developer-local path |
+| Meaning-preserving rewording  | Gate-script owner  | the gate-script policy protects meaning and failure sensitivity, not wording volume  | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose  | when the prohibited-actions list is retired by the kernel  | the banner permits meaning-preserving rewording |
 
 ## Project facts to resolve
 

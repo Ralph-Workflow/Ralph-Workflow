@@ -58,13 +58,14 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
             # a Guard inventory table with the pinned header and at
             # least one data row whose Protected outcome names a real
             # detector observation (so the deterministic claim-scope
-            # substring predicate passes).
+            # substring predicate passes). The sixth cell is the
+            # ``Claim scope`` field required by B7.
             lines.extend(
                 (
                     "",
-                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |",
-                    "|---|---|---|---|---|",
-                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed |",
+                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |",
+                    "|---|---|---|---|---|---|",
+                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed | the count of missing RALPH-FACT lines per file |",
                     "",
                 )
             )
@@ -960,23 +961,25 @@ def test_invalid_portfolio_blocks_readiness_with_protected_outcome() -> None:
     assert "schema_version" in finding.missing_evidence
 
 
-_GI_H = "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |"
-_GI_S = "|---|---|---|---|---|"
-_GI_R = "| g | o | p | d | r |"
+_GI_H = (
+    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |"
+)
+_GI_S = "|---|---|---|---|---|---|"
+_GI_R = "| g | o | p | d | r | s |"
 
 
 @pytest.mark.parametrize(
     ("table_body", "expected_suffix"),
     [
         (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | extra |", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | s | extra |", "malformed"),
         (f"{_GI_H}\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | s", "malformed"),
         (f"{_GI_H[:-1]}\n{_GI_S}\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n|---|---|---|---|---\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\ng | o | p | d | r |", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\n| g |  | p | d | r |", "row-1:empty-owner"),
-        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  |", "row-1:empty-retirement_trigger"),
+        (f"{_GI_H}\n|---|---|---|---|---|---\n{_GI_R}", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\ng | o | p | d | r | s |", "malformed"),
+        (f"{_GI_H}\n{_GI_S}\n| g |  | p | d | r | s |", "row-1:empty-owner"),
+        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  | s |", "row-1:empty-retirement_trigger"),
     ],
 )
 def test_guard_inventory_pipe_grammar_and_empty_fields(

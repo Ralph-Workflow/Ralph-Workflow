@@ -107,12 +107,12 @@ re-opens the question instead of silently missing it.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Authorization and tenant / scope boundaries | Security owner | every privileged action checks the caller's authorization and tenant / scope before execution | every privileged code path is covered by an authorization test; secret / scope change is logged with a real subject | when the project stops using a multi-tenant boundary |
-| Destructive-operation safety | Security owner | destructive operations (delete / drop / reset / force-push / revoke) carry a named owner and an explicit human confirmation in production paths | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation; reviewer can name the production gate | when the project has no destructive operations |
-| Security-scanner coverage | Security owner | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible | when the scanner is no longer available and is replaced by a real equivalent |
-| Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | when the project is single-purpose and the surfaces are constant |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Authorization and tenant / scope boundaries  | Security owner  | every privileged action checks the caller's authorization and tenant / scope before execution  | every privileged code path is covered by an authorization test; secret / scope change is logged with a real subject  | when the project stops using a multi-tenant boundary  | every privileged code path is covered by an authorization test |
+| Destructive-operation safety  | Security owner  | destructive operations (delete / drop / reset / force-push / revoke) carry a named owner and an explicit human confirmation in production paths  | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation; reviewer can name the production gate  | when the project has no destructive operations  | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation |
+| Security-scanner coverage  | Security owner  | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner  | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible  | when the scanner is no longer available and is replaced by a real equivalent  | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.) |
+| Threat surface inventory  | Security owner  | every project's threat surfaces are enumerated in the security policy's Threat surfaces section  | Threat surfaces section names each surface; the surface list is reviewed on every policy bump  | when the project is single-purpose and the surfaces are constant  | Threat surfaces section names each surface |
 
 ## Project facts to resolve
 

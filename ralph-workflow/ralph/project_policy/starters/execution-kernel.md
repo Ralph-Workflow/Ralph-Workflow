@@ -113,13 +113,13 @@ on portfolio parse.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | when a claim-presentation proof replaces the recorded evidence with a published artifact |
-| Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | when the same defect cannot recur (e.g. the tool is no longer wired) |
-| Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | when the action is no longer long-running or is retired |
-| No weakening of checks | Verification owner | no `# noqa`, `# type: ignore`, lowered threshold, or removed time limit lands in the tree | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
-| Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | when every claim is automatically backed (the kernel achieves this) |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Truthful evidence  | Verification owner  | every claim is backed by a record the agent can show  | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body  | when a claim-presentation proof replaces the recorded evidence with a published artifact  | RALPH-COMMAND: present and exit-code recorded |
+| Fail-closed verification  | Gate-script owner  | a check that cannot run blocks the run  | gate script returns non-zero on collection error, missing tool, or timeout  | when the same defect cannot recur (e.g. the tool is no longer wired)  | gate script returns non-zero on collection error, missing tool, or timeout |
+| Bounded execution  | Gate-script owner  | every long-running action carries a runner-enforced cap  | per-step / per-suite / per-attempt timeout declared and enforced  | when the action is no longer long-running or is retired  | per-step / per-suite / per-attempt timeout declared and enforced |
+| No weakening of checks  | Verification owner  | no `# noqa`, `# type: ignore`, lowered threshold, or removed time limit lands in the tree  | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings  | when the same defect cannot recur (e.g. the rule is removed from policy)  | project linters, typecheckers, test-policy guards, and verification audits return zero bypass or suppression findings |
+| Explicit unverified-claim reporting  | Verification owner  | every unverified claim is marked as such in the result body  | result body contains an explicit "unverified" annotation for every claim without backing  | when every claim is automatically backed (the kernel achieves this)  | result body contains an explicit "unverified" annotation for every claim without backing |
 
 ## Project facts to resolve
 

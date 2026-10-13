@@ -20,6 +20,7 @@ deterministic API:
 from __future__ import annotations
 
 import re
+from typing import Final
 
 from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
@@ -170,7 +171,7 @@ def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
     if not (valid_header and valid_sep):
         return []
 
-    # 3. Data rows: each must have leading/trailing pipe and balanced 5 columns
+    # 3. Data rows: each must have leading/trailing pipe and balanced 6 columns
     out: list[dict[str, str]] = []
     for line in table_lines[2:]:
         cells = _split_table_row(line)
@@ -183,6 +184,7 @@ def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
                 "protected_outcome": cells[2].strip(),
                 "detected_condition": cells[3].strip(),
                 "retirement_trigger": cells[4].strip(),
+                "claim_scope": cells[5].strip(),
             }
         )
     return out
@@ -191,6 +193,95 @@ def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
 def _starts_with_heading(content: str, heading: str) -> bool:
     """Return True if ``content`` carries the ``## Heading`` line."""
     return any(line.strip() == heading for line in content.splitlines())
+
+
+# Sections that are excluded from the ratchet-linkage scan (the rule is
+# only about declarations in the BODY prose, not the inventory table
+# itself or research/citation blocks that legitimately use the
+# ``ratcheted`` / ``ratchet`` / ``MUST NOT grow`` / ``MUST NOT increase``
+# phrases when describing prior decisions or sources).
+_EXCLUDED_SECTION_HEADINGS: Final[tuple[str, ...]] = (
+    "## Guard inventory",
+    "## Maintenance triggers",
+    "## Research basis",
+    "## Portfolio ownership",
+    "## Living document contract",
+    "## Ralph markers",
+)
+
+
+def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
+    """Return ``(declaration_text, control_id_or_empty)`` per body ratchet.
+
+    A body ratchet declaration is a *paragraph* in the starter body
+    (excluding the Guard inventory table and the
+    :data:`_EXCLUDED_SECTION_HEADINGS` sections) that contains any
+    phrase from :data:`markers.RATCHET_DECLARATION_PHRASES`
+    (case-insensitive). A paragraph is one or more consecutive
+    non-blank, non-heading lines (markdown hard-break semantics). The
+    function returns the joined paragraph text and the captured
+    control id when an inline ``<!-- ralph-control: <id> -->`` token
+    appears anywhere in that paragraph; an empty string when the
+    token is absent.
+
+    The grammar is regex-deterministic and excludes the inventory
+    table; :func:`_check_guard_inventory` calls this and emits
+    ``RWP-INVENTORY:RATCHET-UNCOVERED`` for each declaration that has
+    no control id.
+    """
+    out: list[tuple[str, str]] = []
+    in_excluded = False
+    in_table = False
+    control_re = re.compile(markers.CONTROL_TOKEN_RE)
+    phrase_alts = "|".join(re.escape(p) for p in markers.RATCHET_DECLARATION_PHRASES)
+    # The phrases are not all word-shaped (``**Ratchet:**`` ends in
+    # non-word chars) so we use a plain case-insensitive substring
+    # match rather than the usual ``\b...\b`` word-boundary form.
+    phrase_re = re.compile(rf"(?i)(?:{phrase_alts})")
+    paragraph: list[str] = []
+    paragraphs: list[str] = []
+    for raw_line in content.splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("#"):
+            in_excluded = stripped in _EXCLUDED_SECTION_HEADINGS
+            in_table = stripped == markers.GUARD_INVENTORY_HEADING
+            if paragraph:
+                paragraphs.append(" ".join(paragraph))
+                paragraph = []
+            continue
+        if in_excluded or in_table:
+            if paragraph:
+                paragraphs.append(" ".join(paragraph))
+                paragraph = []
+            continue
+        if not stripped:
+            if paragraph:
+                paragraphs.append(" ".join(paragraph))
+                paragraph = []
+            continue
+        paragraph.append(stripped)
+    if paragraph:
+        paragraphs.append(" ".join(paragraph))
+    for p in paragraphs:
+        if not phrase_re.search(p):
+            continue
+        match = control_re.search(p)
+        out.append((p, match.group(1) if match else ""))
+    return out
+
+
+def _control_id_for_guard_row(guard_cell: str) -> str | None:
+    """Return the leading control id from a Guard cell, or ``None``.
+
+    The grammar allows a row's Guard cell to begin with a backticked
+    id `` `<id>` `` (any text may follow). The function captures the
+    first such id using :data:`markers.CONTROL_ID_RE`. Returns
+    ``None`` when the cell does not begin with a backticked id so
+    callers can distinguish a row with no linkage from a row whose
+    control id is the empty string.
+    """
+    match = re.match(markers.CONTROL_ID_RE, guard_cell.strip())
+    return match.group(1) if match else None
 
 
 def _claim_scope_findings(
@@ -245,8 +336,19 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
       :data:`markers.CLAIM_SCOPE_PHRASES` that does not also appear in
       the row's ``Detected condition`` (the deterministic claim-scope
       rule, B7).
-    * One finding per row with an empty cell in any of the five
-      required columns.
+    * One finding per row with an empty cell in any of the six
+      required columns (the sixth is ``Claim scope``).
+    * One ``RWP-INVENTORY:<file>:ratchet-uncovered`` finding per body
+      ratchet declaration that has no matching control id, and one
+      per body ratchet whose control id does not appear at the start
+      of any Guard cell.
+    * One ``RWP-INVENTORY:<file>:control-orphan`` finding per Guard
+      cell control id that no body declaration names.
+    * One finding per row whose ``Claim scope`` cell carries a
+      broad-guarantee phrase from :data:`markers.CLAIM_SCOPE_PHRASES`
+      that does NOT also appear in the same row's ``Detected
+      condition`` cell (the predicate is applied to the new
+      ``Claim scope`` field too).
 
     The check returns an empty list when the table is well-formed:
     no findings means the starter is B9-compliant.
@@ -259,13 +361,13 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
                 missing_evidence=(
                     f"file lacks a {markers.GUARD_INVENTORY_HEADING} section; "
                     "every applicable starter must enumerate its guards with "
-                    "the pinned five-cell row"
+                    "the pinned six-cell row"
                 ),
                 required_outcome=(
                     f"add a `{markers.GUARD_INVENTORY_HEADING}` section "
                     "with the pinned header row and one data row per guard "
                     "(Guard | Owner | Protected outcome | Detected "
-                    "condition | Retirement trigger)"
+                    "condition | Retirement trigger | Claim scope)"
                 ),
             )
         ]
@@ -288,6 +390,7 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
             )
         ]
     findings: list[PolicyFinding] = []
+    row_control_ids: set[str] = set()
     for index, row in enumerate(rows, start=1):
         for column in (
             "guard",
@@ -295,6 +398,7 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
             "protected_outcome",
             "detected_condition",
             "retirement_trigger",
+            "claim_scope",
         ):
             if row[column]:
                 continue
@@ -315,14 +419,91 @@ def _check_guard_inventory(content: str, path: str, filename: str) -> list[Polic
                     ),
                 )
             )
-        # Apply the deterministic claim-scope rule to each row.
+        # Apply the deterministic claim-scope rule to each row's
+        # ``Protected outcome`` AND ``Claim scope`` cells. The same
+        # predicate fires on a broad phrase absent from the row's
+        # ``Detected condition`` for both cells.
         outcome = row["protected_outcome"].lower()
+        scope = row["claim_scope"].lower()
         detected = row["detected_condition"].lower()
         findings.extend(_claim_scope_findings(filename, path, index, outcome, detected))
+        findings.extend(_claim_scope_findings(filename, path, index, scope, detected))
+        # Track the row's leading control id, if any, for the
+        # orphan / uncovered checks below. A row without a leading
+        # backticked id does NOT participate in the linkage scan.
+        control_id = _control_id_for_guard_row(row["guard"])
+        if control_id is not None:
+            row_control_ids.add(control_id)
+
+    # Body ratchet declarations: every body line carrying one of the
+    # declared ratchet phrases MUST carry an inline control id, and
+    # the id MUST appear as a backticked control id at the start of
+    # some Guard cell. A body ratchet without a matching row is
+    # RATCHET-UNCOVERED; a row's control id with no body declaration
+    # is CONTROL-ORPHAN.
+    declarations = _ratchet_declarations(content)
+    declared_ids = {control_id for _, control_id in declarations if control_id}
+    for declaration_text, control_id in declarations:
+        if not control_id:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(f"{markers.ID_INVENTORY}:{filename}:ratchet-uncovered"),
+                    path=path,
+                    missing_evidence=(
+                        f"body ratchet declaration is not covered: {declaration_text!r}; "
+                        "every body line naming a ratcheted / MUST NOT grow / "
+                        "MUST NOT increase constraint MUST end with an inline "
+                        "``<!-- ralph-control: <id> -->`` token whose id appears "
+                        "at the start of a Guard inventory cell"
+                    ),
+                    required_outcome=(
+                        "append ``<!-- ralph-control: <id> -->`` to the declaring "
+                        "sentence and add a Guard row whose cell starts with the "
+                        "matching backticked id `` `<id>` ``"
+                    ),
+                )
+            )
+            continue
+        if control_id not in row_control_ids:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_INVENTORY}:{filename}:ratchet-uncovered:{control_id}"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        f"body ratchet declaration carries control id {control_id!r} "
+                        "but no Guard inventory row begins with that id; the "
+                        "declaration is uncovered"
+                    ),
+                    required_outcome=(
+                        f"add a Guard row whose cell starts with `{control_id}` "
+                        "so the ratchet declaration is linked to its row"
+                    ),
+                )
+            )
+    findings.extend(
+        PolicyFinding(
+            requirement_id=(f"{markers.ID_INVENTORY}:{filename}:control-orphan:{orphan_id}"),
+            path=path,
+            missing_evidence=(
+                f"Guard inventory row carries control id {orphan_id!r} but no "
+                "body ratchet declaration names that id; the row is orphaned"
+            ),
+            required_outcome=(
+                f"add a body ratchet declaration whose inline token is "
+                f"``<!-- ralph-control: {orphan_id} -->``, or remove the "
+                "backticked id from the Guard cell"
+            ),
+        )
+        for orphan_id in sorted(row_control_ids - declared_ids)
+    )
     return findings
 
 
 __all__ = [
     "_check_guard_inventory",
+    "_control_id_for_guard_row",
     "_parse_guard_inventory",
+    "_ratchet_declarations",
 ]

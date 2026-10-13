@@ -897,11 +897,14 @@ ID_INVENTORY: Final[str] = "RWP-INVENTORY"
 # Guard inventory grammar. Every applicable starter (core and conditional)
 # MUST carry a ``## Guard inventory`` section whose body is a markdown
 # table with the exact header below (case-insensitive match). The body is
-# a row-per-guard table with five non-empty cells. The validator parses
-# the table via :func:`ralph.project_policy._content_checks._parse_guard_inventory`
+# a row-per-guard table with six non-empty cells. The validator parses
+# the table via :func:`ralph.project_policy._guard_inventory._parse_guard_inventory`
 # and emits a stable RWP-INVENTORY:* finding on a missing or malformed
 # table. The grammar is pinned here so the parser and the starters share
-# one source of truth.
+# one source of truth. The sixth column ``Claim scope`` is the v5
+# outcome-oriented kernel's B7 requirement: every guard row MUST name
+# the narrow claim its detector actually supports, so a row's
+# ``Protected outcome`` cannot drift into a broad world-claim.
 GUARD_INVENTORY_HEADING: Final[str] = "## Guard inventory"
 GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
     "Guard",
@@ -909,7 +912,48 @@ GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
     "Protected outcome",
     "Detected condition",
     "Retirement trigger",
+    "Claim scope",
 )
+
+# Body ratchet declaration: a sentence in a starter body that names a
+# project constraint whose value MUST NOT grow / MUST NOT increase
+# absent a reviewed change. The set of phrases is frozen in
+# :data:`RATCHET_DECLARATION_PHRASES`; the validator scans the body
+# of every applicable starter, excluding the Guard inventory table
+# itself and the "Maintenance triggers" / "Research basis" sections,
+# and applies the linkage grammar in
+# :mod:`ralph.project_policy._guard_inventory`. Each declared ratchet
+# MUST carry an inline ``<!-- ralph-control: <id> -->`` token placed at
+# the end of the declaring sentence, where ``<id>`` matches
+# :data:`CONTROL_ID_RE`. A backticked control id at the start of a
+# Guard cell is the covering row; an orphan id (no body declaration)
+# or a body declaration without a matching row is rejected.
+#
+# The grammar intentionally excludes the bare word ``ratchet`` (which
+# appears in shipped starters as a reference, e.g. "satisfy a ratchet
+# is a violation" in clean-code and linting) and uses the stronger
+# phrases that only appear in actual declarations:
+# ``ratcheted``, ``MUST NOT grow``, ``MUST NOT increase``, and the
+# section-style ``Ratchet:`` / ``ratchet:`` line-label that opens a
+# paragraph naming the constraint.
+RATCHET_DECLARATION_PHRASES: Final[tuple[str, ...]] = (
+    "ratcheted",
+    "MUST NOT grow",
+    "MUST NOT increase",
+    "Ratchet:",
+    "ratchet:",
+    "**Ratchet:**",
+)
+
+# Grammar (frozen) for the inline control token that links a body
+# ratchet declaration to a Guard inventory row. The token is a
+# single-line HTML comment placed at the end of the declaring
+# sentence; the captured id is the lowercase kebab-case string after
+# the colon. A Guard cell whose text starts with a backticked id
+# `` `<id>` `` (same charset) names the covering row.
+CONTROL_TOKEN_RE: Final[str] = r"<!--\s*ralph-control:\s*([a-z0-9-]+)\s*-->"
+CONTROL_ID_RE: Final[str] = r"`([a-z0-9-]+)`"
+
 
 # Claim-scope rule (deterministic substring predicate). A guard-inventory
 # row is REJECTED when its ``Protected outcome`` cell carries any phrase
@@ -946,6 +990,8 @@ __all__ = [
     "COMMAND_MARKER",
     "CONDITIONAL_POLICY_FILES",
     "CONDITIONAL_SIGNAL_PATHS",
+    "CONTROL_ID_RE",
+    "CONTROL_TOKEN_RE",
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
     "FACT_MARKER",
@@ -985,6 +1031,7 @@ __all__ = [
     "POLICY_SCHEMA_MARKER",
     "PORTFOLIO_PATH",
     "PORTFOLIO_SCHEMA_VERSION",
+    "RATCHET_DECLARATION_PHRASES",
     "REQUIRED_HEADINGS",
     "REVIEW_MARKER",
     "SCHEMA_VERSION",

@@ -40,9 +40,9 @@ allocation-sensitive paths.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Named memory profile | Memory owner | memory claims are recorded in a named profile with the five declared fields | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon | when the project stops doing memory-sensitive work |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Named memory profile  | Memory owner  | memory claims are recorded in a named profile with the five declared fields  | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon  | when the project stops doing memory-sensitive work  | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon |
 
 ## Project facts to resolve
 

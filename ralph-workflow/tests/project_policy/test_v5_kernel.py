@@ -118,9 +118,9 @@ def test_guard_inventory_parser_rejects_broad_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |\n"
-        "|---|---|---|---|---|\n"
-        "| g | o | dependency direction enforced | missing import-lint | retired |"
+        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "|---|---|---|---|---|---|\n"
+        "| g | o | dependency direction enforced | missing import-lint | retired | the lint report per file |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,
@@ -135,9 +135,9 @@ def test_guard_inventory_parser_accepts_mirrored_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |\n"
-        "|---|---|---|---|---|\n"
-        "| g | o | dependency direction enforced | enforced by import-lint on src/ | retired |"
+        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "|---|---|---|---|---|---|\n"
+        "| g | o | dependency direction enforced | enforced by import-lint on src/ | retired | enforced per import-lint on src/ |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,
@@ -152,9 +152,9 @@ def test_guard_inventory_parser_rejects_empty_cells() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |\n"
-        "|---|---|---|---|---|\n"
-        "| g |  | some outcome | some detected | some retirement |"
+        "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger | Claim scope |\n"
+        "|---|---|---|---|---|---|\n"
+        "| g |  | some outcome | some detected | some retirement | the report per file |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,

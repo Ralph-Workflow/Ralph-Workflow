@@ -76,6 +76,7 @@ differently.
      change tracking genuinely-fast new checks. A project under budget MUST
      NOT relax toward the guide OR the cap — both are ceilings, never
      entitlements. Record the project's measured figure, never the cap.
+     <!-- ralph-control: verification-budget-ratchet -->
 10. A run is judged on **time to a correct, verified change**; speed never permits partial proof.
 11. Prevent an extra pass first; within a pass, the cost of proving the change is the largest term; where they conflict, avoid the extra pass.
 12. The four commitments are: **fast path first**, **a slow gate is a defect**, **do not leave the loop slower**, and **checks answer consistently**. Non-compliance is a defect: fix it within the requested run when that fits its budget, or raise it to an owner who can act. A change is never done on a partial check.
@@ -186,12 +187,13 @@ person or team, not a role the author occupies by default.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | when the combined budget is retired by the kernel |
-| No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | when the project stops generating high-churn evidence |
-| Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | when every named profile is retired |
-| Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | when every behavior claim is provable at a cheaper deterministic layer |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Bounded run budget  | Verification owner  | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml``  | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds  | when the combined budget is retired by the kernel  | per-step and per-suite timeouts declared and enforced |
+| `verification-budget-ratchet` Verification budget ratchet  | Verification owner  | the recorded ``verification_time_budget`` shrinks freely; growth is rejected absent a reviewed change  | the recorded ``verification_time_budget`` is at or below its prior recorded value; growth is absent a reviewed change  | when the ratchet is retired by the kernel  | the current ``verification_time_budget`` value per project |
+| No high-churn evidence in review  | Verification owner  | volatile reports and large generated inventories do not land in human review  | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines  | when the project stops generating high-churn evidence  | no high-churn evidence file is committed to a tracked location |
+| Gate-lane coverage  | Verification owner  | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon)  | Gate lanes section enumerates each named profile with all five fields present  | when every named profile is retired  | Gate lanes section enumerates each named profile with all five fields present |
+| Public-behavior proof  | Verification owner  | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict  | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change  | when every behavior claim is provable at a cheaper deterministic layer  | test is a public-surface scenario |
 
 ## Project facts to resolve
 

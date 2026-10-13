@@ -41,9 +41,9 @@ surface.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Distinct-risk inventory | Design-system owner | every retained UI journey covers a distinct browser-only risk that no other check covers | per-journey justification is recorded; reviewer can name the distinct risk each journey covers | when the journey's risk class is covered by a cheaper test |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Distinct-risk inventory  | Design-system owner  | every retained UI journey covers a distinct browser-only risk that no other check covers  | per-journey justification is recorded; reviewer can name the distinct risk each journey covers  | when the journey's risk class is covered by a cheaper test  | per-journey justification is recorded |
 
 ## Project facts to resolve
 

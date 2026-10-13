@@ -192,6 +192,7 @@ def test_guard_inventory_pinned_grammar() -> None:
         "Protected outcome",
         "Detected condition",
         "Retirement trigger",
+        "Claim scope",
     )
 
 

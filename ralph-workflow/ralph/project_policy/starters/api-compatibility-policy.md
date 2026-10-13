@@ -29,9 +29,9 @@ or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Public API contract test | API owner | every claimed public API has a contract test that fails on a documented breaking change | public API surface is enumerated; contract test covers each surface; reviewer can name the breaking change the test catches | when the public API is removed or absorbed by the kernel |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Public API contract test  | API owner  | every claimed public API has a contract test that fails on a documented breaking change  | public API surface is enumerated; contract test covers each surface; reviewer can name the breaking change the test catches  | when the public API is removed or absorbed by the kernel  | public API surface is enumerated |
 
 ## Project facts to resolve
 

@@ -37,10 +37,10 @@ architecture without imposing a named pattern or directory layout.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
-| Process and resource ownership | Architecture owner | process / resource ownership is explicit: every long-lived process, file lock, socket, and signal handler is owned by a named module that closes it on every code path | code review requires every long-lived resource to be owned and closed; resource-lifecycle checks return zero findings | when the project has no long-lived resources |
-| Conditional durable contracts | Architecture owner | durable contracts (registries, classifiers, name lists) are required only when the system that consumes them actually exists in the project | every required registry / classifier has a named consumer; no required registry / classifier is in place solely because a starter said so | when the consumer system is removed |
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger  | Claim scope |
+|---|---|---|---|--- |---|
+| Process and resource ownership  | Architecture owner  | process / resource ownership is explicit: every long-lived process, file lock, socket, and signal handler is owned by a named module that closes it on every code path  | code review requires every long-lived resource to be owned and closed; resource-lifecycle checks return zero findings  | when the project has no long-lived resources  | code review requires every long-lived resource to be owned and closed |
+| Conditional durable contracts  | Architecture owner  | durable contracts (registries, classifiers, name lists) are required only when the system that consumes them actually exists in the project  | every required registry / classifier has a named consumer; no required registry / classifier is in place solely because a starter said so  | when the consumer system is removed  | every required registry / classifier has a named consumer |
 
 ## Project facts to resolve
 
