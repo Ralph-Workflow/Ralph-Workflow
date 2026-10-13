@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: ux-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -42,6 +42,12 @@ interaction behaviour, or usability.
   application.
 * UX changes MUST be evaluated against existing patterns and user
   needs. UX review evidence MUST be proportionate to the change.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Perceptual judgment routed to human review | UX owner | perceptual / aesthetic / editorial judgments are routed to the RALPH-REVIEW: lane, not encoded as a constant | no UX constant encodes a subjective judgment; the RALPH-REVIEW: line carries the verdict | when the project stops doing UX-sensitive work |
 
 ## Project facts to resolve
 
@@ -162,7 +168,7 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: ux-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`
 
 ## Visual review authority
 

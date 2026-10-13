@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: accessibility-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -28,6 +28,12 @@ reactivation trigger, or remove it through reviewed policy cleanup.
   assistive-technology review of material flows.
 * New UI MUST meet the project's declared accessibility standard and MUST NOT
   introduce regressions.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Published-standard contrast and semantics | Accessibility owner | every contrast, focus, and semantic claim is measured against a published external standard | test asserts a published standard (WCAG, ARIA, etc.); the standard is named in the test | when the project ships a non-interactive surface |
 
 ## Project facts to resolve
 
@@ -101,7 +107,7 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: accessibility-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`
 
 ## Adjacent visual audits
 

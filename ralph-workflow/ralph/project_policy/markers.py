@@ -50,9 +50,55 @@ from typing import Final
 # remediation pass resolves the new keys and adds the two headings, or the
 # pack is frozen at v2. That is the point of the marker bump — it forces the
 # upgrade-or-freeze consent gate rather than changing files under the user.
-SCHEMA_VERSION: Final[str] = "v4"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v4 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-09-11.1"
+#
+# v4 (backfill) — minor hardening only (the 60 s test-budget fence, the
+# fabrication guard).  No content-contract change for v3 projects; a
+# frozen-at-v3 pack keeps validating under v4 because every required
+# field and heading stayed the same.  The bump exists to carry the
+# test-budget invariant into the marker record so the audit can prove
+# the fence is policy, not convention.
+#
+# v5 (current) reframes the shipped policy as a small outcome-oriented
+# execution kernel plus evidence-backed, selectively applicable controls.
+# It is a major content change:
+#
+#   1. New mandatory core file ``execution-kernel.md`` carrying the five
+#      kernel rules (truthful evidence, fail-closed verification, bounded
+#      execution, no weakening of checks, explicit unverified-claim
+#      reporting), the precedence over domain policies, the
+#      selective-applicability rule, and the claim-scope rule.
+#   2. Every applicable starter (core and conditional) MUST carry a
+#      ``## Guard inventory`` section in the pinned markdown-table grammar
+#      (header ``| Guard | Owner | Protected outcome | Detected condition |
+#      Retirement trigger |``; one row per guard; five non-empty cells).
+#      A starter without the table — or with a malformed table — fails
+#      the validator with a stable RWP-INVENTORY:* finding.
+#   3. Portfolio schema bumped v1 -> v2: every control adds the required
+#      fields ``detects`` (the observable condition the detector actually
+#      reports) and ``retirement_trigger`` (when to retire the control).
+#      A control whose ``protected_outcome`` carries a broad-guarantee
+#      phrase that does NOT also appear in ``detects`` is rejected
+#      (claim-scope rule). Frozen v1 packs keep v1 validation so the
+#      user keeps the work; the upgrade-or-freeze gate forces a choice.
+#   4. Readiness reporting splits into three dimensions
+#      (structure_complete, implementation_verified,
+#      outcome_evidence_reviewed) on all four surfaces (CLI, status
+#      bar, AGENTS.md block, remediation prompt). Structural READY
+#      remains the cache gate; semantic correctness is now
+#      reported separately.
+#   5. Stale starter generations retired; the gate-script starter
+#      switches from prose-freeze to meaning-freeze (C3).
+#
+# Consequence for an existing v4 project: it validates NOT READY until
+# a remediation pass adopts v5, or the pack is frozen at v4 through the
+# existing upgrade-or-freeze consent gate (``_schema_upgrade.py``).
+# Frozen v4 packs are validated against the v4 required-file manifest
+# (the original eleven core files) — only files introduced AFTER v4
+# are exempt, never the existing core files, so a frozen v4 pack
+# missing ``security-policy.md`` stays NOT READY.
+SCHEMA_VERSION: Final[str] = "v5"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v5 -->"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-10-12.1"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -77,20 +123,67 @@ AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
 APPLICABILITY_OVERRIDES_PATH: Final[str] = "docs/ralph-workflow-policy/applicability.toml"
 PORTFOLIO_PATH: Final[str] = "docs/ralph-workflow-policy/policy-portfolio.toml"
-PORTFOLIO_SCHEMA_VERSION: Final[str] = "v1"
+PORTFOLIO_SCHEMA_VERSION: Final[str] = "v2"
 
 # Required agent instruction files in the project.
 AGENTS_MD: Final[str] = "AGENTS.md"
 CLAUDE_MD: Final[str] = "CLAUDE.md"
 
-# Core policy files (the eleven always-required for any software project).
+# Core policy files (the twelve always-required for any software project).
 #
 # ``gate-script-policy.md`` is the odd one out: its requirement sections ship
 # COMPLETE as normative standard text rather than as a template to rewrite.
 # The remediation agent READS it and OBEYS it when it writes a gate script,
 # and resolves only its three facts and its one command. See the starter's
 # banner.
+#
+# ``execution-kernel.md`` is the v5 outcome-oriented execution kernel: it
+# holds the five kernel rules, the precedence over domain policies, the
+# selective-applicability rule, and the claim-scope rule. Every other
+# starter shrinks its ``## AI execution instructions`` to domain steps plus
+# a kernel pointer (B10). It is a required core file from v5 onward.
 CORE_POLICY_FILES: Final[tuple[str, ...]] = (
+    "execution-kernel.md",
+    "testing-policy.md",
+    "typechecking-policy.md",
+    "linting-policy.md",
+    "dependency-policy.md",
+    "verification-policy.md",
+    "gate-script-policy.md",
+    "agent-policy.md",
+    "clean-code-policy.md",
+    "documentation-policy.md",
+    "security-policy.md",
+    "architecture-policy.md",
+)
+
+
+# Version-specific core-file manifest. The frozen-pack validator consults
+# this to decide which files are mandatory for a given schema version:
+# v4 requires the original eleven; v5 adds ``execution-kernel.md`` to
+# reach twelve. Files introduced AFTER a frozen version are exempt
+# from the missing-core check, but the original core files are NEVER
+# exempt — a frozen v4 pack missing ``security-policy.md`` stays
+# NOT READY. This is the only way the upgrade-or-freeze gate stays
+# honest about preserved controls.
+def core_files_for_version(v: str) -> tuple[str, ...]:
+    """Return the core-file manifest for schema version ``v``.
+
+    Args:
+        v: The schema version string (``"v4"``, ``"v5"``; unknown values
+            fall back to the current ``CORE_POLICY_FILES`` tuple).
+
+    Returns:
+        The required core-file tuple for that version. Used by the
+        validators and the upgrade seed path to install the right pack
+        and reject frozen packs missing a preserved core file.
+    """
+    if v == "v4":
+        return _V4_CORE_FILES
+    return CORE_POLICY_FILES
+
+
+_V4_CORE_FILES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
     "linting-policy.md",
@@ -162,6 +255,24 @@ CONDITIONAL_SIGNAL_PATHS: Final[dict[str, tuple[str, ...]]] = {
 # specific (memory safety vs CSRF vs subprocess hygiene): the section that
 # enumerates the project's own surfaces must survive every amendment.
 REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
+    # The execution kernel (v5+) carries the five generic rules once
+    # (truthful evidence, fail-closed verification, bounded execution, no
+    # weakening of checks, explicit unverified-claim reporting), the
+    # precedence over domain policies, the selective-applicability rule,
+    # the claim-scope rule, and the guard inventory for kernel rules.
+    "execution-kernel.md": (
+        "Purpose and scope",
+        "Kernel rules",
+        "Precedence and selective applicability",
+        "Claim-scope rule",
+        "Guard inventory",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
+    ),
     # The testing policy additionally requires "Suite admission": the section
     # that decides which acceptance criteria become automated tests at all.
     # Without it the policy is a one-way ratchet — every rule obliges MORE
@@ -172,6 +283,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Default requirements",
         "Suite admission",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -183,6 +295,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "typechecking-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -195,6 +308,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Default requirements",
         "Dead code — zero tolerance",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -206,6 +320,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "dependency-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -224,6 +339,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Default requirements",
         "Gate lanes",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -244,6 +360,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Failure output",
         "Security",
         "Cross-platform",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -255,6 +372,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "agent-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -266,6 +384,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "clean-code-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -277,6 +396,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "documentation-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -289,6 +409,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Default requirements",
         "Threat surfaces",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -300,6 +421,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "architecture-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -311,6 +433,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "design-system-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -322,6 +445,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "ux-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -333,6 +457,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "performance-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -344,6 +469,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "memory-usage-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -356,6 +482,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -368,6 +495,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -380,6 +508,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -392,6 +521,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -404,6 +534,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -416,6 +547,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Purpose and scope",
         "Applicability",
         "Default requirements",
+        "Guard inventory",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -760,6 +892,44 @@ ID_CLAUDE_MD_MISSING: Final[str] = "RWP-CLAUDE-MD"
 ID_DOMAIN: Final[str] = "RWP-DOMAIN"
 ID_MIGRATE: Final[str] = "RWP-MIGRATE-UNRECONCILED"
 ID_PORTFOLIO: Final[str] = "RWP-PORTFOLIO"
+ID_INVENTORY: Final[str] = "RWP-INVENTORY"
+
+# Guard inventory grammar. Every applicable starter (core and conditional)
+# MUST carry a ``## Guard inventory`` section whose body is a markdown
+# table with the exact header below (case-insensitive match). The body is
+# a row-per-guard table with five non-empty cells. The validator parses
+# the table via :func:`ralph.project_policy._content_checks._parse_guard_inventory`
+# and emits a stable RWP-INVENTORY:* finding on a missing or malformed
+# table. The grammar is pinned here so the parser and the starters share
+# one source of truth.
+GUARD_INVENTORY_HEADING: Final[str] = "## Guard inventory"
+GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
+    "Guard",
+    "Owner",
+    "Protected outcome",
+    "Detected condition",
+    "Retirement trigger",
+)
+
+# Claim-scope rule (deterministic substring predicate). A guard-inventory
+# row is REJECTED when its ``Protected outcome`` cell carries any phrase
+# from this list that does NOT also appear in the same row's ``Detected
+# condition`` cell. The rule enforces the v5 outcome-oriented kernel
+# (B7): a broad guarantee (``dependency direction enforced``, ``security
+# guaranteed``, ``all inputs validated``) is a claim about the WORLD,
+# not about a detector, and is rejected unless the detector's
+# observation literally mentions the same phrase. The residual semantic
+# gap beyond substring matching is covered by the step-D human-review
+# rubric. The same predicate is applied to portfolio ``protected_outcome``
+# fields against portfolio ``detects`` fields.
+CLAIM_SCOPE_PHRASES: Final[tuple[str, ...]] = (
+    "enforced",
+    "guaranteed",
+    "ensures",
+    "always",
+    "prevents all",
+    "all ",
+)
 
 
 __all__ = [
@@ -771,6 +941,7 @@ __all__ = [
     "CACHE_REL_PATH",
     "CANONICAL_DIR",
     "CITATION_REQUIRED_FIELDS",
+    "CLAIM_SCOPE_PHRASES",
     "CLAUDE_MD",
     "COMMAND_MARKER",
     "CONDITIONAL_POLICY_FILES",
@@ -778,6 +949,8 @@ __all__ = [
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
     "FACT_MARKER",
+    "GUARD_INVENTORY_HEADER",
+    "GUARD_INVENTORY_HEADING",
     "ID_AGENTS_MD_MISSING",
     "ID_CITATION_MISSING",
     "ID_CLAUDE_MD_MISSING",
@@ -785,6 +958,7 @@ __all__ = [
     "ID_CORE_MISSING",
     "ID_DOMAIN",
     "ID_HEADING_MISSING",
+    "ID_INVENTORY",
     "ID_LANG_COVERAGE",
     "ID_MARKER_MISSING",
     "ID_MIGRATE",
@@ -820,4 +994,5 @@ __all__ = [
     "UI_FRAMEWORK_SIGNALS",
     "UX_APP_FRAMEWORKS",
     "UX_ROUTER_DEP_SIGNALS",
+    "core_files_for_version",
 ]

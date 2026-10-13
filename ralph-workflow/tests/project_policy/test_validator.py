@@ -27,73 +27,49 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         "",
         "# Title",
         "",
-        "## Purpose and scope",
-        "Real content.",
-        "",
-        "## Default requirements",
-        "Real content.",
-        "",
-        "## Project facts to resolve",
-        "Real content.",
-        *[
-            line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
-            for line in starters.read_starter(filename).splitlines()
-            if line.startswith(markers.FACT_MARKER)
-        ],
-        "",
-        "## AI execution instructions",
-        "Real content.",
-        "",
-        "## Verification",
-        "Real content.",
     ]
-    if filename == "testing-policy.md":
-        lines.append("")
-        lines.append("## Suite admission")
-        lines.append("Real content.")
-    if filename == "verification-policy.md":
-        lines.append("")
-        lines.append("## Bypass detection")
-        lines.append("Real content.")
-        lines.append("RALPH-COMMAND: make bypass-audit")
-        lines.append("")
-        lines.append("## Gate lanes")
-        lines.append("Real content.")
-    if filename == "linting-policy.md":
-        lines.append("")
-        lines.append("## Dead code — zero tolerance")
-        lines.append("Dead code is prohibited and removed.")
-    if filename == "security-policy.md":
-        lines.append("")
-        lines.append("## Threat surfaces")
-        lines.append("Real content.")
-    if filename == "gate-script-policy.md":
-        lines.append("")
-        lines.append("## Failure output")
-        lines.append("Real content.")
-        lines.append("")
-        lines.append("## Security")
-        lines.append("Real content.")
-        lines.append("")
-        lines.append("## Cross-platform")
-        lines.append("Real content.")
+    facts = [
+        line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+        for line in starters.read_starter(filename).splitlines()
+        if line.startswith(markers.FACT_MARKER)
+    ]
+    # Iterate the required headings for this filename and emit each
+    # section with the right shape (so the v5 guard-inventory check
+    # passes and so every starter-specific heading remains satisfied).
+    for heading in markers.REQUIRED_HEADINGS.get(filename, ()):
+        lines.append(f"## {heading}")
+        if heading == "Research basis":
+            lines.extend(
+                (
+                    "",
+                    "- publisher: Test Publisher",
+                    "  title: Test Title",
+                    "  http: https://example.com",
+                    "  review date: 2026-07-11",
+                    "",
+                )
+            )
+        elif heading == "Bypass detection":
+            lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
+        elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
+            # v5: every applicable starter (core and conditional) carries
+            # a Guard inventory table with the pinned header and at
+            # least one data row whose Protected outcome names a real
+            # detector observation (so the deterministic claim-scope
+            # substring predicate passes).
+            lines.extend(
+                (
+                    "",
+                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |",
+                    "|---|---|---|---|---|",
+                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed |",
+                    "",
+                )
+            )
+        else:
+            lines.extend(("Real content.", ""))
     lines.append("")
-    lines.append("## Exceptions")
-    lines.append("Real content.")
-    lines.append("")
-    lines.append("## Maintenance triggers")
-    lines.append("Real content.")
-    lines.append("")
-    lines.append("## Research basis")
-    lines.append("")
-    lines.append("- publisher: Test Publisher")
-    lines.append("  title: Test Title")
-    lines.append("  http: https://example.com")
-    lines.append("  review date: 2026-07-11")
-    lines.append("")
-    lines.append("## Ralph markers")
-    lines.append("Real content.")
-    lines.append("")
+    lines.extend(facts)
     # Every complete policy must declare at least one resolved project
     # fact so the validator's no-fact gate cannot be silently satisfied by
     # the surrounding structural completeness.
@@ -102,9 +78,7 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
     lines.append("")
     if lang is not None:
         lines.append(f"RALPH-LANG: {lang}")
-        lines.append("RALPH-COMMAND: make test")
-    else:
-        lines.append("RALPH-COMMAND: make test")
+    lines.append("RALPH-COMMAND: make test")
     return "\n".join(lines)
 
 

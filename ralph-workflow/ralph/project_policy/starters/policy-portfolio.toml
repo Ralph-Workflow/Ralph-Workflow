@@ -1,4 +1,4 @@
-schema_version = "v1"
+schema_version = "v2"
 default_budget_seconds = 60.0
 kernel_controls = ["policy-structure", "public-behavior"]
 
@@ -38,6 +38,8 @@ lane = "default"
 marginal_cost_seconds = 0.1
 cost_basis = "estimate"
 evidence = "validator finding list and composed portfolio record"
+detects = "validator finding list and composed portfolio record"
+retirement_trigger = "when the deterministic preflight is replaced by a published equivalent"
 lifecycle = "review on every portfolio schema change; replace only with equivalent deterministic coverage"
 disposition = "KEEP"
 
@@ -52,6 +54,8 @@ lane = "default"
 marginal_cost_seconds = 0.5
 cost_basis = "estimate"
 evidence = "preserved public-surface artifact with immutable subject, run, validated oracle, and independent verdict"
+detects = "preserved public-surface artifact with immutable subject, run, validated oracle, and independent verdict"
+retirement_trigger = "when every behavior claim is provable at a cheaper deterministic layer"
 lifecycle = "review when the public contract or cheapest sufficient proof layer changes"
 disposition = "KEEP"
 

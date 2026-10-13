@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: linting-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -65,6 +65,13 @@ again if demonstrated need returns than to retain unowned paths indefinitely.
 * Every ecosystem-supported unused/dead-code check MUST run in the declared
   lint or verification gate. When no suitable maintained automated check
   exists, code review MUST still enforce deletion.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| No lint bypass | Lint owner | no `# noqa`, `per-file-ignores`, or `extend-per-file-ignores` lands in the tree | audit_lint_bypass returns zero findings | when the rule is restated as a kernel-level constraint |
+| Public / wrapper syntax-proxy | Lint owner | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass | when every private-call ratchet is removed from the policy |
 
 ## Project facts to resolve
 
@@ -220,4 +227,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: linting-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

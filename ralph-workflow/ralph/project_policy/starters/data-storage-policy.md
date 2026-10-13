@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: data-storage-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -35,6 +35,12 @@ trigger, or remove the policy through reviewed cleanup.
   privilege, with encryption or equivalent protection for sensitive data.
 * Migrations MUST declare supported source versions and a rollback,
   roll-forward, or explicitly irreversible strategy.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Schema and data integrity | Data-storage owner | every schema change, migration, and data-validation rule has a named owner, a reversible change path, and a recorded evidence of the integrity check | schema change is reviewed by the data-storage owner; migration has a recorded up / down; data-validation test is on the change | when the project stops using a structured store |
 
 ## Project facts to resolve
 
@@ -110,4 +116,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: data-storage-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

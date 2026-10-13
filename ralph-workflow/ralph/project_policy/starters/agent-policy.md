@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: agent-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -45,6 +45,13 @@ the truthfulness obligations, and the documentation update obligations.
   conformance; design system owns reusable visual primitives; UX owns flows;
   dependency owns third-party supply chain; release owns artifacts and
   promotion; documentation owns content accuracy; verification composes gates.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Selective loading | Agent owner | agents load the kernel plus only the policies triggered by the changed surfaces | agents read the kernel first; agents do not load conditional starters whose trigger has not fired | when every domain becomes a kernel-level concern |
+| Three-state reporting | Agent owner | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | when the kernel absorbs the three dimensions |
 
 ## Project facts to resolve
 
@@ -157,4 +164,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

@@ -13,6 +13,10 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from ralph.project_policy import evidence, markers, starters
+from ralph.project_policy._guard_inventory import (
+    _check_guard_inventory,
+    _parse_guard_inventory,
+)
 from ralph.project_policy._scanners import (
     _LANG_LINE_RE,
     _MANDATORY_GATE_FILES,
@@ -773,3 +777,33 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
         if line.startswith(markers.INAPPLICABLE_MARKER) and not stripped:
             out.add(current_lang)
     return out
+
+
+# Guard inventory parser. v5 requires every applicable starter (core
+# and conditional) to carry a ``## Guard inventory`` section with a
+# markdown table whose header matches the pinned
+# :data:`markers.GUARD_INVENTORY_HEADER` exactly (case-insensitive). One
+# row per guard, five non-empty cells, balanced pipes. A malformed or
+# missing table is a fail-closed RWP-INVENTORY:* finding. The substring
+# predicate from :data:`markers.CLAIM_SCOPE_PHRASES` is applied to each
+# row's ``Protected outcome`` against the same row's ``Detected
+# condition`` so the deterministic claim-scope rule is enforced at the
+# starter level too.
+# The v5 guard-inventory parser and validator live in
+# :mod:`ralph.project_policy._guard_inventory` to keep this module
+# under the 1000-line repo-structure cap. Re-exported at the top of
+# the module so callers can keep importing the same names.
+
+__all__ = [
+    "_check_commands",
+    "_check_guard_inventory",
+    "_check_markers",
+    "_check_per_language_coverage",
+    "_check_placeholders",
+    "_check_required_fact_keys",
+    "_check_required_headings",
+    "_check_research_basis",
+    "_check_template_banner",
+    "_frozen_schema_version",
+    "_parse_guard_inventory",
+]

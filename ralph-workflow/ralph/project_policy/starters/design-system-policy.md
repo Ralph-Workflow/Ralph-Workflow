@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: design-system-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -38,6 +38,12 @@ surface.
   conventions.
 * Accessibility and contrast requirements applicable to visual changes
   MUST be verified before merge.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Distinct-risk inventory | Design-system owner | every retained UI journey covers a distinct browser-only risk that no other check covers | per-journey justification is recorded; reviewer can name the distinct risk each journey covers | when the journey's risk class is covered by a cheaper test |
 
 ## Project facts to resolve
 
@@ -161,7 +167,7 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: design-system-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`
 
 ## Review authority
 

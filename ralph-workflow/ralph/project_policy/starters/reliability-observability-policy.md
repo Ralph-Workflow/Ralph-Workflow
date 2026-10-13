@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: reliability-observability-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -26,6 +26,12 @@ or remove the policy through reviewed cleanup.
 * Reliability objectives and operationally required alerts MUST reflect user or
   operator impact rather than incidental implementation detail.
 * Failure handling MUST avoid retry storms, silent loss, and unbounded queues.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Bounded observability budget | Reliability owner | every log / trace / metric carries a bounded cardinality and a retention policy | log / trace / metric cardinality is bounded; retention policy is recorded in the operational doc | when the project is replaced by a kernel-level observability framework |
 
 ## Project facts to resolve
 
@@ -107,4 +113,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: reliability-observability-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

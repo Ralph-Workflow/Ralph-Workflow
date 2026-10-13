@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: release-deployment-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -35,6 +35,12 @@ the policy through reviewed cleanup.
   and post-deploy ownership when partial promotion is supported.
 * Projects with an emergency or hotfix path MUST define its authorization,
   verification, audit, and return-to-normal process.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Reversible deployment | Release owner | every release is reversible through a recorded rollback command and a recorded last-known-good version | rollback command is recorded in the release profile; last-known-good version is recorded with the release | when the project ships only forward-only releases (the rollback is the kernel) |
 
 ## Project facts to resolve
 
@@ -116,4 +122,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: release-deployment-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

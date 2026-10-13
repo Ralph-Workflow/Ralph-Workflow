@@ -13,6 +13,8 @@ def _control(
     control_id: str,
     *,
     outcome: str | None = None,
+    detects: str | None = None,
+    retirement_trigger: str | None = None,
     lane: str = "default",
     cost: float = 1.0,
     owner: str = "quality",
@@ -20,6 +22,8 @@ def _control(
     cost_basis: str = "estimate",
 ) -> str:
     protected = outcome or f"{control_id} outcome"
+    detected = detects or f"{control_id} detected condition"
+    retirement = retirement_trigger or f"when the {control_id} control is retired"
     return f"""
 [[controls]]
 id = "{control_id}"
@@ -32,6 +36,8 @@ lane = "{lane}"
 marginal_cost_seconds = {cost}
 cost_basis = "{cost_basis}"
 evidence = "artifact:{control_id}"
+detects = "{detected}"
+retirement_trigger = "{retirement}"
 lifecycle = "review when protected outcome changes"
 disposition = "{disposition}"
 """
@@ -44,10 +50,11 @@ def _manifest(
     profiles: str = "",
     context: str = "",
     extra: str = "",
+    schema_version: str = "v2",
 ) -> str:
     kernel_literal = ", ".join(f'"{item}"' for item in kernel)
     return f"""
-schema_version = "v1"
+schema_version = "{schema_version}"
 default_budget_seconds = 3.0
 kernel_controls = [{kernel_literal}]
 

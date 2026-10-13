@@ -41,6 +41,10 @@ def complete_policy_body(filename: str) -> str:
 
     The required RALPH-FACT keys are read from the bundled starter, so a starter
     that gains a fact key cannot silently drift away from these fixtures.
+    The v5 contract adds a required ``## Guard inventory`` table; the
+    synthesized body always carries one with at least one data row whose
+    Protected outcome names a real detector observation (so the
+    deterministic claim-scope substring predicate passes).
     """
     facts = [
         line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
@@ -74,6 +78,21 @@ def complete_policy_body(filename: str) -> str:
             # The bypass gate is scoped to its section: the command must appear
             # UNDER this heading, not merely somewhere in the file.
             lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
+        elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
+            # v5: every applicable starter (core and conditional) carries
+            # a Guard inventory table with the pinned header and at least
+            # one data row. The Protected outcome cell names a real
+            # detector observation so the claim-scope substring predicate
+            # passes.
+            lines.extend(
+                (
+                    "",
+                    "| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |",
+                    "|---|---|---|---|---|",
+                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | when the test policy is removed |",
+                    "",
+                )
+            )
         else:
             lines.extend(("Real content.", ""))
     lines.extend(facts)

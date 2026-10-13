@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 #: glob in ``pyproject.toml``.
 PORTFOLIO_STARTER_NAME: Final[str] = "policy-portfolio.toml"
 STARTER_NAMES: Final[tuple[str, ...]] = (
+    "execution-kernel.md",
     "testing-policy.md",
     "typechecking-policy.md",
     "linting-policy.md",
@@ -65,7 +66,7 @@ STARTER_NAMES: Final[tuple[str, ...]] = (
 
 
 def iter_starter_names() -> Iterator[str]:
-    """Yield every bundled starter name (11 core + 10 conditional)."""
+    """Yield every bundled starter name (12 core + 10 conditional)."""
     yield from STARTER_NAMES
 
 

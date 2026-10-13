@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: dependency-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -36,6 +36,13 @@ lockfile.
   distribution license. Incompatible licenses block the merge.
 * Every dependency addition MUST be covered by the declared install, build,
   test, license, and security gates that apply to its risk and project role.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | when the project ships no third-party code |
 
 ## Project facts to resolve
 
@@ -171,4 +178,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: dependency-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

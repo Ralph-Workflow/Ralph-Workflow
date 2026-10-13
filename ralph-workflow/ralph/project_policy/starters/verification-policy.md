@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: verification-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -183,6 +183,15 @@ or a budget breach, and a new check MUST NOT be born there for the same
 reason. Demotion is a design decision with an owner and a recorded reason,
 never a way to make the gate green today. The declared owner MUST be a named
 person or team, not a role the author occupies by default.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Bounded run budget | Verification owner | every gate and every long-running action carries a runner-enforced cap | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | when the combined budget is retired by the kernel |
+| No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | when the project stops generating high-churn evidence |
+| Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | when every named profile is retired |
+| Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | when every behavior claim is provable at a cheaper deterministic layer |
 
 ## Project facts to resolve
 
@@ -396,4 +405,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

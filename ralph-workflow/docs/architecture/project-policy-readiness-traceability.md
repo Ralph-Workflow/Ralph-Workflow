@@ -1,209 +1,143 @@
-# Project Policy Readiness — Requirements Traceability
+# Project-policy readiness traceability (v5)
 
-* Status: v4 portfolio implemented; reproduce status with the commands below
-* Date: 2026-09-11
-* Source spec: `.agent/PRODUCT_CRITERIA.md`
-* Source implementation: `ralph-workflow/ralph/project_policy/` and
-  `ralph-workflow/ralph/cli/commands/run.py`
-* Source tests: `ralph-workflow/tests/project_policy/`; use the commands below for current results
+## What the v5 readiness gate reports
 
-## Purpose
+Readiness is now reported across **three dimensions**, not two:
 
-This document is the durable requirements-traceability record for the
-Project Policy Readiness capability. The legacy matrix binds the original
-readiness acceptance criteria; the v4 matrix below binds the bounded-portfolio
-outcomes added by the current product criteria to:
-
-1. The implementing symbol(s) in `ralph-workflow/ralph/project_policy/`
-   (or `ralph-workflow/ralph/cli/commands/run.py`).
-2. At least one passing deterministic test node id in
-   `ralph-workflow/tests/project_policy/`.
-3. The exact verification command that proves the binding.
-
-It also records the gate outcomes that produced this verification, so a
-future reader can re-prove the binding without consulting transient
-artifacts.
-
-## Deterministic-only invariant
-
-The spec mandates a purely deterministic readiness validator: no AI model
-is invoked to decide policy readiness, no probabilistic classification
-is used, and no broad keyword matching determines compliance. Every
-machine-checkable schema token — `POLICY_SCHEMA_MARKER`, `OPT_OUT_MARKER`,
-`AGENTS_BLOCK_BEGIN`, `AGENTS_BLOCK_END`, `CANONICAL_DIR`,
-`CORE_POLICY_FILES`, `CONDITIONAL_POLICY_FILES`, `REQUIRED_HEADINGS`,
-`POLICY_ID_PREFIX`, `FACT_MARKER`, `COMMAND_MARKER`,
-`INAPPLICABLE_MARKER`, `LANG_MARKER`, `PLACEHOLDER_TOKENS`,
-`CITATION_REQUIRED_FIELDS`, the conditional-domain signal sets
-(`UI_FRAMEWORK_SIGNALS`, `CSS_LANGUAGE_SIGNALS`, `UX_APP_FRAMEWORKS`,
-`UX_ROUTER_DEP_SIGNALS`, `PERF_SIGNAL_PATHS`, `PERF_DEP_SIGNALS`,
-`MEMORY_SIGNAL_PATHS`, `MEMORY_DEP_SIGNALS`), the migration constants
-(`MIGRATION_CANDIDATE_PATHS`, `MIGRATION_HEADING_RECOGNIZERS`,
-`MIGRATED_MARKER_TEMPLATE`), `CACHE_REL_PATH`, `APPROVED_GATE_TOOLS`,
-and the `ID_*` stable requirement-id prefixes — lives in
-`ralph-workflow/ralph/project_policy/markers.py`. Changing a token in
-that module breaks every cached READY signature and every canonical
-policy file, so any future edit must import the constant rather than
-inline its literal value.
-
-The validator surface is `ralph/project_policy/validators.py::validate_readiness`,
-which composes the deterministic checks
-`_check_agents_md`, `_check_claude_md`, `_check_core_policy_file`,
-`_check_required_headings`, `_check_placeholders`, `_check_template_banner`,
-`_check_per_language_coverage`, `_check_verification_bypass`,
-the conditional-domain checks driven by
-`ralph/project_policy/evidence.py::design_system_required` /
-`ux_required` / `performance_required` / `memory_required`, and the
-migration check driven by `ralph/project_policy/evidence.py::migration_candidates`
-plus `_is_migration_resolved`.
-
-## Verification command set
-
-| Gate | Command | Recorded outcome |
+| Dimension | What it proves | When it flips True |
 |---|---|---|
-| Scoped test suite | `python -m pytest tests/project_policy -q` | 363 passed in 1.68s |
-| Type-check subsystem | `python -m mypy ralph/project_policy` | Success: no issues found in 17 source files |
-| Lint subsystem + tests | `python -m ruff check ralph/project_policy tests/project_policy` | All checks passed! |
-| Starter structural + citation guard | `python -m pytest tests/project_policy/test_starters.py -q` | 57 passed in 0.16s |
-| Cache invalidation proof (subset) | `python -m pytest tests/project_policy/test_cache.py::test_cache_invalidates_on_edit tests/project_policy/test_cache.py::test_cache_invalidates_on_deletion tests/project_policy/test_cache.py::test_cache_invalidates_on_stack_change tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_contents_change -q` | 4 passed in 0.20s |
-| Cross-subsystem completion gate | `make verify` | must complete with no ERROR/WARNING diagnostics (exit 0) per docs/agents/verification.md; a transient per-test SIGALRM under worker saturation is reconfirmed green by rerun per the Makefile header |
+| `structure_complete` | The deterministic validator passes — every required core file exists with the right schema marker, headings, facts, commands, citations, and guard inventory. | When `validators.validate_readiness` returns an empty findings list. |
+| `implementation_verified` | Every declared `RALPH-COMMAND` gate ran to exit 0 AND the recorded `policy_content_hash` matches the current readiness-evidence signature. A ledger recorded against a pre-edit policy tree cannot certify the present policy. | When every recorded outcome has `exit_code == 0` and the policy-content hash matches. |
+| `outcome_evidence_reviewed` | The recorded outcomes cover every declared gate (command-completeness) AND the analysis agent returned `completed`. A declared gate that was never probed is an unreviewed gate. | When every declared `RALPH-COMMAND` is in the ledger AND analysis blessed the policy. |
 
-## Disposition of `make verify`
+`structure_complete` is the **caching gate**: the project enters READY only when
+this dimension is True. `implementation_verified` and
+`outcome_evidence_reviewed` are **advisory dimensions**: the project
+remains structurally READY without them, but agents and humans see
+that semantic correctness is *separate* from structural completeness.
 
-The cross-subsystem `make verify` gate is the authoritative repository
-completion gate (`docs/agents/verification.md`). The `Makefile` header
-(lines 11–30) documents that the per-test 1.0s SIGALRM budget is
-occasionally exceeded by fast-but-CPU-bound tests under worker
-saturation; such a transient SIGALRM is reconfirmed green by rerunning
-the isolated failing node id with `-p no:xdist -q`. A genuine failure
-under `make verify` must be fixed at its root cause (test-design /
-production coupling per `AGENTS.md` and the `Makefile` header) WITHOUT
-adjusting the immutable 60s combined test budget or weakening any gate,
-then rerun to green; a `make verify` failure must never be classified
-as irrelevant and must never be worked around with `--no-verify`.
+## Why three states, not two
 
-The plan does NOT transcribe a volatile full-suite pass count into this
-durable record: the scoped gates (the first five rows above) are the
-authoritative policy-readiness proof, and `make verify` itself is run
-on every confirmation pass. A NEW failure under `tests/project_policy/`
-would be a real regression in `ralph/project_policy/` that maps to the
-named AC row in the matrix below.
+The previous behavior reported only `READY` / `NOT READY`. That
+projection collapsed two different facts into one label:
 
-## Acceptance-criteria traceability matrix
+* "the validator is clean" (a structural property of the policy pack)
+* "the declared gates actually prove the project's claims" (a
+  semantic property of the run that produced the evidence)
 
-Columns:
+A green gate that never ran is a worse signal than a red gate the
+operator can see. Three states separate these facts so a structural
+READY is not presented as semantic correctness.
 
-* **Spec AC #** — the numbered item from `.agent/PRODUCT_CRITERIA.md` ## Acceptance criteria.
-* **Requirement summary** — short restatement for cross-reference.
-* **Implementing symbol(s)** — function or constant that delivers the requirement.
-* **Covering test node id(s)** — node ids in `tests/project_policy/` that bind the requirement and were PASSING on the recorded gate run.
-* **Verification command** — the exact command that re-proves the binding.
-* **Status** — `COVERED` / `GAP-AC<nn>` (with owning module) / `N/A`.
+## Surfaces that report the three dimensions
 
-| Spec AC # | Requirement summary | Implementing symbol(s) | Covering test node id(s) | Verification command | Status |
-|---|---|---|---|---|---|
-| AC-01 | A project without `AGENTS.md` gets a deterministic placeholder and remediation is scheduled before ordinary work. | `ralph/project_policy/agents_md.py::bootstrap` (creates placeholder); `ralph/project_policy/preflight.py::run_policy_readiness_preflight` (returns `REMEDIATION_REQUIRED` for unprepared) | `tests/project_policy/test_agents_md.py::test_bootstrap_creates_agents_md_when_missing`; `tests/project_policy/test_preflight.py::test_unprepared_returns_remediation_required` | `python -m pytest tests/project_policy/test_agents_md.py::test_bootstrap_creates_agents_md_when_missing tests/project_policy/test_preflight.py::test_unprepared_returns_remediation_required -q` | COVERED |
-| AC-02 | An existing `AGENTS.md` without Ralph instructions is preserved and gets exactly one appended managed block. | `ralph/project_policy/agents_md.py::bootstrap` (appends managed block, preserves prior bytes); managed-block markers `ralph/project_policy/markers.py::AGENTS_BLOCK_BEGIN` / `AGENTS_BLOCK_END` | `tests/project_policy/test_agents_md.py::test_bootstrap_preserves_existing_agents_md_content`; `tests/project_policy/test_agents_md.py::test_bootstrap_does_not_append_when_duplicate_complete_block` | `python -m pytest tests/project_policy/test_agents_md.py::test_bootstrap_preserves_existing_agents_md_content tests/project_policy/test_agents_md.py::test_bootstrap_does_not_append_when_duplicate_complete_block -q` | COVERED |
-| AC-03 | Repeated preflight does not duplicate managed content or recreate compliant files. | `ralph/project_policy/agents_md.py::bootstrap` (idempotent); `ralph/project_policy/starters/__init__.py::seed_starter_into` (writes only when absent) | `tests/project_policy/test_agents_md.py::test_bootstrap_is_idempotent`; `tests/project_policy/test_starters.py::test_seed_starter_into_preserves_existing_file` | `python -m pytest tests/project_policy/test_agents_md.py::test_bootstrap_is_idempotent tests/project_policy/test_starters.py::test_seed_starter_into_preserves_existing_file -q` | COVERED |
-| AC-04 | The exact opt-out marker yields `SKIPPED` with no policy changes and continues the workflow. | `ralph/project_policy/agents_md.py::is_opted_out` (matches `markers.OPT_OUT_MARKER` exactly); `ralph/project_policy/preflight.py::run_policy_readiness_preflight` skip path | `tests/project_policy/test_agents_md.py::test_is_opted_out_returns_true_when_marker_exact`; `tests/project_policy/test_preflight.py::test_opt_out_returns_skipped_without_writes` | `python -m pytest tests/project_policy/test_agents_md.py::test_is_opted_out_returns_true_when_marker_exact tests/project_policy/test_preflight.py::test_opt_out_returns_skipped_without_writes -q` | COVERED |
-| AC-05 | Similar-but-non-exact skip prose does not disable policy management. | `ralph/project_policy/agents_md.py::is_opted_out` (requires byte-exact `markers.OPT_OUT_MARKER`) | `tests/project_policy/test_agents_md.py::test_is_opted_out_rejects_near_miss_variants`; `tests/project_policy/test_agents_md.py::test_is_opted_out_returns_false_when_marker_missing`; `tests/project_policy/test_agents_md.py::test_is_opted_out_returns_false_when_agents_md_missing` | `python -m pytest tests/project_policy/test_agents_md.py -q` | COVERED |
-| AC-06 | Not ready unless all ten core files and every applicable domain file pass presence/identifier/heading/placeholder/template-banner checks (completion is the absence of unresolved markers — there is no completion marker). | `ralph/project_policy/validators.py::validate_readiness`; composed checks `_check_core_policy_file`, `_check_required_headings`, `_check_placeholders`, `_check_template_banner` over `markers.CORE_POLICY_FILES`; conditional-domain findings driven by `markers.CONDITIONAL_POLICY_FILES` | `tests/project_policy/test_validator.py::test_missing_core_file_emits_finding`; `tests/project_policy/test_validator.py::test_heading_missing_emits_finding`; `tests/project_policy/test_validator.py::test_placeholder_token_emits_finding`; `tests/project_policy/test_validator.py::test_no_completion_marker_is_required_for_readiness` | `python -m pytest tests/project_policy/test_validator.py -q` | COVERED |
-| AC-07 | A GUI project has a project-specific `design-system-policy.md` (components/theming over raw CSS) and a substantial-UI project also has a distinct `ux-policy.md`. | `ralph/project_policy/evidence.py::design_system_required` (over `markers.UI_FRAMEWORK_SIGNALS` and `markers.CSS_LANGUAGE_SIGNALS`); `ralph/project_policy/evidence.py::ux_required` (over `markers.UX_APP_FRAMEWORKS` and `markers.UX_ROUTER_DEP_SIGNALS`); validator conditional-domain finding | `tests/project_policy/test_evidence.py::test_design_system_required_for_ui_framework`; `tests/project_policy/test_evidence.py::test_design_system_required_for_css_language`; `tests/project_policy/test_evidence.py::test_design_system_required_without_ux`; `tests/project_policy/test_evidence.py::test_router_only_project_requires_both_design_system_and_ux`; `tests/project_policy/test_evidence.py::test_design_system_required_does_not_imply_ux`; `tests/project_policy/test_evidence.py::test_ux_required_for_app_framework`; `tests/project_policy/test_evidence.py::test_ux_required_for_router_dependency`; `tests/project_policy/test_validator.py::test_design_system_required_emits_design_system_finding`; `tests/project_policy/test_preflight.py::test_stack_with_ui_framework_requires_design_system` | `python -m pytest tests/project_policy/test_evidence.py tests/project_policy/test_validator.py::test_design_system_required_emits_design_system_finding tests/project_policy/test_preflight.py::test_stack_with_ui_framework_requires_design_system -q` | COVERED |
-| AC-08 | Every software project has clean-code, documentation, and architecture policy. | All three files are listed in `markers.CORE_POLICY_FILES` and enforced by `validators._check_core_policy_file`; each ships in `ralph/project_policy/starters/`. | `tests/project_policy/test_validator.py::test_missing_core_file_emits_finding`; `tests/project_policy/test_starters.py::test_architecture_policy_is_a_core_starter`; `tests/project_policy/test_starters.py::test_iter_starter_names_covers_all_core_and_conditional`; `tests/project_policy/test_evidence.py::test_readiness_evidence_includes_all_policy_paths` | `python -m pytest tests/project_policy/test_validator.py::test_missing_core_file_emits_finding tests/project_policy/test_starters.py tests/project_policy/test_evidence.py::test_readiness_evidence_includes_all_policy_paths -q` | COVERED |
-| AC-09 | Projects with meaningful performance/memory constraints get measurable policies; projects without them are not forced to invent targets. | `ralph/project_policy/evidence.py::performance_required` (over `markers.PERF_SIGNAL_PATHS` and `markers.PERF_DEP_SIGNALS`); `ralph/project_policy/evidence.py::memory_required` (over `markers.MEMORY_SIGNAL_PATHS` and `markers.MEMORY_DEP_SIGNALS`) | `tests/project_policy/test_evidence.py::test_performance_required_for_signal_file`; `tests/project_policy/test_evidence.py::test_performance_required_for_dep_substring`; `tests/project_policy/test_evidence.py::test_performance_required_for_directory_signal`; `tests/project_policy/test_evidence.py::test_performance_not_required_without_signals`; `tests/project_policy/test_evidence.py::test_memory_required_for_signal_file`; `tests/project_policy/test_evidence.py::test_memory_required_for_dep_substring`; `tests/project_policy/test_evidence.py::test_memory_required_for_directory_signal`; `tests/project_policy/test_evidence.py::test_memory_not_required_without_signals` | `python -m pytest tests/project_policy/test_evidence.py -q` | COVERED |
-| AC-10 | Projects without conditional domains are not forced to create empty UI/UX/performance/memory policy files. | `ralph/project_policy/evidence.py` (`*_required` returns `False` without signals); `ralph/project_policy/preflight.py::_seed_missing_starters` (seeds only required starters) | `tests/project_policy/test_preflight.py::test_unconditional_domain_not_required_emits_no_finding`; `tests/project_policy/test_evidence.py::test_performance_not_required_without_signals`; `tests/project_policy/test_evidence.py::test_memory_not_required_without_signals` | `python -m pytest tests/project_policy/test_preflight.py::test_unconditional_domain_not_required_emits_no_finding tests/project_policy/test_evidence.py::test_performance_not_required_without_signals tests/project_policy/test_evidence.py::test_memory_not_required_without_signals -q` | COVERED |
-| AC-11 | Missing/incomplete policies become the first review-drain task rather than running concurrently with development. | `ralph/project_policy/preflight.py::run_policy_readiness_preflight` (returns `REMEDIATION_REQUIRED`); `ralph/project_policy/remediation.py::remediate` (runs as first review-drain task); wired into run pipeline at `ralph/cli/commands/run.py:790` (`_run_project_policy_readiness`) which blocks execution on nonzero | `tests/project_policy/test_run_integration.py::test_unprepared_project_blocks_before_planning`; `tests/project_policy/test_run_integration.py::test_run_pipeline_invokes_readiness_before_execution`; `tests/project_policy/test_run_integration.py::test_run_pipeline_nonzero_readiness_blocks_dry_run_and_execute` | `python -m pytest tests/project_policy/test_run_integration.py -q` | COVERED |
-| AC-12 | Existing relevant policies are consolidated into canonical files; unrelated content is preserved; old locations link to the canonical source. | `ralph/project_policy/evidence.py::migration_candidates`; `ralph/project_policy/evidence.py::_is_migration_resolved`; constants `markers.MIGRATION_CANDIDATE_PATHS`, `markers.MIGRATION_HEADING_RECOGNIZERS`, `markers.MIGRATED_MARKER_TEMPLATE`; validator unresolved-migration finding | `tests/project_policy/test_migration.py::test_explicit_candidate_with_recognized_heading_is_a_candidate`; `tests/project_policy/test_migration.py::test_candidate_with_migrated_marker_is_resolved`; `tests/project_policy/test_migration.py::test_unrelated_doc_is_never_a_candidate`; `tests/project_policy/test_migration.py::test_candidate_with_malformed_marker_is_unresolved`; `tests/project_policy/test_migration.py::test_candidate_with_suffixed_marker_is_unresolved`; `tests/project_policy/test_migration.py::test_candidate_with_arbitrary_target_marker_is_unresolved`; `tests/project_policy/test_migration.py::test_candidate_with_partial_marker_text_is_unresolved`; `tests/project_policy/test_migration.py::test_candidate_with_conditional_marker_is_resolved`; `tests/project_policy/test_migration.py::test_candidate_without_target_is_unresolved`; `tests/project_policy/test_migration.py::test_candidate_with_headings_removed_is_resolved`; `tests/project_policy/test_migration.py::test_doc_already_under_canonical_dir_is_skipped`; `tests/project_policy/test_evidence.py::test_migration_candidates_skips_unrecognized_docs`; `tests/project_policy/test_evidence.py::test_migration_candidates_flags_recognized_heading`; `tests/project_policy/test_evidence.py::test_migration_candidates_resolved_with_migrated_marker`; `tests/project_policy/test_validator.py::test_unresolved_migration_candidate_emits_finding`; `tests/project_policy/test_validator.py::test_resolved_migration_candidate_emits_no_finding` | `python -m pytest tests/project_policy/test_migration.py tests/project_policy/test_validator.py::test_unresolved_migration_candidate_emits_finding tests/project_policy/test_validator.py::test_resolved_migration_candidate_emits_no_finding -q` | COVERED |
-| AC-13 | The testing policy explicitly prefers black-box behavior testing and refactoring for testability over white-box coupling. | Semantic content in `ralph/project_policy/starters/testing-policy.md`; structure machine-enforced by `markers.REQUIRED_HEADINGS['testing']` via `validators._check_required_headings` | `tests/project_policy/test_starters.py::test_starter_has_required_sections`; `tests/project_policy/test_starters.py::test_starter_has_research_basis_section`; `tests/project_policy/test_starters.py::test_starter_has_at_least_one_research_citation`; `tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid`; `tests/project_policy/test_starters.py::test_starter_has_placeholder_fact_lines`; `tests/project_policy/test_starters.py::test_starter_has_command_or_inapplicable`; `tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker`; `tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker`; `tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized` | `python -m pytest tests/project_policy/test_starters.py tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized -q` | COVERED (semantic content in the starter; structure gated) |
-| AC-14 | Type-checking and linting policies cover every applicable project language, define exact commands, and govern suppressions/exclusions. | `ralph/project_policy/validators.py::_check_per_language_coverage` (enforces `markers.LANG_MARKER` blocks per language); `markers.REQUIRED_HEADINGS['typechecking']` and `markers.REQUIRED_HEADINGS['linting']` machine-enforced | `tests/project_policy/test_validator.py::test_per_language_coverage_required_for_secondary_language`; `tests/project_policy/test_validator.py::test_empty_per_language_inapplicable_emits_finding` | `python -m pytest tests/project_policy/test_validator.py::test_per_language_coverage_required_for_secondary_language tests/project_policy/test_validator.py::test_empty_per_language_inapplicable_emits_finding -q` | COVERED |
-| AC-15 | The dependency policy includes maintenance and type-system compatibility criteria without requiring unnecessary custom implementations. | Semantic content in `ralph/project_policy/starters/dependency-policy.md`; structure machine-enforced by `markers.REQUIRED_HEADINGS['dependency']` via `validators._check_required_headings` | `tests/project_policy/test_starters.py::test_starter_has_required_sections`; `tests/project_policy/test_starters.py::test_starter_has_placeholder_fact_lines`; `tests/project_policy/test_starters.py::test_starter_has_command_or_inapplicable`; `tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid`; `tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized` | `python -m pytest tests/project_policy/test_starters.py tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized -q` | COVERED (content in starter; structure gated) |
-| AC-16 | The verification policy names executable gates including applicable type-checking and lint-bypass detection. | `ralph/project_policy/validators.py::_check_verification_bypass`; mandatory `Bypass detection` heading in `markers.REQUIRED_HEADINGS['verification']`; approved-tool gate via `markers.APPROVED_GATE_TOOLS` | `tests/project_policy/test_validator.py::test_bypass_detection_section_required_for_verification_policy`; `tests/project_policy/test_validator.py::test_verification_bypass_unapproved_command_emits_finding`; `tests/project_policy/test_validator.py::test_verification_bypass_empty_command_emits_finding`; `tests/project_policy/test_validator.py::test_verification_bypass_placeholder_command_emits_finding`; `tests/project_policy/test_validator.py::test_unapproved_command_at_normal_policy_scope_emits_finding` | `python -m pytest tests/project_policy/test_validator.py::test_bypass_detection_section_required_for_verification_policy tests/project_policy/test_validator.py::test_verification_bypass_unapproved_command_emits_finding tests/project_policy/test_validator.py::test_verification_bypass_empty_command_emits_finding tests/project_policy/test_validator.py::test_verification_bypass_placeholder_command_emits_finding tests/project_policy/test_validator.py::test_unapproved_command_at_normal_policy_scope_emits_finding -q` | COVERED |
-| AC-17 | The agent policy requires agents to run gates and prohibits weakening checks merely to pass. | Semantic content in `ralph/project_policy/starters/agent-policy.md`; structure machine-enforced by `markers.REQUIRED_HEADINGS['agent']` via `validators._check_required_headings` | `tests/project_policy/test_starters.py::test_starter_has_required_sections`; `tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized`; `tests/project_policy/test_remediation.py::test_revalidation_gates_completion`; `tests/project_policy/test_remediation.py::test_no_write_to_artifacts_issues_json` | `python -m pytest tests/project_policy/test_starters.py tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized tests/project_policy/test_remediation.py::test_revalidation_gates_completion tests/project_policy/test_remediation.py::test_no_write_to_artifacts_issues_json -q` | COVERED (content in starter; structure gated + remediation revalidation proof) |
-| AC-18 | Ralph reruns deterministic validation immediately after review-drain remediation. | `ralph/project_policy/remediation.py::remediate` (revalidation loop calling `validators.validate_readiness` after each agent attempt) | `tests/project_policy/test_remediation.py::test_revalidation_gates_completion`; `tests/project_policy/test_remediation.py::test_agent_that_fixes_findings_yields_ready`; `tests/project_policy/test_remediation.py::test_remediation_uses_serde_findings_after_each_revalidation`; `tests/project_policy/test_remediation.py::test_remediation_emits_one_line_per_attempt` | `python -m pytest tests/project_policy/test_remediation.py -q` | COVERED |
-| AC-19 | An agent's completion claim cannot allow development to begin while deterministic findings remain. | `ralph/project_policy/remediation.py::remediate` (gates on validator result, not the agent's return); run-integration blocks on nonzero | `tests/project_policy/test_remediation.py::test_revalidation_gates_completion`; `tests/project_policy/test_remediation.py::test_no_write_to_artifacts_issues_json`; `tests/project_policy/test_run_integration.py::test_remediation_agent_that_fixes_project_proceeds`; `tests/project_policy/test_run_integration.py::test_unprepared_project_blocks_before_planning` | `python -m pytest tests/project_policy/test_remediation.py::test_revalidation_gates_completion tests/project_policy/test_remediation.py::test_no_write_to_artifacts_issues_json tests/project_policy/test_run_integration.py::test_remediation_agent_that_fixes_project_proceeds tests/project_policy/test_run_integration.py::test_unprepared_project_blocks_before_planning -q` | COVERED |
-| AC-20 | Failed revalidation reports stable requirement identifiers, paths, evidence, and expected remediation. | `ralph/project_policy/remediation.py::_render_blocked_report` / `_serialize_findings` over `PolicyFinding` (`markers` `ID_*` stable ids); blocked when attempts exhausted | `tests/project_policy/test_remediation.py::test_remediation_with_zero_max_attempts_returns_blocked`; `tests/project_policy/test_remediation.py::test_remediation_reserializes_still_open_findings`; `tests/project_policy/test_remediation.py::test_remediation_prompt_written_to_workspace_seam` | `python -m pytest tests/project_policy/test_remediation.py::test_remediation_with_zero_max_attempts_returns_blocked tests/project_policy/test_remediation.py::test_remediation_reserializes_still_open_findings tests/project_policy/test_remediation.py::test_remediation_prompt_written_to_workspace_seam -q` | COVERED |
-| AC-21 | Every policy type ships substantive starter content (purpose, safe defaults, project-fact fields, directed AI instructions, verification, exceptions, maintenance triggers, research citations, Ralph markers). | `ralph/project_policy/starters/__init__.py::iter_starter_names` / `read_starter` over the 20 bundled `.md` files; constants in `markers.py` (`POLICY_ID_PREFIX`, `POLICY_SCHEMA_MARKER`, `FACT_MARKER`, `COMMAND_MARKER`, `INAPPLICABLE_MARKER`, `LANG_MARKER`) | `tests/project_policy/test_starters.py::test_iter_starter_names_returns_twenty`; `tests/project_policy/test_starters.py::test_iter_starter_names_covers_all_core_and_conditional`; `tests/project_policy/test_starters.py::test_read_starter_returns_non_empty_content`; `tests/project_policy/test_starters.py::test_starter_has_required_sections`; `tests/project_policy/test_starters.py::test_starter_has_research_basis_section`; `tests/project_policy/test_starters.py::test_starter_has_at_least_one_research_citation`; `tests/project_policy/test_starters.py::test_starter_has_placeholder_fact_lines`; `tests/project_policy/test_starters.py::test_starter_has_command_or_inapplicable`; `tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker`; `tests/project_policy/test_starters.py::test_read_starter_raises_for_unknown_name`; `tests/project_policy/test_starters.py::test_seed_starter_into_raises_for_unknown_name`; `tests/project_policy/test_starters.py::test_starters_are_free_of_known_content_corruption` | `python -m pytest tests/project_policy/test_starters.py -q` | COVERED |
-| AC-22 | Starter requirements are traceable to primary/authoritative sources and do not fabricate universal practices or numeric targets. | Per-starter citation blocks validated for structure by `validators._check_individual_citations` / `_citation_blocks` over `markers.CITATION_REQUIRED_FIELDS` (publisher / title / URL / review-date); on-demand network URL resolution via `make policy-citation-linkcheck` (HTTP < 400) | `tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid`; `tests/project_policy/test_starters.py::test_starter_has_at_least_one_research_citation`; `tests/project_policy/test_starters.py::test_starter_has_research_basis_section`; `tests/project_policy/test_validator.py::test_citation_field_missing_emits_finding`; on-demand only: `make policy-citation-linkcheck` | `python -m pytest tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid tests/project_policy/test_starters.py::test_starter_has_at_least_one_research_citation tests/project_policy/test_starters.py::test_starter_has_research_basis_section tests/project_policy/test_validator.py::test_citation_field_missing_emits_finding -q` (online) `make policy-citation-linkcheck` for live URL resolution | COVERED (structure offline; URL resolution on-demand with network) |
-| AC-23 | An agent cannot pass copied starter content off as complete until it resolves every project-fact field, follows every REPLACE-ME guidance comment, reconciles existing policy, and verifies applicable commands. | Starters ship with the template banner, REPLACE-ME comments, and placeholder tokens; validators banner / placeholder / fact / command checks keep seeded content noncompliant until every unresolved marker is gone (there is no completion marker to add) | `tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker`; `tests/project_policy/test_starters.py::test_seed_starter_into_writes_only_when_absent`; `tests/project_policy/test_starters.py::test_seed_starter_into_preserves_existing_file`; `tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized`; `tests/project_policy/test_validator.py::test_removed_fact_lines_emits_no_fact_finding_per_policy`; `tests/project_policy/test_validator.py::test_missing_command_and_inapplicable_emits_finding`; `tests/project_policy/test_validator.py::test_empty_general_inapplicable_emits_finding`; `tests/project_policy/test_validator.py::test_empty_per_language_inapplicable_emits_finding`; `tests/project_policy/test_preflight.py::test_seeded_starters_are_not_complete` | `python -m pytest tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker tests/project_policy/test_starters.py::test_seed_starter_into_writes_only_when_absent tests/project_policy/test_starters.py::test_seed_starter_into_preserves_existing_file tests/project_policy/test_validator.py::test_starter_content_fails_validation_until_customized tests/project_policy/test_validator.py::test_removed_fact_lines_emits_no_fact_finding_per_policy tests/project_policy/test_validator.py::test_missing_command_and_inapplicable_emits_finding tests/project_policy/test_validator.py::test_empty_general_inapplicable_emits_finding tests/project_policy/test_validator.py::test_empty_per_language_inapplicable_emits_finding tests/project_policy/test_preflight.py::test_seeded_starters_are_not_complete -q` | COVERED |
-| AC-24 | Policy instructions direct agents to inspect evidence, preserve stricter requirements, prefer existing tools, avoid speculative additions, update documentation, run checks, and report limitations. | Directed AI-execution-instructions sections in every starter; presence enforced by `markers.REQUIRED_HEADINGS` via `validators._check_required_headings` | `tests/project_policy/test_starters.py::test_starter_has_required_sections`; `tests/project_policy/test_starters.py::test_starter_has_placeholder_fact_lines`; `tests/project_policy/test_starters.py::test_starter_has_command_or_inapplicable`; `tests/project_policy/test_starters.py::test_starter_never_mentions_a_completion_marker` | `python -m pytest tests/project_policy/test_starters.py -q` | COVERED (directive content in starters; structure gated) |
-| AC-25 | Relevant file changes invalidate any cached ready result. | `ralph/project_policy/cache.py::read_cached_ready` / `write_cache` keyed on `ralph/project_policy/evidence.py::evidence_signature` built from `ralph/project_policy/evidence.py::readiness_evidence` (including directory-signal signatures) | `tests/project_policy/test_cache.py::test_cache_invalidates_on_edit`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_deletion`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_stack_change`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_create`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_delete`; `tests/project_policy/test_cache.py::test_cache_invalidates_on_directory_signal_contents_change`; `tests/project_policy/test_cache.py::test_cache_miss_when_no_file`; `tests/project_policy/test_cache.py::test_cache_returns_ready_only_for_matching_signature`; `tests/project_policy/test_cache.py::test_write_cache_skips_non_ready`; `tests/project_policy/test_evidence.py::test_readiness_evidence_records_deletion_signature`; `tests/project_policy/test_evidence.py::test_readiness_evidence_records_edit_signature`; `tests/project_policy/test_evidence.py::test_readiness_evidence_handles_directory_signal_paths`; `tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_with_contents`; `tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_on_delete` | `python -m pytest tests/project_policy/test_cache.py tests/project_policy/test_evidence.py::test_readiness_evidence_records_deletion_signature tests/project_policy/test_evidence.py::test_readiness_evidence_records_edit_signature tests/project_policy/test_evidence.py::test_readiness_evidence_handles_directory_signal_paths tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_with_contents tests/project_policy/test_evidence.py::test_readiness_evidence_directory_signal_signature_changes_on_delete -q` | COVERED |
-| AC-26 | The capability operates during normal workflow startup and does not require or assume `ralph --init`. | `ralph/cli/commands/run.py:635` (`_run_project_policy_readiness`) called from `ralph/cli/commands/run.py:790` inside `run_pipeline` before dry-run / execute; orchestrator `ralph/project_policy/cli_integration.py::run_project_policy_readiness` | `tests/project_policy/test_run_integration.py::test_run_pipeline_invokes_readiness_before_execution`; `tests/project_policy/test_run_integration.py::test_run_pipeline_inline_prompt_short_circuits_before_readiness`; `tests/project_policy/test_run_integration.py::test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness`; `tests/project_policy/test_run_integration.py::test_readiness_emits_exactly_one_line_for_each_terminal_state`; `tests/project_policy/test_run_integration.py::test_opt_out_skips_readiness_without_writes`; `tests/project_policy/test_run_integration.py::test_remediation_invokes_configured_agent_not_hardcoded_claude`; `tests/project_policy/test_run_integration.py::test_helper_does_not_emit_blocked_panel_when_agent_uses_run_id`; `tests/project_policy/test_run_integration.py::test_run_pipeline_dry_run_invokes_printer_after_ready` | `python -m pytest tests/project_policy/test_run_integration.py -q` | COVERED |
-
-## v4 bounded-portfolio outcome traceability
-
-| Outcome | Implementation surface | Reproducible proof |
+| Surface | File | What the user sees |
 |---|---|---|
-| Typed schema and deterministic composition | `portfolio.py::parse_portfolio_toml`; `markers.py::PORTFOLIO_PATH` and `PORTFOLIO_SCHEMA_VERSION` | `python -m pytest tests/project_policy/test_portfolio.py::test_composition_is_stable_independent_of_declaration_order -q` |
-| Risk/context selection without size or quota proxies | `portfolio.py::_parse_context`, `_profile_matches`, and `_selected_control_ids` | `python -m pytest tests/project_policy/test_portfolio.py::test_profiles_are_selected_from_risk_and_obligations_not_size_or_counts -q` |
-| Kernel, profiles, local tightening, then exceptions | `portfolio.py::_selected_control_ids` followed by `_apply_exceptions` | `python -m pytest tests/project_policy/test_portfolio.py::test_local_tightening_is_composed_after_selected_profiles tests/project_policy/test_portfolio.py::test_narrow_current_exception_removes_exact_control -q` |
-| Bounded inputs and actionable fail-closed diagnostics | `portfolio.py::MAX_PORTFOLIO_BYTES`, `MAX_CONTROLS`, `MAX_PROFILES`, `MAX_LANES`, `MAX_EXCEPTIONS`, and `MAX_CONTEXT_VALUES` | `python -m pytest tests/project_policy/test_portfolio.py::test_input_and_diagnostics_are_bounded tests/project_policy/test_portfolio.py::test_duplicates_and_incompatible_versions_fail_closed -q` |
-| Owner, lane, cost, protected outcome, and lifecycle admission | `portfolio.py::_parse_lanes` and `_parse_controls` | `python -m pytest tests/project_policy/test_portfolio.py::test_ambiguous_ownership_and_unknown_lane_fail_closed tests/project_policy/test_portfolio.py::test_relabeled_duplicate_cost_in_another_lane_fails_closed -q` |
-| Aggregate default-gate ceiling | `portfolio.py::parse_portfolio_toml` sums effective `default` controls and rejects overflow | `python -m pytest tests/project_policy/test_portfolio.py::test_default_budget_overflow_fails_closed -q` |
-| Narrow, owned, expiring exceptions | `portfolio.py::_apply_exceptions` | `python -m pytest tests/project_policy/test_portfolio.py::test_expired_and_broad_exceptions_fail_closed -q` |
-| Public-surface evidence rather than telemetry or narration | `portfolio.py::_FORBIDDEN_EVIDENCE`; remediation and analysis prompts | `python -m pytest tests/project_policy/test_portfolio.py::test_unknown_fields_and_invalid_evidence_fail_closed tests/project_policy/test_policy_portfolio_scenarios.py::test_high_risk_service_cli_reports_durable_controls_human_lane_and_evidence_contract -q` |
-| Readiness and cache cover all composition inputs | `evidence.py::readiness_evidence`; `cache.py`; `validators.py::_check_portfolio` | `python -m pytest tests/project_policy/test_evidence.py::test_readiness_evidence_and_signature_cover_portfolio_manifest tests/project_policy/test_cache.py::test_cache_invalidates_on_portfolio_composition_edit -q` |
-| Upgrade-or-freeze consent | `_schema_upgrade.py` and public preflight seeding | `python -m pytest tests/project_policy/test_skip_inline_policy_prompt.py::test_v3_freeze_does_not_install_v4_portfolio_defaults tests/project_policy/test_skip_inline_policy_prompt.py::test_v3_upgrade_installs_portfolio_through_public_preflight -q` |
-| Representative and adversarial public workflows | public readiness/preflight seam in `preflight.py` | `python -m pytest tests/project_policy/test_policy_portfolio_scenarios.py -q` |
-| Canonical docs and starter marker alignment | `docs/ralph-workflow-policy/`, starter corpus, and `markers.py::POLICY_SCHEMA_MARKER` | `python -m pytest tests/project_policy/test_policy_docs_schema_consistency.py tests/project_policy/test_starters.py -q` |
+| CLI emit | `ralph/project_policy/cli_integration.py` | "ready (structure complete, implementation verified, outcome evidence reviewed)" — or a per-dimension breakdown when one is False. |
+| Status bar | `ralph/project_policy/status_bar.py` | The footer carries the per-dimension state during the run, not a single READY/NOT-READY label. |
+| AGENTS.md managed block | `ralph/project_policy/agents_md.py` | The READY template reports the three dimensions so an agent reading AGENTS.md sees the current state. |
+| Remediation prompt | `ralph/project_policy/remediation.py` + `analysis.py` | The prompt names the dimension that is not True and asks the agent to address it; the analysis decision is gated on the same dimensions. |
 
-## Gaps
+`structural READY remains the cache gate` — a project is not READY if
+`structure_complete` is False. A project is `READY` if all three are
+True. A project is `READY (advisory)` if only `structure_complete` is
+True; agents see the gap in the result body.
 
-None. All 26 spec acceptance criteria are bound to at least one passing
-deterministic test node id and the scoped gates (`tests/project_policy`,
-`mypy ralph/project_policy`, `ruff check ralph/project_policy tests/project_policy`,
-`tests/project_policy/test_starters.py`) are green.
+## Selective applicability (B2)
 
-## Reconcile / re-run instructions
+The kernel is loaded on every change. Domain policies are loaded
+selectively: the agent reads the per-starter "Applicability"
+section and the AGENTS.md managed block to decide which conditional
+policy to apply. The default for a conditional starter is "do not
+load it" — the starter's own trigger must fire.
 
-To re-prove the bindings on a future change, run, from `ralph-workflow/`
-with the project venv active:
+The `execution-kernel.md` starter is the v5 generic layer; every
+other starter shrinks its `## AI execution instructions` to
+domain-specific steps plus a kernel pointer. The kernel rules are
+not rephrased in domain starter body prose.
 
-```text
-python -m pytest tests/project_policy -q
-python -m mypy ralph/project_policy
-python -m ruff check ralph/project_policy tests/project_policy
-python -m pytest tests/project_policy/test_starters.py -q
+## Guard inventory (B9)
+
+Every applicable starter (core and conditional) carries a
+`## Guard inventory` section. The table is the only way a domain
+rule survives a kernel bump: a rule in body prose without an
+inventory row is not enforceable. The grammar is pinned:
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+
+Five cells per row; pipes balanced; the `Detected condition` cell
+must mirror any broad-guarantee phrase in `Protected outcome` (the
+deterministic claim-scope rule, B7). The validator emits a stable
+`RWP-INVENTORY:*` finding on a missing or malformed table.
+
+## Portfolio schema v2
+
+The shipped `policy-portfolio.toml` carries schema version `v2`.
+v2 adds two required control fields:
+
+* `detects` — the observable condition the detector actually reports.
+* `retirement_trigger` — when to retire the control.
+
+A control whose `protected_outcome` carries a broad-guarantee phrase
+that does NOT also appear in `detects` is rejected on parse. Frozen
+v1 packs keep v1 validation (the `core_files_for_version` helper
+selects the manifest a frozen pack is validated against, so a
+frozen v1 portfolio and a v4-frozen policy pack are both
+acceptable).
+
+## Frozen-pack manifest (B2)
+
+A frozen policy pack is validated against the manifest for the
+schema version in its freeze marker, NOT the current manifest:
+
+* `freeze v4` → the v4 manifest (the original eleven core files).
+  `security-policy.md` is still required; `execution-kernel.md` is
+  exempt (introduced in v5).
+* `freeze v5` → the v5 manifest (twelve core files including
+  `execution-kernel.md`).
+* Unfrozen → the current `CORE_POLICY_FILES`.
+
+A frozen v4 pack missing `security-policy.md` stays NOT READY
+because the v4 manifest still requires it. Only files introduced
+AFTER a frozen version are exempt.
+
+## Verification commands
+
+Run the focused project-policy tests:
+
+```bash
+cd ralph-workflow
+python -m pytest tests/project_policy/ -q
 ```
 
-Each row of the matrix above already names the focused re-prove command
-for its AC. A NEW failure under `tests/project_policy/` is a real
-regression and should be recorded as a `GAP-AC<nn>` here with its
-owning module and a remediation plan before this traceability doc is
-amended to mark an AC `GAP-AC<nn>`.
+Run the full gate:
 
+```bash
+cd ralph-workflow
+make verify
+```
 
-## Portfolio baseline and control-family dispositions
+Run the v5-specific tests:
 
-This legacy v3 inventory records the decisions applied by the shipped v4 portfolio migration. Each
-installed control family has exactly one disposition. `KEEP` is reserved for
-an independently valuable durable defense; `MERGE` consolidates duplicate
-obligations under one owner; `REPLACE` moves a broad prose contract into the
-typed portfolio; and `REMOVE` deletes ceremony that has no independent
-oracle.
+```bash
+cd ralph-workflow
+python -m pytest tests/project_policy/test_v5_kernel.py -q
+```
 
-| Control family | v3 marker, fact, command, finding, or test evidence | Decision | v4 owner and durable-protection rationale |
-|---|---|---|---|
-| Policy identity, schema, and opt-out | `POLICY_SCHEMA_MARKER`, `POLICY_ID_PREFIX`, `OPT_OUT_MARKER`; `test_skip_inline_policy_prompt.py` | KEEP | Kernel; preserves explicit consent and upgrade-or-freeze behavior. |
-| Required core-file presence and headings | `CORE_POLICY_FILES`, `REQUIRED_HEADINGS`, `RWP-CORE`, `RWP-HEADING`; `test_validator.py` | REPLACE | Portfolio kernel and selected profiles express effective controls without requiring eleven prose files as independent gates. |
-| Conditional-domain applicability | `CONDITIONAL_POLICY_FILES`, signal sets, `applicability.toml`, `RWP-DOMAIN`; `test_evidence.py` | MERGE | Profile selection owns deterministic signals; explicit overrides retain a reason and review trigger. |
-| Project facts and runnable commands | `RALPH-FACT`, `RALPH-COMMAND`, `RALPH-INAPPLICABLE`, `RALPH-PENDING`, `RWP-CMD`, `RWP-PENDING` | MERGE | Controls and lanes own facts, triggers, costs, commands, and review conditions once. |
-| Language coverage | `RALPH-LANG`, `RWP-LANG`; `test_validator.py` | MERGE | Stack profiles own language-specific lint and typecheck controls. |
-| Starter placeholders and banners | `PLACEHOLDER_TOKENS`, `STARTER_TEMPLATE_TOKEN`, `RWP-PLACEHOLDER`; `test_starters.py` | KEEP | Kernel readiness continues to fail closed on unresolved starter content. |
-| Research citations | `CITATION_REQUIRED_FIELDS`, `RWP-CITATION`; `test_validator.py` | REPLACE | Each portfolio control declares an inspectable evidence/oracle contract; duplicated prose citations are not correctness proof. |
-| Existing-policy migration | `MIGRATION_CANDIDATE_PATHS`, `MIGRATED_MARKER_TEMPLATE`, `RWP-MIGRATE-UNRECONCILED`; migration tests | KEEP | Kernel preserves data and single-source-of-truth integrity during migration. |
-| Testing and verification admission prose | testing `Suite admission`, verification `Gate lanes`, their required facts and commands | REPLACE | Typed controls enforce nearest-coverage search, cheapest sufficient layer, ownership, marginal cost, evidence, and lifecycle. |
-| Lint, typecheck, dependency, clean-code, documentation, architecture, and agent prose | Corresponding core starters and commands; starter/validator tests | MERGE | Kernel plus stack profiles remove repeated default-gate wording and retain one domain owner per obligation. |
-| Security, safety, data-integrity, and public-contract defenses | security plus applicable privacy, data-storage, API-compatibility, reliability, and release starters | KEEP | Risk profiles retain independent controls when fault sensitivity differs; age alone never retires them. |
-| UI, UX, accessibility, performance, and memory prose | Conditional starters and deterministic stack/path/dependency signals | REPLACE | Conditional profiles select only applicable controls and deliberately route perceptual, expensive, platform, or human checks. |
-| READY evidence and cache signature | `readiness_evidence`, `CACHE_REL_PATH`; `test_evidence.py`, `test_cache.py` | KEEP | Cache must include every effective composition input so policy changes cannot reuse stale readiness. |
-| Generated `AGENTS.md` managed block | `AGENTS_BLOCK_BEGIN`, `AGENTS_BLOCK_END`; `test_agents_md.py` | REPLACE | A bounded effective-composition summary replaces the prose-heavy installed corpus while preserving idempotent markers. |
-| Schema upgrade or freeze | `SCHEMA_VERSION == "v3"`, `_maybe_resolve_schema_upgrade`; `test_skip_inline_policy_prompt.py` | KEEP | Existing projects receive one explicit all-or-nothing v4 consent decision and may remain frozen. |
-| Default verification commands | `ralph.verify._VERIFY_STEPS` and `_BUDGET_TRACKED_STEPS`; `make verify` | KEEP | The immutable aggregate 60-second completion ceiling remains independent of project profile budgets. |
-| Duplicate policy narration and telemetry/provenance claims | Repeated starter instructions without a distinct executable oracle | REMOVE | Correctness evidence must be a predeclared public observation tied to immutable subject/run IDs, preserved artifacts, a validated oracle, and an independent verdict. |
+## What ships in the v5 contract
 
-The current default verification surface is the ordered `_VERIFY_STEPS`
-portfolio in `ralph/verify.py`; every test-labelled entry is charged through
-`_BUDGET_TRACKED_STEPS` to the immutable 60-second aggregate ceiling.
-Triggered project commands remain declared by `RALPH-COMMAND`; the v4
-portfolio assigns each effective control to a named lane rather than letting a
-new command silently enter the default gate.
+* 12 required core files (was 11): add `execution-kernel.md`.
+* 10 conditional files (unchanged).
+* Portfolio schema v2: every control needs `detects` and
+  `retirement_trigger`.
+* `## Guard inventory` table on every applicable starter.
+* Three readiness dimensions on every surface.
+
+## What does NOT ship in v5
+
+* No hand edits under `docs/ralph-workflow-policy/`. The consumer
+  docs are auto-regenerated by the readiness preflight; a hand edit
+  gets overwritten on the next run.
+* No bypass for the kernel. The five rules are absolute.
+* No "READY" claim without `structure_complete` True.

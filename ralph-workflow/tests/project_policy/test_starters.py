@@ -10,9 +10,9 @@ import pytest
 from ralph.project_policy import markers, starters
 
 
-def test_iter_starter_names_returns_twenty_one() -> None:
+def test_iter_starter_names_returns_twenty_two() -> None:
     names = list(starters.iter_starter_names())
-    assert len(names) == 21
+    assert len(names) == 22
 
 
 def test_architecture_policy_is_a_core_starter() -> None:
@@ -206,6 +206,7 @@ def test_starter_citations_are_structurally_valid() -> None:
 # not detected automatically (prose scanning is deliberately avoided);
 # reviewers must update this inventory when starter advice changes.
 _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
+    "execution-kernel.md": (),
     "testing-policy.md": (),
     "typechecking-policy.md": (),
     "linting-policy.md": (),

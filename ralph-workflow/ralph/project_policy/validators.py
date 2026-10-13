@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from ralph.project_policy import evidence, markers
+from ralph.project_policy import _content_checks, evidence, markers
 from ralph.project_policy._content_checks import (
     _check_commands,
     _check_markers,
@@ -33,6 +33,7 @@ from ralph.project_policy._content_checks import (
     _check_template_banner,
     _frozen_schema_version,
 )
+from ralph.project_policy._guard_inventory import _check_guard_inventory
 from ralph.project_policy._scanners import (
     _HEADING_LINE_RE,
     _check_pending_facts,
@@ -279,7 +280,8 @@ def _validate_existing_policy_file_with_workspace(
     publication is scoped to the lifetime of the call so concurrent
     validators and unit tests do not see a stale reference.
     """
-    from ralph.project_policy import _content_checks  # noqa: PLC0415
+    _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
+    previous = _content_checks._CITATION_PATH_WORKSPACE[0]
 
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
@@ -302,6 +304,13 @@ def _validate_existing_policy_file(content: str, path: str, filename: str) -> li
         findings.extend(_check_required_fact_keys(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
+    # v5 guard-inventory check (B9). Every applicable starter (core and
+    # conditional) MUST carry a `## Guard inventory` table. Frozen packs
+    # at v4 are exempt: the table was introduced in v5 and a frozen
+    # v4 pack is validated against its own version's manifest, not
+    # the v5 contract.
+    if _frozen_schema_version(content) is None:
+        findings.extend(_check_guard_inventory(content, path, filename))
     return findings
 
 
@@ -315,10 +324,6 @@ def _check_research_basis_with_workspace(
     duration of the call, so unit tests that bypass the validator
     ingress are not perturbed.
     """
-    # Local import: avoids validator<->_content_checks cycle while
-    # ruff can still see the symbol through TYPE_CHECKING.
-    from ralph.project_policy import _content_checks  # noqa: PLC0415
-
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     try:
@@ -606,6 +611,35 @@ def _check_portfolio(workspace: Workspace) -> list[PolicyFinding]:
     return []
 
 
+def _detect_frozen_version(workspace: Workspace) -> str | None:
+    """Return the frozen schema version across the canonical core files.
+
+    Walks every core file in the current manifest and returns the
+    highest ``freeze vN`` marker it finds (or ``None`` when no file
+    is frozen). The validator uses this to switch the manifest a
+    frozen pack is validated against: a v4-frozen pack is checked
+    against the v4 manifest, not the v5 one, so it can stay on its
+    own frozen schema.
+    """
+    highest: str | None = None
+    for filename in markers.CORE_POLICY_FILES:
+        path = f"{markers.CANONICAL_DIR}{filename}"
+        if not workspace.exists(path):
+            continue
+        content = workspace.read(path)
+        first_line = next(
+            (line for line in content.splitlines() if line.strip()),
+            "",
+        )
+        match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v(\d+) -->", first_line)
+        if match is None:
+            continue
+        version = f"v{match.group(1)}"
+        if highest is None or int(version[1:]) > int(highest[1:]):
+            highest = version
+    return highest
+
+
 def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
     """Run every deterministic readiness check and return the findings list.
 
@@ -613,12 +647,30 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     consult any AI. Every check reads through the workspace seam and emits
     zero or more findings. A project is ready iff the returned list is
     empty.
+
+    The core-file manifest is version-aware (v5): when a project has
+    any ``freeze vN`` marker across the canonical core files, the
+    manifest switches to ``markers.core_files_for_version(v)`` so a
+    frozen v4 pack is validated against the v4 manifest (the original
+    eleven core files) and not the v5 manifest (twelve files including
+    ``execution-kernel.md``). The check stays the binding gate: a
+    frozen v4 pack missing ``security-policy.md`` is NOT READY because
+    the v4 manifest still requires it.
     """
     findings: list[PolicyFinding] = []
     findings.extend(_check_agents_md(workspace))
     findings.extend(_check_claude_md(workspace))
     findings.extend(_check_portfolio(workspace))
-    for filename in markers.CORE_POLICY_FILES:
+    # Manifest selection: a frozen pack is validated against its own
+    # version's manifest. An unfrozen pack (or a fresh v5 pack) uses
+    # the current CORE_POLICY_FILES.
+    frozen_version = _detect_frozen_version(workspace)
+    core_manifest = (
+        markers.core_files_for_version(frozen_version)
+        if frozen_version is not None
+        else markers.CORE_POLICY_FILES
+    )
+    for filename in core_manifest:
         findings.extend(_check_core_policy_file(workspace, filename))
 
     findings.extend(_check_per_language_coverage(workspace, stack))

@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Final, cast
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-from ralph.project_policy.markers import PORTFOLIO_PATH, PORTFOLIO_SCHEMA_VERSION
+from ralph.project_policy.markers import (
+    CLAIM_SCOPE_PHRASES,
+    PORTFOLIO_PATH,
+    PORTFOLIO_SCHEMA_VERSION,
+)
 from ralph.project_policy.models import PortfolioError
 
 MAX_PORTFOLIO_BYTES: Final[int] = 65_536
@@ -74,6 +78,13 @@ _ALLOWED_CONTROL = frozenset(
         "disposition",
         "removed-tests",
         "cost_basis",
+        # v2 additions: the detector's actual observation and the trigger
+        # for retiring the control. The claim-scope rule (B7) checks
+        # ``protected_outcome`` against ``detects`` for broad-guarantee
+        # phrases; ``retirement_trigger`` is a free-form string that the
+        # review surface can quote back.
+        "detects",
+        "retirement_trigger",
     }
 )
 _OPTIONAL_CONTROL = frozenset({"evidence_path", "removed-tests"})
@@ -114,6 +125,8 @@ class _Control:
     lifecycle: str
     disposition: str
     cost_basis: str
+    detects: str
+    retirement_trigger: str
     removed_tests: str | None = None
 
 
@@ -221,6 +234,33 @@ def _text(table: Mapping[str, object], key: str, label: str) -> str:
     return value.strip()
 
 
+def _check_claim_scope(control_id: str, protected_outcome: str, detects: str) -> None:
+    """Apply the deterministic claim-scope rule (B7).
+
+    A control is rejected when its ``protected_outcome`` carries any phrase
+    from :data:`markers.CLAIM_SCOPE_PHRASES` that does NOT also appear in
+    the same control's ``detects`` field. The rule enforces the v5
+    outcome-oriented kernel: a broad guarantee (``dependency direction
+    enforced``, ``all inputs validated``) is a claim about the WORLD, not
+    about a detector, and is rejected unless the detector's observation
+    literally mentions the same phrase. The substring predicate is the
+    deterministic floor; the human-review rubric covers the residual
+    semantic gap.
+    """
+    outcome_lower = protected_outcome.lower()
+    detects_lower = detects.lower()
+    for phrase in CLAIM_SCOPE_PHRASES:
+        if phrase not in outcome_lower:
+            continue
+        if phrase in detects_lower:
+            continue
+        raise _error(
+            f"control {control_id} protected_outcome carries broad phrase "
+            f"{phrase!r} that does not appear in detects; rewrite the "
+            "outcome to name only what the detector observes"
+        )
+
+
 def _strings(value: object, label: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(
         not isinstance(item, str) or not item.strip() for item in value
@@ -318,6 +358,14 @@ def _parse_controls(
         cost_basis_raw = table.get("cost_basis")
         if not isinstance(cost_basis_raw, str) or cost_basis_raw not in _ALLOWED_COST_BASIS:
             raise _error(f"control {control_id} requires cost_basis = 'measured' or 'estimate'")
+        # v2 required fields. ``detects`` and ``retirement_trigger`` are
+        # mandatory on every v2 control; missing or empty values fail the
+        # parse closed.
+        detects = _text(table, "detects", f"control {control_id}")
+        retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
+        # Claim-scope rule (B7). Apply the deterministic substring
+        # predicate against the new required fields.
+        _check_claim_scope(control_id, outcome, detects)
         controls[control_id] = _Control(
             id=control_id,
             protected_outcome=outcome,
@@ -332,6 +380,8 @@ def _parse_controls(
             disposition=disposition,
             cost_basis=cost_basis_raw,
             removed_tests=removed_tests_value,
+            detects=detects,
+            retirement_trigger=retirement_trigger,
         )
     return controls
 

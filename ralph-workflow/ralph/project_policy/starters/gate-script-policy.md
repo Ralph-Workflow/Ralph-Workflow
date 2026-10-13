@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: gate-script-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file ships COMPLETE. Unlike every other
 policy starter, its requirements are NORMATIVE STANDARD TEXT, not a template
@@ -138,6 +138,14 @@ presence of `.ps1`/`.cmd` scripts, packaging metadata — never assumed.
 above do not apply. They begin to apply the moment the project ships a Windows
 artifact or adds a Windows CI job.
 
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Bounded gate execution | Gate-script owner | every gate script exits inside a runner-enforced timeout | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout | when the gate is no longer long-running |
+| No phantom dependencies | Gate-script owner | every gate script runs from a clean clone using only documented setup and secret mechanism | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential | when the gate is retired |
+| Meaning-preserving rewording | Gate-script owner | the gate-script policy protects meaning and failure sensitivity, not wording volume | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose | when the prohibited-actions list is retired by the kernel |
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents rely on
@@ -267,4 +275,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: gate-script-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

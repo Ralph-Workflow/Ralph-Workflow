@@ -100,6 +100,13 @@ _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 # agent needs: the pointer to the canonical policy dir and the obligation to
 # follow it (which also keeps the validator's canonical-dir-in-block gate
 # satisfied).
+#
+# v5: the block now reports the three readiness dimensions (structure
+# complete, implementation verified, outcome evidence reviewed) so an
+# agent reading AGENTS.md sees the current state and not just the
+# two-state "READY / not READY" projection. A structural READY is
+# the caching gate; semantic correctness is the agent's
+# responsibility and is reported separately.
 _AGENTS_READY_TEMPLATE = """{begin}
 This project follows Ralph Workflow quality policies. Before any change, read {canonical_dir} and load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
 Run declared RALPH-COMMAND gates; read {canonical_dir}gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
@@ -107,6 +114,7 @@ Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP
 Give non-default work an owner, trigger, lane, evidence, and review condition. Material claims need a predeclared public-surface observation tied to an immutable subject and run, preserved artifact, validated oracle, and independent verdict.
 Telemetry, provenance, private-state inspection, and agent narration are not correctness proof. These are living documents: keep facts current without amending policy intent.
 Resolve RALPH-PENDING lines whose review trigger is met; leaving a resolvable item is a violation. Dead code is prohibited; remove it — rewriting later is better than retaining it.
+Readiness reports THREE dimensions, not two: structure complete (validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), outcome evidence reviewed (every declared gate recorded). A structural READY is the caching gate; structural READY is NOT semantic correctness.
 {end}
 """
 

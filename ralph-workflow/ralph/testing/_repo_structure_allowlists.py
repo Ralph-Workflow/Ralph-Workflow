@@ -666,6 +666,16 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.project_policy",
             ("_content_checks",),
         ),
+        # v5: the guard-inventory parser was split out of
+        # ``_content_checks.py`` to keep the 1000-line cap; the v5
+        # proof tests follow the parser to its new home so the
+        # per-row branch and the per-phrase claim-scope check are
+        # exercised at the cheapest deterministic layer.
+        (
+            "tests/project_policy/test_v5_kernel.py",
+            "ralph.project_policy",
+            ("_guard_inventory",),
+        ),
         (
             "tests/project_policy/test_pending_marker.py",
             "ralph.project_policy",
@@ -1631,5 +1641,12 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/workspace/context.py", 115),
         ("ralph/workspace/context.py", 118),
         ("ralph/workspace/context.py", 121),
+        # v5: the guard-inventory parser was split out of
+        # ``_content_checks.py`` to keep the 1000-line audit cap; the
+        # F401 re-export in ``_content_checks.py`` is the public seam
+        # the validators.py check and downstream tests consume. The
+        # bypass is the documented re-export pattern, mirroring the
+        # ``smoke.py`` re-export entry above.
+        ("ralph/project_policy/_content_checks.py", 792),
     }
 )

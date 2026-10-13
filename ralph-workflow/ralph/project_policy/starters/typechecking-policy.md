@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: typechecking-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -120,6 +120,14 @@ the project maintains and can statically check them.
 * Untyped third-party values MUST be contained by typed adapters, protocols,
   validation, or stubs sufficient to prevent unchecked values escaping into
   checked first-party code. Blanket global silencing is forbidden.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Unknown at untrusted boundaries | Type owner | TypeScript `unknown` is allowed at untrusted boundaries with immediate narrowing | static type check accepts `unknown`; linter permits `unknown`; reviewer can name the boundary type and the narrowing call | when the type system gains first-class refinement types |
+| Typed tests | Type owner | tests are fully typed within the declared checker scope | static type check over the test files returns zero errors | when the test framework is removed from the project |
+| No typecheck bypass | Type owner | no `# type: ignore`, `ignore_missing_imports`, `follow_imports = silent`, or `disallow_untyped_defs = false` lands in the tree | audit_typecheck_bypass returns zero findings | when the rule is restated as a kernel-level constraint |
 
 ## Project facts to resolve
 
@@ -296,4 +304,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -36,6 +36,12 @@ of documentation belongs.
   default, valid range, and effect.
 * Release notes MUST enumerate user-visible changes and required
   migrations.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Single source of truth | Documentation owner | every policy statement lives in exactly one canonical file | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new | when the canonical directory is removed (the kernel absorbs the contract) |
 
 ## Project facts to resolve
 
@@ -166,4 +172,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

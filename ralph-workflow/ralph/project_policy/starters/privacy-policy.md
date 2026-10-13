@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: privacy-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -28,6 +28,12 @@ trigger, or remove the policy through reviewed cleanup.
   rules as production flows.
 * User or operator controls and deletion/export obligations MUST be tested
   where applicable.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Data classification | Privacy owner | every field with personal data is classified in the project's data-classification doc | data-classification doc enumerates every personal-data field; the doc is reviewed on every schema change | when the project stops holding personal data |
 
 ## Project facts to resolve
 
@@ -105,4 +111,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: privacy-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

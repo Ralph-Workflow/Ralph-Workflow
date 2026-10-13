@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: architecture-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -30,6 +30,13 @@ architecture without imposing a named pattern or directory layout.
   preferred pattern in isolation.
 * Relevant static, runtime, deployment, interface, and data-flow views MUST be
   documented when those views affect design or operation.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Process and resource ownership | Architecture owner | process / resource ownership is explicit: every long-lived process, file lock, socket, and signal handler is owned by a named module that closes it on every code path | code review requires every long-lived resource to be owned and closed; audit_resource_lifecycle returns zero findings | when the project has no long-lived resources |
+| Conditional durable contracts | Architecture owner | durable contracts (registries, classifiers, name lists) are required only when the system that consumes them actually exists in the project | every required registry / classifier has a named consumer; no required registry / classifier is in place solely because a starter said so | when the consumer system is removed |
 
 ## Project facts to resolve
 
@@ -116,4 +123,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: architecture-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`

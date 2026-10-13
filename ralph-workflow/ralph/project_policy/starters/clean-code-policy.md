@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v5 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -43,6 +43,13 @@ code.
   compatibility code remain subject to applicable quality gates.
 * Cross-component dependency direction, state ownership, and external I/O
   boundaries are governed by `architecture-policy.md`.
+
+## Guard inventory
+
+| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
+|---|---|---|---|---|
+| Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | when every private-call ratchet is retired |
+| Bounded premature abstraction | Clean-code owner | a one-implementation abstraction is premature | abstraction exists only when a second implementation exists or is imminent | when the project stops growing the abstraction target |
 
 ## Project facts to resolve
 
@@ -170,4 +177,4 @@ weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v5 -->`
