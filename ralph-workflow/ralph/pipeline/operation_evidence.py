@@ -72,6 +72,15 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     The fingerprint is the durable evidence the record's *identity*
     (target, pre-integration SHAs, operation kind) has not been
     changed underneath the diagnostic path.
+
+    All fields that the diagnostic path itself owns are excluded so
+    a legitimate diagnostic-path transition (``RAISE_DIAGNOSTIC_INTERVENTION``,
+    ``BUMP_DIAGNOSTIC_ATTEMPT``, ``HOLD_DIAGNOSTIC_EVIDENCE``,
+    ``RELEASE_DIAGNOSTIC_EVIDENCE``) does not alter the fingerprint
+    it is measured against. The fingerprint therefore only changes
+    when an external party (not the diagnostic path) edits the
+    record's identity fields, which is what the diagnostic
+    re-read check is meant to detect.
     """
     stable = record.model_copy(
         update={
@@ -79,6 +88,8 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
             "diagnostic_ownership": None,
             "merge_commit_repair_attempts": 0,
             "repair_last_error": None,
+            "diagnostic_intervention_required": False,
+            "repair_cap_reason": None,
         }
     )
     return hashlib.sha256(stable.model_dump_json().encode()).hexdigest()

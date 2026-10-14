@@ -52,6 +52,17 @@ def _check_blocking_decision(
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
 ) -> PhaseDecision | None:
+    """Derive the blocking decision from current authorities only.
+
+    The blocking decision is a derived projection over current
+    authority outputs, NOT a feedback input. ``rebase_state.last_decision``
+    is the *persisted typed decision* from the previous run loop
+    turn -- re-using it as a blocking input here would let a
+    settled obligation remain blocked because the previous
+    turn's decision was blocking. The current authority outputs
+    (integration record, integration_unresolved, intervention
+    flag) are the only inputs.
+    """
     if integration_record is not None:
         if integration_record.diagnostic_intervention_required:
             return PhaseDecision.REPORT_INTERVENTION_REQUIRED
@@ -67,11 +78,6 @@ def _check_blocking_decision(
             )
         ):
             return PhaseDecision.BLOCK_FOR_RECOVERY
-    if rebase_state.last_decision in (
-        PhaseDecision.BLOCK_FOR_RECOVERY.value,
-        PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
-    ):
-        return PhaseDecision(rebase_state.last_decision)
     if rebase_state.integration_unresolved:
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None

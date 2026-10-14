@@ -277,28 +277,74 @@ _ACTION_DISPLAY_MAP: dict[str, str] = {
     "completed": "terminal",
 }
 
-
-def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
-    if rebase.last_decision in _DECISION_DISPLAY_MAP:
-        return _DECISION_DISPLAY_MAP[rebase.last_decision]
-    if (
-        rebase.last_action in ("diagnosing", "evidence_diagnosis")
-        or bool(rebase.diagnostic_ownership)
-        or rebase.recovery_record_retained
-    ):
-        return "evidence_diagnosis"
-    if rebase.last_action == "conflict" or rebase.resolving_rebase or rebase.resolving_merge:
-        return "conflict_resolution"
-    if rebase.last_publication_decision in (
+#: Publication decisions that keep the obligation open. The
+#: terminal decision (``publication_terminal``) is handled
+#: separately and is NOT in this set; the closed-obligation
+#: display state is "terminal", not "publishing".
+_PUBLISHING_DECISIONS: frozenset[str] = frozenset(
+    {
         "publish_now",
         "publishing",
         "publish_deferred_remote",
         "publish_deferred_freshness",
-    ):
+    }
+)
+
+#: Last-action values that signal the operation is closed.
+_TERMINAL_ACTIONS: frozenset[str] = frozenset({"terminal", "completed", "remote_pushed"})
+
+
+def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
+    """Derive the eight-category display state from current authority outputs.
+
+    Pure: takes a :class:`RebaseState` snapshot and returns one of the
+    eight :class:`OperationDisplayState` values (or ``None`` when no
+    authority has reported yet). The function never infers a state
+    from prose alone; every branch reads a typed field whose owner
+    is a single authority.
+    """
+    decision_state = _decision_display_state(rebase)
+    if decision_state is not None:
+        return decision_state
+    return _prose_display_state(rebase)
+
+
+def _decision_display_state(rebase: RebaseState) -> str | None:
+    if rebase.last_decision in _DECISION_DISPLAY_MAP:
+        return _DECISION_DISPLAY_MAP[rebase.last_decision]
+    if _is_evidence_diagnosis(rebase):
+        return "evidence_diagnosis"
+    if _is_conflict_resolution(rebase):
+        return "conflict_resolution"
+    if rebase.last_publication_decision == "publication_terminal":
+        return "terminal"
+    if rebase.last_publication_decision in _PUBLISHING_DECISIONS:
         return "publishing"
-    if (rebase.last_action in ("rebased", "merged") and not rebase.fast_forwarded) or (
-        rebase.last_action in ("rebased", "merged", "fast_forwarded", "skipped")
-        and rebase.fast_forwarded
-    ):
+    return None
+
+
+def _prose_display_state(rebase: RebaseState) -> str | None:
+    if _is_landing(rebase):
         return "landing"
+    if rebase.last_action in _TERMINAL_ACTIONS:
+        return "terminal"
     return _ACTION_DISPLAY_MAP.get(rebase.last_action) if rebase.last_action else None
+
+
+def _is_evidence_diagnosis(rebase: RebaseState) -> bool:
+    return (
+        rebase.last_action in ("diagnosing", "evidence_diagnosis")
+        or bool(rebase.diagnostic_ownership)
+        or rebase.recovery_record_retained
+    )
+
+
+def _is_conflict_resolution(rebase: RebaseState) -> bool:
+    return rebase.last_action == "conflict" or rebase.resolving_rebase or rebase.resolving_merge
+
+
+def _is_landing(rebase: RebaseState) -> bool:
+    return (rebase.last_action in ("rebased", "merged") and not rebase.fast_forwarded) or (
+        rebase.last_action in ("rebased", "merged", "fast_forwarded", "skipped", "remote_pushed")
+        and rebase.fast_forwarded
+    )

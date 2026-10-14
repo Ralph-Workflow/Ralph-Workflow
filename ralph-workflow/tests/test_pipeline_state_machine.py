@@ -180,3 +180,45 @@ def test_decide_durable_intervention_outranks_cached_block_for_recovery() -> Non
         rebase_state=rebase_state,
     )
     assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+
+
+def test_persisted_block_does_not_block_when_no_authority_obligation() -> None:
+    """A persisted ``BLOCK_FOR_RECOVERY`` decision must NOT block a fresh
+    state with no current authority obligation.
+
+    The blocking decision is a derived projection over CURRENT
+    authority outputs, not a feedback input. The previous run
+    loop turn's persisted decision is the *output* of the
+    decision; re-using it as an *input* would let a settled
+    obligation remain blocked because the previous turn's
+    decision was blocking. With no current integration record
+    and no current ``integration_unresolved`` flag, the decision
+    must progress.
+    """
+    # No integration_record, no integration_unresolved, but a
+    # persisted blocking decision from a previous turn. The
+    # current state must NOT inherit the previous block.
+    rebase_state = RebaseState(last_decision=PhaseDecision.BLOCK_FOR_RECOVERY.value)
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=None,
+        rebase_state=rebase_state,
+    )
+    assert decision is not PhaseDecision.BLOCK_FOR_RECOVERY
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
+
+
+def test_persisted_intervention_does_not_block_when_no_authority_obligation() -> None:
+    """Same one-way-projection rule for the intervention decision."""
+    rebase_state = RebaseState(last_decision=PhaseDecision.REPORT_INTERVENTION_REQUIRED.value)
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=None,
+        rebase_state=rebase_state,
+    )
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is not PhaseDecision.BLOCK_FOR_RECOVERY

@@ -377,15 +377,15 @@ def _route_reduced_decision(
         bool(terminal_states) and new_state.phase in terminal_states
     )
 
-    if (
-        state.rebase.last_decision
-        in (
-            PhaseDecision.BLOCK_FOR_RECOVERY.value,
-            PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
-        )
-        and rebase.last_decision is None
-    ):
-        rebase = rebase.model_copy(update={"last_decision": state.rebase.last_decision})
+    # The persisted ``last_decision`` is the OUTPUT of this
+    # function (the typed decision derived from current authority
+    # outputs). It is NOT a feedback INPUT; a settled obligation
+    # must not remain blocked because the previous turn's
+    # decision was blocking. The previous-turn ``last_decision``
+    # is dropped before the new decision is computed; the
+    # reducer is pure over the current authority inputs.
+    if new_state.rebase.last_decision is not None:
+        rebase = new_state.rebase.model_copy(update={"last_decision": None})
         new_state = new_state.copy_with(rebase=rebase)
 
     if state.rebase.last_decision is None and not is_phase_boundary and integration_record is None:

@@ -591,6 +591,25 @@ def push_target_after_landing(
 
     Returns the ``RebaseState`` annotated with ``last_remote_sync`` and
     ``last_push``. Never raises; never reverts a local landing.
+
+    The persisted ``last_publication_decision`` reflects the **actual
+    outcome** of the push attempt, not the pre-push eligibility
+    check:
+
+    * successful push (PUSHED / CREATED) → ``PUBLICATION_TERMINAL``
+      -- remote publication is proven, the obligation is fulfilled;
+    * remote unreachable / auth failed / rejected / timeout →
+      ``PUBLISH_DEFERRED_REMOTE`` -- publication is pending
+      according to the configured policy, the obligation is NOT
+      fulfilled;
+    * any other failure → corresponding non-terminal decision.
+
+    The pre-push ``PUBLISH_NOW`` decision is overwritten by the
+    post-push decision so a successful push becomes terminal and a
+    failed push remains non-terminal. Without this overwrite the
+    typed state machine would report ``PUBLISH_NOW`` after a
+    successful push, which violates the distinct
+    local-landing / remote-publication obligation invariant.
     """
     if not remote_sync_enabled(config):
         decision = next_publication_action(
@@ -614,18 +633,51 @@ def push_target_after_landing(
                 "last_publication_decision": decision.value,
             }
         )
+    # Overwrite the pre-push decision with the post-push outcome.
+    # ``push_single_remote`` returns the pre-push decision in
+    # ``decision`` (PUBLISH_NOW) so the typed state machine can
+    # reason about whether the push was *attempted*; here we
+    # translate the actual outcome into the post-push decision.
+    post_decision = _post_push_publication_decision(typed_result)
     return record.model_copy(
         update={
             "last_push": typed_result.summary,
             "last_remote": typed_result.remote,
             "last_push_status": typed_result.status.value,
             "last_remote_sync": _remote_sync_status(typed_result.status),
-            "last_publication_decision": decision.value,
+            "last_publication_decision": post_decision.value,
+            "last_action": "remote_pushed" if typed_result.success else "remote_failed",
             "last_reason": (
                 None if typed_result.success else typed_result.detail or typed_result.status.value
             ),
         },
     )
+
+
+def _post_push_publication_decision(
+    typed_result: _remote_push_module.PushResult,
+) -> PublicationDecision:
+    """Translate a typed push outcome into the post-push publication decision.
+
+    A successful push (PUSHED / CREATED) closes the publication
+    obligation; the typed decision is ``PUBLICATION_TERMINAL``. An
+    unreachable / rejected / timed-out / auth-failed / hook-rejected
+    push is a non-terminal publication according to the configured
+    policy; the obligation is carried forward and retried on the
+    next seam. The non-fast-forward status keeps the obligation
+    open (the remote diverged from the local landing).
+    """
+    terminal_statuses = {
+        _remote_push_module.PushStatus.PUSHED,
+        _remote_push_module.PushStatus.CREATED,
+    }
+    if typed_result.status in terminal_statuses:
+        return PublicationDecision.PUBLICATION_TERMINAL
+    if typed_result.status == _remote_push_module.PushStatus.UNREACHABLE:
+        return PublicationDecision.PUBLISH_DEFERRED_REMOTE
+    if typed_result.status == _remote_push_module.PushStatus.NON_FAST_FORWARD:
+        return PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
+    return PublicationDecision.PUBLICATION_BLOCKED
 
 
 def _coerce_push_result(
@@ -715,6 +767,22 @@ def reconcile_after_rejected_push(
             remote_unavailable=outcome.status == _remote_push_module.PushStatus.UNREACHABLE,
             configured_remote=chosen_remote,
         )
+        # Use the post-push decision so successful pushes become
+        # terminal and failed pushes remain non-terminal. ``decision``
+        # above is the pre-push eligibility check; it is replaced
+        # here by the actual outcome of the attempt.
+        post_decision = (
+            _post_push_publication_decision(
+                _remote_push_module.PushResult(
+                    outcome.status,
+                    chosen_remote,
+                    target,
+                    detail=outcome.summary,
+                )
+            )
+            if outcome.status is not None
+            else decision
+        )
         final_record = final_record.model_copy(
             update={
                 "last_push": outcome.summary,
@@ -725,7 +793,7 @@ def reconcile_after_rejected_push(
                     if outcome.status is not None
                     else REMOTE_PULL_FAILED
                 ),
-                "last_publication_decision": decision.value,
+                "last_publication_decision": post_decision.value,
             },
         )
         if outcome.success:

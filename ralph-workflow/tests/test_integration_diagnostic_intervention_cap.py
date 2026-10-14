@@ -162,3 +162,39 @@ def test_no_agents_returns_false_without_clearing() -> None:
     # The record was not persisted (no agent to call, no
     # intervention raised).
     assert not backend.exists(record_path(root))
+
+
+def test_intervention_transition_does_not_change_ownership_fingerprint() -> None:
+    """The legitimate ``RAISE_DIAGNOSTIC_INTERVENTION`` transition must
+    NOT change the ownership fingerprint.
+
+    ``diagnose_retained_integration`` re-reads the persisted record
+    after a diagnostic handoff and reverts to the pre-handoff
+    record whenever the fingerprint changed. If the fingerprint
+    calculation does not exclude the diagnostic-path-owned fields
+    (``diagnostic_intervention_required``, ``repair_cap_reason``),
+    the legitimate intervention transition would change the
+    fingerprint and the re-read would silently revert the
+    intervention -- re-creating the production loop the cap was
+    designed to break.
+    """
+    from ralph.pipeline.operation_evidence import ownership_fingerprint
+
+    record = _record(merge_commit_repair_attempts=0)
+    fingerprint_before = ownership_fingerprint(record)
+
+    intervened = record.with_transition(
+        __import__(
+            "ralph.pipeline.auto_integrate_record", fromlist=["RAISE_DIAGNOSTIC_INTERVENTION"]
+        ).RAISE_DIAGNOSTIC_INTERVENTION,
+        diagnostic_intervention_required=True,
+        repair_cap_reason="diagnostic repair exhausted; operator intervention required",
+    )
+    fingerprint_after = ownership_fingerprint(intervened)
+
+    # The legitimate intervention transition must NOT alter the
+    # fingerprint. The diagnostic path's authority transition is
+    # not external modification of the record's identity.
+    assert fingerprint_after == fingerprint_before
+    assert intervened.diagnostic_intervention_required is True
+    assert intervened.repair_cap_reason is not None
