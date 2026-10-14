@@ -199,6 +199,11 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # the E2E shard both fit inside the 60-second combined budget
     # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
     "tests/test_display_generated_scenes.py",
+    # wt-03-fix-bug (S): the linked-worktree regression test for the
+    # diagnostic-evidence collector. Real-git, in-budget, must run
+    # on the default ``make test`` profile so the architecture's
+    # prohibition of repository-global reads cannot rot silently.
+    "tests/test_integration_diagnostic_worktree_isolation.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
@@ -260,6 +265,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 70,
+    "tests/test_audit_opts_key_drift.py": 120,
 }
 
 

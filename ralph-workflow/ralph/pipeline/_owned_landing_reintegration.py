@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
-from ralph.pipeline.auto_integrate_record import write_record
+from ralph.pipeline.auto_integrate_record import (
+    MARK_REINTEGRATE_PENDING,
+    MARK_RESOLVING_MERGE,
+    MARK_RESOLVING_REBASE,
+    PROMOTE_TO_INTEGRATED,
+    Transition,
+    write_record,
+)
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState
 
@@ -28,7 +35,10 @@ def reintegrate_owned_landing(
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
     """Persist the next action before retrying integration without an ownership gap."""
-    retained = record.model_copy(update={"reintegrate_pending": True})
+    retained = record.with_transition(
+        MARK_REINTEGRATE_PENDING,
+        reintegrate_pending=True,
+    )
     write_record(root, retained)
     resumed = _resume_owned_operation(
         root, retained, config, conflict_resolver, rebase_stop_resolver
@@ -93,11 +103,14 @@ def _resume_owned_operation(
 ) -> RebaseState | None:
     from ralph.pipeline._integration_continuation import active_operation_matches
 
-    updates: dict[str, object]
+    transition: Transition
+    kwargs: dict[str, object]
     if rebase_in_progress_at(root):
-        updates = {"resolving_rebase": True}
+        transition = MARK_RESOLVING_REBASE
+        kwargs = {"resolving_rebase": True}
     elif merge_state(root) == MERGE_STATE_IN_PROGRESS:
-        updates = {"resolving_merge": True}
+        transition = MARK_RESOLVING_MERGE
+        kwargs = {"resolving_merge": True}
     else:
         return None
     if not active_operation_matches(root, record):
@@ -107,7 +120,7 @@ def _resume_owned_operation(
             last_reason="active operation identity differs from owned reintegration; progress retained",
             recovery_record_retained=True,
         )
-    resumed = record.model_copy(update=updates)
+    resumed = record.with_transition(transition, **kwargs)
     write_record(root, resumed)
     from ralph.pipeline.auto_integrate_recovery import _recover_pending_merge
 
@@ -121,18 +134,23 @@ def _completed_owned_action(root: Path, record: IntegrationRecord) -> Integratio
         get_head_sha(root) == record.pre_feature_sha
         and branch_sha(root, record.target) == record.pre_feature_sha
     ):
-        return record.model_copy(
-            update={
-                "phase": "integrated",
-                "integrated_feature_sha": record.pre_feature_sha,
-            }
+        return record.with_transition(
+            PROMOTE_TO_INTEGRATED,
+            phase="integrated",
+            integrated_feature_sha=record.pre_feature_sha,
         )
     if not is_repo_clean(root):
         return None
     from ralph.pipeline._integration_continuation import _legacy_completed_rebase
     from ralph.pipeline._pending_merge_commit import _git_value
 
-    completed = _legacy_completed_rebase(root, record.model_copy(update={"resolving_rebase": True}))
+    completed = _legacy_completed_rebase(
+        root,
+        record.with_transition(
+            MARK_RESOLVING_REBASE,
+            resolving_rebase=True,
+        ),
+    )
     if completed is not None:
         return completed
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
@@ -145,4 +163,8 @@ def _completed_owned_action(root: Path, record: IntegrationRecord) -> Integratio
         or previous != record.pre_feature_sha
     ):
         return None
-    return record.model_copy(update={"phase": "integrated", "integrated_feature_sha": head})
+    return record.with_transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha=head,
+    )

@@ -16,7 +16,14 @@ from ralph.git.merge import (
     unmerged_paths,
 )
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_record import (
+    MARK_PENDING_MERGE_COMMIT,
+    MARK_RESOLVING_MERGE,
+    PROMOTE_TO_INTEGRATED,
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
 
 
 def _git_value(root: Path, *args: str) -> str | None:
@@ -39,12 +46,13 @@ def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> N
             paths = tuple(sorted(set(paths) | set(current)))
     write_record(
         root,
-        record.model_copy(
-            update={
-                "resolving_merge": resolving,
-                "merge_commit_pending": not resolving,
-                "resolving_paths": paths,
-            }
+        record.with_transition(
+            MARK_RESOLVING_MERGE,
+            resolving_merge=resolving,
+            resolving_paths=paths,
+        ).with_transition(
+            MARK_PENDING_MERGE_COMMIT,
+            merge_commit_pending=not resolving,
         ),
     )
 
@@ -65,12 +73,11 @@ def prepare_pending_merge(root: Path, target: str) -> str | None:
     )
     write_record(
         root,
-        record.model_copy(
-            update={
-                "merge_commit_head": head,
-                "merge_commit_parent": parent,
-                "merge_commit_tree": tree,
-            }
+        record.with_transition(
+            MARK_PENDING_MERGE_COMMIT,
+            merge_commit_head=head,
+            merge_commit_parent=parent,
+            merge_commit_tree=tree,
         ),
     )
     return None
@@ -160,16 +167,23 @@ def _promote_completed_merge(root: Path, record: IntegrationRecord) -> Integrati
         or parents != f"{record.merge_commit_head} {record.merge_commit_parent}"
     ):
         return "pending merge commit does not match verified tree and parents; landing withheld"
-    integrated = record.model_copy(
-        update={
-            "phase": "integrated",
-            "integrated_feature_sha": head,
-            "resolving_merge": False,
-            "merge_commit_pending": False,
-            "merge_commit_head": None,
-            "merge_commit_parent": None,
-            "merge_commit_tree": None,
-        }
+    integrated = (
+        record.with_transition(
+            MARK_RESOLVING_MERGE,
+            resolving_merge=False,
+        )
+        .with_transition(
+            MARK_PENDING_MERGE_COMMIT,
+            merge_commit_pending=False,
+            merge_commit_head=None,
+            merge_commit_parent=None,
+            merge_commit_tree=None,
+        )
+        .with_transition(
+            PROMOTE_TO_INTEGRATED,
+            phase="integrated",
+            integrated_feature_sha=head,
+        )
     )
     write_record(root, integrated)
     return integrated

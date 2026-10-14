@@ -22,6 +22,7 @@ from ralph.git.rebase.rebase import (
 from ralph.pipeline._auto_integrate_reclaim import reclaim_dirty_target_worktree
 from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_REBASE,
     IntegrationRecord,
     bind_integration_record_root,
     clear_record,
@@ -182,7 +183,11 @@ def _resolve_owned_reconciliation(
     _original, onto = current_rebase_identity(owner)
     write_record(
         repo_root,
-        record.model_copy(update={"resolving_rebase": True, "pre_target_sha": onto}),
+        record.with_transition(
+            MARK_RESOLVING_REBASE,
+            resolving_rebase=True,
+            pre_target_sha=onto,
+        ),
     )
     detail = "resolution interrupted"
     try:

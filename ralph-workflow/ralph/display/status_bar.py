@@ -256,6 +256,9 @@ _PHASE_ABBREVIATIONS: dict[str, str] = {
     "development_analysis": "DAn",
     "development_final_commit_cleanup": "FCl",
     "development_final_commit": "FCm",
+    "conflict_resolution": "Conf",
+    "evidence_diagnosis": "Diag",
+    "intervention_required": "Intv",
     "complete": "DONE",
     "failed_terminal": "FAIL",
     "cancelled": "CXL",
@@ -310,15 +313,25 @@ ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
     "completed": ("COMPLETE", "terminated", "theme.status.info"),
     "failed": ("FAILED", "terminated", "theme.status.error"),
     "cancelled": ("CANCELLED", "terminated", "theme.status.warn"),
+    "intervention_required": ("INTERVENTION_REQUIRED", "error", "theme.status.error"),
+    "conflict_resolution": ("CONFLICT_RESOLUTION", "warning", "theme.status.warn"),
+    "evidence_diagnosis": ("EVIDENCE_DIAGNOSIS", "info", "theme.status.info"),
 }
 
+_EXTENDED_ATTENTION_KEYS: frozenset[str] = frozenset(
+    {"intervention_required", "conflict_resolution", "evidence_diagnosis"}
+)
 
 # DA-001 (wt-028-display AC-01): worst-case attention slot width.
 # The attention slot is reserved at every width so its arrival (or
 # clearing) never shifts any neighbour. Its label width is measured in
 # terminal cells; glyph widths are resolved from the active context below.
+# Core standard states size the blank reserved slot so narrow viewports
+# retain room for core path/phase segments.
 _ATTENTION_PRESENTATION_MAX_LABEL_CELLS: int = max(
-    cell_len(label) for label, _glyph, _style in ATTENTION_PRESENTATION.values()
+    cell_len(label)
+    for key, (label, _glyph, _style) in ATTENTION_PRESENTATION.items()
+    if key not in _EXTENDED_ATTENTION_KEYS
 )
 
 
@@ -416,6 +429,8 @@ class StatusBarModel:
     # the STALLED label and surfaces its state via the host's
     # ``watchdog_attention`` property (``_model_with_live_attention``).
     attention: str | None = None
+    # ADR-0007: typed eight-category auto-integrate operation display state
+    operation_display_state: str | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -1074,6 +1089,16 @@ def _prune_optional_segments(
     return keep
 
 
+_ATTENTION_ALIASES: dict[str, str] = {
+    "intervention": "intervention_required",
+    "report_intervention_required": "intervention_required",
+    "conflict": "conflict_resolution",
+    "rebase_conflict": "conflict_resolution",
+    "diagnosis": "evidence_diagnosis",
+    "evidence": "evidence_diagnosis",
+}
+
+
 def _resolve_attention_state(model: StatusBarModel) -> str | None:
     """Return the active attention state for the bar.
 
@@ -1102,14 +1127,15 @@ def _resolve_attention_state(model: StatusBarModel) -> str | None:
         :data:`ATTENTION_PRESENTATION` so the renderer can index
         the presentation table without a defensive fallback.
     """
-    pushed = model.attention
+    pushed = model.attention if model.attention is not None else model.operation_display_state
     if pushed is None:
         return None
-    # Defensive: an unknown value is ignored so a future
-    # addition to the named state set cannot poison the slot.
     if pushed in ATTENTION_PRESENTATION:
         return pushed
-    return None
+    normalized = pushed.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in ATTENTION_PRESENTATION:
+        return normalized
+    return _ATTENTION_ALIASES.get(normalized)
 
 
 def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
@@ -1180,6 +1206,22 @@ def _append_attention_slot(
             " " * attention_slot_width,
             style="theme.status.path",
         )
+
+
+def _append_integration_alert(
+    text: Text,
+    alert: str,
+    ctx: DisplayContext,
+    separator: str,
+) -> None:
+    """Render an integration alert segment distinctly for evidence diagnosis vs conflict."""
+    alert_display = _safe_single_line(alert)
+    alert_lower = alert_display.lower()
+    is_diag = "evidence" in alert_lower or "diagnosis" in alert_lower
+    alert_style = "theme.status.info" if is_diag else "theme.status.error"
+    alert_glyph = ctx.glyph_for("info") if is_diag else ctx.glyph_for("warning")
+    text.append(f"{alert_glyph} {alert_display}", style=alert_style)
+    text.append(separator, style="theme.status.path_marker")
 
 
 def render_status_bar(
@@ -1279,15 +1321,7 @@ def render_status_bar(
     # whether the slot is empty or populated.
     _append_attention_slot(text, model, ctx, separator)
     if model.integration_alert:
-        # The alert LEADS the bar so an unresolved integration conflict
-        # is visible at every width; the final width clamp below still
-        # bounds the rendered line. Sanitized like every other segment.
-        alert_display = _safe_single_line(model.integration_alert)
-        text.append(
-            ctx.glyph_for("warning") + " " + alert_display,
-            style="theme.status.error",
-        )
-        text.append(separator, style="theme.status.path_marker")
+        _append_integration_alert(text, model.integration_alert, ctx, separator)
     if ctx.glyphs_enabled and budgets.render_marker:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")

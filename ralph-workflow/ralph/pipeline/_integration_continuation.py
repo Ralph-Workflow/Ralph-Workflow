@@ -8,7 +8,13 @@ from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancest
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._pending_merge_commit import _git_value
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_REBASE,
+    PROMOTE_TO_INTEGRATED,
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,12 +133,8 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> Integrati
         or not is_ancestor(root, record.pre_target_sha, head)
     ):
         return None
-    return record.model_copy(
-        update={
-            "phase": "integrated",
-            "integrated_feature_sha": head,
-            "resolving_rebase": False,
-        }
+    return record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=False).with_transition(
+        PROMOTE_TO_INTEGRATED, phase="integrated", integrated_feature_sha=head
     )
 
 

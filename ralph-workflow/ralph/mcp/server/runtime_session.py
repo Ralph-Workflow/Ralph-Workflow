@@ -167,7 +167,9 @@ class FileBackedSession:
         # write ``"transport": ""`` into every downstream payload.
         self._declared_agent_transport = (declared_agent_transport or "").strip().lower() or None
         self._path = path
-        self._explicit_workspace_root = workspace_root.resolve() if workspace_root is not None else None
+        self._explicit_workspace_root = (
+            workspace_root.resolve() if workspace_root is not None else None
+        )
         self._loader = loader or _load_session_payload
         self._session_id_factory = session_id_factory or (
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"

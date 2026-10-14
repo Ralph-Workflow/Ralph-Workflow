@@ -10,7 +10,12 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+from ralph.pipeline.auto_integrate_record import (
+    BUMP_DIAGNOSTIC_ATTEMPT,
+    RESUME_REPAIR,
+    IntegrationRecord,
+    write_record,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -128,7 +133,7 @@ def _repair_owned_merge(
             raise RuntimeError(
                 "commit hook or signing controls changed; restore checks before retry"
             )
-        record = record.model_copy(update={"repair_commit_controls": controls})
+        record = record.with_transition(RESUME_REPAIR, repair_commit_controls=controls)
         manifest = root / ".agent" / "tmp" / "pending_commit_repair_paths.json"
         backend.unlink(manifest, missing_ok=True)
         succeeded = handoff_pending_merge_repair(
@@ -151,10 +156,9 @@ def _repair_owned_merge(
         if retained is not None:
             write_record(
                 root,
-                retained.model_copy(
-                    update={
-                        "repair_last_error": f"source repair refused: {exc}"[:8192],
-                    }
+                retained.with_transition(
+                    BUMP_DIAGNOSTIC_ATTEMPT,
+                    repair_last_error=f"source repair refused: {exc}"[:8192],
                 ),
                 backend=backend,
             )
@@ -217,11 +221,10 @@ def handoff_pending_merge_repair(
         write_text_if_changed(backend, prompt, content)
         write_record(
             root,
-            record.model_copy(
-                update={
-                    "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
-                    "repair_last_error": diagnostic,
-                }
+            record.with_transition(
+                BUMP_DIAGNOSTIC_ATTEMPT,
+                merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
+                repair_last_error=diagnostic,
             ),
             backend=backend,
         )

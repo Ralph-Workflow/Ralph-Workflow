@@ -80,6 +80,13 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # the E2E shard both fit inside the 60-second combined budget
     # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
     "tests/test_display_generated_scenes.py",
+    # wt-03-fix-bug (S): the linked-worktree regression test for the
+    # diagnostic-evidence collector. The collector's architectural
+    # fix is the prohibition of repository-global reads; this test
+    # reproduces the production scenario in a tmp_path repo with a
+    # linked worktree and asserts the operation-scoped evidence
+    # does not shift when an unrelated branch advances.
+    "tests/test_integration_diagnostic_worktree_isolation.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

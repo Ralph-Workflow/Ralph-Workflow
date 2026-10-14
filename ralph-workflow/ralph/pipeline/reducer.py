@@ -30,6 +30,7 @@ from ralph.pipeline._failure_formatting import (
     classified_failure_reason_for_event,
     commit_failure_reason,
 )
+from ralph.pipeline._pipeline_state_machine import PhaseDecision
 from ralph.pipeline._reducer_worker_state import (
     handle_fan_out_started as _handle_fan_out_started,
 )
@@ -354,7 +355,58 @@ def _get_event_handlers() -> dict[
     return _EVENT_HANDLERS
 
 
-def reduce(
+def _route_reduced_decision(
+    state: PipelineState,
+    new_state: PipelineState,
+    pipeline_policy: PipelinePolicy | None,
+) -> PipelineState:
+    """Route the reducer's decision through last_decision on RebaseState."""
+    decision_str: str | None = None
+    rebase = new_state.rebase
+    terminal_states: set[str] = set()
+    if pipeline_policy is not None:
+        from ralph.policy.models import PipelinePolicy
+
+        if isinstance(pipeline_policy, PipelinePolicy):
+            terminal_states.update(pipeline_policy.terminal_states())
+            if pipeline_policy.terminal_phase:
+                terminal_states.add(pipeline_policy.terminal_phase)
+
+    if state.rebase.last_decision in (
+        PhaseDecision.BLOCK_FOR_RECOVERY.value,
+        PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
+    ):
+        decision_str = state.rebase.last_decision
+        if (
+            state.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
+            and new_state.phase != state.phase
+        ):
+            new_state = new_state.copy_with(
+                phase=state.phase,
+                last_agent_session_id=None,
+                agent_retry_intent=cleared_agent_retry_intent(),
+            )
+            rebase = new_state.rebase
+    elif terminal_states and new_state.phase in terminal_states:
+        try:
+            terminal_failure = _terminal_failure_route(pipeline_policy)
+        except Exception:
+            terminal_failure = None
+        if terminal_failure is not None and new_state.phase == terminal_failure:
+            decision_str = PhaseDecision.REPORT_TERMINAL_FAILURE.value
+        else:
+            decision_str = PhaseDecision.REPORT_TERMINAL_SUCCESS.value
+    elif new_state.phase != state.phase:
+        decision_str = PhaseDecision.ADVANCE_PHASE.value
+    elif state.rebase.last_decision is not None:
+        decision_str = PhaseDecision.CONTINUE_PHASE.value
+
+    if decision_str is not None and rebase.last_decision != decision_str:
+        return new_state.copy_with(rebase=rebase.model_copy(update={"last_decision": decision_str}))
+    return new_state
+
+
+def _reduce_pure(
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
@@ -362,28 +414,6 @@ def reduce(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Pure state transition function.
-
-    This is the core of the Ralph pipeline state machine. Given the current
-    state, an event, and the pipeline policy, it computes the new state
-    and any effects to execute.
-
-    Args:
-        state: Current pipeline state.
-        event: Event to process.
-        pipeline_policy: Pipeline policy for resolving transitions.
-            Required for all routing decisions. Passing None causes routing
-            handlers to route to the policy-declared failure route rather
-            than silently falling back to hardcoded behavior.
-        recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
-            and worker failure events are delegated to it for classification-aware
-            recovery (intelligent attribution, budget management). When None,
-            the legacy retry/fallback logic is used.
-
-    Returns:
-        Tuple of (new_state, effects). Effects are instructions for the
-        effect handler to execute.
-    """
     reduced_event: tuple[PipelineState, list[Effect]] | None = None
     if event == PipelineEvent.COMMIT_RESIDUAL:
         reduced_event = (state, [])
@@ -433,6 +463,47 @@ def reduce(
         return state, []
     new_state, effects = handler(state, pipeline_policy, routing_timing)
     return _restore_work_units(state, new_state), effects
+
+
+def reduce(
+    state: PipelineState,
+    event: Event,
+    pipeline_policy: PipelinePolicy | None = None,
+    recovery: RecoveryController | None = None,
+    *,
+    routing_timing: RoutingTiming | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Pure state transition function.
+
+    This is the core of the Ralph pipeline state machine. Given the current
+    state, an event, and the pipeline policy, it computes the new state
+    and any effects to execute.
+
+    Args:
+        state: Current pipeline state.
+        event: Event to process.
+        pipeline_policy: Pipeline policy for resolving transitions.
+            Required for all routing decisions. Passing None causes routing
+            handlers to route to the policy-declared failure route rather
+            than silently falling back to hardcoded behavior.
+        recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
+            and worker failure events are delegated to it for classification-aware
+            recovery (intelligent attribution, budget management). When None,
+            the legacy retry/fallback logic is used.
+
+    Returns:
+        Tuple of (new_state, effects). Effects are instructions for the
+        effect handler to execute.
+    """
+    new_state, effects = _reduce_pure(
+        state,
+        event,
+        pipeline_policy=pipeline_policy,
+        recovery=recovery,
+        routing_timing=routing_timing,
+    )
+    routed_state = _route_reduced_decision(state, new_state, pipeline_policy)
+    return routed_state, effects
 
 
 def _ignore_policy(

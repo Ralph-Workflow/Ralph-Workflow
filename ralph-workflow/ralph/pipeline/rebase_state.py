@@ -176,6 +176,39 @@ class RebaseState(RalphBaseModel):
     # ``ralph.pipeline.auto_integrate_resolution_state``.
     unresolved_integration_carried: bool = False
 
+    # --- Lifecycle authority fields (ADR-0007) ---------------------------
+    # All four fields are defaulted so legacy checkpoints load unchanged.
+    # They are the single persisted surface for the seven typed authorities
+    # defined in the integration-lifecycle architecture decision record.
+    # No caller may infer progression from the prose fields above; the
+    # run loop reads the typed values here.
+
+    # The run loop's typed decision. One of
+    # ``CONTINUE_PHASE`` / ``ADVANCE_PHASE`` / ``BLOCK_FOR_RECOVERY`` /
+    # ``REPORT_TERMINAL_SUCCESS`` / ``REPORT_TERMINAL_FAILURE`` /
+    # ``REPORT_INTERVENTION_REQUIRED``. ``None`` until the run loop's
+    # first :func:`ralph.pipeline._pipeline_state_machine.decide_phase_transition`
+    # call lands.
+    last_decision: str | None = None
+
+    # The remote-publication authority's typed decision. One of
+    # ``PUBLICATION_PENDING`` / ``PUBLISH_NOW`` /
+    # ``PUBLISH_DEFERRED_FRESHNESS`` / ``PUBLISH_DEFERRED_REMOTE`` /
+    # ``PUBLICATION_TERMINAL`` / ``PUBLICATION_BLOCKED``.
+    last_publication_decision: str | None = None
+
+    # The parallel-joins authority's typed decision. One of
+    # ``JOIN_PENDING`` / ``JOIN_COMPLETE`` / ``JOIN_PARTIAL_FAILURE`` /
+    # ``JOIN_BLOCKED``.
+    last_fan_out_decision: str | None = None
+
+    # The display formatter's typed eight-category state. One of
+    # ``INTEGRATING`` / ``LANDING`` / ``PUBLISHING`` / ``CONFLICT_RESOLUTION``
+    # / ``EVIDENCE_DIAGNOSIS`` / ``WAITING`` / ``INTERVENTION_REQUIRED`` /
+    # ``TERMINAL``. ``None`` for legacy checkpoints; the display formatter
+    # falls back to the prose fields when this is unset.
+    operation_display_state: str | None = None
+
     # Legacy rebase checkpoint identity. These fields let both startup paths
     # retain actionable evidence without re-parsing or replacing it.
     legacy_checkpoint_blocked: bool = False

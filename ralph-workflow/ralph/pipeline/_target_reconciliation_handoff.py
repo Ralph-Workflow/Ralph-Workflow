@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import branch_sha
 from ralph.git.operations import get_head_sha
 from ralph.pipeline.auto_integrate_record import (
+    MARK_REINTEGRATE_PENDING,
+    START_INTEGRATING,
     IntegrationRecord,
     clear_record,
     read_record,
@@ -32,16 +34,20 @@ def finish_target_substep(root: Path, record: IntegrationRecord) -> str | None:
     target_sha = branch_sha(root, record.target)
     if target_sha is None:
         return "target reconciliation completion unreadable; landing withheld"
-    write_record(
-        root,
-        IntegrationRecord(
-            phase="integrating",
-            target=record.target,
-            pre_feature_sha=record.initiating_feature_sha,
-            pre_target_sha=target_sha,
-            reintegrate_pending=True,
-        ),
+    scheduled = record.with_transition(
+        START_INTEGRATING,
+        phase="integrating",
+        target=record.target,
+        pre_feature_sha=record.initiating_feature_sha,
+        pre_target_sha=target_sha,
+        operation_kind="feature_integrate",
+        owning_worktree=None,
+        initiating_feature_sha=None,
+    ).with_transition(
+        MARK_REINTEGRATE_PENDING,
+        reintegrate_pending=True,
     )
+    write_record(root, scheduled)
     return "target reconciled; initiating feature landing scheduled for recovery"
 
 

@@ -1282,6 +1282,13 @@ ralph.pipeline.auto_integrate_record
    :members:
    :show-inheritance:
 
+ralph.pipeline.operation_evidence
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.operation_evidence
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_resolve
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

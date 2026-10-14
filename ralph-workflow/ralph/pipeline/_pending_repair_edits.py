@@ -13,7 +13,15 @@ from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline._pending_merge_commit import _git_value, pending_merge_identity_matches
 from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_record import (
+    ACCEPT_REPAIR_EDITS,
+    MARK_PENDING_MERGE_COMMIT,
+    MARK_PENDING_REBASE_CONTINUE,
+    RESUME_REPAIR,
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -108,12 +116,11 @@ def accept_repair_edits(
     current = read_record(root)
     if current is None:
         raise RuntimeError("repair ownership unreadable before staging")
-    staged_transition = current.model_copy(
-        update={
-            "repair_pending_diff": patch,
-            "repair_original_tree": record.repair_original_tree or original,
-            "repair_pending_paths": tuple(sorted(declared)),
-        }
+    staged_transition = current.with_transition(
+        ACCEPT_REPAIR_EDITS,
+        repair_pending_diff=patch,
+        repair_original_tree=record.repair_original_tree or original,
+        repair_pending_paths=tuple(sorted(declared)),
     )
     write_record(root, staged_transition, backend=backend)
     result = run_git(
@@ -135,7 +142,6 @@ def resume_source_repair(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> IntegrationRecord | str:
-    field = "rebase_continue_tree" if record.rebase_continue_pending else "merge_commit_tree"
     baseline = (
         record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
     )
@@ -177,12 +183,15 @@ def resume_source_repair(
     if patch.returncode or patch.stdout != record.repair_pending_diff:
         return "source correction staging incomplete or changed; integration retained"
     tree = _git_value(root, "write-tree")
-    revised = record.model_copy(
-        update={
-            field: tree,
-            "repair_pending_diff": None,
-            "repair_pending_paths": (),
-        }
+    cleared = record.with_transition(
+        RESUME_REPAIR,
+        repair_pending_diff=None,
+        repair_pending_paths=(),
+    )
+    revised = (
+        cleared.with_transition(MARK_PENDING_REBASE_CONTINUE, rebase_continue_tree=tree)
+        if record.rebase_continue_pending
+        else cleared.with_transition(MARK_PENDING_MERGE_COMMIT, merge_commit_tree=tree)
     )
     verified = tree is not None and (
         pending_rebase_identity_matches(root, revised)
@@ -203,8 +212,11 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
         label="repair:partial-index-paths",
     )
     tree = _git_value(root, "write-tree")
-    field = "rebase_continue_tree" if record.rebase_continue_pending else "merge_commit_tree"
-    staged_record = record.model_copy(update={field: tree})
+    staged_record = (
+        record.with_transition(MARK_PENDING_REBASE_CONTINUE, rebase_continue_tree=tree)
+        if record.rebase_continue_pending
+        else record.with_transition(MARK_PENDING_MERGE_COMMIT, merge_commit_tree=tree)
+    )
     matches = tree is not None and (
         pending_rebase_identity_matches(root, staged_record)
         if record.rebase_continue_pending

@@ -19,6 +19,8 @@ the maintained Python package.
   staging and Git advancement for every conflict path
 - [ADR-0006: owned landing recovery](adr-0006-owned-landing-recovery.md) —
   standalone commit recovery, retained target reintegration, and typed dispatch refusal
+- [ADR-0007: integration source of truth](adr-0007-integration-source-of-truth.md) —
+  single-source-of-truth lifecycle, operation-scoped evidence collection, transition authority, and typed display taxonomy
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests

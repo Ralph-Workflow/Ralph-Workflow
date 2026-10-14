@@ -351,3 +351,69 @@ For nonzero exits, this credential classification applies only during the
 startup grace period. A later nonzero credential error remains a normal
 recoverable invocation failure, because it can be a transient loss during an
 otherwise active run.
+
+## Integration lifecycle authority
+
+Ralph Workflow coordinates Git integration, conflict resolution, and crash recovery
+through a single authoritative integration lifecycle. Once integration begins, one
+durable obligation (`IntegrationRecord`) remains authoritative until its required
+completion conditions are proved in Git. Target movement, process interruptions,
+agent failures, or remote unavailability alter the next required action, but they
+never silently discharge or discard the obligation.
+
+### Single source of truth
+
+To eliminate drifting state across multiple components, each lifecycle fact is owned
+by a single authority:
+
+- **Integration record transitions**: `IntegrationRecord` is a frozen model with an
+  explicit transition table (`IntegrationRecord.with_transition`). Direct mutation
+  is prevented, and records cannot be cleared while diagnostic intervention is
+  required or an active Git operation is pending.
+- **Pipeline progression**: The pipeline run loop consults
+  `decide_phase_transition`, which returns typed `PhaseDecision` values
+  (`CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`,
+  `REPORT_TERMINAL_FAILURE`, `REPORT_INTERVENTION_REQUIRED`).
+- **Operation-scoped evidence**: Diagnostic evidence collection is strictly scoped
+  to the operation worktree via `OperationEvidenceCollector`. Observations capture
+  worktree-private `HEAD`, worktree root path, index entries for resolving paths,
+  and worktree-private rebase/merge control files. Repository-wide `git for-each-ref`,
+  unscoped index reads, and commondir reflogs are excluded so concurrent branch
+  advancements in other linked worktrees never invalidate diagnostic evidence.
+- **Bounded diagnostic recovery**: To prevent infinite diagnostic loops, diagnostic
+  repair attempts are bounded by `DIAGNOSTIC_REPAIR_ATTEMPT_CAP` (default 5).
+  When reached, the record transitions to `diagnostic_intervention_required = True`,
+  stopping automatic agent rotation and requiring explicit human intervention.
+- **Distinct obligations**: The lifecycle strictly separates resolving an active
+  Git conflict, completing a Git continuation, reintegrating against a moved target,
+  landing the target locally, and publishing to a configured remote.
+
+## OperationDisplayState taxonomy
+
+User interfaces, status bars, and log transcripts project directly from the typed
+`OperationDisplayState` enum on `RebaseState`, rather than parsing human-readable prose
+or diagnostic strings. The taxonomy defines eight explicit categories:
+
+| State | Purpose | Next Action |
+|-------|---------|-------------|
+| `INTEGRATING` | Active Git rebase or merge operation in flight. | Await completion of Git operation or conflict detection. |
+| `LANDING` | Integration complete (`phase="integrated"`); target fast-forward pending. | Complete local target ref advance; verify branch tip. |
+| `PUBLISHING` | Local landing completed; pushing to configured remote. | Publish ref to remote or defer if offline. |
+| `CONFLICT_RESOLUTION` | Conflict-resolution drain actively driving candidate agents. | Agents resolve conflicted paths; verify markers. |
+| `EVIDENCE_DIAGNOSIS` | Diagnostic lock held while inspecting retained integration evidence. | Scoped evidence collector checks worktree state. |
+| `WAITING` | Bounded retry timer or cooldown delay active before retry. | Await timer expiry or offline connectivity recovery. |
+| `INTERVENTION_REQUIRED` | Diagnostic repair attempts or conflict budget exhausted. | Human operator intervention needed; automatic dispatch halted. |
+| `TERMINAL` | Workflow execution reached terminal success or failure. | Workflow completes; run loop terminates. |
+
+This taxonomy ensures that evidence diagnosis is never mislabeled as conflict
+resolution when no Git conflict exists, and guarantees that operator-facing
+displays remain synchronized with the underlying state machine.
+
+### Documentation review note
+
+- **What changed:** Added the integration lifecycle authority model, single source of truth rules, and the 8-category OperationDisplayState taxonomy.
+- **Why here:** `recovery.md` is the canonical reference for workflow recovery, failure categorization, checkpoints, and intervention states.
+- **What stayed elsewhere:** Low-level transition tables and protocol implementations remain in ADR-0007 and code docstrings.
+- **Duplication:** High-level concepts are explained once here for operators without duplicating code-level schemas.
+- **Clearer route:** Operators can clearly understand why runs enter intervention or evidence diagnosis, and distinguish Git conflict resolution from diagnostic verification.
+

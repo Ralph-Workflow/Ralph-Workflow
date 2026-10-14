@@ -66,6 +66,8 @@ from ralph.pipeline.auto_integrate_ff import (
     maybe_push_target,
 )
 from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_MERGE,
+    MARK_RESOLVING_REBASE,
     IntegrationRecord,
 )
 from ralph.pipeline.auto_integrate_record import (
@@ -756,7 +758,9 @@ def recover_incomplete_integration(
         ):
             from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
 
-            failure = release_verified_diagnostic(Path(workspace_scope.root), record)
+            failure = release_verified_diagnostic(
+                Path(record.owning_worktree or workspace_scope.root), record
+            )
             if failure is not None:
                 return _record_skip(
                     reason=failure,
@@ -769,6 +773,42 @@ def recover_incomplete_integration(
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
         )
+
+
+def _recover_unresolved_integrating(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState:
+    if merge_state(root) not in {MERGE_STATE_NONE, MERGE_STATE_IN_PROGRESS}:
+        return _record_skip(
+            reason="recovery: merge state unreadable; record retained for retry",
+            target=record.target,
+            record_retained=True,
+        )
+    if (
+        config is None
+        and not rebase_in_progress(root)
+        and merge_state(root) == MERGE_STATE_NONE
+        and is_repo_clean(root)
+        and _head_matches_sha(root, record.pre_feature_sha)
+    ):
+        _clear_record(root)
+        return RebaseState(
+            last_action=_ACTION_RECOVERED,
+            last_reason="restored feature branch after interrupted rebase",
+            last_target=record.target,
+            fast_forwarded=False,
+        )
+    return _reintegrate_owned_landing(
+        root,
+        record,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
+    )
 
 
 def _recover_pending_merge(
@@ -791,13 +831,7 @@ def _recover_pending_merge(
         or record.merge_commit_pending
         or record.merge_commit_tree is not None
     ):
-        if merge_state(root) not in {MERGE_STATE_NONE, MERGE_STATE_IN_PROGRESS}:
-            return _record_skip(
-                reason="recovery: merge state unreadable; record retained for retry",
-                target=record.target,
-                record_retained=True,
-            )
-        return _reintegrate_owned_landing(
+        return _recover_unresolved_integrating(
             root,
             record,
             config,
@@ -811,9 +845,12 @@ def _recover_pending_merge(
         and is_repo_clean(root)
         and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
     ):
+        cleared_record = record.with_transition(
+            MARK_RESOLVING_REBASE, resolving_rebase=False
+        ).with_transition(MARK_RESOLVING_MERGE, resolving_merge=False)
         return _reintegrate_owned_landing(
             root,
-            record.model_copy(update={"resolving_merge": False, "resolving_rebase": False}),
+            cleared_record,
             config,
             conflict_resolver,
             rebase_stop_resolver,

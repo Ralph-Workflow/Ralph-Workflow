@@ -25,7 +25,7 @@ from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
@@ -108,6 +108,20 @@ class IntegrationRecord(RalphBaseModel):
     repair_last_error: str | None = None
     diagnostic_evidence: tuple[tuple[str, str], ...] = ()
     diagnostic_ownership: str | None = None
+    # ``diagnostic_intervention_required`` is set by the diagnostic path
+    # when the repair-attempt cap is reached. The run-loop's
+    # :func:`ralph.pipeline._pipeline_state_machine.decide_phase_transition`
+    # surfaces it as ``REPORT_INTERVENTION_REQUIRED`` and the record
+    # refuses to clear until the operator acts. Defaulted, so legacy
+    # on-disk records load cleanly.
+    diagnostic_intervention_required: bool = False
+    # ``repair_cap_reason`` is the human-readable reason the cap fired.
+    # Used as the operator-facing alert (e.g. "diagnostic repair
+    # exhausted; operator intervention required") and as the canonical
+    # migration marker when the one-way legacy-key migrator drops an
+    # obsolete observation (the common-dir reflog, see
+    # :func:`_migrate_legacy_diagnostic_evidence`).
+    repair_cap_reason: str | None = None
     repair_pending_diff: str | None = None
     repair_pending_paths: tuple[str, ...] = ()
     repair_commit_controls: str | None = None
@@ -118,6 +132,434 @@ class IntegrationRecord(RalphBaseModel):
     owning_worktree: str | None = None
     reintegrate_pending: bool = False
     initiating_feature_sha: str | None = None
+
+    def with_transition(
+        self,
+        transition: Transition,
+        **fields: object,
+    ) -> IntegrationRecord:
+        """Return a new :class:`IntegrationRecord` updated through the closed transition table.
+
+        The transition table is the single authority for which
+        field updates are legal at which phase. ``model_copy(update=...)``
+        is no longer the only writer; ``with_transition`` is. An
+        invalid transition (e.g. ``MARK_RESOLVING_REBASE`` from a
+        record whose phase is not ``integrating``) raises
+        :class:`ValueError` so the diagnostic path cannot silently
+        mutate a record it does not own.
+        """
+        update = transition.apply(self, **fields)
+        return self.model_copy(update=update)
+
+
+# ---------------------------------------------------------------------------
+# Transition table -- the single authority for record mutation.
+# ---------------------------------------------------------------------------
+
+# Keys produced by the legacy ``_diagnostic_snapshot`` writer that are
+# forbidden under the new collector because they read repository-global
+# state. A record carrying any of these keys cannot be re-verified by
+# the new collector, so the loader surfaces intervention instead of
+# silently clearing the evidence.
+_LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
+
+# Legacy per-path observation keys the previous collector wrote under
+# ``str(absolute_path)``. The new collector categorises them by suffix
+# (see :func:`_categorise_legacy_path_key`).
+_LEGACY_MERGE_STATE_SUFFIXES: tuple[str, ...] = (
+    "/MERGE_HEAD",
+    "/MERGE_MSG",
+    "/REBASE_HEAD",
+    "/ORIG_HEAD",
+    "/AUTO_MERGE",
+    "/CHERRY_PICK_HEAD",
+)
+_LEGACY_REBASE_DIR_INFIXES: tuple[str, ...] = ("/rebase-merge/", "/rebase-apply/")
+_LEGACY_COMMON_DIR_DROPPED_INFIXES: tuple[str, ...] = (
+    "/logs/HEAD",
+    "/logs/refs/heads/",
+)
+
+
+class Transition:
+    """A single record-mutation transition. Each call site uses one of the
+    pre-defined transitions; ad-hoc ``model_copy(update=...)`` is no
+    longer allowed.
+
+    Transitions are intentionally lightweight descriptors (not an
+    ``Enum``) so the table can be extended without breaking the
+    public surface. The class-level ``ALL`` tuple is the closed set;
+    the loader and the transition validator consult it.
+
+    Each transition carries an optional ``from_state_guard`` -- a
+    callable accepting the current :class:`IntegrationRecord` and
+    returning ``True`` when the transition is legal at the record's
+    current phase. ``with_transition`` consults the guard before
+    delegating to ``model_copy(update=...)`` so a caller that tries
+    to advance a record whose state does not permit the transition
+    fails loudly rather than silently writing a contradicting
+    record.
+    """
+
+    __slots__ = ("_field_map", "_from_state_guard", "_name")
+
+    ALL: tuple[Transition, ...] = ()
+
+    def __init__(
+        self,
+        name: str,
+        field_map: dict[str, str] | None = None,
+        from_state_guard: Callable[[IntegrationRecord], bool] | None = None,
+    ) -> None:
+        self._name = name
+        # field_map maps a logical field name to a constructor kwarg
+        # the apply() method will pass to model_copy. Keeping the
+        # mapping here makes the table the single source of truth.
+        self._field_map = field_map or {}
+        self._from_state_guard = from_state_guard
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"Transition({self._name!r})"
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def is_legal_from(self, record: IntegrationRecord) -> bool:
+        """Return ``True`` when this transition is legal at the record's current phase."""
+        if self._from_state_guard is None:
+            return True
+        return self._from_state_guard(record)
+
+    def apply(
+        self,
+        record: IntegrationRecord,
+        **fields: object,
+    ) -> dict[str, object]:
+        """Validate the transition and return the update dict for ``model_copy``.
+
+        The from-state guard runs first; a record whose phase does
+        not permit this transition raises :class:`ValueError`. The
+        field map is then enforced: only names registered for this
+        transition are accepted, so callers cannot smuggle
+        arbitrary keys past the table.
+        """
+        if not self.is_legal_from(record):
+            raise ValueError(f"Transition {self._name!r} is not legal from phase={record.phase!r}")
+        update: dict[str, object] = {}
+        for key, value in fields.items():
+            if key not in self._field_map:
+                raise ValueError(
+                    f"Transition {self._name!r} does not accept field {key!r}; "
+                    f"expected one of {sorted(self._field_map)}"
+                )
+            update[self._field_map[key]] = value
+        return update
+
+
+# --- Concrete transitions ---
+
+
+def _is_integrating(record: IntegrationRecord) -> bool:
+    return record.phase == "integrating"
+
+
+def _is_integrating_or_integrated(record: IntegrationRecord) -> bool:
+    return record.phase in ("integrating", "integrated")
+
+
+START_INTEGRATING = Transition(
+    "START_INTEGRATING",
+    {
+        "phase": "phase",
+        "target": "target",
+        "pre_feature_sha": "pre_feature_sha",
+        "pre_target_sha": "pre_target_sha",
+        "integrated_feature_sha": "integrated_feature_sha",
+        "operation_kind": "operation_kind",
+        "owning_worktree": "owning_worktree",
+        "initiating_feature_sha": "initiating_feature_sha",
+    },
+    from_state_guard=_is_integrating_or_integrated,
+)
+
+PROMOTE_TO_INTEGRATED = Transition(
+    "PROMOTE_TO_INTEGRATED",
+    {
+        "phase": "phase",
+        "integrated_feature_sha": "integrated_feature_sha",
+        "resolving_rebase": "resolving_rebase",
+        "resolving_merge": "resolving_merge",
+        "rebase_continue_pending": "rebase_continue_pending",
+        "rebase_continue_metadata": "rebase_continue_metadata",
+        "rebase_restore_metadata": "rebase_restore_metadata",
+        "rebase_continue_head": "rebase_continue_head",
+        "rebase_continue_stop": "rebase_continue_stop",
+        "rebase_continue_tree": "rebase_continue_tree",
+        "rebase_continue_error": "rebase_continue_error",
+        "merge_commit_pending": "merge_commit_pending",
+    },
+    from_state_guard=_is_integrating,
+)
+
+MARK_RESOLVING_REBASE = Transition(
+    "MARK_RESOLVING_REBASE",
+    {
+        "resolving_rebase": "resolving_rebase",
+        "resolving_merge": "resolving_merge",
+        "pre_target_sha": "pre_target_sha",
+    },
+    from_state_guard=_is_integrating,
+)
+
+MARK_PENDING_REBASE_CONTINUE = Transition(
+    "MARK_PENDING_REBASE_CONTINUE",
+    {
+        "rebase_continue_pending": "rebase_continue_pending",
+        "rebase_continue_metadata": "rebase_continue_metadata",
+        "rebase_restore_metadata": "rebase_restore_metadata",
+        "rebase_continue_head": "rebase_continue_head",
+        "rebase_continue_stop": "rebase_continue_stop",
+        "rebase_continue_tree": "rebase_continue_tree",
+        "rebase_continue_error": "rebase_continue_error",
+    },
+    from_state_guard=_is_integrating,
+)
+
+MARK_RESOLVING_MERGE = Transition(
+    "MARK_RESOLVING_MERGE",
+    {
+        "resolving_merge": "resolving_merge",
+        "resolving_paths": "resolving_paths",
+        "resolving_stop_sha": "resolving_stop_sha",
+    },
+    from_state_guard=_is_integrating,
+)
+
+MARK_PENDING_MERGE_COMMIT = Transition(
+    "MARK_PENDING_MERGE_COMMIT",
+    {
+        "merge_commit_pending": "merge_commit_pending",
+        "merge_commit_head": "merge_commit_head",
+        "merge_commit_parent": "merge_commit_parent",
+        "merge_commit_tree": "merge_commit_tree",
+    },
+    from_state_guard=_is_integrating,
+)
+
+ACCEPT_REPAIR_EDITS = Transition(
+    "ACCEPT_REPAIR_EDITS",
+    {
+        "repair_pending_diff": "repair_pending_diff",
+        "repair_pending_paths": "repair_pending_paths",
+        "repair_commit_controls": "repair_commit_controls",
+        "repair_original_tree": "repair_original_tree",
+    },
+)
+
+RESUME_REPAIR = Transition(
+    "RESUME_REPAIR",
+    {
+        "repair_pending_diff": "repair_pending_diff",
+        "repair_pending_paths": "repair_pending_paths",
+        "repair_commit_controls": "repair_commit_controls",
+    },
+)
+
+HOLD_DIAGNOSTIC_EVIDENCE = Transition(
+    "HOLD_DIAGNOSTIC_EVIDENCE",
+    {"diagnostic_evidence": "diagnostic_evidence", "diagnostic_ownership": "diagnostic_ownership"},
+)
+
+RELEASE_DIAGNOSTIC_EVIDENCE = Transition(
+    "RELEASE_DIAGNOSTIC_EVIDENCE",
+    {
+        "diagnostic_evidence": "diagnostic_evidence",
+        "diagnostic_ownership": "diagnostic_ownership",
+        "diagnostic_intervention_required": "diagnostic_intervention_required",
+        "repair_cap_reason": "repair_cap_reason",
+    },
+)
+
+BUMP_DIAGNOSTIC_ATTEMPT = Transition(
+    "BUMP_DIAGNOSTIC_ATTEMPT",
+    {
+        "merge_commit_repair_attempts": "merge_commit_repair_attempts",
+        "repair_last_error": "repair_last_error",
+    },
+)
+
+RAISE_DIAGNOSTIC_INTERVENTION = Transition(
+    "RAISE_DIAGNOSTIC_INTERVENTION",
+    {
+        "diagnostic_intervention_required": "diagnostic_intervention_required",
+        "repair_cap_reason": "repair_cap_reason",
+    },
+)
+
+MARK_REINTEGRATE_PENDING = Transition(
+    "MARK_REINTEGRATE_PENDING",
+    {"reintegrate_pending": "reintegrate_pending"},
+)
+
+MARK_LEGACY_FIELDS_PRESERVED = Transition(
+    "MARK_LEGACY_FIELDS_PRESERVED",
+    {
+        "diagnostic_evidence": "diagnostic_evidence",
+        "diagnostic_ownership": "diagnostic_ownership",
+        "repair_cap_reason": "repair_cap_reason",
+    },
+)
+
+CLEAR_TRANSITION = Transition(
+    "CLEAR",
+    {},
+)
+
+
+def _register_all_transitions() -> tuple[Transition, ...]:
+    transitions = (
+        START_INTEGRATING,
+        PROMOTE_TO_INTEGRATED,
+        MARK_RESOLVING_REBASE,
+        MARK_PENDING_REBASE_CONTINUE,
+        MARK_RESOLVING_MERGE,
+        MARK_PENDING_MERGE_COMMIT,
+        ACCEPT_REPAIR_EDITS,
+        RESUME_REPAIR,
+        HOLD_DIAGNOSTIC_EVIDENCE,
+        RELEASE_DIAGNOSTIC_EVIDENCE,
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        RAISE_DIAGNOSTIC_INTERVENTION,
+        MARK_REINTEGRATE_PENDING,
+        MARK_LEGACY_FIELDS_PRESERVED,
+        CLEAR_TRANSITION,
+    )
+    seen: set[str] = set()
+    for transition in transitions:
+        if transition.name in seen:
+            raise RuntimeError(f"duplicate transition name: {transition.name}")
+        seen.add(transition.name)
+    return transitions
+
+
+Transition.ALL = _register_all_transitions()
+
+
+_TRANSITIONS_BY_NAME: dict[str, Transition] = {t.name: t for t in Transition.ALL}
+
+
+def transition_by_name(name: str) -> Transition:
+    """Return the :class:`Transition` with the given name.
+
+    The loader and the diagnostic path both call this; an unknown
+    name is a programming error and is rejected loudly so a future
+    refactor that drops a transition from the closed set is caught
+    at import time, not at the call site.
+    """
+    try:
+        return _TRANSITIONS_BY_NAME[name]
+    except KeyError as exc:
+        raise ValueError(f"unknown transition: {name!r}") from exc
+
+
+def _categorise_legacy_path_key(key: str) -> tuple[str, str] | None:
+    """Re-categorise a legacy ``str(absolute_path)`` evidence key under a new kind.
+
+    Returns ``(new_kind, value_hint)`` where ``new_kind`` is one of
+    ``"rebase_state_files"`` / ``"merge_state_files"`` and
+    ``value_hint`` is the observation's value (a SHA hash or
+    ``"unreadable"`` / ``"absent"``).
+
+    The migration is one-way: legacy path-keyed observations are
+    re-emitted under their new kind tag. The branch reflog and
+    ``logs/HEAD`` are dropped (see
+    :func:`_migrate_legacy_diagnostic_evidence`).
+    """
+    for suffix in _LEGACY_MERGE_STATE_SUFFIXES:
+        if key.endswith(suffix):
+            return ("merge_state_files", key)
+    for infix in _LEGACY_REBASE_DIR_INFIXES:
+        if infix in key:
+            return ("rebase_state_files", key)
+    return None
+
+
+def _migrate_legacy_diagnostic_evidence(
+    raw: tuple[tuple[str, str], ...],
+) -> tuple[tuple[tuple[str, str], ...], str | None]:
+    """Translate legacy diagnostic-evidence pairs into the new key space.
+
+    The legacy writer stored one observation per pair, with the key
+    being either a subcommand name (``for-each-ref``, ``ls-files``,
+    ``work``, ``controls``, ``metadata``) or an absolute file path
+    (the per-worktree rebase/merge state files plus the
+    common-dir branch reflog and ``logs/HEAD``).
+
+    The new collector never produces the repository-global
+    subcommand names, so a record that still carries them cannot
+    be re-verified; the loader surfaces intervention. The legacy
+    ``work`` / ``controls`` keys translate to ``unstaged_work`` /
+    ``commit_controls`` (the new collector's names). The
+    per-worktree state file keys translate by suffix to
+    ``merge_state_files`` / ``rebase_state_files``. The common-dir
+    reflog and ``logs/HEAD`` are dropped with a
+    ``repair_cap_reason`` marker.
+
+    Returns the migrated key/value pairs and the dropped-reason
+    marker (or ``None`` if no drop was needed).
+    """
+    migrated: list[tuple[str, str]] = []
+    drop_marker: str | None = None
+    for key, value in raw:
+        if key in _LEGACY_GLOBAL_EVIDENCE_KEYS:
+            # Repository-global observations cannot be re-verified.
+            # The loader treats this as a corrupt schema and
+            # surfaces intervention; keep the key as-is so the
+            # operator can see what the legacy writer left behind.
+            migrated.append((key, value))
+            continue
+        if key in {"work", "controls", "metadata", "rev-parse"}:
+            migrated.append(
+                (
+                    {
+                        "work": "unstaged_work",
+                        "controls": "commit_controls",
+                        "metadata": "metadata",
+                        "rev-parse": "head",
+                    }[key],
+                    value,
+                )
+            )
+            continue
+        if key in {"unstaged_work", "commit_controls", "metadata", "head"}:
+            migrated.append((key, value))
+            continue
+        if key.startswith("rebase_state_files:") or key.startswith("merge_state_files:"):
+            migrated.append((key, value))
+            continue
+        # ``str(absolute_path)`` from the legacy writer.
+        if key in ("unstaged_work", "commit_controls") or key.startswith(
+            ("unstaged_work:", "commit_controls:")
+        ):
+            migrated.append((key, value))
+            continue
+        for infix in _LEGACY_COMMON_DIR_DROPPED_INFIXES:
+            if infix in key:
+                drop_marker = "legacy common-dir reflog observation dropped"
+                break
+        else:
+            category = _categorise_legacy_path_key(key)
+            if category is not None:
+                new_kind, _ = category
+                migrated.append((f"{new_kind}:{key}", value))
+            else:
+                # Preserve arbitrary absolute paths under their
+                # original key so no on-disk evidence is silently
+                # lost. The diagnostic path treats unknown keys
+                # as unverified (see ``diagnostic_evidence_unchanged``).
+                migrated.append((key, value))
+    return tuple(migrated), drop_marker
 
 
 _RECORD_ROOT_BINDING: ContextVar[tuple[Path, Path] | None] = ContextVar(
@@ -219,6 +661,18 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
     Splits the schema-level validation out of :func:`read_record` so
     the I/O helper stays under the ruff PLR0911 return-statement
     cap. Returns ``None`` for any rejection (corrupt file).
+
+    The one-way legacy evidence migration runs here so the loaded
+    record already carries the new key space: a legacy ``work`` /
+    ``controls`` key becomes ``unstaged_work`` / ``commit_controls``;
+    a legacy ``str(absolute_path)`` for a per-worktree state file
+    becomes ``<kind>:<path>``; the branch reflog and ``logs/HEAD``
+    are dropped with a ``repair_cap_reason`` marker. A legacy
+    record that still carries the repository-global
+    ``for-each-ref`` / ``ls-files`` keys is rejected as
+    intervention-required -- the new collector would not be able
+    to re-verify them, and silently clearing the evidence would
+    lose the operator-visible fingerprint.
     """
     # Reject a stray ``phase`` value before pydantic validation
     # would coerce it (pydantic honors ``field: str`` for any
@@ -229,6 +683,42 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
+    raw_evidence = data_raw.get("diagnostic_evidence")
+    migrated_evidence: tuple[tuple[str, str], ...] | None = None
+    drop_marker: str | None = None
+    if isinstance(raw_evidence, (list, tuple)):
+        try:
+            pairs: list[tuple[str, str]] = []
+            for item in raw_evidence:
+                if isinstance(item, (list, tuple)):
+                    match item:
+                        case [k, v] if isinstance(k, str) and isinstance(v, str):
+                            pairs.append((k, v))
+            sequence: tuple[tuple[str, str], ...] = tuple(pairs)
+        except Exception:
+            return None
+        if any(key in _LEGACY_GLOBAL_EVIDENCE_KEYS for key, _ in sequence):
+            # Cannot re-verify repository-global observations;
+            # surface intervention rather than silently clear.
+            data_raw = {
+                **data_raw,
+                "diagnostic_intervention_required": True,
+                "repair_cap_reason": (
+                    "legacy repository-global evidence observation present; "
+                    "operator intervention required"
+                ),
+            }
+        else:
+            migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
+            if drop_marker is not None:
+                existing_reason = data_raw.get("repair_cap_reason")
+                data_raw = {
+                    **data_raw,
+                    "diagnostic_evidence": migrated_evidence,
+                    "repair_cap_reason": existing_reason or drop_marker,
+                }
+            elif migrated_evidence != sequence:
+                data_raw = {**data_raw, "diagnostic_evidence": migrated_evidence}
     try:
         return IntegrationRecord.model_validate(data_raw)
     except Exception:
@@ -293,21 +783,36 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
 
 
 def clear_record(workspace_root: Path) -> None:
-    """Unlink the durable record; missing-ok."""
-    record = read_record(workspace_root)
-    if record is not None and record.reintegrate_pending:
-        from ralph.git.merge import branch_sha
-        from ralph.git.operations import get_head_sha
-        from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
+    """Unlink the durable record; missing-ok.
 
-        post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
-        if (
-            record.phase != "integrated"
-            or record.integrated_feature_sha is None
-            or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
-            or get_head_sha(workspace_root) != record.integrated_feature_sha
-        ):
-            raise RuntimeError("owned reintegration cannot release its unfinished target landing")
+    The gate is tighter than the pre-fix behaviour: a record
+    carrying ``diagnostic_intervention_required=True`` MUST NOT be
+    cleared silently (the operator must act), and a record whose
+    phase is ``integrating`` with a non-empty resolution flag
+    cannot be cleared (the operation has unfinished work).
+    """
+    record = read_record(workspace_root)
+    if record is not None:
+        if record.diagnostic_intervention_required:
+            raise RuntimeError(
+                "Integration diagnostic requires operator intervention; "
+                "the durable record cannot be released automatically"
+            )
+        if record.reintegrate_pending:
+            from ralph.git.merge import branch_sha
+            from ralph.git.operations import get_head_sha
+            from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
+
+            post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
+            if (
+                record.phase != "integrated"
+                or record.integrated_feature_sha is None
+                or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
+                or get_head_sha(workspace_root) != record.integrated_feature_sha
+            ):
+                raise RuntimeError(
+                    "owned reintegration cannot release its unfinished target landing"
+                )
     record_file = record_path(workspace_root)
     try:
         record_file.unlink()
@@ -316,10 +821,26 @@ def clear_record(workspace_root: Path) -> None:
 
 
 __all__ = [
+    "ACCEPT_REPAIR_EDITS",
     "AUTO_INTEGRATE_RECORD_FILENAME",
+    "BUMP_DIAGNOSTIC_ATTEMPT",
+    "CLEAR_TRANSITION",
+    "HOLD_DIAGNOSTIC_EVIDENCE",
+    "MARK_LEGACY_FIELDS_PRESERVED",
+    "MARK_PENDING_MERGE_COMMIT",
+    "MARK_PENDING_REBASE_CONTINUE",
+    "MARK_REINTEGRATE_PENDING",
+    "MARK_RESOLVING_MERGE",
+    "MARK_RESOLVING_REBASE",
+    "PROMOTE_TO_INTEGRATED",
+    "RAISE_DIAGNOSTIC_INTERVENTION",
+    "RELEASE_DIAGNOSTIC_EVIDENCE",
+    "RESUME_REPAIR",
+    "START_INTEGRATING",
     "IntegrationOperation",
     "IntegrationPhase",
     "IntegrationRecord",
+    "Transition",
     "clear_record",
     "read_record",
     "record_path",

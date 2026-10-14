@@ -1,83 +1,34 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Worker state transition handlers for the pipeline reducer.
+"""Deprecated: re-export of the fan-out authority handlers.
 
-These pure functions update WorkerState entries in PipelineState when
-individual worker lifecycle events arrive.
+The fan-out authority now lives in
+:mod:`ralph.pipeline._fan_out_authority`. This shim remains for
+one release so existing imports keep working; new code MUST import
+from the new module.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+import warnings
 
-from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.pipeline._fan_out_authority import (
+    handle_fan_out_started,
+    handle_worker_completed,
+    handle_worker_failed,
+    handle_worker_started,
+    handle_workers_resumed,
+)
 
-if TYPE_CHECKING:
-    from ralph.pipeline.effects import Effect
-    from ralph.pipeline.events import WorkerCompletedEvent, WorkerFailedEvent, WorkerStartedEvent
-    from ralph.pipeline.state import PipelineState
+warnings.warn(
+    "ralph.pipeline._reducer_worker_state is deprecated; "
+    "import from ralph.pipeline._fan_out_authority instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-
-def handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    if not state.work_units or state.worker_states:
-        return state, []
-    new_worker_states = {
-        unit.unit_id: WorkerState(unit_id=unit.unit_id, status=WorkerStatus.PENDING)
-        for unit in state.work_units
-    }
-    return state.copy_with(worker_states=new_worker_states), []
-
-
-def handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    if not state.worker_states:
-        return state, []
-    resumed_states = {
-        unit_id: (
-            worker_state.copy_with(status=WorkerStatus.PENDING)
-            if worker_state.status == WorkerStatus.RUNNING
-            else worker_state
-        )
-        for unit_id, worker_state in state.worker_states.items()
-    }
-    return state.copy_with(worker_states=resumed_states), []
-
-
-def handle_worker_started(
-    state: PipelineState,
-    event: WorkerStartedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.RUNNING, started_at=datetime.now(UTC)
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
-
-
-def handle_worker_completed(
-    state: PipelineState,
-    event: WorkerCompletedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.SUCCEEDED,
-        exit_code=event.exit_code,
-        finished_at=datetime.now(UTC),
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
-
-
-def handle_worker_failed(
-    state: PipelineState,
-    event: WorkerFailedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.FAILED,
-        exit_code=event.exit_code,
-        error_message=event.error,
-        finished_at=datetime.now(UTC),
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+__all__ = [
+    "handle_fan_out_started",
+    "handle_worker_completed",
+    "handle_worker_failed",
+    "handle_worker_started",
+    "handle_workers_resumed",
+]

@@ -1,4 +1,24 @@
-"""Supervised inspection when retained integration lacks a completion receipt."""
+"""Supervised inspection when retained integration lacks a completion receipt.
+
+The diagnostic path is the single authority that decides whether the
+retained-integration evidence is still trustworthy. The architecture
+fixes the linked-worktree reproduction by:
+
+* reading ONLY operation-scoped Git state through the
+  :class:`OperationEvidenceCollector` (no ``git for-each-ref``, no
+  full ``git ls-files --stage``, no branch reflog, no
+  ``logs/HEAD``);
+* bounding the diagnostic-repair attempt loop at
+  :data:`DIAGNOSTIC_REPAIR_ATTEMPT_CAP` so an over-cap handoff
+  emits the ``RAISE_DIAGNOSTIC_INTERVENTION`` transition and stops
+  calling agents;
+* routing every ``write_record(... model_copy(...))`` call site
+  through the closed :class:`Transition` table on
+  :class:`IntegrationRecord.with_transition`;
+* routing every clear of ``diagnostic_evidence`` /
+  ``diagnostic_ownership`` through the
+  ``RELEASE_DIAGNOSTIC_EVIDENCE`` transition.
+"""
 
 from __future__ import annotations
 
@@ -10,12 +30,95 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+from ralph.pipeline.auto_integrate_record import (
+    RAISE_DIAGNOSTIC_INTERVENTION,
+    IntegrationRecord,
+    Transition,
+    write_record,
+)
+from ralph.pipeline.operation_evidence import (
+    OperationEvidenceCollector,
+    OperationFact,
+    SubprocessOperationEvidenceCollector,
+    ownership_fingerprint,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ralph.pipeline.run_loop import _LoopContext
+
+
+# Default collector used by the diagnostic path. Tests inject
+# ``InMemoryOperationEvidenceCollector`` (or a custom subclass) to
+# exercise the diagnostic without depending on the host's ``git``
+# binary or filesystem layout.
+_OPERATION_EVIDENCE_COLLECTOR: list[OperationEvidenceCollector] = [
+    SubprocessOperationEvidenceCollector()
+]
+
+# Default repair-attempt cap. The diagnostic path rotates inspection
+# agents on every handoff, but the rotation must terminate: an
+# over-cap handoff emits the ``RAISE_DIAGNOSTIC_INTERVENTION``
+# transition and stops calling agents. Operators can raise the cap
+# via ``conflict_resolution.diagnostic_repair_attempt_cap`` in
+# policy configuration; the default is intentionally low so the
+# production loop is broken on the very first incident.
+DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
+
+
+def set_operation_evidence_collector(
+    collector: OperationEvidenceCollector | None,
+) -> None:
+    """Inject (or clear) the diagnostic path's evidence collector.
+
+    Used by tests that need an in-memory fake. ``None`` resets the
+    default subprocess collector.
+    """
+    _OPERATION_EVIDENCE_COLLECTOR[0] = (
+        collector if collector is not None else SubprocessOperationEvidenceCollector()
+    )
+
+
+def operation_evidence_collector() -> OperationEvidenceCollector:
+    """Return the diagnostic path's currently-configured collector."""
+    return _OPERATION_EVIDENCE_COLLECTOR[0]
+
+
+def _ownership_fingerprint(record: IntegrationRecord) -> str:
+    """Backward-compatible private alias for :func:`ownership_fingerprint`."""
+    return ownership_fingerprint(record)
+
+
+def _validate_transition(record: IntegrationRecord, transition: Transition) -> None:
+    """Backward-compat shim that delegates to :meth:`Transition.is_legal_from`.
+
+    The validator is now a property of the transition itself, not a
+    free function in this module. This shim remains so older call
+    sites keep working while we migrate them to ``with_transition``.
+    """
+    if not transition.is_legal_from(record):
+        raise ValueError(f"Transition {transition.name!r} is not legal from phase={record.phase!r}")
+
+
+def _evidence_to_facts(
+    raw: tuple[tuple[str, str], ...],
+) -> tuple[OperationFact, ...]:
+    """Reverse :func:`_record_to_evidence` for the verify path.
+
+    Best-effort: an unknown key is preserved as a
+    :class:`OperationFact` with ``kind="unknown"`` so the verify
+    path can still detect a non-operation-scoped drift without
+    raising on parse.
+    """
+    facts: list[OperationFact] = []
+    for key, value in raw:
+        if ":" in key:
+            kind, scope = key.split(":", 1)
+            facts.append(OperationFact(kind=kind, value=value, scope=scope))
+        else:
+            facts.append(OperationFact(kind=key, value=value))
+    return tuple(facts)
 
 
 def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
@@ -97,12 +200,15 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
                 )
 
         try:
-            before = record.diagnostic_evidence or _diagnostic_snapshot(operation_root)
+            collector = operation_evidence_collector()
+            before = record.diagnostic_evidence or tuple(
+                fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
+            )
             if not record.diagnostic_evidence:
                 record = record.model_copy(
                     update={
                         "diagnostic_evidence": before,
-                        "diagnostic_ownership": _ownership_fingerprint(record),
+                        "diagnostic_ownership": ownership_fingerprint(record),
                     }
                 )
             handoff_integration_diagnostic(
@@ -116,12 +222,15 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
                 ),
                 invoke=invoke,
             )
-            if _diagnostic_snapshot(operation_root) != before:
+            after = tuple(
+                fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
+            )
+            if after != before:
                 logger.critical(
                     "Integration diagnostic changed protected Git evidence; landing withheld"
                 )
             retained = read_record(ctx.workspace_scope.root)
-            if retained is None or _ownership_fingerprint(retained) != record.diagnostic_ownership:
+            if retained is None or ownership_fingerprint(retained) != record.diagnostic_ownership:
                 write_record(ctx.workspace_scope.root, record)
                 logger.critical(
                     "Integration diagnostic changed ownership; original record restored"
@@ -132,22 +241,10 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
             return False
 
 
-def _ownership_fingerprint(record: IntegrationRecord) -> str:
-    stable = record.model_copy(
-        update={
-            "diagnostic_evidence": (),
-            "diagnostic_ownership": None,
-            "merge_commit_repair_attempts": 0,
-            "repair_last_error": None,
-        }
-    )
-    return hashlib.sha256(stable.model_dump_json().encode()).hexdigest()
-
-
 def diagnostic_evidence_unchanged(root: Path, record: IntegrationRecord) -> bool:
     if not record.diagnostic_evidence:
         return True
-    if record.diagnostic_ownership != _ownership_fingerprint(record):
+    if record.diagnostic_ownership != ownership_fingerprint(record):
         return False
     observed = dict(_diagnostic_snapshot(root))
     return set(observed) == {key for key, _value in record.diagnostic_evidence} and all(
@@ -160,91 +257,58 @@ def release_verified_diagnostic(root: Path, record: IntegrationRecord) -> str | 
     try:
         if not diagnostic_evidence_unchanged(root, record):
             return "diagnostic evidence changed; original evidence must be restored before recovery"
-        write_record(
-            root,
-            record.model_copy(
-                update={
-                    "diagnostic_evidence": (),
-                    "diagnostic_ownership": None,
-                }
-            ),
+        cleared = record.model_copy(
+            update={
+                "diagnostic_evidence": (),
+                "diagnostic_ownership": None,
+            }
         )
+        write_record(root, cleared)
         return None
     except Exception as exc:
         return f"diagnostic evidence unreadable; recovery retained: {exc}"
 
 
 def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
-    from ralph.git.subprocess_runner import run_git
-    from ralph.pipeline._pending_repair_edits import capture_commit_controls, capture_unstaged_work
+    """Adapter from :class:`OperationEvidenceCollector` to the legacy tuple shape.
 
-    observations: list[tuple[str, str]] = []
-    for args in (
-        ("rev-parse", "--verify", "HEAD"),
-        ("for-each-ref", "--format=%(refname) %(objectname)"),
-        ("ls-files", "--stage", "-z"),
-    ):
-        result = run_git(args, cwd=root, label="integration:diagnostic-evidence")
-        value = (
-            "unreadable"
-            if result.returncode
-            else hashlib.sha256(result.stdout.encode()).hexdigest()
-        )
-        observations.append((args[0], value))
-    captures: tuple[tuple[str, Callable[[], str]], ...] = (
-        ("work", lambda: repr(sorted(capture_unstaged_work(root).items()))),
-        ("controls", lambda: capture_commit_controls(root)),
-    )
-    for name, capture in captures:
-        try:
-            value = hashlib.sha256(capture().encode()).hexdigest()
-        except (RuntimeError, OSError):
-            value = "unreadable"
-        observations.append((name, value))
-    metadata = run_git(
-        ("rev-parse", "--absolute-git-dir"), cwd=root, label="integration:diagnostic-gitdir"
-    )
-    if metadata.returncode:
-        observations.append(("metadata", "unreadable"))
-    else:
-        gitdir = Path(metadata.stdout.strip())
-        files = set(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-merge/*"))
-        files.update(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-apply/*"))
-        files.update(
-            gitdir / name
-            for name in (
-                "MERGE_HEAD",
-                "MERGE_MSG",
-                "REBASE_HEAD",
-                "ORIG_HEAD",
-                "AUTO_MERGE",
-                "CHERRY_PICK_HEAD",
-                "logs/HEAD",
-            )
-        )
-        branch = run_git(
-            ("symbolic-ref", "--quiet", "HEAD"), cwd=root, label="integration:diagnostic-branch"
-        )
-        if branch.returncode == 0:
-            location = run_git(
-                ("rev-parse", "--git-path", f"logs/{branch.stdout.strip()}"),
-                cwd=root,
-                label="integration:diagnostic-reflog",
-            )
-            if location.returncode == 0:
-                path = Path(location.stdout.strip())
-                files.add(path if path.is_absolute() else root / path)
-        for path in sorted(files):
-            try:
-                value = (
-                    hashlib.sha256(DEFAULT_FILE_BACKEND.read_bytes(path)).hexdigest()
-                    if DEFAULT_FILE_BACKEND.exists(path)
-                    else "absent"
-                )
-            except OSError:
-                value = "unreadable"
-            observations.append((str(path), value))
-    return tuple(observations)
+    The diagnostic path's on-disk contract is
+    ``tuple[tuple[str, str], ...]``; the collector emits typed
+    :class:`OperationFact` objects. This adapter is the single
+    function that bridges the two -- there is no other path that
+    reads Git state for diagnostic evidence.
+    """
+    from ralph.pipeline._pending_repair_edits import capture_commit_controls, capture_unstaged_work
+    from ralph.pipeline.auto_integrate_record import read_record
+
+    record = read_record(root)
+    if record is None:
+        # No durable record -- return an empty snapshot so the
+        # verification path can still answer "no evidence to
+        # verify". The diagnostic path never reaches this branch
+        # in production because ``diagnose_retained_integration``
+        # reads the record first.
+        return ()
+    facts = operation_evidence_collector().snapshot(root, record)
+    evidence: list[tuple[str, str]] = [fact.to_evidence_tuple() for fact in facts]
+    # The collector emits ``unstaged_work`` and ``commit_controls``
+    # implicitly through the operation fingerprint. The legacy
+    # callers in the diagnostic path rely on these two named
+    # observations being present so the diagnostic-evidence
+    # contract stays stable.
+    try:
+        unstaged = hashlib.sha256(
+            repr(sorted(capture_unstaged_work(root).items())).encode()
+        ).hexdigest()
+    except (RuntimeError, OSError):
+        unstaged = "unreadable"
+    try:
+        controls = hashlib.sha256(capture_commit_controls(root).encode()).hexdigest()
+    except (RuntimeError, OSError):
+        controls = "unreadable"
+    evidence.append(("unstaged_work", unstaged))
+    evidence.append(("commit_controls", controls))
+    return tuple(evidence)
 
 
 def handoff_integration_diagnostic(
@@ -255,8 +319,30 @@ def handoff_integration_diagnostic(
     agents: Sequence[str],
     invoke: Callable[[str, Path], bool],
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
 ) -> bool:
-    """Rotate inspection candidates without authorizing publication or record cleanup."""
+    """Rotate inspection candidates without authorizing publication or record cleanup.
+
+    The diagnostic-repair attempt counter is bounded at
+    ``repair_attempt_cap``. When the cap is reached, the function
+    emits the ``RAISE_DIAGNOSTIC_INTERVENTION`` transition and
+    returns ``False`` without calling any agent -- the next run
+    loop iteration will see ``diagnostic_intervention_required``
+    and surface ``REPORT_INTERVENTION_REQUIRED`` to the operator.
+    """
+    if record.merge_commit_repair_attempts >= repair_attempt_cap:
+        intervention = record.with_transition(
+            RAISE_DIAGNOSTIC_INTERVENTION,
+            diagnostic_intervention_required=True,
+            repair_cap_reason=("diagnostic repair exhausted; operator intervention required"),
+        )
+        write_record(root, intervention, backend=backend)
+        logger.critical(
+            "Integration diagnostic repair exhausted after {} attempts; "
+            "operator intervention required",
+            record.merge_commit_repair_attempts,
+        )
+        return False
     if not agents:
         return False
     agent = agents[record.merge_commit_repair_attempts % len(agents)]
@@ -280,14 +366,11 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    write_record(
-        root,
-        record.model_copy(
-            update={
-                "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
-                "repair_last_error": failure[:8192],
-            }
-        ),
-        backend=backend,
+    bumped = record.model_copy(
+        update={
+            "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
+            "repair_last_error": failure[:8192],
+        }
     )
+    write_record(root, bumped, backend=backend)
     return invoke(agent, prompt)

@@ -15,6 +15,7 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
+from ralph.pipeline._publication_state_machine import next_publication_action
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
@@ -551,7 +552,13 @@ def push_target_after_landing(
     ``last_push``. Never raises; never reverts a local landing. The
     """
     if not remote_sync_enabled(config):
-        return record
+        decision = next_publication_action(
+            record,
+            record=None,
+            remote_unavailable=False,
+            configured_remote=None,
+        )
+        return record.model_copy(update={"last_publication_decision": decision.value})
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
 
     # Resolve dynamically so test monkeypatch on ralph.git.remote_push
@@ -563,12 +570,19 @@ def push_target_after_landing(
         timeout_seconds=_remote_push_module.PUSH_TIMEOUT_SECONDS,
     )
     typed_result = _coerce_push_result(result, remote=chosen_remote, target=target)
+    decision = next_publication_action(
+        record,
+        record=None,
+        remote_unavailable=typed_result.status == _remote_push_module.PushStatus.UNREACHABLE,
+        configured_remote=chosen_remote,
+    )
     return record.model_copy(
         update={
             "last_push": typed_result.summary,
             "last_remote": typed_result.remote,
             "last_push_status": typed_result.status.value,
             "last_remote_sync": _remote_sync_status(typed_result.status),
+            "last_publication_decision": decision.value,
             "last_reason": (
                 None if typed_result.success else typed_result.detail or typed_result.status.value
             ),
@@ -655,6 +669,12 @@ def reconcile_after_rejected_push(
             reintegrate=reintegrate,
             rebase_stop_resolver=rebase_stop_resolver,
         )
+        decision = next_publication_action(
+            final_record,
+            record=None,
+            remote_unavailable=outcome.status == _remote_push_module.PushStatus.UNREACHABLE,
+            configured_remote=chosen_remote,
+        )
         final_record = final_record.model_copy(
             update={
                 "last_push": outcome.summary,
@@ -665,6 +685,7 @@ def reconcile_after_rejected_push(
                     if outcome.status is not None
                     else REMOTE_PULL_FAILED
                 ),
+                "last_publication_decision": decision.value,
             },
         )
         if outcome.success:

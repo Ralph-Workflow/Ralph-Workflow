@@ -173,6 +173,8 @@ TESTS_ALLOWLIST: set[str] = {
     # a crash leaves an in-progress rebase. Uses subprocess.run to set
     # up the crashed state and drive the recovery + resume argv.
     "test_auto_integrate_rung4_self_resume.py",
+    # linked-worktree diagnostic isolation regression (real-git subprocess_e2e suite, required e2e registry)
+    "test_integration_diagnostic_worktree_isolation.py",
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
     # Patches ``os.killpg`` via monkeypatch to record what production teardown
     # would have signalled; no real subprocess or signal is delivered. The

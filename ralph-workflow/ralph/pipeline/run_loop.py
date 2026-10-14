@@ -29,6 +29,7 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
+from ralph.pipeline._pipeline_state_machine import is_terminal_success_eligible
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.auto_integrate import recovery_retained_record
@@ -38,6 +39,7 @@ from ralph.pipeline.auto_integrate_agent import (
     emit_integration_warn_line,
 )
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
+from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.cycle_timing import (
@@ -579,21 +581,22 @@ def _build_status_bar_model(
         agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
         run_started_monotonic=run_started_monotonic,
         attention=attention,
+        operation_display_state=state.rebase.operation_display_state,
     )
 
 
 def _integration_alert_for_state(state: PipelineState) -> str | None:
-    """Alert text while the last auto-integrate outcome is a conflict.
-
-    Defensive ``getattr`` access so a fake / legacy state object without
-    a ``rebase`` slot can never break the status bar push.
-    """
-    rebase: object = getattr(state, "rebase", None)
-    last_action: object = getattr(rebase, "last_action", None)
-    if last_action != "conflict":
+    """Alert text while the last auto-integrate outcome is a conflict or requires intervention."""
+    rebase = state.rebase
+    if rebase.last_decision == "report_intervention_required":
+        return "diagnostic intervention required — manual recovery needed"
+    if rebase.operation_display_state == "intervention_required":
+        return "diagnostic intervention required — manual recovery needed"
+    if rebase.operation_display_state == "evidence_diagnosis":
+        return "evidence diagnosis — gathering operation facts"
+    if rebase.last_action != "conflict":
         return None
-    reason_raw: object = getattr(rebase, "last_reason", None)
-    reason = reason_raw if isinstance(reason_raw, str) and reason_raw else "unresolved"
+    reason = rebase.last_reason or "unresolved"
     return f"integration conflict ({reason}) — resolution required"
 
 
@@ -1981,6 +1984,35 @@ def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
         _repair_pending_merge_commit(ctx, failure)
 
 
+def _handle_retained_integration(
+    state: PipelineState,
+    ctx: _LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
+    """Handle retained integration reason on disk."""
+    if retained_integration_reason(ctx.workspace_scope.root) is None:
+        return state, None
+    continued = _run_startup_integration(ctx, state.rebase)
+    if continued is not None:
+        state = state.copy_with(rebase=continued)
+        _save_recovered_rebase_checkpoint(state, ctx)
+    remaining = retained_integration_reason(ctx.workspace_scope.root)
+    if remaining is not None:
+        if not state.rebase.recovery_record_retained:
+            state = state.copy_with(
+                rebase=state.rebase.model_copy(
+                    update={
+                        "recovery_record_retained": True,
+                        "last_reason": remaining,
+                    }
+                )
+            )
+            _save_recovered_rebase_checkpoint(state, ctx)
+        _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
+        return state, (state, prev_phase, 0)
+    return state, None
+
+
 def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
@@ -1995,25 +2027,17 @@ def _block_unresolved_integration(
     fallback/retry opportunity. An exhausted or still-blocked verdict keeps
     ordinary dispatch suspended while the caller cools down before retrying.
     """
-    if retained_integration_reason(ctx.workspace_scope.root) is not None:
-        continued = _run_startup_integration(ctx, state.rebase)
-        if continued is not None:
-            state = state.copy_with(rebase=continued)
-            _save_recovered_rebase_checkpoint(state, ctx)
-        remaining = retained_integration_reason(ctx.workspace_scope.root)
-        if remaining is not None:
-            if not state.rebase.recovery_record_retained:
-                state = state.copy_with(
-                    rebase=state.rebase.model_copy(
-                        update={
-                            "recovery_record_retained": True,
-                            "last_reason": remaining,
-                        }
-                    )
-                )
-                _save_recovered_rebase_checkpoint(state, ctx)
-            _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
-            return state, prev_phase, 0
+    record = read_record(ctx.workspace_scope.root)
+    if record is not None and record.diagnostic_intervention_required:
+        emit_integration_warn_line(
+            ctx.active_display,
+            "CRITICAL: diagnostic intervention required; dispatch blocked",
+        )
+        return state, prev_phase, 1
+
+    state, retained_result = _handle_retained_integration(state, ctx, prev_phase)
+    if retained_result is not None:
+        return retained_result
 
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
@@ -2023,13 +2047,7 @@ def _block_unresolved_integration(
             _save_recovered_rebase_checkpoint(state, ctx)
         return None
     _save_recovered_rebase_checkpoint(state, ctx)
-    # An exhausted record describes ONE conflict: the one whose chain it
-    # spent. Treating it as an unconditional stop ended the run here
-    # without invoking a resolver at all -- so a conflict that had since
-    # CHANGED, and one whose anti-thrash budget still had an attempt in
-    # it, were both refused by a record about neither. Ask the budget
-    # (which compares the recorded conflict against the one on disk)
-    # whether the exhaustion still binds; only then is stopping honest.
+
     exhausted_still_binds = verdict.status is EXHAUSTED and _exhaustion_still_binds(
         ctx, state.rebase
     )
@@ -2039,10 +2057,6 @@ def _block_unresolved_integration(
         return state, prev_phase, 1
 
     if verdict.status in {RECOVERABLE, EXHAUSTED}:
-        # Conflict resolution is unconditional for recoverable evidence. The
-        # resolver runs FIRST and directly, because the startup-integration
-        # seam below defers on a dirty worktree and every conflicted worktree
-        # is dirty.
         _announce_conflict_resolution_entry(ctx, verdict)
         _run_integration_conflict_resolution(ctx, state.rebase)
         recovered = _run_startup_integration(ctx, state.rebase)
@@ -2058,12 +2072,6 @@ def _block_unresolved_integration(
             return None
         verdict = post_recovery
 
-    # This is reachable only when the resolution executor has exhausted its
-    # own bounded chain/round recovery and the repository remains blocked.
-    # Persisting the state makes resume fail closed rather than converting a
-    # failed resolver attempt into permission to enter planning/development.
-    # Announce the live evidence first: it, not the recovery record, is what
-    # an operator needs in order to clear the block by hand.
     _announce_blocked_dispatch(ctx, verdict)
     _announce_deferred_startup_integration(ctx, state.rebase)
     return state, prev_phase, 1
@@ -2175,6 +2183,66 @@ def _wait_for_integration_retry(state: PipelineState, ctx: _LoopContext) -> Pipe
     return state.copy_with(is_waiting_state=False)
 
 
+def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+    """Handle cooldown wait when last_retry_delay_ms is set."""
+    delay_ms = state.last_retry_delay_ms
+    if not isinstance(delay_ms, int) or delay_ms <= 0:
+        return state
+    is_all_unavailable = state.is_waiting_state
+    if not is_all_unavailable:
+        ctx.last_waiting_state_phase = None
+    try:
+        current_phase_str = str(state.phase)
+        unavail_reason = state.last_unavailability_reason or "unknown"
+        if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
+            ctx.last_waiting_state_phase = current_phase_str
+            emit_activity_line(
+                ctx.active_display,
+                None,
+                status_text(
+                    "WAITING",
+                    f"all agents unavailable (last reason: {unavail_reason});"
+                    f" resuming in {int(delay_ms / 1000.0)} seconds "
+                    f"(next agent attempt: {current_phase_str})",
+                    "yellow",
+                ),
+            )
+            _log_waiting_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
+
+        state = state.copy_with(last_retry_delay_ms=0)
+        if is_all_unavailable:
+            logger.bind(recovery=True).debug(
+                "Starting cooldown sleep for {delay_seconds:.3f} seconds in phase '{phase}'.",
+                delay_seconds=delay_ms / 1000.0,
+                phase=current_phase_str,
+            )
+
+        ctx.sleep(delay_ms / 1000.0)
+
+        if is_all_unavailable:
+            state = _resume_after_cooldown_wait(
+                state, ctx, current_phase_str, unavail_reason, delay_ms
+            )
+        return state
+    except BaseException as e:
+        if isinstance(e, KeyboardInterrupt):
+            raise
+        chain = state.chain_for_phase(state.phase)
+        current_idx = chain.current_index if chain is not None else None
+        logger.bind(recovery=True).error(
+            "Error during cooldown sleep: {} (type={}) last_error={} "
+            "chain_index={} phase={} wait_ms={} is_all_unavailable={}",
+            e,
+            type(e).__name__,
+            state.last_error,
+            current_idx,
+            current_phase_str,
+            delay_ms,
+            is_all_unavailable,
+        )
+        return state.copy_with(last_retry_delay_ms=1000)
+
+
 def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2212,6 +2280,11 @@ def _run_inner_loop_after_startup(
     while (
         state.phase != ctx.policy_bundle.pipeline.terminal_phase
         or retained_integration_reason(ctx.workspace_scope.root) is not None
+        or not is_terminal_success_eligible(
+            state,
+            read_record(ctx.workspace_scope.root),
+            state.rebase,
+        )
     ):
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
@@ -2266,68 +2339,7 @@ def _run_inner_loop_after_startup(
             last_status_sig,
         )
         _publish_state_snapshot(ctx, state)
-        delay_ms = state.last_retry_delay_ms
-        if isinstance(delay_ms, int) and delay_ms > 0:
-            # Structured wait-state detection: the controller sets
-            # ``state.is_waiting_state`` to True when it enters the
-            # all-agents-unavailable wait branch. The previous text
-            # parser on ``state.last_error`` was brittle (the controller
-            # and the run loop could disagree about the exact string) so
-            # it was replaced with this boolean. The ``last_error`` text
-            # remains as operator-readable context only.
-            is_all_unavailable = state.is_waiting_state
-            if not is_all_unavailable:
-                ctx.last_waiting_state_phase = None
-            try:
-                current_phase_str = str(state.phase)
-                unavail_reason = state.last_unavailability_reason or "unknown"
-                if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
-                    ctx.last_waiting_state_phase = current_phase_str
-                    emit_activity_line(
-                        ctx.active_display,
-                        None,
-                        status_text(
-                            "WAITING",
-                            f"all agents unavailable (last reason: {unavail_reason});"
-                            f" resuming in {int(delay_ms / 1000.0)} seconds "
-                            f"(next agent attempt: {current_phase_str})",
-                            "yellow",
-                        ),
-                    )
-                    _log_waiting_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
-
-                state = state.copy_with(last_retry_delay_ms=0)
-                if is_all_unavailable:
-                    logger.bind(recovery=True).debug(
-                        "Starting cooldown sleep for {delay_seconds:.3f} "
-                        "seconds in phase '{phase}'.",
-                        delay_seconds=delay_ms / 1000.0,
-                        phase=current_phase_str,
-                    )
-
-                ctx.sleep(delay_ms / 1000.0)
-
-                if is_all_unavailable:
-                    state = _resume_after_cooldown_wait(
-                        state, ctx, current_phase_str, unavail_reason, delay_ms
-                    )
-            except BaseException as e:
-                if isinstance(e, KeyboardInterrupt):
-                    raise
-                chain = state.chain_for_phase(state.phase)
-                current_idx = chain.current_index if chain is not None else None
-                logger.bind(recovery=True).error(
-                    "Error during cooldown sleep: {} (type={}) last_error={} "
-                    "chain_index={} phase={} wait_ms={} is_all_unavailable={}",
-                    e,
-                    type(e).__name__,
-                    state.last_error,
-                    current_idx,
-                    current_phase_str,
-                    delay_ms,
-                    is_all_unavailable,
-                )
-                state = state.copy_with(last_retry_delay_ms=1000)
+        state = _handle_cooldown_delay(state, ctx)
         if str(state.phase) != captured_phase:
             state = _reselect_preferred_agent(state, ctx)
         prev_phase = _runner_module.emit_phase_transition_if_changed(

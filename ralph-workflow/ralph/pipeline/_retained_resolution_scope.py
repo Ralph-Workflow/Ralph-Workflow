@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate_record import read_record, write_record
+from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_MERGE,
+    read_record,
+    write_record,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,6 +46,11 @@ def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple
     scope = tuple(sorted(set(paths) | set(saved) | set(original_conflict_paths(root))))
     if scope:
         write_record(
-            root, record.model_copy(update={"resolving_paths": scope, "resolving_stop_sha": sha})
+            root,
+            record.with_transition(
+                MARK_RESOLVING_MERGE,
+                resolving_paths=scope,
+                resolving_stop_sha=sha,
+            ),
         )
     return scope

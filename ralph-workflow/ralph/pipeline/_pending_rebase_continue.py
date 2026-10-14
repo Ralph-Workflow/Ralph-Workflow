@@ -8,7 +8,14 @@ from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
 from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline._pending_merge_commit import _git_value
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_record import (
+    MARK_PENDING_REBASE_CONTINUE,
+    MARK_RESOLVING_REBASE,
+    PROMOTE_TO_INTEGRATED,
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
 
 
 def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
@@ -29,7 +36,10 @@ def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
             pre_target_sha=onto,
             resolving_rebase=True,
         )
-    pending = record.model_copy(update={"rebase_continue_pending": True})
+    pending = record.with_transition(
+        MARK_PENDING_REBASE_CONTINUE,
+        rebase_continue_pending=True,
+    )
     write_record(root, pending)
     pending = pending.model_copy(
         update={
@@ -105,7 +115,13 @@ def retain_pending_rebase_error(root: Path, error: Exception) -> None:
     """Persist actionable hook/lock diagnostics without changing the prepared index."""
     record = read_record(root)
     if record is not None and record.rebase_continue_pending:
-        write_record(root, record.model_copy(update={"rebase_continue_error": str(error)[:2000]}))
+        write_record(
+            root,
+            record.with_transition(
+                MARK_PENDING_REBASE_CONTINUE,
+                rebase_continue_error=str(error)[:2000],
+            ),
+        )
 
 
 def resume_pending_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
@@ -156,19 +172,18 @@ def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> Integrat
     if not _resolved_stop_landed(root, record):
         return "completed rebase does not prove the verified stop landed; landing withheld"
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    integrated = record.model_copy(
-        update={
-            "phase": "integrated",
-            "integrated_feature_sha": head,
-            "resolving_rebase": False,
-            "rebase_continue_pending": False,
-            "rebase_continue_metadata": (),
-            "rebase_restore_metadata": None,
-            "rebase_continue_head": None,
-            "rebase_continue_stop": None,
-            "rebase_continue_tree": None,
-            "rebase_continue_error": None,
-        }
+    integrated = record.with_transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha=head,
+        resolving_rebase=False,
+        rebase_continue_pending=False,
+        rebase_continue_metadata=(),
+        rebase_restore_metadata=None,
+        rebase_continue_head=None,
+        rebase_continue_stop=None,
+        rebase_continue_tree=None,
+        rebase_continue_error=None,
     )
     write_record(root, integrated)
     return integrated
@@ -185,7 +200,13 @@ def _retain_next_rebase_stop(root: Path) -> str:
     finish_pending_rebase(root)
     updated = read_record(root)
     if updated is not None:
-        write_record(root, updated.model_copy(update={"resolving_rebase": True}))
+        write_record(
+            root,
+            updated.with_transition(
+                MARK_RESOLVING_REBASE,
+                resolving_rebase=True,
+            ),
+        )
     return "rebase advanced to another conflict; retained for agent continuation"
 
 
@@ -275,7 +296,10 @@ def restore_pending_rebase_sequence(root: Path, record: IntegrationRecord) -> No
             raise ValueError("rebase sequencer changed outside the prepared continuation; retained")
         if not _replay_commands_are_picks(root, consumed):
             raise ValueError("consumed rebase commands require supervised repair; queue retained")
-        record = record.model_copy(update={"rebase_restore_metadata": tuple(current.items())})
+        record = record.with_transition(
+            MARK_PENDING_REBASE_CONTINUE,
+            rebase_restore_metadata=tuple(current.items()),
+        )
         write_record(root, record)
     else:
         before = dict(record.rebase_restore_metadata)
@@ -299,7 +323,13 @@ def restore_pending_rebase_sequence(root: Path, record: IntegrationRecord) -> No
             tmp_path=path.with_name(path.name + ".ralph-pending"),
             sync_directory=True,
         )
-    write_record(root, record.model_copy(update={"rebase_restore_metadata": None}))
+    write_record(
+        root,
+        record.with_transition(
+            MARK_PENDING_REBASE_CONTINUE,
+            rebase_restore_metadata=None,
+        ),
+    )
 
 
 def _replay_commands_are_picks(root: Path, commands: str) -> bool:

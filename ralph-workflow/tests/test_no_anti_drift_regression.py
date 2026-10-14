@@ -1441,6 +1441,7 @@ def _collect_phase_transition_findings() -> None:
             tree = _parse(path)
         except (SyntaxError, OSError):
             continue
+        lines = source.splitlines()
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -1466,7 +1467,10 @@ def _collect_phase_transition_findings() -> None:
                     break
             if not has_phase_mutation:
                 continue
-            body_src = ast.unparse(node)
+            if hasattr(node, "end_lineno") and node.end_lineno is not None:
+                body_src = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+            else:
+                body_src = ast.unparse(node)
             # A phase transition is safe if it:
             # (a) routes through `progress.advance_phase(...)` (which does
             #     both clears internally), OR

@@ -66,6 +66,8 @@ from ralph.pipeline.auto_integrate_rebase_merge import (
     run_rebase_or_merge as _run_rebase_or_merge,
 )
 from ralph.pipeline.auto_integrate_record import (
+    PROMOTE_TO_INTEGRATED,
+    START_INTEGRATING,
     IntegrationRecord,
     read_record,
 )
@@ -573,13 +575,12 @@ def _integrate_once_owned(
             reason="unfinished integration retained for recovery", target=target
         ), False
     attempt_record = (
-        owned_record.model_copy(
-            update={
-                "phase": "integrating",
-                "pre_feature_sha": pre_feature_sha,
-                "pre_target_sha": pre_target_sha,
-                "integrated_feature_sha": None,
-            }
+        owned_record.with_transition(
+            START_INTEGRATING,
+            phase="integrating",
+            pre_feature_sha=pre_feature_sha,
+            pre_target_sha=pre_target_sha,
+            integrated_feature_sha=None,
         )
         if owned_record is not None
         else IntegrationRecord(
@@ -632,11 +633,10 @@ def _integrate_once_owned(
         # (AC-11).
         _write_record(
             root,
-            attempt_record.model_copy(
-                update={
-                    "phase": "integrated",
-                    "integrated_feature_sha": feature_sha,
-                }
+            attempt_record.with_transition(
+                PROMOTE_TO_INTEGRATED,
+                phase="integrated",
+                integrated_feature_sha=feature_sha,
             ),
         )
 

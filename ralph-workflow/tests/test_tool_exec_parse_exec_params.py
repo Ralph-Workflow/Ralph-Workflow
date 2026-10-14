@@ -166,9 +166,7 @@ class TestParseExecParams:
         assert result.args == ["test", "test/models/user_test.rb"]
 
     def test_exec_regression_environment_assignment_preserves_explicit_args(self) -> None:
-        result = parse_exec_params(
-            {"command": "X=1 printf", "args": ["%s", "hello world"]}
-        )
+        result = parse_exec_params({"command": "X=1 printf", "args": ["%s", "hello world"]})
 
         assert result.shell_command == "X=1 printf %s 'hello world'"
         assert result.command == "printf"

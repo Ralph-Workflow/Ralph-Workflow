@@ -9,6 +9,24 @@ through this function so the two surfaces cannot drift.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
+
+class OperationDisplayState(StrEnum):
+    """The closed vocabulary for the auto-integrate display state (ADR-0007)."""
+
+    INTEGRATING = "integrating"
+    LANDING = "landing"
+    PUBLISHING = "publishing"
+    CONFLICT_RESOLUTION = "conflict_resolution"
+    EVIDENCE_DIAGNOSIS = "evidence_diagnosis"
+    WAITING = "waiting"
+    INTERVENTION_REQUIRED = "intervention_required"
+    TERMINAL = "terminal"
+
+
+_OPERATION_DISPLAY_STATES: frozenset[str] = frozenset(s.value for s in OperationDisplayState)
+
 #: Outcome verbs recorded on ``RebaseState.last_action`` by the producer.
 _ACTION_SKIPPED = "skipped"
 _ACTION_REBASED = "rebased"
@@ -98,10 +116,121 @@ def _remote_suffix(
     return f" [remote: {remote_sync}]"
 
 
-def format_auto_integrate_message(
+def _resolve_operation_display_state(
+    operation_display_state: str | OperationDisplayState | None,
+    action: str | None,
+) -> str | None:
+    raw_state = operation_display_state
+    if raw_state is None and action is not None:
+        cand = (
+            str(action.value if isinstance(action, OperationDisplayState) else action)
+            .strip()
+            .lower()
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+        if cand in _OPERATION_DISPLAY_STATES:
+            raw_state = cand
+
+    if raw_state is not None:
+        cand = (
+            str(raw_state.value if isinstance(raw_state, OperationDisplayState) else raw_state)
+            .strip()
+            .lower()
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+        if cand in _OPERATION_DISPLAY_STATES:
+            return cand
+    return None
+
+
+def _format_typed_state_message(
+    state_key: str,
+    target: str | None,
+    reason: str | None,
+    *,
+    fast_forwarded: bool,
+    remote: str | None,
+) -> str:
+    target_clause = f" ({target})" if target else ""
+    message = f"{state_key}"
+    if state_key == OperationDisplayState.INTEGRATING:
+        base = "integrating" + (f" onto target{target_clause}" if target else "")
+        if reason:
+            message = f"{base}: {reason}"
+        elif fast_forwarded:
+            message = base + _fast_forward_suffix(
+                target=target, fast_forwarded=fast_forwarded, reason=reason
+            )
+        else:
+            message = base
+    elif state_key == OperationDisplayState.LANDING:
+        base = "landing" + target_clause
+        message = base + _fast_forward_suffix(
+            target=target, fast_forwarded=fast_forwarded, reason=reason
+        )
+    elif state_key == OperationDisplayState.PUBLISHING:
+        dest = f" to {remote}" if remote else ""
+        base = f"publishing{dest}{target_clause}"
+        message = f"{base}: {reason}" if reason else base
+    elif state_key == OperationDisplayState.CONFLICT_RESOLUTION:
+        message = f"conflict resolution{target_clause}: {reason or 'unresolved conflict'}"
+    elif state_key == OperationDisplayState.EVIDENCE_DIAGNOSIS:
+        message = f"evidence diagnosis{target_clause}: {reason or 'diagnosing retained evidence'}"
+    elif state_key == OperationDisplayState.WAITING:
+        message = f"waiting{target_clause}: {reason or 'retry pending'}"
+    elif state_key == OperationDisplayState.INTERVENTION_REQUIRED:
+        message = (
+            f"intervention required{target_clause}: {reason or 'manual intervention required'}"
+        )
+    elif state_key == OperationDisplayState.TERMINAL:
+        message = (
+            f"terminal{target_clause}: {reason or 'completed'}"
+            if reason
+            else f"terminal{target_clause}"
+        )
+    return message
+
+
+def _format_legacy_action_message(
     action: str | None,
     target: str | None,
     reason: str | None,
+    *,
+    fast_forwarded: bool,
+) -> str:
+    target_clause = f" ({target})" if target else ""
+    normalized = action or "noop"
+    message = f"{normalized}"
+    if normalized == _ACTION_REBASED:
+        base = "rebased onto target" + target_clause
+        message = base + _fast_forward_suffix(
+            target=target, fast_forwarded=fast_forwarded, reason=reason
+        )
+    elif normalized == _ACTION_MERGED:
+        base = "merged target into feature" + target_clause
+        message = base + _fast_forward_suffix(
+            target=target, fast_forwarded=fast_forwarded, reason=reason
+        )
+    elif normalized == _ACTION_SKIPPED:
+        message = f"skipped: {reason or 'no reason recorded'}"
+    elif normalized == _ACTION_CONFLICT:
+        message = f"conflict: {reason or 'unresolved conflict'}"
+    elif normalized == _ACTION_RECOVERED:
+        if reason:
+            message = f"recovered ({reason})"
+        elif fast_forwarded and target:
+            message = f"recovered: fast-forwarded {target}"
+        else:
+            message = "recovered"
+    return message
+
+
+def format_auto_integrate_message(
+    action: str | None = None,
+    target: str | None = None,
+    reason: str | None = None,
     *,
     fast_forwarded: bool = False,
     refresh: str | None = None,
@@ -109,10 +238,15 @@ def format_auto_integrate_message(
     remote_sync: str | None = None,
     remote: str | None = None,
     freshness_verdict: str | None = None,
+    operation_display_state: str | OperationDisplayState | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
-    The four arguments are exactly the four fields the producer records on
+    Reads ``operation_display_state`` first (the eight-branch typed lifecycle
+    authority from ADR-0007); falls back to ``action``/``reason`` only when
+    the typed state is unset (legacy checkpoints).
+
+    The four basic arguments are the four fields the producer records on
     :class:`ralph.pipeline.rebase_state.RebaseState`. The ``fast_forwarded``
     parameter is the only signal that distinguishes a successful land from a
     refused one, because the producer keeps ``last_action`` as
@@ -146,31 +280,22 @@ def format_auto_integrate_message(
     is added at the emit site, and emitting a second one here previously
     doubled the prefix in the live line.
     """
-    normalized = action or "noop"
-
-    if normalized == _ACTION_REBASED:
-        base = "rebased onto target" + (f" ({target})" if target else "")
-        message = base + _fast_forward_suffix(
-            target=target, fast_forwarded=fast_forwarded, reason=reason
+    state_key = _resolve_operation_display_state(operation_display_state, action)
+    if state_key is not None:
+        message = _format_typed_state_message(
+            state_key,
+            target,
+            reason,
+            fast_forwarded=fast_forwarded,
+            remote=remote,
         )
-    elif normalized == _ACTION_MERGED:
-        base = "merged target into feature" + (f" ({target})" if target else "")
-        message = base + _fast_forward_suffix(
-            target=target, fast_forwarded=fast_forwarded, reason=reason
-        )
-    elif normalized == _ACTION_SKIPPED:
-        message = f"skipped: {reason or 'no reason recorded'}"
-    elif normalized == _ACTION_CONFLICT:
-        message = f"conflict: {reason or 'unresolved conflict'}"
-    elif normalized == _ACTION_RECOVERED:
-        if reason:
-            message = f"recovered ({reason})"
-        elif fast_forwarded and target:
-            message = f"recovered: fast-forwarded {target}"
-        else:
-            message = "recovered"
     else:
-        message = f"{normalized}"
+        message = _format_legacy_action_message(
+            action,
+            target,
+            reason,
+            fast_forwarded=fast_forwarded,
+        )
 
     return (
         message
@@ -181,4 +306,7 @@ def format_auto_integrate_message(
     )
 
 
-__all__ = ["format_auto_integrate_message"]
+__all__ = [
+    "OperationDisplayState",
+    "format_auto_integrate_message",
+]

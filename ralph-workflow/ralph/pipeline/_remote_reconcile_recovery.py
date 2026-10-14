@@ -19,6 +19,9 @@ from ralph.pipeline._integration_continuation import (
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_REBASE,
+    PROMOTE_TO_INTEGRATED,
+    RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
     bind_integration_record_root,
     write_record,
@@ -57,8 +60,10 @@ def recover_target_resolution(
                     record,
                     "diagnostic evidence changed; original evidence must be restored before recovery",
                 )
-            record = record.model_copy(
-                update={"diagnostic_evidence": (), "diagnostic_ownership": None}
+            record = record.with_transition(
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
             )
             write_record(root, record)
         with bind_integration_record_root(owner, root):
@@ -99,16 +104,16 @@ def _continue_target_record(
     ) and (rebase_in_progress_at(owner) or merge_state(owner) == MERGE_STATE_IN_PROGRESS):
         if not active_operation_matches(owner, record):
             return "target operation identity differs from retained ownership"
-        record = record.model_copy(
-            update={
-                "resolving_rebase": rebase_in_progress_at(owner),
-                "resolving_merge": merge_state(owner) == MERGE_STATE_IN_PROGRESS,
-            }
+        record = record.with_transition(
+            MARK_RESOLVING_REBASE,
+            resolving_rebase=rebase_in_progress_at(owner),
+            resolving_merge=merge_state(owner) == MERGE_STATE_IN_PROGRESS,
         )
         write_record(root, record)
     elif record.phase == "integrating" and not record.rebase_continue_pending:
         completed = _legacy_completed_rebase(
-            owner, record.model_copy(update={"resolving_rebase": True})
+            owner,
+            record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True),
         )
         if completed is not None:
             write_record(root, completed)
@@ -152,18 +157,17 @@ def _start_saved_target_action(
 
     if _git_value(owner, "symbolic-ref", "--quiet", "--short", "HEAD") != record.target:
         return "saved target reconciliation branch owner changed; intervention required"
-    retained = record.model_copy(update={"resolving_rebase": True})
+    retained = record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     write_record(root, retained)
     result = rebase_onto(record.pre_target_sha, repo_root=owner)
     if isinstance(result, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress_at(owner):
         head = get_head_sha(owner)
         if head is not None and ancestry_state(owner, record.pre_target_sha, head) is True:
-            retained = retained.model_copy(
-                update={
-                    "phase": "integrated",
-                    "integrated_feature_sha": head,
-                    "resolving_rebase": False,
-                }
+            retained = retained.with_transition(
+                PROMOTE_TO_INTEGRATED,
+                phase="integrated",
+                integrated_feature_sha=head,
+                resolving_rebase=False,
             )
             write_record(root, retained)
     return retained
