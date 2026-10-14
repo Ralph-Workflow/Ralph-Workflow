@@ -20,7 +20,7 @@ deterministic API:
 from __future__ import annotations
 
 import re
-from typing import Final, cast
+from typing import Final
 
 from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
@@ -255,15 +255,6 @@ _SENTENCE_ENDING_PUNCT_PATTERN: Final[re.Pattern[str]] = re.compile(_SENTENCE_EN
 #: next sentence is no longer treated as two declarations.
 _SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\s+(?=[A-Z])")
 
-#: Regex matching a run of ratchet phrase occurrences in a single
-#: line. Each match corresponds to one body ratchet declaration
-#: (or to two declarations on one line if the line carries two
-#: distinct ratchet phrases in distinct sentences). The scan
-#: records each occurrence as its own declaration so a future
-#: regression that combines two ratchets on one line with a
-#: single token is rejected (wt-15-policy analysis feedback).
-_RATCHET_PHRASE_OCCURRENCE_RE_CACHE: dict[str, re.Pattern[str]] = {}
-
 
 def _count_ratchet_phrases(line: str, phrase_re: re.Pattern[str]) -> int:
     """Return the number of distinct ratchet phrase occurrences on ``line``.
@@ -378,7 +369,9 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
     in_excluded = False
     in_table = False
     in_comment = False
-    control_re = re.compile(markers.CONTROL_TOKEN_RE)
+    control_re: re.Pattern[str] = re.compile(
+        markers.CONTROL_TOKEN_RE
+    )  # cast-policy: seam: compiled pattern, findall returns list[str] per typeshed
     phrase_alts = "|".join(re.escape(p) for p in markers.RATCHET_DECLARATION_PHRASES)
     # The phrases are not all word-shaped so we use a plain
     # case-insensitive substring match rather than the usual
@@ -468,7 +461,9 @@ def _scan_body_line(
     ``(sentence_has_phrase, sentence_token_id, out)`` triple.
     """
     line_has_phrase = bool(phrase_re.search(stripped))
-    line_tokens = cast("list[str]", control_re.findall(stripped))
+    line_tokens: list[str] = control_re.findall(
+        stripped
+    )  # cast-policy: seam: typed local ensures list[str] without cast()
     visible_text = re.sub(r"<!--.*?-->", "", stripped, flags=re.DOTALL)
     ends_sentence = _line_ends_sentence(stripped)
     # Real sentence boundaries: punctuation + whitespace + capital
@@ -673,7 +668,9 @@ def _claim_scope_sentence_count(cell: str) -> int:
     clean = re.sub(r"[.!?]+$", "", stripped).strip()
     if not clean:
         return 1
-    raw_segments = cast("list[str]", _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(clean))
+    raw_segments: list[str] = _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(
+        clean
+    )  # cast-policy: seam: typed local ensures list[str] without cast()
     segments: list[str] = [s.strip() for s in raw_segments if s.strip()]
     return max(1, len(segments))
 
