@@ -182,7 +182,7 @@ def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
     """A legacy on-disk record without the new fields loads with defaults."""
     from ralph.pipeline.auto_integrate_record import (
         IntegrationRecord,
-        _parse_record_payload,
+        parse_record_payload,
     )
 
     legacy = {
@@ -192,7 +192,7 @@ def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
         "pre_target_sha": "b" * 40,
         "diagnostic_evidence": (("work", "old-key"),),
     }
-    parsed = _parse_record_payload(legacy)
+    parsed = parse_record_payload(legacy)
     assert isinstance(parsed, IntegrationRecord)
     assert parsed.diagnostic_intervention_required is False
     assert parsed.repair_cap_reason is None
@@ -202,7 +202,7 @@ def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
 
 def test_legacy_record_with_for_each_ref_surfaces_intervention() -> None:
     """A legacy record carrying ``for-each-ref`` is intervention-required."""
-    from ralph.pipeline.auto_integrate_record import _parse_record_payload
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
         "phase": "integrating",
@@ -211,7 +211,7 @@ def test_legacy_record_with_for_each_ref_surfaces_intervention() -> None:
         "pre_target_sha": "b" * 40,
         "diagnostic_evidence": (("for-each-ref", "deadbeef"),),
     }
-    parsed = _parse_record_payload(legacy)
+    parsed = parse_record_payload(legacy)
     assert parsed is not None
     assert parsed.diagnostic_intervention_required is True
     assert "legacy repository-global evidence" in (parsed.repair_cap_reason or "")
@@ -219,7 +219,7 @@ def test_legacy_record_with_for_each_ref_surfaces_intervention() -> None:
 
 def test_legacy_record_with_branch_reflog_drops_observation() -> None:
     """The branch reflog is common-dir; the migrator drops it with a reason marker."""
-    from ralph.pipeline.auto_integrate_record import _parse_record_payload
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
         "phase": "integrating",
@@ -231,7 +231,7 @@ def test_legacy_record_with_branch_reflog_drops_observation() -> None:
             ("/tmp/repo/.git/logs/refs/heads/main", "somehash"),
         ),
     }
-    parsed = _parse_record_payload(legacy)
+    parsed = parse_record_payload(legacy)
     assert parsed is not None
     keys = {k for k, _ in parsed.diagnostic_evidence}
     assert "/tmp/repo/.git/logs/refs/heads/main" not in keys
@@ -241,7 +241,7 @@ def test_legacy_record_with_branch_reflog_drops_observation() -> None:
 
 def test_legacy_record_with_merge_state_path_key_migrated() -> None:
     """A legacy ``str(absolute_path)`` for a merge state file is re-categorised."""
-    from ralph.pipeline.auto_integrate_record import _parse_record_payload
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
         "phase": "integrating",
@@ -253,7 +253,7 @@ def test_legacy_record_with_merge_state_path_key_migrated() -> None:
             ("/tmp/repo/.git/worktrees/wt/rebase-merge/git-rebase-todo", "def"),
         ),
     }
-    parsed = _parse_record_payload(legacy)
+    parsed = parse_record_payload(legacy)
     assert parsed is not None
     keys = {k for k, _ in parsed.diagnostic_evidence}
     assert "merge_state_files:/tmp/repo/.git/worktrees/wt/MERGE_HEAD" in keys

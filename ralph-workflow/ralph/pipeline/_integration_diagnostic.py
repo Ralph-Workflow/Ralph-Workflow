@@ -22,7 +22,6 @@ fixes the linked-worktree reproduction by:
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,7 +30,10 @@ from loguru import logger
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline.auto_integrate_record import (
+    BUMP_DIAGNOSTIC_ATTEMPT,
+    HOLD_DIAGNOSTIC_EVIDENCE,
     RAISE_DIAGNOSTIC_INTERVENTION,
+    RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
     Transition,
     write_record,
@@ -42,6 +44,7 @@ from ralph.pipeline.operation_evidence import (
     SubprocessOperationEvidenceCollector,
     ownership_fingerprint,
 )
+from ralph.pipeline.operation_fact import _UNREADABLE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -176,13 +179,19 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
         record = read_record(ctx.workspace_scope.root)
         if record is None:
             return False
-        operation_root = ctx.workspace_scope.root
-        if record.operation_kind == "target_reconcile" and record.owning_worktree:
-            operation_root = Path(record.owning_worktree)
-            if operation_root != ctx.workspace_scope.root and not leases.enter_context(
-                integration_transaction(operation_root)
-            ):
-                return False
+        operation_root = (
+            Path(record.owning_worktree)
+            if (
+                record.operation_kind == "target_reconcile"
+                and record.owning_worktree
+                and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
+            )
+            else ctx.workspace_scope.root
+        )
+        if operation_root != ctx.workspace_scope.root and not leases.enter_context(
+            integration_transaction(operation_root)
+        ):
+            return False
 
         def invoke(agent: str, prompt: Path) -> bool:
             with workspace_context(operation_root):
@@ -205,11 +214,10 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
                 fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
             )
             if not record.diagnostic_evidence:
-                record = record.model_copy(
-                    update={
-                        "diagnostic_evidence": before,
-                        "diagnostic_ownership": ownership_fingerprint(record),
-                    }
+                record = record.with_transition(
+                    HOLD_DIAGNOSTIC_EVIDENCE,
+                    diagnostic_evidence=before,
+                    diagnostic_ownership=ownership_fingerprint(record),
                 )
             handoff_integration_diagnostic(
                 root=ctx.workspace_scope.root,
@@ -246,22 +254,58 @@ def diagnostic_evidence_unchanged(root: Path, record: IntegrationRecord) -> bool
         return True
     if record.diagnostic_ownership != ownership_fingerprint(record):
         return False
-    observed = dict(_diagnostic_snapshot(root))
-    return set(observed) == {key for key, _value in record.diagnostic_evidence} and all(
-        value == "unreadable" or observed.get(key) == value
-        for key, value in record.diagnostic_evidence
+    observed_facts = _evidence_to_facts(record.diagnostic_evidence)
+    if any(fact.value == _UNREADABLE for fact in observed_facts):
+        return False
+    operation_root = (
+        Path(record.owning_worktree)
+        if (
+            record.operation_kind == "target_reconcile"
+            and record.owning_worktree
+            and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
+        )
+        else root
     )
+    return _verify_diagnostic_evidence(operation_root, record, observed_facts)
+
+
+def _verify_diagnostic_evidence(
+    operation_root: Path,
+    record: IntegrationRecord,
+    observed_facts: tuple[OperationFact, ...],
+) -> bool:
+    if _diagnostic_snapshot is not _default_diagnostic_snapshot:
+        current = _evidence_to_facts(_diagnostic_snapshot(operation_root))
+        if any(fact.value == _UNREADABLE for fact in current):
+            return False
+        current_map = {(fact.kind, fact.scope): fact.value for fact in current}
+        kind_map = {fact.kind: fact.value for fact in current if fact.scope is None}
+        return all(
+            _matches_fact(
+                fact,
+                current_map.get((fact.kind, fact.scope)) or kind_map.get(fact.kind),
+            )
+            for fact in observed_facts
+        )
+    collector = operation_evidence_collector()
+    current = collector.snapshot(operation_root, record)
+    if any(fact.value == _UNREADABLE for fact in current):
+        return False
+    return collector.verify(operation_root, record, observed_facts)
+
+
+def _matches_fact(fact: OperationFact, expected: str | None) -> bool:
+    return expected is not None and expected != _UNREADABLE and expected == fact.value
 
 
 def release_verified_diagnostic(root: Path, record: IntegrationRecord) -> str | None:
     try:
         if not diagnostic_evidence_unchanged(root, record):
             return "diagnostic evidence changed; original evidence must be restored before recovery"
-        cleared = record.model_copy(
-            update={
-                "diagnostic_evidence": (),
-                "diagnostic_ownership": None,
-            }
+        cleared = record.with_transition(
+            RELEASE_DIAGNOSTIC_EVIDENCE,
+            diagnostic_evidence=(),
+            diagnostic_ownership=None,
         )
         write_record(root, cleared)
         return None
@@ -270,45 +314,17 @@ def release_verified_diagnostic(root: Path, record: IntegrationRecord) -> str | 
 
 
 def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
-    """Adapter from :class:`OperationEvidenceCollector` to the legacy tuple shape.
-
-    The diagnostic path's on-disk contract is
-    ``tuple[tuple[str, str], ...]``; the collector emits typed
-    :class:`OperationFact` objects. This adapter is the single
-    function that bridges the two -- there is no other path that
-    reads Git state for diagnostic evidence.
-    """
-    from ralph.pipeline._pending_repair_edits import capture_commit_controls, capture_unstaged_work
+    """Adapter from :class:`OperationEvidenceCollector` to the legacy tuple shape."""
     from ralph.pipeline.auto_integrate_record import read_record
 
     record = read_record(root)
     if record is None:
-        # No durable record -- return an empty snapshot so the
-        # verification path can still answer "no evidence to
-        # verify". The diagnostic path never reaches this branch
-        # in production because ``diagnose_retained_integration``
-        # reads the record first.
         return ()
     facts = operation_evidence_collector().snapshot(root, record)
-    evidence: list[tuple[str, str]] = [fact.to_evidence_tuple() for fact in facts]
-    # The collector emits ``unstaged_work`` and ``commit_controls``
-    # implicitly through the operation fingerprint. The legacy
-    # callers in the diagnostic path rely on these two named
-    # observations being present so the diagnostic-evidence
-    # contract stays stable.
-    try:
-        unstaged = hashlib.sha256(
-            repr(sorted(capture_unstaged_work(root).items())).encode()
-        ).hexdigest()
-    except (RuntimeError, OSError):
-        unstaged = "unreadable"
-    try:
-        controls = hashlib.sha256(capture_commit_controls(root).encode()).hexdigest()
-    except (RuntimeError, OSError):
-        controls = "unreadable"
-    evidence.append(("unstaged_work", unstaged))
-    evidence.append(("commit_controls", controls))
-    return tuple(evidence)
+    return tuple(fact.to_evidence_tuple() for fact in facts)
+
+
+_default_diagnostic_snapshot = _diagnostic_snapshot
 
 
 def handoff_integration_diagnostic(
@@ -366,11 +382,10 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    bumped = record.model_copy(
-        update={
-            "merge_commit_repair_attempts": record.merge_commit_repair_attempts + 1,
-            "repair_last_error": failure[:8192],
-        }
+    bumped = record.with_transition(
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
+        repair_last_error=failure[:8192],
     )
     write_record(root, bumped, backend=backend)
     return invoke(agent, prompt)

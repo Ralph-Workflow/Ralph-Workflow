@@ -30,22 +30,22 @@ from ralph.pipeline._failure_formatting import (
     classified_failure_reason_for_event,
     commit_failure_reason,
 )
-from ralph.pipeline._pipeline_state_machine import PhaseDecision
-from ralph.pipeline._reducer_worker_state import (
+from ralph.pipeline._fan_out_authority import (
     handle_fan_out_started as _handle_fan_out_started,
 )
-from ralph.pipeline._reducer_worker_state import (
+from ralph.pipeline._fan_out_authority import (
     handle_worker_completed as _handle_worker_completed,
 )
-from ralph.pipeline._reducer_worker_state import (
+from ralph.pipeline._fan_out_authority import (
     handle_worker_failed as _handle_worker_failed,
 )
-from ralph.pipeline._reducer_worker_state import (
+from ralph.pipeline._fan_out_authority import (
     handle_worker_started as _handle_worker_started,
 )
-from ralph.pipeline._reducer_worker_state import (
+from ralph.pipeline._fan_out_authority import (
     handle_workers_resumed as _handle_workers_resumed,
 )
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
@@ -361,7 +361,6 @@ def _route_reduced_decision(
     pipeline_policy: PipelinePolicy | None,
 ) -> PipelineState:
     """Route the reducer's decision through last_decision on RebaseState."""
-    decision_str: str | None = None
     rebase = new_state.rebase
     terminal_states: set[str] = set()
     if pipeline_policy is not None:
@@ -372,36 +371,48 @@ def _route_reduced_decision(
             if pipeline_policy.terminal_phase:
                 terminal_states.add(pipeline_policy.terminal_phase)
 
-    if state.rebase.last_decision in (
-        PhaseDecision.BLOCK_FOR_RECOVERY.value,
-        PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
-    ):
-        decision_str = state.rebase.last_decision
-        if (
-            state.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
-            and new_state.phase != state.phase
-        ):
-            new_state = new_state.copy_with(
-                phase=state.phase,
-                last_agent_session_id=None,
-                agent_retry_intent=cleared_agent_retry_intent(),
-            )
-            rebase = new_state.rebase
-    elif terminal_states and new_state.phase in terminal_states:
-        try:
-            terminal_failure = _terminal_failure_route(pipeline_policy)
-        except Exception:
-            terminal_failure = None
-        if terminal_failure is not None and new_state.phase == terminal_failure:
-            decision_str = PhaseDecision.REPORT_TERMINAL_FAILURE.value
-        else:
-            decision_str = PhaseDecision.REPORT_TERMINAL_SUCCESS.value
-    elif new_state.phase != state.phase:
-        decision_str = PhaseDecision.ADVANCE_PHASE.value
-    elif state.rebase.last_decision is not None:
-        decision_str = PhaseDecision.CONTINUE_PHASE.value
+    is_phase_boundary = (new_state.phase != state.phase) or (
+        bool(terminal_states) and new_state.phase in terminal_states
+    )
 
-    if decision_str is not None and rebase.last_decision != decision_str:
+    if (
+        state.rebase.last_decision
+        in (
+            PhaseDecision.BLOCK_FOR_RECOVERY.value,
+            PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
+        )
+        and rebase.last_decision is None
+    ):
+        rebase = rebase.model_copy(update={"last_decision": state.rebase.last_decision})
+        new_state = new_state.copy_with(rebase=rebase)
+
+    if state.rebase.last_decision is None and not is_phase_boundary:
+        return new_state
+
+    decision = decide_phase_transition(
+        new_state,
+        pipeline_policy,
+        integration_record=None,
+        rebase_state=new_state.rebase,
+    )
+    decision_str = decision.value
+
+    if (
+        decision
+        in (
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+        )
+        and is_phase_boundary
+    ):
+        new_state = new_state.copy_with(
+            phase=state.phase,
+            last_agent_session_id=None,
+            agent_retry_intent=cleared_agent_retry_intent(),
+        )
+        rebase = new_state.rebase
+
+    if rebase.last_decision != decision_str:
         return new_state.copy_with(rebase=rebase.model_copy(update={"last_decision": decision_str}))
     return new_state
 

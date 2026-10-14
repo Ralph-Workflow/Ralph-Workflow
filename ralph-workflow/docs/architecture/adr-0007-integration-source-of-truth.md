@@ -50,9 +50,12 @@ Every lifecycle fact has exactly one authoritative owner and one transition boun
   is the sole authority for what phase runs next, returning typed `PhaseDecision` values.
 - **Integration obligations**: `ralph.pipeline.auto_integrate_record.IntegrationRecord`
   is the sole authority for durable integration state. All mutations must pass through
-  `IntegrationRecord.with_transition(transition, ...)`.
+  `IntegrationRecord.with_transition(transition, ...)` as defined in
+  `ralph.pipeline.auto_integrate_transition.Transition`.
 - **Git operation evidence**: `ralph.pipeline.operation_evidence.OperationEvidenceCollector`
-  is the sole authority permitted to capture and verify Git evidence for diagnostics.
+  (with atomic facts structured via `ralph.pipeline.operation_fact.OperationFact` and in-memory
+  implementation in `ralph.pipeline.operation_evidence_memory`) is the sole authority permitted
+  to capture and verify Git evidence for diagnostics.
 - **Remote publication**: `ralph.pipeline._publication_state_machine.next_publication_action`
   is the sole authority for remote push decisions, returning `PublicationDecision`.
 - **Parallel worker joins**: `ralph.pipeline._fan_out_authority` is the sole authority
@@ -87,7 +90,7 @@ diagnostic hash or invalidate an active operation's evidence.
 ### 3. Explicit transition table for `IntegrationRecord`
 
 `IntegrationRecord` remains a frozen model whose state transitions are governed by
-the typed `Transition` enum:
+the typed `Transition` definitions in `ralph.pipeline.auto_integrate_transition`:
 
 | From State | Transition | Effect | Primary Caller |
 |------------|------------|--------|----------------|
@@ -105,7 +108,7 @@ the typed `Transition` enum:
 | any | `RAISE_DIAGNOSTIC_INTERVENTION` | Set `diagnostic_intervention_required=True` | `handoff_integration_diagnostic` (at cap) |
 | any | `MARK_REINTEGRATE_PENDING` | Set `reintegrate_pending=True` | `reintegrate_owned_landing` |
 | any | `MARK_LEGACY_FIELDS_PRESERVED` | Annotate preserved legacy migration state | `_parse_record_payload` |
-| any | `CLEAR_TRANSITION` | Unlink record file after proof | `clear_record` |
+| any | `CLEAR` | Unlink record file after proof | `clear_record` |
 
 Direct untyped record mutation is prohibited. Furthermore, `clear_record` enforces a
 strict safety gate: it refuses to clear records with `diagnostic_intervention_required=True`

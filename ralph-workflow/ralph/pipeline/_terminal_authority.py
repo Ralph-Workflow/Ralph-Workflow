@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 def is_terminal_success_eligible(
-    state: PipelineState,
+    state: PipelineState | None,
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
 ) -> bool:

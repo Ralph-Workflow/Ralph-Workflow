@@ -41,30 +41,29 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
     shared_rebase = RebaseState(last_action="conflict", last_reason="unresolved")
     shared_state = PipelineState(phase="development", rebase=shared_rebase)
 
-    # 6 entry points:
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.reducer import reduce
+
     # 1. Startup recovery entry point
     decision_startup = decide_phase_transition(
         shared_state, policy, integration_record=record, rebase_state=shared_rebase
     )
-    # 2. Phase-boundary entry point
-    decision_phase_boundary = decide_phase_transition(
-        shared_state, policy, integration_record=record, rebase_state=shared_rebase
-    )
-    # 3. Commit handler entry point
-    decision_commit_handler = decide_phase_transition(
-        shared_state, policy, integration_record=record, rebase_state=shared_rebase
-    )
-    # 4. Cooldown entry point
-    decision_cooldown = decide_phase_transition(
-        shared_state, policy, integration_record=record, rebase_state=shared_rebase
-    )
-    # 5. Parallel-join entry point
-    decision_parallel_join = decide_phase_transition(
-        shared_state, policy, integration_record=record, rebase_state=shared_rebase
-    )
+    # 2. Phase-boundary entry point via reducer
+    st_phase_boundary, _ = reduce(shared_state, PipelineEvent.AGENT_SUCCESS, policy)
+    decision_phase_boundary = PhaseDecision(st_phase_boundary.rebase.last_decision)
+    # 3. Commit handler entry point via reducer
+    st_commit, _ = reduce(shared_state, PipelineEvent.COMMIT_SUCCESS, policy)
+    decision_commit_handler = PhaseDecision(st_commit.rebase.last_decision)
+    # 4. Cooldown entry point via reducer
+    st_cooldown, _ = reduce(shared_state, PipelineEvent.PHASE_LOOPBACK, policy)
+    decision_cooldown = PhaseDecision(st_cooldown.rebase.last_decision)
+    # 5. Parallel-join entry point via reducer
+    st_join, _ = reduce(shared_state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
+    decision_parallel_join = PhaseDecision(st_join.rebase.last_decision)
     # 6. Terminal entry point
+    terminal_state = PipelineState(phase="complete", rebase=shared_rebase)
     decision_terminal = decide_phase_transition(
-        shared_state, policy, integration_record=record, rebase_state=shared_rebase
+        terminal_state, policy, integration_record=record, rebase_state=shared_rebase
     )
 
     decisions = [

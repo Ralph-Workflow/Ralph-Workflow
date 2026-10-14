@@ -221,7 +221,7 @@ def test_oversized_plan_returns_same_sanity_failure_without_a_receipt() -> None:
     session.run_id = "oversized"
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
-    document = _PROSE + ("界" * 1_333_334)
+    document = _PROSE + ("\U0001f600" * 1_000_001)
     assert len(document) < 4_000_000 < len(document.encode("utf-8"))
     params: dict[str, object] = {"artifact_type": "plan", "content": document}
     verified = handle_verify_md_artifact(session, workspace, params)

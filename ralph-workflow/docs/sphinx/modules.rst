@@ -1282,10 +1282,38 @@ ralph.pipeline.auto_integrate_record
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_transition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_transition
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.operation_evidence
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.operation_evidence
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.operation_evidence_collector
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.operation_evidence_collector
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.operation_evidence_memory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.operation_evidence_memory
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.operation_fact
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.operation_fact
    :members:
    :show-inheritance:
 

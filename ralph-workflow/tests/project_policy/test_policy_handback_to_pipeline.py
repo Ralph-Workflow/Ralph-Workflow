@@ -36,6 +36,7 @@ import pytest
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.language_detector.models import ProjectStack
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline._runner_session import (
     apply_session_capture,
@@ -48,6 +49,7 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
+from ralph.project_policy import analysis as policy_analysis
 from ralph.project_policy import cli_integration
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.memory import MemoryWorkspace
@@ -55,6 +57,11 @@ from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import (
     policy_invocation_bundle,
     remediation_required_result,
+)
+from tests.project_policy.test_validator import (
+    _seed_agents_md,
+    _seed_all_core_complete,
+    _seed_claude_md,
 )
 
 if TYPE_CHECKING:
@@ -75,13 +82,6 @@ LEAKED_POLICY_SESSION_ID: str = "policy-remediation-leaked-session"
 
 def _seed_workspace_with_complete_policy(ws: MemoryWorkspace) -> None:
     """Seed a complete policy so the deterministic validator passes."""
-    from ralph.language_detector.models import ProjectStack
-    from tests.project_policy.test_validator import (
-        _seed_agents_md,
-        _seed_all_core_complete,
-        _seed_claude_md,
-    )
-
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
@@ -89,9 +89,6 @@ def _seed_workspace_with_complete_policy(ws: MemoryWorkspace) -> None:
 
 def _approve_policy_in_workspace(ws: MemoryWorkspace) -> None:
     """Submit a 'completed' analysis decision so the remediation flow closes."""
-
-    from ralph.project_policy import analysis as policy_analysis
-
     ws.mkdirs(".agent/artifacts")
     ws.write(
         policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,

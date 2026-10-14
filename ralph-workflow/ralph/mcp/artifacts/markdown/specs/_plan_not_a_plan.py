@@ -63,6 +63,24 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     return [_message(reason)] if reason is not None else []
 
 
+def _first_non_empty_lines(text: str, limit: int = 2) -> list[str]:
+    lines: list[str] = []
+    start = 0
+    text_len = len(text)
+    while len(lines) < limit and start < text_len:
+        idx = text.find("\n", start)
+        if idx == -1:
+            line = text[start:].strip()
+            if line:
+                lines.append(line)
+            break
+        line = text[start:idx].strip()
+        if line:
+            lines.append(line)
+        start = idx + 1
+    return lines
+
+
 def _is_whole_message_refusal(text: str) -> bool:
     """Return True only when the entire message is a refusal.
 
@@ -73,7 +91,7 @@ def _is_whole_message_refusal(text: str) -> bool:
     refusals, or single-line messages whose refusal prefix is not followed by
     inline continuation, count as a whole-message inability to plan.
     """
-    non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    non_empty_lines = _first_non_empty_lines(text, limit=2)
     if not non_empty_lines:
         return False
     first_line_cf = non_empty_lines[0].casefold()
@@ -99,7 +117,8 @@ def _sanity_failure_reason(text: str) -> str | None:
         len(text) if text.isprintable() else sum(_is_readable(character) for character in text)
     )
     words = text.split(maxsplit=_MIN_WORDS)
-    first_line = next((line.strip().casefold() for line in text.splitlines() if line.strip()), "")
+    non_empty_lines = _first_non_empty_lines(text, limit=1)
+    first_line = non_empty_lines[0].casefold() if non_empty_lines else ""
     if utf8_error:
         reason = "text is not valid UTF-8"
     elif "\x00" in text:

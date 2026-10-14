@@ -16,6 +16,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._terminal_authority import is_terminal_success_eligible
+
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.rebase_state import RebaseState
@@ -50,6 +52,11 @@ def _check_blocking_decision(
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
 ) -> PhaseDecision | None:
+    if rebase_state.last_decision in (
+        PhaseDecision.BLOCK_FOR_RECOVERY.value,
+        PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
+    ):
+        return PhaseDecision(rebase_state.last_decision)
     if integration_record is not None:
         if integration_record.diagnostic_intervention_required:
             return PhaseDecision.REPORT_INTERVENTION_REQUIRED
@@ -65,9 +72,20 @@ def _check_blocking_decision(
     return None
 
 
+def _is_terminal_failure(phase: str, policy: PipelinePolicy | None) -> bool:
+    if policy is None:
+        return False
+    try:
+        from ralph.pipeline.reducer import _terminal_failure_route
+
+        return phase == _terminal_failure_route(policy)
+    except Exception:
+        return False
+
+
 def decide_phase_transition(
     state: PipelineState,
-    policy: PipelinePolicy,
+    policy: PipelinePolicy | None = None,
     *,
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
@@ -83,60 +101,41 @@ def decide_phase_transition(
     blocking = _check_blocking_decision(integration_record, rebase_state)
     if blocking is not None:
         return blocking
-    if not is_terminal_success_eligible(state, integration_record, rebase_state):
-        # Even when no integration record blocks, terminal success
-        # is only reported when every authority has finished.
-        # Pass through to the phase resolver so the run loop can
-        # make forward progress on the current phase.
-        pass
+    if policy is None:
+        return PhaseDecision.CONTINUE_PHASE
+
+    terminal: set[str] = set()
+    if hasattr(policy, "terminal_states"):
+        terminal.update(policy.terminal_states())
+    if hasattr(policy, "terminal_phase") and policy.terminal_phase:
+        terminal.add(policy.terminal_phase)
+
     # Delegate to the existing reducer for the next-phase signal.
     from ralph.pipeline.handoffs import resolve_next_phase
 
+    candidate_phase: str | None = None
     try:
-        next_phase = resolve_next_phase(state.phase, "success", policy)
+        candidate_phase = resolve_next_phase(state.phase, "success", policy)
     except ValueError:
-        # ``resolve_next_phase`` raises on terminal phases that do
-        # not declare a transition. Treat them as terminal success
-        # when the policy's terminal-phase set includes the
-        # current phase.
-        terminal = policy.terminal_states()
         if state.phase in terminal:
-            return PhaseDecision.REPORT_TERMINAL_SUCCESS
-        return PhaseDecision.REPORT_TERMINAL_FAILURE
-    terminal = policy.terminal_states()
-    if next_phase in terminal:
-        return PhaseDecision.REPORT_TERMINAL_SUCCESS
-    if next_phase == state.phase:
-        return PhaseDecision.CONTINUE_PHASE
-    return PhaseDecision.ADVANCE_PHASE
+            candidate_phase = state.phase
 
+    decision: PhaseDecision
+    if candidate_phase is None:
+        decision = PhaseDecision.REPORT_TERMINAL_FAILURE
+    elif candidate_phase in terminal:
+        if _is_terminal_failure(candidate_phase, policy):
+            decision = PhaseDecision.REPORT_TERMINAL_FAILURE
+        elif not is_terminal_success_eligible(state, integration_record, rebase_state):
+            decision = PhaseDecision.BLOCK_FOR_RECOVERY
+        else:
+            decision = PhaseDecision.REPORT_TERMINAL_SUCCESS
+    elif candidate_phase == state.phase:
+        decision = PhaseDecision.CONTINUE_PHASE
+    else:
+        decision = PhaseDecision.ADVANCE_PHASE
 
-def is_terminal_success_eligible(
-    state: PipelineState,
-    integration_record: IntegrationRecord | None,
-    rebase_state: RebaseState,
-) -> bool:
-    """Return ``True`` only when every authority has finished its obligation.
-
-    The function is the single authority for the "may the run
-    loop report terminal success?" question. It returns ``False``
-    unconditionally while any of:
-
-    * the :class:`IntegrationRecord` is present and not cleared;
-    * :attr:`RebaseState.integration_unresolved` is True;
-    * the publication authority reports a non-terminal decision;
-    * the parallel-joins authority reports an unfinished join.
-    """
-    if integration_record is not None:
-        return False
-    if rebase_state.integration_unresolved:
-        return False
-    if rebase_state.last_publication_decision not in (None, "publication_terminal"):
-        return False
-    if rebase_state.last_fan_out_decision not in (None, "join_complete", "join_blocked"):
-        return False
-    del state
-    return True
+    return decision
 
 
 __all__ = [

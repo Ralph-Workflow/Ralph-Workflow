@@ -29,7 +29,8 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
-from ralph.pipeline._pipeline_state_machine import is_terminal_success_eligible
+from ralph.pipeline._pipeline_state_machine import PhaseDecision
+from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.auto_integrate import recovery_retained_record
@@ -2008,6 +2009,9 @@ def _handle_retained_integration(
                 )
             )
             _save_recovered_rebase_checkpoint(state, ctx)
+        state = state.copy_with(
+            rebase=state.rebase.model_copy(update={"operation_display_state": "evidence_diagnosis"})
+        )
         _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
         return state, (state, prev_phase, 0)
     return state, None
@@ -2032,6 +2036,14 @@ def _block_unresolved_integration(
         emit_integration_warn_line(
             ctx.active_display,
             "CRITICAL: diagnostic intervention required; dispatch blocked",
+        )
+        state = state.copy_with(
+            rebase=state.rebase.model_copy(
+                update={
+                    "operation_display_state": "intervention_required",
+                    "last_decision": PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
+                }
+            )
         )
         return state, prev_phase, 1
 
@@ -2173,6 +2185,7 @@ def _wait_for_integration_retry(state: PipelineState, ctx: _LoopContext) -> Pipe
     logger.critical("{}", alarm)
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, alarm)
+    rebase = rebase.model_copy(update={"operation_display_state": "waiting"})
     state = state.copy_with(rebase=rebase, last_error=alarm, is_waiting_state=True)
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
@@ -2209,7 +2222,13 @@ def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineS
             )
             _log_waiting_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
 
-        state = state.copy_with(last_retry_delay_ms=0)
+        if is_all_unavailable:
+            state = state.copy_with(
+                rebase=state.rebase.model_copy(update={"operation_display_state": "waiting"}),
+                last_retry_delay_ms=0,
+            )
+        else:
+            state = state.copy_with(last_retry_delay_ms=0)
         if is_all_unavailable:
             logger.bind(recovery=True).debug(
                 "Starting cooldown sleep for {delay_seconds:.3f} seconds in phase '{phase}'.",
@@ -2868,6 +2887,14 @@ def _execute_with_cleanup(
                 exit_code = 1
                 raise
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
+                state = state.copy_with(
+                    rebase=state.rebase.model_copy(
+                        update={
+                            "operation_display_state": "terminal",
+                            "last_decision": PhaseDecision.REPORT_TERMINAL_SUCCESS.value,
+                        }
+                    )
+                )
                 try:
                     state = _report_pending_remote_publication(state, loop_ctx)
                 except KeyboardInterrupt:
@@ -2877,6 +2904,14 @@ def _execute_with_cleanup(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
             else:
+                state = state.copy_with(
+                    rebase=state.rebase.model_copy(
+                        update={
+                            "operation_display_state": "terminal",
+                            "last_decision": PhaseDecision.REPORT_TERMINAL_FAILURE.value,
+                        }
+                    )
+                )
                 emit_activity_line(
                     loop_ctx.active_display,
                     None,

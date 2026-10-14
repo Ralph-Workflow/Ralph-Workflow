@@ -97,16 +97,15 @@ def finish_pending_rebase(root: Path) -> None:
             return
         write_record(
             root,
-            record.model_copy(
-                update={
-                    "rebase_continue_pending": False,
-                    "rebase_continue_metadata": (),
-                    "rebase_restore_metadata": None,
-                    "rebase_continue_head": None,
-                    "rebase_continue_stop": None,
-                    "rebase_continue_tree": None,
-                    "rebase_continue_error": None,
-                }
+            record.with_transition(
+                MARK_PENDING_REBASE_CONTINUE,
+                rebase_continue_pending=False,
+                rebase_continue_metadata=(),
+                rebase_restore_metadata=None,
+                rebase_continue_head=None,
+                rebase_continue_stop=None,
+                rebase_continue_tree=None,
+                rebase_continue_error=None,
             ),
         )
 

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from pydantic import ConfigDict, Field
+from typing import TYPE_CHECKING
+
+from pydantic import ConfigDict, Field, model_validator
 
 from ralph.pydantic_compat import RalphBaseModel
+
+if TYPE_CHECKING:
+    from typing import Self
 
 _FROZEN = ConfigDict(frozen=True)
 HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
@@ -209,6 +214,19 @@ class RebaseState(RalphBaseModel):
     # falls back to the prose fields when this is unset.
     operation_display_state: str | None = None
 
+    @model_validator(mode="after")
+    def _populate_operation_display_state(self) -> Self:
+        if self.last_decision is None:
+            if self.last_action in ("intervention_required", "diagnostic_intervention_required"):
+                object.__setattr__(self, "last_decision", "report_intervention_required")
+            elif self.integration_unresolved:
+                object.__setattr__(self, "last_decision", "block_for_recovery")
+        if self.operation_display_state is None:
+            state = _resolve_operation_display_state(self)
+            if state is not None:
+                object.__setattr__(self, "operation_display_state", state)
+        return self
+
     # Legacy rebase checkpoint identity. These fields let both startup paths
     # retain actionable evidence without re-parsing or replacing it.
     legacy_checkpoint_blocked: bool = False
@@ -233,3 +251,43 @@ class RebaseState(RalphBaseModel):
             or self.legacy_checkpoint_blocked
             or self.unresolved_integration_carried
         )
+
+
+_DECISION_DISPLAY_MAP: dict[str, str] = {
+    "report_terminal_success": "terminal",
+    "report_terminal_failure": "terminal",
+    "report_intervention_required": "intervention_required",
+}
+
+_ACTION_DISPLAY_MAP: dict[str, str] = {
+    "integrating": "integrating",
+    "waiting": "waiting",
+    "diagnosing": "evidence_diagnosis",
+    "evidence_diagnosis": "evidence_diagnosis",
+    "intervention_required": "intervention_required",
+    "diagnostic_intervention_required": "intervention_required",
+    "terminal": "terminal",
+    "completed": "terminal",
+}
+
+
+def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
+    if rebase.last_decision in _DECISION_DISPLAY_MAP:
+        return _DECISION_DISPLAY_MAP[rebase.last_decision]
+    if rebase.last_action == "conflict" or rebase.integration_unresolved:
+        return "conflict_resolution"
+    if rebase.last_publication_decision in (
+        "publish_now",
+        "publishing",
+        "publish_deferred_remote",
+        "publish_deferred_freshness",
+    ):
+        return "publishing"
+    if (rebase.last_action in ("rebased", "merged") and not rebase.fast_forwarded) or (
+        rebase.last_action in ("rebased", "merged", "fast_forwarded", "skipped")
+        and rebase.fast_forwarded
+    ):
+        return "landing"
+    if rebase.last_action in _ACTION_DISPLAY_MAP:
+        return _ACTION_DISPLAY_MAP[rebase.last_action]
+    return None

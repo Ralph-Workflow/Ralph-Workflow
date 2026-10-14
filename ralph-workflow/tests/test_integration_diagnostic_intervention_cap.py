@@ -9,14 +9,16 @@ agents.
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
-from ralph.pipeline import _integration_diagnostic as diagnostic
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     record_path,
 )
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
+
+diagnostic = importlib.import_module("ralph.pipeline._integration_diagnostic")
 
 
 def _record(merge_commit_repair_attempts: int = 0) -> IntegrationRecord:

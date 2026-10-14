@@ -38,6 +38,12 @@ _DEPRECATION_MESSAGE = (
 )
 
 
+def _with_fan_out_decision(state: PipelineState) -> PipelineState:
+    decision = fan_out_decision(state).value
+    rebase = state.rebase.model_copy(update={"last_fan_out_decision": decision})
+    return state.copy_with(rebase=rebase)
+
+
 def handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     if not state.work_units or state.worker_states:
         return state, []
@@ -45,7 +51,8 @@ def handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Ef
         unit.unit_id: WorkerState(unit_id=unit.unit_id, status=WorkerStatus.PENDING)
         for unit in state.work_units
     }
-    return state.copy_with(worker_states=new_worker_states), []
+    new_state = state.copy_with(worker_states=new_worker_states)
+    return _with_fan_out_decision(new_state), []
 
 
 def handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -59,7 +66,8 @@ def handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Ef
         )
         for unit_id, worker_state in state.worker_states.items()
     }
-    return state.copy_with(worker_states=resumed_states), []
+    new_state = state.copy_with(worker_states=resumed_states)
+    return _with_fan_out_decision(new_state), []
 
 
 def handle_worker_started(
@@ -71,7 +79,8 @@ def handle_worker_started(
     updated = state.worker_states[event.unit_id].copy_with(
         status=WorkerStatus.RUNNING, started_at=datetime.now(UTC)
     )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+    new_state = state.copy_with(worker_states={**state.worker_states, event.unit_id: updated})
+    return _with_fan_out_decision(new_state), []
 
 
 def handle_worker_completed(
@@ -85,7 +94,8 @@ def handle_worker_completed(
         exit_code=event.exit_code,
         finished_at=datetime.now(UTC),
     )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+    new_state = state.copy_with(worker_states={**state.worker_states, event.unit_id: updated})
+    return _with_fan_out_decision(new_state), []
 
 
 def handle_worker_failed(
@@ -100,7 +110,8 @@ def handle_worker_failed(
         error_message=event.error,
         finished_at=datetime.now(UTC),
     )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+    new_state = state.copy_with(worker_states={**state.worker_states, event.unit_id: updated})
+    return _with_fan_out_decision(new_state), []
 
 
 def fan_out_decision(state: PipelineState) -> FanOutDecision:

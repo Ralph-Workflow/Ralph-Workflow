@@ -57,9 +57,17 @@ Exit codes:
 from __future__ import annotations
 
 import ast
+import multiprocessing
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_POOL_WORKER_CAP = 8
+_FORK_CONTEXT = multiprocessing.get_context("fork")
+_PARALLEL_PAYLOAD_THRESHOLD = 32
+_PARALLEL_CHUNK_SIZE = 32
 
 DEFAULT_ROOTS: tuple[str, ...] = ("ralph",)
 
@@ -338,6 +346,21 @@ def audit_index(index: dict[str, _Module]) -> list[Violation]:
     return violations
 
 
+def _parse_module_payload(payload: tuple[str, str]) -> tuple[str, _Module]:
+    path_str, root_str = payload
+    path = Path(path_str)
+    package_root = Path(root_str)
+    source_bytes = path.read_bytes()
+    name = _module_name(path, package_root)
+    if b"def " not in source_bytes and b"=" not in source_bytes and b"import" not in source_bytes:
+        return name, _Module(name=name)
+    try:
+        tree = ast.parse(source_bytes)
+    except SyntaxError:
+        return name, _Module(name=name)
+    return name, _index_module(name, tree)
+
+
 def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> dict[str, _Module]:
     """Parse and index every module under ``roots``.
 
@@ -345,27 +368,20 @@ def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> d
         FileNotFoundError: when a named root is not a directory. Silently
             skipping it would report a vacuous clean run.
     """
-    index: dict[str, _Module] = {}
+    payloads: list[tuple[str, str]] = []
+    root_str = str(package_root)
     for root in roots:
         base = package_root / root
         if not base.is_dir():
             raise FileNotFoundError(f"audit root is not a directory: {base}")
-        for path in sorted(base.rglob("*.py")):
-            source_bytes = path.read_bytes()
-            name = _module_name(path, package_root)
-            if (
-                b"def " not in source_bytes
-                and b"=" not in source_bytes
-                and b"import" not in source_bytes
-            ):
-                index[name] = _Module(name=name)
-                continue
-            try:
-                tree = ast.parse(source_bytes)
-            except SyntaxError:
-                continue
-            index[name] = _index_module(name, tree)
-    return index
+        payloads.extend((str(path), root_str) for path in sorted(base.rglob("*.py")))
+
+    workers = min(_POOL_WORKER_CAP, len(payloads), os.cpu_count() or 1)
+    if workers <= 1 or len(payloads) < _PARALLEL_PAYLOAD_THRESHOLD:
+        return dict(_parse_module_payload(p) for p in payloads)
+
+    with ProcessPoolExecutor(max_workers=workers, mp_context=_FORK_CONTEXT) as pool:
+        return dict(pool.map(_parse_module_payload, payloads, chunksize=_PARALLEL_CHUNK_SIZE))
 
 
 def audit_tree(
