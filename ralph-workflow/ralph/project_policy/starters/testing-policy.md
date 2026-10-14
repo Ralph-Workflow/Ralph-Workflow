@@ -491,19 +491,17 @@ An agent MUST NOT:
   or a hand-provisioned resource as a default-suite test (rule 28).
 * Add a test catching no failure an existing test catches, or that cannot
   fail at all (rules 16, 20).
-* Apply the kernel's no-weakening rule to test execution: take ANY action
-  whose effect is that a previously-executing assertion no longer runs or
-  no longer fails. The non-exhaustive mechanisms specific to the test
-  lane are: skipping, xfail, conditional skipif, deselection by name or
-  marker, un-collection, renaming a file out of collection, DELETING THE
-  TEST, runner-level rerun or retry configuration, reducing parallelism
-  to mask order-coupling, lowering a coverage threshold, and raising,
-  disabling, or removing a time limit. The general rule, scope, and
-  lawful-past-the-red-gate test are owned by `execution-kernel.md`
-  §Kernel rules; this list extends that rule with the test-specific
-  mechanisms a tester can take to defeat an assertion, and is not a
-  second source of truth. Retirement is the only lawful removal, and
-  only from green (rule 29).
+* Take ANY action whose effect is that a previously-executing assertion no
+  longer runs or no longer fails. This includes, and is not limited to:
+  skipping, xfail, conditional skipif, deselection by name or marker,
+  un-collection, renaming a file out of collection, DELETING THE TEST,
+  runner-level rerun or retry configuration, reducing parallelism to mask
+  order-coupling, lowering a coverage threshold, and raising, disabling, or
+  removing a time limit. The general rule, scope, and lawful-past-the-red-
+  gate test are owned by `execution-kernel.md` §Kernel rules; this list
+  extends that rule with the test-specific mechanisms a tester can take to
+  defeat an assertion, and is not a second source of truth. Retirement is
+  the only lawful removal, and only from green (rule 29).
 * Treat quarantine as a destination; its expiry is never extended (rule 27).
 * Introduce wall-clock sleeps or uncontrolled external I/O.
 

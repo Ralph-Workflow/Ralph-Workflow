@@ -130,7 +130,7 @@ _AGENTS_READY_TEMPLATE = _AgentsReadyTemplate(
     """{begin}
 This project follows Ralph Workflow quality policies. Before any change, read {canonical_dir} and load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
 Run declared RALPH-COMMAND gates; read {canonical_dir}gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
-Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral.
+Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral — the testing policy's B5 below-budget browser carve-out (a new browser journey under the measured `browser_budget_seconds` needs no offset elsewhere in the lane) is the only relaxation of the mandatory offset, and the aggregate ceiling plus the distinct-risk requirement still hold.
 Give non-default work an owner, trigger, lane, evidence, and review condition. Material claims need a predeclared public-surface observation tied to an immutable subject and run, preserved artifact, validated oracle, and independent verdict.
 Telemetry, provenance, private-state inspection, and agent narration are not correctness proof. These are living documents: keep facts current without amending policy intent.
 Resolve RALPH-PENDING lines whose review trigger is met; leaving a resolvable item is a violation. Dead code is prohibited; remove it — rewriting later is better than retaining it.

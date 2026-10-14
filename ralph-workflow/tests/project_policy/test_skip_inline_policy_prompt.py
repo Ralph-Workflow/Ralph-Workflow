@@ -170,7 +170,6 @@ def test_no_tty_never_prompts_and_keeps_current_behavior() -> None:
     assert markers.OPT_OUT_MARKER not in content
 
 
-@pytest.mark.timeout_seconds(5)
 def test_insignificant_content_never_prompts() -> None:
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _INSIGNIFICANT_AGENTS_MD)

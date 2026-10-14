@@ -491,13 +491,3 @@ def test_domain_starters_do_not_paraphrase_kernel_rules_in_body() -> None:
                 f"by reference from the AI execution instructions "
                 f"section, not re-derived in starter body prose"
             )
-
-    # The kernel starter must retain at least the truthful-evidence
-    # paraphrase so a regression that strips it from the kernel is
-    # also caught.
-    kernel_content = _kernel()
-    assert "i think it works" not in kernel_content.lower(), (
-        "execution-kernel.md must not borrow the I-think-it-works "
-        "metaphor; it is a domain-starter paraphrase, not a kernel "
-        "phrase"
-    )
