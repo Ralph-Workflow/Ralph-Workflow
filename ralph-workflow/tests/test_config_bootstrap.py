@@ -709,6 +709,7 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
     )
 
 
+@pytest.mark.timeout_seconds(5.0)
 def test_ensure_local_configs_regression_idempotent_excludes_do_not_timeout(
     tmp_git_repo: Path,
 ) -> None:
@@ -850,6 +851,7 @@ def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
         assert pattern in content, f"Missing canonical exclude pattern: {pattern!r}"
 
 
+@pytest.mark.timeout_seconds(5.0)
 def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None:
     """Re-running bootstrap must not duplicate any canonical exclude pattern."""
     repo_root = tmp_git_repo

@@ -358,6 +358,8 @@ def _compile_grep_pattern(
 def _collect_files_for_grep(workspace: Workspace, normalized: str) -> list[str]:
     """Collect all files under normalized path for grep, with fallback."""
     try:
+        if workspace.stat(normalized).get("type") != "dir":
+            return [normalized]
         return list(workspace.iter_files(normalized))
     except Exception:
         return _collect_files_recursive(workspace, normalized)

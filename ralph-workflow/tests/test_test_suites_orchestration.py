@@ -130,7 +130,7 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (12, "8"),
+        (12, "10"),
         (16, "16"),
         (32, "16"),
         (64, "16"),
@@ -145,9 +145,8 @@ def test_auto_worker_count_uses_verified_sixteen_shard_cap(
 
     Sixteen shards keep the maintained 40-core host's full selected suite
     inside the immutable 60 s combined budget while preserving
-    exact-once selection. The 8-shard cap the smaller 12-core host
-    documents measured the slowest shard at ~50 s on the grown E2E set
-    and exhausted the budget before the smoke step could complete.
+    exact-once selection. The 12-core profile reserves two logical cores
+    for orchestration while using the other ten for test shards.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

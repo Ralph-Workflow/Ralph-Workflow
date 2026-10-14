@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from socket import socket
     from threading import Event
 
     from ralph.mcp.server._fallback_http_handler_probe import _ProbeResult
@@ -37,6 +39,16 @@ class _FallbackHttpServer(ThreadingHTTPServer):
     def shutdown(self) -> None:
         self.shutdown_event.set()
         super().shutdown()
+
+    def handle_error(
+        self,
+        request: socket | tuple[bytes, socket],
+        client_address: tuple[str, int],
+    ) -> None:
+        error = sys.exc_info()[1]
+        if isinstance(error, (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
 
     def server_close(self) -> None:
         self.shutdown_event.set()

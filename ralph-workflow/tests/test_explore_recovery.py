@@ -211,6 +211,46 @@ def test_recovery_mark_health_states(tmp_path: Path) -> None:
     assert snap["cooldown_remaining"] == 0.0
 
 
+def test_explore_regression_observation_does_not_hide_exhausted_recovery(
+    tmp_path: Path,
+) -> None:
+    scheduler = RecoveryScheduler(workspace_root=tmp_path, max_attempts=1)
+    scheduler.record_failure(code="index_stale_scope", clock=lambda: 0.0)
+    scheduler.record_failure(code="index_stale_scope", clock=lambda: 0.0)
+    assert scheduler.snapshot()["health"] == "unhealthy"
+
+    scheduler.observe(code="index_stale_scope", message="still stale")
+
+    snapshot = scheduler.snapshot()
+    assert snapshot["health"] == "unhealthy"
+    assert snapshot["recovery_attempts"] == 2
+
+
+def test_explore_regression_persisted_stale_exhaustion_normalizes_unhealthy(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".agent" / "ralph-explore"
+    state_dir.mkdir(parents=True)
+    (state_dir / "recovery_state.json").write_text(
+        json.dumps(
+            {
+                "health": "stale",
+                "last_failure_code": "index_stale_scope",
+                "last_failure_message": "index_stale_scope",
+                "recovery_attempts": 5,
+                "next_recovery_at": None,
+                "cooldown_remaining": 0.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = RecoveryScheduler(workspace_root=tmp_path, max_attempts=4)
+
+    scheduler.observe(code="index_stale_scope", message="still stale")
+
+    assert scheduler.snapshot()["health"] == "unhealthy"
+
+
 def test_recovery_advisory_lock_path_underworkspace_root(tmp_path: Path) -> None:
     """The advisory lock lives under ``.agent/ralph-explore`` per workspace."""
     path = advisory_lock_path(tmp_path)

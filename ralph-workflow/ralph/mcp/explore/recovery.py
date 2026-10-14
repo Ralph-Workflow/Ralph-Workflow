@@ -261,7 +261,11 @@ class RecoveryScheduler:
         the backoff budget.
         """
         with self._lock:
-            self._state.health = health
+            self._state.health = (
+                health
+                if self._state.recovery_attempts <= self.max_attempts
+                else HealthState.UNHEALTHY
+            )
             self._state.last_failure_code = code
             self._state.last_failure_message = message
         self._persist()

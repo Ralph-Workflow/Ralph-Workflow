@@ -254,6 +254,36 @@ def test_mode_full_rebuilds_atomically(tmp_path: Path) -> None:
         store.close()
 
 
+def test_mode_full_persists_wall_clock_job_timestamps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    wall_now = 1_800_000_000.0
+    monkeypatch.setattr(
+        "ralph.mcp.explore._pipeline_staged.real_clock_seconds",
+        lambda: wall_now,
+    )
+    try:
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                clock=FakeClock(initial=2_000.0),
+            ),
+        )
+
+        assert result.status == "ok"
+        latest = store.latest_job()
+        assert latest is not None
+        assert latest["finished_at"] == wall_now
+        assert result.elapsed_seconds == 0.0
+    finally:
+        store.close()
+
+
 def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> None:
     """AC-02/AC-05: a pre-set cancel flag MUST be checked BEFORE
     ``mode=full`` issues any destructive store writes. The prior

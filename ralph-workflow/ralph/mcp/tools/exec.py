@@ -125,7 +125,7 @@ _BLACKLIST_DESCRIPTIONS = {
     "version_control": "version control",
 }
 
-_SHELL_OPERATOR_CHARS = frozenset("|&;<>")
+_SHELL_OPERATOR_CHARS = frozenset("|&;<>\n")
 # A redirection operator (``< > >> <<``) is followed by a filename target, not a
 # new command; a command separator (``| ; & && ||``) introduces one. Segmentation
 # splits on separators and skips redirection targets so a benign ``echo x >
@@ -235,9 +235,22 @@ def _shell_command_source(params: Mapping[str, object]) -> str | None:
     else:
         return None
     stripped = source.strip()
-    if stripped and _has_unquoted_shell_operator(stripped):
-        return stripped
+    if stripped and (
+        _has_unquoted_shell_operator(stripped) or _starts_with_environment_assignment(stripped)
+    ):
+        explicit_args = _parse_exec_args(params.get("args"))
+        return f"{stripped} {shlex.join(explicit_args)}" if explicit_args else stripped
     return None
+
+
+def _is_environment_assignment(token: str) -> bool:
+    name, separator, _value = token.partition("=")
+    return bool(separator and name and name.isidentifier())
+
+
+def _starts_with_environment_assignment(command: str) -> bool:
+    tokens = _parse_shell_words(command, field_name="command")
+    return bool(tokens and _is_environment_assignment(tokens[0]))
 
 
 def _has_unquoted_shell_operator(command: str) -> bool:
@@ -321,7 +334,8 @@ def _parse_shell_words(value: str, *, field_name: str) -> list[str]:
         return []
 
     try:
-        lexer = shlex.shlex(stripped, posix=True, punctuation_chars="|&;<>")
+        lexer = shlex.shlex(stripped, posix=True, punctuation_chars="|&;<>\n")
+        lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
@@ -356,7 +370,7 @@ def _description(key: str) -> str:
 
 
 def _command_key(command: str) -> str:
-    return command.strip().lower()
+    return Path(command.strip()).name.lower()
 
 
 def _lower_args(args: list[str]) -> list[str]:
@@ -583,10 +597,74 @@ def _shell_command_segments(command: str) -> list[tuple[str, list[str]]]:
                 segments.append((current[0], current[1:]))
                 current = []
             continue
+        if not current and _is_environment_assignment(token):
+            continue
         current.append(token)
     if current:
         segments.append((current[0], current[1:]))
     return segments
+
+
+def _env_wrapped_segment(args: list[str]) -> tuple[str, list[str]] | None:
+    expanded = _expand_env_split_options(args)
+    if expanded is None:
+        return None
+    index = 0
+    while index < len(expanded):
+        token = expanded[index]
+        if _is_environment_assignment(token):
+            index += 1
+            continue
+        if token == "--":
+            index += 1
+            while index < len(expanded) and _is_environment_assignment(expanded[index]):
+                index += 1
+            break
+        if token in {"-u", "--unset", "-C", "--chdir"}:
+            if index + 1 >= len(expanded):
+                return None
+            index += 2
+            continue
+        if token.startswith(("--unset=", "--chdir=")) or (
+            token.startswith(("-u", "-C")) and len(token) > len("-u")
+        ):
+            index += 1
+            continue
+        if token in {"-i", "--ignore-environment", "-0", "--null", "-v", "--debug"}:
+            index += 1
+            continue
+        if token.startswith("-"):
+            return None
+        break
+    if index >= len(expanded):
+        return None
+    return expanded[index], expanded[index + 1 :]
+
+
+def _expand_env_split_options(args: list[str]) -> list[str] | None:
+    expanded = list(args)
+    index = 0
+    while index < len(expanded):
+        token = expanded[index]
+        consumed = 0
+        value: str | None = None
+        if token in {"-S", "--split-string"}:
+            if index + 1 >= len(expanded):
+                return None
+            value, consumed = expanded[index + 1], 2
+        elif token.startswith("--split-string="):
+            value, consumed = token.partition("=")[2], 1
+        elif token.startswith("-S") and token != "-S":
+            value, consumed = token[2:], 1
+        if value is None:
+            index += 1
+            continue
+        if any(operator in value for operator in ("\\", "$")):
+            return None
+        expanded[index : index + consumed] = _parse_shell_words(
+            value, field_name="env --split-string"
+        )
+    return expanded
 
 
 def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> str | None:
@@ -600,9 +678,21 @@ def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> str | None:
         segments: list[tuple[str, list[str]]] = [(parsed.command, parsed.args)]
     else:
         segments = _shell_command_segments(parsed.shell_command)
-    for command, args in segments:
+    inspected: list[tuple[str, list[str]]] = []
+    for segment_command, segment_args in segments:
+        command, args = segment_command, segment_args
+        inspected.append((command, args))
         apply_exec_policy(command, args)
-    script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
+        while _command_key(command) == "env" and args:
+            wrapped = _env_wrapped_segment(args)
+            if wrapped is None:
+                raise CapabilityDeniedError(
+                    "Command 'env' denied by policy: unsupported wrapper arguments"
+                )
+            command, args = wrapped
+            inspected.append((command, args))
+            apply_exec_policy(command, args)
+    script_hit = find_vcs_usage_in_scripts(inspected, _workspace_root(workspace))
     if script_hit is None:
         return None
     script, _word = script_hit

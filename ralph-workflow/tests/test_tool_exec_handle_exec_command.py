@@ -324,6 +324,85 @@ class TestExecShellOperators:
         assert "Exit code: 0" in content.text
         assert "2" in content.text  # two lines matched
 
+    def test_exec_regression_environment_assignment_reaches_child(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        result = handle_exec_command(
+            session,
+            workspace,
+            {"command": "RALPH_EXEC_REGRESSION=present printenv RALPH_EXEC_REGRESSION"},
+        )
+
+        assert result.is_error is False
+        assert "present" in result.content[0].text
+
+    def test_exec_regression_environment_assignment_cannot_hide_denied_command(
+        self, tmp_path: Path
+    ) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        with pytest.raises(CapabilityDeniedError, match="sudo"):
+            handle_exec_command(session, workspace, {"command": "SAFE_FLAG=1 sudo whoami"})
+
+    def test_exec_regression_newline_cannot_hide_denied_command(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        with pytest.raises(CapabilityDeniedError, match="sudo"):
+            handle_exec_command(
+                session,
+                workspace,
+                {"command": "SAFE_FLAG=1 echo safe\nsudo whoami"},
+            )
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "env sudo whoami",
+            "SAFE_FLAG=1 /usr/bin/sudo whoami",
+            "SAFE_FLAG=1 env sudo whoami",
+            "SAFE_FLAG=1 env env sudo whoami",
+            "SAFE_FLAG=1 /usr/bin/env -u SAFE_FLAG sudo whoami",
+            "SAFE_FLAG=1 env --split-string=sudo whoami",
+            "SAFE_FLAG=1 env -Ssudo whoami",
+            'SAFE_FLAG=1 env -S "INNER=1 sudo whoami"',
+            "SAFE_FLAG=1 env -- INNER=1 sudo whoami",
+            "SAFE_FLAG=1 env -uINNER sudo whoami",
+            'SAFE_FLAG=1 env -S "-i sudo whoami"',
+        ],
+    )
+    def test_exec_regression_wrappers_cannot_hide_denied_command(
+        self,
+        tmp_path: Path,
+        command: str,
+    ) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        with pytest.raises(CapabilityDeniedError, match="sudo"):
+            handle_exec_command(session, workspace, {"command": command})
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "env - sudo whoami",
+            "env -iv sudo whoami",
+            r"env -S 'sudo\_whoami'",
+            "RALPH_REVIEW_COMMAND=sudo env -S '${RALPH_REVIEW_COMMAND} whoami'",
+        ],
+    )
+    def test_exec_regression_unsupported_env_options_fail_closed(
+        self, tmp_path: Path, command: str
+    ) -> None:
+        with pytest.raises(CapabilityDeniedError, match="unsupported wrapper"):
+            handle_exec_command(
+                MockSession({"ProcessExecBounded"}),
+                MockWorkspaceRoot(tmp_path),
+                {"command": command},
+            )
+
     def test_redirection_command_runs(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)

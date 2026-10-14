@@ -51,6 +51,22 @@ class TestHandleGrepFiles:
         assert len(payload["matches"]) > 0
         assert payload["matches"][0]["text"] == "def foo():"
 
+    def test_grep_accepts_a_single_file_path(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.iter_files.return_value = ()
+        ws.read.return_value = "today = True\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "today", "path": "config/routes.rb"},
+        )
+
+        payload = json.loads(result.content[0].text)
+        assert payload["matches"][0]["path"] == "config/routes.rb"
+        ws.iter_files.assert_not_called()
+
     def test_grep_literal_mode(self) -> None:
         ws = MagicMock()
         ws.iter_files.return_value = ("file.py",)

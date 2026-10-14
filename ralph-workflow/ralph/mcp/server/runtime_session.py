@@ -154,6 +154,7 @@ class FileBackedSession:
         exec_resource_resolver: ExecResourceResolverLike | None = None,
         exec_spill_roots: tuple[Path, ...] | None = None,
         declared_agent_transport: str | None = None,
+        workspace_root: Path | None = None,
     ) -> None:
         # The agent CLI an operator named on the command line. The
         # payload is written by the parent process and cannot know it,
@@ -166,6 +167,7 @@ class FileBackedSession:
         # write ``"transport": ""`` into every downstream payload.
         self._declared_agent_transport = (declared_agent_transport or "").strip().lower() or None
         self._path = path
+        self._explicit_workspace_root = workspace_root.resolve() if workspace_root is not None else None
         self._loader = loader or _load_session_payload
         self._session_id_factory = session_id_factory or (
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
@@ -351,6 +353,8 @@ class FileBackedSession:
           directory containing ``.agent/`` (the workspace IS that
           directory).
         """
+        if self._explicit_workspace_root is not None:
+            return self._explicit_workspace_root
         return _resolve_workspace_root(self._path)
 
     @property
@@ -645,6 +649,7 @@ def session_from_env(
     session_id_factory: Callable[[], str] | None = None,
     run_id_factory: Callable[[], str] | None = None,
     declared_agent_transport: str | None = None,
+    workspace_root: Path | None = None,
 ) -> McpSession | None:
     """Load optional session metadata from the environment.
 
@@ -676,6 +681,7 @@ def session_from_env(
             run_id_factory=run_id_factory,
             broker_secret=broker_secret_value,
             declared_agent_transport=declared_agent_transport,
+            workspace_root=workspace_root,
         )
 
     raw = env_map.get(SESSION_ENV)

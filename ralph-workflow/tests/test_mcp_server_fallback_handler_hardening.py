@@ -140,3 +140,27 @@ def test_exec_alias_tools_call_streams_output() -> None:
             f"alias {alias!r} bypassed the exec streaming path"
         )
         assert "exec-1" in raw
+
+
+def test_transport_regression_client_disconnect_does_not_emit_crash_traceback(
+    capsys,
+) -> None:
+    server = _Server(_Mcp(_StreamingProbeSession()))
+
+    try:
+        raise ConnectionResetError(54, "Connection reset by peer")
+    except ConnectionResetError:
+        server.handle_error((object(), ("127.0.0.1", 12345)), ("127.0.0.1", 12345))
+
+    assert capsys.readouterr().err == ""
+
+
+def test_unexpected_transport_error_still_emits_traceback(capsys) -> None:
+    server = _Server(_Mcp(_StreamingProbeSession()))
+
+    try:
+        raise RuntimeError("unexpected handler failure")
+    except RuntimeError:
+        server.handle_error((object(), ("127.0.0.1", 12345)), ("127.0.0.1", 12345))
+
+    assert "unexpected handler failure" in capsys.readouterr().err

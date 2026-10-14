@@ -156,6 +156,24 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
 
+    def test_exec_regression_leading_environment_assignment_uses_shell(self) -> None:
+        source = "EXPEDITIONS_TEST_DB_NAME=test bin/rails test test/models/user_test.rb"
+
+        result = parse_exec_params({"command": source})
+
+        assert result.shell_command == source
+        assert result.command == "bin/rails"
+        assert result.args == ["test", "test/models/user_test.rb"]
+
+    def test_exec_regression_environment_assignment_preserves_explicit_args(self) -> None:
+        result = parse_exec_params(
+            {"command": "X=1 printf", "args": ["%s", "hello world"]}
+        )
+
+        assert result.shell_command == "X=1 printf %s 'hello world'"
+        assert result.command == "printf"
+        assert result.args == ["%s", "hello world"]
+
     def test_malformed_command_string_raises(self) -> None:
         params = {"command": "python -c \"print('hello')"}
         with pytest.raises(InvalidParamsError):

@@ -26,9 +26,8 @@ from ralph.mcp.explore._pipeline_state import (
     _ReindexState,
     _ReindexTimeoutError,
 )
-from ralph.mcp.explore.store import (
-    ExploreStore,
-)
+from ralph.mcp.explore._store_types import real_clock_seconds
+from ralph.mcp.explore.store import ExploreStore
 
 logger = logging.getLogger(__name__)
 
@@ -412,13 +411,15 @@ def _finalize(
     error_summary: str | None = None,
 ) -> ReindexResult:
     """Write the job history row and return the result."""
-    finished_at = now_fn()
+    finished_monotonic = now_fn()
+    elapsed_seconds = finished_monotonic - state.started_at
+    finished_at = real_clock_seconds()
     error = error_summary if error_summary is not None else state.error_summary
     store.record_job(
         job_id=state.job_id,
         generation=int(store.get_setting("current_generation") or 0),
         status=status,
-        started_at=state.started_at,
+        started_at=finished_at - elapsed_seconds,
         finished_at=finished_at,
         files_seen=len(state.changed_paths) + len(state.failed_paths),
         files_changed=len(state.changed_paths),
@@ -434,6 +435,6 @@ def _finalize(
         failed_files=tuple(state.failed_paths),
         parse_count=state.parse_count,
         dirty_paths_count=state.dirty_paths_count,
-        elapsed_seconds=finished_at - state.started_at,
+        elapsed_seconds=elapsed_seconds,
         error_summary=error,
     )

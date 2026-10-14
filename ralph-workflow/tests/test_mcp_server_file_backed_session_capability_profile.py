@@ -79,6 +79,20 @@ def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> Age
     )
 
 
+def test_explore_regression_external_session_file_uses_explicit_workspace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    session_file = tmp_path / "ralph-mcp-session.json"
+    session_file.write_text('{"session_id":"s","run_id":"r","capabilities":[]}', encoding="utf-8")
+
+    session = FileBackedSession(session_file, workspace_root=workspace)
+
+    assert session.explore_index is not None
+    assert session.explore_index.workspace_root == workspace
+
+
 def _http_call(
     endpoint: str, method: str, params: dict[str, object] | None = None, *, msg_id: int = 1
 ) -> dict[str, object]:

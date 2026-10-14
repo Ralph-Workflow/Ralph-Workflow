@@ -88,7 +88,7 @@ _MAX_PYTEST_WORKERS = 16
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host completes the suite faster with eight shards;
 # additional shard startup and filesystem contention consume smoke headroom.
-_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 8
+_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 10
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 8-shard CI profile the shard-saturated
@@ -381,14 +381,11 @@ def _pytest_workers() -> str:
 
     The auto profile is bounded by ``_MAX_PYTEST_WORKERS = 8``. Explicit
     overrides remain capped at ``available_cores - 2`` to reserve the parent
-    and OS/I/O capacity. The maintained 12-core host completes fastest with
-    eight auto shards; larger hosts remain bounded there to avoid startup and
-    filesystem contention.
+    and OS/I/O capacity. The 12-core profile reserves two logical cores for
+    orchestration; larger hosts remain bounded to avoid startup contention.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2
-    # On the maintained 12-core host, eight shards preserve budget for later
-    # smoke suites by avoiding excess startup and filesystem contention.
     worker_cap = (
         _PERFORMANCE_CORE_PYTEST_WORKER_CAP
         if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES

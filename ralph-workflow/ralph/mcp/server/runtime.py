@@ -307,7 +307,10 @@ def run_standalone_server(
     sanitize_process_environment()
     relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
     scrub_activity_relay_environment(os.environ)
-    session = session_from_env(declared_agent_transport=agent_transport)
+    session = session_from_env(
+        declared_agent_transport=agent_transport,
+        workspace_root=workspace_root,
+    )
     erase_broker_secret_environment()
     server = build_standalone_http_server(
         workspace_root,

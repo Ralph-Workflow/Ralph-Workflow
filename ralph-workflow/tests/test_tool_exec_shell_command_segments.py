@@ -27,6 +27,11 @@ class TestShellCommandSegments:
         segments = _shell_command_segments("echo x > reboot")
         assert segments == [("echo", ["x"])]
 
+    def test_exec_regression_environment_prefix_does_not_hide_command(self) -> None:
+        segments = _shell_command_segments("SAFE_FLAG=1 OTHER='two words' sudo whoami")
+
+        assert segments == [("sudo", ["whoami"])]
+
     def test_redirection_then_pipe_keeps_next_command_head(self) -> None:
         segments = _shell_command_segments("echo hi > out.txt | grep hi")
         heads = [command for command, _ in segments]
