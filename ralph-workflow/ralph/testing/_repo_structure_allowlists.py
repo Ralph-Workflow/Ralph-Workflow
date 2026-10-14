@@ -1335,11 +1335,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_check_guard_inventory",),
         ),
         (
-            "tests/project_policy/test_guard_inventory_contract.py",
-            "ralph.project_policy.validators",
-            ("_validate_existing_policy_file",),
-        ),
-        (
             "tests/project_policy/test_claim_scope_guard_rows.py",
             "ralph.project_policy._guard_inventory",
             ("_check_guard_inventory",),

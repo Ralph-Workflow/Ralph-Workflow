@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from ralph.project_policy import markers
 from ralph.project_policy._guard_inventory import _check_guard_inventory
-from ralph.project_policy.validators import _validate_existing_policy_file
+from ralph.workspace.memory import MemoryWorkspace
 
 _HEADER = (
     "| Guard | Owner | Protected outcome | Detected condition | "
@@ -231,12 +231,12 @@ def test_orphan_control_id_in_row_is_rejected() -> None:
 def test_ratchet_declaration_outside_guard_inventory_excluded() -> None:
     """Maintenance-trigger / research-basis sections are excluded from the scan.
 
-    The grammar explicitly excludes the ``## Maintenance triggers``,
-    ``## Research basis``, ``## Portfolio ownership``,
-    ``## Living document contract``, and ``## Ralph markers``
+    The grammar explicitly excludes the ``## Guard inventory``,
+    ``## Maintenance triggers``, and ``## Research basis``
     sections from the ratchet scan. A ratchet declaration in
     ``## Maintenance triggers`` is not a body declaration and
-    MUST NOT trigger a finding.
+    MUST NOT trigger a finding. Other sections (such as Portfolio
+    ownership or Ralph markers) are NOT excluded.
     """
     content = _starter(
         body_before="",
@@ -265,26 +265,20 @@ def test_ratchet_declaration_outside_guard_inventory_excluded() -> None:
 def test_public_validator_emits_empty_claim_scope_finding() -> None:
     """The public validator surfaces the empty-Claim-scope finding.
 
-    A row whose sixth cell is empty is rejected at the
-    public-validator entry point. ``clean-code-policy.md`` is used
-    as the filename because the validator consults the bundled
-    starter registry for required fact keys; the registry lookup
-    succeeds for an actual starter.
+    A row whose sixth cell is empty is rejected by the public
+    ``validate_readiness`` API with the CLAIM-SCOPE-MISSING finding id.
     """
-    content = _starter(
-        body_before="",
-        rows=_row(
-            guard="guard",
-            owner="owner",
-            protected="the check rejects blank `Any` at boundaries",
-            detected="the audit reports blank `Any` per file",
-            retirement="when retired",
-            scope="",
-        ),
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    bad_body = base_body.replace(
+        "when the test policy is removed",
+        "",
     )
-    findings = _validate_existing_policy_file(
-        content, path="clean-code-policy.md", filename="clean-code-policy.md"
-    )
+    ws = _make_test_workspace(bad_body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings)
 
 
@@ -389,3 +383,320 @@ def test_two_ratchets_same_sentence_one_token_accepted() -> None:
     assert not any(
         f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings
     ), [f.requirement_id for f in findings]
+
+
+# --- V1 wt-15-policy analysis feedback: sentence-association bugs ----------
+
+
+def test_tagged_ratchet_followed_by_unrelated_sentence_is_accepted() -> None:
+    """A single-line ratchet with a tag plus an unrelated next sentence is accepted.
+
+    The analysis feedback's first failing case was
+    ``The set is ratcheted. <!-- ralph-control: limit --> Review this annually.``
+    which the previous scan rejected with ``RATCHET-UNCOVERED``. The ratchet
+    sentence IS tagged (the control token belongs to the first sentence,
+    placed between the two sentences on one line), and the second sentence
+    is unrelated to the ratchet, so the table must accept this line.
+
+    Pin: a ratchet phrase with an inline control token in the SAME sentence
+    on a multi-sentence line is accepted, and the second sentence (no
+    ratchet phrase) does not produce a RATCHET-UNCOVERED finding.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "The set is ratcheted. <!-- ralph-control: my-id --> "
+            "Review this annually.\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` set",
+            owner="owner",
+            protected="the set stays at its ratcheted size",
+            detected="the audit lists the set per file",
+            retirement="when retired",
+            scope="the audit's set count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert not any(
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(
+        f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_wrapped_ratchet_does_not_borrow_token_from_later_sentence() -> None:
+    """A wrapped untagged ratchet must not borrow a token from a later sentence.
+
+    The analysis feedback's second failing case was a wrapped untagged
+    ratchet sentence followed by ``Review this annually. <!-- ralph-control: limit -->``
+    which the previous scan accepted by borrowing the token. The ratchet
+    sentence ends on a line with a period, the next line is a NEW sentence
+    (not a tag-only line), so the token must not be linked to the ratchet
+    and the ratchet must surface as uncovered.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "The set is ratcheted; it MUST NOT grow\n"
+            "absent a reviewed change.\n"
+            "Review this annually. <!-- ralph-control: my-id -->\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` set",
+            owner="owner",
+            protected="the set stays at its ratcheted size",
+            detected="the audit lists the set per file",
+            retirement="when retired",
+            scope="the audit's set count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert any(f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]
+    assert any(
+        f.requirement_id == f"{markers.CONTROL_ORPHAN_FINDING_ID}:my-id" for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_wrapped_ratchet_finds_lone_tag_on_following_line() -> None:
+    """A wrapped ratchet with the tag on a separate following line is accepted.
+
+    The shipped corpus pattern (testing-policy, verification-policy) is
+    a ratchet sentence that wraps across multiple lines and ends with a
+    period, followed by an indented tag-only line as the next non-blank
+    non-heading line. The look-ahead MUST recognize a tag-only line as
+    the ratchet's control id, even when the ratchet sentence has already
+    ended on a previous line, so the table accepts this common
+    list-item-and-tag pattern.
+    """
+    content = _starter(
+        body_before=(
+            "## Rules\n\n"
+            "    - The set is ratcheted; it MUST NOT grow\n"
+            "      absent a reviewed change.\n"
+            "      <!-- ralph-control: my-id -->\n\n"
+        ),
+        rows=_row(
+            guard="`my-id` set",
+            owner="owner",
+            protected="the set stays at its ratcheted size",
+            detected="the audit lists the set per file",
+            retirement="when retired",
+            scope="the audit's set count per file",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert not any(
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(
+        f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_claim_scope_multi_sentence_is_rejected() -> None:
+    """A Claim scope cell with two sentences is rejected.
+
+    The analysis feedback's third failing case was a Claim scope cell
+    carrying two sentences (``Counts known items. Guarantees stability``).
+    The previous punctuation-counting heuristic under-counted sentences
+    and accepted the cell. The plan freezes the cell to a single sentence;
+    the boundary detector (capital-letter lookahead) now counts two
+    sentences and the row is rejected.
+    """
+    content = _starter(
+        body_before="",
+        rows=_row(
+            guard="guard",
+            owner="owner",
+            protected="the check rejects blank `Any` at boundaries",
+            detected="the audit reports blank `Any` per file",
+            retirement="when retired",
+            scope="Counts known items. Guarantees stability",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert any(
+        f.requirement_id == markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_claim_scope_filename_dot_is_one_sentence() -> None:
+    """A Claim scope cell with a filename-like dot is one sentence.
+
+    The analysis feedback's fourth failing case was a Claim scope cell
+    carrying a filename-like dot (``Counts known items.foo.txt``). The
+    previous punctuation-counting heuristic over-counted the dot as a
+    sentence boundary and rejected the cell. The capital-letter
+    lookahead now treats the filename as part of the same sentence and
+    accepts the row.
+    """
+    content = _starter(
+        body_before="",
+        rows=_row(
+            guard="guard",
+            owner="owner",
+            protected="the check rejects blank `Any` at boundaries",
+            detected="the audit reports blank `Any` per file",
+            retirement="when retired",
+            scope="Counts known items.foo.txt",
+        ),
+    )
+    findings = _check_guard_inventory(content, path="synthetic.md", filename="synthetic.md")
+    assert not any(
+        f.requirement_id == markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]
+
+
+# --- V1 wt-15-policy analysis feedback: public-validator integration ---------
+
+
+def _make_test_workspace(typechecking_body: str) -> MemoryWorkspace:
+    from ralph.project_policy import starters
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    workspace = MemoryWorkspace()
+    workspace.write(
+        markers.AGENTS_MD,
+        f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n",
+    )
+    workspace.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee AGENTS.md for project policy.\n")
+    workspace.write(
+        f"{markers.CANONICAL_DIR}policy-portfolio.toml",
+        starters.read_starter("policy-portfolio.toml"),
+    )
+    workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
+    for filename in markers.CORE_POLICY_FILES:
+        if filename == "typechecking-policy.md":
+            workspace.write(f"{markers.CANONICAL_DIR}{filename}", typechecking_body)
+        else:
+            body = _complete_policy_body(
+                filename=filename,
+                lang=None
+                if filename not in {"typechecking-policy.md", "linting-policy.md"}
+                else "Python",
+            )
+            workspace.write(f"{markers.CANONICAL_DIR}{filename}", body)
+    return workspace
+
+
+def test_public_validate_readiness_emits_claim_scope_multi_sentence() -> None:
+    """The public ``validate_readiness`` API surfaces the multi-sentence finding."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    bad_body = base_body.replace(
+        "when the test policy is removed",
+        "Counts known items. Guarantees stability",
+    )
+    ws = _make_test_workspace(bad_body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(
+        f.requirement_id == markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_public_validate_readiness_accepts_filename_dot_claim_scope() -> None:
+    """The public ``validate_readiness`` API accepts a filename dot in Claim scope."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    good_body = base_body.replace(
+        "when the test policy is removed",
+        "Counts known items.foo.txt",
+    )
+    ws = _make_test_workspace(good_body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert not any(
+        f.requirement_id == markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(f.requirement_id == markers.CLAIM_SCOPE_MISSING_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]
+
+
+def test_public_validate_readiness_accepts_tagged_ratchet_with_following_sentence() -> None:
+    """The public ``validate_readiness`` accepts a tagged ratchet with following sentence."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    row_with_limit = _row(
+        guard="`limit` set",
+        owner="owner",
+        protected="the set stays at its ratcheted size",
+        detected="the audit lists the set per file",
+        scope="the audit's set count per file",
+        retirement="when retired",
+    )
+    body = base_body.replace(
+        "## Guard inventory\n\n" + _HEADER,
+        "The set is ratcheted. <!-- ralph-control: limit --> Review this annually.\n\n"
+        "## Guard inventory\n\n" + _HEADER + row_with_limit,
+    )
+    ws = _make_test_workspace(body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert not any(
+        f.requirement_id.startswith(markers.RATCHET_UNCOVERED_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+    assert not any(
+        f.requirement_id.startswith(markers.CONTROL_ORPHAN_FINDING_ID) for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_public_validate_readiness_rejects_wrapped_ratchet_borrowing_token() -> None:
+    """The public ``validate_readiness`` rejects wrapped ratchet borrowing later token."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    row_with_limit = _row(
+        guard="`limit` set",
+        owner="owner",
+        protected="the set stays at its ratcheted size",
+        detected="the audit lists the set per file",
+        scope="the audit's set count per file",
+        retirement="when retired",
+    )
+    body = base_body.replace(
+        "## Guard inventory\n\n" + _HEADER,
+        "The set is ratcheted; it MUST NOT grow\n"
+        "absent a reviewed change.\n"
+        "Review this annually. <!-- ralph-control: limit -->\n\n"
+        "## Guard inventory\n\n" + _HEADER + row_with_limit,
+    )
+    ws = _make_test_workspace(body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]
+    assert any(
+        f.requirement_id == f"{markers.CONTROL_ORPHAN_FINDING_ID}:limit" for f in findings
+    ), [f.requirement_id for f in findings]
+
+
+def test_public_validate_readiness_emits_ratchet_uncovered() -> None:
+    """The public ``validate_readiness`` API surfaces the ratchet-uncovered finding."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.test_validator import _complete_policy_body
+
+    base_body = _complete_policy_body(filename="typechecking-policy.md", lang="Python")
+    uncovered_body = base_body + "\nThe new boundary set MUST NOT grow absent a reviewed change.\n"
+    ws = _make_test_workspace(uncovered_body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(f.requirement_id == markers.RATCHET_UNCOVERED_FINDING_ID for f in findings), [
+        f.requirement_id for f in findings
+    ]

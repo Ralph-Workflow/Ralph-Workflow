@@ -235,24 +235,31 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# Required real-git files use a dedicated shard with twelve xdist workers.
-# Each test owns a ``tmp_path``; twelve workers on a 40-core host trim
+# Required real-git files use a dedicated shard with eight xdist workers.
+# Each test owns a ``tmp_path``; eight workers on a 40-core host trim
 # the measured wall clock well under the 50 s make-test budget headroom
 # that the budget-tracked smoke step depends on. The 4-worker value it
 # replaced cut the original 9.25 s to 4.46 s on a smaller E2E selection;
 # the 12x-grown E2E set now spends ~50 s at 4 workers and the gate
 # exhausts its 60 s combined budget before the smoke step completes. 8
 # workers halves the E2E shard wall clock without raising any test or
-# suite timeout, but 12 workers trim the E2E shard further on the
-# maintained 40-core host under typical load, leaving enough headroom
-# for the 14 s smoke step on the 60 s combined budget. The bumped
-# worker count is a runner-architecture change, not a budget-constant
+# suite timeout, leaving enough headroom for the 14 s smoke step on the
+# maintained 40-core host under typical load. (wt-15-policy: the
+# earlier 12-worker bump was profiled optimal for the 40-core
+# maintained host but intermittently exceeded the 60 s combined budget
+# on the smaller 12-core host because the in-shard 12 xdist workers
+# competed with the 8 general pytest processes for CPU bandwidth; the
+# 8-worker value matches the general shard count so the E2E shard's
+# in-shard fan-out does not oversubscribe the host.) The worker
+# count is a runner-architecture change, not a budget-constant
 # change, and the cumulative tracker in ralph/verify.py is preserved.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "12"
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_display_generated_scenes.py": 460,
     "tests/test_brand_naming.py": 78,
+    "tests/test_audit_kwargs_forwarding.py": 50,
+    "tests/test_no_anti_drift_regression.py": 70,
 }
 
 
@@ -1279,20 +1286,13 @@ def run_test_suites(
             )
             if serial_result not in successful_returncodes:
                 return serial_result
-        # wt-15 policy: the real-git E2E shard must run AFTER the general
-        # shards. When the E2E shard is spawned in the same wave as the 15
-        # general shards, its 8 xdist workers compete with the 15 general
-        # pytest processes for CPU bandwidth; on the maintained 40-core
-        # host the contended wall clock exceeds the immutable 60 s combined
-        # budget even though the E2E selection only spends ~22 s in
-        # isolation. Running the E2E shard after the general wave gives it
-        # the full host and fits the gate: 17 s general + 22 s E2E = 39 s
-        # total. The sequential ordering is a runner-architecture change;
-        # the 60 s combined budget in ralph/verify.py is preserved.
-        run_required_concurrently = False
-        all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
+        # wt-15 policy: the real-git E2E shard runs AFTER the general
+        # shards so its xdist workers do not compete with the general
+        # pytest processes for CPU bandwidth. The sequential ordering
+        # is a runner-architecture choice; the 60 s combined budget in
+        # ralph/verify.py is preserved.
         general_result = _run_shards(
-            all_shards,
+            shards,
             cwd=cwd,
             env=env,
             basetemp_root=basetemp_path,
@@ -1303,15 +1303,13 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
-            required_e2e_shard_xdist_workers=(
-                required_e2e_shard_xdist_workers if run_required_concurrently else None
-            ),
+            required_e2e_shard_xdist_workers=None,
             successful_returncodes=successful_returncodes,
             empty_selection_returncode=empty_selection_returncode,
         )
         if general_result not in successful_returncodes:
             return general_result
-        if not required_e2e_shard or run_required_concurrently:
+        if not required_e2e_shard:
             return general_result
         return _run_shards(
             (required_e2e_shard,),

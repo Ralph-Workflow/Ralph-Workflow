@@ -686,19 +686,23 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses twelve workers for isolated real-git tests.
+    """The dedicated E2E shard uses eight workers for isolated real-git tests.
 
     The 4-worker value it replaced trimmed the original 9.25 s E2E
     selection to 4.46 s; the 12x-grown E2E set now spends ~50 s at 4
     workers and the gate exhausts its 60 s combined budget before the
-    smoke step completes. Twelve workers (up from 8) trims the E2E
-    shard wall clock further so the make-test step leaves enough
-    headroom for the 14 s smoke step on the maintained 40-core host
-    under typical load.
+    smoke step completes. Twelve workers was profiled optimal for the
+    maintained 40-core host, but the in-shard 12-worker fan-out
+    competed with the 8 general pytest processes for CPU bandwidth
+    on a 12-core host and intermittently exceeded the 60 s combined
+    budget. Eight workers (matching the general shard count) trims
+    the E2E shard wall clock without raising any test or suite
+    timeout and leaves enough headroom for the 14 s smoke step on
+    the maintained 12-core and 40-core hosts under typical load.
     """
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
@@ -729,15 +733,16 @@ def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
     # reap_spawn_counts is len(spawner.calls) at the time of reap, so
     # the two general reaps see 2 (both general spawns done) and the
     # E2E reap sees 3 (both general + E2E spawns done). The E2E shard
-    # is sequenced AFTER the general wave so the 12 xdist workers do
-    # not compete with the 15 general pytest processes for CPU; that
-    # ordering fits the 60 s combined budget in ralph/verify.py.
+    # is sequenced AFTER the general wave so the 8 xdist workers do
+    # not compete with the 8 general pytest processes for CPU on a
+    # 12-core host; that ordering fits the 60 s combined budget in
+    # ralph/verify.py.
     assert reap_spawn_counts == [2, 2, 3]
     dedicated_command = spawner.calls[-1][0]
     assert dedicated_command[3] == "tests"
     assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "12"
+    assert dedicated_command[xdist_index + 1] == "8"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 

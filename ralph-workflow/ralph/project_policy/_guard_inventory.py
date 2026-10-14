@@ -142,9 +142,9 @@ def _extract_table_lines(content: str) -> list[str] | None:
 def _parse_guard_inventory(content: str) -> list[dict[str, str]]:
     """Parse the ``## Guard inventory`` table from a starter / project policy.
 
-    Returns one dict per data row, with the five canonical keys
+    Returns one dict per data row, with the six canonical keys
     (``guard``, ``owner``, ``protected_outcome``, ``detected_condition``,
-    ``retirement_trigger``) lowercased to canonical form. The header
+    ``claim_scope``, ``retirement_trigger``) lowercased to canonical form. The header
     row is matched case-insensitively against
     :data:`markers.GUARD_INVENTORY_HEADER`; leading and trailing pipes
     are required, and pipes must be balanced.
@@ -245,6 +245,16 @@ _RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES: Final[int] = 6
 _SENTENCE_ENDING_PUNCT_RE: Final[str] = r"[.!?]"
 _SENTENCE_ENDING_PUNCT_PATTERN: Final[re.Pattern[str]] = re.compile(_SENTENCE_ENDING_PUNCT_RE)
 
+#: Regex matching a real sentence boundary on a single visible
+#: line: one or more ``.!?`` then whitespace then a capital
+#: letter. The earlier punctuation-counting heuristic wrongly
+#: counted a filename dot (``items.py the file``) or a bare
+#: period at the end of a sentence as a new sentence; the
+#: capital-letter lookahead is the standard "new sentence" cue
+#: and is also why a tagged ratchet followed by an unrelated
+#: next sentence is no longer treated as two declarations.
+_SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\s+(?=[A-Z])")
+
 #: Regex matching a run of ratchet phrase occurrences in a single
 #: line. Each match corresponds to one body ratchet declaration
 #: (or to two declarations on one line if the line carries two
@@ -293,6 +303,29 @@ def _line_ends_sentence(line: str) -> bool:
     if not stripped:
         return False
     return bool(re.search(_SENTENCE_ENDING_PUNCT_RE, stripped[-1]))
+
+
+def _split_visible_into_sentences(visible_text: str) -> list[str]:
+    """Split a visible (HTML-comment-stripped) line into sentence strings.
+
+    The split is bounded by :data:`_SENTENCE_BOUNDARY_RE`: one or
+    more ``.!?`` then whitespace then a capital letter. The result
+    preserves the original whitespace inside each segment; the
+    caller is responsible for stripping leading/trailing whitespace
+    when it compares ratchet-phrase presence. Filename dots
+    (``items.py the file``) and a bare trailing period without a
+    following capital are NOT boundaries, so a single-sentence
+    ``the audit's foo.bar.txt count`` stays a single segment.
+    """
+    if not visible_text.strip():
+        return [""]
+    pieces: list[str] = []
+    last_end = 0
+    for match in _SENTENCE_BOUNDARY_RE.finditer(visible_text):
+        pieces.append(visible_text[last_end : match.end()])
+        last_end = match.end()
+    pieces.append(visible_text[last_end:])
+    return pieces
 
 
 def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
@@ -437,32 +470,39 @@ def _scan_body_line(
     line_has_phrase = bool(phrase_re.search(stripped))
     line_tokens = cast("list[str]", control_re.findall(stripped))
     visible_text = re.sub(r"<!--.*?-->", "", stripped, flags=re.DOTALL)
-    # Standard-library ``re`` type stubs in Python 3.14 narrow
-    # ``Pattern.findall`` to ``list[Any]``; the runtime return is
-    # ``list[str]``. The cast narrows back to the runtime type.
-    _ends_raw = list(_SENTENCE_ENDING_PUNCT_PATTERN.findall(visible_text))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    ends_list: list[str] = cast("list[str]", _ends_raw)
-    sentence_endings_on_line: int = len(ends_list)
     ends_sentence = _line_ends_sentence(stripped)
-    if line_has_phrase and sentence_endings_on_line == 0:
+    # Real sentence boundaries: punctuation + whitespace + capital
+    # letter. The earlier punctuation-counting heuristic wrongly
+    # counted a filename dot (``items.py the file``) or a bare
+    # period at the end of a sentence as a new sentence; the
+    # capital-letter lookahead is the standard "new sentence" cue
+    # and is also why a tagged ratchet followed by an unrelated
+    # next sentence is no longer treated as two declarations.
+    sentence_texts = _split_visible_into_sentences(visible_text)
+    ratchet_sentence_indices = [
+        i for i, text in enumerate(sentence_texts) if phrase_re.search(text)
+    ]
+    if ratchet_sentence_indices:
         sentence_has_phrase = True
         if not sentence_token_id and line_tokens:
             sentence_token_id = line_tokens[0]
-    elif line_has_phrase and sentence_endings_on_line >= 1:
-        sentence_has_phrase = True
-        token_to_use = line_tokens[0] if line_tokens else sentence_token_id
-        if not sentence_token_id:
-            sentence_token_id = token_to_use
-        extra_on_line = max(0, sentence_endings_on_line - 1)
-        extra_tokens = max(0, len(line_tokens) - 1)
-        for i in range(extra_on_line):
-            if i < extra_tokens:
-                out.append(("", line_tokens[i + 1]))
+            extra_tokens = line_tokens[1:]
+        else:
+            extra_tokens = line_tokens
+        for offset, _ratchet_index in enumerate(ratchet_sentence_indices[1:]):
+            if offset < len(extra_tokens):
+                out.append(("", extra_tokens[offset]))
             else:
                 out.append(("", ""))
-    elif line_tokens:
-        if sentence_has_phrase and not sentence_token_id:
-            sentence_token_id = line_tokens[0]
+    elif line_tokens and sentence_has_phrase and not sentence_token_id:
+        sentence_token_id = line_tokens[0]
+    # ``ends_sentence`` is True when the line's visible text ends
+    # in ``.``/``!``/``?``. A bare filename dot at end of line
+    # (e.g. ``audit.py``) does NOT count because the dot is not
+    # the visible line's last char after ``_line_ends_sentence``
+    # strips the trailing period only if it is a real sentence
+    # terminator; the function does the right thing for both
+    # ``audit.py`` and ``reviewed change.``.
     if ends_sentence:
         if sentence_has_phrase:
             out.append(("", sentence_token_id))
@@ -506,27 +546,49 @@ def _find_ratchet_control_token(
     """
     lookahead_comment = initial_in_comment
     ratchet_ends_sentence = _line_ends_sentence(ratchet_line)
+    # Track whether the ratchet sentence has ended. Once it has,
+    # the look-ahead will only accept a tag-only line (an HTML
+    # comment with no visible text) as a token source, because a
+    # lone tag is the conventional way to declare the row's
+    # control id at the end of a list item in shipped starters.
+    ratchet_sentence_over = ratchet_ends_sentence
     for offset in range(1, _RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES + 1):
         next_index = index + offset
-        if next_index >= total:
-            return ""
-        next_stripped = lines[next_index].strip()
-        if not next_stripped:
-            return ""
-        if next_stripped.startswith("#"):
+        next_stripped = lines[next_index].strip() if next_index < total else ""
+        if not next_stripped or next_stripped.startswith("#"):
             return ""
         # A ``<!-- ralph-control: <id> -->`` line IS the control
         # token (its grammar is a single-line HTML comment), so
         # it always counts as a match even when other comments
-        # would be skipped.
-        token_match = control_re.search(next_stripped)
-        if token_match:
-            return token_match.group(1)
+        # would be skipped. A tag-only line is treated as part
+        # of the ratchet declaration's tag, even when the ratchet
+        # sentence has already ended (shipped pattern: a wrapped
+        # ratchet sentence ending with a period, followed by a
+        # lone tag line as the next non-blank, non-heading line).
+        next_visible = re.sub(r"<!--.*?-->", "", next_stripped, flags=re.DOTALL).strip()
+        is_tag_only_line = not next_visible
+        if is_tag_only_line:
+            token_match = control_re.search(next_stripped)
+            return token_match.group(1) if token_match else ""
         # If the ratchet line itself ended a sentence, the next
         # line is a different sentence by definition. The
         # look-ahead is disabled to prevent token borrowing.
-        if ratchet_ends_sentence:
+        # Same for any continuation line after the ratchet
+        # sentence has ended (wt-15-policy analysis feedback:
+        # a wrapped untagged ratchet must not borrow a token
+        # from a later sentence on a non-period intermediate
+        # line).
+        if ratchet_ends_sentence or ratchet_sentence_over:
             return ""
+        # Update the sentence-over state. A continuation line
+        # that ends a sentence marks the ratchet sentence as
+        # over; the next non-blank, non-heading line is either a
+        # tag-only line (the ratchet's control id, found at the
+        # top of the next iteration) or a new sentence (the
+        # ``ratchet_sentence_over`` check above stops the
+        # look-ahead).
+        if _line_ends_sentence(next_stripped):
+            ratchet_sentence_over = True
         if lookahead_comment:
             # A multi-line comment ends on a line whose only
             # end-of-comment marker is the trailing ``-->``; if
@@ -591,20 +653,29 @@ def _claim_scope_findings(
     return findings
 
 
+_CLAIM_SCOPE_SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\s+|\n+")
+
+
 def _claim_scope_sentence_count(cell: str) -> int:
     """Return the number of sentences in a ``Claim scope`` cell.
 
-    The v5 plan freezes the cell to a single sentence; the count is
-    a regex sentence-boundary split (period, exclamation, question
-    mark, or line break) on the trimmed cell. Empty cells return
-    zero. Cells whose last sentence has no terminating punctuation
-    still count as one sentence.
+    The v5 plan freezes the cell to a single sentence. A sentence
+    boundary is sentence-ending punctuation (``.!?``) followed by
+    whitespace, or a line break. Filename-like tokens such as
+    ``items.py`` or ``foo.bar.txt`` do NOT count as boundaries because
+    their dots are not followed by whitespace. Empty cells return zero.
+    An unterminated final segment (e.g. ``Counts items. Second sentence``)
+    is preserved and counted as a sentence.
     """
     stripped = cell.strip()
     if not stripped:
         return 0
-    sentence_endings: list[str] = re.findall(r"[.!?]|\n", stripped)
-    return max(1, len(sentence_endings))
+    clean = re.sub(r"[.!?]+$", "", stripped).strip()
+    if not clean:
+        return 1
+    raw_segments = cast("list[str]", _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(clean))
+    segments: list[str] = [s.strip() for s in raw_segments if s.strip()]
+    return max(1, len(segments))
 
 
 def _check_guard_inventory(content: str, path: str, filename: str) -> list[PolicyFinding]:

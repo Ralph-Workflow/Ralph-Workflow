@@ -180,18 +180,24 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_twelve() -> None:
-    """Use twelve workers for the isolated real-git shard on many-core hosts.
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_eight() -> None:
+    """Use eight workers for the isolated real-git shard.
 
     The 4-worker value it replaced trimmed the original 9.25 s E2E
     selection to 4.46 s; the 12x-grown E2E set now spends ~50 s at 4
     workers and the gate exhausts its 60 s combined budget before the
-    smoke step completes. Twelve workers (up from 8) trims the E2E
-    shard wall clock further so the make-test step leaves enough
-    headroom for the 14 s smoke step on the maintained 40-core host
-    under typical load.
+    smoke step completes. Twelve workers was profiled optimal for the
+    maintained 40-core host, but the in-shard 12-worker fan-out
+    competed with the 8 general pytest processes for CPU bandwidth
+    on a 12-core host and intermittently exceeded the 60 s combined
+    budget. Eight workers (matching the general shard count) trims
+    the E2E shard wall clock without raising any test or suite
+    timeout and leaves enough headroom for the 14 s smoke step on
+    the maintained 12-core and 40-core hosts under typical load.
+    The 8-worker value is the runner-architecture choice; the
+    cumulative 60 s budget in ``ralph/verify.py`` is preserved.
     """
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "12"
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "8"
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:
