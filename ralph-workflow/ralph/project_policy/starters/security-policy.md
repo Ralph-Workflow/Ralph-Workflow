@@ -40,7 +40,11 @@ These requirements hold regardless of application type:
   allowlists over denylists.
 * A security control (scanner gate, validation check, authentication
   step, sandbox restriction) MUST NEVER be weakened, disabled, or
-  bypassed to obtain a passing result.
+  bypassed. The general rule that no red gate may be silenced by
+  weakening the gate lives in `execution-kernel.md` §Kernel rules;
+  this bullet names the security-specific surface where a bypass
+  would expose a real defect and makes the rule concrete for
+  scanner, validation, authentication, and sandbox lanes.
 * Security-relevant suppressions (scanner finding waivers, unsafe-block
   annotations, `nosec`-style comments) MUST carry the specific finding
   identifier AND a documented rationale. Blanket suppressions are

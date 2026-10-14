@@ -403,3 +403,101 @@ def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer(
     assert generic_weakened_phrase in normalized_kernel, (
         "execution-kernel.md must retain the canonical non-weakening rule"
     )
+
+
+# Phrase patterns that paraphrase a kernel rule. Each is a low-friction
+# rewrite that survives a literal-keyword filter but still re-derives the
+# rule in domain starter body prose. The test below forbids them in
+# every starter except execution-kernel.md, and except inside the two
+# sections that legitimately name the kernel (## AI execution
+# instructions pointer, ## Living document contract footer).
+KERNEL_RULE_PARAPHRASE_PATTERNS: tuple[str, ...] = (
+    # Rule 1 (Truthful evidence) paraphrases
+    "i think it works",
+    "actual command and outcome",
+    "report the actual command",
+    "report the actual outcome",
+    # Rule 2 (Fail-closed verification) paraphrase
+    "report failures accurately",
+    # Rule 4 (No weakening of checks) paraphrases
+    "obtain a passing result",
+    "obtaining a passing result",
+    "weaken a check to obtain",
+    "weakening a check to obtain",
+    # Rule 5 (Explicit unverified-claim reporting) paraphrase
+    "avoid unsupported claims",
+    "must not make unsupported claims",
+)
+
+
+def _body_sans_kernel_pointer_sections(content: str) -> str:
+    """Return the starter body with the two kernel-reference
+    sections removed.
+
+    The ``## AI execution instructions`` section is the canonical
+    pointer location; the ``## Living document contract`` footer is
+    the canonical single-source-of-truth attribution. Both
+    legitimately name the kernel rules; the dedup test must not
+    fire on text inside either.
+    """
+    excluded = (
+        "## AI execution instructions",
+        "## Living document contract",
+    )
+    lines = content.splitlines(keepends=True)
+    keep: list[str] = []
+    skipping = False
+    for line in lines:
+        if line.startswith("## "):
+            skipping = any(line.startswith(s) for s in excluded)
+            if skipping:
+                continue
+        if not skipping:
+            keep.append(line)
+    return "".join(keep)
+
+
+def test_domain_starters_do_not_paraphrase_kernel_rules_in_body() -> None:
+    """B10 body-level dedup: a domain starter MUST NOT paraphrase any
+    of the five kernel rules in body prose. The ``## AI execution
+    instructions`` pointer section and the ``## Living document
+    contract`` footer are the only two locations where the kernel is
+    legitimately named; both are excluded by ``_body_sans_kernel_pointer_sections``.
+
+    The existing phrase-list test in ``test_v5_starter_proof.py`` only
+    catches a narrow set of verbatim phrases. This test catches the
+    semantic restatements (e.g. ``I think it works``, ``obtain a
+    passing result``, ``avoid unsupported claims``) that a future
+    editor would naturally reach for when collapsing the body. A
+    regression is a future starter edit that re-introduces one of
+    the paraphrased rules in any non-pointer, non-footer section.
+    """
+    domain_starters = [
+        name
+        for name in starters.STARTER_NAMES
+        if name != "execution-kernel.md" and name.endswith(".md")
+    ]
+    assert len(domain_starters) >= 20, "Expected at least 20 domain starters"
+
+    for name in domain_starters:
+        content = _starter(name)
+        body = _body_sans_kernel_pointer_sections(content)
+        lower_body = " ".join(body.split()).lower()
+        for pattern in KERNEL_RULE_PARAPHRASE_PATTERNS:
+            assert pattern not in lower_body, (
+                f"{name} paraphrases a kernel rule in its body prose "
+                f"with {pattern!r}; B10 requires the five generic "
+                f"rules live only in execution-kernel.md and be loaded "
+                f"by reference from the AI execution instructions "
+                f"section, not re-derived in starter body prose"
+            )
+
+    # The kernel starter must retain at least the truthful-evidence
+    # paraphrase so a regression that strips it from the kernel is
+    # also caught.
+    kernel_content = _kernel()
+    assert "i think it works" not in kernel_content.lower(), (
+        "execution-kernel.md must not borrow the I-think-it-works "
+        "metaphor; it is a domain-starter paraphrase, not a kernel "
+        "phrase"
+    )

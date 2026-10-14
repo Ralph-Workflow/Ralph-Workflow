@@ -24,16 +24,15 @@ the truthfulness obligations, and the documentation update obligations.
 * Every AI agent MUST follow the policies applicable to the files it
   touches (testing policy for tests, type-checking policy for typed
   code, etc.).
-* Every AI agent MUST run the authoritative verification gate before
-  claiming completion. The agent MUST report the actual command and
-  outcome; "I think it works" is not evidence.
-* Every AI agent MUST report failures accurately. Weakening a check
-  to obtain a passing result is forbidden.
-* Every AI agent MUST update a policy when a resolved fact, command,
-  applicability decision, or stated requirement becomes inaccurate. User
-  documentation MUST change when its described behavior changes.
-* Every AI agent MUST avoid unsupported claims about tools, commands,
-  or dependency quality.
+* Every AI agent MUST update this policy (facts, commands, applicability
+  decisions, requirements) and the affected user documentation in the
+  same workflow that changes the supported agents, dispatch command,
+  review process, or any stated behavior the documentation describes.
+  The five generic rules (truthful evidence, fail-closed verification,
+  bounded execution, no weakening of checks, explicit unverified-claim
+  reporting) and the claim-scope rule are owned by
+  `execution-kernel.md` §Kernel rules and MUST be loaded from there —
+  do not re-derive them in this starter.
 * Every AI agent MUST preserve the canonical policy directory as the
   single source of truth for project quality policy.
 * Dead code is prohibited. Agents MUST remove unused, unreachable, obsolete,
