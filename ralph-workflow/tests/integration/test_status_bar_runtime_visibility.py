@@ -429,3 +429,109 @@ def test_runtime_entry_point_regression_stop_preserves_prior_transcript_and_bann
     assert before_stop in after_stop
     teardown_output = after_stop[len(before_stop_footer) :]
     assert "\x1b[2J" not in teardown_output
+
+
+def test_runtime_entry_point_renders_evidence_diagnosis_from_retained_recovery() -> None:
+    """Retained crash-recovery records produce EVIDENCE_DIAGNOSIS, not CONFLICT_RESOLUTION."""
+    from ralph.pipeline.rebase_state import RebaseState
+
+    rebase = RebaseState(recovery_record_retained=True)
+    assert rebase.operation_display_state == "evidence_diagnosis"
+
+    pd, buf = _make_parallel_display(width=120)
+    model = StatusBarModel(
+        workspace_root="/tmp/recovery-workspace",
+        phase_label="Recovery",
+        phase_style="theme.phase.development",
+        operation_display_state=rebase.operation_display_state,
+    )
+    pd.update_status_bar(model)
+    with pd:
+        sb = pd.status_bar
+        assert isinstance(sb, StatusBar)
+        assert sb.is_active is True
+
+    out = buf.getvalue()
+    assert "EVIDENCE_DIAGNOSIS" in out
+    assert "CONFLICT_RESOLUTION" not in out
+
+
+def test_rebase_state_produces_all_eight_display_states() -> None:
+    """All eight ADR-0007 operation display states are resolvable from typed fields."""
+    from ralph.display.auto_integrate_message import (
+        OperationDisplayState,
+        format_auto_integrate_message,
+    )
+    from ralph.pipeline.rebase_state import RebaseState
+
+    # 1. integrating
+    st_integrating = RebaseState(last_action="integrating")
+    assert st_integrating.operation_display_state == OperationDisplayState.INTEGRATING.value
+
+    # 2. landing
+    st_landing = RebaseState(last_action="rebased", fast_forwarded=True)
+    assert st_landing.operation_display_state == OperationDisplayState.LANDING.value
+
+    # 3. publishing
+    st_publishing = RebaseState(last_publication_decision="publish_now")
+    assert st_publishing.operation_display_state == OperationDisplayState.PUBLISHING.value
+
+    # 4. conflict_resolution
+    st_conflict = RebaseState(last_action="conflict")
+    assert st_conflict.operation_display_state == OperationDisplayState.CONFLICT_RESOLUTION.value
+    st_resolving_rebase = RebaseState(resolving_rebase=True)
+    assert (
+        st_resolving_rebase.operation_display_state
+        == OperationDisplayState.CONFLICT_RESOLUTION.value
+    )
+    st_resolving_merge = RebaseState(resolving_merge=True)
+    assert (
+        st_resolving_merge.operation_display_state
+        == OperationDisplayState.CONFLICT_RESOLUTION.value
+    )
+
+    # 5. evidence_diagnosis
+    st_retained = RebaseState(recovery_record_retained=True)
+    assert st_retained.operation_display_state == OperationDisplayState.EVIDENCE_DIAGNOSIS.value
+    st_diag_owner = RebaseState(diagnostic_ownership="evidence-hash")
+    assert st_diag_owner.operation_display_state == OperationDisplayState.EVIDENCE_DIAGNOSIS.value
+    st_diagnosing = RebaseState(last_action="diagnosing")
+    assert st_diagnosing.operation_display_state == OperationDisplayState.EVIDENCE_DIAGNOSIS.value
+
+    # 6. waiting
+    st_waiting = RebaseState(last_action="waiting")
+    assert st_waiting.operation_display_state == OperationDisplayState.WAITING.value
+
+    # 7. intervention_required
+    st_intervention = RebaseState(last_decision="report_intervention_required")
+    assert (
+        st_intervention.operation_display_state == OperationDisplayState.INTERVENTION_REQUIRED.value
+    )
+    st_intervention_act = RebaseState(last_action="intervention_required")
+    assert (
+        st_intervention_act.operation_display_state
+        == OperationDisplayState.INTERVENTION_REQUIRED.value
+    )
+
+    # 8. terminal
+    st_terminal_success = RebaseState(last_decision="report_terminal_success")
+    assert st_terminal_success.operation_display_state == OperationDisplayState.TERMINAL.value
+    st_terminal_failure = RebaseState(last_decision="report_terminal_failure")
+    assert st_terminal_failure.operation_display_state == OperationDisplayState.TERMINAL.value
+
+    # Verify format_auto_integrate_message eliminates arbitrary prose inference
+    msg_custom_prose = format_auto_integrate_message(
+        action="rebase and endpoint merge both conflicted",
+        target="main",
+        fast_forwarded=False,
+    )
+    assert "rebase and endpoint merge both conflicted" in msg_custom_prose
+    assert "conflict resolution" not in msg_custom_prose
+
+    # Verify format_auto_integrate_message normalizes provided operation_display_state
+    msg_normalized = format_auto_integrate_message(
+        action="ignored",
+        target="main",
+        operation_display_state="EVIDENCE_DIAGNOSIS",
+    )
+    assert "evidence diagnosis (main)" in msg_normalized

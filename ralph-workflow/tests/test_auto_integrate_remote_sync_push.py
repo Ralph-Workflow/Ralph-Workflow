@@ -41,11 +41,12 @@ def _config(
     )
 
 
-def _record() -> RebaseState:
+def _record(freshness_verdict: str | None = "verified") -> RebaseState:
     return RebaseState(
         last_action="rebased",
         last_target="main",
         fast_forwarded=True,
+        freshness_verdict=freshness_verdict,
     )
 
 

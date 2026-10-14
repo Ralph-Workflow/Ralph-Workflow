@@ -15,7 +15,10 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
-from ralph.pipeline._publication_state_machine import next_publication_action
+from ralph.pipeline._publication_state_machine import (
+    PublicationDecision,
+    next_publication_action,
+)
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
@@ -538,6 +541,44 @@ def _consume_throttle_signal_unhealthy(repo_root: Path, remote: str, target: str
 # ----- Push hook --------------------------------------------------------
 
 
+def push_single_remote(
+    repo_root: Path,
+    target: str,
+    *,
+    remote: str,
+    record: RebaseState,
+    timeout_seconds: float = _remote_push_module.PUSH_TIMEOUT_SECONDS,
+) -> tuple[_remote_push_module.PushResult | None, PublicationDecision]:
+    """Ask next_publication_action before invoking remote push.
+
+    If the publication decision is not PUBLISH_NOW, push_branch_to_single_remote
+    is not invoked.
+    """
+    decision = next_publication_action(
+        record,
+        record=None,
+        remote_unavailable=False,
+        configured_remote=remote,
+    )
+    if decision is not PublicationDecision.PUBLISH_NOW:
+        return None, decision
+
+    result = _remote_push_module.push_branch_to_single_remote(
+        repo_root,
+        target,
+        remote=remote,
+        timeout_seconds=timeout_seconds,
+    )
+    typed_result = _coerce_push_result(result, remote=remote, target=target)
+    post_decision = next_publication_action(
+        record,
+        record=None,
+        remote_unavailable=typed_result.status == _remote_push_module.PushStatus.UNREACHABLE,
+        configured_remote=remote,
+    )
+    return typed_result, post_decision
+
+
 def push_target_after_landing(
     config: UnifiedConfig | None,
     repo_root: Path,
@@ -549,7 +590,7 @@ def push_target_after_landing(
     """Push the local target to the configured remote after a successful land.
 
     Returns the ``RebaseState`` annotated with ``last_remote_sync`` and
-    ``last_push``. Never raises; never reverts a local landing. The
+    ``last_push``. Never raises; never reverts a local landing.
     """
     if not remote_sync_enabled(config):
         decision = next_publication_action(
@@ -561,21 +602,18 @@ def push_target_after_landing(
         return record.model_copy(update={"last_publication_decision": decision.value})
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
 
-    # Resolve dynamically so test monkeypatch on ralph.git.remote_push
-    # is observed by both production code and tests.
-    result = _remote_push_module.push_branch_to_single_remote(
+    typed_result, decision = push_single_remote(
         repo_root,
         target,
         remote=chosen_remote,
-        timeout_seconds=_remote_push_module.PUSH_TIMEOUT_SECONDS,
+        record=record,
     )
-    typed_result = _coerce_push_result(result, remote=chosen_remote, target=target)
-    decision = next_publication_action(
-        record,
-        record=None,
-        remote_unavailable=typed_result.status == _remote_push_module.PushStatus.UNREACHABLE,
-        configured_remote=chosen_remote,
-    )
+    if typed_result is None:
+        return record.model_copy(
+            update={
+                "last_publication_decision": decision.value,
+            }
+        )
     return record.model_copy(
         update={
             "last_push": typed_result.summary,
@@ -659,6 +697,7 @@ def reconcile_after_rejected_push(
     if not remote_sync_enabled(config):
         return record
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
+
     final_record = record
     for _attempt in range(max_attempts):
         outcome = _attempt_reconcile_and_push(
@@ -668,6 +707,7 @@ def reconcile_after_rejected_push(
             config=config,
             reintegrate=reintegrate,
             rebase_stop_resolver=rebase_stop_resolver,
+            record=final_record,
         )
         decision = next_publication_action(
             final_record,
@@ -695,22 +735,7 @@ def reconcile_after_rejected_push(
     return final_record
 
 
-def _attempt_reconcile_and_push(
-    *,
-    repo_root: Path,
-    target: str,
-    remote: str,
-    config: UnifiedConfig | None,
-    reintegrate: Callable[[], bool] | None,
-    rebase_stop_resolver: RebaseStopResolver | None,
-) -> _PushOutcome:
-    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
-    refresh = refresh_target_from_remote(
-        repo_root,
-        target,
-        timeout_seconds=FETCH_TIMEOUT_SECONDS,
-        remote=remote,
-    )
+def _probe_refresh_outcome(refresh: str, remote: str, target: str) -> _PushOutcome | None:
     if refresh == REFRESH_NO_REMOTE:
         return _PushOutcome(
             success=False,
@@ -725,6 +750,30 @@ def _attempt_reconcile_and_push(
             pushed=True,
             status=_remote_push_module.PushStatus.UNREACHABLE,
         )
+    return None
+
+
+def _attempt_reconcile_and_push(
+    *,
+    repo_root: Path,
+    target: str,
+    remote: str,
+    config: UnifiedConfig | None,
+    reintegrate: Callable[[], bool] | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    record: RebaseState | None = None,
+) -> _PushOutcome:
+    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
+    refresh = refresh_target_from_remote(
+        repo_root,
+        target,
+        timeout_seconds=FETCH_TIMEOUT_SECONDS,
+        remote=remote,
+    )
+    refresh_outcome = _probe_refresh_outcome(refresh, remote, target)
+    if refresh_outcome is not None:
+        return refresh_outcome
+
     if refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
@@ -753,13 +802,23 @@ def _attempt_reconcile_and_push(
             summary="feature re-integration after remote reconciliation did not land",
             pushed=False,
         )
-    result = _remote_push_module.push_branch_to_single_remote(
+    push_record = (
+        record.model_copy(update={"freshness_verdict": "verified", "fast_forwarded": True})
+        if record is not None
+        else RebaseState(fast_forwarded=True, freshness_verdict="verified")
+    )
+    typed_result, _ = push_single_remote(
         repo_root,
         target,
         remote=remote,
-        timeout_seconds=_remote_push_module.PUSH_TIMEOUT_SECONDS,
+        record=push_record,
     )
-    typed_result = _coerce_push_result(result, remote=remote, target=target)
+    if typed_result is None:
+        return _PushOutcome(
+            success=False,
+            summary="publication suppressed by state machine",
+            pushed=False,
+        )
     return _PushOutcome(
         success=typed_result.success,
         summary=typed_result.summary,
@@ -814,6 +873,7 @@ __all__ = [
     "REMOTE_SYNC_INTERVAL_SECONDS",
     "REMOTE_TIMEOUT",
     "pull_and_reconcile_target",
+    "push_single_remote",
     "push_target_after_landing",
     "reconcile_after_rejected_push",
     "remote_sync_enabled",

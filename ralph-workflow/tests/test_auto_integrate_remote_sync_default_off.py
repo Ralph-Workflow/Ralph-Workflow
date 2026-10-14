@@ -44,7 +44,11 @@ def test_remote_sync_default_on_fetches_and_pushes_when_present(
     assert pull is not None
     assert pull.freshness_verdict == "verified"
     assert pull.freshness_source == "shared local ref"
-    assert push_target_after_landing(config, Path("/repo"), "main", record).last_push is not None
+    landed_record = record.model_copy(update={"freshness_verdict": pull.freshness_verdict})
+    assert (
+        push_target_after_landing(config, Path("/repo"), "main", landed_record).last_push
+        is not None
+    )
     assert calls == ["fetch", "push"]
 
 

@@ -38,9 +38,10 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
     write_record(tmp_path, record)
 
     policy = _policy()
-    shared_rebase = RebaseState(last_action="conflict", last_reason="unresolved")
+    shared_rebase = RebaseState()
     shared_state = PipelineState(phase="development", rebase=shared_rebase)
 
+    from ralph.pipeline._terminal_authority import is_terminal_success_eligible
     from ralph.pipeline.events import PipelineEvent
     from ralph.pipeline.reducer import reduce
 
@@ -49,16 +50,28 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
         shared_state, policy, integration_record=record, rebase_state=shared_rebase
     )
     # 2. Phase-boundary entry point via reducer
-    st_phase_boundary, _ = reduce(shared_state, PipelineEvent.AGENT_SUCCESS, policy)
+    st_phase_boundary, _ = reduce(
+        shared_state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=record
+    )
+    assert st_phase_boundary.rebase.last_decision is not None
     decision_phase_boundary = PhaseDecision(st_phase_boundary.rebase.last_decision)
     # 3. Commit handler entry point via reducer
-    st_commit, _ = reduce(shared_state, PipelineEvent.COMMIT_SUCCESS, policy)
+    st_commit, _ = reduce(
+        shared_state, PipelineEvent.COMMIT_SUCCESS, policy, integration_record=record
+    )
+    assert st_commit.rebase.last_decision is not None
     decision_commit_handler = PhaseDecision(st_commit.rebase.last_decision)
     # 4. Cooldown entry point via reducer
-    st_cooldown, _ = reduce(shared_state, PipelineEvent.PHASE_LOOPBACK, policy)
+    st_cooldown, _ = reduce(
+        shared_state, PipelineEvent.PHASE_LOOPBACK, policy, integration_record=record
+    )
+    assert st_cooldown.rebase.last_decision is not None
     decision_cooldown = PhaseDecision(st_cooldown.rebase.last_decision)
     # 5. Parallel-join entry point via reducer
-    st_join, _ = reduce(shared_state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
+    st_join, _ = reduce(
+        shared_state, PipelineEvent.ALL_WORKERS_COMPLETE, policy, integration_record=record
+    )
+    assert st_join.rebase.last_decision is not None
     decision_parallel_join = PhaseDecision(st_join.rebase.last_decision)
     # 6. Terminal entry point
     terminal_state = PipelineState(phase="complete", rebase=shared_rebase)
@@ -77,3 +90,6 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
     # All 6 must agree on the exact same PhaseDecision
     assert all(d == PhaseDecision.BLOCK_FOR_RECOVERY for d in decisions)
     assert len(set(decisions)) == 1
+
+    # Terminal success eligibility is rejected while active integration record is present
+    assert is_terminal_success_eligible(terminal_state, record, shared_rebase) is False

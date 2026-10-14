@@ -141,3 +141,42 @@ def test_is_terminal_success_eligible_returns_true_when_all_clear() -> None:
 
 def test_phase_decision_enum_has_six_values() -> None:
     assert len(PhaseDecision) == 6
+
+
+def test_decide_returns_block_for_recovery_when_integrated_with_reintegrate_pending() -> None:
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        integrated_feature_sha="c" * 40,
+        reintegrate_pending=True,
+    )
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=record,
+        rebase_state=RebaseState(),
+    )
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
+
+
+def test_decide_durable_intervention_outranks_cached_block_for_recovery() -> None:
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        integrated_feature_sha="c" * 40,
+        diagnostic_intervention_required=True,
+    )
+    rebase_state = RebaseState(last_decision=PhaseDecision.BLOCK_FOR_RECOVERY.value)
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=record,
+        rebase_state=rebase_state,
+    )
+    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED

@@ -1289,13 +1289,14 @@ def run_test_suites(
             )
             if serial_result not in successful_returncodes:
                 return serial_result
-        # wt-15 policy: the real-git E2E shard runs AFTER the general
-        # shards so its xdist workers do not compete with the general
-        # pytest processes for CPU bandwidth. The sequential ordering
-        # is a runner-architecture choice; the 60 s combined budget in
-        # ralph/verify.py is preserved.
+        # The real-git E2E shard runs concurrently with the general
+        # shards using dedicated xdist workers so all shards complete
+        # inside the 60 s combined budget in ralph/verify.py. The exclusive
+        # subprocess_e2e lane continues to sequence after general shards.
+        run_required_concurrently = bool(required_e2e_shard and not subprocess_e2e_only)
+        all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
         general_result = _run_shards(
-            shards,
+            all_shards,
             cwd=cwd,
             env=env,
             basetemp_root=basetemp_path,
@@ -1306,13 +1307,15 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
-            required_e2e_shard_xdist_workers=None,
+            required_e2e_shard_xdist_workers=(
+                required_e2e_shard_xdist_workers if run_required_concurrently else None
+            ),
             successful_returncodes=successful_returncodes,
             empty_selection_returncode=empty_selection_returncode,
         )
         if general_result not in successful_returncodes:
             return general_result
-        if not required_e2e_shard:
+        if not required_e2e_shard or run_required_concurrently:
             return general_result
         return _run_shards(
             (required_e2e_shard,),

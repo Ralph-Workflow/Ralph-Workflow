@@ -402,7 +402,7 @@ or diagnostic strings. The taxonomy defines eight explicit categories:
 | `CONFLICT_RESOLUTION` | Conflict-resolution drain actively driving candidate agents. | Agents resolve conflicted paths; verify markers. |
 | `EVIDENCE_DIAGNOSIS` | Diagnostic lock held while inspecting retained integration evidence. | Scoped evidence collector checks worktree state. |
 | `WAITING` | Bounded retry timer or cooldown delay active before retry. | Await timer expiry or offline connectivity recovery. |
-| `INTERVENTION_REQUIRED` | Diagnostic repair attempts or conflict budget exhausted. | Human operator intervention needed; automatic dispatch halted. |
+| `INTERVENTION_REQUIRED` | Diagnostic repair exhausted → operator intervention; or conflict budget exhausted. | Human operator intervention needed; automatic dispatch halted. |
 | `TERMINAL` | Workflow execution reached terminal success or failure. | Workflow completes; run loop terminates. |
 
 This taxonomy ensures that evidence diagnosis is never mislabeled as conflict
@@ -415,5 +415,5 @@ displays remain synchronized with the underlying state machine.
 - **Why here:** `recovery.md` is the canonical reference for workflow recovery, failure categorization, checkpoints, and intervention states.
 - **What stayed elsewhere:** Low-level transition tables and protocol implementations remain in ADR-0007 and code docstrings.
 - **Duplication:** High-level concepts are explained once here for operators without duplicating code-level schemas.
-- **Clearer route:** Operators can clearly understand why runs enter intervention or evidence diagnosis, and distinguish Git conflict resolution from diagnostic verification.
+- **Clearer route:** Operators can clearly understand why runs enter intervention (diagnostic repair exhausted → operator intervention) or evidence diagnosis, and distinguish Git conflict resolution from diagnostic verification.
 

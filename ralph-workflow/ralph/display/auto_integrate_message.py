@@ -116,25 +116,32 @@ def _remote_suffix(
     return f" [remote: {remote_sync}]"
 
 
+_LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
+    "integrating": OperationDisplayState.INTEGRATING.value,
+    "landing": OperationDisplayState.LANDING.value,
+    "publishing": OperationDisplayState.PUBLISHING.value,
+    "conflict_resolution": OperationDisplayState.CONFLICT_RESOLUTION.value,
+    "evidence_diagnosis": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
+    "waiting": OperationDisplayState.WAITING.value,
+    "intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
+    "terminal": OperationDisplayState.TERMINAL.value,
+    "diagnosing": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
+    "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
+    "completed": OperationDisplayState.TERMINAL.value,
+}
+
+
 def _resolve_operation_display_state(
     operation_display_state: str | OperationDisplayState | None,
     action: str | None,
 ) -> str | None:
-    raw_state = operation_display_state
-    if raw_state is None and action is not None:
+    if operation_display_state is not None:
         cand = (
-            str(action.value if isinstance(action, OperationDisplayState) else action)
-            .strip()
-            .lower()
-            .replace("-", "_")
-            .replace(" ", "_")
-        )
-        if cand in _OPERATION_DISPLAY_STATES:
-            raw_state = cand
-
-    if raw_state is not None:
-        cand = (
-            str(raw_state.value if isinstance(raw_state, OperationDisplayState) else raw_state)
+            str(
+                operation_display_state.value
+                if isinstance(operation_display_state, OperationDisplayState)
+                else operation_display_state
+            )
             .strip()
             .lower()
             .replace("-", "_")
@@ -142,6 +149,12 @@ def _resolve_operation_display_state(
         )
         if cand in _OPERATION_DISPLAY_STATES:
             return cand
+        return None
+
+    if action is not None:
+        raw_action = action.value if isinstance(action, OperationDisplayState) else action
+        if isinstance(raw_action, str):
+            return _LEGACY_ACTION_DISPLAY_MAP.get(raw_action)
     return None
 
 

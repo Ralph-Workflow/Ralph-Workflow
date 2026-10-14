@@ -735,15 +735,10 @@ def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
     )
 
     assert exit_code == 0
-    # General wave: 2 spawns, both reaped. E2E wave: 1 spawn, reaped.
-    # reap_spawn_counts is len(spawner.calls) at the time of reap, so
-    # the two general reaps see 2 (both general spawns done) and the
-    # E2E reap sees 3 (both general + E2E spawns done). The E2E shard
-    # is sequenced AFTER the general wave so the 8 xdist workers do
-    # not compete with the 8 general pytest processes for CPU on a
-    # 12-core host; that ordering fits the 60 s combined budget in
-    # ralph/verify.py.
-    assert reap_spawn_counts == [2, 2, 3]
+    # Concurrent execution: all 3 shards (2 general + 1 required E2E)
+    # are spawned concurrently in one wave, so reap_spawn_counts records
+    # 3 at each reap.
+    assert reap_spawn_counts == [3, 3, 3]
     dedicated_command = spawner.calls[-1][0]
     assert dedicated_command[3] == "tests"
     assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES

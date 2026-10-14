@@ -35,6 +35,14 @@ def test_terminal_success_false_when_fan_out_pending() -> None:
     assert is_terminal_success_eligible(None, None, rebase_state) is False
 
 
+def test_terminal_success_false_when_fan_out_blocked() -> None:
+    rebase_state = RebaseState(
+        last_publication_decision="publication_terminal",
+        last_fan_out_decision="join_blocked",
+    )
+    assert is_terminal_success_eligible(None, None, rebase_state) is False
+
+
 def test_terminal_success_true_when_all_clear() -> None:
     rebase_state = RebaseState(
         last_publication_decision="publication_terminal",

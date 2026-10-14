@@ -39,7 +39,6 @@ def is_terminal_success_eligible(
     if rebase_state.last_fan_out_decision not in (
         None,
         "join_complete",
-        "join_blocked",
     ):
         return False
     del state

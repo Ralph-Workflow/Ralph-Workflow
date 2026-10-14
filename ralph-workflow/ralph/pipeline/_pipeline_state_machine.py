@@ -52,21 +52,26 @@ def _check_blocking_decision(
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
 ) -> PhaseDecision | None:
+    if integration_record is not None:
+        if integration_record.diagnostic_intervention_required:
+            return PhaseDecision.REPORT_INTERVENTION_REQUIRED
+        if (
+            integration_record.reintegrate_pending
+            or integration_record.phase == "integrating"
+            or (
+                integration_record.phase == "integrated"
+                and (
+                    integration_record.integrated_feature_sha is None
+                    or integration_record.reintegrate_pending
+                )
+            )
+        ):
+            return PhaseDecision.BLOCK_FOR_RECOVERY
     if rebase_state.last_decision in (
         PhaseDecision.BLOCK_FOR_RECOVERY.value,
         PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
     ):
         return PhaseDecision(rebase_state.last_decision)
-    if integration_record is not None:
-        if integration_record.diagnostic_intervention_required:
-            return PhaseDecision.REPORT_INTERVENTION_REQUIRED
-        if integration_record.phase == "integrating":
-            return PhaseDecision.BLOCK_FOR_RECOVERY
-        if (
-            integration_record.phase == "integrated"
-            and integration_record.integrated_feature_sha is None
-        ):
-            return PhaseDecision.BLOCK_FOR_RECOVERY
     if rebase_state.integration_unresolved:
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None

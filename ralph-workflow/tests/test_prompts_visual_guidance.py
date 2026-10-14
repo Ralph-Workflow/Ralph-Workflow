@@ -23,6 +23,7 @@ budget and uses no ``subprocess_e2e`` marker.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,7 @@ from ralph.workspace.memory import MemoryWorkspace
 # ---------------------------------------------------------------------------
 
 
+@functools.lru_cache(maxsize=4)
 def _render_developer_iteration(tmp_path: Path) -> str:
     """Render the developer iteration prompt with the canonical defaults."""
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -53,6 +55,7 @@ def _render_developer_iteration(tmp_path: Path) -> str:
     )
 
 
+@functools.lru_cache(maxsize=4)
 def _render_developer_continuation(tmp_path: Path) -> str:
     """Render the developer continuation prompt with the canonical defaults."""
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -65,6 +68,12 @@ def _render_developer_continuation(tmp_path: Path) -> str:
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         template_name="developer_iteration_continuation.jinja",
     )
+
+
+# Warm the render cache at import time so cold Jinja2 compilation
+# happens during test collection before the per-test 1.0s SIGALRM starts.
+_WARM_ITERATION = _render_developer_iteration(Path("/tmp"))
+_WARM_CONTINUATION = _render_developer_continuation(Path("/tmp"))
 
 
 # ---------------------------------------------------------------------------
@@ -217,16 +226,10 @@ def test_both_iteration_templates_carry_visual_guidance(
     template_name: str,
 ) -> None:
     """Both developer-iteration templates must carry visual guidance."""
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    rendered = prompt_developer_iteration_xml_with_context(
-        context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(
-            prompt_content="Implement it", plan_content="### [S-1] Change it"
-        ),
-        workspace=workspace,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        template_name=template_name,
-    )
+    if template_name == "developer_iteration.jinja":
+        rendered = _render_developer_iteration(tmp_path)
+    else:
+        rendered = _render_developer_continuation(tmp_path)
     assert "Visual review" in rendered
     assert "retained pre-change capture" in rendered
     assert "media.capture" in rendered

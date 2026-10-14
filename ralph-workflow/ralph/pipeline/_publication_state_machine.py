@@ -31,11 +31,13 @@ class PublicationDecision(StrEnum):
 
 
 def _freshness_publication_action(freshness: str | None) -> PublicationDecision:
+    if freshness == "verified":
+        return PublicationDecision.PUBLISH_NOW
     if freshness == "unsafe":
         return PublicationDecision.PUBLICATION_BLOCKED
     if freshness in {"degraded", "unverified"}:
         return PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
-    return PublicationDecision.PUBLISH_NOW
+    return PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
 
 
 def next_publication_action(

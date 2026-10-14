@@ -66,6 +66,18 @@ Every lifecycle fact has exactly one authoritative owner and one transition boun
 Derived models (`RebaseState`, `StatusBarModel`, `PipelineSnapshot`) are strictly
 one-way projections. Projections must never mutate or overrule their authoritative source.
 
+#### Domain fact lifecycle authority inventory
+
+| Domain Fact | Authoritative Owner | Authorized Writers | Readers | Projections | Key Transitions | Restart Behavior | UNKNOWN Handling | Blocking Semantics |
+|---|---|---|---|---|---|---|---|---|
+| **Pipeline Progression** | `_pipeline_state_machine.decide_phase_transition` | Pure function (no state writers; evaluates pure phase decisions) | `reducer.py`, `run_loop.py`, `evaluate_startup_phase_decision` | `PipelineState.phase`, `RebaseState.last_decision` | `BLOCK_FOR_RECOVERY`, `REPORT_INTERVENTION_REQUIRED`, `CONTINUE_PHASE` | Purely re-evaluated on restart from durable record and state | Defaults to `BLOCK_FOR_RECOVERY` (fails closed) | Halts forward phase dispatch; forces recovery execution |
+| **Integration Obligation** | `IntegrationRecord` | Atomic disk writes via `record.with_transition(...)` in `auto_integrate.py`, `_owned_landing_reintegration.py`, `_target_reconciliation_handoff.py`, `_integration_diagnostic.py` | `run_loop.py`, `reducer.py`, `decide_phase_transition`, `auto_integrate_recovery.py` | `RebaseState.recovery_record_retained`, `RebaseState.resolving_rebase`, `RebaseState.resolving_merge` | `START_INTEGRATING`, `PROMOTE_TO_INTEGRATED`, `MARK_REINTEGRATE_PENDING`, `RAISE_DIAGNOSTIC_INTERVENTION`, `CLEAR_RECORD` | Reloaded from disk `.agent/tmp/integration_record.json` | Corrupted/malformed records rejected; unreadable triggers intervention | Durable record outranks cached decisions; blocks phase advancement until cleared |
+| **Git Operation Evidence** | `OperationEvidenceCollector` (`SubprocessOperationEvidenceCollector`) | Collector queries worktree-private Git state (no global reflogs/for-each-ref) | `_integration_diagnostic.py`, `auto_integrate_recovery.py` | `OperationFact` instances | Fact collection protocol | Re-collected per operation from worktree HEAD and index | Missing/corrupt evidence fails closed (returns None / UNKNOWN) | Unreadable evidence prevents forward action; record retained for retry |
+| **Remote Publication** | `_publication_state_machine.next_publication_action` | `auto_integrate_remote_sync.py` via `push_single_remote`, `push_target_after_landing` | `auto_integrate_remote_sync.py`, `reconcile_after_rejected_push` | `RebaseState.last_publication_decision`, `operation_display_state` | `PUBLISH_NOW`, `PUBLICATION_BLOCKED`, `PUBLISH_DEFERRED_FRESHNESS`, `PUBLISH_DEFERRED_REMOTE` | Re-evaluated from freshness verdict and remote reachability | Absent/unverified/degraded freshness returns `PUBLISH_DEFERRED_FRESHNESS` (fails closed) | Push mutators never invoked unless decision is `PUBLISH_NOW`; local landing preserved |
+| **Parallel Fan-out / Join** | `_fan_out_authority` | `reducer.py` on `ALL_WORKERS_COMPLETE` / worker completion events | `reducer.py`, `run_loop.py` | `RebaseState.last_decision`, worker state models | `JOIN_COMPLETE`, `JOIN_BLOCKED`, `WAITING` | Preserved via checkpoint state | Incomplete join fails closed | Blocked worker join prevents terminal workflow success |
+| **Terminal Success Eligibility** | `_terminal_authority.is_terminal_success_eligible` | Pure function (guards run loop terminal loop exit) | `run_loop.py` | Terminal loop continuation | Eligibility predicate | Re-evaluated from durable record and state on restart | Any active integration record or `join_blocked` returns `False` | Run loop cannot exit with success while integration is active or join is blocked |
+| **Operation Display State** | `rebase_state._resolve_operation_display_state` / `auto_integrate_message` | Derived projection on `RebaseState` update | `format_auto_integrate_message`, UI live buffer, status bar | Status bar text, message strings | Maps to 8 closed states: `conflict_resolution`, `evidence_diagnosis`, `integrating`, `landing`, `publishing`, `waiting`, `intervention_required`, `terminal` | Projected freshly from state on resume | Unrecognized action falls back safely without arbitrary prose inference | Pure display projection; never feeds back into authority decisions |
+
 ### 2. Operation-scoped evidence collection
 
 The `OperationEvidenceCollector` protocol replaces repository-global observations.
@@ -168,8 +180,11 @@ areas are explicitly deferred to follow-up ADRs:
 - **Conflict-resolution session re-architecture**: The resolution ladder, strategy
   definitions, and candidate rotation in `ralph/pipeline/auto_integrate_conflict_budget.py`
   and `ralph/conflict_resolution/` remain intact under their existing contracts (ADR-0004, ADR-0005).
-- **Remote-sync state machine**: The fail-open remote sync ladder (`ralph.pipeline.auto_integrate_remote_sync`)
-  continues to handle push/pull semantics; only its decision classification is bound to `PublicationDecision`.
+- **Remote-sync state machine**: `push_single_remote`, `push_target_after_landing`, and
+  `_attempt_reconcile_and_push` in `ralph.pipeline.auto_integrate_remote_sync` now strictly require
+  `next_publication_action` returning `PublicationDecision.PUBLISH_NOW` before invoking any remote push mutator.
+  Non-fast-forward remote reconciliation loops continue to follow existing retry policies, but all mutations
+  fail closed when freshness or remote reachability is absent.
 - **Non-agent diagnostic repair**: Diagnostic remediation continues to invoke diagnostic
   agents up to the bounded cap; replacing agent diagnosis with purely deterministic
   syntactic repair is deferred.

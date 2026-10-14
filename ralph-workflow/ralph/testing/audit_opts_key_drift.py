@@ -350,6 +350,7 @@ def _parse_module_payload(payload: tuple[str, str]) -> tuple[str, _Module]:
     path_str, root_str = payload
     path = Path(path_str)
     package_root = Path(root_str)
+    # filesystem-read-ok: audit scanner loads module source for static AST inspection
     source_bytes = path.read_bytes()
     name = _module_name(path, package_root)
     if b"def " not in source_bytes and b"=" not in source_bytes and b"import" not in source_bytes:

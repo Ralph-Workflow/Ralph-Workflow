@@ -140,6 +140,10 @@ class RebaseState(RalphBaseModel):
     # durable conflict identity; defaulting preserves legacy checkpoints.
     last_conflict_strategy_index: int = 0
 
+    resolving_rebase: bool = False
+    resolving_merge: bool = False
+    diagnostic_ownership: str | None = None
+
     # ``recovery_record_retained`` marks a startup crash-recovery outcome
     # that deliberately LEFT the durable ``IntegrationRecord`` on disk for
     # the next startup to retry (a failed abort, a failed reset, a target
@@ -250,6 +254,9 @@ class RebaseState(RalphBaseModel):
             or self.recovery_record_retained
             or self.legacy_checkpoint_blocked
             or self.unresolved_integration_carried
+            or self.resolving_rebase
+            or self.resolving_merge
+            or bool(self.diagnostic_ownership)
         )
 
 
@@ -274,7 +281,13 @@ _ACTION_DISPLAY_MAP: dict[str, str] = {
 def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
     if rebase.last_decision in _DECISION_DISPLAY_MAP:
         return _DECISION_DISPLAY_MAP[rebase.last_decision]
-    if rebase.last_action == "conflict" or rebase.integration_unresolved:
+    if (
+        rebase.last_action in ("diagnosing", "evidence_diagnosis")
+        or bool(rebase.diagnostic_ownership)
+        or rebase.recovery_record_retained
+    ):
+        return "evidence_diagnosis"
+    if rebase.last_action == "conflict" or rebase.resolving_rebase or rebase.resolving_merge:
         return "conflict_resolution"
     if rebase.last_publication_decision in (
         "publish_now",
@@ -288,6 +301,4 @@ def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
         and rebase.fast_forwarded
     ):
         return "landing"
-    if rebase.last_action in _ACTION_DISPLAY_MAP:
-        return _ACTION_DISPLAY_MAP[rebase.last_action]
-    return None
+    return _ACTION_DISPLAY_MAP.get(rebase.last_action) if rebase.last_action else None

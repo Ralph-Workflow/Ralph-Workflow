@@ -1415,77 +1415,31 @@ def _source_has_phase_mutation(source: str) -> bool:
     return any(needle in source for needle in _PHASE_MUTATION_KEYWORDS)
 
 
-def _collect_phase_transition_findings() -> None:
-    """Walk every ralph/pipeline/**/*.py file (excluding plumbing/) and find
-    every FunctionDef/AsyncFunctionDef that contains a phase-mutating node.
-    A phase-mutating node is a Call with func.id == 'copy_with' that has a
-    'phase' kwarg, OR a Call where the function name contains 'advance_phase'.
-    For each such function, record whether the same function body contains
-    BOTH `last_agent_session_id=None` AND `agent_retry_intent=cleared_agent_retry_intent()`.
-    """
-    PHASE_TRANSITION_FINDINGS.clear()
-    pipeline_dir = RALPH_ROOT / "pipeline"
-    plumbing_dir = pipeline_dir / "plumbing"
-    for path in _walk_python_files(pipeline_dir):
-        if plumbing_dir in path.parents:
-            continue
-        try:
-            source = _read(path)
-        except (OSError, UnicodeDecodeError):
-            continue
-        # Substring pre-filter: skip files that cannot contain a phase
-        # mutation. ~86 of ~91 ralph/pipeline/*.py files are skipped.
-        if not _source_has_phase_mutation(source):
-            continue
-        try:
-            tree = _parse(path)
-        except (SyntaxError, OSError):
-            continue
-        lines = source.splitlines()
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            has_phase_mutation = False
-            for child in ast.walk(node):
-                if not isinstance(child, ast.Call):
-                    continue
-                # `state.copy_with(phase=...)` call
-                func = child.func
-                is_copy_with_phase = (
-                    isinstance(func, ast.Attribute)
-                    and func.attr == "copy_with"
-                    and any(
-                        kw.arg == "phase" for kw in child.keywords if isinstance(kw, ast.keyword)
-                    )
-                )
-                # `progress.advance_phase(...)` call
-                is_advance_phase = isinstance(func, ast.Attribute) and "advance_phase" in func.attr
-                # `state.advance_phase(...)` call
-                is_state_advance = isinstance(func, ast.Attribute) and func.attr == "advance_phase"
-                if is_copy_with_phase or is_advance_phase or is_state_advance:
-                    has_phase_mutation = True
-                    break
-            if not has_phase_mutation:
-                continue
+class _PhaseTransitionVisitor(ast.NodeVisitor):
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+        self.findings: list[tuple[str, bool, bool]] = []
+        self._current_function: str | None = None
+        self._has_phase_mutation: bool = False
+
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        prev_func = self._current_function
+        prev_mutation = self._has_phase_mutation
+
+        self._current_function = node.name
+        self._has_phase_mutation = False
+
+        self.generic_visit(node)
+
+        if self._has_phase_mutation:
             if hasattr(node, "end_lineno") and node.end_lineno is not None:
-                body_src = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+                body_src = "\n".join(self.lines[node.lineno - 1 : node.end_lineno])
             else:
                 body_src = ast.unparse(node)
-            # A phase transition is safe if it:
-            # (a) routes through `progress.advance_phase(...)` (which does
-            #     both clears internally), OR
-            # (b) builds its base state from `create_initial_state(...)` or
-            #     `create_fresh_state(...)` (which is a brand-new state with
-            #     no prior session id or retry intent to leak), OR
-            # (c) explicitly clears BOTH `last_agent_session_id` and
-            #     `agent_retry_intent` in the same function body.
             routes_through_advance_phase = "progress.advance_phase" in body_src
             builds_fresh_state = (
                 "create_initial_state" in body_src or "create_fresh_state" in body_src
             )
-            # Both forms count as a clear:
-            # - `last_agent_session_id=None` (kwarg form)
-            # - `prepare_updates['last_agent_session_id'] = None` (subscript form)
             has_last_agent_clear = (
                 routes_through_advance_phase
                 or builds_fresh_state
@@ -1502,10 +1456,62 @@ def _collect_phase_transition_findings() -> None:
                 or 'agent_retry_intent"] = cleared_agent_retry_intent()' in body_src
                 or "['agent_retry_intent']=cleared_agent_retry_intent()" in body_src
             )
-            rel = str(path.relative_to(RALPH_ROOT.parent))
-            PHASE_TRANSITION_FINDINGS.setdefault(rel, []).append(
-                (node.name, has_last_agent_clear, has_agent_retry_intent_clear)
+            self.findings.append((node.name, has_last_agent_clear, has_agent_retry_intent_clear))
+
+        self._current_function = prev_func
+        self._has_phase_mutation = prev_mutation
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.visit_FunctionDef(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._current_function is not None and not self._has_phase_mutation:
+            func = node.func
+            is_copy_with_phase = (
+                isinstance(func, ast.Attribute)
+                and func.attr == "copy_with"
+                and any(kw.arg == "phase" for kw in node.keywords if isinstance(kw, ast.keyword))
             )
+            is_advance_phase = isinstance(func, ast.Attribute) and "advance_phase" in func.attr
+            is_state_advance = isinstance(func, ast.Attribute) and func.attr == "advance_phase"
+            if is_copy_with_phase or is_advance_phase or is_state_advance:
+                self._has_phase_mutation = True
+        self.generic_visit(node)
+
+
+def _collect_phase_transition_findings() -> None:
+    """Walk every ralph/pipeline/**/*.py file (excluding plumbing/) and find
+    every FunctionDef/AsyncFunctionDef that contains a phase-mutating node.
+    A phase-mutating node is a Call with func.id == 'copy_with' that has a
+    'phase' kwarg, OR a Call where the function name contains 'advance_phase'.
+    For each such function, record whether the same function body contains
+    BOTH `last_agent_session_id=None` AND `agent_retry_intent=cleared_agent_retry_intent()`.
+    """
+    if PHASE_TRANSITION_FINDINGS:
+        return
+    pipeline_dir = RALPH_ROOT / "pipeline"
+    plumbing_prefix = str(pipeline_dir / "plumbing")
+    for path in _walk_python_files(pipeline_dir):
+        if str(path).startswith(plumbing_prefix):
+            continue
+        try:
+            source = _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        # Substring pre-filter: skip files that cannot contain a phase
+        # mutation. ~86 of ~91 ralph/pipeline/*.py files are skipped.
+        if not _source_has_phase_mutation(source):
+            continue
+        try:
+            tree = _parse(path)
+        except (SyntaxError, OSError):
+            continue
+        lines = source.splitlines()
+        visitor = _PhaseTransitionVisitor(lines)
+        visitor.visit(tree)
+        if visitor.findings:
+            rel = str(path.relative_to(RALPH_ROOT.parent))
+            PHASE_TRANSITION_FINDINGS[rel] = visitor.findings
 
 
 class TestNoPhaseTransitionSeamLeaksSessionId:

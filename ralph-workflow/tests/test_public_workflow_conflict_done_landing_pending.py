@@ -60,14 +60,14 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     assert on_disk is not None
     assert on_disk.phase == "integrated"
 
-    # 2. RebaseState has last_decision = BLOCK_FOR_RECOVERY
+    # 2. Clean pipeline state without pre-seeded decision
     state = PipelineState(
         phase="integrating",
-        rebase=RebaseState(last_decision=PhaseDecision.BLOCK_FOR_RECOVERY.value),
+        rebase=RebaseState(),
     )
     policy = _policy()
 
-    # 3. decide_phase_transition returns BLOCK_FOR_RECOVERY
+    # 3. decide_phase_transition returns BLOCK_FOR_RECOVERY based strictly on durable record
     decision = decide_phase_transition(
         state,
         policy,
@@ -76,8 +76,8 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     )
     assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
-    # 4. Reducer preserves the non-business phase and does not return to development
-    new_state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    # 4. Reducer receives integration_record, preserves the non-business phase and does not return to development
+    new_state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=on_disk)
     assert new_state.phase == "integrating"
     assert new_state.phase != "development"
     assert new_state.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value

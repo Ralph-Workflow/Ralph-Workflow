@@ -110,7 +110,7 @@ def test_publish_now_when_freshness_verified() -> None:
     )
 
 
-def test_publish_now_when_freshness_none() -> None:
+def test_publish_deferred_freshness_when_freshness_none() -> None:
     assert (
         next_publication_action(
             RebaseState(fast_forwarded=True, freshness_verdict=None),
@@ -118,5 +118,17 @@ def test_publish_now_when_freshness_none() -> None:
             remote_unavailable=False,
             configured_remote="origin",
         )
-        is PublicationDecision.PUBLISH_NOW
+        is PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
+    )
+
+
+def test_publish_deferred_freshness_when_freshness_unknown() -> None:
+    assert (
+        next_publication_action(
+            RebaseState(fast_forwarded=True, freshness_verdict="unknown_verdict"),
+            record=_record(),
+            remote_unavailable=False,
+            configured_remote="origin",
+        )
+        is PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
     )

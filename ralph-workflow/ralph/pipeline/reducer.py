@@ -91,6 +91,7 @@ from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
     from ralph.policy.models import PipelinePolicy
     from ralph.recovery.agent_selection import AgentSelection
@@ -359,6 +360,7 @@ def _route_reduced_decision(
     state: PipelineState,
     new_state: PipelineState,
     pipeline_policy: PipelinePolicy | None,
+    integration_record: IntegrationRecord | None = None,
 ) -> PipelineState:
     """Route the reducer's decision through last_decision on RebaseState."""
     rebase = new_state.rebase
@@ -386,13 +388,13 @@ def _route_reduced_decision(
         rebase = rebase.model_copy(update={"last_decision": state.rebase.last_decision})
         new_state = new_state.copy_with(rebase=rebase)
 
-    if state.rebase.last_decision is None and not is_phase_boundary:
+    if state.rebase.last_decision is None and not is_phase_boundary and integration_record is None:
         return new_state
 
     decision = decide_phase_transition(
         new_state,
         pipeline_policy,
-        integration_record=None,
+        integration_record=integration_record,
         rebase_state=new_state.rebase,
     )
     decision_str = decision.value
@@ -483,6 +485,7 @@ def reduce(
     recovery: RecoveryController | None = None,
     *,
     routing_timing: RoutingTiming | None = None,
+    integration_record: IntegrationRecord | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Pure state transition function.
 
@@ -501,6 +504,8 @@ def reduce(
             and worker failure events are delegated to it for classification-aware
             recovery (intelligent attribution, budget management). When None,
             the legacy retry/fallback logic is used.
+        routing_timing: Optional routing timing controls for cycle timeboxes.
+        integration_record: Optional durable integration record.
 
     Returns:
         Tuple of (new_state, effects). Effects are instructions for the
@@ -513,7 +518,12 @@ def reduce(
         recovery=recovery,
         routing_timing=routing_timing,
     )
-    routed_state = _route_reduced_decision(state, new_state, pipeline_policy)
+    routed_state = _route_reduced_decision(
+        state,
+        new_state,
+        pipeline_policy,
+        integration_record=integration_record,
+    )
     return routed_state, effects
 
 
