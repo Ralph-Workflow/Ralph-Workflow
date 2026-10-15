@@ -889,7 +889,9 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     s2 = read_record(root)
     assert s2 is not None and s2.merge_commit_repair_attempts == cap
     assert s2.diagnostic_intervention_required is True
-    expected_reason = "collector crashed" if use_raising_collector else "diagnostic repair exhausted"
+    expected_reason = (
+        "collector crashed" if use_raising_collector else "diagnostic repair exhausted"
+    )
     assert expected_reason in (s2.repair_cap_reason or "")
     assert invoked == []
 
@@ -905,7 +907,9 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert invoked == []
 
 
-def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap() -> None:
+def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap() -> (
+    None
+):
     backend = _RecordBackend()
     root = Path("/workspace")
     cap = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP

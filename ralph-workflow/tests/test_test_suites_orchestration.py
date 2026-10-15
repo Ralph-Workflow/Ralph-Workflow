@@ -696,9 +696,7 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("runner started")),
     )
 
-    with pytest.raises(
-        SystemExit, match="--profile unit, --profile integration, or --profile fast"
-    ):
+    with pytest.raises(SystemExit, match="--profile durations"):
         test_suites_module.main(("--profile", "unknown"))
 
 
@@ -1100,3 +1098,24 @@ def test_run_test_suites_charges_static_discovery_to_parent_deadline(
 
     assert exit_code == 124
     assert spawner.calls == []
+
+
+def test_profile_durations_is_accepted_and_dispatches_to_per_file_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The durations profile dispatches to the per-file duration runner."""
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        test_suites_module, "_run_durations_profile", lambda cwd: calls.append(cwd) or 7
+    )
+
+    exit_code = test_suites_module.main(("--profile", "durations"))
+
+    assert exit_code == 7
+    assert calls == [Path.cwd()]
+
+
+def test_profile_durations_appears_in_help_text() -> None:
+    """Unknown-profile SystemExit help text mentions the durations profile."""
+    with pytest.raises(SystemExit, match="--profile durations"):
+        test_suites_module.main(("--profile", "unknown"))

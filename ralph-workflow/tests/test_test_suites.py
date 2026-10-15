@@ -886,3 +886,7 @@ def test_real_pty_completion_no_terminal_lost_collected_under_subprocess_e2e_and
     assert any(target_rel in line for line in smoke_target_body), (
         f"smoke target in Makefile must contain {target_rel}"
     )
+
+
+def test_durations_profile_constant_added_to_focused_profiles() -> None:
+    assert "durations" in test_suites_module._FOCUSED_PROFILES

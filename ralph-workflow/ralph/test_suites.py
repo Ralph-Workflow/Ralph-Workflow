@@ -234,7 +234,9 @@ FAST_PROFILE_TEST_FILES: tuple[str, ...] = (
     "tests/test_test_suites.py",
     "tests/test_test_suites_orchestration.py",
 )
-_FOCUSED_PROFILES = frozenset((_UNIT_PROFILE, _INTEGRATION_PROFILE, _FAST_PROFILE))
+_FOCUSED_PROFILES = frozenset((_UNIT_PROFILE, _INTEGRATION_PROFILE, _FAST_PROFILE, "durations"))
+_DURATIONS_PROFILE = "durations"
+_DURATIONS_PER_FILE_TIMEOUT_SECONDS = 30.0
 _PROFILE_OPTION_ARGUMENT_COUNT = 2
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # DA-003 (wt-028-display P1 / AC-08 / S-13): when the 60s parent
@@ -1324,6 +1326,48 @@ def run_test_suites(
         )
 
 
+def _run_durations_profile(cwd: Path) -> int:
+    """Run each test file individually and print per-file wall-clock durations."""
+    inherited_env = dict(os.environ)
+    pythonpath = inherited_env.get("PYTHONPATH")
+    if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
+        inherited_env.pop("PYTHONPATH", None)
+    env = build_timeout_env(
+        base_env=inherited_env,
+        test_timeout_seconds=timeout_seconds_from_env(
+            TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS
+        ),
+        suite_timeout_seconds=DEFAULT_SUITE_TIMEOUT_SECONDS,
+    )
+    seen_files: dict[str, None] = {}
+    for test_file in (*discover_test_files(cwd), *REQUIRED_AUTO_INTEGRATE_E2E_FILES):
+        seen_files[test_file] = None
+    files = tuple(seen_files)
+    basetemp_parent = Path(tempfile.gettempdir()) / "ralph-pytest-durations"
+    basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="durations-", dir=basetemp_parent) as tmp_root:
+        for index, relative_path in enumerate(files):
+            command = (
+                sys.executable,
+                "-m",
+                "pytest",
+                relative_path,
+                "-q",
+                "--no-header",
+                "-p",
+                "no:cacheprovider",
+                "--durations=0",
+                "--durations-min=0.0001",
+                "--basetemp",
+                str(Path(tmp_root) / str(index)),
+            )
+            file_started_at = time.monotonic()
+            process = _default_spawner(command, cwd=cwd, env=env)
+            _reap_process(process, timeout_seconds=_DURATIONS_PER_FILE_TIMEOUT_SECONDS)
+            print(f"{relative_path}: {time.monotonic() - file_started_at}", flush=True)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the ``ralph.test_suites`` command-line tool.
 
@@ -1338,6 +1382,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
     if arguments == ("--subprocess-e2e",):
         return run_test_suites(cwd=Path.cwd(), subprocess_e2e_only=True)
+    if arguments == ("--profile", _DURATIONS_PROFILE):
+        return _run_durations_profile(cwd=Path.cwd())
     if (
         len(arguments) == _PROFILE_OPTION_ARGUMENT_COUNT
         and arguments[0] == "--profile"
@@ -1346,7 +1392,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_test_suites(cwd=Path.cwd(), profile=arguments[1])
     if arguments:
         raise SystemExit(
-            "ralph.test_suites accepts --profile unit, --profile integration, or --profile fast, "
+            "ralph.test_suites accepts --profile unit, --profile integration, --profile fast, or --profile durations, "
             "--auto-integrate-e2e, or --subprocess-e2e"
         )
     return run_test_suites(cwd=Path.cwd())

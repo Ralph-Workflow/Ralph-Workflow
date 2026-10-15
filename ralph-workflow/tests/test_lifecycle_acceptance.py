@@ -423,10 +423,7 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
     assert result_ok.fast_forwarded is True
     assert result_ok.last_remote_sync == RemoteSyncStatus.PUSHED
     assert result_ok.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
-    assert (
-        result_ok.last_publication_decision
-        == PublicationDecision.PUBLICATION_TERMINAL.value
-    )
+    assert result_ok.last_publication_decision == PublicationDecision.PUBLICATION_TERMINAL.value
     assert is_terminal_success_eligible(None, None, result_ok) is True
 
     # 3. Case B: Remote publication unavailable (publish_deferred_remote)
@@ -476,8 +473,7 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
     )
     assert result_disabled.fast_forwarded is True
     assert (
-        result_disabled.last_publication_decision
-        == PublicationDecision.PUBLICATION_TERMINAL.value
+        result_disabled.last_publication_decision == PublicationDecision.PUBLICATION_TERMINAL.value
     )
     assert is_terminal_success_eligible(None, None, result_disabled) is True
 
@@ -530,12 +526,8 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     )
     decision_commit = _eval_commit_handling(tmp_path, shared_state, bundle)
     decision_cooldown = _eval_cooldown_recovery(tmp_path, shared_state, ctx)
-    decision_parallel_join = _eval_parallel_join(
-        tmp_path, shared_state, shared_rebase, bundle
-    )
-    decision_terminal = _eval_terminal_handling(
-        tmp_path, shared_rebase, policy, record
-    )
+    decision_parallel_join = _eval_parallel_join(tmp_path, shared_state, shared_rebase, bundle)
+    decision_terminal = _eval_terminal_handling(tmp_path, shared_rebase, policy, record)
 
     decisions = {
         "startup": decision_startup,
@@ -547,12 +539,12 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     }
 
     for name, decision in decisions.items():
-        assert isinstance(
-            decision, PhaseDecision
-        ), f"Entry point {name} did not produce a typed PhaseDecision"
-        assert (
-            decision == PhaseDecision.BLOCK_FOR_RECOVERY
-        ), f"Entry point {name} evaluated to {decision}, expected BLOCK_FOR_RECOVERY"
+        assert isinstance(decision, PhaseDecision), (
+            f"Entry point {name} did not produce a typed PhaseDecision"
+        )
+        assert decision == PhaseDecision.BLOCK_FOR_RECOVERY, (
+            f"Entry point {name} evaluated to {decision}, expected BLOCK_FOR_RECOVERY"
+        )
 
     assert len(set(decisions.values())) == 1
 

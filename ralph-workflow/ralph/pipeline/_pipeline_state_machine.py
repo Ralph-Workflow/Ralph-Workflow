@@ -83,18 +83,18 @@ def _check_blocking_decision(
             IntegrationAction.LAND_TARGET,
         ):
             return PhaseDecision.BLOCK_FOR_RECOVERY
-    if getattr(rebase_state, "is_intervention_required", False) is True:  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    if rebase_state.is_intervention_required is True:
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
-    last_outcome = getattr(rebase_state, "last_outcome", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    fast_forwarded = getattr(rebase_state, "fast_forwarded", False)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    last_outcome = rebase_state.last_outcome
+    fast_forwarded = rebase_state.fast_forwarded
     unlanded_rebase = (
-        last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)  # type: ignore[misc,operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        and fast_forwarded is False  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        and fast_forwarded is False
     )
     if (
         unlanded_rebase
-        or getattr(rebase_state, "integration_unresolved", False) is True  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        or getattr(rebase_state, "recovery_record_retained", False) is True  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        or rebase_state.integration_unresolved is True
+        or rebase_state.recovery_record_retained is True
     ):
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None

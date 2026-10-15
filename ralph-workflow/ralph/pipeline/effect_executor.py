@@ -554,9 +554,7 @@ def _handle_recovery_attempt_failure(
             retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
         _set_last_captured_retry_intent(retry_intent)
         raise exc
-    failure_signature = retry_failure_signature(
-        recovery_plan.reason, list(rendered_output)
-    )
+    failure_signature = retry_failure_signature(recovery_plan.reason, list(rendered_output))
     if progress_guard.record(failure_signature):
         logger.error(
             "Aborting agent '{}' retries: {} consecutive identical "
@@ -572,9 +570,7 @@ def _handle_recovery_attempt_failure(
                 progress_guard=progress_guard.snapshot(),
             )
         )
-        return _AttemptResult(
-            PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id
-        )
+        return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
     state.prompt_file = recovery_plan.prompt_file
     state.resume_session_id = recovery_plan.session_id
     state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
@@ -588,9 +584,7 @@ def _handle_recovery_attempt_failure(
         inactivity_error_type=AgentInactivityTimeoutError,
     )
     if retry_intent is not None:
-        retry_intent = retry_intent.model_copy(
-            update={"progress_guard": progress_guard.snapshot()}
-        )
+        retry_intent = retry_intent.model_copy(update={"progress_guard": progress_guard.snapshot()})
     else:
         retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
     _set_last_captured_retry_intent(retry_intent)
