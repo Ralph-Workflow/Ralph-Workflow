@@ -42,6 +42,7 @@ from ralph.pipeline.auto_integrate_transition import (
     Transition,
     transition_by_name,
 )
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
@@ -152,6 +153,7 @@ class IntegrationRecord(RalphBaseModel):
     owning_worktree: str | None = None
     reintegrate_pending: bool = False
     initiating_feature_sha: str | None = None
+    last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
     @property
     def is_integrated(self) -> bool:
@@ -194,6 +196,17 @@ class IntegrationRecord(RalphBaseModel):
 # the new collector, so the loader surfaces intervention instead of
 # silently clearing the evidence.
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
+
+
+def _is_legacy_global_evidence_key(key: str) -> bool:
+    """Return True if key is or starts with a legacy repository-global evidence key."""
+    if key in _LEGACY_GLOBAL_EVIDENCE_KEYS:
+        return True
+    return any(
+        key.startswith(f"{prefix}:") or key.startswith(f"{prefix} ")
+        for prefix in _LEGACY_GLOBAL_EVIDENCE_KEYS
+    )
+
 
 # Legacy per-path observation keys the previous collector wrote under
 # ``str(absolute_path)``. The new collector categorises them by suffix
@@ -262,7 +275,7 @@ def _migrate_legacy_diagnostic_evidence(
     migrated: list[tuple[str, str]] = []
     drop_marker: str | None = None
     for key, value in raw:
-        if key in _LEGACY_GLOBAL_EVIDENCE_KEYS:
+        if _is_legacy_global_evidence_key(key):
             # Repository-global observations cannot be re-verified.
             # The loader treats this as a corrupt schema and
             # surfaces intervention; keep the key as-is so the
@@ -367,7 +380,11 @@ def write_record(
     )
 
 
-def read_record(workspace_root: Path) -> IntegrationRecord | None:
+def read_record(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> IntegrationRecord | None:
     """Return the durable record or ``None`` when absent / corrupt.
 
     ``None`` does not prove absence: invalid JSON, unreadable bytes, and
@@ -376,15 +393,19 @@ def read_record(workspace_root: Path) -> IntegrationRecord | None:
     unreadable ownership evidence without authorizing Git mutations.
     """
     record_file = record_path(workspace_root)
-    if not record_file.exists():
+    if not backend.exists(record_file):
         return None
-    raw = _read_record_raw(record_file)
+    raw = _read_record_raw(record_file, backend=backend)
     if raw is None:
         return None
     return parse_record_payload(raw)
 
 
-def _read_record_raw(record_file: Path) -> dict[str, object] | None:
+def _read_record_raw(
+    record_file: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> dict[str, object] | None:
     """Read and parse the record file; return the parsed dict or None.
 
     Splits out the read+JSON-parse steps from :func:`read_record` so
@@ -393,8 +414,8 @@ def _read_record_raw(record_file: Path) -> dict[str, object] | None:
     corrupt / absent by the recovery preamble).
     """
     try:
-        raw_text = record_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
+        raw_text = backend.read_text(record_file, encoding="utf-8")
+    except (OSError, UnicodeError, KeyError):
         return None
     try:
         parsed: object = json.loads(raw_text)
@@ -403,6 +424,70 @@ def _read_record_raw(record_file: Path) -> dict[str, object] | None:
     if not isinstance(parsed, dict):
         return None
     return parsed
+
+
+def _parse_raw_evidence_pairs(raw_evidence: object) -> tuple[tuple[str, str], ...] | None:
+    """Extract (key, value) pairs from list, tuple, or dict raw evidence."""
+    if isinstance(raw_evidence, dict):
+        raw_evidence = list(raw_evidence.items())
+    if not isinstance(raw_evidence, (list, tuple)):
+        return None
+    pairs: list[tuple[str, str]] = []
+    for item in raw_evidence:
+        if isinstance(item, (list, tuple)):
+            match item:
+                case [k, v] if isinstance(k, str) and isinstance(v, str):
+                    pairs.append((k, v))
+        elif isinstance(item, dict):
+            k = item.get("key") or item.get("name")
+            v = item.get("value") or item.get("content")
+            if isinstance(k, str) and isinstance(v, str):
+                pairs.append((k, v))
+    return tuple(pairs)
+
+
+def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, object]:
+    """Ensure last_failure_cause is populated on the payload."""
+    if "last_failure_cause" in data_raw and data_raw.get("last_failure_cause") is not None:
+        return data_raw
+    last_reason = str(data_raw.get("last_reason") or "")
+    repair_err = str(data_raw.get("repair_last_error") or "")
+    if last_reason == "resolution_agent_failure" or repair_err == "resolution_agent_failure":
+        return {**data_raw, "last_failure_cause": ResolutionFailureCause.AGENT_FAILURE}
+    return {**data_raw, "last_failure_cause": ResolutionFailureCause.NONE}
+
+
+def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
+    """Migrate legacy diagnostic evidence keys in payload; return None on parse error."""
+    raw_evidence = data_raw.get("diagnostic_evidence")
+    if raw_evidence is None:
+        return data_raw
+    try:
+        sequence = _parse_raw_evidence_pairs(raw_evidence)
+    except Exception:
+        sequence = None
+    if sequence is None:
+        return None
+    if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
+        return {
+            **data_raw,
+            "diagnostic_intervention_required": True,
+            "repair_cap_reason": (
+                "legacy repository-global evidence observation present; "
+                "operator intervention required"
+            ),
+        }
+    migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
+    if drop_marker is not None:
+        existing_reason = data_raw.get("repair_cap_reason")
+        return {
+            **data_raw,
+            "diagnostic_evidence": migrated_evidence,
+            "repair_cap_reason": existing_reason or drop_marker,
+        }
+    if migrated_evidence != sequence:
+        return {**data_raw, "diagnostic_evidence": migrated_evidence}
+    return data_raw
 
 
 def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:
@@ -424,53 +509,15 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     to re-verify them, and silently clearing the evidence would
     lose the operator-visible fingerprint.
     """
-    # Reject a stray ``phase`` value before pydantic validation
-    # would coerce it (pydantic honors ``field: str`` for any
-    # string). The Literal-typed ``phase`` field already rejects
-    # unknown values during ``model_validate`` below, but an
-    # explicit pre-check lets us keep the rejection logic here in
-    # the I/O helper that owns the corrupt-record contract.
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
-    raw_evidence = data_raw.get("diagnostic_evidence")
-    migrated_evidence: tuple[tuple[str, str], ...] | None = None
-    drop_marker: str | None = None
-    if isinstance(raw_evidence, (list, tuple)):
-        try:
-            pairs: list[tuple[str, str]] = []
-            for item in raw_evidence:
-                if isinstance(item, (list, tuple)):
-                    match item:
-                        case [k, v] if isinstance(k, str) and isinstance(v, str):
-                            pairs.append((k, v))
-            sequence: tuple[tuple[str, str], ...] = tuple(pairs)
-        except Exception:
-            return None
-        if any(key in _LEGACY_GLOBAL_EVIDENCE_KEYS for key, _ in sequence):
-            # Cannot re-verify repository-global observations;
-            # surface intervention rather than silently clear.
-            data_raw = {
-                **data_raw,
-                "diagnostic_intervention_required": True,
-                "repair_cap_reason": (
-                    "legacy repository-global evidence observation present; "
-                    "operator intervention required"
-                ),
-            }
-        else:
-            migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
-            if drop_marker is not None:
-                existing_reason = data_raw.get("repair_cap_reason")
-                data_raw = {
-                    **data_raw,
-                    "diagnostic_evidence": migrated_evidence,
-                    "repair_cap_reason": existing_reason or drop_marker,
-                }
-            elif migrated_evidence != sequence:
-                data_raw = {**data_raw, "diagnostic_evidence": migrated_evidence}
+    migrated = _migrate_payload_evidence(data_raw)
+    if migrated is None:
+        return None
+    with_cause = _coerce_payload_failure_cause(migrated)
     try:
-        return IntegrationRecord.model_validate(data_raw)
+        return IntegrationRecord.model_validate(with_cause)
     except Exception:
         return None
 
@@ -489,7 +536,12 @@ def _absent_record_is_recordable(path: Path) -> bool:
     return False
 
 
-def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
+def set_resolving_rebase(
+    workspace_root: Path,
+    resolving: bool,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> bool:
     """Flag (or unflag) the durable record as an in-flight rebase resolution.
 
     Called around the resolve-and-continue loop so a run killed while an
@@ -516,7 +568,7 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
     abort-then-endpoint-merge path instead.
     """
     try:
-        current = read_record(workspace_root)
+        current = read_record(workspace_root, backend=backend)
         if current is None:
             return _absent_record_is_recordable(record_path(workspace_root))
         if current.resolving_rebase == resolving:
@@ -524,6 +576,7 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
         write_record(
             workspace_root,
             current.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=resolving),
+            backend=backend,
         )
     except Exception as exc:
         logger.warning(
@@ -535,7 +588,11 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
     return True
 
 
-def clear_record(workspace_root: Path) -> None:
+def clear_record(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     """Unlink the durable record; missing-ok.
 
     The gate is tighter than the pre-fix behaviour: a record
@@ -544,7 +601,7 @@ def clear_record(workspace_root: Path) -> None:
     phase is ``integrating`` with a non-empty resolution flag
     cannot be cleared (the operation has unfinished work).
     """
-    record = read_record(workspace_root)
+    record = read_record(workspace_root, backend=backend)
     if record is not None:
         if record.diagnostic_intervention_required:
             raise RuntimeError(
@@ -568,9 +625,109 @@ def clear_record(workspace_root: Path) -> None:
                 )
     record_file = record_path(workspace_root)
     try:
-        record_file.unlink()
+        backend.unlink(record_file, missing_ok=True)
     except FileNotFoundError:
         return
+
+
+class IntegrationRecordStore:
+    """Injected durable store and workspace boundary for IntegrationRecord transitions.
+
+    Guarantees that every Transition is durable and atomic through the injected
+    backend / workspace. Crash before or after a transition is idempotent.
+    """
+
+    def __init__(
+        self,
+        workspace_root: Path,
+        *,
+        backend: FileBackend = DEFAULT_FILE_BACKEND,
+    ) -> None:
+        self._workspace_root = workspace_root
+        self._backend = backend
+
+    @property
+    def workspace_root(self) -> Path:
+        return self._workspace_root
+
+    @property
+    def backend(self) -> FileBackend:
+        return self._backend
+
+    @property
+    def record_path(self) -> Path:
+        return record_path(self._workspace_root)
+
+    def read(self) -> IntegrationRecord | None:
+        """Read the authoritative record from this store."""
+        return read_record(self._workspace_root, backend=self._backend)
+
+    def write(self, record: IntegrationRecord) -> None:
+        """Atomically persist record to this store."""
+        write_record(self._workspace_root, record, backend=self._backend)
+
+    def clear(self) -> None:
+        """Clear the record file from this store."""
+        clear_record(self._workspace_root, backend=self._backend)
+
+    def transition(
+        self,
+        transition: Transition,
+        **fields: object,
+    ) -> IntegrationRecord:
+        """Apply a Transition atomically and durably to the stored record.
+
+        Loads the authoritative record from this store, applies the transition
+        via :meth:`IntegrationRecord.with_transition`, and writes the new record
+        atomically.
+
+        Idempotence: If called with identical transition and fields when the
+        transition has already been applied, the write is a no-op (bytes unchanged),
+        ensuring crash-recovery replay before or after the transition is safe.
+        """
+        current = self.read()
+        if current is None:
+            if transition.name == "START_INTEGRATING":
+                base = IntegrationRecord(
+                    phase="integrating",
+                    target="",
+                    pre_feature_sha="",
+                    pre_target_sha=None,
+                )
+                initial_record = base.with_transition(transition, **fields)
+                self.write(initial_record)
+                return initial_record
+            elif transition.name == "CLEAR":
+                return IntegrationRecord(
+                    phase="integrating",
+                    target="",
+                    pre_feature_sha="",
+                    pre_target_sha=None,
+                )
+            raise ValueError(
+                f"Cannot apply transition {transition.name!r}: "
+                f"no active record found at {self.record_path}"
+            )
+        # Idempotent replay after crash for PROMOTE_TO_INTEGRATED
+        if transition.name == "PROMOTE_TO_INTEGRATED" and current.phase == "integrated":
+            expected_sha = fields.get("integrated_feature_sha")
+            if expected_sha is None or current.integrated_feature_sha == expected_sha:
+                return current
+        updated = current.with_transition(transition, **fields)
+        self.write(updated)
+        return updated
+
+
+def apply_record_transition(
+    workspace_root: Path,
+    transition: Transition,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    **fields: object,
+) -> IntegrationRecord:
+    """Apply a transition and persist it atomically to the durable record."""
+    store = IntegrationRecordStore(workspace_root, backend=backend)
+    return store.transition(transition, **fields)
 
 
 __all__ = [
@@ -594,7 +751,9 @@ __all__ = [
     "IntegrationOperation",
     "IntegrationPhase",
     "IntegrationRecord",
+    "IntegrationRecordStore",
     "Transition",
+    "apply_record_transition",
     "clear_record",
     "parse_record_payload",
     "read_record",

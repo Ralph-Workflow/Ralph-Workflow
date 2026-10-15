@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.operation_evidence_collector import EvidenceVerdict
 from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
+    _UNREADABLE,
     OperationFact,
 )
 
@@ -50,6 +52,32 @@ class InMemoryOperationEvidenceCollector:
     def snapshot(self, root: Path, record: IntegrationRecord) -> tuple[OperationFact, ...]:
         return self._facts
 
+    def evaluate(
+        self,
+        root: Path,
+        record: IntegrationRecord,
+        observed: tuple[OperationFact, ...],
+    ) -> EvidenceVerdict:
+        if any(fact.value == _UNREADABLE for fact in observed) or any(
+            fact.value == _UNREADABLE for fact in self._facts
+        ):
+            return EvidenceVerdict.UNKNOWN
+        for fact in self._facts:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return EvidenceVerdict.CHANGED
+        for fact in observed:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return EvidenceVerdict.CHANGED
+        if self._facts == observed:
+            return EvidenceVerdict.UNCHANGED
+        return EvidenceVerdict.CHANGED
+
     def verify(
         self,
         root: Path,
@@ -71,4 +99,4 @@ class InMemoryOperationEvidenceCollector:
         return self._facts == observed
 
 
-__all__ = ["InMemoryOperationEvidenceCollector"]
+__all__ = ["EvidenceVerdict", "InMemoryOperationEvidenceCollector"]

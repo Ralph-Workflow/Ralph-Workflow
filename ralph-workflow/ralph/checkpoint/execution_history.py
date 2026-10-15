@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ralph.checkpoint.execution_step import ExecutionStep
+from ralph.checkpoint.execution_step import ExecutionStep
 
 
 @dataclass(frozen=True)
@@ -52,3 +50,22 @@ class ExecutionHistory:
             "steps": [step.to_dict() for step in self.steps],
             "file_snapshots": dict(self.file_snapshots),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> ExecutionHistory:
+        """Construct ExecutionHistory from dictionary representation."""
+        raw_steps = data.get("steps")
+        steps: list[ExecutionStep] = []
+        if isinstance(raw_steps, list):
+            for s in raw_steps:
+                if isinstance(s, dict):
+                    step_dict: dict[str, object] = {str(k): v for k, v in s.items()}
+                    steps.append(ExecutionStep.from_dict(step_dict))
+        raw_snaps = data.get("file_snapshots")
+        file_snapshots = (
+            {str(k): str(v) for k, v in raw_snaps.items()} if isinstance(raw_snaps, dict) else {}
+        )
+        return cls(
+            steps=tuple(steps),
+            file_snapshots=file_snapshots,
+        )

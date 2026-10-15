@@ -256,6 +256,7 @@ def _inject_publication_fault(
         *,
         remote: str | None = None,
         record: RebaseState | None = None,
+        **_kwargs: object,
     ) -> tuple[PushResult | None, PublicationDecision]:
         if crash_point == "before":
             raise SimulatedProcessCrashError("Crashed before durable publication transition")

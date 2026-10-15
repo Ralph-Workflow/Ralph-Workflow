@@ -30,7 +30,7 @@ from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._pipeline_state_machine import PhaseDecision
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
@@ -2893,7 +2893,18 @@ def _execute_with_cleanup(
                 state = loop_ctx.latest_state[0]
                 exit_code = 1
                 raise
-            if loop_ctx.policy_bundle.pipeline.terminal_phase == state.phase:
+            record = read_record(loop_ctx.workspace_scope.root)
+            decision = decide_phase_transition(
+                state,
+                loop_ctx.policy_bundle.pipeline,
+                integration_record=record,
+                rebase_state=state.rebase,
+            )
+            if (
+                loop_ctx.policy_bundle.pipeline.terminal_phase == state.phase
+                and decision == PhaseDecision.REPORT_TERMINAL_SUCCESS
+                and is_terminal_success_eligible(state, record, state.rebase)
+            ):
                 state = state.copy_with(
                     rebase=state.rebase.model_copy(
                         update={
@@ -2902,6 +2913,7 @@ def _execute_with_cleanup(
                         }
                     )
                 )
+                loop_ctx.latest_state[:] = [state]
                 try:
                     state = _report_pending_remote_publication(state, loop_ctx)
                 except KeyboardInterrupt:
@@ -2911,14 +2923,24 @@ def _execute_with_cleanup(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
             else:
+                failure_decision = (
+                    decision.value
+                    if decision
+                    in (
+                        PhaseDecision.BLOCK_FOR_RECOVERY,
+                        PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+                    )
+                    else PhaseDecision.REPORT_TERMINAL_FAILURE.value
+                )
                 state = state.copy_with(
                     rebase=state.rebase.model_copy(
                         update={
                             "operation_display_state": "terminal",
-                            "last_decision": PhaseDecision.REPORT_TERMINAL_FAILURE.value,
+                            "last_decision": failure_decision,
                         }
                     )
                 )
+                loop_ctx.latest_state[:] = [state]
                 emit_activity_line(
                     loop_ctx.active_display,
                     None,

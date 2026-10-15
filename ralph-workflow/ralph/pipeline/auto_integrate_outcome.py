@@ -30,7 +30,7 @@ from ralph.git.rebase.rebase import (
 )
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
@@ -51,11 +51,13 @@ def record_skip(
     reason: str,
     target: str | None,
     fast_forwarded: bool = False,
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE,
 ) -> RebaseState:
     """Build a ``RebaseState`` recording a skip outcome."""
     return RebaseState(
         last_outcome=RebaseOutcomeKind.SKIPPED,
         last_reason=reason,
+        last_failure_cause=failure_cause,
         last_target=target,
         fast_forwarded=fast_forwarded,
     )
@@ -65,21 +67,29 @@ def record_conflict(
     *,
     reason: str,
     target: str | None,
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.UNRESOLVED_CONFLICT,
 ) -> RebaseState:
     """Build a ``RebaseState`` recording a conflict outcome (AC-07)."""
     return RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
+        last_failure_cause=failure_cause,
         last_target=target,
         fast_forwarded=False,
     )
 
 
-def record_resolution_exhausted(*, reason: str, target: str | None) -> RebaseState:
+def record_resolution_exhausted(
+    *,
+    reason: str,
+    target: str | None,
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.UNRESOLVED_CONFLICT,
+) -> RebaseState:
     """Build terminal persisted evidence after the resolver chain is exhausted."""
     return RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
+        last_failure_cause=failure_cause,
         last_target=target,
         fast_forwarded=False,
         resolution_exhausted=True,
@@ -111,9 +121,16 @@ def record_rebase_outcome(
         merge_outcome=merge_outcome,
     )
     outcome = RebaseOutcomeKind.from_legacy(action)
+    failure_cause = ResolutionFailureCause.NONE
+    if outcome == RebaseOutcomeKind.CONFLICT:
+        if merge_outcome is not None and merge_outcome.failure_cause != ResolutionFailureCause.NONE:
+            failure_cause = merge_outcome.failure_cause
+        else:
+            failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
     return RebaseState(
         last_outcome=outcome,
         last_reason=reason,
+        last_failure_cause=failure_cause,
         last_target=target,
         fast_forwarded=False,
     )

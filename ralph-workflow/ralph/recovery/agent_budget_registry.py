@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from .budget_state import BudgetState
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from .classifier import ClassifiedFailure
 
 
@@ -27,11 +26,35 @@ class AgentBudgetRegistry:
     def get(self, phase: str, agent: str) -> BudgetState | None:
         return self._budgets.get((phase, agent))
 
-    def set_budget(self, phase: str, agent: str, max_retries: int) -> AgentBudgetRegistry:
+    def set_budget(
+        self, phase: str, agent: str, max_retries: int, consumed: int = 0
+    ) -> AgentBudgetRegistry:
         """Return a new registry with this budget initialized."""
         new = dict(self._budgets)
-        new[(phase, agent)] = BudgetState(max_retries=max_retries)
+        new[(phase, agent)] = BudgetState(max_retries=max_retries, consumed=consumed)
         return AgentBudgetRegistry(new)
+
+    def to_dict(self) -> dict[str, dict[str, int]]:
+        """Return serializable representation of registry state."""
+        return {
+            f"{phase}:{agent}": state.to_dict() for (phase, agent), state in self._budgets.items()
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> AgentBudgetRegistry:
+        """Construct an AgentBudgetRegistry from a serialized mapping."""
+        budgets: dict[tuple[str, str], BudgetState] = {}
+        for key, value in data.items():
+            if isinstance(value, BudgetState):
+                state = value
+            elif isinstance(value, Mapping):
+                state = BudgetState.from_dict(value)
+            else:
+                continue
+            if ":" in key:
+                parts = key.split(":", 1)
+                budgets[(parts[0], parts[1])] = state
+        return cls(budgets)
 
     def debit(self, phase: str, agent: str, failure: ClassifiedFailure) -> AgentBudgetRegistry:
         """Return a new registry with the failure debited for (phase, agent).

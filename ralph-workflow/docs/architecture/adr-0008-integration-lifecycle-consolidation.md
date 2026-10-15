@@ -4,6 +4,7 @@
 * Date: 2026-10-15
 * Deciders: Ralph Workflow Team
 * Consulted: ADR-0004, ADR-0005, ADR-0006, ADR-0007
+* Extended by: [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
 
 ## Context
 

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -29,3 +33,14 @@ class BudgetState:
     @property
     def remaining(self) -> int:
         return max(0, self.max_retries - self.consumed)
+
+    def to_dict(self) -> dict[str, int]:
+        return {"max_retries": self.max_retries, "consumed": self.consumed}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> BudgetState:
+        max_retries_raw = data.get("max_retries", 3)
+        consumed_raw = data.get("consumed", 0)
+        max_retries = int(max_retries_raw) if isinstance(max_retries_raw, (int, str)) else 3
+        consumed = int(consumed_raw) if isinstance(consumed_raw, (int, str)) else 0
+        return cls(max_retries=max_retries, consumed=consumed)

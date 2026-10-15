@@ -13,6 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.display.auto_integrate_message import (
+    IntegrationDisplayLabel,
+    format_integration_label,
+)
+
 _SECONDS_PER_MINUTE = 60
 
 if TYPE_CHECKING:
@@ -203,7 +208,22 @@ class PhaseIterationContext:
         return parts
 
 
+def format_integration_phase_label(
+    action_or_state: object,
+    *,
+    is_diagnosis: bool = False,
+    detail: str | None = None,
+) -> str:
+    """Return the canonical formatted phase label for an integration action or display state."""
+    base = format_integration_label(action_or_state, is_diagnosis=is_diagnosis)
+    title_label = base.title()
+    if detail:
+        return f"{title_label} ({detail})"
+    return title_label
+
+
 __all__ = [
+    "IntegrationDisplayLabel",
     "PhaseIterationContext",
     "format_analysis_cycle",
     "format_analysis_cycle_compact",
@@ -213,5 +233,7 @@ __all__ = [
     "format_dev_cycle_minimal",
     "format_elapsed_seconds",
     "format_exit_trigger",
+    "format_integration_label",
+    "format_integration_phase_label",
     "format_transition_context_items",
 ]

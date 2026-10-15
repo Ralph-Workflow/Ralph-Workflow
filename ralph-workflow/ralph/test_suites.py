@@ -126,6 +126,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_pending_merge_repair_real_git.py",
     "tests/test_retained_resolution_handoff.py",
     "tests/test_retained_resolution_dispatch.py",
+    "tests/integration/test_retained_integration_acceptance.py",
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.

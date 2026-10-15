@@ -1,0 +1,535 @@
+"""Tests for checkpoint and record migration, filesystem, and persistence boundary.
+
+Verifies:
+1. Legacy checkpoint and integration records (including for-each-ref, ls-files,
+   dict evidence, and last_failure_cause) load into one authoritative state or
+   explicit intervention.
+2. Projections are rebuilt one-way with no newest-timestamp merging.
+3. Projection writers cannot mutate the authority.
+4. Each Transition is durable and atomic through an injected record store/workspace.
+5. Crash before and after each transition is idempotent.
+6. Checkpoint handle and persistence boundary with injected backend.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from ralph.checkpoint.checkpoint_payload import CheckpointPayload
+from ralph.checkpoint.execution_history import ExecutionHistory
+from ralph.checkpoint.execution_step import ExecutionStep
+from ralph.checkpoint.run_context import RunContext
+from ralph.checkpoint.step_outcome import StepOutcome
+from ralph.mcp.artifacts.file_backend import FileBackend
+from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline.auto_integrate_record import (
+    MARK_RESOLVING_REBASE,
+    PROMOTE_TO_INTEGRATED,
+    START_INTEGRATING,
+    IntegrationRecord,
+    IntegrationRecordStore,
+    apply_record_transition,
+    parse_record_payload,
+    read_record,
+)
+from ralph.pipeline.checkpoint import Checkpoint
+from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
+from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state_models import (
+    ResolutionFailureCause as ExportedResolutionFailureCause,
+)
+
+
+class _InMemoryBackend(FileBackend):
+    """In-memory FileBackend implementation for atomic persistence tests."""
+
+    def __init__(self) -> None:
+        self.files: dict[Path, bytes] = {}
+        self.write_calls: list[tuple[Path, bytes]] = []
+        self.replace_calls: list[tuple[Path, Path]] = []
+        self.sync_calls: list[Path] = []
+        self.mkdir_calls: list[Path] = []
+        self.unlink_calls: list[Path] = []
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del parents, exist_ok
+        self.mkdir_calls.append(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
+        return self.files[path].decode(encoding)
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.write_bytes(path, content.encode(encoding))
+
+    def read_bytes(self, path: Path) -> bytes:
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
+        return self.files[path]
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        self.write_calls.append((path, content))
+        self.files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        if source not in self.files:
+            raise FileNotFoundError(f"Source not found: {source}")
+        self.replace_calls.append((source, destination))
+        self.files[destination] = self.files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        self.sync_calls.append(path)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        self.unlink_calls.append(path)
+        if missing_ok:
+            self.files.pop(path, None)
+        else:
+            if path not in self.files:
+                raise FileNotFoundError(f"Path not found: {path}")
+            del self.files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        del path, pattern
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 1. State models export contract
+# ---------------------------------------------------------------------------
+
+
+def test_state_models_re_exports_resolution_failure_cause() -> None:
+    """ResolutionFailureCause must be exported from ralph.pipeline.state_models."""
+    assert ExportedResolutionFailureCause is ResolutionFailureCause
+    assert ExportedResolutionFailureCause.NONE.value == "NONE"
+    assert ExportedResolutionFailureCause.AGENT_FAILURE.value == "AGENT_FAILURE"
+
+
+# ---------------------------------------------------------------------------
+# 2. Legacy record and checkpoint migration tests
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_record_ls_files_surfaces_explicit_intervention() -> None:
+    """Legacy records carrying ls-files evidence key require operator intervention."""
+    payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": [
+            ["ls-files", "some_tracked_files"],
+        ],
+    }
+    record = parse_record_payload(payload)
+    assert record is not None
+    assert record.diagnostic_intervention_required is True
+    assert "legacy repository-global evidence observation present" in (
+        record.repair_cap_reason or ""
+    )
+
+
+def test_legacy_record_prefixed_ls_files_surfaces_intervention() -> None:
+    """Legacy records carrying ls-files:stage require operator intervention."""
+    payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": [
+            ["ls-files:stage", "100644 deadbeef 0 path/file.py"],
+        ],
+    }
+    record = parse_record_payload(payload)
+    assert record is not None
+    assert record.diagnostic_intervention_required is True
+
+
+def test_legacy_record_dict_format_evidence_loads_cleanly() -> None:
+    """Diagnostic evidence stored as a dictionary loads and migrates one-way."""
+    payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": {
+            "work": "unstaged diff",
+            "controls": "controls data",
+        },
+    }
+    record = parse_record_payload(payload)
+    assert record is not None
+    assert not record.diagnostic_intervention_required
+    evidence_dict = dict(record.diagnostic_evidence)
+    assert evidence_dict.get("unstaged_work") == "unstaged diff"
+    assert evidence_dict.get("commit_controls") == "controls data"
+
+
+def test_legacy_record_last_failure_cause_migration() -> None:
+    """Legacy records without last_failure_cause migrate to NONE or AGENT_FAILURE."""
+    # Default case: no cause, no sentinel reason -> NONE
+    payload1: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+    }
+    rec1 = parse_record_payload(payload1)
+    assert rec1 is not None
+    assert rec1.last_failure_cause == ResolutionFailureCause.NONE
+
+    # Sentinel reason -> AGENT_FAILURE
+    payload2: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "last_reason": "resolution_agent_failure",
+    }
+    rec2 = parse_record_payload(payload2)
+    assert rec2 is not None
+    assert rec2.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+
+    # repair_last_error sentinel -> AGENT_FAILURE
+    payload3: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "repair_last_error": "resolution_agent_failure",
+    }
+    rec3 = parse_record_payload(payload3)
+    assert rec3 is not None
+    assert rec3.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+
+    # Explicit failure cause -> preserved
+    payload4: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "last_failure_cause": "UNRESOLVED_CONFLICT",
+    }
+    rec4 = parse_record_payload(payload4)
+    assert rec4 is not None
+    assert rec4.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+
+def test_corrupt_record_last_failure_cause_fails_closed() -> None:
+    """Corrupt last_failure_cause value in record payload causes loader to fail closed."""
+    payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "last_failure_cause": "INVALID_UNKNOWN_CAUSE",
+    }
+    rec = parse_record_payload(payload)
+    assert rec is None
+
+
+# ---------------------------------------------------------------------------
+# 3. Projections rebuilt one-way with no newest-timestamp merging
+# ---------------------------------------------------------------------------
+
+
+def test_checkpoint_payload_from_dict_and_load_preserves_authority() -> None:
+    """CheckpointPayload reconstructs state as single authority without timestamp merging."""
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_reason="resolution_agent_failure",
+        ),
+    )
+    run_ctx = RunContext.new()
+    history = ExecutionHistory.new()
+    payload = CheckpointPayload(
+        state=state,
+        run_context=run_ctx,
+        execution_history=history,
+        working_dir="/test/dir",
+    )
+
+    data = payload.to_dict()
+    # Inject divergent timestamp into raw json dict to test that it is NOT merged
+    data["legacy_timestamp"] = "2099-01-01T00:00:00Z"
+    data["timestamp"] = "2099-01-01T00:00:00Z"
+
+    reconstructed = CheckpointPayload.from_dict(data)
+    assert reconstructed.state.phase == "development"
+    assert reconstructed.phase == "development"
+    # State was not overwritten or mutated by newest timestamp
+    assert reconstructed.state.rebase.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+
+    # Loading via checkpoint.load from backend
+    backend = _InMemoryBackend()
+    path = Path("/workspace/.agent/checkpoint.json")
+    backend.write_text(path, json.dumps(data))
+
+    loaded_state = ckpt.load(path, backend=backend)
+    assert loaded_state is not None
+    assert loaded_state.phase == "development"
+    assert loaded_state.rebase.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+
+
+# ---------------------------------------------------------------------------
+# 4. Projection writers cannot mutate the authority
+# ---------------------------------------------------------------------------
+
+
+def test_projection_writers_cannot_mutate_authority() -> None:
+    """IntegrationRecord and PipelineState are immutable and cannot be mutated by projection writers."""
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        last_failure_cause=ResolutionFailureCause.NONE,
+    )
+    with pytest.raises(ValidationError):
+        record.phase = "integrated"
+
+    with pytest.raises(ValidationError):
+        record.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+
+    state = PipelineState(phase="planning")
+    with pytest.raises(ValidationError):
+        state.phase = "complete"
+
+    # RebaseState projection cannot mutate record
+    rebase = RebaseState(last_outcome=None)
+    with pytest.raises(ValidationError):
+        rebase.fast_forwarded = True
+
+
+# ---------------------------------------------------------------------------
+# 5. Transition durability and atomicity through injected record store
+# ---------------------------------------------------------------------------
+
+
+def test_integration_record_store_transitions_atomic_and_durable() -> None:
+    """Each Transition is durably and atomically persisted through IntegrationRecordStore."""
+    backend = _InMemoryBackend()
+    root = Path("/test-workspace")
+    store = IntegrationRecordStore(root, backend=backend)
+
+    assert store.read() is None
+
+    # 1. START_INTEGRATING
+    initial = store.transition(
+        START_INTEGRATING,
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+    assert initial.phase == "integrating"
+    assert initial.target == "main"
+    assert backend.exists(store.record_path)
+    assert len(backend.replace_calls) == 1
+
+    # 2. MARK_RESOLVING_REBASE
+    resolving = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+    assert resolving.resolving_rebase is True
+    assert len(backend.replace_calls) == 2
+
+    # 3. PROMOTE_TO_INTEGRATED
+    promoted = store.transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha="3" * 40,
+        resolving_rebase=False,
+    )
+    assert promoted.phase == "integrated"
+    assert promoted.integrated_feature_sha == "3" * 40
+    assert len(backend.replace_calls) == 3
+
+
+def test_apply_record_transition_helper() -> None:
+    """apply_record_transition convenience helper writes through injected store."""
+    backend = _InMemoryBackend()
+    root = Path("/workspace")
+    rec = apply_record_transition(
+        root,
+        START_INTEGRATING,
+        backend=backend,
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha=None,
+    )
+    assert rec.phase == "integrating"
+    read_back = read_record(root, backend=backend)
+    assert read_back is not None
+    assert read_back.pre_feature_sha == "a" * 40
+
+
+# ---------------------------------------------------------------------------
+# 6. Crash before/after each transition idempotence
+# ---------------------------------------------------------------------------
+
+
+def test_crash_before_transition_idempotent() -> None:
+    """A crash before transition execution leaves prior state intact; retry applies it."""
+    backend = _InMemoryBackend()
+    root = Path("/crash-test")
+    store = IntegrationRecordStore(root, backend=backend)
+
+    store.transition(
+        START_INTEGRATING,
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+    replaces_before = len(backend.replace_calls)
+
+    # Simulated crash: no mutation performed. Next run performs the transition cleanly:
+    updated = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+    assert updated.resolving_rebase is True
+    assert len(backend.replace_calls) == replaces_before + 1
+
+
+def test_crash_after_transition_idempotent_replay() -> None:
+    """Replaying an already applied transition after a crash is idempotent and no-op."""
+    backend = _InMemoryBackend()
+    root = Path("/crash-test")
+    store = IntegrationRecordStore(root, backend=backend)
+
+    store.transition(
+        START_INTEGRATING,
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+    store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+
+    replaces_after = len(backend.replace_calls)
+
+    # Replay identical transition after crash:
+    replayed = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+    assert replayed.resolving_rebase is True
+    # atomic_write_bytes_if_changed skips write and replace on unchanged payload
+    assert len(backend.replace_calls) == replaces_after
+
+
+def test_crash_after_promote_to_integrated_idempotent_replay() -> None:
+    """Replaying PROMOTE_TO_INTEGRATED after crash is idempotent and does not trip guard."""
+    backend = _InMemoryBackend()
+    root = Path("/crash-test")
+    store = IntegrationRecordStore(root, backend=backend)
+
+    store.transition(
+        START_INTEGRATING,
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+    store.transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha="3" * 40,
+    )
+
+    replaces_count = len(backend.replace_calls)
+
+    # Crash after write: replaying the transition with same integrated sha returns current record
+    replayed = store.transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha="3" * 40,
+    )
+    assert replayed.phase == "integrated"
+    assert replayed.integrated_feature_sha == "3" * 40
+    # No new replace performed
+    assert len(backend.replace_calls) == replaces_count
+
+
+# ---------------------------------------------------------------------------
+# 7. Checkpoint handle with backend boundary tests
+# ---------------------------------------------------------------------------
+
+
+def test_checkpoint_handle_with_injected_backend() -> None:
+    """Checkpoint class operations are routed through the injected FileBackend."""
+    backend = _InMemoryBackend()
+    path = Path("/agent/checkpoint.json")
+    # Stray tmp file should be cleaned up on init
+    tmp_path = Path("/agent/checkpoint.json.tmp")
+    backend.write_text(tmp_path, "stray bytes")
+
+    handle = Checkpoint(path, backend=backend)
+    assert not backend.exists(tmp_path)
+    assert not handle.exists()
+
+    state = PipelineState(phase="planning")
+    handle.save(state)
+    assert handle.exists()
+    assert backend.exists(path)
+
+    loaded = handle.load()
+    assert loaded is not None
+    assert loaded.phase == "planning"
+
+    summary = handle.inspect()
+    assert '"phase": "planning"' in summary
+
+    handle.remove()
+    assert not handle.exists()
+    assert not backend.exists(path)
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_async_methods_with_injected_backend() -> None:
+    """Checkpoint async methods operate cleanly with injected FileBackend."""
+    backend = _InMemoryBackend()
+    path = Path("/agent/async_checkpoint.json")
+    handle = Checkpoint(path, backend=backend)
+
+    state = PipelineState(phase="development")
+    await handle.save_async(state)
+    assert handle.exists()
+
+    loaded = await handle.load_async()
+    assert loaded is not None
+    assert loaded.phase == "development"
+
+
+# ---------------------------------------------------------------------------
+# 8. Execution components round-trip through from_dict
+# ---------------------------------------------------------------------------
+
+
+def test_execution_components_round_trip() -> None:
+    """StepOutcome, ExecutionStep, ExecutionHistory, RunContext round trip cleanly."""
+    outcome = StepOutcome.failure("disk error", recoverable=True)
+    outcome_dict = outcome.to_dict()
+    reconstructed_outcome = StepOutcome.from_dict(outcome_dict)
+    assert reconstructed_outcome.kind == "failure"
+    assert reconstructed_outcome.error == "disk error"
+    assert reconstructed_outcome.recoverable is True
+
+    step = ExecutionStep.new("planning", 1, "test_step", outcome)
+    step_dict = step.to_dict()
+    reconstructed_step = ExecutionStep.from_dict(step_dict)
+    assert reconstructed_step.phase == "planning"
+    assert reconstructed_step.iteration == 1
+    assert reconstructed_step.outcome.kind == "failure"
+
+    history = ExecutionHistory.new({"file.txt": "sha123"}).add_step_bounded(step, limit=5)
+    hist_dict = history.to_dict()
+    reconstructed_hist = ExecutionHistory.from_dict(hist_dict)
+    assert len(reconstructed_hist.steps) == 1
+    assert reconstructed_hist.file_snapshots["file.txt"] == "sha123"
+
+    run_ctx = RunContext.new().record_developer_iteration().record_reviewer_pass()
+    ctx_dict = run_ctx.to_dict()
+    reconstructed_ctx = RunContext.from_dict(ctx_dict)
+    assert reconstructed_ctx.actual_developer_runs == 1
+    assert reconstructed_ctx.actual_reviewer_runs == 1

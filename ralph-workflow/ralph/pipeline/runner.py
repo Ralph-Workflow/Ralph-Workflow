@@ -46,6 +46,7 @@ from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
@@ -68,6 +69,7 @@ from ralph.pipeline._runner_state_helpers import (
 from ralph.pipeline._runner_state_helpers import (
     reset_phase_chain_for_recovery as _reset_phase_chain_for_recovery,
 )
+from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.activity_stream import (
     MAX_METADATA_SUMMARY_LENGTH,
     MAX_TEXT_LENGTH,
@@ -88,6 +90,7 @@ from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
     build_agent_rebase_stop_resolver,
 )
+from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
@@ -131,6 +134,9 @@ from ralph.pipeline.events import CommitResidualEvent, Event, PhaseFailureEvent,
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
+from ralph.pipeline.integration_dispatch_blocked_error import (
+    IntegrationDispatchBlockedError,
+)
 from ralph.pipeline.integration_resolution import (
     RESOLUTION_DRAIN,
     assert_non_resolution_dispatch_allowed,
@@ -953,7 +959,11 @@ def _integrate_inline_effect(
             "auto_integrate inline-effect boundary raised: {}",
             inline_exc,
         )
-        return inline_result
+    effective_rebase = outcome if outcome is not None else state.rebase
+    if isinstance(effect, ExitSuccessEffect) and not is_terminal_success_eligible(
+        state, read_record(workspace_scope.root), effective_rebase
+    ):
+        return 1
     if outcome is not None and outcome.recovery_record_retained:
         inline_result = inline_result if isinstance(inline_result, PipelineState) else state
     elif outcome is not None and outcome.integration_unresolved is True:
@@ -1852,6 +1862,61 @@ def _start_phase_telemetry(
     return role, drain, PhaseTimer.start(state.phase)
 
 
+def _apply_step_integration_outcome(
+    next_state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+    auto_integrate_outcome: RebaseState | None,
+) -> PipelineState:
+    if auto_integrate_outcome is None:
+        return next_state
+    reconciled_rebase = _reconcile_rebase_if_live_resolved(workspace_scope, auto_integrate_outcome)
+    record = read_record(workspace_scope.root)
+    if record is not None or reconciled_rebase.recovery_record_retained:
+        step_decision = decide_phase_transition(
+            next_state,
+            policy_bundle.pipeline,
+            integration_record=record,
+            rebase_state=reconciled_rebase,
+        )
+        return next_state.copy_with(
+            rebase=reconciled_rebase.model_copy(update={"last_decision": step_decision.value})
+        )
+    return next_state.copy_with(rebase=reconciled_rebase)
+
+
+def _handle_blocked_dispatch_recovery(
+    recovered_state: PipelineState,
+    timed_state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    pipeline_policy: PipelinePolicy,
+    exc: BaseException,
+) -> PipelineState:
+    if not isinstance(exc, IntegrationDispatchBlockedError):
+        return recovered_state
+    record = read_record(workspace_scope.root)
+    step_decision = decide_phase_transition(
+        timed_state,
+        pipeline_policy,
+        integration_record=record,
+        rebase_state=timed_state.rebase,
+    )
+    blocked_decision = (
+        step_decision.value
+        if step_decision
+        in (PhaseDecision.BLOCK_FOR_RECOVERY, PhaseDecision.REPORT_INTERVENTION_REQUIRED)
+        else PhaseDecision.BLOCK_FOR_RECOVERY.value
+    )
+    return recovered_state.copy_with(
+        rebase=recovered_state.rebase.model_copy(
+            update={
+                "recovery_record_retained": True,
+                "last_decision": blocked_decision,
+            }
+        )
+    )
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -2125,10 +2190,9 @@ def _run_pipeline_step(
         # Must happen AFTER reducer_reduce (so the state model is
         # consistent) and BEFORE _save_checkpoint_or_log (so the
         # outcome survives a crash right after the phase).
-        if _auto_integrate_outcome is not None:
-            next_state = next_state.copy_with(
-                rebase=_reconcile_rebase_if_live_resolved(workspace_scope, _auto_integrate_outcome)
-            )
+        next_state = _apply_step_integration_outcome(
+            next_state, workspace_scope, policy_bundle, _auto_integrate_outcome
+        )
         skipped_phases = record_phase_transition_metadata(
             display,
             state,
@@ -2189,7 +2253,9 @@ def _run_pipeline_step(
                 emit_activity_line(
                     display, None, status_text("Recovery exhausted", _eff.reason, "red")
                 )
-                return 1
+        recovered_state = _handle_blocked_dispatch_recovery(
+            recovered_state, timed_state, workspace_scope, policy_bundle.pipeline, exc
+        )
         _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
         _save_checkpoint_or_log(
             recovered_state,
@@ -2390,7 +2456,11 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        return _emit_success_exit(display, os.getenv)
+        return (
+            _emit_success_exit(display, os.getenv)
+            if is_terminal_success_eligible(state, read_record(workspace_scope.root), state.rebase)
+            else 1
+        )
 
     if isinstance(effect, ExitFailureEffect):
         emit_activity_line(

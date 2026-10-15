@@ -87,6 +87,7 @@ from ralph.recovery.classifier import (
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.seed_budget_registry import seed_budget_registry
 
 __all__ = ["RecoveryController", "RecoveryControllerOptions", "compute_backoff_ms"]
 
@@ -446,11 +447,11 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import AgentChainConfig, PipelinePolicy
+    from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
     from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
@@ -524,11 +525,20 @@ class RecoveryController:
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
-        self._registry = opts.budget_registry or AgentBudgetRegistry()
+        if opts.budget_registry is not None:
+            self._registry = opts.budget_registry
+        elif opts.budgets is not None:
+            self._registry = AgentBudgetRegistry.from_dict(opts.budgets)
+        elif opts.policy_bundle is not None:
+            self._registry = seed_budget_registry(opts.policy_bundle)
+        else:
+            self._registry = AgentBudgetRegistry()
         self._policy_bundle = opts.policy_bundle
         self._technical_retry_cap = max(0, opts.technical_retry_cap)
         self._clock: Clock = opts.clock or SystemClock()
-        self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
+        self._backoff_attempts: dict[str, int] = dict(
+            opts.backoff_attempts or {}
+        )  # bounded-accumulator-ok: bounded by agent count, updated from tracker
         # R6: same-shape retry loop bound. The tracker is constructed
         # eagerly here so the limit is validated at controller
         # construction time (the tracker's own ``__post_init__`` rejects
@@ -556,13 +566,13 @@ class RecoveryController:
         self._broken_agent_same_shape_state: dict[
             str, tuple[BrokenAgentFingerprint, int]
         ] = {}  # bounded-accumulator-ok: bounded by phase; lives only for the controller instance
-        self._spent_agents: dict[
-            str, set[str]
-        ] = {}  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
+        self._spent_agents: dict[str, set[str]] = {
+            k: set(v) for k, v in (opts.spent_agents or {}).items()
+        }  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
         self._in_session_retry_escalation_limit: int = opts.in_session_retry_escalation_limit
-        self._in_session_retry_counts: dict[
-            str, int
-        ] = {}  # bounded-accumulator-ok: keyed by phase:agent, drained by reset_backoff
+        self._in_session_retry_counts: dict[str, int] = dict(
+            opts.in_session_retry_counts or {}
+        )  # bounded-accumulator-ok: keyed by phase:agent, drained by reset_backoff
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -571,6 +581,7 @@ class RecoveryController:
                 backoff_policy=opts.unavailability_backoff_policy,
                 initial_timeouts=opts.unavailable_timeouts,
                 initial_entries=opts.unavailability_entries,
+                initial_backoff_attempts=opts.backoff_attempts,
             )
 
     @property
@@ -1207,7 +1218,11 @@ class RecoveryController:
                 cooldown_ms = max(0, timeout_ms - now_ms)
 
             avail = self._is_agent_available(phase, agent)
-            is_spent = agent in spent_set or (idx == current_index and current_allowance_spent)
+            is_spent = (
+                agent in spent_set
+                or (idx == current_index and current_allowance_spent)
+                or self._registry.is_exhausted(phase, agent)
+            )
 
             rows.append(
                 agent_availability(
@@ -1517,7 +1532,29 @@ class RecoveryController:
             "technical_retry_cap": self._technical_retry_cap,
             "in_session_retry_escalation_limit": self._in_session_retry_escalation_limit,
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
+            "in_session_retry_counts": dict(self._in_session_retry_counts),
+            "spent_agents": {k: sorted(v) for k, v in self._spent_agents.items()},
         }
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: Mapping[str, object],
+        *,
+        policy_bundle: PolicyBundle | None = None,
+        clock: Clock | None = None,
+        classifier: FailureClassifier | None = None,
+        event_bus: FailureEventBus | None = None,
+    ) -> RecoveryController:
+        """Construct a RecoveryController from an exported state snapshot."""
+        options = RecoveryControllerOptions.from_snapshot(
+            snapshot,
+            policy_bundle=policy_bundle,
+            clock=clock,
+            classifier=classifier,
+            event_bus=event_bus,
+        )
+        return cls(options=options)
 
     def waiting_state_payload(self, phase: str, agents: list[str]) -> list[tuple[str, int, int]]:
         """Return the per-agent cooldown payload for the all-agents-unavailable

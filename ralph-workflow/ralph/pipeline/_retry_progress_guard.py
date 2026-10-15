@@ -25,14 +25,14 @@ sharing one signature.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
 from ralph.pipeline._restart_from_scratch import structural_restart_fingerprint
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 #: After the base fingerprint, collapse EVERY numeric token — in any textual form
 #: — to a single ``<n>``. RepetitionTracker.fingerprint only normalizes integers
@@ -94,11 +94,37 @@ def retry_failure_signature(reason: str, rendered_output: Sequence[str]) -> str:
 
 @dataclass
 class RetryProgressGuard:
-    """Track consecutive identical failure signatures and force a stop at the cap."""
+    """Track consecutive identical failure signatures and force a stop at the cap.
+
+    Durable and restart-surviving: supports state serialization via
+    :meth:`snapshot` and restoration via :meth:`from_dict`. Exhaustion then
+    restart does not replenish attempts.
+    """
 
     max_identical: int = MAX_IDENTICAL_RETRY_ATTEMPTS
-    _last_signature: str | None = field(default=None, init=False)
-    _streak: int = field(default=0, init=False)
+    last_signature: str | None = None
+    streak: int = 0
+
+    @property
+    def _last_signature(self) -> str | None:
+        return self.last_signature
+
+    @_last_signature.setter
+    def _last_signature(self, value: str | None) -> None:
+        self.last_signature = value
+
+    @property
+    def _streak(self) -> int:
+        return self.streak
+
+    @_streak.setter
+    def _streak(self, value: int) -> None:
+        self.streak = value
+
+    @property
+    def is_exhausted(self) -> bool:
+        """Whether identical retries have hit or exceeded the max cap."""
+        return self.streak >= self.max_identical
 
     def record(self, signature: str) -> bool:
         """Record a failed attempt that has already executed.
@@ -109,12 +135,42 @@ class RetryProgressGuard:
         Because it is called post-execution, exactly ``max_identical`` identical
         attempts run before the stop — the guard prevents the next one.
         """
-        if signature == self._last_signature:
-            self._streak += 1
+        if signature == self.last_signature:
+            self.streak += 1
         else:
-            self._last_signature = signature
-            self._streak = 1
-        return self._streak >= self.max_identical
+            self.last_signature = signature
+            self.streak = 1
+        return self.is_exhausted
+
+    def reset(self) -> None:
+        """Reset streak on genuine forward progress."""
+        self.last_signature = None
+        self.streak = 0
+
+    def snapshot(self) -> dict[str, object]:
+        """Serialize guard state for checkpointing."""
+        return {
+            "max_identical": self.max_identical,
+            "last_signature": self.last_signature,
+            "streak": self.streak,
+            "is_exhausted": self.is_exhausted,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> RetryProgressGuard:
+        """Restore guard state from checkpointed data."""
+        raw_max = data.get("max_identical", MAX_IDENTICAL_RETRY_ATTEMPTS)
+        max_identical = (
+            int(raw_max) if isinstance(raw_max, (int, str)) else MAX_IDENTICAL_RETRY_ATTEMPTS
+        )
+        raw_sig = data.get("last_signature")
+        raw_streak = data.get("streak", 0)
+        streak = int(raw_streak) if isinstance(raw_streak, (int, str)) else 0
+        return cls(
+            max_identical=max_identical,
+            last_signature=str(raw_sig) if raw_sig is not None else None,
+            streak=streak,
+        )
 
 
 __all__ = [

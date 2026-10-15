@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 
@@ -180,6 +180,45 @@ def resolver_allowed(
     return prior_conflict_count(state, target, identity, attempts=attempts) < attempts
 
 
+@runtime_checkable
+class _SupportsMonotonic(Protocol):
+    def monotonic(self) -> float: ...
+
+
+@runtime_checkable
+class _SupportsTime(Protocol):
+    def time(self) -> float: ...
+
+
+@runtime_checkable
+class _SupportsCallSeconds(Protocol):
+    def __call__(self) -> float: ...
+
+
+def _read_clock_seconds(clock: object) -> float:
+    """Read current logical seconds from an injected clock abstraction."""
+    if clock is None:
+        raise TypeError("clock must not be None; provide an injected clock abstraction")
+    if isinstance(clock, _SupportsMonotonic):
+        try:
+            return float(clock.monotonic())
+        except (TypeError, ValueError) as exc:
+            raise TypeError(f"clock.monotonic() failed to return numeric seconds: {exc}") from exc
+    if isinstance(clock, _SupportsTime):
+        try:
+            return float(clock.time())
+        except (TypeError, ValueError) as exc:
+            raise TypeError(f"clock.time() failed to return numeric seconds: {exc}") from exc
+    if isinstance(clock, _SupportsCallSeconds):
+        try:
+            return float(clock())
+        except (TypeError, ValueError) as exc:
+            raise TypeError(f"clock callable failed to return numeric seconds: {exc}") from exc
+    raise TypeError(
+        f"Injected clock {type(clock).__name__!r} must be callable or provide .monotonic() or .time()"
+    )
+
+
 def apply_conflict_budget(
     record: RebaseState,
     *,
@@ -188,6 +227,9 @@ def apply_conflict_budget(
     resolver_suppressed: bool,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
     attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    retry_deadline: float | None = None,
+    clock: object = None,
+    cooldown_seconds: float | None = None,
 ) -> RebaseState:
     """Carry the conflict counter onto ``record`` and escalate when exhausted.
 
@@ -207,6 +249,10 @@ def apply_conflict_budget(
     stall into an actionable operator message.
     """
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
+    effective_deadline = retry_deadline
+    if effective_deadline is None and clock is not None and cooldown_seconds is not None:
+        effective_deadline = _read_clock_seconds(clock) + float(cooldown_seconds)
+
     if record.fast_forwarded:
         return record.model_copy(
             update={
@@ -217,6 +263,7 @@ def apply_conflict_budget(
                 "last_conflict_stage_oids": (),
                 "last_conflict_scope": "",
                 "last_conflict_strategy_index": 0,
+                "retry_deadline": None,
             }
         )
     if record.last_outcome != RebaseOutcomeKind.CONFLICT:
@@ -229,6 +276,15 @@ def apply_conflict_budget(
                 "last_conflict_stage_oids": prior.last_conflict_stage_oids,
                 "last_conflict_scope": prior.last_conflict_scope,
                 "last_conflict_strategy_index": prior.last_conflict_strategy_index,
+                "retry_deadline": (
+                    effective_deadline
+                    if effective_deadline is not None
+                    else (
+                        record.retry_deadline
+                        if record.retry_deadline is not None
+                        else prior.retry_deadline
+                    )
+                ),
             }
         )
 
@@ -240,6 +296,13 @@ def apply_conflict_budget(
         "last_conflict_stage_oids": identity.stage_oids,
         "last_conflict_scope": identity.scope,
         "last_conflict_strategy_index": prior.conflict_strategy_index,
+        "retry_deadline": (
+            effective_deadline
+            if effective_deadline is not None
+            else (
+                record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline
+            )
+        ),
     }
     if resolver_suppressed:
         update["last_reason"] = (

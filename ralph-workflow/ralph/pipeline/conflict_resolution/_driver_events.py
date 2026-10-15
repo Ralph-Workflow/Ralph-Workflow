@@ -9,6 +9,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -54,6 +55,7 @@ def emit_expired_operator_cap(
 ) -> None:
     """Report a rebase-wide cap before another resolver process is launched."""
     session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
+    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.last_activity_kind = None
     session.last_activity_at = None
     session.last_duration_seconds = max(0.0, clock() - (session.started_at or clock()))
@@ -66,6 +68,7 @@ def emit_expired_operator_cap(
             last_activity_kind=None,
             last_activity_at=None,
             unresolved_paths=session.unresolved_paths or conflicted,
+            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         ),
     )
 

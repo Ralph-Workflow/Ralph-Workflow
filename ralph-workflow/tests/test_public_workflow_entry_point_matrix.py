@@ -4,6 +4,8 @@ import contextlib
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop, runner
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
@@ -27,7 +29,7 @@ from ralph.pipeline.integration_resolution import (
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.parallel.worker_runtime import run_worker_auto_integration
 from ralph.pipeline.plumbing.commit_integration import prepare_commit_integration
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, PolicyBundle
@@ -43,6 +45,13 @@ def _policy() -> PipelinePolicy:
         phases={
             "development": PhaseDefinition(
                 drain="development",
+                transitions=PhaseTransition(
+                    on_success="review",
+                    on_loopback="development",
+                ),
+            ),
+            "review": PhaseDefinition(
+                drain="review",
                 transitions=PhaseTransition(
                     on_success="complete",
                     on_loopback="development",
@@ -273,3 +282,230 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
     # All 6 must agree on the exact same PhaseDecision
     assert all(d == PhaseDecision.BLOCK_FOR_RECOVERY for d in decisions)
     assert len(set(decisions)) == 1
+
+
+@pytest.mark.parametrize(
+    (
+        "scenario_name",
+        "has_record",
+        "record_intervention",
+        "rebase_kwargs",
+        "initial_phase",
+        "expected_decision",
+        "expected_terminal_eligible",
+    ),
+    [
+        (
+            "clean_active_development",
+            False,
+            False,
+            {},
+            "development",
+            PhaseDecision.ADVANCE_PHASE,
+            True,
+        ),
+        (
+            "active_integration_record",
+            True,
+            False,
+            {},
+            "development",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
+            "diagnostic_intervention_record",
+            True,
+            True,
+            {},
+            "development",
+            PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+            False,
+        ),
+        (
+            "unresolved_rebase",
+            False,
+            False,
+            {"last_outcome": RebaseOutcomeKind.CONFLICT},
+            "development",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
+            "recovery_record_retained",
+            False,
+            False,
+            {"recovery_record_retained": True},
+            "development",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
+            "intervention_required_rebase",
+            False,
+            False,
+            {"last_outcome": RebaseOutcomeKind.INTERVENTION_REQUIRED},
+            "development",
+            PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+            False,
+        ),
+        (
+            "terminal_phase_eligible",
+            False,
+            False,
+            {},
+            "complete",
+            PhaseDecision.REPORT_TERMINAL_SUCCESS,
+            True,
+        ),
+        (
+            "terminal_phase_ineligible_due_to_record",
+            True,
+            False,
+            {},
+            "complete",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
+            "terminal_phase_ineligible_due_to_unresolved",
+            False,
+            False,
+            {"last_outcome": RebaseOutcomeKind.CONFLICT},
+            "complete",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
+            "terminal_phase_ineligible_due_to_retained",
+            False,
+            False,
+            {"recovery_record_retained": True},
+            "complete",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+    ],
+)
+def test_public_runner_run_loop_boundary_parity(
+    tmp_path: Path,
+    scenario_name: str,
+    has_record: bool,
+    record_intervention: bool,
+    rebase_kwargs: dict[str, object],
+    initial_phase: str,
+    expected_decision: PhaseDecision,
+    expected_terminal_eligible: bool,
+) -> None:
+    del scenario_name
+    policy = _policy()
+    rebase = RebaseState(**rebase_kwargs)
+    state = PipelineState(phase=initial_phase, rebase=rebase)
+    record: IntegrationRecord | None = None
+    if has_record:
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        record = IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="abc111",
+            pre_target_sha="def222",
+            engine="git-merge",
+            owning_worktree=str(tmp_path),
+            diagnostic_intervention_required=record_intervention,
+        ).with_transition(START_INTEGRATING)
+        write_record(tmp_path, record)
+
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+
+    # 1. Authoritative state machine decisions
+    authority_decision = decide_phase_transition(
+        state, policy, integration_record=record, rebase_state=rebase
+    )
+    assert authority_decision == expected_decision
+    assert is_terminal_success_eligible(state, record, rebase) is expected_terminal_eligible
+
+    # 2. Public run_loop boundary
+    latest_states: list[PipelineState] = [state]
+    fake_sleep = MagicMock(side_effect=_StopInnerLoopError)
+    ctx = run_loop._LoopContext(
+        policy_bundle=bundle,
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry={},
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=MagicMock(),
+        sleep=fake_sleep,
+        is_quiet=True,
+        latest_state=latest_states,
+    )
+    if initial_phase == "complete":
+        if expected_decision == PhaseDecision.REPORT_TERMINAL_SUCCESS:
+            exit_code = run_loop._execute_with_cleanup(
+                state, ctx, "complete", lambda: None, lambda: None, lambda: None
+            )
+            assert exit_code == 0
+            assert (
+                ctx.latest_state[0].rebase.last_decision
+                == PhaseDecision.REPORT_TERMINAL_SUCCESS.value
+            )
+        else:
+            with contextlib.suppress(_StopInnerLoopError):
+                run_loop._execute_with_cleanup(
+                    state, ctx, "complete", lambda: None, lambda: None, lambda: None
+                )
+            st_terminal = ctx.latest_state[0] if ctx.latest_state else state
+            assert st_terminal.rebase.last_decision != PhaseDecision.REPORT_TERMINAL_SUCCESS.value
+            assert st_terminal.rebase.last_decision == expected_decision.value
+    elif expected_decision in (
+        PhaseDecision.BLOCK_FOR_RECOVERY,
+        PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+    ):
+        with contextlib.suppress(_StopInnerLoopError):
+            run_loop._run_inner_loop(state, ctx, "development")
+        st_inner = latest_states[0] if latest_states else state
+        assert st_inner.rebase.last_decision == expected_decision.value
+
+    # 3. Public runner boundary
+    if initial_phase == "complete" and expected_terminal_eligible:
+        runner_result = runner.run_pipeline_step(
+            state=state,
+            config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+            workspace_scope=WorkspaceScope(tmp_path),
+            policy_bundle=bundle,
+            registry={},
+            display=MagicMock(),
+            display_context=MagicMock(),
+            verbosity=MagicMock(),
+            pipeline_subscriber=None,
+            pipeline_deps=None,
+        )
+        assert runner_result == 0
+    elif (
+        has_record
+        or rebase.integration_unresolved
+        or rebase.recovery_record_retained
+        or rebase.is_intervention_required
+    ):
+        runner_result = runner.run_pipeline_step(
+            state=state,
+            config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+            workspace_scope=WorkspaceScope(tmp_path),
+            policy_bundle=bundle,
+            registry={},
+            display=MagicMock(),
+            display_context=MagicMock(),
+            verbosity=MagicMock(),
+            pipeline_subscriber=None,
+            pipeline_deps=None,
+        )
+        assert isinstance(runner_result, PipelineState)
+        assert runner_result.rebase.last_decision == expected_decision.value
+        assert "IntegrationDispatchBlockedError" in str(runner_result.last_error)

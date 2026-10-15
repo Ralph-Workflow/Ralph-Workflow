@@ -94,6 +94,7 @@ if TYPE_CHECKING:
     from git import Head
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_ff import RemoteClient
 
 #: Cadence of the background catch-up probe. Each tick costs a handful
 #: of in-process ref reads (no subprocess, no log lines), so a
@@ -244,32 +245,13 @@ def _close_repo(repo: Repo | None) -> None:
             repo.close()
 
 
-def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
-    """One catch-up probe: fast-forward the checkout onto the target if free.
-
-    Stateless -- every gate is re-derived from config and live git
-    state, matching the seam contract that integration decisions are
-    never cached across observations. Returns one of the ``CATCHUP_*``
-    outcome tags. :data:`CATCHUP_FAST_FORWARDED` means either the
-    checkout caught up to the local target or remote synchronization
-    advanced the target owned by the current checkout;
-    :data:`CATCHUP_ON_TARGET` means no target movement occurred.
-
-    Gate order is cheapest-first under the quiet-probe contract: the
-    config read and every ref observation are in-process and free, so
-    the two checks that shell out through GitPython (ancestry, then
-    cleanliness) run only once the SHAs prove the checkout is strictly
-    behind the target -- the steady states (up to date, diverged-with-
-    own-commits, on the target) never spawn anything at all.
-
-    The final ``merge --ff-only`` is handed the observed target SHA,
-    not the ref name, so a target that advances between the ancestry
-    check and the merge can at worst land the slightly older
-    (still-ancestor) tip -- never a non-fast-forward. If the CHECKOUT
-    moved in between (an agent committed), ``merge --ff-only`` against
-    a now-non-descendant SHA refuses without mutating anything and the
-    tick reports :data:`CATCHUP_REFUSED`.
-    """
+def attempt_catchup_fast_forward(
+    config: UnifiedConfig,
+    root: Path,
+    *,
+    remote_client: RemoteClient | None = None,
+) -> str:
+    """One catch-up probe: fast-forward the checkout onto the target if free."""
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return CATCHUP_DISABLED
@@ -281,7 +263,12 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
         return CATCHUP_NO_TARGET
     remote_outcome: str | None = None
     if remote_sync_enabled(config):
-        remote_outcome = _synchronize_remote_target(config, root, target)
+        if remote_client is not None:
+            remote_outcome = _synchronize_remote_target(
+                config, root, target, remote_client=remote_client
+            )
+        else:
+            remote_outcome = _synchronize_remote_target(config, root, target)
         if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
             return remote_outcome
     if current == target:
@@ -293,32 +280,55 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     return _fast_forward_if_strictly_behind(root, target, current)
 
 
-def _synchronize_remote_target(config: UnifiedConfig, root: Path, target: str) -> str | None:
+def _synchronize_remote_target(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    *,
+    remote_client: RemoteClient | None = None,
+) -> str | None:
     remote = remote_target_name(config)
     with remote_sync_transaction(root, remote, target) as lease:
         if lease is None:
             return CATCHUP_REMOTE_SKIPPED
         if not lease.fetch_allowed:
             return None
-        outcome = refresh_target_from_remote(
-            root,
-            target,
-            timeout_seconds=FETCH_TIMEOUT_SECONDS,
-            remote=remote,
-        )
+        if remote_client is not None:
+            outcome = remote_client.refresh_target(
+                root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=remote,
+            )
+        else:
+            outcome = refresh_target_from_remote(
+                root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=remote,
+            )
+        if outcome == REFRESH_UNREACHABLE:
+            return CATCHUP_REMOTE_SKIPPED
         try:
             lease.record_fetch()
         except OSError:
             return CATCHUP_REMOTE_SKIPPED
-        if outcome == REFRESH_UNREACHABLE:
-            return CATCHUP_REMOTE_SKIPPED
         if outcome != REFRESH_ORIGIN_AHEAD:
             return None
-        return _advance_target_to_remote(root, remote, target)
+        return _advance_target_to_remote(root, remote, target, remote_client=remote_client)
 
 
-def _advance_target_to_remote(root: Path, remote: str, target: str) -> str | None:
-    remote_sha = observe_remote_target_sha(root, remote, target)
+def _advance_target_to_remote(
+    root: Path,
+    remote: str,
+    target: str,
+    *,
+    remote_client: RemoteClient | None = None,
+) -> str | None:
+    if remote_client is not None and hasattr(remote_client, "observe_remote_sha"):
+        remote_sha = remote_client.observe_remote_sha(root, target, remote=remote)
+    else:
+        remote_sha = observe_remote_target_sha(root, remote, target)
     if remote_sha is None:
         return CATCHUP_REFUSED
     primary_root = find_main_worktree_root(root)
@@ -441,19 +451,23 @@ class AutoIntegrateCatchupWorker:
         interval_seconds: float = DEFAULT_CATCHUP_INTERVAL_SECONDS,
         tick: Callable[[], str] | None = None,
         wait: Callable[[float], bool] | None = None,
+        remote_client: RemoteClient | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
         self._config = config
         self._root = root
         self._interval = float(interval_seconds)
+        self._remote_client = remote_client
         self._tick: Callable[[], str] = tick if tick is not None else self._default_tick
         self._stop_event = threading.Event()
         self._wait = wait if wait is not None else self._stop_event.wait
         self._thread: threading.Thread | None = None
 
     def _default_tick(self) -> str:
-        return attempt_catchup_fast_forward(self._config, self._root)
+        return attempt_catchup_fast_forward(
+            self._config, self._root, remote_client=self._remote_client
+        )
 
     def start(self) -> None:
         """Spawn the daemon worker thread. Idempotent: a second call is a no-op."""
@@ -514,6 +528,7 @@ def start_catchup_worker_if_enabled(
     root: Path,
     *,
     interval_seconds: float = DEFAULT_CATCHUP_INTERVAL_SECONDS,
+    remote_client: RemoteClient | None = None,
 ) -> AutoIntegrateCatchupWorker | None:
     """Construct and start the catch-up worker when auto-integration is on.
 
@@ -526,7 +541,9 @@ def start_catchup_worker_if_enabled(
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return None
-    worker = AutoIntegrateCatchupWorker(config, root, interval_seconds=interval_seconds)
+    worker = AutoIntegrateCatchupWorker(
+        config, root, interval_seconds=interval_seconds, remote_client=remote_client
+    )
     worker.start()
     return worker
 

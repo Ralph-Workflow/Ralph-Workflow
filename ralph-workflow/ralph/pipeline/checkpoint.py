@@ -12,6 +12,7 @@ partial checkpoint corruption.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from loguru import logger
@@ -42,18 +43,57 @@ _FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
 )
 
 
-def _cleanup_stray_tmp(path: Path) -> None:
+def _cleanup_stray_tmp(
+    path: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     tmp = Path(str(path) + ".tmp")
     # filesystem-write-ok: discard interrupted checkpoint staging before recovery reads canonical bytes
-    tmp.unlink(missing_ok=True)
+    backend.unlink(tmp, missing_ok=True)
 
 
 class Checkpoint:
     """Handle for atomic checkpoint read/write operations at a fixed path."""
 
-    def __init__(self, path: Path = CHECKPOINT_PATH) -> None:
+    def __init__(
+        self,
+        path: Path = CHECKPOINT_PATH,
+        *,
+        backend: FileBackend = DEFAULT_FILE_BACKEND,
+    ) -> None:
         self._path = path
-        _cleanup_stray_tmp(path)
+        self._backend = backend
+        _cleanup_stray_tmp(path, backend=backend)
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def backend(self) -> FileBackend:
+        return self._backend
+
+    def save(self, state: PipelineState) -> None:
+        save(state, self._path, backend=self._backend)
+
+    def load(self) -> PipelineState | None:
+        return load(self._path, backend=self._backend)
+
+    def exists(self) -> bool:
+        return exists(self._path, backend=self._backend)
+
+    def remove(self) -> None:
+        remove(self._path, backend=self._backend)
+
+    def inspect(self) -> str:
+        return inspect(self._path, backend=self._backend)
+
+    async def save_async(self, state: PipelineState) -> None:
+        await save_async(state, self._path, backend=self._backend)
+
+    async def load_async(self) -> PipelineState | None:
+        return await load_async(self._path, backend=self._backend)
 
 
 def _normalize_recovery_state(state: PipelineState) -> PipelineState:
@@ -131,35 +171,53 @@ def save(
         raise
 
 
-def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
+def load(
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> PipelineState | None:
     """Load checkpoint from disk.
 
     Args:
         path: Path to the checkpoint file.
+        backend: FileBackend used for the load operation.
 
     Returns:
         PipelineState if checkpoint exists and is valid, None otherwise.
         If the loaded state contains a forbidden last_error sentinel
         (e.g. "Unknown failure"), it is dropped and replaced with None.
     """
-    if not path.exists():
+    if not backend.exists(path):
         logger.debug("No checkpoint found at {}", path)
         return None
     try:
-        data = path.read_text(encoding="utf-8")
-        state = PipelineState.model_validate_json(data)
+        data = backend.read_text(path, encoding="utf-8")
+        parsed: object = json.loads(data)
+        if isinstance(parsed, dict) and "state" in parsed and isinstance(parsed["state"], dict):
+            # Authoritative state extracted from CheckpointPayload wrapper;
+            # projections rebuilt one-way with no newest-timestamp merging.
+            state = PipelineState.model_validate(parsed["state"])
+        elif isinstance(parsed, dict):
+            state = PipelineState.model_validate(parsed)
+        else:
+            state = PipelineState.model_validate_json(data)
         state = _normalize_recovery_state(state)
         # Sanitize any stale error sentinel that might have been saved
         # by a pre-fix version of the pipeline.
         state = _sanitize_last_error(state)
         logger.debug("Checkpoint loaded from {}", path)
         return state
-    except ValueError as exc:
+    except (ValueError, TypeError, KeyError) as exc:
         logger.warning("Corrupt checkpoint at {}: {}", path, exc)
         return None
 
 
-async def save_async(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
+async def save_async(
+    state: PipelineState,
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     """Atomically write state to disk without blocking the event loop.
 
     Delegates to :func:`save` via ``asyncio.to_thread`` so callers
@@ -168,11 +226,16 @@ async def save_async(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None
     Args:
         state: The pipeline state to save.
         path: Path to save the checkpoint. Defaults to .agent/checkpoint.json.
+        backend: FileBackend used for the atomic write.
     """
-    await asyncio.to_thread(save, state, path)
+    await asyncio.to_thread(save, state, path, backend=backend)
 
 
-async def load_async(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
+async def load_async(
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> PipelineState | None:
     """Load checkpoint from disk without blocking the event loop.
 
     Delegates to :func:`load` via ``asyncio.to_thread`` so callers
@@ -180,46 +243,62 @@ async def load_async(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
 
     Args:
         path: Path to the checkpoint file.
+        backend: FileBackend used for the load operation.
 
     Returns:
         PipelineState if checkpoint exists and is valid, None otherwise.
     """
-    return await asyncio.to_thread(load, path)
+    return await asyncio.to_thread(load, path, backend=backend)
 
 
-def inspect(path: Path = CHECKPOINT_PATH) -> str:
+def inspect(
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> str:
     """Return formatted checkpoint summary.
 
     Args:
         path: Path to the checkpoint file.
+        backend: FileBackend used for reading.
 
     Returns:
         Formatted string representation of the checkpoint.
     """
-    state = load(path)
+    state = load(path, backend=backend)
     if state is None:
         return "No checkpoint found."
     return state.model_dump_json(indent=2)
 
 
-def exists(path: Path = CHECKPOINT_PATH) -> bool:
+def exists(
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> bool:
     """Check if a checkpoint exists.
 
     Args:
         path: Path to the checkpoint file.
+        backend: FileBackend used to check existence.
 
     Returns:
         True if checkpoint exists.
     """
-    return path.exists()
+    return backend.exists(path)
 
 
-def remove(path: Path = CHECKPOINT_PATH) -> None:
+def remove(
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     """Remove a checkpoint file.
 
     Args:
         path: Path to the checkpoint file.
+        backend: FileBackend used for unlinking.
     """
-    if path.exists():
-        path.unlink()
+    if backend.exists(path):
+        backend.unlink(path)
         logger.debug("Checkpoint removed from {}", path)

@@ -4,6 +4,7 @@
 * Date: 2026-10-14
 * Deciders: Ralph Workflow Team
 * Consulted: ADR-0004, ADR-0005, ADR-0006
+* Superseded in part by: [ADR-0008](adr-0008-integration-lifecycle-consolidation.md), [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
 
 ## Context
 

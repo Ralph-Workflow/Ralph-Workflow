@@ -54,6 +54,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -412,6 +413,7 @@ def _resolve_conflicted_rebase(
             short_circuit=record_conflict(
                 reason=record.rebase_continue_error or "verified rebase continuation pending",
                 target=target,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             ).model_copy(update={"recovery_record_retained": True}),
         )
     if not resolved:
@@ -423,6 +425,7 @@ def _resolve_conflicted_rebase(
                 reason=exhaustion_reason
                 or "rebase resolution incomplete; progress retained for next agent",
                 target=target,
+                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
             ).model_copy(update={"recovery_record_retained": True}),
         )
     logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
@@ -514,6 +517,7 @@ def _fallback_to_endpoint_merge(
             short_circuit=record_conflict(
                 reason="rebase in-progress after abort",
                 target=target,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             ),
         )
     _verify_terminal_state(
@@ -582,6 +586,7 @@ def _endpoint_merge_result(
             short_circuit=record_conflict(
                 reason="rebase conflict followed by merge attempt exception",
                 target=target,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             ),
         )
     if merge_result.outcome == "merge_commit_pending":
@@ -590,7 +595,9 @@ def _endpoint_merge_result(
             merge_attempted=True,
             merge_outcome=merge_result,
             short_circuit=record_conflict(
-                reason=merge_result.reason or "verified merge commit pending", target=target
+                reason=merge_result.reason or "verified merge commit pending",
+                target=target,
+                failure_cause=merge_result.failure_cause,
             ).model_copy(update={"recovery_record_retained": True}),
         )
     if merge_result.outcome in ("conflict", RESOLUTION_FAILED):

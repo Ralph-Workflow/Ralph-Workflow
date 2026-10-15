@@ -106,6 +106,7 @@ class AgentUnavailabilityTracker:
         initial_entries: dict[str, UnavailabilityEntry] | None = None,
         initial_timeouts: dict[str, int] | None = None,
         scope: Literal["session", "persistent"] = "session",
+        initial_backoff_attempts: dict[str, int] | None = None,
     ) -> None:
         self._scope = scope
         self._clock = clock or SystemClock()
@@ -113,14 +114,16 @@ class AgentUnavailabilityTracker:
             backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
         )
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
-        self._backoff_attempts: dict[str, int] = {}  # bounded-accumulator-ok: drained on cleanup
+        self._backoff_attempts: dict[str, int] = dict(
+            initial_backoff_attempts or {}
+        )  # bounded-accumulator-ok: drained on cleanup
 
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():
                 self._entries[key] = UnavailabilityEntry(
                     unavailable_until_ms=timeout_ms,
                     reason=None,
-                    attempt=0,
+                    attempt=self._backoff_attempts.get(key, 0),
                     base_backoff_ms=DEFAULT_LEGACY_BACKOFF_MS,
                     max_backoff_ms=DEFAULT_LEGACY_MAX_BACKOFF_MS,
                 )

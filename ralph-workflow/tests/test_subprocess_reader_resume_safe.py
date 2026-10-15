@@ -114,10 +114,12 @@ class _FakeProcess:
     def terminate(self) -> None:
         self.terminated = True
         self.returncode = -15
+        self._gate.set()
 
     def kill(self) -> None:
         self.terminated = True
         self.returncode = -9
+        self._gate.set()
 
 
 def _make_invocation_options(

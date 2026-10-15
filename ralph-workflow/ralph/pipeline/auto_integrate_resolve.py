@@ -61,6 +61,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 #: Sentinel :func:`unmerged_paths` reports when the git query itself
 #: failed, so a broken repository is never mistaken for "resolved".
@@ -131,7 +132,9 @@ def _retain_uncertain_merge(root: Path, target: str, reason: str) -> MergeResult
         mark_pending_merge(root, target, resolving=True)
     except Exception as exc:
         reason = f"{reason}; ownership persistence failed: {exc}"
-    return MergeResult(MERGE_COMMIT_PENDING, reason)
+    return MergeResult(
+        MERGE_COMMIT_PENDING, reason, failure_cause=ResolutionFailureCause.CONTEXT_FAILURE
+    )
 
 
 def _resolve_and_commit(
@@ -168,18 +171,26 @@ def _resolve_and_commit_with_reason(
             conflicted,
         )
         return MergeResult(
-            MERGE_COMMIT_PENDING, "no readable conflicted paths; resolution retained"
+            MERGE_COMMIT_PENDING,
+            "no readable conflicted paths; resolution retained",
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
         )
     try:
         mark_pending_merge(root, target, resolving=True)
     except Exception as exc:
-        return MergeResult(MERGE_COMMIT_PENDING, f"cannot protect merge resolution: {exc}")
+        return MergeResult(
+            MERGE_COMMIT_PENDING,
+            f"cannot protect merge resolution: {exc}",
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+        )
     try:
         result = resolver(root, target)
     except Exception as resolver_exc:
         logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
         return MergeResult(
-            MERGE_COMMIT_PENDING, f"resolver raised: {resolver_exc}; partial resolution retained"
+            MERGE_COMMIT_PENDING,
+            f"resolver raised: {resolver_exc}; partial resolution retained",
+            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         )
     reason = (
         result.reason.value
@@ -187,20 +198,34 @@ def _resolve_and_commit_with_reason(
         else None
     )
     if not _resolution_succeeded(result):
-        if (
-            isinstance(result, ResolutionOutcome)
-            and result.reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-        ):
-            reason = RESOLUTION_AGENT_FAILURE
-        return MergeResult(
-            MERGE_COMMIT_PENDING, reason or "conflict resolution incomplete; progress retained"
-        )
+        return _handle_unsuccessful_resolution(result, reason)
     return (
         _stage_verify_and_commit(root, conflicted, target)
         if conflicted
         else MergeResult(
-            MERGE_COMMIT_PENDING, "original resolution scope unavailable; progress retained"
+            MERGE_COMMIT_PENDING,
+            "original resolution scope unavailable; progress retained",
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
         )
+    )
+
+
+def _handle_unsuccessful_resolution(
+    result: ResolutionOutcome | bool, reason: str | None
+) -> MergeResult:
+    if (
+        isinstance(result, ResolutionOutcome)
+        and result.reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    ):
+        return MergeResult(
+            MERGE_COMMIT_PENDING,
+            RESOLUTION_AGENT_FAILURE,
+            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
+        )
+    return MergeResult(
+        outcome=RESOLUTION_FAILED,
+        reason=reason or "conflict resolution incomplete",
+        failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
 
 
@@ -225,7 +250,9 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str], target: str) -> 
         return _stage_and_verify(root, conflicted, target)
     except Exception as exc:
         return MergeResult(
-            MERGE_COMMIT_PENDING, f"resolution staging failed: {exc}; progress retained"
+            MERGE_COMMIT_PENDING,
+            f"resolution staging failed: {exc}; progress retained",
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
         )
 
 
@@ -246,6 +273,7 @@ def _stage_and_verify(root: Path, conflicted: list[str], target: str) -> MergeRe
         return MergeResult(
             MERGE_COMMIT_PENDING,
             "the resolution did not prove out against the worktree; progress retained",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
     marked = [
         *paths_with_conflict_markers(root, conflicted),
@@ -259,6 +287,7 @@ def _stage_and_verify(root: Path, conflicted: list[str], target: str) -> MergeRe
         return MergeResult(
             MERGE_COMMIT_PENDING,
             "the resolution did not prove out against the worktree; progress retained",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
     remaining = unmerged_paths(root)
     if remaining:
@@ -266,6 +295,7 @@ def _stage_and_verify(root: Path, conflicted: list[str], target: str) -> MergeRe
         return MergeResult(
             MERGE_COMMIT_PENDING,
             "the resolution did not prove out against the worktree; progress retained",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
     return _commit_verified_merge(root, target)
 
@@ -275,16 +305,32 @@ def _commit_verified_merge(root: Path, target: str) -> MergeResult:
     try:
         prepared_error = prepare_pending_merge(root, target)
         if prepared_error is not None:
-            return MergeResult(MERGE_COMMIT_PENDING, prepared_error)
+            return MergeResult(
+                MERGE_COMMIT_PENDING,
+                prepared_error,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            )
         record = read_record(root)
         if record is None:
-            return MergeResult(MERGE_COMMIT_PENDING, "prepared merge record unreadable")
+            return MergeResult(
+                MERGE_COMMIT_PENDING,
+                "prepared merge record unreadable",
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            )
         resumed = resume_pending_merge(root, record)
         if isinstance(resumed, str):
-            return MergeResult(MERGE_COMMIT_PENDING, resumed)
+            return MergeResult(
+                MERGE_COMMIT_PENDING,
+                resumed,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            )
     except Exception as exc:
-        return MergeResult(MERGE_COMMIT_PENDING, f"verified merge commit pending: {exc}")
-    return MergeResult("success")
+        return MergeResult(
+            MERGE_COMMIT_PENDING,
+            f"verified merge commit pending: {exc}",
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+        )
+    return MergeResult("success", failure_cause=ResolutionFailureCause.NONE)
 
 
 def _abort_merge_safely(root: Path) -> None:

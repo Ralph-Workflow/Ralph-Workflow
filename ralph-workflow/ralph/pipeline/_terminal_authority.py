@@ -30,18 +30,18 @@ def is_terminal_success_eligible(
     The function is the single authority for the "may the run
     loop report terminal success?" question.
     """
-    if integration_record is not None:
-        return False
-    if rebase_state.integration_unresolved:
-        return False
-    if rebase_state.last_publication_decision not in (None, "publication_terminal"):
-        return False
-    if rebase_state.last_fan_out_decision not in (
-        None,
-        "join_complete",
+    del state
+    pub = getattr(rebase_state, "last_publication_decision", None)
+    fan_out = getattr(rebase_state, "last_fan_out_decision", None)
+    if (
+        integration_record is not None
+        or getattr(rebase_state, "integration_unresolved", False) is True
+        or getattr(rebase_state, "recovery_record_retained", False) is True
+        or getattr(rebase_state, "is_intervention_required", False) is True
+        or (isinstance(pub, str) and pub != "publication_terminal")
+        or (isinstance(fan_out, str) and fan_out != "join_complete")
     ):
         return False
-    del state
     return True
 
 

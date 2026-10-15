@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.rebase_state import ResolutionFailureCause
+
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
         ResolutionTerminationReason,
@@ -21,3 +23,4 @@ class ResolutionOutcome:
     last_activity_kind: str | None
     last_activity_at: float | None
     unresolved_paths: tuple[str, ...]
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE

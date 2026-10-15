@@ -21,8 +21,10 @@ if TYPE_CHECKING:
 
 
 PHASE_LABEL = "Rebase Conflict Resolution"
+DIAGNOSIS_PHASE_LABEL = "Evidence Diagnosis"
 NEUTRAL_PHASE_LABEL = "Running"
 _WARN_CHANNEL = "rebase-conflict"
+_DIAGNOSIS_WARN_CHANNEL = "evidence-diagnosis"
 
 
 @dataclass
@@ -41,6 +43,9 @@ class ResolutionStatusReporter:
     unresolved_paths: tuple[str, ...]
     agent_name: str | None = None
     _last_emitted_at: float | None = None
+    is_diagnosis: bool = False
+    action: object = None
+    operation_display_state: str | None = None
 
     def observe(self, event: object) -> None:
         """Publish a low-cadence status from a watchdog activity event."""
@@ -56,13 +61,21 @@ class ResolutionStatusReporter:
             return
         age = diagnostic.get("last_activity_age_seconds", "unknown")
         self._last_emitted_at = now
+        diag = (
+            self.is_diagnosis
+            or self.operation_display_state == "evidence_diagnosis"
+            or (self.action is not None and "diagnos" in str(self.action).lower())
+        )
+        label = "evidence diagnosis" if diag else "conflict resolution"
+        channel = _DIAGNOSIS_WARN_CHANNEL if diag else _WARN_CHANNEL
         emit_conflict_phase_line(
             self.display,
-            "conflict resolution status: "
+            f"{label} status: "
             f"round={self.round_index}/{self.round_cap}; agent={self.agent_name or 'pending'}; "
             f"last_activity_kind={kind}; last_activity_age_seconds={age}; "
             f"elapsed_seconds={max(0.0, now - self.started_at):.1f}; "
             f"unresolved_count={len(self.unresolved_paths)}",
+            channel=channel,
         )
 
     def set_agent(self, agent_name: str) -> None:
@@ -76,6 +89,7 @@ def _status_diagnostic(event: object) -> dict[str, object]:
 
 
 __all__ = [
+    "DIAGNOSIS_PHASE_LABEL",
     "NEUTRAL_PHASE_LABEL",
     "PHASE_LABEL",
     "ResolutionStatusReporter",
@@ -116,9 +130,20 @@ def push_conflict_status_bar(
     elapsed_seconds: float | None = None,
     agent_name: str | None = None,
     run_started_monotonic: float | None = None,
+    action: object = None,
+    operation_display_state: str | None = None,
+    is_diagnosis: bool = False,
 ) -> None:
-    """Show the active conflict-resolution round in the persistent footer."""
+    """Show the active conflict-resolution or diagnosis round in the persistent footer."""
     try:
+        diag = (
+            is_diagnosis
+            or operation_display_state == "evidence_diagnosis"
+            or (action is not None and "diagnos" in str(action).lower())
+        )
+        display_state = (
+            "evidence_diagnosis" if diag else (operation_display_state or "conflict_resolution")
+        )
         model = StatusBarModel(
             workspace_root=str(workspace_root),
             phase_label=_phase_label(
@@ -128,14 +153,16 @@ def push_conflict_status_bar(
                 stop_cap=stop_cap,
                 replay_index=replay_index,
                 replay_total=replay_total,
+                is_diagnosis=diag,
             ),
-            phase_style=phase_style_for_phase(PHASE_RESOLUTION),
+            phase_style=("theme.status.info" if diag else phase_style_for_phase(PHASE_RESOLUTION)),
             outer_dev_iteration=round_index,
             outer_dev_cap=round_cap,
-            outer_label="Round",
+            outer_label="Diagnosis" if diag else "Round",
             elapsed_seconds=elapsed_seconds,
             agent_name=agent_name,
             run_started_monotonic=run_started_monotonic,
+            operation_display_state=display_state,
         )
         _update_status_bar(display, model)
     except Exception as exc:
@@ -150,14 +177,15 @@ def _phase_label(
     stop_cap: int | None,
     replay_index: int | None = None,
     replay_total: int | None = None,
+    is_diagnosis: bool = False,
+    phase_label_override: str | None = None,
 ) -> str:
+    base = phase_label_override or (DIAGNOSIS_PHASE_LABEL if is_diagnosis else PHASE_LABEL)
     if replay_index is not None and replay_total is not None:
-        return (
-            f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
-        )
+        return f"{base} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
     if stop_index is None or stop_cap is None:
-        return PHASE_LABEL
-    return f"{PHASE_LABEL} (commit {stop_index}/{stop_cap}, round {round_index}/{round_cap})"
+        return base
+    return f"{base} (commit {stop_index}/{stop_cap}, round {round_index}/{round_cap})"
 
 
 def capture_status_bar_model(display: object) -> object | None:
@@ -217,11 +245,13 @@ def _display_run_started_monotonic(display: object) -> float | None:
     return value if isinstance(value, float) else None
 
 
-def emit_conflict_phase_line(display: object, message: str) -> None:
+def emit_conflict_phase_line(
+    display: object, message: str, *, channel: str = _WARN_CHANNEL
+) -> None:
     """Emit one operator-visible conflict-resolution transcript line."""
     with contextlib.suppress(Exception):
         emit = cast(
             "Callable[[str, str, str], None] | None", getattr(display, "emit_warn_line", None)
         )
         if emit is not None:
-            emit("run", _WARN_CHANNEL, message)
+            emit("run", channel, message)

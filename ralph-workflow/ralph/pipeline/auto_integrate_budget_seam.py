@@ -31,7 +31,7 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
     prior_conflict_count,
 )
-from ralph.pipeline.auto_integrate_resolve import RESOLUTION_AGENT_FAILURE
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,7 +121,7 @@ def apply_completed_attempt_budget(
     attempts: int,
 ) -> RebaseState:
     """Charge only actual repository conflicts to the resolver budget."""
-    if RESOLUTION_AGENT_FAILURE in (record.last_reason or ""):
+    if record.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE:
         return charge_failed_attempt(
             record, prior=prior, target=target, identity=identity, attempts=attempts
         )

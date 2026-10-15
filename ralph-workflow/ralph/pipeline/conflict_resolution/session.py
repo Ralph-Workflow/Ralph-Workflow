@@ -20,6 +20,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -91,9 +92,15 @@ class ResolutionSession:
     last_attempt_saw_activity: bool = False
     ralph_fault_hits: int = 0
     last_fault_progress_at: float | None = None
+    rounds_spent: int = 0
+    last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
-def begin_resolution_stop(session: ResolutionSession) -> None:
+def begin_resolution_stop(
+    session: ResolutionSession,
+    *,
+    is_strategy_rotation: bool = False,
+) -> None:
     """Reset the state that describes ONE conflict before resolving another.
 
     A session spans a whole rebase, so everything here would otherwise
@@ -101,6 +108,10 @@ def begin_resolution_stop(session: ResolutionSession) -> None:
     cursor parked past the end starves the new stop of every candidate,
     and a terminal reason left over from the previous conflict is
     reported as this conflict's verdict even when no resolver ran.
+
+    When ``is_strategy_rotation`` is True, the session is retrying the
+    SAME conflict under a new strategy; retry budgets, spent rounds and
+    dead tool surfaces must not be replenished.
 
     ``dead_tool_surfaces`` deliberately survives -- a tool surface that
     died is still dead -- and so does the RecoveryController itself,
@@ -113,10 +124,7 @@ def begin_resolution_stop(session: ResolutionSession) -> None:
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
 
-    session.chain_cursor = 0
-    session.stop_dead_surfaces = ()
     session.out_of_reach_paths = ()
-    session.current_agent_retries = 0
     session.skip_same_agent_retries = False
     session.last_attempt_evidence = None
     session.last_attempt_failure = None
@@ -126,18 +134,24 @@ def begin_resolution_stop(session: ResolutionSession) -> None:
     session.last_activity_at = None
     session.last_duration_seconds = None
     session.exhaustion_reason = None
-    # Describes the stop that just failed, not one three stops ago.
     session.charge_conflict_budget = True
-    state = session.recovery_state
-    if not isinstance(state, PipelineState):
-        return
-    chain = state.chain_for_phase(PHASE_RESOLUTION)
-    if chain is None:
-        return
-    session.recovery_state = state.with_phase_chain(
-        PHASE_RESOLUTION,
-        AgentChainState(agents=list(chain.agents), current_index=0, retries=0),
-    )
+
+    if not is_strategy_rotation:
+        session.chain_cursor = 0
+        session.stop_dead_surfaces = ()
+        session.current_agent_retries = 0
+        session.rounds_spent = 0
+        session.last_failure_cause = ResolutionFailureCause.NONE
+        state = session.recovery_state
+        if not isinstance(state, PipelineState):
+            return
+        chain = state.chain_for_phase(PHASE_RESOLUTION)
+        if chain is None:
+            return
+        session.recovery_state = state.with_phase_chain(
+            PHASE_RESOLUTION,
+            AgentChainState(agents=list(chain.agents), current_index=0, retries=0),
+        )
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -396,6 +410,7 @@ def _candidate_cannot_be_launched(
             agent_name,
         )
         session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         session.charge_conflict_budget = False
         return True
     return False
@@ -421,6 +436,7 @@ def _record_attempt_without_agent_work(session: ResolutionSession | None) -> Non
     """
     if session is None or session.last_attempt_saw_activity:
         return
+    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     if session.terminal_reason is None:
         session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXITED
     if not session.last_attempt_evidence:
@@ -481,6 +497,7 @@ def _record_resolution_termination(session: ResolutionSession | None, exc: Excep
     """Persist typed invocation failure metadata for the driver's outcome line."""
     if session is None:
         return
+    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     if isinstance(exc, AgentInactivityTimeoutError):
         diagnostic = exc.diagnostic
         reason = exc.reason
@@ -510,6 +527,7 @@ def _record_resolution_exception(session: ResolutionSession | None) -> None:
     """Preserve a launch failure rather than relabeling it as a declined candidate."""
     if session is not None:
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
 
 def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...]) -> None:

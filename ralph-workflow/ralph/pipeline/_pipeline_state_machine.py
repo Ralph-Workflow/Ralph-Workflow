@@ -83,13 +83,19 @@ def _check_blocking_decision(
             IntegrationAction.LAND_TARGET,
         ):
             return PhaseDecision.BLOCK_FOR_RECOVERY
-    if rebase_state.is_intervention_required:
+    if getattr(rebase_state, "is_intervention_required", False) is True:
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    last_outcome = getattr(rebase_state, "last_outcome", None)
+    fast_forwarded = getattr(rebase_state, "fast_forwarded", False)
     unlanded_rebase = (
-        rebase_state.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
-        and not rebase_state.fast_forwarded
+        last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        and fast_forwarded is False
     )
-    if unlanded_rebase or rebase_state.integration_unresolved:
+    if (
+        unlanded_rebase
+        or getattr(rebase_state, "integration_unresolved", False) is True
+        or getattr(rebase_state, "recovery_record_retained", False) is True
+    ):
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None
 
@@ -98,9 +104,13 @@ def _is_terminal_failure(phase: str, policy: PipelinePolicy | None) -> bool:
     if policy is None:
         return False
     try:
-        from ralph.pipeline.reducer import _terminal_failure_route
+        from ralph.pipeline.reducer import _terminal_failure_route, _terminal_success_route
 
-        return phase == _terminal_failure_route(policy)
+        failure_route = _terminal_failure_route(policy)
+        success_route = _terminal_success_route(policy)
+        if failure_route != success_route:
+            return phase == failure_route
+        return False
     except Exception:
         return False
 

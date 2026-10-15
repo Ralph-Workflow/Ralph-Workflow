@@ -23,6 +23,8 @@ the maintained Python package.
   single-source-of-truth lifecycle, operation-scoped evidence collection, transition authority, and typed display taxonomy
 - [ADR-0008: integration lifecycle consolidation](adr-0008-integration-lifecycle-consolidation.md) —
   typed `IntegrationAction`, `RebaseOutcomeKind`, four-condition positive operation-completion proof, and one-way legacy migration
+- [ADR-0009: pipeline source-of-truth ownership](adr-0009-pipeline-source-of-truth-ownership.md) —
+  single authorities, observation boundaries, durable budgets, and the lifecycle fact matrix
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests

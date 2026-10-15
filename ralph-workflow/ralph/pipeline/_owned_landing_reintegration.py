@@ -36,9 +36,11 @@ def reintegrate_owned_landing(
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
     """Persist the next action before retrying integration without an ownership gap."""
+    owning_worktree = record.owning_worktree or str(root)
     retained = record.with_transition(
         MARK_REINTEGRATE_PENDING,
         reintegrate_pending=True,
+        owning_worktree=owning_worktree,
     )
     write_record(root, retained)
     resumed = _resume_owned_operation(
@@ -137,6 +139,7 @@ def _completed_owned_action(root: Path, record: IntegrationRecord) -> Integratio
             PROMOTE_TO_INTEGRATED,
             phase="integrated",
             integrated_feature_sha=record.pre_feature_sha,
+            reintegrate_pending=False,
         )
     if not is_repo_clean(root):
         return None
@@ -166,4 +169,5 @@ def _completed_owned_action(root: Path, record: IntegrationRecord) -> Integratio
         PROMOTE_TO_INTEGRATED,
         phase="integrated",
         integrated_feature_sha=head,
+        reintegrate_pending=False,
     )

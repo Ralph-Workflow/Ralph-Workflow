@@ -13,6 +13,7 @@
     "completed": false,
     "last_outcome": null,
     "last_reason": null,
+    "last_failure_cause": "NONE",
     "last_target": null,
     "fast_forwarded": false,
     "last_refresh": null,

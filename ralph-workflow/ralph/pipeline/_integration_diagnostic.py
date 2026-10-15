@@ -44,6 +44,7 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.operation_evidence import (
+    EvidenceVerdict,
     OperationEvidenceCollector,
     OperationFact,
     SubprocessOperationEvidenceCollector,
@@ -165,7 +166,13 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
         return True
 
 
-def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
+def diagnose_retained_integration(
+    ctx: _LoopContext,
+    failure: str,
+    *,
+    invoke: Callable[[str, Path], bool] | None = None,
+    collector: OperationEvidenceCollector | None = None,
+) -> bool:
     """Inspect missing evidence under both worktree leases; never accept agent success as proof."""
     from contextlib import ExitStack
 
@@ -202,25 +209,32 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
         ):
             return False
 
-        def invoke(agent: str, prompt: Path) -> bool:
-            with workspace_context(operation_root):
-                return invoke_resolution_agent(
-                    agent_name=agent,
-                    prompt_path=prompt,
-                    config=ctx.config,
-                    pipeline_deps=pipeline_deps,
-                    workspace_scope=WorkspaceScope(operation_root),
-                    policy_bundle=ctx.policy_bundle,
-                    display=ctx.active_display,
-                    display_context=ctx.display_context,
-                    operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
-                    require_completion_evidence=True,
-                )
+        effective_invoke: Callable[[str, Path], bool]
+        if invoke is None:
+
+            def _default_invoke(agent: str, prompt: Path) -> bool:
+                with workspace_context(operation_root):
+                    return invoke_resolution_agent(
+                        agent_name=agent,
+                        prompt_path=prompt,
+                        config=ctx.config,
+                        pipeline_deps=pipeline_deps,
+                        workspace_scope=WorkspaceScope(operation_root),
+                        policy_bundle=ctx.policy_bundle,
+                        display=ctx.active_display,
+                        display_context=ctx.display_context,
+                        operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
+                        require_completion_evidence=True,
+                    )
+
+            effective_invoke = _default_invoke
+        else:
+            effective_invoke = invoke
 
         try:
-            collector = operation_evidence_collector()
+            col = collector if collector is not None else operation_evidence_collector()
             before = record.diagnostic_evidence or tuple(
-                fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
+                fact.to_evidence_tuple() for fact in col.snapshot(operation_root, record)
             )
             if not record.diagnostic_evidence or not record.diagnostic_ownership:
                 record = record.with_transition(
@@ -238,11 +252,10 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
                     for agent in resolution_chain_agents(ctx.policy_bundle)
                     if ctx.registry.get(agent) is not None
                 ),
-                invoke=invoke,
+                invoke=effective_invoke,
+                collector=col,
             )
-            after = tuple(
-                fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
-            )
+            after = tuple(fact.to_evidence_tuple() for fact in col.snapshot(operation_root, record))
             if after != before:
                 logger.critical(
                     "Integration diagnostic changed protected Git evidence; landing withheld"
@@ -266,14 +279,25 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
             return False
 
 
-def diagnostic_evidence_unchanged(root: Path, record: IntegrationRecord) -> bool:
+def diagnostic_evidence_verdict(
+    root: Path,
+    record: IntegrationRecord,
+    collector: OperationEvidenceCollector | None = None,
+) -> EvidenceVerdict:
+    """Evaluate whether recorded diagnostic evidence is still trustworthy.
+
+    Returns:
+        EvidenceVerdict.UNCHANGED: the evidence still matches live operation state.
+        EvidenceVerdict.CHANGED: the evidence or ownership has drifted.
+        EvidenceVerdict.UNKNOWN: an observation is unreadable or indeterminate.
+    """
     if not record.diagnostic_evidence:
-        return True
+        return EvidenceVerdict.UNCHANGED
     if record.diagnostic_ownership != ownership_fingerprint(record):
-        return False
+        return EvidenceVerdict.CHANGED
     observed_facts = _evidence_to_facts(record.diagnostic_evidence)
     if any(fact.value == _UNREADABLE for fact in observed_facts):
-        return False
+        return EvidenceVerdict.UNKNOWN
     operation_root = (
         Path(record.owning_worktree)
         if (
@@ -283,65 +307,44 @@ def diagnostic_evidence_unchanged(root: Path, record: IntegrationRecord) -> bool
         )
         else root
     )
-    return _verify_diagnostic_evidence(operation_root, record, observed_facts)
-
-
-def _verify_diagnostic_evidence(
-    operation_root: Path,
-    record: IntegrationRecord,
-    observed_facts: tuple[OperationFact, ...],
-) -> bool:
-    if _diagnostic_snapshot is not _default_diagnostic_snapshot:
-        current = _evidence_to_facts(_diagnostic_snapshot(operation_root))
-        if any(fact.value == _UNREADABLE for fact in current):
-            return False
-        current_map = {(fact.kind, fact.scope): fact.value for fact in current}
-        kind_map = {fact.kind: fact.value for fact in current if fact.scope is None}
-        return all(
-            _matches_fact(
-                fact,
-                current_map.get((fact.kind, fact.scope)) or kind_map.get(fact.kind),
-            )
-            for fact in observed_facts
-        )
-    collector = operation_evidence_collector()
-    current = collector.snapshot(operation_root, record)
+    col = collector if collector is not None else operation_evidence_collector()
+    if hasattr(col, "evaluate"):
+        return col.evaluate(operation_root, record, observed_facts)
+    current = col.snapshot(operation_root, record)
     if any(fact.value == _UNREADABLE for fact in current):
-        return False
-    return collector.verify(operation_root, record, observed_facts)
+        return EvidenceVerdict.UNKNOWN
+    return (
+        EvidenceVerdict.UNCHANGED
+        if col.verify(operation_root, record, observed_facts)
+        else EvidenceVerdict.CHANGED
+    )
 
 
-def _matches_fact(fact: OperationFact, expected: str | None) -> bool:
-    return expected is not None and expected != _UNREADABLE and expected == fact.value
+def diagnostic_evidence_unchanged(
+    root: Path,
+    record: IntegrationRecord,
+    collector: OperationEvidenceCollector | None = None,
+) -> bool:
+    """Return True iff diagnostic evidence evaluates to UNCHANGED."""
+    return (
+        diagnostic_evidence_verdict(root, record, collector=collector) == EvidenceVerdict.UNCHANGED
+    )
 
 
-def release_verified_diagnostic(root: Path, record: IntegrationRecord) -> str | None:
+def release_verified_diagnostic(
+    root: Path,
+    record: IntegrationRecord,
+    collector: OperationEvidenceCollector | None = None,
+) -> EvidenceVerdict:
+    """Evaluate diagnostic evidence without mutating durable record state.
+
+    Returns an :class:`EvidenceVerdict`. The caller owns the transition
+    and durable record write when the verdict is ``UNCHANGED``.
+    """
     try:
-        if not diagnostic_evidence_unchanged(root, record):
-            return "diagnostic evidence changed; original evidence must be restored before recovery"
-        cleared = record.with_transition(
-            RELEASE_DIAGNOSTIC_EVIDENCE,
-            diagnostic_evidence=(),
-            diagnostic_ownership=None,
-        )
-        write_record(root, cleared)
-        return None
-    except Exception as exc:
-        return f"diagnostic evidence unreadable; recovery retained: {exc}"
-
-
-def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
-    """Adapter from :class:`OperationEvidenceCollector` to the legacy tuple shape."""
-    from ralph.pipeline.auto_integrate_record import read_record
-
-    record = read_record(root)
-    if record is None:
-        return ()
-    facts = operation_evidence_collector().snapshot(root, record)
-    return tuple(fact.to_evidence_tuple() for fact in facts)
-
-
-_default_diagnostic_snapshot = _diagnostic_snapshot
+        return diagnostic_evidence_verdict(root, record, collector=collector)
+    except Exception:
+        return EvidenceVerdict.UNKNOWN
 
 
 def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
@@ -514,6 +517,7 @@ def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
 def _check_atomic_transition_proof(
     record: IntegrationRecord,
     root: Path | None = None,
+    collector: OperationEvidenceCollector | None = None,
 ) -> tuple[bool, str]:
     has_valid_phase = record.phase in ("integrated",) or (
         record.phase in ("integrating",) and bool(record.integrated_feature_sha)
@@ -525,7 +529,10 @@ def _check_atomic_transition_proof(
         if root is not None
         else (Path(record.owning_worktree) if record.owning_worktree else Path.cwd())
     )
-    if not diagnostic_evidence_unchanged(effective_root, record):
+    verdict = diagnostic_evidence_verdict(effective_root, record, collector=collector)
+    if verdict == EvidenceVerdict.UNKNOWN:
+        return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
+    if verdict != EvidenceVerdict.UNCHANGED:
         return False, "diagnostic evidence does not match release conditions"
     return True, "atomic transition verified"
 
@@ -533,12 +540,13 @@ def _check_atomic_transition_proof(
 def _check_operation_completion_proof(
     root: Path,
     record: IntegrationRecord,
+    collector: OperationEvidenceCollector | None = None,
 ) -> tuple[bool, str]:
     checks = (
         _check_ancestry_proof(root, record),
         _check_ownership_proof(root, record),
         _check_index_tree_proof(root),
-        _check_atomic_transition_proof(record, root=root),
+        _check_atomic_transition_proof(record, root=root, collector=collector),
     )
     for ok, reason in checks:
         if not ok:
@@ -573,6 +581,7 @@ def _run_completion_pre_pass(
     snapshot: tuple[OperationFact, ...],
     next_action: IntegrationAction,
     backend: FileBackend,
+    collector: OperationEvidenceCollector | None = None,
 ) -> bool | None:
     for fact in snapshot:
         if fact.kind in (
@@ -590,7 +599,9 @@ def _run_completion_pre_pass(
         IntegrationAction.CONTINUE_GIT_OPERATION,
         IntegrationAction.LAND_TARGET,
     ):
-        proof_ok, proof_reason = _check_operation_completion_proof(inspection_root, record)
+        proof_ok, proof_reason = _check_operation_completion_proof(
+            inspection_root, record, collector=collector
+        )
         if proof_ok:
             cleared = record.with_transition(
                 RELEASE_DIAGNOSTIC_EVIDENCE,
@@ -622,6 +633,7 @@ def handoff_integration_diagnostic(
     invoke: Callable[[str, Path], bool],
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    collector: OperationEvidenceCollector | None = None,
 ) -> bool:
     """Rotate inspection candidates without authorizing publication or record cleanup.
 
@@ -637,8 +649,8 @@ def handoff_integration_diagnostic(
         if (record.owning_worktree and backend.exists(Path(record.owning_worktree)))
         else root
     )
-    collector = operation_evidence_collector()
-    snapshot = collector.snapshot(inspection_root, record)
+    col = collector if collector is not None else operation_evidence_collector()
+    snapshot = col.snapshot(inspection_root, record)
     next_action = next_integration_action(record)
 
     pre_pass_result = _run_completion_pre_pass(
@@ -648,6 +660,7 @@ def handoff_integration_diagnostic(
         snapshot=snapshot,
         next_action=next_action,
         backend=backend,
+        collector=col,
     )
     if pre_pass_result is not None:
         return pre_pass_result

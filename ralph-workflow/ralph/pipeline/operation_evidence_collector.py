@@ -6,6 +6,7 @@ readers of Git state for diagnostic evidence.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -13,6 +14,14 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.operation_fact import OperationFact
+
+
+class EvidenceVerdict(StrEnum):
+    """Closed vocabulary for operation-scoped diagnostic evidence evaluation."""
+
+    UNCHANGED = "unchanged"
+    CHANGED = "changed"
+    UNKNOWN = "unknown"
 
 
 class OperationEvidenceCollector(Protocol):
@@ -32,6 +41,15 @@ class OperationEvidenceCollector(Protocol):
         """Return the operation-scoped facts for ``record``."""
         ...
 
+    def evaluate(
+        self,
+        root: Path,
+        record: IntegrationRecord,
+        observed: tuple[OperationFact, ...],
+    ) -> EvidenceVerdict:
+        """Evaluate observed evidence against the live snapshot and return an :class:`EvidenceVerdict`."""
+        ...
+
     def verify(
         self,
         root: Path,
@@ -42,4 +60,4 @@ class OperationEvidenceCollector(Protocol):
         ...
 
 
-__all__ = ["OperationEvidenceCollector"]
+__all__ = ["EvidenceVerdict", "OperationEvidenceCollector"]

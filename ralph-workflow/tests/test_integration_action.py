@@ -310,3 +310,222 @@ def test_reset_case_require_intervention() -> None:
         last_decision="report_intervention_required",
     )
     assert next_integration_action(state) == IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_target_movement_yields_reintegrate_against_target_with_ownership_kept() -> None:
+    """Target movement yields REINTEGRATE_AGAINST_TARGET with ownership kept."""
+    from types import SimpleNamespace
+
+    # Integrating phase with target movement / reintegrate_pending
+    record_integrating = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        reintegrate_pending=True,
+        owning_worktree="/wt/alpha",
+    )
+    assert (
+        next_integration_action(record_integrating) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+    )
+    assert record_integrating.owning_worktree == "/wt/alpha"
+
+    # Integrated phase with target movement / reintegrate_pending
+    record_integrated = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        reintegrate_pending=True,
+        owning_worktree="/wt/beta",
+    )
+    assert (
+        next_integration_action(record_integrated) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+    )
+    assert record_integrated.owning_worktree == "/wt/beta"
+
+    # target_moved attribute yields REINTEGRATE_AGAINST_TARGET
+    target_moved_obj = SimpleNamespace(target_moved=True, owning_worktree="/wt/gamma")
+    assert next_integration_action(target_moved_obj) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+
+    # RebaseState with INTEGRATING outcome yields REINTEGRATE_AGAINST_TARGET
+    state_integrating = RebaseState(last_outcome=RebaseOutcomeKind.INTEGRATING)
+    assert (
+        next_integration_action(state_integrating) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+    )
+
+
+def test_completed_conflict_resolution_with_landing_pending_yields_land_target() -> None:
+    """Completed conflict resolution with landing pending yields LAND_TARGET."""
+    from types import SimpleNamespace
+
+    # Integrated record (completed conflict resolution, fast-forward pending)
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        integrated_feature_sha="head333",
+        reintegrate_pending=False,
+    )
+    assert next_integration_action(record) == IntegrationAction.LAND_TARGET
+
+    # Integrated record with landing pending (integrated_feature_sha is None)
+    record_landing_pending = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        integrated_feature_sha=None,
+        reintegrate_pending=False,
+    )
+    assert next_integration_action(record_landing_pending) == IntegrationAction.LAND_TARGET
+
+    # Object with landing_pending attribute yields LAND_TARGET
+    landing_obj = SimpleNamespace(landing_pending=True)
+    assert next_integration_action(landing_obj) == IntegrationAction.LAND_TARGET
+
+    # RebaseState with LANDING outcome and unlanded yields LAND_TARGET
+    state_landing = RebaseState(
+        last_outcome=RebaseOutcomeKind.LANDING,
+        fast_forwarded=False,
+    )
+    assert next_integration_action(state_landing) == IntegrationAction.LAND_TARGET
+
+    # RebaseState with REBASED / MERGED outcome and unlanded yields LAND_TARGET
+    state_rebased = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+    )
+    assert next_integration_action(state_rebased) == IntegrationAction.LAND_TARGET
+
+    state_merged = RebaseState(
+        last_outcome=RebaseOutcomeKind.MERGED,
+        fast_forwarded=False,
+    )
+    assert next_integration_action(state_merged) == IntegrationAction.LAND_TARGET
+
+
+def test_no_development_reentry_on_target_movement_and_landing_pending() -> None:
+    """Target movement and pending landing block recovery without development re-entry."""
+    from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.reducer import reduce
+    from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+
+    policy = PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="development",
+                ),
+            ),
+            "integrating": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="integrating",
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="complete",
+    )
+
+    # 1. Target movement: reintegrate_pending=True in integrating phase blocks and avoids dev re-entry
+    record_moved = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        reintegrate_pending=True,
+    )
+    state = PipelineState(phase="integrating", rebase=RebaseState())
+    decision = decide_phase_transition(
+        state,
+        policy,
+        integration_record=record_moved,
+        rebase_state=state.rebase,
+    )
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
+
+    new_state, _ = reduce(
+        state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=record_moved
+    )
+    assert new_state.phase == "integrating"
+    assert new_state.phase != "development"
+    assert new_state.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
+
+    # 2. Completed conflict resolution with landing pending blocks and avoids dev re-entry
+    record_landing = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        reintegrate_pending=False,
+    )
+    decision_landing = decide_phase_transition(
+        state,
+        policy,
+        integration_record=record_landing,
+        rebase_state=state.rebase,
+    )
+    assert decision_landing == PhaseDecision.BLOCK_FOR_RECOVERY
+
+    new_state_landing, _ = reduce(
+        state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=record_landing
+    )
+    assert new_state_landing.phase == "integrating"
+    assert new_state_landing.phase != "development"
+    assert new_state_landing.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
+
+
+def test_transition_field_map_updates_for_reintegrate_pending_and_ownership() -> None:
+    """Transition table allows reintegrate_pending and owning_worktree updates."""
+    from ralph.pipeline.auto_integrate_record import (
+        MARK_REINTEGRATE_PENDING,
+        PROMOTE_TO_INTEGRATED,
+        START_INTEGRATING,
+    )
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        reintegrate_pending=True,
+        owning_worktree="/wt/initial",
+    )
+
+    # MARK_REINTEGRATE_PENDING can update/preserve owning_worktree
+    retained = record.with_transition(
+        MARK_REINTEGRATE_PENDING,
+        reintegrate_pending=True,
+        owning_worktree="/wt/updated",
+    )
+    assert retained.reintegrate_pending is True
+    assert retained.owning_worktree == "/wt/updated"
+
+    # START_INTEGRATING can clear or set reintegrate_pending
+    restarted = retained.with_transition(
+        START_INTEGRATING,
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def333",
+        reintegrate_pending=False,
+    )
+    assert restarted.reintegrate_pending is False
+
+    # PROMOTE_TO_INTEGRATED can clear reintegrate_pending
+    promoted = record.with_transition(
+        PROMOTE_TO_INTEGRATED,
+        phase="integrated",
+        integrated_feature_sha="feat999",
+        reintegrate_pending=False,
+    )
+    assert promoted.phase == "integrated"
+    assert promoted.reintegrate_pending is False

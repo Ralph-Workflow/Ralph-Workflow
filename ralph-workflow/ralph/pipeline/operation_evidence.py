@@ -37,7 +37,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.pipeline.operation_evidence_collector import OperationEvidenceCollector
+from ralph.pipeline.operation_evidence_collector import (
+    EvidenceVerdict,
+    OperationEvidenceCollector,
+)
 from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
 from ralph.pipeline.operation_fact import (
     _KIND_COMMIT_CONTROLS,
@@ -171,20 +174,22 @@ class SubprocessOperationEvidenceCollector:
         facts.extend(_read_reachability_facts(root, record, observed))
         return tuple(facts)
 
-    def verify(
+    def evaluate(
         self,
         root: Path,
         record: IntegrationRecord,
         observed: tuple[OperationFact, ...],
-    ) -> bool:
-        if not observed or any(fact.value == _UNREADABLE for fact in observed):
-            return False
+    ) -> EvidenceVerdict:
+        if not observed:
+            return EvidenceVerdict.CHANGED
+        if any(fact.value == _UNREADABLE for fact in observed):
+            return EvidenceVerdict.UNKNOWN
         for fact in observed:
             if fact.kind in (
                 _KIND_MERGE_OBJECT_RESOLVABLE,
                 _KIND_REBASE_OBJECT_RESOLVABLE,
             ) and fact.value in ("False", "false"):
-                return False
+                return EvidenceVerdict.CHANGED
         current = self.snapshot(
             root,
             record,
@@ -192,18 +197,18 @@ class SubprocessOperationEvidenceCollector:
             observed=observed,
         )
         if any(fact.value == _UNREADABLE for fact in current):
-            return False
+            return EvidenceVerdict.UNKNOWN
         for fact in current:
             if fact.kind in (
                 _KIND_MERGE_OBJECT_RESOLVABLE,
                 _KIND_REBASE_OBJECT_RESOLVABLE,
             ) and fact.value in ("False", "false"):
-                return False
+                return EvidenceVerdict.CHANGED
         current_map = {fact.kind: fact.value for fact in current}
         current_scope: dict[tuple[str, str | None], str] = {
             (fact.kind, fact.scope): fact.value for fact in current
         }
-        return all(
+        all_match = all(
             _fact_matches(
                 fact,
                 current_map.get(fact.kind)
@@ -212,6 +217,15 @@ class SubprocessOperationEvidenceCollector:
             )
             for fact in observed
         )
+        return EvidenceVerdict.UNCHANGED if all_match else EvidenceVerdict.CHANGED
+
+    def verify(
+        self,
+        root: Path,
+        record: IntegrationRecord,
+        observed: tuple[OperationFact, ...],
+    ) -> bool:
+        return self.evaluate(root, record, observed) == EvidenceVerdict.UNCHANGED
 
 
 def _fact_matches(fact: OperationFact, expected: str | None) -> bool:
@@ -459,6 +473,7 @@ def _read_object_resolvable(root: Path, file_name: str, kind: str) -> OperationF
 __all__ = [
     "_KIND_MERGE_OBJECT_RESOLVABLE",
     "_KIND_REBASE_OBJECT_RESOLVABLE",
+    "EvidenceVerdict",
     "InMemoryOperationEvidenceCollector",
     "OperationEvidenceCollector",
     "OperationFact",

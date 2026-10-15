@@ -61,3 +61,26 @@ class StepOutcome:
             "remaining": self.remaining,
             "reason": self.reason,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> StepOutcome:
+        """Construct StepOutcome from dictionary representation."""
+        files = data.get("files_modified")
+        output_val = data.get("output")
+        exit_code_val = data.get("exit_code")
+        recoverable_val = data.get("recoverable")
+        error_val = data.get("error")
+        completed_val = data.get("completed")
+        remaining_val = data.get("remaining")
+        reason_val = data.get("reason")
+        return cls(
+            kind=str(data.get("kind", "unknown")),
+            output=output_val if isinstance(output_val, str) else None,
+            files_modified=[str(f) for f in files] if isinstance(files, list) else [],
+            exit_code=exit_code_val if isinstance(exit_code_val, int) else None,
+            recoverable=recoverable_val if isinstance(recoverable_val, bool) else None,
+            error=error_val if isinstance(error_val, str) else None,
+            completed=completed_val if isinstance(completed_val, str) else None,
+            remaining=remaining_val if isinstance(remaining_val, str) else None,
+            reason=reason_val if isinstance(reason_val, str) else None,
+        )

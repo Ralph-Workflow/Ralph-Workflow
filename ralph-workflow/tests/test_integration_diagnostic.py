@@ -14,7 +14,9 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.operation_evidence import (
+    EvidenceVerdict,
     InMemoryOperationEvidenceCollector,
+    OperationFact,
     ownership_fingerprint,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -106,7 +108,6 @@ def test_runtime_missing_completion_evidence_reaches_diagnostic_agent(
 
 @pytest.mark.parametrize("changed", ["reflog", "ownership"])
 def test_diagnostic_changed_evidence_cannot_authorize_recovery(
-    monkeypatch: pytest.MonkeyPatch,
     changed: str,
 ) -> None:
     record = IntegrationRecord(
@@ -127,11 +128,16 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
     if changed == "ownership":
         record = record.model_copy(update={"pre_feature_sha": "forged"})
 
-    def snapshot(_root: Path) -> tuple[tuple[str, str], ...]:
-        return (("reflog", observed),)
-
-    monkeypatch.setattr(diagnostic, "_diagnostic_snapshot", snapshot)
-    assert not diagnostic.diagnostic_evidence_unchanged(Path("/workspace"), record)
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="reflog", value=observed),)
+    )
+    assert not diagnostic.diagnostic_evidence_unchanged(
+        Path("/workspace"), record, collector=collector
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(Path("/workspace"), record, collector=collector)
+        == EvidenceVerdict.CHANGED
+    )
 
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
@@ -640,3 +646,177 @@ def test_public_diagnose_retained_integration_refuses_when_proof_missing(
     assert saved is not None
     assert saved.diagnostic_intervention_required is True
     assert saved.merge_commit_repair_attempts == 0
+
+
+def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
+    root = Path("/workspace")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_rebase=True,
+    )
+    # 1. Empty evidence -> UNCHANGED
+    assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
+
+    # 2. Ownership mismatch -> CHANGED
+    record_with_ownership = record.model_copy(
+        update={
+            "diagnostic_evidence": (("reflog", "original"),),
+            "diagnostic_ownership": "forged_ownership",
+        }
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_with_ownership)
+        == EvidenceVerdict.CHANGED
+    )
+
+    # 3. Unreadable observed fact -> UNKNOWN
+    fingerprint = ownership_fingerprint(record)
+    record_unreadable = record.model_copy(
+        update={
+            "diagnostic_evidence": (("reflog", "unreadable"),),
+            "diagnostic_ownership": fingerprint,
+        }
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_unreadable) == EvidenceVerdict.UNKNOWN
+    )
+
+    # 4. Unreadable collector snapshot -> UNKNOWN
+    record_valid = record.model_copy(
+        update={
+            "diagnostic_evidence": (("reflog", "valid_sha"),),
+            "diagnostic_ownership": fingerprint,
+        }
+    )
+    collector_unreadable = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="reflog", value="unreadable"),)
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_unreadable)
+        == EvidenceVerdict.UNKNOWN
+    )
+
+    # 5. Matching collector facts -> UNCHANGED
+    collector_matching = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="reflog", value="valid_sha"),)
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_matching)
+        == EvidenceVerdict.UNCHANGED
+    )
+
+    # 6. Differing collector facts -> CHANGED
+    collector_differing = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="reflog", value="different_sha"),)
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_differing)
+        == EvidenceVerdict.CHANGED
+    )
+
+
+def test_release_verified_diagnostic_returns_typed_verdict_without_mutation(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        integrated_feature_sha="integrated",
+        diagnostic_evidence=(("head", "integrated"),),
+    )
+    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="head", value="integrated"),)
+    )
+
+    # Evaluate verdict via release_verified_diagnostic
+    verdict = diagnostic.release_verified_diagnostic(root, record, collector=collector)
+    assert verdict == EvidenceVerdict.UNCHANGED
+
+    # Ensure no record was written to disk by release_verified_diagnostic
+    assert not record_path(root).exists()
+
+
+def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        integrated_feature_sha="integrated",
+        diagnostic_evidence=(("head", "unreadable"),),
+    )
+    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    ok, reason = diagnostic._check_atomic_transition_proof(record, root=Path("/workspace"))
+    assert ok is False
+    assert "UNKNOWN" in reason
+
+
+def test_handoff_integration_diagnostic_honors_injected_collector() -> None:
+    backend = _RecordBackend()
+    root = Path("/workspace")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_rebase=True,
+    )
+    # Collector with unreachable rebase marker object should trigger intervention in pre-pass
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
+    )
+    result = diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="test failure",
+        agents=("agent",),
+        invoke=lambda _a, _p: True,
+        backend=backend,
+        collector=collector,
+    )
+    assert result is False
+    saved = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
+    assert saved.diagnostic_intervention_required is True
+    assert "unreachable marker object" in (saved.repair_cap_reason or "")
+
+
+def test_diagnose_retained_integration_honors_injected_invoke_and_collector(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        integrated_feature_sha="2" * 40,
+        merge_commit_pending=True,
+        owning_worktree=str(root),
+    )
+    write_record(root, record)
+    ctx = _build_diagnostic_ctx(root)
+    invoked: list[str] = []
+
+    def custom_invoke(agent: str, prompt: Path) -> bool:
+        invoked.append(agent)
+        return True
+
+    custom_collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
+    )
+    result = diagnostic.diagnose_retained_integration(
+        ctx,
+        failure="test",
+        invoke=custom_invoke,
+        collector=custom_collector,
+    )
+    assert result is False
+    assert invoked == []
+    saved = read_record(root)
+    assert saved is not None
+    assert saved.diagnostic_intervention_required is True

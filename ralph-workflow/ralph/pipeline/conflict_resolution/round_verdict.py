@@ -23,8 +23,12 @@ from typing import TYPE_CHECKING
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import INFRASTRUCTURE_TERMINATION_REASONS
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    INFRASTRUCTURE_TERMINATION_REASONS,
+    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+)
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,6 +46,14 @@ __all__ = [
 
 def resolution_outcome(session: ResolutionSession, succeeded: bool) -> ResolutionOutcome:
     """Expose one resolver invocation as typed outcome evidence."""
+    cause = ResolutionFailureCause.NONE
+    if not succeeded:
+        if session.last_failure_cause != ResolutionFailureCause.NONE:
+            cause = session.last_failure_cause
+        elif session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+            cause = ResolutionFailureCause.AGENT_FAILURE
+        elif session.terminal_reason is not None:
+            cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
     return ResolutionOutcome(
         succeeded=succeeded,
         reason=None if succeeded else session.terminal_reason,
@@ -49,6 +61,7 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> Resolutio
         last_activity_kind=session.last_activity_kind,
         last_activity_at=session.last_activity_at,
         unresolved_paths=session.unresolved_paths,
+        failure_cause=cause,
     )
 
 

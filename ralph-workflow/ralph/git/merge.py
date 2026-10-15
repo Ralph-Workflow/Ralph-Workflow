@@ -69,6 +69,7 @@ from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -251,6 +252,7 @@ class MergeResult:
     #: no merge ran, so there is nothing for a resolver to repair until
     #: the obstruction is reconciled without committing unfinished work.
     blocked_paths: tuple[str, ...] = ()
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
 def branch_exists(repo_root: Path | str, name: str) -> bool:
@@ -417,7 +419,7 @@ def merge_target_into_current(
         label="git-merge",
     )
     if result.returncode == 0:
-        return MergeResult(outcome="success")
+        return MergeResult(outcome="success", failure_cause=ResolutionFailureCause.NONE)
     refusal = merge_refusal(f"{result.stdout}\n{result.stderr}")
     # Conflict path. Unless the caller asked to keep the conflicted
     # merge for resolution, abort so the working tree is left clean
@@ -439,8 +441,13 @@ def merge_target_into_current(
             )
     if refusal is not None:
         reason, blocked = refusal
-        return MergeResult(outcome="conflict", reason=reason, blocked_paths=blocked)
-    return MergeResult(outcome="conflict")
+        return MergeResult(
+            outcome="conflict",
+            reason=reason,
+            blocked_paths=blocked,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+    return MergeResult(outcome="conflict", failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)
 
 
 def unmerged_paths(repo_root: Path | str) -> list[str]:

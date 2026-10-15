@@ -29,7 +29,23 @@ class OperationDisplayState(StrEnum):
     TERMINAL = "terminal"
 
 
-_OPERATION_DISPLAY_STATES: frozenset[str] = frozenset(s.value for s in OperationDisplayState)
+class IntegrationDisplayLabel(StrEnum):
+    """The canonical closed vocabulary for the seven distinct integration display labels."""
+
+    CONFLICT_RESOLUTION = "conflict resolution"
+    EVIDENCE_DIAGNOSIS = "evidence diagnosis"
+    INTEGRATION = "integration"
+    LANDING = "landing"
+    PUBLICATION = "publication"
+    WAITING = "waiting"
+    INTERVENTION = "intervention"
+
+
+_OPERATION_DISPLAY_STATES: frozenset[str] = frozenset(s.value for s in OperationDisplayState) | {
+    "integration",
+    "publication",
+    "intervention",
+}
 
 #: Outcome verbs recorded on ``RebaseState.last_action`` by the producer.
 _ACTION_SKIPPED = "skipped"
@@ -132,12 +148,15 @@ def _remote_suffix(
 
 _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "integrating": OperationDisplayState.INTEGRATING.value,
+    "integration": OperationDisplayState.INTEGRATING.value,
     "landing": OperationDisplayState.LANDING.value,
     "publishing": OperationDisplayState.PUBLISHING.value,
+    "publication": OperationDisplayState.PUBLISHING.value,
     "conflict_resolution": OperationDisplayState.CONFLICT_RESOLUTION.value,
     "evidence_diagnosis": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "waiting": OperationDisplayState.WAITING.value,
     "intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
+    "intervention": OperationDisplayState.INTERVENTION_REQUIRED.value,
     "terminal": OperationDisplayState.TERMINAL.value,
     "diagnosing": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
@@ -153,6 +172,163 @@ _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "remote_failed": OperationDisplayState.PUBLISHING.value,
     "unknown": OperationDisplayState.INTERVENTION_REQUIRED.value,
 }
+
+_DISPLAY_LABEL_MAP: dict[str, str] = {
+    "conflict_resolution": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
+    "conflict resolution": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
+    "conflict": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
+    "resolve_active_operation": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
+    "evidence_diagnosis": IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
+    "evidence diagnosis": IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
+    "diagnosing": IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
+    "diagnosis": IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
+    "integrating": IntegrationDisplayLabel.INTEGRATION.value,
+    "integration": IntegrationDisplayLabel.INTEGRATION.value,
+    "continue_git_operation": IntegrationDisplayLabel.INTEGRATION.value,
+    "reintegrate_against_target": IntegrationDisplayLabel.INTEGRATION.value,
+    "landing": IntegrationDisplayLabel.LANDING.value,
+    "land_target": IntegrationDisplayLabel.LANDING.value,
+    "publishing": IntegrationDisplayLabel.PUBLICATION.value,
+    "publication": IntegrationDisplayLabel.PUBLICATION.value,
+    "publish_after_landing": IntegrationDisplayLabel.PUBLICATION.value,
+    "waiting": IntegrationDisplayLabel.WAITING.value,
+    "wait_for_bounded_retry": IntegrationDisplayLabel.WAITING.value,
+    "intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
+    "intervention": IntegrationDisplayLabel.INTERVENTION.value,
+    "require_intervention": IntegrationDisplayLabel.INTERVENTION.value,
+    "diagnostic_intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
+    "report_intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
+    "resolved": IntegrationDisplayLabel.LANDING.value,
+    "recoverable": IntegrationDisplayLabel.WAITING.value,
+    "exhausted": IntegrationDisplayLabel.INTERVENTION.value,
+}
+
+_ACTION_TO_DISPLAY_STATE: dict[str, OperationDisplayState] = {
+    "resolve_active_operation": OperationDisplayState.CONFLICT_RESOLUTION,
+    "conflict": OperationDisplayState.CONFLICT_RESOLUTION,
+    "conflict_resolution": OperationDisplayState.CONFLICT_RESOLUTION,
+    "continue_git_operation": OperationDisplayState.INTEGRATING,
+    "reintegrate_against_target": OperationDisplayState.INTEGRATING,
+    "integrating": OperationDisplayState.INTEGRATING,
+    "integration": OperationDisplayState.INTEGRATING,
+    "land_target": OperationDisplayState.LANDING,
+    "landing": OperationDisplayState.LANDING,
+    "rebased": OperationDisplayState.LANDING,
+    "merged": OperationDisplayState.LANDING,
+    "fast_forwarded": OperationDisplayState.LANDING,
+    "publish_after_landing": OperationDisplayState.PUBLISHING,
+    "publishing": OperationDisplayState.PUBLISHING,
+    "publication": OperationDisplayState.PUBLISHING,
+    "wait_for_bounded_retry": OperationDisplayState.WAITING,
+    "waiting": OperationDisplayState.WAITING,
+    "require_intervention": OperationDisplayState.INTERVENTION_REQUIRED,
+    "intervention": OperationDisplayState.INTERVENTION_REQUIRED,
+    "intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
+    "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
+    "complete_with_proof": OperationDisplayState.TERMINAL,
+    "terminal": OperationDisplayState.TERMINAL,
+    "completed": OperationDisplayState.TERMINAL,
+}
+
+
+def integration_action_to_operation_display_state(
+    action: object,
+    *,
+    is_diagnosis: bool = False,
+) -> OperationDisplayState | None:
+    """Project an IntegrationAction or action verb to an OperationDisplayState.
+
+    Evidence diagnosis is strictly distinguished and never returned as CONFLICT_RESOLUTION.
+    """
+    if action is None:
+        return None
+    raw = action.value if isinstance(action, StrEnum) else str(action)
+    norm = raw.strip().lower()
+    if is_diagnosis or "diagnos" in norm or "evidence" in norm:
+        return OperationDisplayState.EVIDENCE_DIAGNOSIS
+    return _ACTION_TO_DISPLAY_STATE.get(norm)
+
+
+def _is_diagnosis_state(action_or_state: object, is_diagnosis: bool) -> bool:
+    if is_diagnosis:
+        return True
+    diag_owner = _safe_attr(action_or_state, "diagnostic_ownership")
+    retained_rec = _safe_attr(action_or_state, "recovery_record_retained")
+    if diag_owner is not None or retained_rec is True:
+        return True
+    raw_last_outcome = _safe_attr(action_or_state, "last_outcome")
+    if raw_last_outcome is not None:
+        raw_norm = (
+            (
+                raw_last_outcome.value
+                if isinstance(raw_last_outcome, StrEnum)
+                else str(raw_last_outcome)
+            )
+            .strip()
+            .lower()
+        )
+        if raw_norm in ("evidence_diagnosis", "diagnosing"):
+            return True
+    raw_disp = _safe_attr(action_or_state, "operation_display_state")
+    if raw_disp is not None:
+        cand_str = (
+            (raw_disp.value if isinstance(raw_disp, StrEnum) else str(raw_disp)).strip().lower()
+        )
+        if cand_str in ("evidence_diagnosis", "diagnosing"):
+            return True
+    return False
+
+
+def format_integration_label(
+    action_or_state: object,
+    *,
+    is_diagnosis: bool = False,
+) -> str:
+    """Derive the canonical operator display label from an IntegrationAction or display state.
+
+    Produces one of seven distinct labels:
+    - 'conflict resolution'
+    - 'evidence diagnosis'
+    - 'integration'
+    - 'landing'
+    - 'publication'
+    - 'waiting'
+    - 'intervention'
+
+    Evidence diagnosis is strictly distinguished and never shown or counted as conflict resolution.
+    """
+    if action_or_state is None:
+        return IntegrationDisplayLabel.INTERVENTION.value
+    if _is_diagnosis_state(action_or_state, is_diagnosis):
+        return IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value
+
+    raw_disp = _safe_attr(action_or_state, "operation_display_state")
+    if raw_disp is not None:
+        cand_str = (
+            (raw_disp.value if isinstance(raw_disp, StrEnum) else str(raw_disp)).strip().lower()
+        )
+        mapped = _DISPLAY_LABEL_MAP.get(cand_str)
+        if mapped is not None:
+            return mapped
+
+    raw_action = (
+        _safe_attr(action_or_state, "next_action")
+        or _safe_attr(action_or_state, "integration_action")
+        or _safe_attr(action_or_state, "last_action")
+    )
+    target_obj = raw_action if raw_action is not None else action_or_state
+    raw_val = (
+        (target_obj.value if isinstance(target_obj, StrEnum) else str(target_obj)).strip().lower()
+    )
+
+    if raw_val in _DISPLAY_LABEL_MAP:
+        return _DISPLAY_LABEL_MAP[raw_val]
+
+    proj_state = rebase_outcome_to_operation_display_state(raw_val)
+    if proj_state is not None and proj_state.value in _DISPLAY_LABEL_MAP:
+        return _DISPLAY_LABEL_MAP[proj_state.value]
+
+    return IntegrationDisplayLabel.INTERVENTION.value
 
 
 def _safe_attr(obj: object, name: str) -> object:
@@ -232,7 +408,7 @@ def _format_typed_state_message(
 ) -> str:
     target_clause = f" ({target})" if target else ""
     message = f"{state_key}"
-    if state_key == OperationDisplayState.INTEGRATING:
+    if state_key in (OperationDisplayState.INTEGRATING, "integration"):
         base = "integrating" + (f" onto target{target_clause}" if target else "")
         if reason:
             message = f"{base}: {reason}"
@@ -242,26 +418,38 @@ def _format_typed_state_message(
             )
         else:
             message = base
-    elif state_key == OperationDisplayState.LANDING:
+    elif state_key in (OperationDisplayState.LANDING, "landing"):
         base = "landing" + target_clause
         message = base + _fast_forward_suffix(
             target=target, fast_forwarded=fast_forwarded, reason=reason
         )
-    elif state_key == OperationDisplayState.PUBLISHING:
+    elif state_key in (OperationDisplayState.PUBLISHING, "publication"):
         dest = f" to {remote}" if remote else ""
         base = f"publishing{dest}{target_clause}"
         message = f"{base}: {reason}" if reason else base
-    elif state_key == OperationDisplayState.CONFLICT_RESOLUTION:
+    elif state_key in (
+        OperationDisplayState.CONFLICT_RESOLUTION,
+        "conflict_resolution",
+        "conflict resolution",
+    ):
         message = f"conflict resolution{target_clause}: {reason or 'unresolved conflict'}"
-    elif state_key == OperationDisplayState.EVIDENCE_DIAGNOSIS:
+    elif state_key in (
+        OperationDisplayState.EVIDENCE_DIAGNOSIS,
+        "evidence_diagnosis",
+        "evidence diagnosis",
+    ):
         message = f"evidence diagnosis{target_clause}: {reason or 'diagnosing retained evidence'}"
-    elif state_key == OperationDisplayState.WAITING:
+    elif state_key in (OperationDisplayState.WAITING, "waiting"):
         message = f"waiting{target_clause}: {reason or 'retry pending'}"
-    elif state_key == OperationDisplayState.INTERVENTION_REQUIRED:
+    elif state_key in (
+        OperationDisplayState.INTERVENTION_REQUIRED,
+        "intervention_required",
+        "intervention",
+    ):
         message = (
             f"intervention required{target_clause}: {reason or 'manual intervention required'}"
         )
-    elif state_key == OperationDisplayState.TERMINAL:
+    elif state_key in (OperationDisplayState.TERMINAL, "terminal"):
         message = (
             f"terminal{target_clause}: {reason or 'completed'}"
             if reason
@@ -304,6 +492,51 @@ def _format_legacy_action_message(
     return message
 
 
+def _extract_rebase_params(
+    rebase: object,
+) -> tuple[
+    str | None,
+    str | OperationDisplayState | None,
+    object | None,
+    str | None,
+    str | None,
+    str | None,
+    bool,
+]:
+    raw_last_outcome = _safe_attr(rebase, "last_outcome")
+    last_outcome = raw_last_outcome if isinstance(raw_last_outcome, str) else None
+
+    raw_display_state = _safe_attr(rebase, "operation_display_state")
+    operation_display_state = (
+        raw_display_state if isinstance(raw_display_state, (str, OperationDisplayState)) else None
+    )
+
+    integration_action = _safe_attr(rebase, "next_action") or _safe_attr(
+        rebase, "integration_action"
+    )
+
+    raw_act = _safe_attr(rebase, "last_action")
+    action = raw_act if isinstance(raw_act, str) else None
+
+    raw_target = _safe_attr(rebase, "last_target")
+    target = raw_target if isinstance(raw_target, str) else None
+
+    raw_reason = _safe_attr(rebase, "last_reason")
+    reason = raw_reason if isinstance(raw_reason, str) else None
+
+    fast_forwarded = bool(_safe_attr(rebase, "fast_forwarded"))
+
+    return (
+        last_outcome,
+        operation_display_state,
+        integration_action,
+        action,
+        target,
+        reason,
+        fast_forwarded,
+    )
+
+
 def format_auto_integrate_message(
     action: str | None = None,
     target: str | None = None,
@@ -318,12 +551,14 @@ def format_auto_integrate_message(
     operation_display_state: str | OperationDisplayState | None = None,
     last_outcome: RebaseOutcomeKind | str | None = None,
     rebase: object | None = None,
+    integration_action: object | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
     Reads ``operation_display_state`` first (the eight-branch typed lifecycle
-    authority from ADR-0007); falls back to ``last_outcome`` (or ``rebase.last_outcome``)
-    projection or ``action``/``reason`` only when the typed state is unset (legacy checkpoints).
+    authority from ADR-0007); falls back to ``integration_action``, ``last_outcome``
+    (or ``rebase.last_outcome``) projection, or ``action``/``reason`` only when
+    the typed state is unset (legacy checkpoints).
 
     The four basic arguments are the four fields the producer records on
     :class:`ralph.pipeline.rebase_state.RebaseState`. The ``fast_forwarded``
@@ -360,36 +595,41 @@ def format_auto_integrate_message(
     doubled the prefix in the live line.
     """
     if rebase is not None:
+        (
+            rb_outcome,
+            rb_display_state,
+            rb_action_obj,
+            rb_action,
+            rb_target,
+            rb_reason,
+            rb_ff,
+        ) = _extract_rebase_params(rebase)
         if last_outcome is None:
-            raw_last_outcome = _safe_attr(rebase, "last_outcome")
-            if isinstance(raw_last_outcome, str):
-                last_outcome = raw_last_outcome
+            last_outcome = rb_outcome
         if operation_display_state is None:
-            raw_display_state = _safe_attr(rebase, "operation_display_state")
-            if isinstance(raw_display_state, (str, OperationDisplayState)):
-                operation_display_state = raw_display_state
+            operation_display_state = rb_display_state
+        if integration_action is None:
+            integration_action = rb_action_obj
         if action is None:
-            raw_act = _safe_attr(rebase, "last_action")
-            if isinstance(raw_act, str):
-                action = raw_act
+            action = rb_action
         if target is None:
-            raw_target = _safe_attr(rebase, "last_target")
-            if isinstance(raw_target, str):
-                target = raw_target
+            target = rb_target
         if reason is None:
-            raw_reason = _safe_attr(rebase, "last_reason")
-            if isinstance(raw_reason, str):
-                reason = raw_reason
-        if not fast_forwarded and bool(_safe_attr(rebase, "fast_forwarded")):
+            reason = rb_reason
+        if not fast_forwarded and rb_ff:
             fast_forwarded = True
 
     effective_display_state = (
         operation_display_state
         if operation_display_state is not None
         else (
-            rebase_outcome_to_operation_display_state(last_outcome)
-            if last_outcome is not None
-            else None
+            integration_action_to_operation_display_state(integration_action)
+            if integration_action is not None
+            else (
+                rebase_outcome_to_operation_display_state(last_outcome)
+                if last_outcome is not None
+                else None
+            )
         )
     )
     state_key = _resolve_operation_display_state(effective_display_state, action)
@@ -419,7 +659,10 @@ def format_auto_integrate_message(
 
 
 __all__ = [
+    "IntegrationDisplayLabel",
     "OperationDisplayState",
     "format_auto_integrate_message",
+    "format_integration_label",
+    "integration_action_to_operation_display_state",
     "rebase_outcome_to_operation_display_state",
 ]

@@ -80,12 +80,15 @@ def _check_active_or_pending(record: object) -> IntegrationAction | None:
         or _safe_attr(record, "merge_commit_pending") is True
     ):
         return IntegrationAction.CONTINUE_GIT_OPERATION
-    if _safe_attr(record, "reintegrate_pending") is True:
+    if (
+        _safe_attr(record, "reintegrate_pending") is True
+        or _safe_attr(record, "target_moved") is True
+    ):
         return IntegrationAction.REINTEGRATE_AGAINST_TARGET
+    if _safe_attr(record, "landing_pending") is True or _safe_attr(record, "is_integrated") is True:
+        return IntegrationAction.LAND_TARGET
     if _safe_attr(record, "is_integrating") is True:
         return IntegrationAction.REINTEGRATE_AGAINST_TARGET
-    if _safe_attr(record, "is_integrated") is True:
-        return IntegrationAction.LAND_TARGET
     return None
 
 
@@ -150,10 +153,17 @@ def _check_rebase_state_action(
     last_outcome: object = _safe_attr(record, "last_outcome")
     fast_fwd: object = _safe_attr(record, "fast_forwarded")
     if (
-        last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        last_outcome
+        in (
+            RebaseOutcomeKind.REBASED,
+            RebaseOutcomeKind.MERGED,
+            RebaseOutcomeKind.LANDING,
+        )
         and fast_fwd is not True
     ):
         return IntegrationAction.LAND_TARGET
+    if last_outcome == RebaseOutcomeKind.INTEGRATING:
+        return IntegrationAction.REINTEGRATE_AGAINST_TARGET
     pub_pol: object = _safe_attr(policy, "publication_policy") if policy is not None else None
     has_policy_pub: bool = (
         pub_pol is not None and fast_fwd is True and last_outcome != RebaseOutcomeKind.REMOTE_PUSHED

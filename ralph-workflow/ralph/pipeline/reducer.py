@@ -388,7 +388,14 @@ def _route_reduced_decision(
         rebase = new_state.rebase.model_copy(update={"last_decision": None})
         new_state = new_state.copy_with(rebase=rebase)
 
-    if state.rebase.last_decision is None and not is_phase_boundary and integration_record is None:
+    if (
+        state.rebase.last_decision is None
+        and not is_phase_boundary
+        and integration_record is None
+        and not new_state.rebase.integration_unresolved
+        and not new_state.rebase.recovery_record_retained
+        and not new_state.rebase.is_intervention_required
+    ):
         return new_state
 
     decision = decide_phase_transition(

@@ -29,6 +29,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     INFRASTRUCTURE_TERMINATION_REASONS,
+    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
 )
@@ -99,6 +100,7 @@ from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
     emit_conflict_phase_line,
 )
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -113,7 +115,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[[str, "Path", int], bool]
+type ResolutionInvoker = Callable[[str, "Path", int], ResolutionOutcome | bool]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -190,6 +192,7 @@ def run_conflict_resolution_outcome(
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
         emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
     finally:
         _restore_status_bar(display, root, previous_model)
@@ -236,6 +239,7 @@ def run_rebase_conflict_resolution_outcome(
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
         emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
 
 
@@ -334,6 +338,7 @@ def _prepare_conflicted_paths(
         # failure with no reason at all and the merge seam then calls it
         # "conflict resolution failed".
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.unresolved_paths = tuple(conflicted)
         session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
         emit_conflict_phase_line(
@@ -353,6 +358,7 @@ def _prepare_conflicted_paths(
         # Nothing here an agent could carry out. Escalate on sight rather
         # than spending the chain to prove it.
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         session.unresolved_paths = unreachable
         session.exhaustion_reason = _resolution_exhaustion_reason(session, unreachable)
         emit_conflict_phase_line(
@@ -434,6 +440,54 @@ def _render_round_prompt(
     )
 
 
+def _evaluate_round_attempt(
+    attempt: RoundAttempt,
+    session: ResolutionSession,
+    display: ParallelDisplay | None,
+    round_index: int,
+    round_cap: int,
+    attempt_started: float,
+    clock: MonotonicClock,
+    decision_paths: tuple[str, ...],
+) -> ResolutionAction:
+    succeeded = attempt.succeeded
+    agent_ran = attempt.invoked and attempt.agent_ran
+    proved_by_worktree = agent_ran and not decision_paths
+    resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
+    action = select_resolution_action(session, round_index, round_cap, resolved=resolved_now)
+    round_reason = (
+        None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
+    )
+    session.terminal_reason = round_reason
+    outcome = ResolutionOutcome(
+        succeeded=resolved_now,
+        reason=round_reason,
+        duration_seconds=(
+            session.last_duration_seconds
+            if session.last_duration_seconds is not None
+            else max(0.0, clock() - attempt_started)
+        ),
+        last_activity_kind=session.last_activity_kind,
+        last_activity_at=session.last_activity_at,
+        unresolved_paths=session.unresolved_paths,
+        failure_cause=(
+            ResolutionFailureCause.NONE
+            if resolved_now
+            else (
+                session.last_failure_cause
+                if session.last_failure_cause != ResolutionFailureCause.NONE
+                else (
+                    ResolutionFailureCause.AGENT_FAILURE
+                    if round_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                )
+            )
+        ),
+    )
+    _emit_attempt_outcome(display, outcome)
+    return action
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -454,10 +508,11 @@ def _run_rounds(
     limits = config.conflict_resolution
     round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
+    is_rotation = bool(strategy_history)
     # Before anything can return: every early exit below reports through
     # the session, and an unreset session reports the LAST conflict's
     # verdict for a stop that never invoked anybody.
-    begin_resolution_stop(session)
+    begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
@@ -500,9 +555,61 @@ def _run_rounds(
     substantive_at_entry = frozenset(
         path for path in present_at_entry if not _is_effectively_empty(root / path)
     )
+    resolved = _execute_round_loop(
+        root=root,
+        target=target,
+        runner=runner,
+        candidates=candidates,
+        session=session,
+        display=display,
+        conflicted=conflicted,
+        decision_paths=decision_paths,
+        present_at_entry=present_at_entry,
+        substantive_at_entry=substantive_at_entry,
+        round_cap=round_cap,
+        clock=clock,
+        stop=stop,
+        strategy_history=strategy_history,
+        policy_bundle=policy_bundle,
+    )
+    if resolved:
+        return True
+    # NOT `or conflicted`: an empty scan means the markers are gone, and
+    # falling back to the original list named paths the scan had just
+    # cleared -- directly contradicting the line above it, which reported
+    # `unresolved_count=0`.
+    unresolved = session.unresolved_paths
+    session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
+    emit_conflict_phase_line(
+        display,
+        "abandoning conflict resolution; " + session.exhaustion_reason,
+    )
+    return False
+
+
+def _execute_round_loop(
+    *,
+    root: Path,
+    target: str,
+    runner: ResolutionInvoker,
+    candidates: tuple[str, ...],
+    session: ResolutionSession,
+    display: ParallelDisplay | None,
+    conflicted: tuple[str, ...],
+    decision_paths: tuple[str, ...],
+    present_at_entry: frozenset[str],
+    substantive_at_entry: frozenset[str],
+    round_cap: int,
+    clock: MonotonicClock,
+    stop: RebaseStop | None,
+    strategy_history: tuple[str, ...],
+    policy_bundle: PolicyBundle,
+) -> bool:
     prompt_path: Path | None = None
     try:
-        for round_index in range(1, round_cap + 1):
+        start_round = session.rounds_spent + 1
+        for round_index in range(start_round, round_cap + 1):
+            session.rounds_spent = round_index
             if _operator_cap_expired(session, clock):
                 _emit_expired_operator_cap(display, session, conflicted, clock)
                 return False
@@ -512,6 +619,7 @@ def _run_rounds(
             )
             if prompt_path is None:
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
+                session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
                 session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
@@ -536,7 +644,6 @@ def _run_rounds(
                     )
                 ),
             )
-            succeeded = attempt.succeeded
             session.unresolved_paths = _paths_still_unresolved(
                 root,
                 conflicted,
@@ -544,52 +651,16 @@ def _run_rounds(
                 present_before=present_at_entry,
                 substantive=substantive_at_entry,
             )
-            # The worktree decides, but only once an agent has actually
-            # been at it. A resolver that repaired every marker and then
-            # ended its session badly still repaired every marker, and
-            # the rebase loop re-proves it (stage, re-scan, no unmerged
-            # paths) before anything lands -- so believing the exit
-            # status over the evidence only threw finished work away and
-            # sent the same conflict round after round. A round that
-            # never reached a supervised agent still proves nothing.
-            agent_ran = attempt.invoked and attempt.agent_ran
-            # Trusting the worktree over a bad exit is only sound where
-            # the worktree can PROVE it. A markerless conflict -- one
-            # side edited, the other deleted -- has an empty marker scan
-            # before anyone touches it, so crediting a heartbeat there
-            # credited a decision nobody made: Ralph then staged whatever
-            # git happened to leave, reversing the other side's deletion
-            # and, in a rebase, dropping the commit that made it. Where
-            # there are no markers to read, the resolver's declaration is
-            # the only evidence, and that is what `succeeded` carries.
-            proved_by_worktree = agent_ran and not decision_paths
-            resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
-            action = select_resolution_action(
-                session, round_index, round_cap, resolved=resolved_now
+            action = _evaluate_round_attempt(
+                attempt,
+                session,
+                display,
+                round_index,
+                round_cap,
+                attempt_started,
+                clock,
+                decision_paths,
             )
-            round_reason = (
-                None
-                if resolved_now
-                else _round_termination_reason(session, invoked=attempt.invoked)
-            )
-            # Carry it on the session: the exhaustion line, the durable
-            # record and every caller downstream read it from there, and
-            # a round that computed a reason only for its own console
-            # line left them all saying RESOLUTION_CHAIN_EXHAUSTED.
-            session.terminal_reason = round_reason
-            outcome = ResolutionOutcome(
-                succeeded=resolved_now,
-                reason=round_reason,
-                duration_seconds=(
-                    session.last_duration_seconds
-                    if session.last_duration_seconds is not None
-                    else max(0.0, clock() - attempt_started)
-                ),
-                last_activity_kind=session.last_activity_kind,
-                last_activity_at=session.last_activity_at,
-                unresolved_paths=session.unresolved_paths,
-            )
-            _emit_attempt_outcome(display, outcome)
             if action in (
                 ResolutionAction.PROCEED_TO_FAST_FORWARD,
                 ResolutionAction.ACCEPT_WORKTREE_REPAIR,
@@ -608,16 +679,6 @@ def _run_rounds(
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
-    # NOT `or conflicted`: an empty scan means the markers are gone, and
-    # falling back to the original list named paths the scan had just
-    # cleared -- directly contradicting the line above it, which reported
-    # `unresolved_count=0`.
-    unresolved = session.unresolved_paths
-    session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
-    emit_conflict_phase_line(
-        display,
-        "abandoning conflict resolution; " + session.exhaustion_reason,
-    )
     return False
 
 
@@ -632,6 +693,7 @@ def _record_unconfigured_resolver(
     resolution that was never configured to happen.
     """
     session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
+    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = conflicted
     session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
     emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
@@ -644,6 +706,7 @@ def _handle_dead_candidate_chain(
 ) -> None:
     """Record that every candidate is dead and cannot spend a round."""
     session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = session.unresolved_paths or conflicted
     emit_conflict_phase_line(
         display,
@@ -709,6 +772,128 @@ def _paths_still_unresolved(
     return tuple(unresolved)
 
 
+def _record_invoker_outcome(
+    session: ResolutionSession,
+    invoker_result: ResolutionOutcome,
+) -> None:
+    session.last_failure_cause = invoker_result.failure_cause
+    if invoker_result.reason is not None:
+        session.terminal_reason = invoker_result.reason
+    if invoker_result.last_activity_kind is not None:
+        session.last_activity_kind = invoker_result.last_activity_kind
+    if invoker_result.last_activity_at is not None:
+        session.last_activity_at = invoker_result.last_activity_at
+    if invoker_result.duration_seconds > 0:
+        session.last_duration_seconds = invoker_result.duration_seconds
+    if invoker_result.unresolved_paths:
+        session.unresolved_paths = invoker_result.unresolved_paths
+    if invoker_result.failure_cause == ResolutionFailureCause.AGENT_FAILURE:
+        session.charge_conflict_budget = False
+
+
+def _handle_candidate_failure(
+    session: ResolutionSession,
+    agent_name: str,
+    invoker_result: ResolutionOutcome | bool,
+    candidates: tuple[str, ...],
+    offset: int,
+    policy_bundle: PolicyBundle,
+) -> None:
+    if not isinstance(invoker_result, ResolutionOutcome):
+        fault = classify_attempt_fault(session.last_attempt_evidence)
+        if session.terminal_reason is None:
+            session.terminal_reason = (
+                attempt_fault_to_termination_reason(fault, session.last_attempt_evidence)
+                or ResolutionTerminationReason.ATTEMPT_FAILED
+            )
+        if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        else:
+            session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+    classify_failed_resolution_attempt(
+        session,
+        agent_name,
+        session.last_attempt_failure or session.last_attempt_evidence or ATTEMPT_FAILED_EVIDENCE,
+        candidates=candidates,
+        failed_index=offset,
+        policy_bundle=policy_bundle,
+    )
+
+
+def _execute_single_candidate(
+    runner: ResolutionInvoker,
+    agent_name: str,
+    prompt_path: Path,
+    round_index: int,
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    offset: int,
+    policy_bundle: PolicyBundle,
+) -> tuple[bool, ResolutionOutcome | bool]:
+    session.terminal_reason = None
+    session.charge_conflict_budget = True
+    invoker_result: ResolutionOutcome | bool = False
+    try:
+        invoker_result = runner(agent_name, prompt_path, round_index)
+        if isinstance(invoker_result, ResolutionOutcome):
+            if invoker_result.succeeded:
+                session.chain_cursor = 0
+                session.last_failure_cause = ResolutionFailureCause.NONE
+                _reset_conflict_success(session, agent_name)
+                return True, invoker_result
+            _record_invoker_outcome(session, invoker_result)
+        elif invoker_result:
+            session.chain_cursor = 0
+            session.last_failure_cause = ResolutionFailureCause.NONE
+            _reset_conflict_success(session, agent_name)
+            return True, invoker_result
+    except Exception as exc:
+        logger.warning(
+            "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
+        )
+        session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        classify_failed_resolution_attempt(
+            session,
+            agent_name,
+            exc,
+            candidates=candidates,
+            failed_index=offset,
+            policy_bundle=policy_bundle,
+        )
+        return False, False
+    else:
+        _handle_candidate_failure(
+            session, agent_name, invoker_result, candidates, offset, policy_bundle
+        )
+        return False, invoker_result
+
+
+def _check_worktree_repair(
+    session: ResolutionSession,
+    agent_name: str,
+    round_index: int,
+    attempt_cap: int,
+    display: ParallelDisplay | None,
+    worktree_resolved: Callable[[], bool] | None,
+    agent_saw: bool,
+) -> bool:
+    if not (worktree_resolved is not None and agent_saw and worktree_resolved()):
+        return False
+    session.unresolved_paths = ()
+    if (
+        select_resolution_action(session, round_index, attempt_cap)
+        == ResolutionAction.ACCEPT_WORKTREE_REPAIR
+    ):
+        emit_conflict_phase_line(
+            display,
+            f"round {round_index}: {agent_name} ended badly but the worktree shows "
+            "every marker repaired; not spending another candidate",
+        )
+        return True
+    return False
+
+
 def _run_one_round(
     runner: ResolutionInvoker,
     candidates: tuple[str, ...],
@@ -760,80 +945,34 @@ def _run_one_round(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         invoked = True
-        session.terminal_reason = None
-        # Both describe THIS attempt. Carrying either across candidates
-        # let one bad candidate answer for the next one: a healthy agent
-        # that really ran and really failed was reported under the fault
-        # of the candidate before it, and an unchargeable attempt made
-        # the whole stop unchargeable -- which discarded the exhaustion
-        # evidence the run needs to escalate honestly.
-        session.charge_conflict_budget = True
-        try:
-            if runner(agent_name, prompt_path, round_index):
-                session.chain_cursor = 0
-                _reset_conflict_success(session, agent_name)
-                return RoundAttempt(succeeded=True, invoked=True, agent_ran=True)
-        except Exception as exc:
-            logger.warning(
-                "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
+        succeeded, invoker_result = _execute_single_candidate(
+            runner,
+            agent_name,
+            prompt_path,
+            round_index,
+            session,
+            candidates,
+            offset,
+            policy_bundle,
+        )
+        if succeeded:
+            return RoundAttempt(succeeded=True, invoked=True, agent_ran=True)
+        agent_saw = session.last_attempt_saw_activity or (
+            isinstance(invoker_result, ResolutionOutcome)
+            and (
+                invoker_result.last_activity_kind is not None or invoker_result.duration_seconds > 0
             )
-            session.terminal_reason = ResolutionTerminationReason.EXCEPTION
-            classify_failed_resolution_attempt(
-                session,
-                agent_name,
-                exc,
-                candidates=candidates,
-                failed_index=offset,
-                policy_bundle=policy_bundle,
-            )
-        else:
-            # A false return is a failed candidate attempt, never evidence
-            # that resolution completed. Preserve a typed reason so the
-            # terminal outcome can be persisted as exhaustion if every
-            # configured fallback also fails.
-            #
-            # WHICH typed reason depends on evidence the invocation seam
-            # left behind: an attempt that ran and came back unsuccessful
-            # FAILED, while one that ended on its own limits -- pi out of
-            # context, a provider it cannot reach -- EXITED. Neither is a
-            # verdict on the conflict; the agent has no way to give one.
-            fault = classify_attempt_fault(session.last_attempt_evidence)
-            if session.terminal_reason is None:
-                session.terminal_reason = (
-                    attempt_fault_to_termination_reason(fault, session.last_attempt_evidence)
-                    or ResolutionTerminationReason.ATTEMPT_FAILED
-                )
-            classify_failed_resolution_attempt(
-                session,
-                agent_name,
-                session.last_attempt_failure
-                or session.last_attempt_evidence
-                or ATTEMPT_FAILED_EVIDENCE,
-                candidates=candidates,
-                failed_index=offset,
-                policy_bundle=policy_bundle,
-            )
-        agent_ran = agent_ran or session.last_attempt_saw_activity
-        if (
-            worktree_resolved is not None
-            and session.last_attempt_saw_activity
-            and worktree_resolved()
+        )
+        agent_ran = agent_ran or agent_saw
+        if _check_worktree_repair(
+            session, agent_name, round_index, attempt_cap, display, worktree_resolved, agent_saw
         ):
-            session.unresolved_paths = ()
-            if (
-                select_resolution_action(session, round_index, attempt_cap)
-                == ResolutionAction.ACCEPT_WORKTREE_REPAIR
-            ):
-                emit_conflict_phase_line(
-                    display,
-                    f"round {round_index}: {agent_name} ended badly but the worktree shows "
-                    "every marker repaired; not spending another candidate",
-                )
-                return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
+            return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             _remember_dead_surface(session, agent_name)
             skipped = _skipped_candidates(session, candidates)
             session.charge_conflict_budget = False
+            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
             visited.add(offset)
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset

@@ -262,6 +262,13 @@ _PHASE_ABBREVIATIONS: dict[str, str] = {
     "complete": "DONE",
     "failed_terminal": "FAIL",
     "cancelled": "CXL",
+    "integration": "Intg",
+    "integrating": "Intg",
+    "landing": "Land",
+    "publication": "Pub",
+    "publishing": "Pub",
+    "waiting": "Wait",
+    "intervention": "Intv",
 }
 
 
@@ -314,12 +321,28 @@ ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
     "failed": ("FAILED", "terminated", "theme.status.error"),
     "cancelled": ("CANCELLED", "terminated", "theme.status.warn"),
     "intervention_required": ("INTERVENTION_REQUIRED", "error", "theme.status.error"),
+    "intervention": ("INTERVENTION", "error", "theme.status.error"),
     "conflict_resolution": ("CONFLICT_RESOLUTION", "warning", "theme.status.warn"),
     "evidence_diagnosis": ("EVIDENCE_DIAGNOSIS", "info", "theme.status.info"),
+    "integration": ("INTEGRATION", "liveness", "theme.status.info"),
+    "integrating": ("INTEGRATING", "liveness", "theme.status.info"),
+    "landing": ("LANDING", "liveness", "theme.status.info"),
+    "publication": ("PUBLICATION", "liveness", "theme.status.info"),
+    "publishing": ("PUBLISHING", "liveness", "theme.status.info"),
 }
 
 _EXTENDED_ATTENTION_KEYS: frozenset[str] = frozenset(
-    {"intervention_required", "conflict_resolution", "evidence_diagnosis"}
+    {
+        "intervention_required",
+        "intervention",
+        "conflict_resolution",
+        "evidence_diagnosis",
+        "integration",
+        "integrating",
+        "landing",
+        "publication",
+        "publishing",
+    }
 )
 
 # DA-001 (wt-028-display AC-01): worst-case attention slot width.
@@ -1090,12 +1113,20 @@ def _prune_optional_segments(
 
 
 _ATTENTION_ALIASES: dict[str, str] = {
-    "intervention": "intervention_required",
+    "intervention": "intervention",
+    "intervention_required": "intervention_required",
     "report_intervention_required": "intervention_required",
     "conflict": "conflict_resolution",
     "rebase_conflict": "conflict_resolution",
     "diagnosis": "evidence_diagnosis",
     "evidence": "evidence_diagnosis",
+    "resolve_active_operation": "conflict_resolution",
+    "continue_git_operation": "integration",
+    "reintegrate_against_target": "integration",
+    "land_target": "landing",
+    "publish_after_landing": "publication",
+    "wait_for_bounded_retry": "waiting",
+    "require_intervention": "intervention",
 }
 
 

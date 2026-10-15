@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -15,6 +16,21 @@ if TYPE_CHECKING:
 
 _FROZEN = ConfigDict(frozen=True)
 HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
+_LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
+
+
+class _ResolutionFailureCause(StrEnum):
+    """Structured root cause for an integration or conflict resolution failure."""
+
+    NONE = "NONE"
+    AGENT_FAILURE = "AGENT_FAILURE"
+    UNRESOLVED_CONFLICT = "UNRESOLVED_CONFLICT"
+    CONTEXT_FAILURE = "CONTEXT_FAILURE"
+
+
+_ResolutionFailureCause.__name__ = "ResolutionFailureCause"
+_ResolutionFailureCause.__qualname__ = "ResolutionFailureCause"
+ResolutionFailureCause = _ResolutionFailureCause
 
 
 class RebaseState(RalphBaseModel):
@@ -48,6 +64,7 @@ class RebaseState(RalphBaseModel):
     # values.
     last_outcome: RebaseOutcomeKind | None = None
     last_reason: str | None = None
+    last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     last_target: str | None = None
     fast_forwarded: bool = False
 
@@ -61,6 +78,11 @@ class RebaseState(RalphBaseModel):
     def _coerce_legacy_action(cls, data: object) -> object:
         if isinstance(data, dict):
             migrated: dict[str, object] = {str(k): v for k, v in data.items()}
+            if "last_failure_cause" not in migrated or migrated.get("last_failure_cause") is None:
+                if migrated.get("last_reason") == _LEGACY_AGENT_FAILURE_REASON:
+                    migrated["last_failure_cause"] = ResolutionFailureCause.AGENT_FAILURE
+                else:
+                    migrated["last_failure_cause"] = ResolutionFailureCause.NONE
             has_action = "last_action" in migrated
             raw_action = migrated.get("last_action")
             raw_outcome = migrated.get("last_outcome")
@@ -327,7 +349,7 @@ class RebaseState(RalphBaseModel):
         if self.last_decision is None:
             if self.is_intervention_required:
                 object.__setattr__(self, "last_decision", "report_intervention_required")
-            elif self.integration_unresolved:
+            elif self.integration_unresolved or self.recovery_record_retained:
                 object.__setattr__(self, "last_decision", "block_for_recovery")
         if self.operation_display_state is None:
             state = _resolve_operation_display_state(self)

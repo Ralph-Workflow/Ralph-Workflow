@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 # Sentinel emitted when a Git invocation fails, an observation file is
 # missing, or the file backend refuses a read. Mirrors the on-disk
-# contract in ``_integration_diagnostic._diagnostic_snapshot``.
+# contract in operation evidence collection.
 _UNREADABLE = "unreadable"
 
 # The operation-scoped kinds the default collector emits. Each

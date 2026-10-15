@@ -29,6 +29,7 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     resolver_allowed,
     start_conflict_attempt,
 )
+from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_sync import (
     DEFAULT_REFRESH_REMOTE,
     REFRESH_DIVERGED,
@@ -76,45 +77,18 @@ class RemoteSyncStatus(StrEnum):
     TIMEOUT = "timeout"
 
 
-#: The pull fetched and the local target was fast-forwarded to the
-#: remote tip. Recorded so the operator line can name what happened.
+#: Public outcome string aliases carried on RebaseState.last_remote_sync.
 REMOTE_PULLED = RemoteSyncStatus.PULLED
-#: The pull fetched and the local target was rebased onto the remote
-#: target. The remote's existing commits were NEVER rewritten;
-#: only the unpublished local commits on top of ``refs/heads/<target>``
-#: were replayed on top of ``<remote>/<target>``.
 REMOTE_RECONCILED = RemoteSyncStatus.RECONCILED
-#: The pull fetched, ``<remote>/<target>`` did not exist, the push
-#: created it. Distinct outcome so the operator sees a remote branch
-#: appear rather than discovering it later.
 REMOTE_CREATED = RemoteSyncStatus.CREATED
-#: The push succeeded after a normal landing (or after one or more
-#: reconcile cycles on a non-fast-forward rejection).
 REMOTE_PUSHED = RemoteSyncStatus.PUSHED
-#: The push was rejected non-fast-forward and a reconcile cycle
-#: succeeded; next attempt will retry the push with the reconciled
-#: target.
 REMOTE_PUSH_RECONCILED = RemoteSyncStatus.PUSH_RECONCILED
-#: The push was rejected and the bounded reconcile loop exhausted
-#: without landing. Recorded, not terminal -- the next seam retries.
 REMOTE_PUSH_REJECTED = RemoteSyncStatus.PUSH_REJECTED
-#: The pull failed for a transient reason (unreachable, timeout,
-#: auth). Local integration proceeds untouched. The reason is recorded.
 REMOTE_PULL_FAILED = RemoteSyncStatus.PULL_FAILED
-#: The remote named in config is not configured in this repository;
-#: the step degrades to local-only with a recorded skip.
 REMOTE_NO_REMOTE = RemoteSyncStatus.NO_REMOTE
-#: ``<remote>/<target>`` does not exist; nothing to pull. The local
-#: integration proceeds untouched.
 REMOTE_NO_REMOTE_BRANCH = RemoteSyncStatus.NO_REMOTE_BRANCH
-#: The local target is strictly ahead of the remote. No remote-side
-#: motion needed; the next landing pushes the local state to the
-#: remote.
 REMOTE_LOCAL_AHEAD = RemoteSyncStatus.LOCAL_AHEAD
 REMOTE_ALREADY_CURRENT = RemoteSyncStatus.ALREADY_CURRENT
-#: Failure classification -- the recorded reason the run did not
-#: publish, used both for the operator line and the waiting-state
-#: end-of-run summary.
 REMOTE_REMOTE_UNREACHABLE = RemoteSyncStatus.REMOTE_UNREACHABLE
 REMOTE_AUTH_FAILED = RemoteSyncStatus.AUTH_FAILED
 REMOTE_REJECTED_BY_HOOK = RemoteSyncStatus.REJECTED_BY_HOOK
@@ -166,6 +140,65 @@ def reclaim_target_worktree_enabled(config: object | None) -> bool:
 # ----- Pull-side reconcile --------------------------------------------
 
 
+class _DefaultRemoteClient:
+    """Default production implementation delegating to live Git operations."""
+
+    def refresh_target(
+        self,
+        repo_root: Path,
+        target: str,
+        *,
+        timeout_seconds: float,
+        remote: str,
+    ) -> str:
+        try:
+            return refresh_target_from_remote(
+                repo_root,
+                target,
+                timeout_seconds=timeout_seconds,
+                remote=remote,
+            )
+        except Exception as exc:
+            logger.debug("auto_integrate: remote refresh query failed: {}", exc)
+            return REFRESH_UNREACHABLE
+
+    def push_branch(
+        self,
+        repo_root: Path,
+        branch: str,
+        *,
+        remote: str,
+        timeout_seconds: float,
+    ) -> _remote_push_module.PushResult:
+        try:
+            return _remote_push_module.push_branch_to_single_remote(
+                repo_root,
+                branch,
+                remote=remote,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as exc:
+            logger.debug("auto_integrate: remote push failed: {}", exc)
+            return _remote_push_module.PushResult(
+                _remote_push_module.PushStatus.UNREACHABLE,
+                remote,
+                branch,
+                detail=str(exc),
+            )
+
+    def observe_remote_sha(
+        self,
+        repo_root: Path,
+        target: str,
+        *,
+        remote: str,
+    ) -> str | None:
+        return _remote_tracking_sha(repo_root, target, remote)
+
+
+_DEFAULT_REMOTE_CLIENT = _DefaultRemoteClient()
+
+
 def pull_and_reconcile_target(
     config: UnifiedConfig | None,
     repo_root: Path,
@@ -175,54 +208,17 @@ def pull_and_reconcile_target(
     clock: Callable[[], float] = time.monotonic,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     prior: RebaseState | None = None,
+    remote_client: RemoteClient | None = None,
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
     Uses the configured remote when synchronization is enabled; otherwise it
     performs no remote operation.
-
-    The throttle is keyed ``(root, remote, target)`` and armed only
-    by a HEALTHY fetch: a transient blip cannot buy a whole window
-    of unrefreshed probes. Interval zero = every seam (AC-19).
-
-    Reconcile outcomes:
-
-    * **Local ahead** -- no local ref moves on the pull side; the
-      next landing pushes the local state.
-    * **Remote strictly ahead** -- ``refs/heads/<target>`` is
-      advanced to ``<remote>/<target>`` via the same landing
-      machinery as Part A (owning worktree's ``merge --ff-only``
-      first, atomic CAS fallback, never a force move). Recorded as
-      ``REMOTE_PULLED``.
-    * **Diverged** -- the local target is rebased onto the remote
-      target through the existing rebase engine; the operator-visible
-      outcome is ``REMOTE_RECONCILED``. Remote's commits are never
-      rewritten (same SHA before and after).
-    * **Pull failure** -- logged and recorded as
-      ``REMOTE_PULL_FAILED`` with the recorded reason so the run
-      can render it on the operator line.
-
-    Args:
-        config: Unified run configuration; ``None`` skips every
-            remote call. The enablement flag and configured remote
-            are read here so the helper is the single source of
-            truth for the gated-on check.
-        repo_root: Repository root in which to run the probe.
-        target: Branch whose freshness to observe and reconcile.
-        remote: Override the configured remote (test-only seam).
-        clock: Monotonic time source for the throttle, injected so
-            the test suite advances time without sleeping.
-
-    Returns:
-        :class:`RebaseState` annotated with ``last_remote_sync`` and
-        ``last_refresh``; or ``None`` when the call is a no-op
-        (disabled, throttled, or no remote configured).
     """
     if config is None or not remote_sync_enabled(config):
-        # AC-13 byte-identical contract: with the flag false this
-        # helper does NOTHING.
         return None
 
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     try:
         identity = observe_conflict_identity(repo_root, target, scope="remote")
@@ -250,7 +246,7 @@ def pull_and_reconcile_target(
                 freshness_source="suppressed probe",
             )
         else:
-            refresh = refresh_target_from_remote(
+            refresh = client.refresh_target(
                 repo_root,
                 target,
                 timeout_seconds=FETCH_TIMEOUT_SECONDS,
@@ -573,6 +569,7 @@ def push_single_remote(
     remote: str,
     record: RebaseState,
     timeout_seconds: float = _remote_push_module.PUSH_TIMEOUT_SECONDS,
+    remote_client: RemoteClient | None = None,
 ) -> tuple[_remote_push_module.PushResult | None, PublicationDecision]:
     """Ask next_publication_action before invoking remote push.
 
@@ -588,17 +585,22 @@ def push_single_remote(
     if decision is not PublicationDecision.PUBLISH_NOW:
         return None, decision
 
-    result = _remote_push_module.push_branch_to_single_remote(
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    result = client.push_branch(
         repo_root,
         target,
         remote=remote,
         timeout_seconds=timeout_seconds,
     )
     typed_result = _coerce_push_result(result, remote=remote, target=target)
+    is_unavailable = typed_result.status in {
+        _remote_push_module.PushStatus.UNREACHABLE,
+        _remote_push_module.PushStatus.TIMEOUT,
+    }
     post_decision = next_publication_action(
         record,
         record=None,
-        remote_unavailable=typed_result.status == _remote_push_module.PushStatus.UNREACHABLE,
+        remote_unavailable=is_unavailable,
         configured_remote=remote,
     )
     return typed_result, post_decision
@@ -611,30 +613,12 @@ def push_target_after_landing(
     record: RebaseState,
     *,
     remote: str | None = None,
+    remote_client: RemoteClient | None = None,
 ) -> RebaseState:
     """Push the local target to the configured remote after a successful land.
 
     Returns the ``RebaseState`` annotated with ``last_remote_sync`` and
     ``last_push``. Never raises; never reverts a local landing.
-
-    The persisted ``last_publication_decision`` reflects the **actual
-    outcome** of the push attempt, not the pre-push eligibility
-    check:
-
-    * successful push (PUSHED / CREATED) → ``PUBLICATION_TERMINAL``
-      -- remote publication is proven, the obligation is fulfilled;
-    * remote unreachable / auth failed / rejected / timeout →
-      ``PUBLISH_DEFERRED_REMOTE`` -- publication is pending
-      according to the configured policy, the obligation is NOT
-      fulfilled;
-    * any other failure → corresponding non-terminal decision.
-
-    The pre-push ``PUBLISH_NOW`` decision is overwritten by the
-    post-push decision so a successful push becomes terminal and a
-    failed push remains non-terminal. Without this overwrite the
-    typed state machine would report ``PUBLISH_NOW`` after a
-    successful push, which violates the distinct
-    local-landing / remote-publication obligation invariant.
     """
     if not remote_sync_enabled(config):
         decision = next_publication_action(
@@ -651,6 +635,7 @@ def push_target_after_landing(
         target,
         remote=chosen_remote,
         record=record,
+        remote_client=remote_client,
     )
     if typed_result is None:
         return record.model_copy(
@@ -658,11 +643,6 @@ def push_target_after_landing(
                 "last_publication_decision": decision.value,
             }
         )
-    # Overwrite the pre-push decision with the post-push outcome.
-    # ``push_single_remote`` returns the pre-push decision in
-    # ``decision`` (PUBLISH_NOW) so the typed state machine can
-    # reason about whether the push was *attempted*; here we
-    # translate the actual outcome into the post-push decision.
     post_decision = _post_push_publication_decision(typed_result)
     outcome = (
         RebaseOutcomeKind.REMOTE_PUSHED if typed_result.success else RebaseOutcomeKind.REMOTE_FAILED
@@ -685,23 +665,17 @@ def push_target_after_landing(
 def _post_push_publication_decision(
     typed_result: _remote_push_module.PushResult,
 ) -> PublicationDecision:
-    """Translate a typed push outcome into the post-push publication decision.
-
-    A successful push (PUSHED / CREATED) closes the publication
-    obligation; the typed decision is ``PUBLICATION_TERMINAL``. An
-    unreachable / rejected / timed-out / auth-failed / hook-rejected
-    push is a non-terminal publication according to the configured
-    policy; the obligation is carried forward and retried on the
-    next seam. The non-fast-forward status keeps the obligation
-    open (the remote diverged from the local landing).
-    """
+    """Translate a typed push outcome into the post-push publication decision."""
     terminal_statuses = {
         _remote_push_module.PushStatus.PUSHED,
         _remote_push_module.PushStatus.CREATED,
     }
     if typed_result.status in terminal_statuses:
         return PublicationDecision.PUBLICATION_TERMINAL
-    if typed_result.status == _remote_push_module.PushStatus.UNREACHABLE:
+    if typed_result.status in {
+        _remote_push_module.PushStatus.UNREACHABLE,
+        _remote_push_module.PushStatus.TIMEOUT,
+    }:
         return PublicationDecision.PUBLISH_DEFERRED_REMOTE
     if typed_result.status == _remote_push_module.PushStatus.NON_FAST_FORWARD:
         return PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
@@ -764,6 +738,7 @@ def reconcile_after_rejected_push(
     max_attempts: int = _MAX_REMOTE_SYNC_ATTEMPTS,
     reintegrate: Callable[[], bool] | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    remote_client: RemoteClient | None = None,
 ) -> RebaseState:
     """Try a bounded reconcile-then-push cycle after a non-fast-forward.
 
@@ -788,6 +763,7 @@ def reconcile_after_rejected_push(
             reintegrate=reintegrate,
             rebase_stop_resolver=rebase_stop_resolver,
             record=final_record,
+            remote_client=remote_client,
         )
         decision = next_publication_action(
             final_record,
@@ -858,9 +834,11 @@ def _attempt_reconcile_and_push(
     reintegrate: Callable[[], bool] | None,
     rebase_stop_resolver: RebaseStopResolver | None,
     record: RebaseState | None = None,
+    remote_client: RemoteClient | None = None,
 ) -> _PushOutcome:
     """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
-    refresh = refresh_target_from_remote(
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    refresh = client.refresh_target(
         repo_root,
         target,
         timeout_seconds=FETCH_TIMEOUT_SECONDS,
@@ -908,6 +886,7 @@ def _attempt_reconcile_and_push(
         target,
         remote=remote,
         record=push_record,
+        remote_client=remote_client,
     )
     if typed_result is None:
         return _PushOutcome(
@@ -968,6 +947,7 @@ __all__ = [
     "REMOTE_REMOTE_UNREACHABLE",
     "REMOTE_SYNC_INTERVAL_SECONDS",
     "REMOTE_TIMEOUT",
+    "RemoteClient",
     "RemoteSyncStatus",
     "pull_and_reconcile_target",
     "push_single_remote",

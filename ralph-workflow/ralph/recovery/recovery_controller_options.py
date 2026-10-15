@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.timeout_defaults import (
     BROKEN_AGENT_SAME_SHAPE_DEFAULT,
@@ -12,6 +12,8 @@ from ralph.timeout_defaults import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
@@ -74,7 +76,62 @@ class RecoveryControllerOptions:
     # options are ignored (the caller is responsible for the store's
     # initial state).
     unavailability_store: UnavailabilityStore | None = None
+    # Snapshot restoration fields for restarting across runs
+    budgets: dict[str, dict[str, int]] | None = None
+    in_session_retry_counts: dict[str, int] | None = None
+    spent_agents: dict[str, set[str]] | None = None
 
     def __post_init__(self) -> None:
         if self.in_session_retry_escalation_limit < 1:
             raise ValueError("in_session_retry_escalation_limit must be at least 1")
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: Mapping[str, object],
+        *,
+        policy_bundle: PolicyBundle | None = None,
+        clock: Clock | None = None,
+        classifier: FailureClassifier | None = None,
+        event_bus: FailureEventBus | None = None,
+    ) -> RecoveryControllerOptions:
+        """Construct RecoveryControllerOptions by deserializing a controller snapshot."""
+        cycle_cap_raw = snapshot.get("cycle_cap", 200)
+        cycle_cap = int(cycle_cap_raw) if isinstance(cycle_cap_raw, (int, str)) else 200
+        technical_cap_raw = snapshot.get("technical_retry_cap", 10)
+        technical_retry_cap = (
+            int(technical_cap_raw) if isinstance(technical_cap_raw, (int, str)) else 10
+        )
+        in_session_raw = snapshot.get(
+            "in_session_retry_escalation_limit", IN_SESSION_RETRY_ESCALATION_DEFAULT
+        )
+        in_session_limit = (
+            int(in_session_raw)
+            if isinstance(in_session_raw, (int, str))
+            else IN_SESSION_RETRY_ESCALATION_DEFAULT
+        )
+        backoff_attempts = dict(cast("dict[str, int]", snapshot.get("backoff_attempts", {})))
+        unavailable_timeouts = dict(
+            cast("dict[str, int]", snapshot.get("unavailable_timeouts", {}))
+        )
+        budgets_data = cast("dict[str, dict[str, int]]", snapshot.get("budgets", {}))
+        in_session_counts = dict(
+            cast("dict[str, int]", snapshot.get("in_session_retry_counts", {}))
+        )
+        spent_raw = cast("dict[str, list[str]]", snapshot.get("spent_agents", {}))
+        spent_agents = {k: set(v) for k, v in spent_raw.items()}
+
+        return cls(
+            cycle_cap=cycle_cap,
+            technical_retry_cap=technical_retry_cap,
+            in_session_retry_escalation_limit=in_session_limit,
+            backoff_attempts=backoff_attempts,
+            unavailable_timeouts=unavailable_timeouts,
+            budgets=budgets_data,
+            in_session_retry_counts=in_session_counts,
+            spent_agents=spent_agents,
+            policy_bundle=policy_bundle,
+            clock=clock,
+            classifier=classifier,
+            event_bus=event_bus,
+        )

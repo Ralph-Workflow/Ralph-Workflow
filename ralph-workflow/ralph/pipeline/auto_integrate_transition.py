@@ -114,6 +114,7 @@ START_INTEGRATING = Transition(
         "operation_kind": "operation_kind",
         "owning_worktree": "owning_worktree",
         "initiating_feature_sha": "initiating_feature_sha",
+        "reintegrate_pending": "reintegrate_pending",
     },
     from_state_guard=_is_integrating_or_integrated,
 )
@@ -133,6 +134,7 @@ PROMOTE_TO_INTEGRATED = Transition(
         "rebase_continue_tree": "rebase_continue_tree",
         "rebase_continue_error": "rebase_continue_error",
         "merge_commit_pending": "merge_commit_pending",
+        "reintegrate_pending": "reintegrate_pending",
     },
     from_state_guard=_is_integrating,
 )
@@ -234,7 +236,10 @@ RAISE_DIAGNOSTIC_INTERVENTION = Transition(
 
 MARK_REINTEGRATE_PENDING = Transition(
     "MARK_REINTEGRATE_PENDING",
-    {"reintegrate_pending": "reintegrate_pending"},
+    {
+        "reintegrate_pending": "reintegrate_pending",
+        "owning_worktree": "owning_worktree",
+    },
 )
 
 MARK_LEGACY_FIELDS_PRESERVED = Transition(

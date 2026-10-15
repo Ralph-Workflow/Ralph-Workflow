@@ -32,7 +32,7 @@ the integration worktree, which sits on a different branch.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -86,8 +86,55 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.git.remote_push import PushResult
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
+
+
+class RemoteClient(Protocol):
+    """Protocol for injected remote Git operations (Authority / Boundary 6).
+
+    Defines the observation and mutation boundary for remote interactions.
+    Observers return typed facts; mutators return typed results.
+    Neither writes competing authority state.
+    """
+
+    def refresh_target(
+        self,
+        repo_root: Path,
+        target: str,
+        *,
+        timeout_seconds: float,
+        remote: str,
+    ) -> str:
+        """Observe remote target freshness, returning a typed refresh outcome.
+
+        If the remote is unreachable, times out, or the query fails,
+        implementations MUST return REFRESH_UNREACHABLE (representing
+        UNKNOWN remote state), never a proven negative.
+        """
+        ...
+
+    def push_branch(
+        self,
+        repo_root: Path,
+        branch: str,
+        *,
+        remote: str,
+        timeout_seconds: float,
+    ) -> PushResult:
+        """Push a branch to a remote, returning a typed PushResult."""
+        ...
+
+    def observe_remote_sha(
+        self,
+        repo_root: Path,
+        target: str,
+        *,
+        remote: str,
+    ) -> str | None:
+        """Observe remote-tracking ref SHA without moving ref or mutating worktree."""
+        ...
 
 
 def retry_pending_remote_publish(
@@ -97,6 +144,7 @@ def retry_pending_remote_publish(
     record: RebaseState,
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    remote_client: RemoteClient | None = None,
 ) -> RebaseState | None:
     """Retry any typed failed remote publication at a later clean seam."""
     from ralph.git.remote_push import PushStatus
@@ -112,10 +160,17 @@ def retry_pending_remote_publish(
         PushStatus.CREATED.value,
     }:
         return None
-    retried = push_target_after_landing(config, repo_root, target, record)
+    retried = push_target_after_landing(
+        config, repo_root, target, record, remote_client=remote_client
+    )
     if retried.last_push_status == PushStatus.NON_FAST_FORWARD.value:
         return reconcile_after_rejected_push(
-            config, repo_root, target, retried, rebase_stop_resolver=rebase_stop_resolver
+            config,
+            repo_root,
+            target,
+            retried,
+            rebase_stop_resolver=rebase_stop_resolver,
+            remote_client=remote_client,
         )
     return retried
 
@@ -338,6 +393,8 @@ def maybe_push_target(
     repo_root: Path,
     target: str,
     record: RebaseState,
+    *,
+    remote_client: RemoteClient | None = None,
 ) -> RebaseState:
     """Publish a successful local landing only when remote sync is enabled."""
     from ralph.pipeline.auto_integrate_remote_sync import (
@@ -350,6 +407,8 @@ def maybe_push_target(
     if not remote_sync_enabled(config):
         return record
     try:
+        if remote_client is not None:
+            return remote_push_hook(config, repo_root, target, record, remote_client=remote_client)
         return remote_push_hook(config, repo_root, target, record)
     except Exception as push_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate: remote-sync push hook raised unexpectedly: {}", push_exc)
@@ -357,9 +416,11 @@ def maybe_push_target(
 
 
 __all__ = [
+    "RemoteClient",
     "fast_forward_target",
     "is_retryable_fast_forward_failure",
     "maybe_push_target",
+    "retry_pending_remote_publish",
 ]
 
 

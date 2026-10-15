@@ -58,3 +58,29 @@ class RunContext:
             "fallover_history": list(self.fallover_history),
             "last_failure_category": self.last_failure_category,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> RunContext:
+        """Construct RunContext from dictionary representation."""
+        raw_history = data.get("fallover_history")
+        history: list[dict[str, object]] = []
+        if isinstance(raw_history, list):
+            history.extend(
+                {str(k): v for k, v in h.items()} for h in raw_history if isinstance(h, dict)
+            )
+        parent_val = data.get("parent_run_id")
+        resume_val = data.get("resume_count")
+        dev_runs_val = data.get("actual_developer_runs")
+        rev_runs_val = data.get("actual_reviewer_runs")
+        rec_cycle_val = data.get("recovery_cycle_count")
+        last_fail_val = data.get("last_failure_category")
+        return cls(
+            run_id=str(data.get("run_id", "")),
+            parent_run_id=parent_val if isinstance(parent_val, str) else None,
+            resume_count=resume_val if isinstance(resume_val, int) else 0,
+            actual_developer_runs=dev_runs_val if isinstance(dev_runs_val, int) else 0,
+            actual_reviewer_runs=rev_runs_val if isinstance(rev_runs_val, int) else 0,
+            recovery_cycle_count=rec_cycle_val if isinstance(rec_cycle_val, int) else 0,
+            fallover_history=history,
+            last_failure_category=last_fail_val if isinstance(last_fail_val, str) else None,
+        )

@@ -18,6 +18,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.operation_evidence import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
+    EvidenceVerdict,
     InMemoryOperationEvidenceCollector,
     OperationEvidenceCollector,
     OperationFact,
@@ -220,6 +221,7 @@ def test_collector_protocol_export() -> None:
     """The collector is exported from the public package surface."""
     from ralph.pipeline import operation_evidence
 
+    assert hasattr(operation_evidence, "EvidenceVerdict")
     assert hasattr(operation_evidence, "OperationEvidenceCollector")
     assert hasattr(operation_evidence, "OperationFact")
     assert hasattr(operation_evidence, "SubprocessOperationEvidenceCollector")
@@ -339,3 +341,62 @@ def test_subprocess_collector_verify_treats_unreadable_reachability_as_gap(
     observed = (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="unreadable"),)
     collector = SubprocessOperationEvidenceCollector()
     assert collector.verify(repo, record, observed) is False
+
+
+def test_in_memory_collector_evaluate_returns_verdict(tmp_path: Path) -> None:
+    facts = (OperationFact(kind="head", value="abc"),)
+    collector = InMemoryOperationEvidenceCollector(facts=facts)
+    record = _record()
+
+    # 1. Matching -> UNCHANGED
+    assert collector.evaluate(tmp_path, record, facts) == EvidenceVerdict.UNCHANGED
+
+    # 2. Differing -> CHANGED
+    differing = (OperationFact(kind="head", value="def"),)
+    assert collector.evaluate(tmp_path, record, differing) == EvidenceVerdict.CHANGED
+
+    # 3. Unreadable in observed -> UNKNOWN
+    unreadable_obs = (OperationFact(kind="head", value="unreadable"),)
+    assert collector.evaluate(tmp_path, record, unreadable_obs) == EvidenceVerdict.UNKNOWN
+
+    # 4. Unreadable in live facts -> UNKNOWN
+    collector_unreadable = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="head", value="unreadable"),)
+    )
+    assert collector_unreadable.evaluate(tmp_path, record, facts) == EvidenceVerdict.UNKNOWN
+
+    # 5. Reachability False -> CHANGED
+    collector_unreachable = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
+    )
+    assert (
+        collector_unreachable.evaluate(
+            tmp_path,
+            record,
+            (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),),
+        )
+        == EvidenceVerdict.CHANGED
+    )
+
+
+def test_subprocess_collector_evaluate_returns_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _mock_git(monkeypatch, tmp_path / "repo", head_sha="a" * 40)
+    record = _record()
+    collector = SubprocessOperationEvidenceCollector()
+    live_facts = collector.snapshot(repo, record)
+
+    # 1. Matching snapshot -> UNCHANGED
+    assert collector.evaluate(repo, record, live_facts) == EvidenceVerdict.UNCHANGED
+
+    # 2. Differing facts -> CHANGED
+    differing = (OperationFact(kind="head", value="0" * 40),)
+    assert collector.evaluate(repo, record, differing) == EvidenceVerdict.CHANGED
+
+    # 3. Empty observed -> CHANGED
+    assert collector.evaluate(repo, record, ()) == EvidenceVerdict.CHANGED
+
+    # 4. Unreadable in observed -> UNKNOWN
+    unreadable_obs = (OperationFact(kind="head", value="unreadable"),)
+    assert collector.evaluate(repo, record, unreadable_obs) == EvidenceVerdict.UNKNOWN

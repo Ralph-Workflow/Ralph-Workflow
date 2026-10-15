@@ -73,6 +73,7 @@ from ralph.pipeline.auto_integrate_ff import (
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_MERGE,
     MARK_RESOLVING_REBASE,
+    RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
 )
 from ralph.pipeline.auto_integrate_record import (
@@ -80,6 +81,9 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_record import (
     read_record as _read_record,
+)
+from ralph.pipeline.auto_integrate_record import (
+    write_record as _write_record,
 )
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     _TERMINAL_MARKER_FILES,
@@ -758,13 +762,27 @@ def recover_incomplete_integration(
             and record.operation_kind != "target_reconcile"
         ):
             from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+            from ralph.pipeline.operation_evidence import EvidenceVerdict
 
-            failure = release_verified_diagnostic(
+            verdict = release_verified_diagnostic(
                 Path(record.owning_worktree or workspace_scope.root), record
             )
-            if failure is not None:
+            if verdict == EvidenceVerdict.UNCHANGED:
+                record = record.with_transition(
+                    RELEASE_DIAGNOSTIC_EVIDENCE,
+                    diagnostic_evidence=(),
+                    diagnostic_ownership=None,
+                )
+                _write_record(Path(workspace_scope.root), record)
+            elif verdict == EvidenceVerdict.CHANGED:
                 return _record_skip(
-                    reason=failure,
+                    reason="diagnostic evidence changed; original evidence must be restored before recovery",
+                    target=record.target,
+                    record_retained=True,
+                )
+            else:
+                return _record_skip(
+                    reason="diagnostic evidence unreadable; recovery retained",
                     target=record.target,
                     record_retained=True,
                 )
@@ -788,20 +806,6 @@ def _recover_unresolved_integrating(
             reason="recovery: merge state unreadable; record retained for retry",
             target=record.target,
             record_retained=True,
-        )
-    if (
-        config is None
-        and not rebase_in_progress(root)
-        and merge_state(root) == MERGE_STATE_NONE
-        and is_repo_clean(root)
-        and _head_matches_sha(root, record.pre_feature_sha)
-    ):
-        _clear_record(root)
-        return RebaseState(
-            last_outcome=RebaseOutcomeKind.RECOVERED,
-            last_reason="restored feature branch after interrupted rebase",
-            last_target=record.target,
-            fast_forwarded=False,
         )
     return _reintegrate_owned_landing(
         root,
