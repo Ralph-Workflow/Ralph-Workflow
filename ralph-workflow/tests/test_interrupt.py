@@ -92,6 +92,7 @@ UnifiedConfig.model_rebuild(_types_namespace={"Path": Path})
 
 def _config_with_agent_policy() -> UnifiedConfig:
     return UnifiedConfig(
+        general=GeneralConfig(auto_integrate_enabled=False),
         agent_chains=dict(ACTIVE_AGENT_CHAINS),
         agent_drains=dict(ACTIVE_AGENT_DRAINS),
     )

@@ -16,6 +16,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     InMemoryOperationEvidenceCollector,
+    OperationEvidenceCollector,
     OperationFact,
     ownership_fingerprint,
 )
@@ -820,3 +821,155 @@ def test_diagnose_retained_integration_honors_injected_invoke_and_collector(tmp_
     saved = read_record(root)
     assert saved is not None
     assert saved.diagnostic_intervention_required is True
+
+
+@pytest.mark.parametrize("use_raising_collector", [True, False])
+def test_diagnose_retained_integration_repeated_failures_persist_intervention_at_cap(
+    tmp_path: Path, use_raising_collector: bool
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    cap = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+
+    class RaisingCollector(InMemoryOperationEvidenceCollector):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def snapshot(
+            self,
+            root: Path,
+            record: IntegrationRecord,
+            *,
+            capture_repair_facts: bool | None = None,
+            observed: tuple[OperationFact, ...] | None = None,
+        ) -> tuple[OperationFact, ...]:
+            self.calls += 1
+            raise RuntimeError("collector crashed")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        resolving_rebase=True,
+        merge_commit_repair_attempts=cap - 2,
+        owning_worktree=str(root),
+    )
+    write_record(root, record)
+    ctx = _build_diagnostic_ctx(root)
+    invoked: list[str] = []
+
+    def custom_invoke(agent: str, prompt: Path) -> bool:
+        invoked.append(agent)
+        return True
+
+    collector: OperationEvidenceCollector
+    if use_raising_collector:
+        collector = RaisingCollector()
+    else:
+        ctx.registry = {}
+        collector = InMemoryOperationEvidenceCollector(
+            facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+        )
+
+    # Attempt 1: from cap - 2 to cap - 1
+    assert not diagnostic.diagnose_retained_integration(
+        ctx, "test failure 1", invoke=custom_invoke, collector=collector
+    )
+    s1 = read_record(root)
+    assert s1 is not None and s1.merge_commit_repair_attempts == cap - 1
+    assert s1.diagnostic_intervention_required is False
+    assert invoked == []
+
+    # Attempt 2: reaches cap, raises intervention
+    assert not diagnostic.diagnose_retained_integration(
+        ctx, "test failure 2", invoke=custom_invoke, collector=collector
+    )
+    s2 = read_record(root)
+    assert s2 is not None and s2.merge_commit_repair_attempts == cap
+    assert s2.diagnostic_intervention_required is True
+    expected_reason = "collector crashed" if use_raising_collector else "diagnostic repair exhausted"
+    assert expected_reason in (s2.repair_cap_reason or "")
+    assert invoked == []
+
+    # Attempt 3: already at cap with intervention; zero later invocations occur
+    calls_before = getattr(collector, "calls", 0)
+    assert not diagnostic.diagnose_retained_integration(
+        ctx, "test failure 3", invoke=custom_invoke, collector=collector
+    )
+    s3 = read_record(root)
+    assert s3 is not None and s3.merge_commit_repair_attempts == cap
+    assert s3.diagnostic_intervention_required is True
+    assert getattr(collector, "calls", 0) == calls_before
+    assert invoked == []
+
+
+def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap() -> None:
+    backend = _RecordBackend()
+    root = Path("/workspace")
+    cap = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_rebase=True,
+        merge_commit_repair_attempts=cap - 2,
+    )
+    invoked: list[str] = []
+
+    def custom_invoke(agent: str, prompt: Path) -> bool:
+        invoked.append(agent)
+        return True
+
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+    )
+
+    # Attempt 1: bumps attempt count below cap
+    assert not diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="receipt unreadable 1",
+        agents=(),
+        invoke=custom_invoke,
+        backend=backend,
+        collector=collector,
+    )
+    saved1 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
+    assert saved1.merge_commit_repair_attempts == cap - 1
+    assert saved1.diagnostic_intervention_required is False
+    assert saved1.repair_last_error == "no eligible diagnostic agent available"
+    assert invoked == []
+
+    # Attempt 2: reaches cap, raises intervention
+    assert not diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=saved1,
+        failure="receipt unreadable 2",
+        agents=(),
+        invoke=custom_invoke,
+        backend=backend,
+        collector=collector,
+    )
+    saved2 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
+    assert saved2.merge_commit_repair_attempts == cap
+    assert saved2.diagnostic_intervention_required is True
+    assert "diagnostic repair exhausted" in (saved2.repair_cap_reason or "")
+    assert invoked == []
+
+    # Attempt 3: already at cap with intervention; zero later invocations occur
+    assert not diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=saved2,
+        failure="receipt unreadable 3",
+        agents=(),
+        invoke=custom_invoke,
+        backend=backend,
+        collector=collector,
+    )
+    saved3 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
+    assert saved3.merge_commit_repair_attempts == cap
+    assert saved3.diagnostic_intervention_required is True
+    assert invoked == []

@@ -59,25 +59,39 @@ def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "feature.txt", "feature content\n")
 
-    # Retained integration obligation in root worktree
-    write_record(
-        root,
-        IntegrationRecord(
-            phase="integrated",
-            target=target,
-            pre_feature_sha=feature,
-            pre_target_sha=base,
-            integrated_feature_sha=feature,
-        ),
+    # Retained integration obligation in root worktree with pending reintegration
+    initial_record = IntegrationRecord(
+        phase="integrated",
+        target=target,
+        pre_feature_sha=feature,
+        pre_target_sha=base,
+        integrated_feature_sha=feature,
+        reintegrate_pending=True,
     )
+    write_record(root, initial_record)
+    assert initial_record.phase == "integrated"
+    assert initial_record.reintegrate_pending is True
+    assert initial_record.merge_commit_repair_attempts == 0
+    assert initial_record.diagnostic_intervention_required is False
 
-    # Create linked worktree with unrelated branch
+    # Create linked worktree with unrelated branch and induce ref movement
     other_worktree = tmp_path / "other-worktree"
     assert (
         _git(root, "worktree", "add", "-b", "unrelated-branch", str(other_worktree)).returncode == 0
     )
-    _commit(other_worktree, "unrelated.txt", "unrelated commit 1\n")
-    _commit(other_worktree, "unrelated.txt", "unrelated commit 2\n")
+    unrelated_ref_1 = _commit(other_worktree, "unrelated.txt", "unrelated commit 1\n")
+    unrelated_ref_2 = _commit(other_worktree, "unrelated.txt", "unrelated commit 2\n")
+    assert unrelated_ref_1 != unrelated_ref_2
+    assert _git(root, "rev-parse", "unrelated-branch").stdout.strip() == unrelated_ref_2
+
+    # Observable lifecycle progress before recovery: dispatch blocked, reintegration required
+    action = next_integration_action(initial_record)
+    assert action == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+    rebase_state = RebaseState()
+    initial_resolution = inspect_integration_resolution(root, rebase_state)
+    assert initial_resolution.dispatch_allowed is False
+    assert initial_resolution.status.name == "RECOVERABLE"
+    assert is_terminal_success_eligible(None, initial_record, rebase_state) is False
 
     config = UnifiedConfig.model_validate(
         {
@@ -92,11 +106,17 @@ def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
     assert outcome is not None
     assert outcome.fast_forwarded is True
+    assert outcome.recovery_record_retained is False
     assert (
         _git(root, "rev-parse", target).stdout.strip()
         == _git(root, "rev-parse", feature).stdout.strip()
     )
     assert read_record(root) is None
+
+    # Observable lifecycle progress after recovery: dispatch allowed, operation resolved
+    final_resolution = inspect_integration_resolution(root, outcome)
+    assert final_resolution.dispatch_allowed is True
+    assert final_resolution.status.name == "RESOLVED"
 
 
 def test_acceptance_scenario_2_target_moved_during_integration(

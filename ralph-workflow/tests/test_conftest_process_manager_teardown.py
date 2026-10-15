@@ -60,6 +60,7 @@ def test_per_test_cleanup_runs_before_monkeypatch_restores_fake_backend(
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_per_test_cleanup_regression_runs_inside_real_pytest_lifecycle(
     pytester: pytest.Pytester,
 ) -> None:

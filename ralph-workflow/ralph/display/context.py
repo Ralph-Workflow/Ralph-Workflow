@@ -669,8 +669,7 @@ def make_display_context(
         injected_console=injected_console,
         explicit_env=env_was_provided,
     )
-    if injected_console:
-        _set_injected_console_width(resolved_console, width)
+    _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
     limits = _DEFAULT_LIMITS
     # P0 (wt-028-display S-5 / AC-06): height is resolved the same

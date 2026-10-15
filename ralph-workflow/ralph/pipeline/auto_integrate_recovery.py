@@ -875,6 +875,15 @@ def _recover_pending_merge(
         )
     if isinstance(resumed, str):
         logger.critical("CRITICAL: {}", resumed)
+        if record.resolving_merge or record.resolving_rebase:
+            from ralph.pipeline.auto_integrate_outcome import record_conflict
+            from ralph.pipeline.rebase_state import ResolutionFailureCause
+
+            return record_conflict(
+                reason=resumed,
+                target=record.target,
+                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+            ).model_copy(update={"recovery_record_retained": True})
         return _record_skip(reason=resumed, target=record.target, record_retained=True)
     return _continue_fast_forward_from_record(
         root,

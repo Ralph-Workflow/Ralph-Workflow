@@ -133,14 +133,58 @@ def auto_integrate_after_commit(
     # protected on the way OUT instead -- see
     # ``preserve_unresolved_resolution_state``.
     try:
+        from ralph.pipeline.integration_resolution import retained_integration_reason
+
+        root = Path(workspace_scope.root)
+        if retained_integration_reason(root) is None:
+            ctx = _auto_integrate_resolve_context(config, workspace_scope)
+            early_skip, usable_ctx = _check_early_skips(
+                ctx,
+                missing_target=_configured_target(config),
+            )
+            if early_skip is not None:
+                return carry_budget_through_skip(
+                    early_skip,
+                    prior=state,
+                    attempts=config.conflict_resolution.max_consecutive_resolver_attempts,
+                )
+
+        target = resolve_integration_target(config, root) if (root / ".git").exists() else None
+        identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
+        resolver_attempts = config.conflict_resolution.max_consecutive_resolver_attempts
+        allowed = (
+            _configured_resolver_allowed(state, target, identity, resolver_attempts)
+            if target
+            else True
+        )
+        effective_resolver = conflict_resolver if allowed else None
+        resolver_suppressed = conflict_resolver is not None and not allowed
         recovered = _recover_before_attempt(
             config,
             workspace_scope,
             None,
-            conflict_resolver,
-            rebase_stop_resolver,
+            effective_resolver,
+            rebase_stop_resolver if allowed else None,
         )
         if recovered is not None:
+            if target:
+                recovered = apply_completed_attempt_budget(
+                    recovered,
+                    prior=state,
+                    target=target,
+                    identity=identity,
+                    resolver_suppressed=resolver_suppressed,
+                    attempts=resolver_attempts,
+                )
+            if resolver_suppressed:
+                from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
+                from ralph.pipeline.auto_integrate_record import clear_record
+                from ralph.pipeline.auto_integrate_resolve import _abort_merge_safely
+
+                if merge_state(root) == MERGE_STATE_IN_PROGRESS:
+                    _abort_merge_safely(root)
+                    clear_record(root)
+                    recovered = recovered.model_copy(update={"recovery_record_retained": False})
             return preserve_unresolved_resolution_state(recovered, prior=state)
         return preserve_unresolved_resolution_state(
             _auto_integrate_after_commit_inner(

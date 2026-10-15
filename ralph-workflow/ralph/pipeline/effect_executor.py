@@ -501,6 +501,102 @@ def _prepare_recovery_attempt(
     return options
 
 
+def _restore_progress_guard(ctx: _AgentInvocationCtx) -> RetryProgressGuard:
+    if ctx.state is not None:
+        raw_guard = None
+        chain = ctx.state.chain_for_phase(ctx.effect.phase)
+        if chain is not None and chain.progress_guard is not None:
+            raw_guard = chain.progress_guard
+        elif ctx.state.progress_guard is not None:
+            raw_guard = ctx.state.progress_guard
+        elif ctx.state.agent_retry_intent.progress_guard is not None:
+            raw_guard = ctx.state.agent_retry_intent.progress_guard
+
+        if raw_guard is not None:
+            return RetryProgressGuard.from_dict(raw_guard)
+    return RetryProgressGuard()
+
+
+def _handle_recovery_attempt_failure(
+    ctx: _AgentInvocationCtx,
+    exc: Exception,
+    state: _AttemptState,
+    session_id: str | None,
+    effective_run_id: str,
+    raw_output: deque[str],
+    rendered_output: deque[str],
+    progress_guard: RetryProgressGuard,
+) -> _AttemptResult:
+    recovery_plan = build_agent_recovery_plan(
+        _build_recovery_input_for_attempt(
+            ctx=ctx,
+            exc=exc,
+            state=state,
+            session_id=session_id,
+            raw_output=raw_output,
+            rendered_output=rendered_output,
+            run_id=effective_run_id,
+        )
+    )
+    if recovery_plan is None:
+        retry_intent = resolve_retry_intent(
+            exc,
+            phase=str(ctx.effect.phase),
+            agent=ctx.effect.agent_name,
+            session_id=session_id,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+        if retry_intent is not None:
+            retry_intent = retry_intent.model_copy(
+                update={"progress_guard": progress_guard.snapshot()}
+            )
+        else:
+            retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
+        _set_last_captured_retry_intent(retry_intent)
+        raise exc
+    failure_signature = retry_failure_signature(
+        recovery_plan.reason, list(rendered_output)
+    )
+    if progress_guard.record(failure_signature):
+        logger.error(
+            "Aborting agent '{}' retries: {} consecutive identical "
+            "zero-progress failures. Refusing to spin; failing fast.",
+            ctx.effect.agent_name,
+            MAX_IDENTICAL_RETRY_ATTEMPTS,
+        )
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                action=None,
+                session_id=None,
+                failure_reason=recovery_plan.reason,
+                progress_guard=progress_guard.snapshot(),
+            )
+        )
+        return _AttemptResult(
+            PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id
+        )
+    state.prompt_file = recovery_plan.prompt_file
+    state.resume_session_id = recovery_plan.session_id
+    state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
+        exc, AgyIncompleteExitError
+    )
+    retry_intent = resolve_retry_intent(
+        exc,
+        phase=str(ctx.effect.phase),
+        agent=ctx.effect.agent_name,
+        session_id=recovery_plan.session_id,
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+    if retry_intent is not None:
+        retry_intent = retry_intent.model_copy(
+            update={"progress_guard": progress_guard.snapshot()}
+        )
+    else:
+        retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
+    _set_last_captured_retry_intent(retry_intent)
+    raise exc
+
+
 def _invoke_agent_with_recovery(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
@@ -555,7 +651,22 @@ def _invoke_agent_with_recovery(
             resume_session_id=session_id or _initial_resume_session_id(ctx),
             last_agent_session_id=_safe_last_agent_session_id(ctx.state),
         )
-        progress_guard = RetryProgressGuard()
+        progress_guard = _restore_progress_guard(ctx)
+        if progress_guard.is_exhausted:
+            logger.error(
+                "Aborting agent '{}' retries: retry progress guard is exhausted or failed closed. "
+                "Refusing to spin; failing fast.",
+                ctx.effect.agent_name,
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(
+                    action=None,
+                    session_id=None,
+                    failure_reason="RetryProgressGuard exhausted",
+                    progress_guard=progress_guard.snapshot(),
+                )
+            )
+            return PipelineEvent.AGENT_FAILURE
 
         def attempt_fn(
             retry_session_id: str | None,
@@ -590,66 +701,20 @@ def _invoke_agent_with_recovery(
                     agent_label_scope=effective_run_id,
                     raw_line_sink=raw_line_sink,
                 )
+                progress_guard.reset()
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
-                recovery_plan = build_agent_recovery_plan(
-                    _build_recovery_input_for_attempt(
-                        ctx=ctx,
-                        exc=exc,
-                        state=state,
-                        session_id=session_id,
-                        raw_output=raw_output,
-                        rendered_output=rendered_output,
-                        run_id=effective_run_id,
-                    )
+                return _handle_recovery_attempt_failure(
+                    ctx=ctx,
+                    exc=exc,
+                    state=state,
+                    session_id=session_id,
+                    effective_run_id=effective_run_id,
+                    raw_output=raw_output,
+                    rendered_output=rendered_output,
+                    progress_guard=progress_guard,
                 )
-                if recovery_plan is None:
-                    retry_intent = resolve_retry_intent(
-                        exc,
-                        phase=str(ctx.effect.phase),
-                        agent=ctx.effect.agent_name,
-                        session_id=session_id,
-                        inactivity_error_type=AgentInactivityTimeoutError,
-                    )
-                    _set_last_captured_retry_intent(
-                        retry_intent if retry_intent is not None else cleared_agent_retry_intent()
-                    )
-                    raise
-                failure_signature = retry_failure_signature(
-                    recovery_plan.reason, list(rendered_output)
-                )
-                if progress_guard.record(failure_signature):
-                    logger.error(
-                        "Aborting agent '{}' retries: {} consecutive identical "
-                        "zero-progress failures. Refusing to spin; failing fast.",
-                        ctx.effect.agent_name,
-                        MAX_IDENTICAL_RETRY_ATTEMPTS,
-                    )
-                    _set_last_captured_retry_intent(cleared_agent_retry_intent())
-                    return _AttemptResult(
-                        PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id
-                    )
-                state.prompt_file = recovery_plan.prompt_file
-                state.resume_session_id = recovery_plan.session_id
-                # One-reprompt bound (enforcement point 1 of 2): once an
-                # AGY incomplete-exit plan is produced, THIS invocation
-                # gets no second completion reprompt. The loop-level
-                # bound in ``run_with_direct_mcp_recovery`` is point 2.
-                state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
-                    exc, AgyIncompleteExitError
-                )
-                retry_intent = resolve_retry_intent(
-                    exc,
-                    phase=str(ctx.effect.phase),
-                    agent=ctx.effect.agent_name,
-                    session_id=recovery_plan.session_id,
-                    inactivity_error_type=AgentInactivityTimeoutError,
-                )
-                _set_last_captured_retry_intent(
-                    retry_intent if retry_intent is not None else cleared_agent_retry_intent()
-                )
-                raise
 
         try:
             return _event_from_attempt_result(

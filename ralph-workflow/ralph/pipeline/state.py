@@ -211,6 +211,7 @@ class PipelineState(_FrozenPipelineStateModel):
     # is the structured signal the run loop keys off; the ``last_error``
     # text is operator-readable context only and is NOT a contract.
     is_waiting_state: bool = False
+    progress_guard: dict[str, object] | None = None
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:

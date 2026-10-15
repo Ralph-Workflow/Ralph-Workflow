@@ -223,8 +223,8 @@ def _handle_unsuccessful_resolution(
             failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         )
     return MergeResult(
-        outcome=RESOLUTION_FAILED,
-        reason=reason or "conflict resolution incomplete",
+        outcome=MERGE_COMMIT_PENDING,
+        reason=reason or "conflict resolution incomplete; progress retained",
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
 

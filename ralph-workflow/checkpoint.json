@@ -114,8 +114,10 @@
     "failed_agent_name": null,
     "broken_agent_reason": null,
     "broken_agent_returncode": null,
-    "broken_agent_stderr": ""
+    "broken_agent_stderr": "",
+    "progress_guard": null
   },
   "last_unavailability_reason": null,
-  "is_waiting_state": false
+  "is_waiting_state": false,
+  "progress_guard": null
 }

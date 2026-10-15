@@ -36,6 +36,7 @@ class AgentRetryIntent(RalphBaseModel):
     broken_agent_reason: Literal["no_output", "prompt_echo", "no_llm_activity"] | None = None
     broken_agent_returncode: int | None = None
     broken_agent_stderr: str = ""
+    progress_guard: dict[str, object] | None = None
 
     @model_validator(mode="after")
     def _validate_action_session_pair(self) -> AgentRetryIntent:
@@ -77,6 +78,7 @@ def agent_retry_intent_for_failure(
     failure_reason: str,
     session_id: str | None,
     reset_tool_registry: bool,
+    progress_guard: dict[str, object] | None = None,
 ) -> AgentRetryIntent:
     """Build the canonical next-attempt action from failure semantics."""
 
@@ -97,12 +99,14 @@ def agent_retry_intent_for_failure(
             session_id=None,
             reset_tool_registry=False,
             failure_reason=failure_reason,
+            progress_guard=progress_guard,
         )
     return AgentRetryIntent(
         action=action,
         session_id=session_id,
         reset_tool_registry=reset_tool_registry,
         failure_reason=failure_reason,
+        progress_guard=progress_guard,
     )
 
 
@@ -111,6 +115,7 @@ def resume_agent_retry_intent(
     *,
     failure_reason: str = "",
     reset_tool_registry: bool = False,
+    progress_guard: dict[str, object] | None = None,
 ) -> AgentRetryIntent:
     """Build a resume intent that reuses an existing agent session id."""
     return AgentRetryIntent(
@@ -118,6 +123,7 @@ def resume_agent_retry_intent(
         session_id=session_id,
         reset_tool_registry=reset_tool_registry,
         failure_reason=failure_reason,
+        progress_guard=progress_guard,
     )
 
 

@@ -55,7 +55,11 @@ def apply_session_capture(state: PipelineState) -> PipelineState:
     captured_session_id = pop_last_captured_session_id()
     captured_retry_intent = pop_last_captured_retry_intent()
     new_state = state
-    if captured_retry_intent.action is not None or captured_retry_intent.skip_same_agent_retries:
+    if (
+        captured_retry_intent.action is not None
+        or captured_retry_intent.skip_same_agent_retries
+        or captured_retry_intent.progress_guard is not None
+    ):
         retry_session_id = (
             captured_retry_intent.session_id
             if captured_retry_intent.action in {"resume", "new_session_with_id"}
@@ -64,14 +68,36 @@ def apply_session_capture(state: PipelineState) -> PipelineState:
         new_state = new_state.copy_with(
             last_agent_session_id=retry_session_id,
             agent_retry_intent=captured_retry_intent,
+            progress_guard=captured_retry_intent.progress_guard,
         )
+        if captured_retry_intent.progress_guard is not None:
+            chain = new_state.chain_for_phase(state.phase)
+            if chain is not None:
+                new_state = new_state.with_phase_chain(
+                    state.phase,
+                    chain.with_progress_guard(captured_retry_intent.progress_guard),
+                )
     elif captured_session_id:
         new_state = new_state.copy_with(
             last_agent_session_id=captured_session_id,
             agent_retry_intent=cleared_agent_retry_intent(),
+            progress_guard=None,
         )
-    elif state.agent_retry_intent.action is not None:
+        chain = new_state.chain_for_phase(state.phase)
+        if chain is not None and chain.progress_guard is not None:
+            new_state = new_state.with_phase_chain(
+                state.phase,
+                chain.with_progress_guard(None),
+            )
+    elif state.agent_retry_intent.action is not None or state.progress_guard is not None:
         new_state = new_state.copy_with(
             agent_retry_intent=cleared_agent_retry_intent(),
+            progress_guard=None,
         )
+        chain = new_state.chain_for_phase(state.phase)
+        if chain is not None and chain.progress_guard is not None:
+            new_state = new_state.with_phase_chain(
+                state.phase,
+                chain.with_progress_guard(None),
+            )
     return new_state

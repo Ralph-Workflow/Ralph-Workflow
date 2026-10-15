@@ -20,7 +20,7 @@ from rich.console import Console
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import runner
+from ralph.pipeline import effect_router, runner
 from ralph.pipeline.checkpoint import load as ckpt_load
 from ralph.pipeline.checkpoint import save as ckpt_save
 from ralph.pipeline.effects import CommitEffect, Effect, InvokeAgentEffect
@@ -168,6 +168,7 @@ def _run_pipeline(
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
+    monkeypatch.setattr(effect_router, "_is_empty_commit_phase", lambda *_args, **_kwargs: False)
     _install_runner_display_context(monkeypatch)
 
     result = runner.run(

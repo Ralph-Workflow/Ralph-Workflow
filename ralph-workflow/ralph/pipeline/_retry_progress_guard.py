@@ -25,14 +25,11 @@ sharing one signature.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
 from ralph.pipeline._restart_from_scratch import structural_restart_fingerprint
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
 
 #: After the base fingerprint, collapse EVERY numeric token — in any textual form
 #: — to a single ``<n>``. RepetitionTracker.fingerprint only normalizes integers
@@ -104,6 +101,7 @@ class RetryProgressGuard:
     max_identical: int = MAX_IDENTICAL_RETRY_ATTEMPTS
     last_signature: str | None = None
     streak: int = 0
+    failed_closed: bool = False
 
     @property
     def _last_signature(self) -> str | None:
@@ -124,7 +122,17 @@ class RetryProgressGuard:
     @property
     def is_exhausted(self) -> bool:
         """Whether identical retries have hit or exceeded the max cap."""
-        return self.streak >= self.max_identical
+        return self.streak >= self.max_identical or self.failed_closed
+
+    @property
+    def requires_operator_intervention(self) -> bool:
+        """Whether identical retries or malformed state require operator intervention."""
+        return self.is_exhausted or self.failed_closed
+
+    @property
+    def has_failed_closed(self) -> bool:
+        """Whether the guard failed closed due to malformed or contradictory state."""
+        return self.failed_closed
 
     def record(self, signature: str) -> bool:
         """Record a failed attempt that has already executed.
@@ -135,6 +143,8 @@ class RetryProgressGuard:
         Because it is called post-execution, exactly ``max_identical`` identical
         attempts run before the stop — the guard prevents the next one.
         """
+        if self.is_exhausted:
+            return True
         if signature == self.last_signature:
             self.streak += 1
         else:
@@ -146,6 +156,7 @@ class RetryProgressGuard:
         """Reset streak on genuine forward progress."""
         self.last_signature = None
         self.streak = 0
+        self.failed_closed = False
 
     def snapshot(self) -> dict[str, object]:
         """Serialize guard state for checkpointing."""
@@ -154,23 +165,73 @@ class RetryProgressGuard:
             "last_signature": self.last_signature,
             "streak": self.streak,
             "is_exhausted": self.is_exhausted,
+            "failed_closed": self.failed_closed,
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> RetryProgressGuard:
-        """Restore guard state from checkpointed data."""
-        raw_max = data.get("max_identical", MAX_IDENTICAL_RETRY_ATTEMPTS)
-        max_identical = (
-            int(raw_max) if isinstance(raw_max, (int, str)) else MAX_IDENTICAL_RETRY_ATTEMPTS
-        )
-        raw_sig = data.get("last_signature")
-        raw_streak = data.get("streak", 0)
-        streak = int(raw_streak) if isinstance(raw_streak, (int, str)) else 0
-        return cls(
-            max_identical=max_identical,
-            last_signature=str(raw_sig) if raw_sig is not None else None,
-            streak=streak,
-        )
+    def from_dict(cls, data: Mapping[str, object] | object) -> RetryProgressGuard:
+        """Restore guard state from checkpointed data.
+
+        Fails closed to operator intervention / exhaustion if the data is
+        malformed, missing required fields, has negative streaks, or has
+        contradictory flags.
+        """
+        fallback_max = MAX_IDENTICAL_RETRY_ATTEMPTS
+        if not isinstance(data, Mapping):
+            return cls(
+                max_identical=fallback_max,
+                last_signature=None,
+                streak=fallback_max,
+                failed_closed=True,
+            )
+
+        try:
+            if "streak" not in data or "max_identical" not in data:
+                raise ValueError("Missing required fields")
+
+            raw_max = data["max_identical"]
+            if isinstance(raw_max, bool) or not isinstance(raw_max, (int, str)):
+                raise TypeError("Invalid max_identical type")
+            max_identical = int(raw_max)
+            if max_identical < 1:
+                raise ValueError("max_identical < 1")
+
+            raw_streak = data["streak"]
+            if isinstance(raw_streak, bool) or not isinstance(raw_streak, (int, str)):
+                raise TypeError("Invalid streak type")
+            streak = int(raw_streak)
+            if streak < 0:
+                raise ValueError("Negative streak")
+
+            raw_sig = data.get("last_signature")
+            if raw_sig is not None and not isinstance(raw_sig, str):
+                raise TypeError("Invalid last_signature type")
+            last_signature = raw_sig
+
+            raw_exhausted = data.get("is_exhausted")
+            if raw_exhausted is not None:
+                if not isinstance(raw_exhausted, bool):
+                    raise TypeError("Invalid is_exhausted type")
+                if raw_exhausted and streak < max_identical:
+                    raise ValueError("Contradictory is_exhausted: True when streak < max")
+                if not raw_exhausted and streak >= max_identical:
+                    raise ValueError("Contradictory is_exhausted: False when streak >= max")
+
+            raw_failed_closed = bool(data.get("failed_closed", False))
+            is_failed = raw_failed_closed or streak >= max_identical
+            return cls(
+                max_identical=max_identical,
+                last_signature=last_signature,
+                streak=max(streak, max_identical) if is_failed else streak,
+                failed_closed=is_failed,
+            )
+        except Exception:
+            return cls(
+                max_identical=fallback_max,
+                last_signature=None,
+                streak=fallback_max,
+                failed_closed=True,
+            )
 
 
 __all__ = [

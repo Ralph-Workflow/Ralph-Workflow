@@ -23,20 +23,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.agents.timeout_clock import FakeClock
 from ralph.checkpoint.checkpoint_payload import CheckpointPayload
 from ralph.checkpoint.execution_history import ExecutionHistory
 from ralph.checkpoint.execution_step import ExecutionStep
 from ralph.checkpoint.run_context import RunContext
 from ralph.checkpoint.step_outcome import StepOutcome
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.git.remote_push import PushResult, PushStatus
+from ralph.pipeline import run_loop, runner
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
     next_integration_action,
 )
+from ralph.pipeline._pipeline_state_machine import PhaseDecision
+from ralph.pipeline._publication_state_machine import (
+    PublicationDecision,
+    next_publication_action,
+)
 from ralph.pipeline._retry_progress_guard import RetryProgressGuard
+from ralph.pipeline._terminal_authority import is_terminal_success_eligible
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     PROMOTE_TO_INTEGRATED,
@@ -45,15 +55,25 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecordStore,
     parse_record_payload,
     read_record,
+    write_record,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_REMOTE_UNREACHABLE,
+    RemoteSyncStatus,
     push_target_after_landing,
 )
+from ralph.pipeline.checkpoint import Checkpoint
+from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
 
 
@@ -145,6 +165,150 @@ def test_acceptance_scenario_3_transition_interrupt_and_restart() -> None:
     assert read_record(root, backend=backend) == step3
 
 
+def test_acceptance_scenario_3_workflow_resume_without_replaying_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario 3: Interrupted workflow resumes to completion without replaying work.
+
+    Ensures that an interrupted workflow resumes to completion without
+    replaying completed business work, tested through public workflow
+    boundaries (checkpoint save/load and runner / run_loop entry points).
+    """
+    policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                transitions=PhaseTransition(on_success="development"),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "complete": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+    )
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+
+    checkpoint_file = tmp_path / "checkpoint.json"
+    checkpoint = Checkpoint(checkpoint_file)
+
+    executed_business_work: list[str] = []
+
+    def _stepping_runner(
+        *,
+        state: PipelineState,
+        workspace_scope: WorkspaceScope,
+        **kwargs: object,
+    ) -> PipelineState | int:
+        del workspace_scope, kwargs
+        current_phase = str(state.phase)
+        if current_phase == "complete":
+            return 0
+        executed_business_work.append(current_phase)
+        if current_phase == "planning":
+            # Planning finishes business work and prepares advancement to development
+            advanced_state = state.copy_with(phase="development")
+            checkpoint.save(advanced_state)
+            # Interrupt the workflow at the phase boundary
+            raise KeyboardInterrupt("Simulated workflow interruption after planning")
+        if current_phase == "development":
+            # Development finishes business work and transitions to complete
+            terminal_state = state.copy_with(phase="complete")
+            checkpoint.save(terminal_state)
+            return terminal_state
+        return 1
+
+    monkeypatch.setattr(runner, "run_pipeline_step", _stepping_runner)
+
+    # Run 1: Start fresh workflow at entry phase "planning"
+    initial_state = PipelineState(phase="planning")
+    checkpoint.save(initial_state)
+
+    latest_states_run1: list[PipelineState] = []
+    ctx_1 = run_loop._LoopContext(
+        policy_bundle=bundle,
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry={},
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=MagicMock(),
+        sleep=MagicMock(),
+        is_quiet=True,
+        latest_state=latest_states_run1,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        run_loop._run_inner_loop(initial_state, ctx_1, prev_phase="planning")
+
+    # Confirm only planning business work was executed prior to interruption
+    assert executed_business_work == ["planning"]
+
+    # Durable authority: reload checkpoint across public persistence boundary
+    reconstituted_state = checkpoint.load()
+    assert reconstituted_state is not None
+    assert reconstituted_state.phase == "development"
+
+    # Run 2: Resume workflow from durable checkpoint state
+    latest_states_run2: list[PipelineState] = []
+    ctx_2 = run_loop._LoopContext(
+        policy_bundle=bundle,
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry={},
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=MagicMock(),
+        sleep=MagicMock(),
+        is_quiet=True,
+        latest_state=latest_states_run2,
+    )
+
+    final_state, _prev_phase, early_exit = run_loop._run_inner_loop(
+        reconstituted_state, ctx_2, prev_phase="planning"
+    )
+
+    # Terminal runner step returns 0 through public runner boundary
+    terminal_step_result = runner.run_pipeline_step(
+        state=final_state,
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=ctx_2.config,
+        policy_bundle=bundle,
+        display=ctx_2.active_display,
+        display_context=ctx_2.display_context,
+        verbosity=ctx_2.effective_verbosity,
+        registry=ctx_2.registry,
+        pipeline_subscriber=ctx_2.effective_pipeline_subscriber,
+    )
+    assert terminal_step_result == 0
+
+    # Invariants:
+    # 1. Business work in planning was NOT replayed on restart
+    assert executed_business_work == ["planning", "development"]
+    # 2. Resumed workflow reached completion
+    assert final_state.phase == "complete"
+    assert early_exit is None
+    assert is_terminal_success_eligible(final_state, None, final_state.rebase) is True
+
+
 def test_acceptance_scenario_4_unreadable_evidence_fails_closed() -> None:
     """Scenario 4: Make required evidence unreadable.
 
@@ -189,14 +353,10 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
     """Scenario 6: Complete local landing with remote publication unavailable.
 
     The result must reflect the configured publication policy without
-    confusing local and remote truth.
+    confusing local and remote truth, exercised through public boundaries.
     """
-    fake_remote = _FakeRemoteClient(
-        push_status=PushStatus.UNREACHABLE,
-        push_detail="connection refused to origin",
-    )
     repo_root = Path("/fake/repo")
-    config = UnifiedConfig.model_validate(
+    config_enabled = UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_target": "main",
@@ -205,38 +365,121 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
             }
         }
     )
+    config_disabled = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_target": "main",
+                "auto_integrate_remote_enabled": False,
+                "auto_integrate_remote": "origin",
+            }
+        }
+    )
 
     # Local landing succeeded (fast_forwarded=True, freshness_verdict verified)
-    rebase_state = RebaseState(
+    rebase_landing_complete = RebaseState(
         last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
         fast_forwarded=True,
         freshness_verdict="verified",
-        last_action="rebased",
+        last_action="fast_forwarded",
     )
 
-    # Attempt remote sync with unavailable remote
-    result_state = push_target_after_landing(
-        config,
+    # 1. Authority decisions: publication ready vs remote unavailable vs no remote
+    pub_action_ready = next_publication_action(
+        rebase_landing_complete,
+        record=None,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert pub_action_ready == PublicationDecision.PUBLISH_NOW
+
+    pub_action_unavailable = next_publication_action(
+        rebase_landing_complete,
+        record=None,
+        remote_unavailable=True,
+        configured_remote="origin",
+    )
+    assert pub_action_unavailable == PublicationDecision.PUBLISH_DEFERRED_REMOTE
+
+    pub_action_no_remote = next_publication_action(
+        rebase_landing_complete,
+        record=None,
+        remote_unavailable=False,
+        configured_remote=None,
+    )
+    assert pub_action_no_remote == PublicationDecision.PUBLICATION_TERMINAL
+
+    # 2. Case A: Remote publication succeeds (publish_now -> REMOTE_PUSHED)
+    fake_remote_ok = _FakeRemoteClient(
+        push_status=PushStatus.PUSHED,
+        push_detail="pushed to origin/main",
+    )
+    result_ok = push_target_after_landing(
+        config_enabled,
         repo_root,
         "main",
-        rebase_state,
-        remote_client=fake_remote,
+        rebase_landing_complete,
+        remote_client=fake_remote_ok,
     )
-    assert result_state.last_remote_sync == REMOTE_REMOTE_UNREACHABLE
-    assert result_state.last_publication_decision == "publish_deferred_remote"
-    assert len(fake_remote.push_calls) == 1
+    assert result_ok.fast_forwarded is True
+    assert result_ok.last_remote_sync == RemoteSyncStatus.PUSHED
+    assert result_ok.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+    assert (
+        result_ok.last_publication_decision
+        == PublicationDecision.PUBLICATION_TERMINAL.value
+    )
+    assert is_terminal_success_eligible(None, None, result_ok) is True
 
-    # Local truth: landing completed
-    assert result_state.fast_forwarded is True
+    # 3. Case B: Remote publication unavailable (publish_deferred_remote)
+    fake_remote_unavail = _FakeRemoteClient(
+        push_status=PushStatus.UNREACHABLE,
+        push_detail="connection refused to origin",
+    )
+    result_unavail = push_target_after_landing(
+        config_enabled,
+        repo_root,
+        "main",
+        rebase_landing_complete,
+        remote_client=fake_remote_unavail,
+    )
+    # Publication decision reflects configured publication policy under network unavailability
+    assert (
+        result_unavail.last_publication_decision
+        == PublicationDecision.PUBLISH_DEFERRED_REMOTE.value
+    )
+    assert result_unavail.last_remote_sync == REMOTE_REMOTE_UNREACHABLE
+    assert len(fake_remote_unavail.push_calls) == 1
 
-    # Remote truth: publication did not complete cleanly
-    assert result_state.last_outcome != RebaseOutcomeKind.REMOTE_PUSHED
+    # Local landing truth: preserved intact, NOT confused or reverted
+    assert result_unavail.fast_forwarded is True
+    assert result_unavail.freshness_verdict == "verified"
 
-    # If publication policy requires publication, action requires publication
+    # Remote sync truth: publication did not complete cleanly
+    assert result_unavail.last_outcome != RebaseOutcomeKind.REMOTE_PUSHED
+    assert result_unavail.last_outcome == RebaseOutcomeKind.REMOTE_FAILED
+
+    # Pending publication blocks terminal success eligibility
+    assert is_terminal_success_eligible(None, None, result_unavail) is False
+
+    # Action authority directs publish after landing when policy requires it
     policy_with_pub = MagicMock()
     policy_with_pub.publication_policy = "always"
-    action = next_integration_action(result_state, policy=policy_with_pub)
+    action = next_integration_action(result_unavail, policy=policy_with_pub)
     assert action == IntegrationAction.PUBLISH_AFTER_LANDING
+
+    # 4. Case C: Remote publication disabled by policy
+    result_disabled = push_target_after_landing(
+        config_disabled,
+        repo_root,
+        "main",
+        rebase_landing_complete,
+        remote_client=fake_remote_unavail,
+    )
+    assert result_disabled.fast_forwarded is True
+    assert (
+        result_disabled.last_publication_decision
+        == PublicationDecision.PUBLICATION_TERMINAL.value
+    )
+    assert is_terminal_success_eligible(None, None, result_disabled) is True
 
 
 def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
@@ -244,13 +487,74 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
 
     Exercise startup, phase-boundary, commit, cooldown, parallel join, and
     terminal entry points against the same underlying state. Every entry point
-    must produce the same lifecycle decision.
+    must produce the same typed lifecycle decision through public boundaries.
     """
     from tests.test_public_workflow_entry_point_matrix import (
+        _eval_commit_handling,
+        _eval_cooldown_recovery,
+        _eval_parallel_join,
+        _eval_phase_boundary_run_loop,
+        _eval_startup_inspection,
+        _eval_terminal_handling,
+        _policy,
         test_entry_point_matrix_evaluates_consistent_phase_decision,
     )
 
+    # 1. End-to-end matrix parity test
     test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path)
+
+    # 2. Explicit direct inspection of all 6 public entry points against the same state
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        engine="git-merge",
+        owning_worktree=str(tmp_path),
+    ).with_transition(START_INTEGRATING)
+    write_record(tmp_path, record)
+
+    policy = _policy()
+    shared_rebase = RebaseState()
+    shared_state = PipelineState(phase="development", rebase=shared_rebase)
+
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+
+    decision_startup = _eval_startup_inspection(
+        tmp_path, shared_rebase, shared_state, policy, record
+    )
+    decision_phase_boundary, ctx = _eval_phase_boundary_run_loop(
+        tmp_path, shared_state, policy, record, bundle
+    )
+    decision_commit = _eval_commit_handling(tmp_path, shared_state, bundle)
+    decision_cooldown = _eval_cooldown_recovery(tmp_path, shared_state, ctx)
+    decision_parallel_join = _eval_parallel_join(
+        tmp_path, shared_state, shared_rebase, bundle
+    )
+    decision_terminal = _eval_terminal_handling(
+        tmp_path, shared_rebase, policy, record
+    )
+
+    decisions = {
+        "startup": decision_startup,
+        "phase_boundary": decision_phase_boundary,
+        "commit": decision_commit,
+        "cooldown": decision_cooldown,
+        "parallel_join": decision_parallel_join,
+        "terminal": decision_terminal,
+    }
+
+    for name, decision in decisions.items():
+        assert isinstance(
+            decision, PhaseDecision
+        ), f"Entry point {name} did not produce a typed PhaseDecision"
+        assert (
+            decision == PhaseDecision.BLOCK_FOR_RECOVERY
+        ), f"Entry point {name} evaluated to {decision}, expected BLOCK_FOR_RECOVERY"
+
+    assert len(set(decisions.values())) == 1
 
 
 def test_acceptance_scenario_8_legacy_representation_migration() -> None:
@@ -308,7 +612,7 @@ def test_acceptance_scenario_8_legacy_representation_migration() -> None:
     assert reconstructed.state.phase == "development"
 
 
-def test_acceptance_scenario_9_exhausted_retry_does_not_replenish() -> None:
+def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path) -> None:
     """Scenario 9: Exhausted retry budget does not replenish on restart.
 
     Exhaust recovery, restart Ralph, and confirm no automatic attempt budget
@@ -328,6 +632,65 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish() -> None:
     assert restarted_guard.is_exhausted is True
     # Attempting more records still immediately reports exhausted
     assert restarted_guard.record("sig1") is True
+    assert restarted_guard.record("sig2") is True
+
+    # Persist in PipelineState and save to checkpoint
+    phase_chains = {
+        "development": AgentChainState(
+            agents=["claude"],
+            current_index=0,
+            retries=2,
+            progress_guard=snapshot,
+        )
+    }
+    prior_pipeline_state = PipelineState(
+        phase="development",
+        policy_entry_phase="development",
+        phase_chains=phase_chains,
+        progress_guard=snapshot,
+    )
+    checkpoint_backend = _InMemoryBackend()
+    checkpoint = Checkpoint(Path(".agent/checkpoint.json"), backend=checkpoint_backend)
+    checkpoint.save(prior_pipeline_state)
+
+    # Reconstitute state from durable checkpoint
+    reloaded_state = checkpoint.load()
+    assert reloaded_state is not None
+    assert reloaded_state.progress_guard is not None
+    assert reloaded_state.progress_guard["is_exhausted"] is True
+    dev_chain = reloaded_state.chain_for_phase("development")
+    assert dev_chain is not None
+    assert dev_chain.progress_guard is not None
+    assert dev_chain.progress_guard["is_exhausted"] is True
+
+    # Pass reloaded_state through execute_agent_effect and verify Ralph launches zero
+    # further identical attempts and fails closed / requires intervention.
+    mock_invoke = MagicMock()
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file=str(prompt_file),
+    )
+    display_context = MagicMock()
+    deps = make_test_pipeline_deps(display_context=display_context)
+    config = UnifiedConfig(
+        agents={"claude": AgentConfig(cmd="claude")},
+        general=GeneralConfig(max_retries=2, max_same_agent_retries=2),
+    )
+
+    event = execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=display_context,
+        state=reloaded_state,
+        invoke_agent=mock_invoke,
+    )
+    assert event == PipelineEvent.AGENT_FAILURE
+    assert mock_invoke.call_count == 0
 
     # Test conflict budget exhaustion across restart
     prior = RebaseState(

@@ -195,6 +195,19 @@ def diagnose_retained_integration(
             or (record := read_record(ctx.workspace_scope.root)) is None
         ):
             return False
+        if (
+            record.diagnostic_intervention_required
+            or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+        ):
+            if not record.diagnostic_intervention_required:
+                intervention = record.with_transition(
+                    RAISE_DIAGNOSTIC_INTERVENTION,
+                    diagnostic_intervention_required=True,
+                    repair_cap_reason="diagnostic repair exhausted; operator intervention required",
+                )
+                write_record(ctx.workspace_scope.root, intervention)
+            return False
+
         operation_root = (
             Path(record.owning_worktree)
             if (
@@ -276,6 +289,20 @@ def diagnose_retained_integration(
             )
         except Exception as exc:
             logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
+            current = read_record(ctx.workspace_scope.root) or record
+            bumped = current.with_transition(
+                BUMP_DIAGNOSTIC_ATTEMPT,
+                merge_commit_repair_attempts=current.merge_commit_repair_attempts + 1,
+                repair_last_error=str(exc),
+            )
+            target = bumped
+            if bumped.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
+                target = bumped.with_transition(
+                    RAISE_DIAGNOSTIC_INTERVENTION,
+                    diagnostic_intervention_required=True,
+                    repair_cap_reason=f"diagnostic failure: {exc}",
+                )
+            write_record(ctx.workspace_scope.root, target)
             return False
 
 
@@ -679,6 +706,24 @@ def handoff_integration_diagnostic(
         )
         return False
     if not agents:
+        bumped = record.with_transition(
+            BUMP_DIAGNOSTIC_ATTEMPT,
+            merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
+            repair_last_error="no eligible diagnostic agent available",
+        )
+        target_record = bumped
+        if bumped.merge_commit_repair_attempts >= repair_attempt_cap:
+            target_record = bumped.with_transition(
+                RAISE_DIAGNOSTIC_INTERVENTION,
+                diagnostic_intervention_required=True,
+                repair_cap_reason="diagnostic repair exhausted; operator intervention required",
+            )
+            logger.critical(
+                "Integration diagnostic repair exhausted after {} attempts; "
+                "operator intervention required",
+                target_record.merge_commit_repair_attempts,
+            )
+        write_record(root, target_record, backend=backend)
         return False
     agent = agents[record.merge_commit_repair_attempts % len(agents)]
     prompt = root / ".agent" / "tmp" / "integration_diagnostic_prompt.md"
