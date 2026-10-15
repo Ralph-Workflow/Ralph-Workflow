@@ -239,8 +239,13 @@ def _toml_value_depth(value: object) -> int:
     return 0
 
 
+# Hypothesis registers deterministic PRNG state through GC during this property
+# test. Under 32-way worker contention that setup can exceed the default one
+# second even after the bounded strategy has generated only shallow TOML data.
+# Keep the default watchdog intact and use the documented local bound instead.
+@pytest.mark.timeout_seconds(2)
 @given(value=_TOML_VALUES)
-@settings(max_examples=4, deadline=None, database=None)
+@settings(max_examples=10, deadline=None, database=None)
 def test_operator_config_strategy_regression_avoids_deep_toml_values(value: object) -> None:
     """The property domain must stay shallow enough for the one-second watchdog."""
     assert _toml_value_depth(value) <= 2

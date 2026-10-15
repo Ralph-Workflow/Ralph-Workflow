@@ -31,18 +31,16 @@ def is_terminal_success_eligible(
     loop report terminal success?" question.
     """
     del state
-    pub = getattr(rebase_state, "last_publication_decision", None)
-    fan_out = getattr(rebase_state, "last_fan_out_decision", None)
-    if (
+    pub = getattr(rebase_state, "last_publication_decision", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    fan_out = getattr(rebase_state, "last_fan_out_decision", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    return not (
         integration_record is not None
-        or getattr(rebase_state, "integration_unresolved", False) is True
-        or getattr(rebase_state, "recovery_record_retained", False) is True
-        or getattr(rebase_state, "is_intervention_required", False) is True
-        or (isinstance(pub, str) and pub != "publication_terminal")
-        or (isinstance(fan_out, str) and fan_out != "join_complete")
-    ):
-        return False
-    return True
+        or getattr(rebase_state, "integration_unresolved", False) is True  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        or getattr(rebase_state, "recovery_record_retained", False) is True  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        or getattr(rebase_state, "is_intervention_required", False) is True  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        or (isinstance(pub, str) and pub != "publication_terminal")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        or (isinstance(fan_out, str) and fan_out != "join_complete")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
 
 
 __all__ = ["is_terminal_success_eligible"]

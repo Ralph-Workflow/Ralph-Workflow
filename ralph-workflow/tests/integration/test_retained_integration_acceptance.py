@@ -74,8 +74,7 @@ def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(
     # Create linked worktree with unrelated branch
     other_worktree = tmp_path / "other-worktree"
     assert (
-        _git(root, "worktree", "add", "-b", "unrelated-branch", str(other_worktree)).returncode
-        == 0
+        _git(root, "worktree", "add", "-b", "unrelated-branch", str(other_worktree)).returncode == 0
     )
     _commit(other_worktree, "unrelated.txt", "unrelated commit 1\n")
     _commit(other_worktree, "unrelated.txt", "unrelated commit 2\n")
@@ -93,9 +92,10 @@ def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    assert _git(root, "rev-parse", target).stdout.strip() == _git(
-        root, "rev-parse", feature
-    ).stdout.strip()
+    assert (
+        _git(root, "rev-parse", target).stdout.strip()
+        == _git(root, "rev-parse", feature).stdout.strip()
+    )
     assert read_record(root) is None
 
 
@@ -134,9 +134,7 @@ def test_acceptance_scenario_2_target_moved_during_integration(
     assert record is not None
 
     # Next action must be reintegrating against target, not landing or completion
-    action = next_integration_action(
-        record.model_copy(update={"target_moved": True})
-    )
+    action = next_integration_action(record.model_copy(update={"target_moved": True}))
     assert action == IntegrationAction.REINTEGRATE_AGAINST_TARGET
 
     config = UnifiedConfig.model_validate(
@@ -226,6 +224,7 @@ def test_acceptance_scenario_5_conflict_resolved_landing_pending(
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
     assert outcome is not None and outcome.fast_forwarded is True
     assert read_record(root) is None
-    assert _git(root, "rev-parse", target).stdout.strip() == _git(
-        root, "rev-parse", feature
-    ).stdout.strip()
+    assert (
+        _git(root, "rev-parse", target).stdout.strip()
+        == _git(root, "rev-parse", feature).stdout.strip()
+    )
