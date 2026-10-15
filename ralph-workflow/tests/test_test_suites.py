@@ -11,7 +11,6 @@ under the maintained ``1000``-line-per-file cap.
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -114,9 +113,9 @@ EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = ("tests/agents/test_terminal_state_res
 
 
 @pytest.mark.parametrize(
-    ("baseline_exit", "elapsed", "expected"), ((0, 0.0, 0), (1, 0.0, 1), (0, 60.0, 124))
+    ("baseline_exit", "elapsed", "expected"), ((0, 0.0, 0), (1, 0.0, 1), (0, 60.0, 0))
 )
-def test_product_baseline_finishes_before_fanout_within_shared_deadline(
+def test_product_baseline_shares_the_parallel_fanout_deadline(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     baseline_exit: int,
@@ -124,37 +123,28 @@ def test_product_baseline_finishes_before_fanout_within_shared_deadline(
     expected: int,
 ) -> None:
     monkeypatch.setenv("PYTEST_WORKERS", "2")
-    monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "2")
+    monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "0")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     clock = _FakeClock()
     baseline = _FakeShardProcess([baseline_exit], on_communicate=lambda: clock.advance(elapsed))
     spawner = _StubSpawner([baseline, _FakeShardProcess([0]), _FakeShardProcess([0])])
     baseline_path = "tests/workspace/test_workspace_product_baselines.py"
-
-    def spawn(
-        command: Sequence[str], *, cwd: Path, env: Mapping[str, str]
-    ) -> _FakeShardProcess | _BackpressuredShardProcess:
-        if spawner.calls:
-            assert baseline.reaped, "benchmark must finish before competing shards start"
-        return spawner(command, cwd=cwd, env=env)
+    selected = (baseline_path, "tests/test_alpha.py", "tests/test_bravo.py")
 
     result = test_suites_module.run_test_suites(
         cwd=tmp_path,
-        spawner=spawn,
+        spawner=spawner,
         monotonic=clock,
-        file_discoverer=lambda _cwd: (baseline_path, "tests/test_alpha.py", "tests/test_bravo.py"),
+        file_discoverer=lambda _cwd: selected,
         file_weigher=lambda _cwd, _path: 1,
         wait=lambda _seconds: None,
     )
 
     assert result == expected
-    assert spawner.manifest_files[0] == (baseline_path,)
+    assigned = {path for manifest in spawner.manifest_files for path in manifest}
+    assert assigned == set(selected)
+    assert len(spawner.manifest_files) == 2
     assert "-n" not in spawner.calls[0][0]
-    assert spawner.manifest_files == (
-        [(baseline_path,), ("tests/test_alpha.py",), ("tests/test_bravo.py",)]
-        if expected == 0
-        else [(baseline_path,)]
-    )
 
 
 def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(

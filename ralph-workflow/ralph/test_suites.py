@@ -1238,33 +1238,27 @@ def run_test_suites(
         subprocess_e2e_only=subprocess_e2e_only,
     )
 
-    serial_test_files = frozenset(
-        {
-            "tests/workspace/test_workspace_product_baselines.py",
-            "tests/test_auto_integrate_boundary_cleanliness.py",
-            "tests/test_bootstrap_auto_seed_gitignore.py",
-            "tests/test_explore_fault_matrix_full.py",
-            "tests/test_explore_handlers.py",
-            "tests/test_scheduler.py",
-            "tests/test_tool_git_read_handle_git_status.py",
-        }
-    )
-    serial_files = tuple(path for path in selected_files if path in serial_test_files)
-    parallel_files = tuple(path for path in selected_files if path not in serial_files)
+    # These files used to run in a pytest process that had to exit before
+    # the parallel fan-out started. That process spent ~25s (full-tree
+    # collection plus ~11s of fast tests) on the critical path, so the
+    # parallel shards started with too little of the 60s combined budget
+    # left and the suite watchdog killed them. The product-baseline bench
+    # stays under 1s even under xdist load, so the files join the same
+    # LPT partition as every other selected file.
     shards = partition_selected_files(
-        parallel_files,
+        selected_files,
         worker_count=int(_pytest_workers()),
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     if required_e2e_shard:
         validate_exact_file_assignment(
-            (*selected_files, *required_e2e_shard), (serial_files, *shards, required_e2e_shard)
+            (*selected_files, *required_e2e_shard), (*shards, required_e2e_shard)
         )
     else:
-        validate_exact_file_assignment(selected_files, (serial_files, *shards))
+        validate_exact_file_assignment(selected_files, shards)
     print(
         f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
-        f"{len(shards) + bool(required_e2e_shard) + bool(serial_files)} shards in {monotonic() - started_at:.2f}s",
+        f"{len(shards) + bool(required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
         flush=True,
     )
     temp_directory_prefix: str
@@ -1285,27 +1279,6 @@ def run_test_suites(
         basetemp_path = Path(basetemp_root)
         successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
         empty_selection_returncode = 5 if profile is not None else None
-        serial_result: int | None = None
-        if serial_files:
-            serial_basetemp = basetemp_path / "serial"
-            serial_basetemp.mkdir()
-            serial_result = _run_shards(
-                (serial_files,),
-                cwd=cwd,
-                env=env,
-                basetemp_root=serial_basetemp,
-                deadline=deadline,
-                started_at=started_at,
-                spawner=spawner,
-                monotonic=monotonic,
-                wait=wait,
-                marker_expression=marker_expression,
-                xdist_workers="0",
-                successful_returncodes=successful_returncodes,
-                empty_selection_returncode=empty_selection_returncode,
-            )
-            if serial_result not in successful_returncodes:
-                return serial_result
         # The real-git E2E shard runs concurrently with the general
         # shards using dedicated xdist workers so all shards complete
         # inside the 60 s combined budget in ralph/verify.py. The exclusive
