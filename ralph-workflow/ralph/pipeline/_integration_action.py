@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+
 
 class IntegrationAction(StrEnum):
     """The closed vocabulary for the integration lifecycle."""
@@ -22,9 +24,6 @@ class IntegrationAction(StrEnum):
     WAIT_FOR_BOUNDED_RETRY = "wait_for_bounded_retry"
     REQUIRE_INTERVENTION = "require_intervention"
     COMPLETE_WITH_PROOF = "complete_with_proof"
-
-
-from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 
 
 def _safe_attr(obj: object, name: str) -> object:

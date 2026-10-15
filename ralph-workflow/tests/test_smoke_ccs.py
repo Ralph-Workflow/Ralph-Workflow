@@ -62,6 +62,7 @@ from ralph.config import loader as loader_module
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
+from ralph.policy import loader as policy_loader_module
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace import scope as scope_module
 from ralph.workspace.scope import WorkspaceScope
@@ -93,7 +94,7 @@ def test_ccs_smoke_regression_default_comes_from_development_policy(
     monkeypatch.setattr(scope_module, "resolve_workspace_scope", lambda: scope)
     monkeypatch.setattr(loader_module, "load_config", lambda *_args, **_kwargs: config)
     monkeypatch.setattr(
-        smoke_module._policy_loader_module,
+        policy_loader_module,
         "load_agents_policy_for_workspace_scope",
         lambda *_args, **_kwargs: agents_policy,
     )
@@ -137,7 +138,7 @@ def test_ccs_smoke_regression_exits_when_policy_lacks_ccs_agent(
     monkeypatch.setattr(scope_module, "resolve_workspace_scope", lambda: scope)
     monkeypatch.setattr(loader_module, "load_config", lambda *_args, **_kwargs: config)
     monkeypatch.setattr(
-        smoke_module._policy_loader_module,
+        policy_loader_module,
         "load_agents_policy_for_workspace_scope",
         lambda *_args, **_kwargs: agents_policy,
     )

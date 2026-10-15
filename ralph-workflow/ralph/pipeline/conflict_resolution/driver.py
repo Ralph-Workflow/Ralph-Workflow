@@ -142,6 +142,7 @@ __all__ = [
     "ResolutionAction",
     "ResolutionInvoker",
     "RoundAttempt",
+    "emit_conflict_phase_line",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",

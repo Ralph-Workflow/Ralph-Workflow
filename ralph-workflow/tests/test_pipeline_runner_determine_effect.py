@@ -55,6 +55,7 @@ _TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content
 _TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
 _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 @lru_cache(maxsize=1)

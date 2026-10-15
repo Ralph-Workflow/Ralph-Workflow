@@ -96,12 +96,14 @@ def _command_values(content: str) -> list[str]:
     :func:`_check_individual_commands` so the user sees a precise finding
     with the offending line number.
     """
+    marker = markers.COMMAND_MARKER
     values: list[str] = []
     for line in content.splitlines():
-        match = _COMMAND_VALUE_RE.match(line)
-        if match is not None:
-            value = line[len(markers.COMMAND_MARKER) :].strip()
-            values.append(value)
+        if line.startswith(marker):
+            match = _COMMAND_VALUE_RE.match(line)
+            if match is not None:
+                value = line[len(marker) :].strip()
+                values.append(value)
     return values
 
 

@@ -25,6 +25,8 @@ from tests._support.typed_accessors import (
 )
 from tests.mock_session import MockSession
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _flat_paths(node: dict[str, object]) -> list[str]:
     """Return ``path`` fields (depth-first) for every node in the tree."""

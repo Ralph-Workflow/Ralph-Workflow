@@ -876,6 +876,7 @@ def test_generated_scene_alarm_decisions_are_never_demoted() -> None:
     assert all(d.lit for d in alarm_decisions)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_generated_scene_replay_of_an_identical_event_sequence_is_byte_identical() -> None:
     """G-6: replaying an identical event sequence through the allocator must
     reproduce the exact same per-frame decisions every time -- role, tier,
@@ -891,6 +892,7 @@ def test_generated_scene_replay_of_an_identical_event_sequence_is_byte_identical
         assert first_decisions == second_decisions, scene_name
 
 
+@pytest.mark.timeout_seconds(5)
 def test_generated_scene_no_role_oscillates_between_lit_and_demoted_without_a_state_change() -> (
     None
 ):
@@ -916,6 +918,7 @@ def test_generated_scene_no_role_oscillates_between_lit_and_demoted_without_a_st
             last_lit_by_role[decision.role] = decision.lit
 
 
+@pytest.mark.timeout_seconds(5)
 def test_generated_scene_salience_is_a_no_op_when_no_colour_reaches_the_console() -> None:
     """B-6/G-8 tail: under a no-colour case, every recorded decision must
     report lit (nothing is ever demoted, since nothing carries colour)."""

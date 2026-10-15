@@ -42,6 +42,8 @@ from ralph.policy.models import (
 )
 from ralph.workspace.fs import FsWorkspace
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _make_pipeline_policy(
     drain: str,

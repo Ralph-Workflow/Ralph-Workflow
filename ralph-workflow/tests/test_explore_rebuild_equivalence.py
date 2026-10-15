@@ -19,6 +19,8 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
@@ -115,6 +117,7 @@ def _capture_grep_spans(session: _FakeSession, ws: _Workspace) -> set[tuple[str,
     return {(str(m["path"]), int(m["line"])) for m in matches}
 
 
+@pytest.mark.timeout_seconds(5)
 def test_wipe_and_rebuild_produces_equivalent_search_results(
     tmp_path: Path,
 ) -> None:

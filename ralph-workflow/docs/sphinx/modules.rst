@@ -1089,7 +1089,16 @@ ralph.pipeline.auto_integrate_boundary_refresh
 ralph.pipeline.conflict_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. Note: ralph.pipeline.conflict_resolution re-exports from its submodules; using
+   :no-members: avoids duplicate object-description warnings.
+
 .. automodule:: ralph.pipeline.conflict_resolution
+   :no-members:
+
+ralph.pipeline.conflict_resolution.resolution_action
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.resolution_action
    :members:
    :show-inheritance:
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import run_loop
 from ralph.pipeline._integration_diagnostic import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     diagnose_retained_integration,
@@ -29,7 +30,6 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.rebase_state import RebaseState
-import ralph.pipeline.run_loop as run_loop
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy

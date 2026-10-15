@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import run_loop
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import START_INTEGRATING, IntegrationRecord, write_record
@@ -17,7 +18,6 @@ from ralph.pipeline.reducer import (
     _handle_phase_loopback,
     _route_reduced_decision,
 )
-import ralph.pipeline.run_loop as run_loop
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy

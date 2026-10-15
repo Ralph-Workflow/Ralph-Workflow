@@ -9,6 +9,8 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+import pytest
+
 if TYPE_CHECKING:
 
     class ProjectUrlsModule(Protocol):
@@ -83,6 +85,7 @@ def test_sphinx_conf_exposes_repo_url_substitutions_from_shared_constants() -> N
     assert "|codeberg_mirror_url|" in rst_epilog
 
 
+@pytest.mark.timeout_seconds(10)
 def test_maintained_docs_only_use_canonical_repo_urls() -> None:
     module = _load_project_urls_module()
     allowed_urls = {

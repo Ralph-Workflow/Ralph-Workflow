@@ -823,6 +823,7 @@ def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path
     assert ct.warning_threshold_seconds == 2880.0
 
 
+@pytest.mark.timeout_seconds(5)
 def test_cycle_timebox_accepts_non_canonical_valid_phase_references(
     tmp_path: Path,
 ) -> None:

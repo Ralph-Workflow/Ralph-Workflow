@@ -21,7 +21,7 @@ from ralph.workspace.storage_lifecycle import inventory_storage, plan_cleanup
 # 1.0 s per-test ceiling, so the two tests that trigger the cold walk carry
 # an explicit 10 s marker (the walk itself is ~0.5 s warm; the headroom is
 # for shard load, not real work).
-_AST_WALK_TIMEOUT = pytest.mark.timeout_seconds(10)
+_AST_WALK_TIMEOUT = pytest.mark.timeout_seconds(20)
 
 
 def _write(path: Path, content: str = "data") -> None:

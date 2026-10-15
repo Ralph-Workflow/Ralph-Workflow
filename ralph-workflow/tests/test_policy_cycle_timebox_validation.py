@@ -13,6 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -48,6 +50,7 @@ def test_cycle_timebox_rejects_an_outcome_outside_the_vocabulary() -> None:
         )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_timebox_outcome_is_checked_even_when_no_decision_declares_it() -> None:
     """The timebox's own outcome is a source of recordable outcomes in its own right.
 

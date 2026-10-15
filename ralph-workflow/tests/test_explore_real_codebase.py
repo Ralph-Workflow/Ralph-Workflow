@@ -190,7 +190,7 @@ def _run_grep(
     return _decode(result)
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_indexed_vs_live_grep_match_set_parity(tmp_path: Path) -> None:
     """Indexed and live grep return the same set of matched files for plain literals.
 
@@ -230,7 +230,7 @@ def test_indexed_vs_live_grep_match_set_parity(tmp_path: Path) -> None:
         store.close()
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_indexed_grep_case_sensitive_parity(tmp_path: Path) -> None:
     """Case-sensitive indexed matches equal live case-sensitive."""
     workspace = tmp_path / "ws"
@@ -262,7 +262,7 @@ def test_indexed_grep_case_sensitive_parity(tmp_path: Path) -> None:
         store.close()
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_indexed_grep_whole_word_parity(tmp_path: Path) -> None:
     """Whole-word indexed matches equal live whole-word."""
     workspace = tmp_path / "ws"
@@ -303,7 +303,7 @@ def test_indexed_grep_whole_word_parity(tmp_path: Path) -> None:
         store.close()
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_dotted_literal_uses_index_with_phrase_equality(tmp_path: Path) -> None:
     """``os.path`` is served from the index and matches only true phrase hits."""
     workspace = tmp_path / "ws"

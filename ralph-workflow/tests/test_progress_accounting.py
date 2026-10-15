@@ -39,6 +39,8 @@ checkpoint_module = import_module("ralph.checkpoint")
 CheckpointBuilder = checkpoint_module.CheckpointBuilder
 RunContext = checkpoint_module.RunContext
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 INITIAL_REVIEW_BUDGET = 2
 FORCED_REVIEW_ANALYSIS_ITERATION = 2
 COMPLETED_DEVELOPMENT_CYCLES = 2

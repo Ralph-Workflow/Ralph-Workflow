@@ -8,13 +8,12 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.git.rebase.rebase_continuation import RebaseStop
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     MonotonicClock = Callable[[], float]
@@ -23,8 +22,7 @@ if TYPE_CHECKING:
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    fn = getattr(driver_mod, "emit_conflict_phase_line", emit_conflict_phase_line)
-    fn(display, line)
+    driver_mod.emit_conflict_phase_line(display, line)
 
 
 def announce_declared_decisions(
