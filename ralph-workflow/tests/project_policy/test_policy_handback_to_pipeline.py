@@ -585,6 +585,7 @@ def _assert_handback_state_clean(
         )
 
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize(
     "phase", _PERSISTED_NON_TERMINAL_PHASES, ids=_PERSISTED_NON_TERMINAL_PHASES
 )

@@ -22,6 +22,11 @@ from ralph.mcp.server._trust_boundary import require_trust_boundary
 from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
+_MCP_SERVER_DIR = Path(__file__).resolve().parent.parent / "ralph" / "mcp" / "server"
+_MCP_SERVER_PY_FILES: tuple[tuple[Path, str], ...] = tuple(
+    (path, path.read_text(encoding="utf-8")) for path in sorted(_MCP_SERVER_DIR.rglob("*.py"))
+)
+
 
 def test_default_host_is_loopback_127_0_0_1() -> None:
     """The production bind host is 127.0.0.1 — never 0.0.0.0."""
@@ -30,14 +35,11 @@ def test_default_host_is_loopback_127_0_0_1() -> None:
 
 def test_no_0_0_0_0_literal_in_mcp_server() -> None:
     """A literal '0.0.0.0' must not appear in ralph/mcp/server/ (audit)."""
-    mcp_server_dir = Path(__file__).parent.parent / "ralph" / "mcp" / "server"
-    for path in mcp_server_dir.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        # Allow the literal in comments/strings that explain the policy
+    for path, text in _MCP_SERVER_PY_FILES:
         if "0.0.0.0" in text:
             # The check: a real bind to 0.0.0.0 would be a security defect.
             # Allow explanatory references but disallow the bind literal.
-            assert "0.0.0.0" not in text or path.name == "_trust_boundary.py", (
+            assert path.name == "_trust_boundary.py", (
                 f"{path}: literal '0.0.0.0' must not appear in production code"
             )
 

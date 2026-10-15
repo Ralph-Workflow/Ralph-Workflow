@@ -25,6 +25,11 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+_DEFAULT_PIPELINE_POLICY = load_policy(_DEFAULTS_DIR).pipeline
+
 
 def _execution_result_event(phase: str, status: str) -> Event:
     return ExecutionResultEvent(phase=phase, status=status)
@@ -216,8 +221,7 @@ def test_result_status_post_commit_target_must_reference_known_phase() -> None:
 
 
 def test_default_policy_routes_every_development_result_to_analysis_after_commit() -> None:
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     development = policy.phases["development"]
     assert development.result_status_post_commit == {}
@@ -246,8 +250,7 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
 
 def test_failed_development_analysis_loops_back_to_development() -> None:
     """A failed analyzer decision returns for explicit resolution."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     next_state, _ = reducer_reduce(
         PipelineState(phase="development_analysis"),
@@ -264,8 +267,7 @@ def test_failed_analysis_preserves_outer_budget_on_loopback(
     completed_cycles: int,
 ) -> None:
     """Failure-resolution loopback does not consume the outer cycle budget."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
     state = PipelineState(
         phase="development_analysis",
         budget_caps={"iteration": 2},
@@ -287,8 +289,7 @@ def test_failed_analysis_does_not_enter_commit_path(
     completed_cycles: int,
 ) -> None:
     """A failed analysis follows the same direct rework route as request changes."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
     state = PipelineState(
         phase="development_analysis",
         budget_caps={"iteration": 2},
@@ -310,8 +311,7 @@ def test_development_result_regression_every_terminal_result_consumes_one_analys
     status: str,
 ) -> None:
     """S-1: terminal development results charge analysis at the post-commit seam, not before."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     next_state, _ = reducer_reduce(
         _state_with_dev_time(900.0),
@@ -327,8 +327,7 @@ def test_development_result_regression_every_terminal_result_consumes_one_analys
 
 def test_development_result_regression_analysis_loopback_does_not_double_charge_cycle() -> None:
     """S-1: the charged result cycle remains one when its analysis requests changes."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     cleanup_state, _ = reducer_reduce(
         _state_with_dev_time(900.0),
@@ -353,8 +352,7 @@ def test_invocation_gate_threshold_controls_analysis_entry(
     enters_analysis: bool,
 ) -> None:
     """S-1: cumulative unrounded dev time at or above 900.0s enters analysis."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(seconds)
     cleanup_state, _ = reducer_reduce(
@@ -374,8 +372,7 @@ def test_invocation_gate_threshold_controls_analysis_entry(
 
 def test_invocation_gate_fractional_records_straddle_threshold() -> None:
     """S-1: split fractional records totaling 899.9 skip; 900.0 enter analysis."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     for total, enters in [(899.9, False), (900.0, True)]:
         half = total / 2
@@ -395,8 +392,7 @@ def test_invocation_gate_fractional_records_straddle_threshold() -> None:
 
 def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
     """S-1: when analysis is skipped by the gate, the completed cycle outcome is set."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(100.0)
     cleanup_state, _ = reducer_reduce(
@@ -411,8 +407,7 @@ def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
 
 def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> None:
     """S-2: a session-ceiling partial result commits then enters analysis even below threshold."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(100.0, last_agent_session_id="session-1")
     cleanup_state, _ = reducer_reduce(
@@ -432,8 +427,7 @@ def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> 
 
 def test_failed_analysis_returns_to_development_for_every_outer_budget_state() -> None:
     """Failed analysis is rework, independent of outer budget progress."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     for completed_cycles in (0, 1):
         state = PipelineState(
@@ -452,8 +446,7 @@ def test_failed_analysis_returns_to_development_for_every_outer_budget_state() -
 
 def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
     """S-1: earlier cycle timings cannot make a short later cycle eligible for analysis."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     # Simulate a state at development_final_commit with one prior cycle's timing (900s)
     # plus the current cycle's short timing (10s).
@@ -494,8 +487,7 @@ def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
 @pytest.mark.parametrize("status", ["partial", "failed"])
 def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> None:
     """S-2: partial and failed results enter analysis even below the 900s threshold."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(10.0)
     cleanup_state, _ = reducer_reduce(state, _execution_result_event("development", status), policy)
@@ -508,8 +500,7 @@ def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> N
 
 def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None:
     """S-2: completed results below 900s skip analysis per the retained time bypass."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(10.0)
     cleanup_state, _ = reducer_reduce(
@@ -525,8 +516,7 @@ def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None
 
 def test_result_status_does_not_leak_across_cycles() -> None:
     """S-2: a partial result's status is cleared after the gate so it cannot force the next cycle."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    policy = load_policy(defaults_dir).pipeline
+    policy = _DEFAULT_PIPELINE_POLICY
 
     # Cycle 1: partial result below threshold enters analysis via always_invoke_statuses
     state = _state_with_dev_time(10.0)

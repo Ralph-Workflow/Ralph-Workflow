@@ -28,6 +28,8 @@ import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 
+import pytest
+
 from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
 PORTFOLIO_PATH = REPOSITORY_ROOT / "docs" / "ralph-workflow-policy" / "policy-portfolio.toml"
@@ -105,19 +107,27 @@ def _scan_paths_for_removed_names() -> list[tuple[Path, str]]:
         r"\b(?:" + "|".join(re.escape(name) for name in sorted(removed_names)) + r")\b"
     )
 
+    seen_paths: set[Path] = set()
     paths: list[Path] = []
     for root in DOCS_ROOTS:
         if root.is_file():
-            paths.append(root)
+            if root not in seen_paths and root != PORTFOLIO_PATH and root.suffix in _SCAN_SUFFIXES:
+                seen_paths.add(root)
+                paths.append(root)
         elif root.is_dir():
-            paths.extend(p for p in root.rglob("*") if p.is_file())
+            for p in root.rglob("*"):
+                if (
+                    p.is_file()
+                    and p not in seen_paths
+                    and p != PORTFOLIO_PATH
+                    and "_build" not in p.parts
+                    and p.suffix in _SCAN_SUFFIXES
+                ):
+                    seen_paths.add(p)
+                    paths.append(p)
 
     hits: list[tuple[Path, str]] = []
     for path in paths:
-        if path == PORTFOLIO_PATH:
-            continue
-        if path.suffix not in _SCAN_SUFFIXES:
-            continue
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
@@ -180,6 +190,7 @@ def test_human_or_triggered_lane_controls_record_evidence_location() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_removed_test_names_in_documentation_roots() -> None:
     """No removed test name (floor set + removed-tests markers) appears in docs roots."""
     hits = _scan_paths_for_removed_names()

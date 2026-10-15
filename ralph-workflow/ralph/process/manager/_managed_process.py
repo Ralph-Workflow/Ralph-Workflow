@@ -15,7 +15,7 @@ from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpir
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
-from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
 from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 if TYPE_CHECKING:
@@ -66,7 +66,12 @@ class ManagedProcess:
 
     @property
     def returncode(self) -> int | None:
-        return self._proc.returncode
+        rc = self._proc.returncode
+        if rc is not None:
+            return rc
+        if self._record.status in (ProcessStatus.KILLED, ProcessStatus.FAILED):
+            return self._record.returncode
+        return None
 
     def termination_issuer(self) -> str | None:
         """Return the lifecycle issuer that intentionally stopped this process."""
@@ -469,17 +474,13 @@ class ManagedProcess:
         # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
         # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
         gone, alive = self._manager._safe_wait_procs(psutil_mod, procs, timeout=grace_period_s)
-        for p in gone:
-            p_pid: object = getattr(p, "pid", None)
-            if p_pid == self._record.pid:
-                rc: object = getattr(p, "returncode", None)
-                if isinstance(rc, int) and not isinstance(rc, bool):
-                    self._record.returncode = rc
-                    note_fn: object = getattr(self._proc, "note_external_returncode", None)
-                    if callable(note_fn):
-                        with contextlib.suppress(Exception):
-                            note_fn(rc)
-                break
+        root_rc = self._manager._harvest_gone_processes(gone, root_pid=self._record.pid)
+        if root_rc is not None:
+            self._record.returncode = root_rc
+            note_fn: object = getattr(self._proc, "note_external_returncode", None)
+            if callable(note_fn):
+                with contextlib.suppress(Exception):
+                    note_fn(root_rc)
         return [proc for proc in alive if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _kill_psutil_wave(
@@ -497,17 +498,13 @@ class ManagedProcess:
         gone, still_alive = self._manager._safe_wait_procs(
             psutil_mod, procs, timeout=self._manager.policy.kill_followup_timeout_s
         )
-        for p in gone:
-            p_pid: object = getattr(p, "pid", None)
-            if p_pid == self._record.pid:
-                rc: object = getattr(p, "returncode", None)
-                if isinstance(rc, int) and not isinstance(rc, bool):
-                    self._record.returncode = rc
-                    note_fn: object = getattr(self._proc, "note_external_returncode", None)
-                    if callable(note_fn):
-                        with contextlib.suppress(Exception):
-                            note_fn(rc)
-                break
+        root_rc = self._manager._harvest_gone_processes(gone, root_pid=self._record.pid)
+        if root_rc is not None:
+            self._record.returncode = root_rc
+            note_fn: object = getattr(self._proc, "note_external_returncode", None)
+            if callable(note_fn):
+                with contextlib.suppress(Exception):
+                    note_fn(root_rc)
         return [proc for proc in still_alive if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _cleanup_descendant_waves(

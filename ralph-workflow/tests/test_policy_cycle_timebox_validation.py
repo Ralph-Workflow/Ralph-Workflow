@@ -453,6 +453,7 @@ def test_the_model_defaults_are_the_documented_ones() -> None:
     assert minimal.finalization_cycle_outcome == "completed"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_an_inherited_timebox_whose_start_edge_is_gone_is_disabled() -> None:
     """The edge branch had no test: both existing cases removed a phase instead.
 

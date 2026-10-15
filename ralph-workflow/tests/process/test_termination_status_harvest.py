@@ -763,3 +763,60 @@ def test_escalate_with_psutil_harvests_psutil_returncode(
     assert record.returncode == -9
     assert -9 in note_called_with
     assert fake_proc.returncode == -9
+
+
+# ----------------------------------------------------------------------
+# Test 17: _escalate_termination_sync cross-harvests owned child status
+# ----------------------------------------------------------------------
+
+
+def test_escalate_termination_sync_cross_harvests_owned_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When parent PID 100 and owned child PID 202 are both returned from
+    psutil's gone list with returncode=-15 during _escalate_termination_sync,
+    both parent and child records end terminal with returncode == -15, and
+    both managed handles expose returncode == -15."""
+    manager = ProcessManager(policy=_FAST_POLICY)
+    parent_record = _make_record(manager, pid=100)
+    child_record = _make_record(manager, pid=202)
+    manager.record_terminal_reason(parent_record.pid, "interactive_completion", "test")
+
+    parent_proc = _FakeSyncProc()
+    parent_proc.pid = 100
+    manager._sync_procs[100] = parent_proc
+    parent_handle = ManagedProcess(parent_proc, parent_record, manager)
+
+    child_proc = _FakeSyncProc()
+    child_proc.pid = 202
+    manager._sync_procs[202] = child_proc
+    child_handle = ManagedProcess(child_proc, child_record, manager)
+
+    fake_child = _PsutilProcessWithReturncode(pid=202)
+    fake_child._terminated = True
+    fake_child.returncode = -15
+
+    fake_parent = _PsutilProcessWithReturncode(pid=100, _children=[fake_child])
+    fake_parent._terminated = True
+    fake_parent.returncode = -15
+
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {100: fake_parent, 202: fake_child}
+    manager._psutil = fake_psutil
+
+    def fake_wait_procs_with_dead(
+        procs: Sequence[object], timeout: float | None = None
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        return [fake_parent, fake_child], []
+
+    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+
+    manager._escalate_termination_sync(parent_record, parent_proc, grace_period_s=0.01)
+
+    assert parent_record.status == ProcessStatus.KILLED
+    assert parent_record.returncode == -15
+    assert child_record.status == ProcessStatus.KILLED
+    assert child_record.returncode == -15
+
+    assert parent_handle.returncode == -15
+    assert child_handle.returncode == -15

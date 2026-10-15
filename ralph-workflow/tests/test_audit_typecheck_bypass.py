@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.testing.audit_typecheck_bypass import (
     _VALID_REASON_MARKERS,
     _check_mypy_ini,
@@ -15,6 +17,8 @@ from ralph.testing.audit_typecheck_bypass import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 # ---------------------------------------------------------------------------
 # Helper to get the approved reason suffix

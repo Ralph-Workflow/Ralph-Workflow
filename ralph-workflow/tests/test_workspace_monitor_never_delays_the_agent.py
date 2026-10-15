@@ -351,13 +351,14 @@ class _SlowStoppingObserver(_SlowObserver):
         super().__init__()
         self.stopping = threading.Event()
         self.stopped = threading.Event()
+        self.release_event = threading.Event()
 
     def start(self) -> None:
         self.entered.set()
 
     def stop(self) -> None:
         self.stopping.set()
-        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.release_event.wait(timeout=_SLOW_WATCH_SECONDS)
         self.stopped.set()
 
 
@@ -384,6 +385,7 @@ def test_a_teardown_that_will_not_finish_does_not_park_the_launch(
         monitor.stop()
         still_stopping = not observer.stopped.is_set()
     finally:
+        observer.release_event.set()
         release_workspace_awareness(tmp_path)
 
     assert observer.stopping.is_set(), "the teardown was never reached"
@@ -521,6 +523,7 @@ def test_the_watch_teardown_joins_with_a_timeout(
         monitor.start()
         monitor.stop()
     finally:
+        observer.release_event.set()
         release_workspace_awareness(tmp_path)
 
     assert observer.join_timeouts, "the teardown never joined the observer"

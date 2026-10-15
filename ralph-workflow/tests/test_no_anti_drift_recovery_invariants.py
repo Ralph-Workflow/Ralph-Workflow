@@ -171,18 +171,18 @@ class TestRecoveryCycleCapOwner:
         assert "_cycle_cap" in source or "max_recovery_cycles" in source or "cycle_cap" in source
 
 
-def _find_backoff_candidate_files() -> list[tuple[pathlib.Path, bytes]]:
-    hits: list[tuple[pathlib.Path, bytes]] = []
+def _find_backoff_candidate_files() -> list[tuple[pathlib.Path, ast.AST]]:
+    hits: list[tuple[pathlib.Path, ast.AST]] = []
     for path in _walk_python_files(RALPH_ROOT):
         raw = path.read_bytes()
         if b"compute_backoff" in raw or b"backoff_ms" in raw:
-            hits.append((path, raw))
+            hits.append((path, ast.parse(raw, filename=str(path))))
     return hits
 
 
-# Pre-populate candidate files at module import time so file I/O does not
-# exceed the per-test 1.0s SIGALRM cap under loaded multi-shard runs.
-_RECOVERY_BACKOFF_CANDIDATE_FILES: tuple[tuple[pathlib.Path, bytes], ...] = tuple(
+# Pre-populate candidate files and parsed ASTs at module import time so file I/O
+# and parsing do not exceed the per-test 1.0s SIGALRM cap under loaded multi-shard runs.
+_RECOVERY_BACKOFF_CANDIDATE_FILES: tuple[tuple[pathlib.Path, ast.AST], ...] = tuple(
     _find_backoff_candidate_files()
 )
 
@@ -199,8 +199,7 @@ class TestRecoveryControllerOwnsBackoff:
 
     def test_recovery_controller_owns_backoff(self) -> None:
         offenders: list[str] = []
-        for path, raw in _RECOVERY_BACKOFF_CANDIDATE_FILES:
-            tree = ast.parse(raw)
+        for path, tree in _RECOVERY_BACKOFF_CANDIDATE_FILES:
             for node in ast.walk(tree):
                 if not isinstance(node, ast.FunctionDef):
                     continue

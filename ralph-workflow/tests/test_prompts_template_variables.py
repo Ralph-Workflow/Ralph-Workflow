@@ -9,6 +9,8 @@ from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_variables import capability_template_variables
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def test_template_variables_apply_to_template() -> None:
     caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.DEVELOPMENT)

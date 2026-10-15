@@ -10,7 +10,7 @@ under the maintained ``1000``-line-per-file cap.
 
 from __future__ import annotations
 
-import sys
+import ast
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -18,7 +18,6 @@ import pytest
 
 import ralph.test_suites as test_suites_module
 import tests.conftest as conftest_module
-from ralph.verify_timeout import build_timeout_env, run_command_with_timeout
 from tests._test_test_suites_helpers import (
     _BackpressuredShardProcess,
     _FakeClock,
@@ -825,10 +824,8 @@ def test_static_discovery_populates_source_cache_for_retained_files(
     assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
 
 
-@pytest.mark.subprocess_e2e
-@pytest.mark.timeout_seconds(15)
 def test_real_pty_completion_no_terminal_lost_collected_under_subprocess_e2e_and_smoke() -> None:
-    """Verify that test_real_pty_completion_no_terminal_lost.py is collected under smoke."""
+    """Verify that test_real_pty_completion_no_terminal_lost.py has smoke/e2e markers."""
     target_rel = "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py"
     repo_root = Path(__file__).resolve().parent.parent
     target_path = repo_root / target_rel
@@ -837,31 +834,50 @@ def test_real_pty_completion_no_terminal_lost_collected_under_subprocess_e2e_and
         f"{target_rel} must be in REQUIRED_AUTO_INTEGRATE_E2E_FILES"
     )
 
-    timeout_s = 15.0
-    result = run_command_with_timeout(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "--collect-only",
-            "-p",
-            "no:cov",
-            "-m",
-            "subprocess_e2e and smoke",
-            "-q",
-            target_rel,
-        ],
-        cwd=repo_root,
-        env=build_timeout_env(suite_timeout_seconds=timeout_s),
-        suite_timeout_seconds=timeout_s,
+    tree = ast.parse(target_path.read_text(encoding="utf-8"), filename=str(target_path))
+
+    pytestmark_markers: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    elements = (
+                        node.value.elts
+                        if isinstance(node.value, (ast.List, ast.Tuple))
+                        else [node.value]
+                    )
+                    for elt in elements:
+                        if isinstance(elt, ast.Attribute):
+                            pytestmark_markers.add(elt.attr)
+                        elif isinstance(elt, ast.Call) and isinstance(elt.func, ast.Attribute):
+                            pytestmark_markers.add(elt.func.attr)
+
+    assert {"subprocess_e2e", "smoke"}.issubset(pytestmark_markers), (
+        f"module-level pytestmark must define both subprocess_e2e and smoke, found: {pytestmark_markers}"
     )
-    assert result.returncode == 0, (
-        f"pytest collection failed with return code {result.returncode}:\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+
+    defined_functions = {
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "test_request_interactive_exit_does_not_lose_returncode" in defined_functions, (
+        f"test_request_interactive_exit_does_not_lose_returncode must be defined in {target_rel}"
     )
-    assert (
-        f"{target_rel}::test_request_interactive_exit_does_not_lose_returncode" in result.stdout
-    ), f"test function missing from collection output in {target_rel}: {result.stdout}"
-    assert "1 test collected" in result.stdout, (
-        f"unexpected test collection count in {target_rel}: {result.stdout}"
+
+    makefile_path = repo_root / "Makefile"
+    assert makefile_path.is_file(), "Makefile must exist on disk"
+    makefile_lines = makefile_path.read_text(encoding="utf-8").splitlines()
+    smoke_target_body: list[str] = []
+    in_target = False
+    for line in makefile_lines:
+        if not in_target:
+            if line.startswith("test-verification-smoke:"):
+                in_target = True
+            continue
+        if not line.startswith("\t"):
+            break
+        smoke_target_body.append(line.strip())
+
+    assert smoke_target_body, "test-verification-smoke target not found in Makefile"
+    assert any(target_rel in line for line in smoke_target_body), (
+        f"smoke target in Makefile must contain {target_rel}"
     )

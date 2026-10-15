@@ -31,6 +31,8 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2

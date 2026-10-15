@@ -1514,12 +1514,16 @@ def _collect_phase_transition_findings() -> None:
             PHASE_TRANSITION_FINDINGS[rel] = visitor.findings
 
 
+_collect_phase_transition_findings()
+
+
 class TestNoPhaseTransitionSeamLeaksSessionId:
     """Pin the BOTH-clears invariant on phase transitions. Every function in
     ralph/pipeline/ (excluding plumbing/) that mutates phase must clear BOTH
     `last_agent_session_id=None` AND `agent_retry_intent=cleared_agent_retry_intent()`.
     """
 
+    @pytest.mark.timeout_seconds(5)
     def test_no_phase_transition_seam_leaks_session_id(self) -> None:
         _collect_phase_transition_findings()
         leaks: list[str] = []

@@ -76,6 +76,41 @@ def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int 
     return None
 
 
+def _collect_psutil_exit_pairs(procs: Sequence[object]) -> list[tuple[int, int]]:
+    """Extract valid (pid, returncode) pairs from psutil processes."""
+    pairs: list[tuple[int, int]] = []
+    for p in procs:
+        p_pid: object = getattr(p, "pid", None)
+        p_rc: object = getattr(p, "returncode", None)
+        if isinstance(p_pid, int) and isinstance(p_rc, int) and not isinstance(p_rc, bool):
+            pairs.append((p_pid, p_rc))
+    return pairs
+
+
+def _parse_async_term_res(
+    term_res: object,
+) -> tuple[bool, int | None, list[tuple[int, int]]]:
+    """Parse raw return value from _do_terminate."""
+    if not isinstance(term_res, tuple):
+        return False, None, []
+    raw_alive = False
+    raw_rc: int | None = None
+    raw_pairs: list[tuple[int, int]] = []
+    try:
+        alive_val = term_res[0]
+        if isinstance(alive_val, bool):
+            raw_alive = alive_val
+        rc_val = term_res[1]
+        if isinstance(rc_val, int) and not isinstance(rc_val, bool):
+            raw_rc = rc_val
+        pairs_val = term_res[2]
+        if isinstance(pairs_val, list):
+            raw_pairs = pairs_val
+    except IndexError:
+        pass
+    return raw_alive, raw_rc, raw_pairs
+
+
 def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
     """Return True if proc is a non-PTY invoke process that has already terminated."""
     if record.label is None or not record.label.startswith("invoke:"):
@@ -554,6 +589,44 @@ class ProcessManager:
             )
         return terminated
 
+    def _harvest_owned_process(self, pid: int, rc: int) -> None:
+        """Propagate exit code and mark killed for an owned process by PID."""
+        desc_rec = self._records.get(pid)
+        if desc_rec is not None:
+            desc_proc: object = getattr(desc_rec, "proc", None)
+            self._note_proc_external_returncode(desc_rec, desc_proc, rc)
+            self._mark_killed(desc_rec, rc)
+        else:
+            handle: object = (
+                self._pty_procs.get(pid) or self._sync_procs.get(pid) or self._async_procs.get(pid)
+            )
+            if handle is not None:
+                note_fn: object = getattr(handle, "note_external_returncode", None)
+                if callable(note_fn):
+                    with contextlib.suppress(Exception):
+                        note_fn(rc)
+
+    def _harvest_gone_processes(
+        self, gone: Sequence[object], root_pid: int | None = None
+    ) -> int | None:
+        """Harvest exit codes from gone psutil processes, marking owned processes killed."""
+        root_rc: int | None = None
+        for p in gone:
+            raw_pid: object = getattr(p, "pid", None)
+            if not isinstance(raw_pid, int):
+                continue
+            p_pid: int = raw_pid
+            raw_rc: object = getattr(p, "returncode", None)
+            if not isinstance(raw_rc, int) or isinstance(raw_rc, bool):
+                continue
+            p_rc: int = raw_rc
+            if root_pid is not None and p_pid == root_pid:
+                if root_rc is None:
+                    root_rc = p_rc
+            else:
+                self._harvest_owned_process(p_pid, p_rc)
+        return root_rc
+
     def _harvest_and_mark_descendant(
         self,
         fallback_record: ProcessRecord | None,
@@ -562,23 +635,10 @@ class ProcessManager:
         gone: Sequence[object],
     ) -> None:
         del fallback_record  # Retained for signature compatibility; never used for status routing
+        del proc  # Retained for signature compatibility; handled via _harvest_owned_process
         rc = _extract_psutil_returncode(gone, descendant_pid)
         if rc is not None:
-            desc_rec = self._records.get(descendant_pid)
-            if desc_rec is not None:
-                self._note_proc_external_returncode(desc_rec, proc, rc)
-                self._mark_killed(desc_rec, rc)
-            else:
-                handle: object = (
-                    self._pty_procs.get(descendant_pid)
-                    or self._sync_procs.get(descendant_pid)
-                    or self._async_procs.get(descendant_pid)
-                )
-                if handle is not None:
-                    note_fn: object = getattr(handle, "note_external_returncode", None)
-                    if callable(note_fn):
-                        with contextlib.suppress(Exception):
-                            note_fn(rc)
+            self._harvest_owned_process(descendant_pid, rc)
 
     def _terminate_descendant_no_psutil(self, descendant_pid: int, grace_period_s: float) -> None:
         if not hasattr(os, "kill"):
@@ -1492,7 +1552,7 @@ class ProcessManager:
         )
 
         gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
-        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        harvested_rc = self._harvest_gone_processes(gone, root_pid=record.pid)
         if harvested_rc is not None:
             self._note_proc_external_returncode(record, None, harvested_rc)
         if alive:
@@ -1506,8 +1566,9 @@ class ProcessManager:
         still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        still_harvested_rc = self._harvest_gone_processes(still_gone, root_pid=record.pid)
         if harvested_rc is None:
-            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            harvested_rc = still_harvested_rc
             if harvested_rc is not None:
                 self._note_proc_external_returncode(record, None, harvested_rc)
         if still_alive:
@@ -1581,7 +1642,7 @@ class ProcessManager:
         )
 
         gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
-        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        harvested_rc = self._harvest_gone_processes(gone, root_pid=record.pid)
         if harvested_rc is not None:
             self._note_proc_external_returncode(record, proc, harvested_rc)
         if alive:
@@ -1596,8 +1657,9 @@ class ProcessManager:
         still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        still_harvested_rc = self._harvest_gone_processes(still_gone, root_pid=record.pid)
         if harvested_rc is None:
-            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            harvested_rc = still_harvested_rc
             if harvested_rc is not None:
                 self._note_proc_external_returncode(record, proc, harvested_rc)
         rc = proc.poll()
@@ -1665,13 +1727,14 @@ class ProcessManager:
         pid = record.pid
         policy_kill = self.policy.kill_followup_timeout_s
 
-        def _do_terminate() -> tuple[bool, int | None]:
+        def _do_terminate() -> tuple[bool, int | None, list[tuple[int, int]]]:
             harvested_rc: int | None = None
+            pairs: list[tuple[int, int]] = []
             try:
                 root = psutil_mod.process_from_pid(pid)
                 children = root.children(recursive=True)
             except psutil_mod.NoSuchProcess:
-                return False, None
+                return False, None, []
             except (psutil_mod.AccessDenied, PermissionError) as exc:
                 raise PermissionError from exc
             all_procs = [root, *children]
@@ -1682,19 +1745,22 @@ class ProcessManager:
             # from os.pidfd_open on an already-reaped PID; the helper classifies
             # per-PID, so this executor path cannot abort the teardown.
             gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
-            harvested_rc = _extract_psutil_returncode(gone, pid)
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
             # _safe_wait_procs: OSError (EINVAL) from os.pidfd_open on reaped PIDs.
             still_gone, still_alive = self._safe_wait_procs(psutil_mod, alive, timeout=policy_kill)
-            if harvested_rc is None:
-                harvested_rc = _extract_psutil_returncode(still_gone, pid)
-            return bool(still_alive), harvested_rc
+            pairs = _collect_psutil_exit_pairs((*gone, *still_gone))
+            for p_pid, p_rc in pairs:
+                if p_pid == pid:
+                    harvested_rc = p_rc
+                    break
+            return bool(still_alive), harvested_rc, pairs
 
         loop = asyncio.get_running_loop()
         harvested_rc: int | None = None
         still_alive: bool = False
+        child_pairs: list[tuple[int, int]] = []
         try:
             # wt-024 AC-02: pass the ProcessManager-owned bounded
             # executor (NOT the event-loop default ``None`` executor).
@@ -1707,17 +1773,12 @@ class ProcessManager:
             term_res: object = await loop.run_in_executor(
                 self._get_terminate_executor(), _do_terminate
             )
-            if isinstance(term_res, tuple):
-                try:
-                    raw_alive, raw_rc = term_res
-                    if isinstance(raw_alive, bool):
-                        still_alive = raw_alive
-                    if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
-                        harvested_rc = raw_rc
-                except (ValueError, TypeError):
-                    pass
+            still_alive, harvested_rc, child_pairs = _parse_async_term_res(term_res)
         except PermissionError:
             self._raise_access_denied_termination(record, proc.returncode)
+        for child_pid, child_rc in child_pairs:
+            if child_pid != pid:
+                self._harvest_owned_process(child_pid, child_rc)
         rc = proc.returncode
         if rc is None and harvested_rc is not None:
             rc = harvested_rc
@@ -1761,7 +1822,7 @@ class ProcessManager:
             f"waiting {grace_period_s}s"
         )
         gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
-        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        harvested_rc = self._harvest_gone_processes(gone, root_pid=record.pid)
         if harvested_rc is not None:
             self._note_proc_external_returncode(record, proc, harvested_rc)
         if alive:
@@ -1774,8 +1835,9 @@ class ProcessManager:
         still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        still_harvested_rc = self._harvest_gone_processes(still_gone, root_pid=record.pid)
         if harvested_rc is None:
-            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            harvested_rc = still_harvested_rc
             if harvested_rc is not None:
                 self._note_proc_external_returncode(record, proc, harvested_rc)
         rc = proc.returncode

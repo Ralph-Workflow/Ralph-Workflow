@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
-from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
 from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 __all__ = ["PROCESS_EXIT_WAIT_SECONDS", "ManagedAsyncProcess"]  # re-export intentional
@@ -54,7 +54,12 @@ class ManagedAsyncProcess:
 
     @property
     def returncode(self) -> int | None:
-        return self._proc.returncode
+        rc = self._proc.returncode
+        if rc is not None:
+            return rc
+        if self._record.status in (ProcessStatus.KILLED, ProcessStatus.FAILED):
+            return self._record.returncode
+        return None
 
     def termination_issuer(self) -> str | None:
         """Return the lifecycle issuer that intentionally stopped this process."""
