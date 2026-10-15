@@ -518,9 +518,7 @@ def test_harvest_and_mark_descendant_unrecorded_descendant_leaves_parent_untouch
     fake_child.returncode = -9
 
     manager._harvest_and_mark_descendant(
-        fallback_record=parent_record,
         descendant_pid=200,
-        proc=fake_child,
         gone=[fake_child],
     )
 
@@ -557,9 +555,7 @@ def test_harvest_and_mark_descendant_recorded_descendant_updates_only_itself() -
     fake_child.returncode = -9
 
     manager._harvest_and_mark_descendant(
-        fallback_record=parent_record,
         descendant_pid=200,
-        proc=fake_child,
         gone=[fake_child],
     )
 
@@ -590,9 +586,7 @@ def test_unrecorded_descendant_leaves_parent_pty_untouched() -> None:
     fake_child.returncode = -9
 
     manager._harvest_and_mark_descendant(
-        fallback_record=parent_record,
         descendant_pid=200,
-        proc=fake_child,
         gone=[fake_child],
     )
 
@@ -618,9 +612,7 @@ def test_harvest_and_mark_descendant_ignores_mismatched_pid_in_gone() -> None:
     fake_unrelated.returncode = -15
 
     manager._harvest_and_mark_descendant(
-        fallback_record=parent_record,
         descendant_pid=200,
-        proc=fake_unrelated,
         gone=[fake_unrelated],
     )
 

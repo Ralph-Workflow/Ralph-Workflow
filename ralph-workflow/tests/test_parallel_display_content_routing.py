@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime
 from io import StringIO
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
@@ -145,6 +147,7 @@ def test_malformed_ndjson_does_not_crash(tmp_path: Path) -> None:
     assert "not valid json {{{" in output
 
 
+@pytest.mark.timeout_seconds(5)
 def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
     """SubprocessAgentExecutor writes raw lines to .agent/raw/<unit>.log."""
 
@@ -156,7 +159,7 @@ def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
 
     executor = SubprocessAgentExecutor(
         [
-            "python",
+            sys.executable,
             "-c",
             (
                 'print(\'{"type":"content_block_delta",'

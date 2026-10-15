@@ -570,11 +570,11 @@ class ProcessManager:
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.terminate()
                     gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=grace_period_s)
-                    self._harvest_and_mark_descendant(record, descendant_pid, proc, gone)
+                    self._harvest_and_mark_descendant(descendant_pid, gone)
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.kill()
                     still_gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=kill_followup)
-                    self._harvest_and_mark_descendant(record, descendant_pid, proc, still_gone)
+                    self._harvest_and_mark_descendant(descendant_pid, still_gone)
                     terminated.append(descendant_pid)
                 except (OSError, ProcessLookupError):
                     terminated.append(descendant_pid)
@@ -629,13 +629,9 @@ class ProcessManager:
 
     def _harvest_and_mark_descendant(
         self,
-        fallback_record: ProcessRecord | None,
         descendant_pid: int,
-        proc: object,
         gone: Sequence[object],
     ) -> None:
-        del fallback_record  # Retained for signature compatibility; never used for status routing
-        del proc  # Retained for signature compatibility; handled via _harvest_owned_process
         rc = _extract_psutil_returncode(gone, descendant_pid)
         if rc is not None:
             self._harvest_owned_process(descendant_pid, rc)

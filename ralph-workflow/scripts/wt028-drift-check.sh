@@ -62,6 +62,16 @@ HISTORICAL_ALLOWLIST_PATTERNS='ralph/display/status_bar\.py|ralph/display/__init
 GREP_DIR="$(mktemp -d -t wt028_drift.XXXXXX)"
 chmod 700 "$GREP_DIR"
 cleanup() {
+    if [ -n "${WATCHDOG_PID:-}" ]; then
+        kill -KILL -"$WATCHDOG_PID" 2>/dev/null || true
+        kill -KILL "$WATCHDOG_PID" 2>/dev/null || true
+    fi
+    if [ -n "${SCAN_PGID:-}" ]; then
+        kill -KILL -"$SCAN_PGID" 2>/dev/null || true
+    fi
+    if [ -n "${SCAN_PID:-}" ]; then
+        kill -KILL "$SCAN_PID" 2>/dev/null || true
+    fi
     rm -rf "$GREP_DIR"
 }
 trap cleanup EXIT
@@ -140,15 +150,14 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
     # stub git on PATH). The drift gate then maps any non-trivial
     # git failure to the script's canonical rc=2 error envelope.
     tracked_files_rc=0
-    git ls-files -z -- ralph tests docs \
-        | tr '\0' '\n' \
-        > "$TRACKED_OUT" || tracked_files_rc=$?
+    git ls-files -z -- ralph tests docs >/dev/null 2>>"$GREP_DIR/scan.err" || tracked_files_rc=$?
     if [ "$tracked_files_rc" -ne 0 ]; then
         exit "$tracked_files_rc"
     fi
     # A no-match result (rc=1) is expected; it must not end the scan
     # before untracked probes are checked. Real search failures (>1) remain
     # fail-closed and are normalized by the parent to its rc=2 envelope.
+    CANDIDATE_LIST="$GREP_DIR/candidates.list"
     tracked_scan_rc=0
     git grep -lzIF --threads 8 \
         -e NARROW_THRESHOLD \
@@ -158,13 +167,33 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
         -e force_mode \
         -e DISPLAY_MODE \
         -- ralph tests docs \
-        | while IFS= read -r -d '' candidate; do
-            git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- "$candidate"
-        done \
-        2>>"$GREP_DIR/scan.err" \
-        > "$TRACKED_OUT" || tracked_scan_rc=$?
+        > "$CANDIDATE_LIST" 2>>"$GREP_DIR/scan.err" || tracked_scan_rc=$?
     if [ "$tracked_scan_rc" -gt 1 ]; then
         exit "$tracked_scan_rc"
+    fi
+    : > "$TRACKED_OUT"
+    if [ -s "$CANDIDATE_LIST" ]; then
+        candidates=()
+        while IFS= read -r -d '' candidate; do
+            candidates[${#candidates[@]}]="$candidate"
+            if [ "${#candidates[@]}" -ge 50 ]; then
+                scan_rc=0
+                git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- "${candidates[@]}" \
+                    >> "$TRACKED_OUT" 2>>"$GREP_DIR/scan.err" || scan_rc=$?
+                if [ "$scan_rc" -gt 1 ]; then
+                    exit "$scan_rc"
+                fi
+                candidates=()
+            fi
+        done < "$CANDIDATE_LIST"
+        if [ "${#candidates[@]}" -gt 0 ]; then
+            scan_rc=0
+            git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- "${candidates[@]}" \
+                >> "$TRACKED_OUT" 2>>"$GREP_DIR/scan.err" || scan_rc=$?
+            if [ "$scan_rc" -gt 1 ]; then
+                exit "$scan_rc"
+            fi
+        fi
     fi
     # Finish untracked enumeration before deciding there are no probes.
     # A slow walk is bounded by this scan's watchdog rather than silently skipped.
@@ -175,20 +204,29 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
         exit "$untracked_files_rc"
     fi
     if [ -s "$UNTRACKED_FILES" ]; then
-        # --no-index tells git grep to ignore the index and search
-        # the working tree, so it picks up files the index scan
-        # above did not see. Read NUL-delimited paths directly so
-        # whitespace remains part of the filename on Bash 3 and later.
+        untracked=()
         while IFS= read -r -d '' untracked_path; do
+            untracked[${#untracked[@]}]="$untracked_path"
+            if [ "${#untracked[@]}" -ge 50 ]; then
+                untracked_rc=0
+                git grep -lIE --no-index --threads 8 "$DRIFT_PATTERNS" \
+                    -- "${untracked[@]}" \
+                    >> "$TRACKED_OUT" 2>>"$GREP_DIR/scan.err" || untracked_rc=$?
+                if [ "$untracked_rc" -gt 1 ]; then
+                    exit "$untracked_rc"
+                fi
+                untracked=()
+            fi
+        done < "$UNTRACKED_FILES"
+        if [ "${#untracked[@]}" -gt 0 ]; then
             untracked_rc=0
             git grep -lIE --no-index --threads 8 "$DRIFT_PATTERNS" \
-                -- "$untracked_path" \
-                2>>"$GREP_DIR/scan.err" \
-                >> "$TRACKED_OUT" || untracked_rc=$?
+                -- "${untracked[@]}" \
+                >> "$TRACKED_OUT" 2>>"$GREP_DIR/scan.err" || untracked_rc=$?
             if [ "$untracked_rc" -gt 1 ]; then
                 exit "$untracked_rc"
             fi
-        done < "$UNTRACKED_FILES"
+        fi
     fi
     sort -u "$TRACKED_OUT" > "$GREP_DIR/scan.out"
     sort_rc=$?
@@ -228,13 +266,15 @@ SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" 2>/dev/null | tr -d ' ' || true)"
     # always fires first so the trailing ``kill $PID`` is a no-op
     # in the normal case.
     kill -KILL "$SCAN_PID" 2>/dev/null || true
-) &
+) < /dev/null > /dev/null 2>&1 &
 WATCHDOG_PID="$!"
 set +e
 wait "$SCAN_PID"
 GREP_RC="$?"
 set -e
-kill -9 "$WATCHDOG_PID" 2>/dev/null || true
+disown "$WATCHDOG_PID" 2>/dev/null || true
+kill -KILL -"$WATCHDOG_PID" 2>/dev/null || true
+kill -KILL "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
 
 if [ -e "$GREP_DIR/timed_out" ]; then

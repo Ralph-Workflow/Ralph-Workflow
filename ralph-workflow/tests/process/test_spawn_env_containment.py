@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import tomllib
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -81,7 +82,33 @@ def _module_path(path: Path) -> str:
     return path.relative_to(PACKAGE_ROOT).with_suffix("").as_posix().replace("/", ".")
 
 
-def _parsed_modules() -> dict[str, ast.Module]:
+def _string_keyed_mapping(value: object, label: str) -> dict[str, object]:
+    assert isinstance(value, dict), f"{label} must be a mapping"
+    result: dict[str, object] = {}
+    for key, item in value.items():
+        assert isinstance(key, str), f"{label} keys must be strings"
+        result[key] = item
+    return result
+
+
+def _script_targets() -> dict[str, set[str]]:
+    parsed: object = tomllib.loads((PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = _string_keyed_mapping(parsed, "pyproject")
+    scripts = _string_keyed_mapping(project["project"], "project")
+    targets: dict[str, set[str]] = {}
+    for target in _string_keyed_mapping(scripts["scripts"], "project.scripts").values():
+        module, separator, attribute = str(target).partition(":")
+        assert separator and module and attribute, f"invalid console-script target: {target!r}"
+        targets.setdefault(module, set()).add(attribute)
+    return targets
+
+
+def _script_module_names() -> set[str]:
+    return set(_script_targets())
+
+
+@cache
+def _cached_parsed_modules() -> dict[str, ast.Module]:
     script_paths = {module.replace(".", "/") + ".py" for module in _script_module_names()}
     modules: dict[str, ast.Module] = {}
     main_guard_markers = (
@@ -97,6 +124,14 @@ def _parsed_modules() -> dict[str, ast.Module]:
             continue
         modules[relative_path] = ast.parse(raw.decode("utf-8"))
     return modules
+
+
+def _parsed_modules() -> dict[str, ast.Module]:
+    return dict(_cached_parsed_modules())
+
+
+# Pre-warm module cache at import time to prevent SIGALRM under concurrent test-shard I/O
+_cached_parsed_modules()
 
 
 def _is_main_guard(node: ast.If) -> bool:
@@ -172,31 +207,6 @@ def _calls_sanitizer(statement: ast.stmt) -> bool:
         isinstance(node, ast.Call) and _called_name(node) == "sanitize_process_environment"
         for node in ast.walk(statement)
     )
-
-
-def _string_keyed_mapping(value: object, label: str) -> dict[str, object]:
-    assert isinstance(value, dict), f"{label} must be a mapping"
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        assert isinstance(key, str), f"{label} keys must be strings"
-        result[key] = item
-    return result
-
-
-def _script_targets() -> dict[str, set[str]]:
-    parsed: object = tomllib.loads((PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    project = _string_keyed_mapping(parsed, "pyproject")
-    scripts = _string_keyed_mapping(project["project"], "project")
-    targets: dict[str, set[str]] = {}
-    for target in _string_keyed_mapping(scripts["scripts"], "project.scripts").values():
-        module, separator, attribute = str(target).partition(":")
-        assert separator and module and attribute, f"invalid console-script target: {target!r}"
-        targets.setdefault(module, set()).add(attribute)
-    return targets
-
-
-def _script_module_names() -> set[str]:
-    return set(_script_targets())
 
 
 def _callback_entry_name(tree: ast.Module, attribute: str) -> str | None:
