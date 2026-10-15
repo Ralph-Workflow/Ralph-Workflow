@@ -77,6 +77,15 @@ class RebaseState(RalphBaseModel):
                     migrated["last_outcome"] = None
                 else:
                     migrated["last_outcome"] = _to_kind(raw_action)
+                mapped_outcome: object = migrated["last_outcome"]
+                mapped_value: object = (
+                    mapped_outcome.value if isinstance(mapped_outcome, RebaseOutcomeKind) else None
+                )
+                logger.warning(
+                    "MIGRATED_LEGACY: last_action {} -> last_outcome {}",
+                    raw_action,
+                    mapped_value,
+                )
                 return migrated
 
             if has_action and raw_action is not None and raw_outcome is not None:
@@ -88,14 +97,31 @@ class RebaseState(RalphBaseModel):
                     or action_kind != outcome_kind
                 ):
                     migrated["last_outcome"] = RebaseOutcomeKind.UNKNOWN
+                    logger.warning(
+                        "MIGRATED_LEGACY: contradictory last_action={} last_outcome={}; set to UNKNOWN",
+                        raw_action,
+                        raw_outcome,
+                    )
                 else:
                     migrated["last_outcome"] = outcome_kind
+                    outcome_value: object = (
+                        outcome_kind.value if isinstance(outcome_kind, RebaseOutcomeKind) else None
+                    )
+                    logger.warning(
+                        "MIGRATED_LEGACY: last_action {} -> last_outcome {}",
+                        raw_action,
+                        outcome_value,
+                    )
                 return migrated
 
             if raw_outcome is not None and isinstance(raw_outcome, str):
                 outcome_kind = _to_kind(raw_outcome)
                 if outcome_kind == RebaseOutcomeKind.UNKNOWN:
                     migrated["last_outcome"] = RebaseOutcomeKind.UNKNOWN
+                    logger.warning(
+                        "MIGRATED_LEGACY: unknown last_outcome {} set to UNKNOWN",
+                        raw_outcome,
+                    )
                     return migrated
 
             return migrated
@@ -180,6 +206,18 @@ class RebaseState(RalphBaseModel):
         ge=0,
         description="Checkpointed integration backoff attempt; stops increasing at the delay cap",
     )
+
+    # Typed persisted deadline (monotonic seconds since an unspecified
+    # origin) the run loop uses to bound a ``WAIT_FOR_BOUNDED_RETRY``
+    # decision. ``None`` is the default for legacy checkpoints and for
+    # records that have not yet been armed with a deadline; the action
+    # authority treats a missing or malformed ``retry_deadline`` as
+    # proof that the wait cannot be bounded, which routes the
+    # decision to ``REQUIRE_INTERVENTION`` rather than a hopeful
+    # wait. The value is read through the typed
+    # :class:`IntegrationAction` authority; the run loop never parses
+    # this field directly.
+    retry_deadline: float | None = None
 
     # Durable identity of the conflict ``consecutive_conflicts`` counts.
     # ``last_target`` alone does not identify a conflict: a developer

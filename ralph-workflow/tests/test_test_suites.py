@@ -89,6 +89,20 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # does not shift when an unrelated branch advances.
     "tests/test_integration_diagnostic_worktree_isolation.py",
     "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
+    # wt-03-fix-bug (WU-5): the package-wide ``live_tree`` regression
+    # gates in the opts-key and kwargs-forwarding audits each scan
+    # the full shipped tree. They are slow under a single pytest
+    # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
+    # and would tip a single-file shard past the 60 s combined
+    # budget even when every other shard finishes inside it. Moving
+    # them to the E2E shard gives the eight in-shard xdist workers
+    # enough headroom to absorb the scan, and keeps the regression
+    # gates on the default ``make test`` profile so the silent-key
+    # drop cannot rot. They are marked ``subprocess_e2e`` so the
+    # test-policy audit treats the real-tree scan as an external
+    # boundary rather than a black-box test seam.
+    "tests/test_audit_opts_key_drift.py",
+    "tests/test_audit_kwargs_forwarding.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

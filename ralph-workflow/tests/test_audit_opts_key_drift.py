@@ -25,6 +25,8 @@ import pytest
 
 from ralph.testing import audit_opts_key_drift
 
+pytestmark = pytest.mark.subprocess_e2e
+
 
 def _violations(**modules: str) -> list[audit_opts_key_drift.Violation]:
     index = {

@@ -96,8 +96,10 @@ It does **not** consume a repair attempt (`merge_commit_repair_attempts` is unch
 or mutate `MERGE_HEAD` or `REBASE_HEAD`.
 
 #### Four-condition positive operation-completion proof
-When marker objects are resolvable and `next_integration_action(record)` returns `IntegrationAction.CONTINUE_GIT_OPERATION`,
-Ralph evaluates whether the Git operation has in fact completed cleanly, satisfying all four conditions:
+When marker objects are resolvable and `next_integration_action(record)` returns
+`IntegrationAction.CONTINUE_GIT_OPERATION` or `IntegrationAction.LAND_TARGET`,
+Ralph evaluates whether the Git operation has in fact completed cleanly,
+satisfying all four conditions:
 
 1. **Commit ancestry proof**: HEAD matches `record.integrated_feature_sha` or `record.pre_target_sha`,
    and parents of HEAD match expected parent SHAs (`pre_target_sha` or `merge_commit_parent`).

@@ -110,22 +110,38 @@ def test_integration_action_publish_after_landing() -> None:
 
 
 def test_integration_action_wait_for_bounded_retry() -> None:
-    """Conflict outcome or retained recovery record yields WAIT_FOR_BOUNDED_RETRY."""
+    """Conflict outcome or retained recovery record yields WAIT_FOR_BOUNDED_RETRY.
+
+    A typed ``retry_deadline`` is required -- the action authority
+    fails closed to ``REQUIRE_INTERVENTION`` when the deadline is
+    missing or malformed, so this test arms both the conflict and
+    the retained-recovery cases with a future deadline (injected
+    via the clock so the test is independent of process monotonic
+    time).
+    """
     state_conflict = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         consecutive_conflicts=2,
+        retry_deadline=100.0,
     )
-    assert next_integration_action(state_conflict) == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    assert (
+        next_integration_action(state_conflict, clock=lambda: 50.0)
+        == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    )
 
     state_retained = RebaseState(
         last_outcome=RebaseOutcomeKind.SKIPPED,
         recovery_record_retained=True,
+        retry_deadline=100.0,
     )
-    assert next_integration_action(state_retained) == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    assert (
+        next_integration_action(state_retained, clock=lambda: 50.0)
+        == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    )
 
 
 def test_integration_action_bounded_wait_with_deadline_and_clock() -> None:
-    """Bounded waiting respects injected clock and durable deadline."""
+    """Bounded waiting respects injected clock and the typed ``retry_deadline`` field."""
     from types import SimpleNamespace
 
     # Deadline not reached -> WAIT_FOR_BOUNDED_RETRY
@@ -133,6 +149,7 @@ def test_integration_action_bounded_wait_with_deadline_and_clock() -> None:
         last_outcome=RebaseOutcomeKind.CONFLICT,
         recovery_record_retained=False,
         retry_deadline=100.0,
+        fast_forwarded=False,
     )
     assert (
         next_integration_action(state_unexpired, clock=lambda: 50.0)
@@ -144,9 +161,24 @@ def test_integration_action_bounded_wait_with_deadline_and_clock() -> None:
         last_outcome=RebaseOutcomeKind.CONFLICT,
         recovery_record_retained=False,
         retry_deadline=100.0,
+        fast_forwarded=False,
     )
     assert (
         next_integration_action(state_expired, clock=lambda: 105.0)
+        == IntegrationAction.REQUIRE_INTERVENTION
+    )
+
+    # Missing retry_deadline on a conflict record fails closed to
+    # ``REQUIRE_INTERVENTION`` -- the architecture forbids an
+    # unbounded wait.
+    state_no_deadline = SimpleNamespace(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        recovery_record_retained=False,
+        retry_deadline=None,
+        fast_forwarded=False,
+    )
+    assert (
+        next_integration_action(state_no_deadline, clock=lambda: 50.0)
         == IntegrationAction.REQUIRE_INTERVENTION
     )
 
@@ -227,7 +259,14 @@ def test_startup_case_predicate() -> None:
 
 
 def test_conflict_budget_case() -> None:
-    """apply_conflict_budget with suppressed resolver yields WAIT_FOR_BOUNDED_RETRY."""
+    """apply_conflict_budget with suppressed resolver yields WAIT_FOR_BOUNDED_RETRY.
+
+    The action authority requires a typed ``retry_deadline``; the
+    budget owner is responsible for arming it before yielding a
+    bounded wait. Without the deadline, an unresolved conflict
+    routes to ``REQUIRE_INTERVENTION`` -- the action authority does
+    not invent an unbounded wait.
+    """
     identity = ConflictIdentity(
         feature_sha="feat123",
         target_sha="tgt456",
@@ -250,7 +289,18 @@ def test_conflict_budget_case() -> None:
     )
     assert budgeted.consecutive_conflicts == 1
     assert "budget exhausted" in (budgeted.last_reason or "")
-    assert next_integration_action(budgeted) == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+    # Without a typed deadline the action authority fails closed.
+    assert next_integration_action(budgeted) == IntegrationAction.REQUIRE_INTERVENTION
+
+    # With a future typed deadline the action authority honors the
+    # bounded wait (injected clock keeps the test independent of
+    # process monotonic time).
+    budgeted_armed = budgeted.model_copy(update={"retry_deadline": 100.0})
+    assert (
+        next_integration_action(budgeted_armed, clock=lambda: 50.0)
+        == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    )
 
 
 def test_reset_case_require_intervention() -> None:

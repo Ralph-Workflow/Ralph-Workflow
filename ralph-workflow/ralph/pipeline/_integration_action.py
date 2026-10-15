@@ -105,30 +105,50 @@ def _current_time(clock: object) -> float | None:
     return None
 
 
+def _conflict_action(
+    record: object,
+    clock: object,
+) -> IntegrationAction | None:
+    """Compute the action for a conflict / retained-recovery record.
+
+    Returns ``REQUIRE_INTERVENTION`` when the record does not carry
+    a typed ``retry_deadline`` (the architecture forbids an
+    unbounded wait), and ``WAIT_FOR_BOUNDED_RETRY`` only when the
+    injected clock reports a value before the deadline. Returns
+    ``None`` for records that are not in the conflict or
+    retained-recovery lifecycle, so the caller can fall through to
+    the next authority check.
+    """
+    last_outcome: object = _safe_attr(record, "last_outcome")
+    recovery_retained: object = _safe_attr(record, "recovery_record_retained")
+    if not (last_outcome == RebaseOutcomeKind.CONFLICT or recovery_retained is True):
+        return None
+    deadline = _safe_attr(record, "retry_deadline")
+    if not isinstance(deadline, (int, float)) or isinstance(deadline, bool):
+        return IntegrationAction.REQUIRE_INTERVENTION
+    try:
+        deadline_val = float(deadline)
+    except (ValueError, TypeError):
+        return IntegrationAction.REQUIRE_INTERVENTION
+    now = _current_time(clock)
+    if now is None:
+        now = time.monotonic()
+    if now >= deadline_val:
+        return IntegrationAction.REQUIRE_INTERVENTION
+    return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+
 def _check_rebase_state_action(
     record: object,
     policy: object,
     clock: object = None,
 ) -> IntegrationAction | None:
     """Check RebaseState outcomes, landing, and publication."""
+    conflict_action = _conflict_action(record, clock)
+    if conflict_action is not None:
+        return conflict_action
     last_outcome: object = _safe_attr(record, "last_outcome")
-    recovery_retained: object = _safe_attr(record, "recovery_record_retained")
     fast_fwd: object = _safe_attr(record, "fast_forwarded")
-    if last_outcome == RebaseOutcomeKind.CONFLICT or recovery_retained is True:
-        deadline = _safe_attr(record, "retry_deadline")
-        if deadline is None:
-            deadline = _safe_attr(record, "deadline")
-        if deadline is not None and isinstance(deadline, (int, float, str)):
-            try:
-                deadline_val = float(deadline)
-                now = _current_time(clock)
-                if now is None:
-                    now = time.monotonic()
-                if now >= deadline_val:
-                    return IntegrationAction.REQUIRE_INTERVENTION
-            except (ValueError, TypeError):
-                pass
-        return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
     if (
         last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
         and fast_fwd is not True
@@ -143,32 +163,52 @@ def _check_rebase_state_action(
     return None
 
 
+def _landed_publication_proof(
+    last_outcome: RebaseOutcomeKind,
+    policy: object,
+    fast_fwd: object,
+) -> bool:
+    """Return True when the record carries landing + publication proof.
+
+    A terminal label (COMPLETED / TERMINAL) is NEVER sufficient
+    proof on its own: it must be paired with ``fast_forwarded=True``
+    (the durable landing fact) and either a clean fast-forward
+    outcome, or a remote-pushed outcome that already exercised the
+    publication path. The previous projection accepted terminal
+    labels alone, which authorized completion without landing and
+    was the source of the wt-03 drift.
+    """
+    if last_outcome is RebaseOutcomeKind.REMOTE_PUSHED:
+        return True
+    pub_pol = _safe_attr(policy, "publication_policy") if policy is not None else None
+    has_policy_pub = pub_pol is not None and fast_fwd is True
+    if has_policy_pub:
+        return False
+    return last_outcome is RebaseOutcomeKind.FAST_FORWARDED
+
+
 def _has_completion_proof(
     record: object,
     policy: object = None,
     proof: bool | None = None,
 ) -> bool:
-    """Check whether positive proof of integration completion is present."""
+    """Check whether positive proof of integration completion is present.
+
+    Unknown evidence (last_outcome is None, an unfamiliar outcome,
+    or any condition the typed authority cannot classify) routes
+    to ``REQUIRE_INTERVENTION`` rather than this shortcut.
+    """
     if proof is True:
         return True
     if _safe_attr(record, "completion_proof") is True:
         return True
     last_outcome = _safe_attr(record, "last_outcome")
     fast_fwd = _safe_attr(record, "fast_forwarded")
-    pub_pol = _safe_attr(policy, "publication_policy") if policy is not None else None
-    has_policy_pub = (
-        pub_pol is not None and fast_fwd is True and last_outcome != RebaseOutcomeKind.REMOTE_PUSHED
-    )
-    is_landed_terminal = fast_fwd is True and last_outcome in (
-        RebaseOutcomeKind.REMOTE_PUSHED,
-        RebaseOutcomeKind.COMPLETED,
-        RebaseOutcomeKind.TERMINAL,
-    )
-    is_clean_ff = (
-        fast_fwd is True and last_outcome == RebaseOutcomeKind.FAST_FORWARDED and not has_policy_pub
-    )
-    is_terminal = last_outcome in (RebaseOutcomeKind.COMPLETED, RebaseOutcomeKind.TERMINAL)
-    return is_landed_terminal or is_clean_ff or is_terminal
+    if fast_fwd is not True:
+        return False
+    if last_outcome is None or not isinstance(last_outcome, RebaseOutcomeKind):
+        return False
+    return _landed_publication_proof(last_outcome, policy, fast_fwd)
 
 
 def next_integration_action(

@@ -22,6 +22,8 @@ import pytest
 from ralph.testing import audit_kwargs_forwarding
 from ralph.testing.audit_kwargs_forwarding import AuditParseError
 
+pytestmark = pytest.mark.subprocess_e2e
+
 _EXPECTED_PACKAGE_ROOTS = ("ralph", "tests")
 
 

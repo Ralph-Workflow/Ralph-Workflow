@@ -29,6 +29,7 @@
     "last_push_status": null,
     "consecutive_conflicts": 0,
     "integration_retry_attempt": 0,
+    "retry_deadline": null,
     "last_conflict_feature_sha": null,
     "last_conflict_target_sha": null,
     "last_conflict_paths": [],
