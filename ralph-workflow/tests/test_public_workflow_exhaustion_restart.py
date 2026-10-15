@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from ralph.pipeline._integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
@@ -66,18 +67,36 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
     assert saved_after.diagnostic_intervention_required is True
     assert saved_after.merge_commit_repair_attempts == 3
 
-    # 3. Simulate process restart by reloading from disk
+    # 3. Simulate process restart by reloading from disk with exhausted record
     restarted_record = read_record(tmp_path)
     assert restarted_record is not None
-    # Confirm no attempt budget replenishment: attempts counter is still 3, not reset to 0
     assert restarted_record.merge_commit_repair_attempts == 3
     assert restarted_record.diagnostic_intervention_required is True
+
+    # Restart public recovery with the reloaded exhausted record; assert zero agent calls occur
+    mock_invoke = MagicMock()
+    handoff_restart = handoff_integration_diagnostic(
+        root=tmp_path,
+        record=restarted_record,
+        failure="diagnostic failure after restart",
+        agents=["test-diagnostic-agent"],
+        invoke=mock_invoke,
+        repair_attempt_cap=3,
+    )
+    assert handoff_restart is False
+    mock_invoke.assert_not_called()
+
+    # Confirm no attempt budget replenishment: attempts counter is still 3, not reset or incremented
+    after_restart = read_record(tmp_path)
+    assert after_restart is not None
+    assert after_restart.merge_commit_repair_attempts == 3
+    assert after_restart.diagnostic_intervention_required is True
 
     # 4. Verify reducer with clean state yields REPORT_INTERVENTION_REQUIRED from durable record
     state = PipelineState(phase="development", rebase=RebaseState())
     policy = _policy()
     new_state, _ = reduce(
-        state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=restarted_record
+        state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=after_restart
     )
     assert new_state.rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
 
@@ -85,7 +104,7 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
     decision = decide_phase_transition(
         state,
         policy,
-        integration_record=restarted_record,
+        integration_record=after_restart,
         rebase_state=state.rebase,
     )
     assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED

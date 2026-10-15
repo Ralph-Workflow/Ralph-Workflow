@@ -9,15 +9,10 @@ from ralph.pipeline import run_loop
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import START_INTEGRATING, IntegrationRecord, write_record
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.reducer import (
-    _handle_all_workers_complete,
-    _handle_commit_success,
-    _handle_complete,
-    _handle_phase_loopback,
-    _route_reduced_decision,
-)
+from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
@@ -86,38 +81,34 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
         st_inner, policy, integration_record=record, rebase_state=st_inner.rebase
     )
 
-    # 3. Commit handler entry point (without calling reduce)
-    st_commit, _ = _handle_commit_success(shared_state, policy)
-    st_commit_routed = _route_reduced_decision(
-        shared_state, st_commit, policy, integration_record=record
+    # 3. Commit entry point
+    st_commit, _ = reduce(
+        shared_state, PipelineEvent.COMMIT_SUCCESS, policy, integration_record=record
     )
-    assert st_commit_routed.rebase.last_decision is not None
-    decision_commit = PhaseDecision(st_commit_routed.rebase.last_decision)
+    assert st_commit.rebase.last_decision is not None
+    decision_commit = PhaseDecision(st_commit.rebase.last_decision)
 
-    # 4. Cooldown handler entry point (without calling reduce)
-    st_cooldown, _ = _handle_phase_loopback(shared_state, policy)
-    st_cooldown_routed = _route_reduced_decision(
-        shared_state, st_cooldown, policy, integration_record=record
+    # 4. Cooldown entry point
+    st_cooldown, _ = reduce(
+        shared_state, PipelineEvent.PHASE_LOOPBACK, policy, integration_record=record
     )
-    assert st_cooldown_routed.rebase.last_decision is not None
-    decision_cooldown = PhaseDecision(st_cooldown_routed.rebase.last_decision)
+    assert st_cooldown.rebase.last_decision is not None
+    decision_cooldown = PhaseDecision(st_cooldown.rebase.last_decision)
 
-    # 5. Parallel-join handler entry point (without calling reduce)
-    st_join, _ = _handle_all_workers_complete(shared_state, policy)
-    st_join_routed = _route_reduced_decision(
-        shared_state, st_join, policy, integration_record=record
+    # 5. Parallel-join entry point
+    st_join, _ = reduce(
+        shared_state, PipelineEvent.ALL_WORKERS_COMPLETE, policy, integration_record=record
     )
-    assert st_join_routed.rebase.last_decision is not None
-    decision_parallel_join = PhaseDecision(st_join_routed.rebase.last_decision)
+    assert st_join.rebase.last_decision is not None
+    decision_parallel_join = PhaseDecision(st_join.rebase.last_decision)
 
-    # 6. Terminal handler entry point (without calling reduce)
+    # 6. Terminal entry point
     terminal_state = PipelineState(phase="complete", rebase=shared_rebase)
-    st_terminal, _ = _handle_complete(terminal_state, policy)
-    st_terminal_routed = _route_reduced_decision(
-        terminal_state, st_terminal, policy, integration_record=record
+    st_terminal, _ = reduce(
+        terminal_state, PipelineEvent.COMPLETE, policy, integration_record=record
     )
-    assert st_terminal_routed.rebase.last_decision is not None
-    decision_terminal = PhaseDecision(st_terminal_routed.rebase.last_decision)
+    assert st_terminal.rebase.last_decision is not None
+    decision_terminal = PhaseDecision(st_terminal.rebase.last_decision)
 
     decisions = [
         decision_inspect,

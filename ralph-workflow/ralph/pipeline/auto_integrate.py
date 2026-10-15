@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
-from ralph.pipeline._integration_action import RebaseOutcomeKind, last_outcome_reason
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
     recover_before_attempt as _recover_before_attempt,
 )
@@ -847,20 +848,28 @@ def _auto_integrate_resolve_context(
     return root, current_branch, target, refresh
 
 
+@dataclass(frozen=True)
+class PreconditionReclaimResult:
+    """Typed result of worktree reclaim attempt at the skip seam."""
+
+    succeeded: bool
+    skip_state: RebaseState | None = None
+
+
 def _reclaim_and_retry_preconditions(
     root: Path,
     target: str,
     precondition_exc: RebasePreconditionError,
-) -> RebaseState | None:
+) -> PreconditionReclaimResult:
     """Reclaim the integration worktree at the skip seam."""
     reclaimed = _reclaim_unowned_stale_rebase(root)
     if reclaimed is None:
         # No reclaim happened: either nothing to reclaim or the
         # tree was dirty (operator-owned, AC-11 case 4). Let the
         # caller record a skip with the original cause.
-        return None
+        return PreconditionReclaimResult(succeeded=False, skip_state=None)
     if reclaimed.recovery_record_retained:
-        return reclaimed
+        return PreconditionReclaimResult(succeeded=False, skip_state=reclaimed)
     logger.warning(
         "auto_integrate: rebase preconditions blocked by stale "
         "unowned state for target '{}': {}; "
@@ -884,19 +893,14 @@ def _reclaim_and_retry_preconditions(
             retry_exc,
             precondition_exc,
         )
-        return _record_skip(
-            reason=f"preconditions not met after reclaim: {retry_exc}",
-            target=target,
+        return PreconditionReclaimResult(
+            succeeded=False,
+            skip_state=_record_skip(
+                reason=f"preconditions not met after reclaim: {retry_exc}",
+                target=target,
+            ),
         )
-    # Reclaim succeeded and the precondition now passes: proceed
-    # in the same seam. We return a recorded skip with a sentinel
-    # ``_RECLAIM_SUCCEEDED`` reason so the call site can detect
-    # the success case without falling through to the original
-    # precondition error.
-    return _record_skip(
-        reason="_reclaim_succeeded",
-        target=target,
-    )
+    return PreconditionReclaimResult(succeeded=True, skip_state=None)
 
 
 def _auto_integrate_check_skip_conditions(
@@ -943,11 +947,11 @@ def _handle_precondition_failure(
     target: str,
     exc: RebasePreconditionError,
 ) -> RebaseState | None:
-    post_reclaim = _reclaim_and_retry_preconditions(root, target, exc)
-    if post_reclaim is not None:
-        if last_outcome_reason(post_reclaim) == "_reclaim_succeeded":
-            return None
-        return post_reclaim
+    reclaim_result = _reclaim_and_retry_preconditions(root, target, exc)
+    if reclaim_result.succeeded:
+        return None
+    if reclaim_result.skip_state is not None:
+        return reclaim_result.skip_state
     # A precondition failure disables auto-integration for the whole
     # run, so it must not be visible only as one token on an
     # activity line that scrolls past. WARN names the target and the
@@ -963,6 +967,7 @@ def _handle_precondition_failure(
 
 __all__ = [
     "IntegrationRecord",
+    "PreconditionReclaimResult",
     "_create_rebase_backup_ref",
     "_delete_rebase_backup_ref",
     "auto_integrate_after_commit",

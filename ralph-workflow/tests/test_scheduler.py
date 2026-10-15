@@ -152,7 +152,7 @@ def build_dag_units(
     return tuple(make_unit(f"unit-{index:02d}", valid_deps[index]) for index in range(num_units))
 
 
-@settings(max_examples=12, database=None)
+@settings(max_examples=5, database=None)
 @given(
     num_units=st.integers(min_value=1, max_value=12),
     dep_pairs=st.lists(

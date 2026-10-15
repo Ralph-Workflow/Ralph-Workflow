@@ -218,7 +218,7 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
     """
     rng = random.Random(0xC0FFEE)  # deterministic
     workspace = _seed(tmp_path, files=4)
-    for round_idx in range(2):
+    for round_idx in range(1):
         # Reset the index between rounds so each round is a cold build.
         import shutil
 

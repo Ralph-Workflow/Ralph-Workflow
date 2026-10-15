@@ -15,6 +15,8 @@ import pytest
 
 from ralph.workspace.scope import resolve_workspace_scope
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class TestWorkspaceContext:
     """Behavior-only contract for :func:`workspace_context`."""

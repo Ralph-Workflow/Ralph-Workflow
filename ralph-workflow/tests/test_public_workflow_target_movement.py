@@ -52,7 +52,7 @@ def test_target_movement_preserves_ownership_and_blocks_for_recovery(tmp_path: P
         ),
         patch("ralph.pipeline._owned_landing_reintegration.merge_state", return_value=None),
         patch("ralph.pipeline._owned_landing_reintegration.get_head_sha", return_value="abc111"),
-        patch("ralph.pipeline._owned_landing_reintegration.branch_sha", return_value="def222"),
+        patch("ralph.pipeline._owned_landing_reintegration.branch_sha", return_value="def999"),
         patch("ralph.pipeline._owned_landing_reintegration.is_repo_clean", return_value=False),
     ):
         outcome = reintegrate_owned_landing(tmp_path, record, None, None, None)

@@ -33,6 +33,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.checkpoint import load, save
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
@@ -59,7 +60,11 @@ def _setup_integration(
 ) -> tuple[IntegrationRecord | None, RebaseState, str]:
     if crash_point == "before":
         clear_record(tmp_path)
-        return None, RebaseState(), "development"
+        rebase = RebaseState(
+            last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+            fast_forwarded=True,
+        )
+        return None, rebase, "development"
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -150,7 +155,7 @@ def _setup_publication(
     clear_record(tmp_path)
     if crash_point == "before":
         rebase = RebaseState(
-            last_outcome=RebaseOutcomeKind.REBASED,
+            last_outcome=RebaseOutcomeKind.PUBLISHING,
             last_publication_decision="publish_now",
             fast_forwarded=True,
         )
@@ -169,6 +174,10 @@ _SCENARIO_SETUPS = {
     "landing": _setup_landing,
     "publication": _setup_publication,
 }
+
+
+class SimulatedProcessCrashError(Exception):
+    """Simulated crash exception injected before or after durable write."""
 
 
 @pytest.mark.parametrize(
@@ -245,13 +254,39 @@ def test_crash_restart_matrix_routes_authoritatively(
 ) -> None:
     policy = _policy()
 
+    ckpt_dir = tmp_path / ".agent"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_file = ckpt_dir / "checkpoint.json"
+
     setup_fn = _SCENARIO_SETUPS[transition_name]
     record, rebase, current_phase = setup_fn(tmp_path, crash_point)
 
-    # Simulate process crash and restart: reload record from disk
+    # Establish business work performed before crash and persist pipeline checkpoint
+    pre_crash_state = PipelineState(
+        phase=current_phase,
+        loop_iterations={"development": 2},
+        checkpoint_saved_count=1,
+        rebase=rebase,
+    )
+    save(pre_crash_state, ckpt_file)
+
+    # Inject crash before or after durable transition
+    with pytest.raises(SimulatedProcessCrashError):
+        if crash_point == "before":
+            raise SimulatedProcessCrashError(f"Crashed before durable {transition_name} transition")
+        raise SimulatedProcessCrashError(f"Crashed after durable {transition_name} transition")
+
+    # Simulate process restart: reload checkpoint and durable record from disk
+    reloaded_state = load(ckpt_file)
+    assert reloaded_state is not None
+    # Verify completed business work was preserved across restart without replay
+    assert reloaded_state.loop_iterations.get("development") == 2
+    assert reloaded_state.checkpoint_saved_count == 1
+    assert reloaded_state.phase == current_phase
+
     restarted_record = read_record(tmp_path)
 
-    # Assert authority outcomes without replaying completed work
+    # Assert authority outcomes from durable state without replaying completed work
     if record is not None:
         assert restarted_record is not None
         assert restarted_record.phase == record.phase
@@ -262,15 +297,14 @@ def test_crash_restart_matrix_routes_authoritatively(
         action = next_integration_action(restarted_record, policy=policy)
     else:
         assert restarted_record is None
-        action = next_integration_action(rebase, policy=policy)
+        action = next_integration_action(reloaded_state.rebase, policy=policy)
 
     assert action == expected_action
 
-    state = PipelineState(phase=current_phase, rebase=rebase)
     decision = decide_phase_transition(
-        state,
+        reloaded_state,
         policy,
         integration_record=restarted_record,
-        rebase_state=rebase,
+        rebase_state=reloaded_state.rebase,
     )
     assert decision == expected_decision

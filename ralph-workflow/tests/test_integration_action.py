@@ -91,11 +91,19 @@ def test_integration_action_land_target() -> None:
 def test_integration_action_publish_after_landing() -> None:
     """Landed state with pending publication decision yields PUBLISH_AFTER_LANDING."""
     state = RebaseState(
-        last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+        last_outcome=RebaseOutcomeKind.PUBLISHING,
         fast_forwarded=True,
-        last_publication_decision="publish_now",
     )
     assert next_integration_action(state) == IntegrationAction.PUBLISH_AFTER_LANDING
+
+    from types import SimpleNamespace
+
+    policy = SimpleNamespace(publication_policy="remote_push")
+    landed_state = RebaseState(
+        last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+        fast_forwarded=True,
+    )
+    assert next_integration_action(landed_state, policy=policy) == IntegrationAction.PUBLISH_AFTER_LANDING
 
 
 def test_integration_action_wait_for_bounded_retry() -> None:
@@ -111,6 +119,33 @@ def test_integration_action_wait_for_bounded_retry() -> None:
         recovery_record_retained=True,
     )
     assert next_integration_action(state_retained) == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+
+def test_integration_action_bounded_wait_with_deadline_and_clock() -> None:
+    """Bounded waiting respects injected clock and durable deadline."""
+    from types import SimpleNamespace
+
+    # Deadline not reached -> WAIT_FOR_BOUNDED_RETRY
+    state_unexpired = SimpleNamespace(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        recovery_record_retained=False,
+        retry_deadline=100.0,
+    )
+    assert (
+        next_integration_action(state_unexpired, clock=lambda: 50.0)
+        == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    )
+
+    # Deadline reached or exceeded -> REQUIRE_INTERVENTION
+    state_expired = SimpleNamespace(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        recovery_record_retained=False,
+        retry_deadline=100.0,
+    )
+    assert (
+        next_integration_action(state_expired, clock=lambda: 105.0)
+        == IntegrationAction.REQUIRE_INTERVENTION
+    )
 
 
 def test_integration_action_require_intervention() -> None:
@@ -137,15 +172,39 @@ def test_integration_action_require_intervention() -> None:
 
 
 def test_integration_action_complete_with_proof() -> None:
-    """None record or cleanly closed terminal state yields COMPLETE_WITH_PROOF."""
-    assert next_integration_action(None) == IntegrationAction.COMPLETE_WITH_PROOF
+    """Positive proof or cleanly closed terminal state yields COMPLETE_WITH_PROOF."""
+    assert next_integration_action(None, proof=True) == IntegrationAction.COMPLETE_WITH_PROOF
 
     state_closed = RebaseState(
         last_outcome=RebaseOutcomeKind.REMOTE_PUSHED,
         fast_forwarded=True,
-        last_publication_decision="publication_terminal",
     )
     assert next_integration_action(state_closed) == IntegrationAction.COMPLETE_WITH_PROOF
+
+
+def test_integration_action_missing_or_unmatched_without_proof_requires_intervention() -> None:
+    """Missing or unmatched input without proof returns REQUIRE_INTERVENTION."""
+    assert next_integration_action(None) == IntegrationAction.REQUIRE_INTERVENTION
+    assert next_integration_action(RebaseState()) == IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_projection_fields_do_not_feed_into_control_flow() -> None:
+    """Projection fields like last_decision and last_publication_decision do not affect decisions."""
+    # last_decision alone should not trigger REQUIRE_INTERVENTION without durable facts
+    state_proj_dec = RebaseState(
+        last_decision="report_intervention_required",
+        fast_forwarded=True,
+        last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+    )
+    assert next_integration_action(state_proj_dec) == IntegrationAction.COMPLETE_WITH_PROOF
+
+    # last_publication_decision alone should not trigger PUBLISH_AFTER_LANDING
+    state_proj_pub = RebaseState(
+        last_publication_decision="publish_now",
+        fast_forwarded=True,
+        last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+    )
+    assert next_integration_action(state_proj_pub) == IntegrationAction.COMPLETE_WITH_PROOF
 
 
 def test_last_outcome_reason_accessor() -> None:

@@ -183,10 +183,10 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
         logger.critical("Integration evidence inspection requires agent dependencies: {}", failure)
         return False
     with ExitStack() as leases:
-        if not leases.enter_context(integration_transaction(ctx.workspace_scope.root)):
-            return False
-        record = read_record(ctx.workspace_scope.root)
-        if record is None:
+        if (
+            not leases.enter_context(integration_transaction(ctx.workspace_scope.root))
+            or (record := read_record(ctx.workspace_scope.root)) is None
+        ):
             return False
         operation_root = (
             Path(record.owning_worktree)
@@ -222,13 +222,14 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
             before = record.diagnostic_evidence or tuple(
                 fact.to_evidence_tuple() for fact in collector.snapshot(operation_root, record)
             )
-            if not record.diagnostic_evidence:
+            if not record.diagnostic_evidence or not record.diagnostic_ownership:
                 record = record.with_transition(
                     HOLD_DIAGNOSTIC_EVIDENCE,
                     diagnostic_evidence=before,
                     diagnostic_ownership=ownership_fingerprint(record),
                 )
-            handoff_integration_diagnostic(
+                write_record(ctx.workspace_scope.root, record)
+            released = handoff_integration_diagnostic(
                 root=ctx.workspace_scope.root,
                 record=record,
                 failure=failure,
@@ -252,7 +253,14 @@ def diagnose_retained_integration(ctx: _LoopContext, failure: str) -> bool:
                 logger.critical(
                     "Integration diagnostic changed ownership; original record restored"
                 )
-            return False
+            return bool(
+                retained is not None
+                and ownership_fingerprint(retained) == record.diagnostic_ownership
+                and released
+                and after == before
+                and not retained.diagnostic_evidence
+                and retained.diagnostic_ownership is None
+            )
         except Exception as exc:
             logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
             return False
@@ -371,17 +379,26 @@ def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, st
         return False, "parents of HEAD are unreadable"
     parents = parents_res.stdout.strip().split()
 
-    is_rebase = bool(record.resolving_rebase or record.rebase_continue_pending)
-    if is_rebase:
-        if not record.pre_target_sha or record.pre_target_sha not in parents:
-            return False, f"parent of HEAD does not match pre_target_sha {record.pre_target_sha}"
-    else:
-        expected_parents = {record.merge_commit_parent, record.pre_target_sha} - {None, ""}
-        if not any(p in parents for p in expected_parents):
+    if record.merge_commit_parent:
+        if record.merge_commit_parent not in parents:
             return (
                 False,
-                f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent} or pre_target_sha {record.pre_target_sha}",
+                f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent}",
             )
+    elif record.pre_target_sha and record.pre_target_sha not in parents:
+        try:
+            ancestor_res = run_git(
+                ("merge-base", "--is-ancestor", record.pre_target_sha, "HEAD"),
+                cwd=root,
+                label="integration_diagnostic:check_ancestor",
+            )
+            if ancestor_res.returncode != 0:
+                return (
+                    False,
+                    f"pre_target_sha {record.pre_target_sha} is not an ancestor of HEAD",
+                )
+        except (OSError, RuntimeError) as exc:
+            return False, f"ancestry check failed: {exc}"
     return True, "parents verified"
 
 
@@ -393,50 +410,68 @@ def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, 
 
 
 def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    if record.owning_worktree is not None:
-        try:
-            if Path(record.owning_worktree).resolve() != root.resolve():
-                return False, f"owning_worktree {record.owning_worktree} does not match {root}"
-        except Exception:
-            return False, f"owning_worktree {record.owning_worktree} is invalid"
+    if not record.owning_worktree or not record.owning_worktree.strip():
+        return False, "record.owning_worktree is missing or empty"
+    try:
+        if Path(record.owning_worktree).resolve() != root.resolve():
+            return False, f"owning_worktree {record.owning_worktree} does not match {root}"
+    except Exception:
+        return False, f"owning_worktree {record.owning_worktree} is invalid"
 
-    if (
-        record.diagnostic_ownership is not None
-        and record.diagnostic_ownership != ownership_fingerprint(record)
-    ):
+    expected_fingerprint = ownership_fingerprint(record)
+    if not record.diagnostic_ownership:
+        return False, "diagnostic_ownership is missing or empty"
+    if record.diagnostic_ownership != expected_fingerprint:
         return False, "diagnostic_ownership does not match ownership_fingerprint"
     return True, "ownership verified"
 
 
-def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
-    from ralph.git.merge import unmerged_paths
+def _check_marker_ref_proof(root: Path, ref_name: str) -> tuple[bool, str]:
     from ralph.git.subprocess_runner import run_git
 
     try:
-        merge_head_res = run_git(
-            ("rev-parse", "--verify", "MERGE_HEAD"),
+        res = run_git(
+            ("rev-parse", "--verify", "--quiet", ref_name),
             cwd=root,
-            label="integration_diagnostic:check_merge_head",
+            label=f"integration_diagnostic:check_{ref_name.lower()}",
         )
-        if merge_head_res.returncode == 0:
-            return False, "MERGE_HEAD is present"
-    except (OSError, RuntimeError):
-        pass
+        if res.returncode == 0:
+            return False, f"{ref_name} is present"
+        if res.returncode != 1:
+            return False, f"{ref_name} status is UNKNOWN (unexpected exit code {res.returncode})"
+    except (OSError, RuntimeError) as exc:
+        return False, f"{ref_name} status is UNKNOWN ({exc})"
+    return True, f"{ref_name} absent"
+
+
+def _check_gitdir_markers_proof(root: Path) -> tuple[bool, str]:
+    from ralph.git.subprocess_runner import run_git
 
     try:
-        rebase_head_res = run_git(
-            ("rev-parse", "--verify", "REBASE_HEAD"),
+        gitdir_res = run_git(
+            ("rev-parse", "--absolute-git-dir"),
             cwd=root,
-            label="integration_diagnostic:check_rebase_head",
+            label="integration_diagnostic:gitdir",
         )
-        if rebase_head_res.returncode == 0:
+        if gitdir_res.returncode != 0:
+            return (
+                False,
+                f"gitdir query returned unexpected exit code {gitdir_res.returncode}: UNKNOWN",
+            )
+        gitdir = Path(gitdir_res.stdout.strip())
+        if (gitdir / "MERGE_HEAD").exists():
+            return False, "MERGE_HEAD is present"
+        if (gitdir / "REBASE_HEAD").exists():
             return False, "REBASE_HEAD is present"
-    except (OSError, RuntimeError):
-        pass
+        if (gitdir / "rebase-merge").exists() or (gitdir / "rebase-apply").exists():
+            return False, "rebase state directory is present"
+    except (OSError, RuntimeError) as exc:
+        return False, f"gitdir check failed: {exc} (UNKNOWN)"
+    return True, "gitdir markers absent"
 
-    unmerged = unmerged_paths(root)
-    if unmerged or "<unmerged-path-query-failed>" in unmerged:
-        return False, "unmerged paths in index or unmerged query failed"
+
+def _check_clean_diff_proof(root: Path) -> tuple[bool, str]:
+    from ralph.git.subprocess_runner import run_git
 
     try:
         diff_res = run_git(
@@ -444,21 +479,54 @@ def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
             cwd=root,
             label="integration_diagnostic:diff_head",
         )
-        if diff_res.returncode != 0:
+        if diff_res.returncode == 1:
             return False, "git diff against HEAD is non-empty"
+        if diff_res.returncode != 0:
+            return False, f"git diff failed with exit code {diff_res.returncode}: UNKNOWN"
     except (OSError, RuntimeError) as exc:
-        return False, f"git diff failed: {exc}"
+        return False, f"git diff failed: {exc} (UNKNOWN)"
+    return True, "diff against HEAD clean"
+
+
+def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
+    from ralph.git.merge import unmerged_paths
+
+    for ref in ("MERGE_HEAD", "REBASE_HEAD"):
+        ok, reason = _check_marker_ref_proof(root, ref)
+        if not ok:
+            return False, reason
+
+    ok, reason = _check_gitdir_markers_proof(root)
+    if not ok:
+        return False, reason
+
+    unmerged = unmerged_paths(root)
+    if unmerged or "<unmerged-path-query-failed>" in unmerged:
+        return False, "unmerged paths in index or unmerged query failed"
+
+    ok, reason = _check_clean_diff_proof(root)
+    if not ok:
+        return False, reason
+
     return True, "index and tree verified"
 
 
-def _check_atomic_transition_proof(record: IntegrationRecord) -> tuple[bool, str]:
+def _check_atomic_transition_proof(
+    record: IntegrationRecord,
+    root: Path | None = None,
+) -> tuple[bool, str]:
     has_valid_phase = record.phase in ("integrated",) or (
         record.phase in ("integrating",) and bool(record.integrated_feature_sha)
     )
     if not has_valid_phase:
         return False, f"record.phase is '{record.phase}', expected 'integrated'"
-    if bool(record.diagnostic_evidence):
-        return False, "diagnostic_evidence is not empty"
+    effective_root = (
+        root
+        if root is not None
+        else (Path(record.owning_worktree) if record.owning_worktree else Path.cwd())
+    )
+    if not diagnostic_evidence_unchanged(effective_root, record):
+        return False, "diagnostic evidence does not match release conditions"
     return True, "atomic transition verified"
 
 
@@ -470,7 +538,7 @@ def _check_operation_completion_proof(
         _check_ancestry_proof(root, record),
         _check_ownership_proof(root, record),
         _check_index_tree_proof(root),
-        _check_atomic_transition_proof(record),
+        _check_atomic_transition_proof(record, root=root),
     )
     for ok, reason in checks:
         if not ok:
@@ -518,7 +586,10 @@ def _run_completion_pre_pass(
                 "unreachable marker object; operator intervention required",
             )
 
-    if next_action == IntegrationAction.CONTINUE_GIT_OPERATION:
+    if next_action in (
+        IntegrationAction.CONTINUE_GIT_OPERATION,
+        IntegrationAction.LAND_TARGET,
+    ):
         proof_ok, proof_reason = _check_operation_completion_proof(inspection_root, record)
         if proof_ok:
             cleared = record.with_transition(

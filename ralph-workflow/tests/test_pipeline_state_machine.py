@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._pipeline_state_machine import (
     PhaseDecision,
     decide_phase_transition,
@@ -222,3 +223,39 @@ def test_persisted_intervention_does_not_block_when_no_authority_obligation() ->
     )
     assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
     assert decision is not PhaseDecision.BLOCK_FOR_RECOVERY
+
+
+def test_decide_returns_block_for_recovery_when_integrated_without_landing() -> None:
+    """An integrated record with feature SHA present and reintegrate_pending=False still blocks."""
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        integrated_feature_sha="c" * 40,
+        reintegrate_pending=False,
+    )
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=record,
+        rebase_state=RebaseState(),
+    )
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
+
+
+def test_decide_returns_block_for_recovery_when_rebase_state_unlanded() -> None:
+    """RebaseState with rebased outcome but fast_forwarded=False blocks dispatch."""
+    rebase_state = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+    )
+    policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=None,
+        rebase_state=rebase_state,
+    )
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY

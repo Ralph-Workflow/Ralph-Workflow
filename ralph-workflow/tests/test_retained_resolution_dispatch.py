@@ -84,6 +84,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
                 pre_feature_sha=feature,
                 pre_target_sha=base,
                 integrated_feature_sha=feature,
+                owning_worktree=str(root),
             ),
         )
         return RebaseState(

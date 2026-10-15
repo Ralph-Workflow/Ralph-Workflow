@@ -384,6 +384,7 @@ def test_future_schema_freeze_fails_closed() -> None:
     assert any("invalid freeze" in message for message in messages)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_v3_freeze_does_not_install_v4_portfolio_defaults() -> None:
     from ralph.language_detector.models import ProjectStack
     from ralph.project_policy import preflight
@@ -404,6 +405,7 @@ def test_v3_freeze_does_not_install_v4_portfolio_defaults() -> None:
     assert ws.read(policy_path).startswith("<!-- ralph-policy-schema: freeze v3 -->")
 
 
+@pytest.mark.timeout_seconds(5)
 def test_v3_upgrade_installs_portfolio_through_public_preflight() -> None:
     from ralph.language_detector.models import ProjectStack
     from ralph.project_policy import parse_portfolio_toml, preflight

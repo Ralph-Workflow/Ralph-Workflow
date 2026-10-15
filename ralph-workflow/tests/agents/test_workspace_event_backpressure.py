@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
@@ -36,8 +40,13 @@ def _coalescer(
     )
 
 
-def test_dispatch_defers_work_and_coalesces_repeated_writes(tmp_path: Path) -> None:
+def test_dispatch_defers_work_and_coalesces_repeated_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Dispatch does no per-event work; repeated writes to a file drain once."""
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace_change_coalescer.CHANGE_DRAIN_INTERVAL_SECONDS", 10.0
+    )
     recorded: list[str] = []
     coalescer = _coalescer(tmp_path, recorded, [])
     path = str(tmp_path / "src" / "app.py")

@@ -117,30 +117,40 @@ def test_unrelated_branch_advance_does_not_invalidate_evidence(tmp_path: Path) -
     collector = SubprocessOperationEvidenceCollector()
     set_operation_evidence_collector(collector)
 
-    # Advance the unrelated branch in the linked worktree
+    policy = _policy()
+    ctx = _build_loop_ctx(primary, policy)
+
+    # 1. Take initial diagnosis to establish held evidence
+    result1 = diagnose_retained_integration(ctx, failure="simulated diagnostic recovery failure")
+    assert result1 is False
+    persisted1 = read_record(primary)
+    assert persisted1 is not None
+    assert persisted1.diagnostic_intervention_required is False
+    held_evidence = persisted1.diagnostic_evidence
+
+    # 2. Advance the unrelated branch in the linked worktree
     (other / "new.txt").write_text("new content")
     _git(other, "add", "new.txt")
     _git(other, "commit", "--quiet", "-m", "advance unrelated")
 
-    policy = _policy()
-    ctx = _build_loop_ctx(primary, policy)
+    # 3. Run diagnosis again after unrelated branch advance
+    result2 = diagnose_retained_integration(ctx, failure="simulated diagnostic recovery failure")
+    assert result2 is False
 
-    # Drive the real recovery boundary
-    result = diagnose_retained_integration(ctx, failure="simulated diagnostic recovery failure")
-    assert result is False
-
-    # Assert durable record on disk is intact
+    # 4. Assert that the unrelated branch change does NOT invalidate the held operation evidence
+    # and that progress continues without diagnostic intervention
     assert record_path(primary).exists()
-    persisted = read_record(primary)
-    assert persisted is not None
-    assert persisted.diagnostic_intervention_required is False
+    persisted2 = read_record(primary)
+    assert persisted2 is not None
+    assert persisted2.diagnostic_intervention_required is False
+    assert persisted2.diagnostic_evidence == held_evidence
 
     # Assert run-loop's PhaseDecision evaluates to BLOCK_FOR_RECOVERY
     state = PipelineState(phase="development", rebase=RebaseState())
     decision = decide_phase_transition(
         state,
         policy,
-        integration_record=persisted,
+        integration_record=persisted2,
         rebase_state=state.rebase,
     )
     assert decision == PhaseDecision.BLOCK_FOR_RECOVERY

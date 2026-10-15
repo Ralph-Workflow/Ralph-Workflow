@@ -16,7 +16,11 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    RebaseOutcomeKind,
+    next_integration_action,
+)
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 
 if TYPE_CHECKING:
@@ -65,23 +69,27 @@ def _check_blocking_decision(
     flag) are the only inputs.
     """
     if integration_record is not None:
-        if integration_record.diagnostic_intervention_required:
-            return PhaseDecision.REPORT_INTERVENTION_REQUIRED
         action = next_integration_action(integration_record)
+        if (
+            integration_record.diagnostic_intervention_required
+            or action == IntegrationAction.REQUIRE_INTERVENTION
+        ):
+            return PhaseDecision.REPORT_INTERVENTION_REQUIRED
         if action in (
             IntegrationAction.RESOLVE_ACTIVE_OPERATION,
             IntegrationAction.CONTINUE_GIT_OPERATION,
             IntegrationAction.REINTEGRATE_AGAINST_TARGET,
             IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
-        ) or (
-            action == IntegrationAction.LAND_TARGET
-            and (
-                integration_record.integrated_feature_sha is None
-                or integration_record.reintegrate_pending
-            )
+            IntegrationAction.LAND_TARGET,
         ):
             return PhaseDecision.BLOCK_FOR_RECOVERY
-    if rebase_state.integration_unresolved:
+    if rebase_state.is_intervention_required:
+        return PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    unlanded_rebase = (
+        rebase_state.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        and not rebase_state.fast_forwarded
+    )
+    if unlanded_rebase or rebase_state.integration_unresolved:
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None
 

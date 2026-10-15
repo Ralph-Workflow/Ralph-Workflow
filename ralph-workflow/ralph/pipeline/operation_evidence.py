@@ -109,6 +109,12 @@ def _should_capture_repair_facts(
         fact.kind in (_KIND_UNSTAGED_WORK, _KIND_COMMIT_CONTROLS) for fact in observed
     ):
         return True
+    if any(
+        item[0] in (_KIND_UNSTAGED_WORK, _KIND_COMMIT_CONTROLS)
+        for item in record.diagnostic_evidence
+        if isinstance(item, tuple) and item
+    ):
+        return True
     return bool(
         record.resolving_merge
         or record.resolving_rebase
@@ -116,7 +122,6 @@ def _should_capture_repair_facts(
         or record.rebase_continue_pending
         or record.repair_commit_controls is not None
         or record.repair_pending_diff is not None
-        or record.diagnostic_evidence
     )
 
 
