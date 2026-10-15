@@ -106,6 +106,11 @@ def _is_whole_message_refusal(text: str) -> bool:
     return not _CONSTRAINT_CONTINUATION.search(non_empty_lines[0])
 
 
+def _is_all_readable(text: str) -> bool:
+    """Fast check whether every character is printable or standard whitespace."""
+    return text.replace("\n", " ").replace("\t", " ").replace("\r", " ").isprintable()
+
+
 def _sanity_failure_reason(text: str) -> str | None:
     """Identify a single explicit sanity failure without interpreting shape."""
     try:
@@ -113,19 +118,22 @@ def _sanity_failure_reason(text: str) -> str | None:
         utf8_error = False
     except UnicodeEncodeError:
         utf8_error = True
-    readable = (
-        len(text) if text.isprintable() else sum(_is_readable(character) for character in text)
-    )
+    if utf8_error:
+        return "text is not valid UTF-8"
+    if "\x00" in text:
+        return "text contains a NUL character"
+    if not text.strip():
+        return "text is empty"
+
+    if _is_all_readable(text):
+        readable = len(text)
+    else:
+        readable = sum(_is_readable(character) for character in text)
+
     words = text.split(maxsplit=_MIN_WORDS)
     non_empty_lines = _first_non_empty_lines(text, limit=1)
     first_line = non_empty_lines[0].casefold() if non_empty_lines else ""
-    if utf8_error:
-        reason = "text is not valid UTF-8"
-    elif "\x00" in text:
-        reason = "text contains a NUL character"
-    elif not text.strip():
-        reason = "text is empty"
-    elif readable / len(text) < _READABLE_RATIO:
+    if readable / len(text) < _READABLE_RATIO:
         reason = "text is control-heavy or binary-like"
     elif len(words) < _MIN_WORDS:
         reason = f"text has only {len(words)} words"

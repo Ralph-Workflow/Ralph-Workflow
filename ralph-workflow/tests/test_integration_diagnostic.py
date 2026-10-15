@@ -185,9 +185,7 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
         merge_commit_pending=True,
         owning_worktree=str(root),
     )
-    record = record.model_copy(
-        update={"diagnostic_ownership": ownership_fingerprint(record)}
-    )
+    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
     collector = InMemoryOperationEvidenceCollector(reachability={"MERGE_HEAD": True})
     diagnostic.set_operation_evidence_collector(collector)
     try:
@@ -383,9 +381,7 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
         pre_target_sha="b" * 40,
         owning_worktree=str(root),
     )
-    record = record.model_copy(
-        update={"diagnostic_ownership": ownership_fingerprint(record)}
-    )
+    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
 
     # Valid matching nonempty ownership
     ok, reason = diagnostic._check_ownership_proof(root, record)
@@ -526,9 +522,7 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
         merge_commit_repair_attempts=0,
         owning_worktree=str(root),
     )
-    record = record.model_copy(
-        update={"diagnostic_ownership": ownership_fingerprint(record)}
-    )
+    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
 
     from ralph.git.subprocess_runner import GitRunOptions
     from ralph.git.subprocess_runner import run_git as original_run_git

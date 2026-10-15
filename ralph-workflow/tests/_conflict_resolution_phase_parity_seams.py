@@ -12,6 +12,7 @@ disagree about what the pipeline was even asked to do.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 _CONFLICTED = ["src/alpha.py"]
 
 
+@functools.lru_cache(maxsize=1)
 def _policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)

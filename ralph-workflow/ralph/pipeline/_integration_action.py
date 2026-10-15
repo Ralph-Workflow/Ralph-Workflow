@@ -146,14 +146,12 @@ def _check_rebase_state_action(
 def _has_completion_proof(
     record: object,
     policy: object = None,
-    proof: object = None,
+    proof: bool | None = None,
 ) -> bool:
     """Check whether positive proof of integration completion is present."""
-    if proof is True or (proof is not None and proof is not False):
+    if proof is True:
         return True
     if _safe_attr(record, "completion_proof") is True:
-        return True
-    if _safe_attr(record, "proof") is not None and _safe_attr(record, "proof") is not False:
         return True
     last_outcome = _safe_attr(record, "last_outcome")
     fast_fwd = _safe_attr(record, "fast_forwarded")
@@ -167,9 +165,7 @@ def _has_completion_proof(
         RebaseOutcomeKind.TERMINAL,
     )
     is_clean_ff = (
-        fast_fwd is True
-        and last_outcome == RebaseOutcomeKind.FAST_FORWARDED
-        and not has_policy_pub
+        fast_fwd is True and last_outcome == RebaseOutcomeKind.FAST_FORWARDED and not has_policy_pub
     )
     is_terminal = last_outcome in (RebaseOutcomeKind.COMPLETED, RebaseOutcomeKind.TERMINAL)
     return is_landed_terminal or is_clean_ff or is_terminal
@@ -180,14 +176,14 @@ def next_integration_action(
     policy: object = None,
     clock: object = None,
     *,
-    proof: object = None,
+    proof: bool | None = None,
 ) -> IntegrationAction:
     """Compute the next integration action from an integration record or rebase state.
 
     The single authority for integration progression decisions.
     Requires proof for completion and uses injected clock for durable deadline.
     """
-    has_proof = proof is True or (proof is not None and proof is not False)
+    has_proof = proof is True
     if record is None:
         return (
             IntegrationAction.COMPLETE_WITH_PROOF

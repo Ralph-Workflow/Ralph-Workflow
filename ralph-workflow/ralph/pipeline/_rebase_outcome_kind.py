@@ -31,6 +31,7 @@ class RebaseOutcomeKind(StrEnum):
     PUBLISHING = "publishing"
     CONFLICT_RESOLUTION = "conflict_resolution"
     WAITING = "waiting"
+    UNKNOWN = "unknown"
 
     def is_terminal(self) -> bool:
         """Whether this outcome kind signals the operation is closed."""
@@ -51,7 +52,7 @@ class RebaseOutcomeKind(StrEnum):
         for member in cls:
             if member.value == normalized:
                 return member
-        return None
+        return cls.UNKNOWN
 
 
 __all__ = ["RebaseOutcomeKind"]

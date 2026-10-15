@@ -59,30 +59,61 @@ class RebaseState(RalphBaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce_legacy_action(cls, data: object) -> object:
-        if isinstance(data, dict) and "last_outcome" not in data and "last_action" in data:
-            raw_action = data.get("last_action")
-            action_str = str(raw_action) if raw_action is not None else None
+        if isinstance(data, dict):
             migrated: dict[str, object] = {str(k): v for k, v in data.items()}
-            migrated["last_outcome"] = (
-                RebaseOutcomeKind.from_legacy(action_str) if action_str is not None else None
-            )
+            has_action = "last_action" in migrated
+            raw_action = migrated.get("last_action")
+            raw_outcome = migrated.get("last_outcome")
+
+            def _to_kind(val: object) -> RebaseOutcomeKind | None:
+                if val is None:
+                    return None
+                if isinstance(val, RebaseOutcomeKind):
+                    return val
+                return RebaseOutcomeKind.from_legacy(str(val))
+
+            if has_action and raw_outcome is None:
+                if raw_action is None:
+                    migrated["last_outcome"] = None
+                else:
+                    migrated["last_outcome"] = _to_kind(raw_action)
+                return migrated
+
+            if has_action and raw_action is not None and raw_outcome is not None:
+                action_kind = _to_kind(raw_action)
+                outcome_kind = _to_kind(raw_outcome)
+                if (
+                    None in (action_kind, outcome_kind)
+                    or RebaseOutcomeKind.UNKNOWN in (action_kind, outcome_kind)
+                    or action_kind != outcome_kind
+                ):
+                    migrated["last_outcome"] = RebaseOutcomeKind.UNKNOWN
+                else:
+                    migrated["last_outcome"] = outcome_kind
+                return migrated
+
+            if raw_outcome is not None and isinstance(raw_outcome, str):
+                outcome_kind = _to_kind(raw_outcome)
+                if outcome_kind == RebaseOutcomeKind.UNKNOWN:
+                    migrated["last_outcome"] = RebaseOutcomeKind.UNKNOWN
+                    return migrated
+
             return migrated
         return data
 
     @classmethod
     def from_legacy_payload(cls, payload: dict[str, object]) -> Self:
         """One-way migration entry point for legacy checkpoints."""
+        validated = cls.model_validate(payload)
         legacy_action = payload.get("last_action")
-        mapped_outcome = (
-            RebaseOutcomeKind.from_legacy(str(legacy_action)) if legacy_action is not None else None
-        )
+        mapped_outcome = validated.last_outcome
         mapped_val = mapped_outcome.value if mapped_outcome is not None else None
         logger.warning(
             "MIGRATED_LEGACY: last_action {} -> last_outcome {}",
             legacy_action,
             mapped_val,
         )
-        return cls.model_validate(payload).model_copy(update={"last_outcome": mapped_outcome})
+        return validated
 
     # ``last_refresh`` records the outcome of the origin refresh that
     # ran immediately before the fast-forward observed the target SHA
@@ -285,7 +316,13 @@ class RebaseState(RalphBaseModel):
         materializing prompts, dispatching agents, or reporting success.
         """
         return (
-            self.last_outcome == RebaseOutcomeKind.CONFLICT
+            self.last_outcome
+            in (
+                RebaseOutcomeKind.CONFLICT,
+                RebaseOutcomeKind.UNKNOWN,
+                RebaseOutcomeKind.INTERVENTION_REQUIRED,
+                RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            )
             or self.recovery_record_retained
             or self.legacy_checkpoint_blocked
             or self.unresolved_integration_carried
@@ -320,6 +357,7 @@ class RebaseState(RalphBaseModel):
         return self.last_outcome in (
             RebaseOutcomeKind.INTERVENTION_REQUIRED,
             RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            RebaseOutcomeKind.UNKNOWN,
         )
 
 

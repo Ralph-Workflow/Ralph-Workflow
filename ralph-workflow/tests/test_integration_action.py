@@ -103,7 +103,10 @@ def test_integration_action_publish_after_landing() -> None:
         last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
         fast_forwarded=True,
     )
-    assert next_integration_action(landed_state, policy=policy) == IntegrationAction.PUBLISH_AFTER_LANDING
+    assert (
+        next_integration_action(landed_state, policy=policy)
+        == IntegrationAction.PUBLISH_AFTER_LANDING
+    )
 
 
 def test_integration_action_wait_for_bounded_retry() -> None:

@@ -266,7 +266,8 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 70,
-    "tests/test_audit_opts_key_drift.py": 120,
+    "tests/test_audit_opts_key_drift.py": 300,
+    "tests/test_explore_bench_rss_isolation.py": 70,
 }
 
 

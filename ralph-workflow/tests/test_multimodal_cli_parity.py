@@ -32,6 +32,7 @@ def _wide_help_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     shell width — keeps the assertion environment-independent.
     """
     monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setattr("ralph.cli.main._bootstrap_for_command", lambda **_kwargs: None)
 
 
 #: Every smoke command that exposes ``--multimodal``. The plan locks

@@ -146,3 +146,51 @@ def test_rebase_state_last_outcome_to_operation_display_state() -> None:
         rebase_outcome_to_operation_display_state(state_remote_failed.last_outcome)
         == OperationDisplayState.PUBLISHING
     )
+
+
+def test_rebase_outcome_kind_from_legacy_unknown() -> None:
+    """Unknown legacy strings map to RebaseOutcomeKind.UNKNOWN."""
+    assert RebaseOutcomeKind.from_legacy("unrecognized_bogus") == RebaseOutcomeKind.UNKNOWN
+    assert RebaseOutcomeKind.from_legacy("unknown") == RebaseOutcomeKind.UNKNOWN
+
+
+def test_rebase_outcome_kind_unknown_not_terminal() -> None:
+    """UNKNOWN outcome kind is not terminal."""
+    assert RebaseOutcomeKind.UNKNOWN.is_terminal() is False
+
+
+def test_rebase_state_coerce_legacy_action_with_none_outcome() -> None:
+    """last_action coerces to last_outcome when last_outcome is explicitly None."""
+    state = RebaseState.model_validate({"last_action": "conflict", "last_outcome": None})
+    assert state.last_outcome == RebaseOutcomeKind.CONFLICT
+    assert state.last_action == "conflict"
+    assert state.integration_unresolved is True
+
+
+def test_rebase_state_unknown_legacy_action() -> None:
+    """Unknown legacy action produces UNKNOWN and marks integration unresolved and intervention required."""
+    state = RebaseState(last_action="unrecognized_bogus")
+    assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
+    assert state.last_action == "unknown"
+    assert state.integration_unresolved is True
+    assert state.is_intervention_required is True
+
+
+def test_rebase_state_contradictory_values() -> None:
+    """Contradictory last_action and last_outcome fail closed to UNKNOWN."""
+    state = RebaseState.model_validate({"last_action": "conflict", "last_outcome": "rebased"})
+    assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
+    assert state.last_action == "unknown"
+    assert state.integration_unresolved is True
+    assert state.is_intervention_required is True
+
+
+def test_rebase_state_matching_action_and_outcome() -> None:
+    """Consistent last_action and last_outcome resolve to the agreed outcome."""
+    state1 = RebaseState.model_validate({"last_action": "conflict", "last_outcome": "conflict"})
+    assert state1.last_outcome == RebaseOutcomeKind.CONFLICT
+
+    state2 = RebaseState.model_validate(
+        {"last_action": "rebased", "last_outcome": RebaseOutcomeKind.REBASED}
+    )
+    assert state2.last_outcome == RebaseOutcomeKind.REBASED

@@ -20,7 +20,11 @@ from pathlib import Path
 import pytest
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+from ralph.pipeline._pipeline_state_machine import (
+    PhaseDecision,
+    decide_phase_transition,
+    is_terminal_success_eligible,
+)
 from ralph.pipeline.auto_integrate_record import (
     AUTO_INTEGRATE_RECORD_FILENAME,
     read_record,
@@ -186,3 +190,73 @@ def test_rebase_outcome_kind_remote_failed_explicit() -> None:
     assert kind is RebaseOutcomeKind.REMOTE_FAILED
     state = RebaseState(last_outcome=kind)
     assert state.last_action == "remote_failed"
+
+
+def test_rebase_state_model_validate_legacy_action_with_none_outcome() -> None:
+    """When last_action is present and last_outcome is explicitly None, last_action is migrated."""
+    state = RebaseState.model_validate({"last_action": "conflict", "last_outcome": None})
+    assert state.last_outcome == RebaseOutcomeKind.CONFLICT
+    assert state.last_action == "conflict"
+    assert state.integration_unresolved is True
+
+    policy = _policy()
+    pipeline_state = PipelineState(phase="development", rebase=state)
+    decision = decide_phase_transition(
+        pipeline_state,
+        policy,
+        integration_record=None,
+        rebase_state=state,
+    )
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
+    assert is_terminal_success_eligible(pipeline_state, None, state) is False
+
+
+def test_rebase_state_model_validate_unknown_legacy_action_blocks_dispatch() -> None:
+    """Unknown legacy action produces UNKNOWN and blocks ordinary dispatch and terminal success."""
+    state = RebaseState.model_validate({"last_action": "unrecognized_bogus"})
+    assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
+    assert state.last_action == "unknown"
+    assert state.integration_unresolved is True
+    assert state.is_intervention_required is True
+
+    policy = _policy()
+    pipeline_state = PipelineState(phase="development", rebase=state)
+    decision = decide_phase_transition(
+        pipeline_state,
+        policy,
+        integration_record=None,
+        rebase_state=state,
+    )
+    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert is_terminal_success_eligible(pipeline_state, None, state) is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"last_action": "conflict", "last_outcome": "rebased"},
+        {"last_action": "conflict", "last_outcome": RebaseOutcomeKind.REBASED},
+        {"last_action": "rebased", "last_outcome": "conflict"},
+        {"last_action": "rebased", "last_outcome": RebaseOutcomeKind.CONFLICT},
+    ],
+)
+def test_rebase_state_model_validate_contradictory_values_blocks_dispatch(
+    payload: dict[str, object],
+) -> None:
+    """Contradictory last_action and last_outcome produce UNKNOWN and block dispatch."""
+    state = RebaseState.model_validate(payload)
+    assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
+    assert state.last_action == "unknown"
+    assert state.integration_unresolved is True
+    assert state.is_intervention_required is True
+
+    policy = _policy()
+    pipeline_state = PipelineState(phase="development", rebase=state)
+    decision = decide_phase_transition(
+        pipeline_state,
+        policy,
+        integration_record=None,
+        rebase_state=state,
+    )
+    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert is_terminal_success_eligible(pipeline_state, None, state) is False

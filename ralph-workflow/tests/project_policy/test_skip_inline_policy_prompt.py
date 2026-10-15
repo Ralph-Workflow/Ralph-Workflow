@@ -73,7 +73,7 @@ def _run(
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=emit_messages.append,
-        invoke_remediation_agent_factory=lambda _w: lambda *, phase, prompt_path: False,
+        invoke_remediation_agent_factory=None,
         select_factory=select,
         is_tty=is_tty,
     )
