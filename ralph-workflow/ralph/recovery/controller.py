@@ -50,13 +50,14 @@ from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline import progress
+from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
 from ralph.pipeline.effects import ExitFailureEffect
-from ralph.pipeline.state import FalloverRecord, WaitReason
+from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
 from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
 from ralph.recovery._broken_agent_same_shape_tracker import (

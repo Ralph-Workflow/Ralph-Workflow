@@ -21,6 +21,7 @@ staleness the throttle was supposed to bound:
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -507,7 +508,9 @@ def _install_recovery_seams(
     """
     events: list[str] = []
     monkeypatch.setattr(recovery, "_read_record", lambda _root: _integrated_record())
+    landing = importlib.import_module("ralph.pipeline._recovery_fast_forward_landing")
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: events.append("clear"))
+    monkeypatch.setattr(landing, "_clear_record", lambda _root: events.append("clear"))
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
@@ -528,13 +531,13 @@ def _install_recovery_seams(
     monkeypatch.setattr(recovery, "ancestry_state", _is_ancestor)
     monkeypatch.setattr(recovery, "_refresh_target", _refresh)
     monkeypatch.setattr(
-        recovery,
+        landing,
         "fast_forward_target",
         lambda _root, _target, _sha, **_kwargs: events.append("fast_forward") or (True, ""),
     )
-    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
-    monkeypatch.setattr(recovery, "maybe_push_target", lambda _config, _root, _target, state: state)
+    monkeypatch.setattr(landing, "post_attempt_verify", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root: None)
+    monkeypatch.setattr(landing, "maybe_push_target", lambda _config, _root, _target, state: state)
     return events
 
 

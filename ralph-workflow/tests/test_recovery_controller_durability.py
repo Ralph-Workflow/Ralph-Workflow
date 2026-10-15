@@ -6,9 +6,8 @@ carries more than one top-level test class (repo-structure policy).
 
 from __future__ import annotations
 
-from typing import cast
-
 from ralph.agents.timeout_clock import FakeClock
+from ralph.checked_accessors import as_mapping
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
@@ -50,14 +49,27 @@ class TestRecoveryControllerDurability:
 
         assert snap["cycle_cap"] == 50
         assert snap["technical_retry_cap"] == 5
-        backoff_attempts = cast("dict[str, int]", snap["backoff_attempts"])
-        unavailable_timeouts = cast("dict[str, int]", snap["unavailable_timeouts"])
+        backoff_attempts = {
+            k: int(v)
+            for k, v in as_mapping(snap["backoff_attempts"], field="backoff_attempts").items()
+        }
+        unavailable_timeouts = {
+            k: int(v)
+            for k, v in as_mapping(
+                snap["unavailable_timeouts"], field="unavailable_timeouts"
+            ).items()
+        }
         assert backoff_attempts["claude"] == 2
         assert unavailable_timeouts["development:claude"] == 120_000
 
         restored_controller = RecoveryController.from_snapshot(snap, clock=clock)
         restored_snap = restored_controller.snapshot()
-        restored_backoff = cast("dict[str, int]", restored_snap["backoff_attempts"])
+        restored_backoff = {
+            k: int(v)
+            for k, v in as_mapping(
+                restored_snap["backoff_attempts"], field="backoff_attempts"
+            ).items()
+        }
         assert restored_snap["cycle_cap"] == 50
         assert restored_snap["technical_retry_cap"] == 5
         assert restored_backoff["claude"] == 2

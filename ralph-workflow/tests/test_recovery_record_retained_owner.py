@@ -32,11 +32,7 @@ def test_no_model_copy_writers_outside_allowed_sites() -> None:
             continue
         text = path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
-            if (
-                "recovery_record_retained" in line
-                and "model_copy" in line
-                and "update=" in line
-            ):
+            if "recovery_record_retained" in line and "model_copy" in line and "update=" in line:
                 offenders.append(f"{path}:{lineno}: {line.strip()}")
     assert offenders == []
 
@@ -75,9 +71,7 @@ def test_setter_retains_with_reason() -> None:
 
 
 def test_clear_resets_reason_too() -> None:
-    retained = RebaseState().set_recovery_record_retained(
-        StartupRetentionReason.FAILED_ABORT
-    )
+    retained = RebaseState().set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT)
     cleared = retained.clear_recovery_record_retained()
     assert cleared.recovery_record_retained is False
     assert cleared.recovery_record_retained_reason is None

@@ -105,9 +105,7 @@ def test_acceptance_scenario_3_same_decision_at_every_entry_point() -> None:
     # consulted again. The projection must not change the decision.
     after_run_loop = rebase.model_copy(update={"last_decision": startup_decision.value})
     assert (
-        decide_phase_transition(
-            state, policy, integration_record=None, rebase_state=after_run_loop
-        )
+        decide_phase_transition(state, policy, integration_record=None, rebase_state=after_run_loop)
         == startup_decision
     )
 
@@ -130,9 +128,7 @@ def test_acceptance_scenario_3_same_decision_at_every_entry_point() -> None:
         update={"last_fan_out_decision": FanOutDecision.JOIN_COMPLETE.value}
     )
     assert (
-        decide_phase_transition(
-            state, policy, integration_record=None, rebase_state=join_rebase
-        )
+        decide_phase_transition(state, policy, integration_record=None, rebase_state=join_rebase)
         == startup_decision
     )
 
@@ -187,16 +183,12 @@ def test_acceptance_scenario_3_last_decision_is_projection_not_input() -> None:
     """Any prior persisted decision cannot influence the next decision."""
     state, policy, rebase = _fixed_tuple()
 
-    baseline = decide_phase_transition(
-        state, policy, integration_record=None, rebase_state=rebase
-    )
+    baseline = decide_phase_transition(state, policy, integration_record=None, rebase_state=rebase)
 
     for prior in PhaseDecision:
         projected = rebase.model_copy(update={"last_decision": prior.value})
         assert (
-            decide_phase_transition(
-                state, policy, integration_record=None, rebase_state=projected
-            )
+            decide_phase_transition(state, policy, integration_record=None, rebase_state=projected)
             == baseline
         ), f"prior last_decision {prior} leaked into the next decision"
 
@@ -235,9 +227,7 @@ def test_acceptance_scenario_3_unknown_evidence_unknown_verdict_persists() -> No
     assert persisted == rec
     restart_collector = InMemoryOperationEvidenceCollector(facts=unreadable_facts)
     assert (
-        diagnostic_evidence_verdict(
-            Path("/wu-s3-unknown"), persisted, collector=restart_collector
-        )
+        diagnostic_evidence_verdict(Path("/wu-s3-unknown"), persisted, collector=restart_collector)
         == EvidenceVerdict.UNKNOWN
     )
 
@@ -323,8 +313,13 @@ def test_acceptance_scenario_3_checkpoint_restart_no_replayed_business_work(
 ) -> None:
     """Interrupt at the phase boundary via KeyboardInterrupt; the restart
     resumes from the durable checkpoint without replaying completed work,
-    and the projected last_decision does not stall the resumed loop."""
-    from ralph.pipeline import runner
+    and the projected last_decision does not stall the resumed loop.
+
+    The public ``run_loop._run_inner_loop`` boundary drives the whole
+    lifecycle; only the agent-execution step (``runner.run_pipeline_step``)
+    is replaced by a stepping fake so the test never invokes a real agent.
+    """
+    import ralph.pipeline.runner as runner_module
 
     bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     bundle = bundle.model_copy(update={"pipeline": _small_policy()})
@@ -349,15 +344,13 @@ def test_acceptance_scenario_3_checkpoint_restart_no_replayed_business_work(
         checkpoint.save(state.copy_with(phase="complete"))
         return state.copy_with(phase="complete")
 
-    monkeypatch.setattr(runner, "run_pipeline_step", _stepping_runner)
+    monkeypatch.setattr(runner_module, "run_pipeline_step", _stepping_runner)
 
     def _loop_ctx(latest_states: list[PipelineState]) -> run_loop._LoopContext:
         return run_loop._LoopContext(
             policy_bundle=bundle,
             workspace_scope=WorkspaceScope(tmp_path),
-            config=UnifiedConfig.model_validate(
-                {"general": {"auto_integrate_enabled": False}}
-            ),
+            config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
             active_display=MagicMock(),
             display_context=MagicMock(),
             effective_verbosity=MagicMock(),
@@ -419,9 +412,7 @@ def test_acceptance_scenario_3_parallel_join_restart_idempotent() -> None:
 
     # Crash + restart: the same persisted worker states yield the same
     # join decision (pure over current state, no hidden inputs).
-    assert fan_out_decision(partial.copy_with(rebase=partial.rebase)) == fan_out_decision(
-        partial
-    )
+    assert fan_out_decision(partial.copy_with(rebase=partial.rebase)) == fan_out_decision(partial)
 
     # Terminal join: all succeeded -> JOIN_COMPLETE.
     joined = partial.copy_with(
@@ -449,9 +440,7 @@ def test_acceptance_scenario_3_parallel_join_restart_idempotent() -> None:
         )
     )
     assert (
-        decide_phase_transition(
-            clean, policy, integration_record=None, rebase_state=clean.rebase
-        )
+        decide_phase_transition(clean, policy, integration_record=None, rebase_state=clean.rebase)
         == decide_phase_transition(
             after_block, policy, integration_record=None, rebase_state=after_block.rebase
         )
@@ -471,16 +460,13 @@ def test_acceptance_scenario_3_partial_failure_join_restart_idempotent() -> None
 
     # Restart: same persisted worker states -> same decision.
     assert (
-        fan_out_decision(base.copy_with(rebase=base.rebase))
-        == FanOutDecision.JOIN_PARTIAL_FAILURE
+        fan_out_decision(base.copy_with(rebase=base.rebase)) == FanOutDecision.JOIN_PARTIAL_FAILURE
     )
 
     # A retained record blocks the phase decision, and stays blocked
     # regardless of any prior persisted decision (projection, not input).
     policy = _small_policy()
-    record_store = IntegrationRecordStore(
-        Path("/wu-s3-partial"), backend=_InMemoryBackend()
-    )
+    record_store = IntegrationRecordStore(Path("/wu-s3-partial"), backend=_InMemoryBackend())
     retained = record_store.transition(
         START_INTEGRATING, target="main", pre_feature_sha="e" * 40, pre_target_sha="f" * 40
     )

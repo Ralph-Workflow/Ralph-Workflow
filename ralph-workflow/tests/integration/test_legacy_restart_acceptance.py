@@ -22,7 +22,6 @@ from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
-from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
 
 _VALID_PHASES = frozenset({"integrating", "integrated"})
 
@@ -70,27 +69,31 @@ def _policy() -> PipelinePolicy:
     )
 
 
-def _write_contradicting_legacy_pair(tmp_path: Path, payload: dict[str, object]) -> None:
+def _write_contradicting_legacy_pair(tmp_path: Path, payload: dict[str, object]) -> Path:
     """Persist a legacy checkpoint claiming ``development`` alongside a
-    legacy integration record claiming ``integrating``."""
-    state = PipelineState(phase="development")
-    backend = _InMemoryBackend()
-    checkpoint = Checkpoint(Path(".agent/checkpoint.json"))
-    checkpoint.save(state)
+    legacy integration record claiming ``integrating``.
+
+    Both artifacts live under the isolated ``tmp_path`` storage so the
+    restart below reads exactly what was written — no repo-global paths,
+    no unused backends.
+    """
+    checkpoint_path = tmp_path / "checkpoint.json"
+    checkpoint = Checkpoint(checkpoint_path)
+    checkpoint.save(PipelineState(phase="development"))
 
     migrated = parse_record_payload(payload)
     assert migrated is not None, "legacy record payload must migrate to a typed record"
     write_record(tmp_path, migrated)
-    return backend
+    return checkpoint_path
 
 
 def test_legacy_restart_intervention_record_is_single_authority(tmp_path: Path) -> None:
     """Contradicting legacy pair with global evidence resolves to explicit
     intervention; the record wins over the checkpoint's ``development``."""
-    _write_contradicting_legacy_pair(tmp_path, _LEGACY_INTERVENTION_PAYLOAD)
+    checkpoint_path = _write_contradicting_legacy_pair(tmp_path, _LEGACY_INTERVENTION_PAYLOAD)
 
     # Restart: reload checkpoint and record through public load paths.
-    checkpoint = Checkpoint(Path(".agent/checkpoint.json"))
+    checkpoint = Checkpoint(checkpoint_path)
     reloaded = checkpoint.load()
     assert reloaded is not None
     assert reloaded.phase == "development"
@@ -123,9 +126,9 @@ def test_legacy_restart_intervention_record_is_single_authority(tmp_path: Path) 
 def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_path: Path) -> None:
     """Contradicting legacy pair with dictionary evidence migrates cleanly;
     the record still blocks recovery as the single authority."""
-    _write_contradicting_legacy_pair(tmp_path, _LEGACY_DICT_EVIDENCE_PAYLOAD)
+    checkpoint_path = _write_contradicting_legacy_pair(tmp_path, _LEGACY_DICT_EVIDENCE_PAYLOAD)
 
-    checkpoint = Checkpoint(Path(".agent/checkpoint.json"))
+    checkpoint = Checkpoint(checkpoint_path)
     reloaded = checkpoint.load()
     assert reloaded is not None
 

@@ -27,7 +27,6 @@ dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 from __future__ import annotations
 
 from datetime import timedelta
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final, cast
 
 from pydantic import Field, field_validator, model_validator
@@ -38,6 +37,7 @@ from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState
 
+from ._wait_reason import WaitReason
 from .state_models import (
     AgentChainState,
     CommitState,
@@ -52,18 +52,6 @@ if TYPE_CHECKING:
 
 _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
-
-
-class WaitReason(StrEnum):
-    """Closed set of reasons the pipeline entered the wait state.
-
-    Owned by ``PipelineState.set_waiting``; the wait flag and its reason
-    are always set/cleared together through that seam.
-    """
-
-    ALL_AGENTS_UNAVAILABLE = "all_agents_unavailable"
-    EXHAUSTED_RETRY = "exhausted_retry"
-    COOLDOWN = "cooldown"
 
 
 def _migrate_counter_field(

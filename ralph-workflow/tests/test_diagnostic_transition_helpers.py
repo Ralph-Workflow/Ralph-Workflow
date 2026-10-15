@@ -25,9 +25,7 @@ def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
     helper_start = helper_src.index("def _raise_intervention(")
     helper_end = helper_src.index("def set_operation_evidence_collector(")
     allowed = helper_src[helper_start:helper_end]
-    emit_re = re.compile(
-        r"^\s+(RAISE_DIAGNOSTIC_INTERVENTION|BUMP_DIAGNOSTIC_ATTEMPT),$"
-    )
+    emit_re = re.compile(r"^\s+(RAISE_DIAGNOSTIC_INTERVENTION|BUMP_DIAGNOSTIC_ATTEMPT),$")
     for path in _EMIT_FILES:
         depth = 0
         src_lines = path.read_text(encoding="utf-8").splitlines()

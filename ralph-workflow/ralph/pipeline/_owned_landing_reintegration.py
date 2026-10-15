@@ -131,9 +131,7 @@ def _resume_owned_operation(
     return _recover_pending_merge(root, resumed, config, conflict_resolver, rebase_stop_resolver)
 
 
-def _completed_owned_action(
-    root: Path, record: IntegrationRecord
-) -> CommitCompletion | None:
+def _completed_owned_action(root: Path, record: IntegrationRecord) -> CommitCompletion | None:
     if not record.is_integrating:
         return None
     if (

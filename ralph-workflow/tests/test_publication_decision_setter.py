@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -26,8 +25,11 @@ def test_setter_records_each_closed_vocabulary_value() -> None:
 def test_setter_rejects_values_outside_the_closed_vocabulary() -> None:
     state = RebaseState()
     with pytest.raises(ValueError, match="invalid publication decision"):
-        bad_value = cast("PublicationDecision", "publish_whenever")
-        state.set_publication_decision(bad_value)
+        # Resolve the setter dynamically so the runtime-only invalid
+        # literal reaches the isinstance guard without a static
+        # suppression (test files carry no suppressions by policy).
+        setter = state.set_publication_decision
+        setter("publish_whenever")
 
 
 def _writer_sites() -> list[str]:
@@ -45,11 +47,16 @@ def _writer_sites() -> list[str]:
                 offenders.append(f"{path.relative_to(RALPH_ROOT)}:{node.lineno} keyword")
         for lineno, line in enumerate(source.splitlines(), start=1):
             stripped = line.strip()
-            if '"last_publication_decision"' in stripped or "'last_publication_decision'" in stripped:
+            if (
+                '"last_publication_decision"' in stripped
+                or "'last_publication_decision'" in stripped
+            ):
                 offenders.append(f"{path.relative_to(RALPH_ROOT)}:{lineno} string-literal")
     return offenders
 
 
 def test_no_direct_writer_sites_outside_rebase_state() -> None:
     offenders = _writer_sites()
-    assert offenders == [], f"direct last_publication_decision writers outside rebase_state.py: {offenders}"
+    assert offenders == [], (
+        f"direct last_publication_decision writers outside rebase_state.py: {offenders}"
+    )

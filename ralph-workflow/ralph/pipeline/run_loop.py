@@ -37,6 +37,7 @@ from ralph.pipeline._integration_action import (
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
+from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.auto_integrate import recovery_retained_record
@@ -70,7 +71,6 @@ from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
-from ralph.pipeline.state import WaitReason
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -2964,9 +2964,7 @@ def _execute_with_cleanup(
                 # The reducer re-persists last_decision from the typed
                 # authority on the next reduce; no direct write here.
                 state = state.copy_with(
-                    rebase=state.rebase.model_copy(
-                        update={"operation_display_state": "terminal"}
-                    )
+                    rebase=state.rebase.model_copy(update={"operation_display_state": "terminal"})
                 )
                 loop_ctx.latest_state[:] = [state]
                 try:
@@ -2981,9 +2979,7 @@ def _execute_with_cleanup(
                 # The reducer re-persists last_decision from the typed
                 # authority on the next reduce; no direct write here.
                 state = state.copy_with(
-                    rebase=state.rebase.model_copy(
-                        update={"operation_display_state": "terminal"}
-                    )
+                    rebase=state.rebase.model_copy(update={"operation_display_state": "terminal"})
                 )
                 loop_ctx.latest_state[:] = [state]
                 emit_activity_line(

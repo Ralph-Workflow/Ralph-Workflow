@@ -97,11 +97,9 @@ def test_rebase_state_serialization_round_trip() -> None:
     restored = RebaseState.model_validate(dumped)
     assert restored.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
-    from typing import cast
-
     json_str = state.model_dump_json()
-    data = cast("dict[str, object]", json.loads(json_str))
-    assert data.get("last_failure_cause") == "AGENT_FAILURE"
+    data = json.loads(json_str)
+    assert data["last_failure_cause"] == "AGENT_FAILURE"
     restored_json = RebaseState.model_validate_json(json_str)
     assert restored_json.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 

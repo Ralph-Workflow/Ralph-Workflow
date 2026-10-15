@@ -55,7 +55,9 @@ def _ids(values: list[str]) -> list[str]:
 
 
 @pytest.mark.parametrize("state", ALL_OPERATION_STATES, ids=_ids(ALL_OPERATION_STATES))
-def test_operation_display_state_distinct_auto_integrate_message(state: OperationDisplayState) -> None:
+def test_operation_display_state_distinct_auto_integrate_message(
+    state: OperationDisplayState,
+) -> None:
     message = format_auto_integrate_message(operation_display_state=state)
     others = [
         format_auto_integrate_message(operation_display_state=s)
@@ -96,4 +98,3 @@ def test_integration_label_distinct_status_bar(label: IntegrationDisplayLabel) -
     rendered = _render_status_bar_for(label.value)
     others = [_render_status_bar_for(v.value) for v in ALL_DISPLAY_LABELS if v is not label]
     assert rendered not in others
-

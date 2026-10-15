@@ -13,13 +13,13 @@ from loguru import logger
 
 from ralph.git.operations import get_head_sha
 from ralph.git.rebase import RebasePreconditionError, check_rebase_preconditions
+from ralph.pipeline._recovery_fast_forward_landing import (
+    _record_skip as _recovery_record_skip,
+)
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
 from ralph.pipeline.auto_integrate_record import clear_record as _clear_record
 from ralph.pipeline.auto_integrate_recovery import (
     _reclaim_unowned_stale_rebase,
-)
-from ralph.pipeline.auto_integrate_recovery import (
-    _record_skip as _recovery_record_skip,
 )
 
 if TYPE_CHECKING:

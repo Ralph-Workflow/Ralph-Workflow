@@ -191,10 +191,14 @@ def handoff_pending_merge_repair(
         "rebase continuation" if kind is GitOperationKind.AWAITING_CONTINUE else "merge commit"
     )
     tree = (
-        record.rebase_continue_tree if kind is GitOperationKind.AWAITING_CONTINUE else record.merge_commit_tree
+        record.rebase_continue_tree
+        if kind is GitOperationKind.AWAITING_CONTINUE
+        else record.merge_commit_tree
     )
     head = (
-        record.rebase_continue_head if kind is GitOperationKind.AWAITING_CONTINUE else record.merge_commit_head
+        record.rebase_continue_head
+        if kind is GitOperationKind.AWAITING_CONTINUE
+        else record.merge_commit_head
     )
     content = (
         f"Repair the blocker preventing the already-resolved {operation}.\n\n"

@@ -453,9 +453,7 @@ def _auto_integrate_after_commit_inner(
         # Conditional expression, not an if-statement: this handler already
         # sits at the function's PLR0912 branch budget.
         charged = (
-            charged.set_recovery_record_retained(
-                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-            )
+            charged.set_recovery_record_retained(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK)
             if read_record(root) is not None
             else charged
         )

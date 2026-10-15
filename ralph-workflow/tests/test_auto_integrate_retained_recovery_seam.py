@@ -127,6 +127,17 @@ def _recovery_module() -> ModuleType:
     return importlib.import_module("ralph.pipeline.auto_integrate_recovery")
 
 
+def _landing_module() -> ModuleType:
+    """The split fast-forward landing module recovery delegates to.
+
+    The landing/verify/cleanup collaborators (``fast_forward_target``,
+    ``post_attempt_verify``, ``_delete_rebase_backup_refs``,
+    ``_clear_record``) are resolved in the landing module now, so the
+    per-branch stubs below patch them there.
+    """
+    return importlib.import_module("ralph.pipeline._recovery_fast_forward_landing")
+
+
 def _fake_record(phase: str, *, integrated_sha: str | None = None) -> IntegrationRecord:
     """Durable-record stand-in exposing only the attributes recovery reads."""
     return IntegrationRecord.model_validate(
@@ -150,12 +161,15 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     """
     monkeypatch.setattr(recovery, "_read_record", lambda _root: record)
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: None)
+    monkeypatch.setattr(_landing_module(), "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)
     monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
-    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
+    landing = _landing_module()
+    monkeypatch.setattr(landing, "post_attempt_verify", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root: None)
+    monkeypatch.setattr(landing, "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
 
 
@@ -182,6 +196,7 @@ def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     cleared: list[Path] = []
 
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
+    monkeypatch.setattr(_landing_module(), "_clear_record", cleared.append)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
@@ -252,7 +267,7 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
     monkeypatch.setattr(recovery, "ancestry_state", lambda _root, _target, _sha: True)
-    monkeypatch.setattr(recovery, "fast_forward_target", _boom)
+    monkeypatch.setattr(_landing_module(), "fast_forward_target", _boom)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
@@ -282,7 +297,7 @@ def test_landing_outcome_reports_whether_recovery_remains_owned(
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
     monkeypatch.setattr(recovery, "ancestry_state", lambda _root, _target, _sha: True)
     monkeypatch.setattr(
-        recovery,
+        _landing_module(),
         "fast_forward_target",
         lambda _root, _target, _sha, **_kwargs: ff_result,
     )

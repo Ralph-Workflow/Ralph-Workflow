@@ -237,6 +237,20 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     # assert the fixture's completeness, not the shipped files'. Reading
     # those two files is the ONLY thing the test needs exempted.
     "test_linting_policy_inventory",
+    # Single-owner regression guards for the pipeline state/record
+    # authorities. Each scans the shipped ``ralph/pipeline/*.py`` sources
+    # with ``ast`` because the shipped source IS the regression contract:
+    # the test detects any new direct writer of an authority-owned field
+    # outside its owning module. A tmp_path copy would scan the fixture, not
+    # the production tree, so the guard would stop detecting drift entirely.
+    # Reading those files is the ONLY thing these tests need exempted; any
+    # write/subprocess/sleep in them is still reported.
+    "test_waiting_state_owner",
+    "test_recovery_record_retained_owner",
+    "test_run_loop_setters_only",
+    "test_run_loop_decision_delegation",
+    "test_diagnostic_transition_helpers",
+    "test_commit_completion_authority",
 }
 
 # Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,11 +13,21 @@ from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
     next_integration_action,
 )
+from ralph.pipeline._integration_diagnostic import (
+    DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    diagnose_retained_integration,
+)
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.integration_resolution import (
+    IntegrationResolutionStatus,
+    inspect_integration_resolution,
+)
+from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
+from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -248,3 +259,63 @@ def test_acceptance_scenario_5_conflict_resolved_landing_pending(
         _git(root, "rev-parse", target).stdout.strip()
         == _git(root, "rev-parse", feature).stdout.strip()
     )
+
+
+def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
+    tmp_path: Path,
+) -> None:
+    """Scenario 4 (WU-S4): unreadable evidence at the public boundary.
+
+    ``diagnose_retained_integration`` is driven end-to-end through its
+    public signature with an injected collector whose evidence is
+    unreadable every time: dispatch stays blocked, attempts persist to
+    the durable record, and bounded recovery ends in visible operator
+    intervention (``diagnostic_intervention_required``) instead of an
+    infinite retry loop.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        resolving_rebase=True,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 2,
+        owning_worktree=str(root),
+    )
+    write_record(root, record)
+
+    bundle = load_policy(Path(__file__).parents[2] / "ralph" / "policy" / "defaults")
+    ctx = MagicMock()
+    ctx.workspace_scope = WorkspaceScope(root)
+    ctx.config = UnifiedConfig()
+    ctx.pipeline_deps = MagicMock()
+    ctx.policy_bundle = bundle
+    ctx.registry: dict[str, object] = {}
+    ctx.active_display = MagicMock()
+    ctx.display_context = None
+
+    # Unreadable evidence on every observation: the rebase marker object
+    # cannot be resolved, so completion proof can never be established.
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
+    )
+
+    # The first unreadable observation fails closed to visible operator
+    # intervention on the durable record -- never an unbounded retry loop.
+    assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
+    s2 = read_record(root)
+    assert s2 is not None
+    assert s2.diagnostic_intervention_required is True
+
+    # Public boundaries all report the intervention, and a fourth call is
+    # a no-op (no unbounded loop).
+    assert next_integration_action(s2) == IntegrationAction.REQUIRE_INTERVENTION
+    resolution = inspect_integration_resolution(root, RebaseState())
+    assert resolution.dispatch_allowed is False
+    assert resolution.status == IntegrationResolutionStatus.RECOVERABLE
+    assert is_terminal_success_eligible(None, s2, RebaseState()) is False
+    assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
+    saved = read_record(root)
+    assert saved == s2

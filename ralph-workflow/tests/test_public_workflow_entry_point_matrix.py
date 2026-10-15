@@ -455,10 +455,7 @@ def test_public_runner_run_loop_boundary_parity(
                 state, ctx, "complete", lambda: None, lambda: None, lambda: None
             )
             assert exit_code == 0
-            assert (
-                ctx.latest_state[0].rebase.operation_display_state
-                == "terminal"
-            )
+            assert ctx.latest_state[0].rebase.operation_display_state == "terminal"
         else:
             with contextlib.suppress(_StopInnerLoopError):
                 run_loop._execute_with_cleanup(
@@ -466,10 +463,15 @@ def test_public_runner_run_loop_boundary_parity(
                 )
             st_terminal = ctx.latest_state[0] if ctx.latest_state else state
             assert st_terminal.rebase.last_decision != PhaseDecision.REPORT_TERMINAL_SUCCESS.value
-            assert decide_phase_transition(
-                st_terminal, policy, integration_record=read_record(tmp_path),
-                rebase_state=st_terminal.rebase,
-            ) == expected_decision
+            assert (
+                decide_phase_transition(
+                    st_terminal,
+                    policy,
+                    integration_record=read_record(tmp_path),
+                    rebase_state=st_terminal.rebase,
+                )
+                == expected_decision
+            )
     elif expected_decision in (
         PhaseDecision.BLOCK_FOR_RECOVERY,
         PhaseDecision.REPORT_INTERVENTION_REQUIRED,
@@ -477,10 +479,15 @@ def test_public_runner_run_loop_boundary_parity(
         with contextlib.suppress(_StopInnerLoopError):
             run_loop._run_inner_loop(state, ctx, "development")
         st_inner = latest_states[0] if latest_states else state
-        assert decide_phase_transition(
-            st_inner, policy, integration_record=read_record(tmp_path),
-            rebase_state=st_inner.rebase,
-        ) == expected_decision
+        assert (
+            decide_phase_transition(
+                st_inner,
+                policy,
+                integration_record=read_record(tmp_path),
+                rebase_state=st_inner.rebase,
+            )
+            == expected_decision
+        )
 
     # 3. Public runner boundary
     if initial_phase == "complete" and expected_terminal_eligible:

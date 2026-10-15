@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_int, as_mapping, as_str_list
 from ralph.timeout_defaults import (
     BROKEN_AGENT_SAME_SHAPE_DEFAULT,
     IN_SESSION_RETRY_ESCALATION_DEFAULT,
@@ -110,16 +111,35 @@ class RecoveryControllerOptions:
             if isinstance(in_session_raw, (int, str))
             else IN_SESSION_RETRY_ESCALATION_DEFAULT
         )
-        backoff_attempts = dict(cast("dict[str, int]", snapshot.get("backoff_attempts", {})))
-        unavailable_timeouts = dict(
-            cast("dict[str, int]", snapshot.get("unavailable_timeouts", {}))
-        )
-        budgets_data = cast("dict[str, dict[str, int]]", snapshot.get("budgets", {}))
-        in_session_counts = dict(
-            cast("dict[str, int]", snapshot.get("in_session_retry_counts", {}))
-        )
-        spent_raw = cast("dict[str, list[str]]", snapshot.get("spent_agents", {}))
-        spent_agents = {k: set(v) for k, v in spent_raw.items()}
+        backoff_attempts = {
+            k: as_int(v, field=f"backoff_attempts[{k}]")
+            for k, v in as_mapping(
+                snapshot.get("backoff_attempts", {}), field="backoff_attempts"
+            ).items()
+        }
+        unavailable_timeouts = {
+            k: as_int(v, field=f"unavailable_timeouts[{k}]")
+            for k, v in as_mapping(
+                snapshot.get("unavailable_timeouts", {}), field="unavailable_timeouts"
+            ).items()
+        }
+        budgets_data = {
+            k: {
+                kk: as_int(vv, field=f"budgets[{k}][{kk}]")
+                for kk, vv in as_mapping(v, field=f"budgets[{k}]").items()
+            }
+            for k, v in as_mapping(snapshot.get("budgets", {}), field="budgets").items()
+        }
+        in_session_counts = {
+            k: as_int(v, field=f"in_session_retry_counts[{k}]")
+            for k, v in as_mapping(
+                snapshot.get("in_session_retry_counts", {}), field="in_session_retry_counts"
+            ).items()
+        }
+        spent_agents = {
+            k: set(as_str_list(v, field=f"spent_agents[{k}]"))
+            for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
+        }
 
         return cls(
             cycle_cap=cycle_cap,

@@ -34,12 +34,12 @@ def _last_decision_writer_lines(path: Path) -> list[str]:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in {"copy_with", "model_copy"}
         ):
-                window = "\n".join(lines[node.lineno - 1 : node.end_lineno])
-                if "last_decision=" in window:
+            window = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+            if "last_decision=" in window:
+                offenders.append(f"{path.name}:{node.lineno}")
+            for key in _dict_str_keys(node):
+                if key == "last_decision":
                     offenders.append(f"{path.name}:{node.lineno}")
-                for key in _dict_str_keys(node):
-                    if key == "last_decision":
-                        offenders.append(f"{path.name}:{node.lineno}")
     return offenders
 
 
@@ -47,16 +47,12 @@ def _dict_str_keys(call: ast.Call) -> list[str]:
     keys: list[str] = []
     for kw in call.keywords:
         if kw.arg == "update" and isinstance(kw.value, ast.Dict):
-            keys.extend(
-                str(k.value) for k in kw.value.keys if isinstance(k, ast.Constant)
-            )
+            keys.extend(str(k.value) for k in kw.value.keys if isinstance(k, ast.Constant))
     return keys
 
 
 def test_no_direct_last_decision_writers() -> None:
-    offenders = [
-        line for path in _TARGETS for line in _last_decision_writer_lines(path)
-    ]
+    offenders = [line for path in _TARGETS for line in _last_decision_writer_lines(path)]
     assert offenders == []
 
 

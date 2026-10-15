@@ -87,11 +87,15 @@ def finish_pending_rebase(root: Path) -> None:
     """Release only the stop snapshot after Git proves continuation advanced."""
     record = read_record(root)
     if record is not None:
-        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and not _resolved_stop_landed(root, record):
+        if classify_git_operation(
+            record
+        ) is GitOperationKind.AWAITING_CONTINUE and not _resolved_stop_landed(root, record):
             raise ValueError(
                 "continued rebase does not match the verified stop tree; landing withheld"
             )
-        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
+        if classify_git_operation(
+            record
+        ) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
             promoted = _promote_completed_rebase(root, record)
             if isinstance(promoted, str):
                 raise ValueError(promoted)
@@ -143,7 +147,10 @@ def resume_pending_rebase(root: Path, record: IntegrationRecord) -> IntegrationR
 
 
 def _resume_prepared_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and record.rebase_continue_tree is None:
+    if (
+        classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
+        and record.rebase_continue_tree is None
+    ):
         repaired = _complete_pending_rebase_snapshot(root, record)
         if repaired is None:
             return "pending rebase snapshot incomplete; continuation retained"

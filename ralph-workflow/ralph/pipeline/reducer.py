@@ -46,6 +46,7 @@ from ralph.pipeline._fan_out_authority import (
     handle_workers_resumed as _handle_workers_resumed,
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
@@ -82,7 +83,7 @@ from ralph.pipeline.handoffs import (
     resolve_post_commit_phase,
 )
 from ralph.pipeline.loopback import handle_capped_phase_loopback_policy_driven
-from ralph.pipeline.state import CommitState, PipelineState, WaitReason
+from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy

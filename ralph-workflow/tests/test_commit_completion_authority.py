@@ -66,9 +66,5 @@ def test_no_stray_phase_integrated_literals() -> None:
 def test_return_sites_route_through_authority() -> None:
     for rel in _RETURN_SITES:
         tree = ast.parse(REPO.joinpath(rel).read_text(encoding="utf-8"))
-        names = {
-            node.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Name)
-        }
+        names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
         assert "complete_commit" in names, f"{rel} does not call complete_commit"
