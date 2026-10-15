@@ -487,6 +487,7 @@ def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path
     state.rebase = RebaseState()
     state.copy_with = MagicMock(return_value=state)
     ctx = MagicMock()
+    ctx.pipeline_deps = None  # loop entry path must not require runtime deps
     ctx.workspace_scope = WorkspaceScope(tmp_path)
     ctx.policy_bundle.pipeline.terminal_phase = "complete"
     saved = MagicMock()
@@ -537,6 +538,7 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
     state.rebase = RebaseState()
     state.copy_with = MagicMock(return_value=state)
     ctx = MagicMock()
+    ctx.pipeline_deps = None  # loop entry path must not require runtime deps
     ctx.workspace_scope = WorkspaceScope(tmp_path)
     ctx.policy_bundle.pipeline.terminal_phase = "complete"
     saved = MagicMock()

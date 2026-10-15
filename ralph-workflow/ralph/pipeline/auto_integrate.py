@@ -136,9 +136,12 @@ def auto_integrate_after_commit(
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
         root = Path(workspace_scope.root)
-        if retained_integration_reason(root) is None:
+        # A non-git workspace has no integration target to probe; the
+        # context resolver intentionally propagates repo errors for real
+        # repos, so exclude this no-op case before it can raise.
+        if retained_integration_reason(root) is None and (root / ".git").exists():
             ctx = _auto_integrate_resolve_context(config, workspace_scope)
-            early_skip, usable_ctx = _check_early_skips(
+            early_skip, _usable_ctx = _check_early_skips(
                 ctx,
                 missing_target=_configured_target(config),
             )
