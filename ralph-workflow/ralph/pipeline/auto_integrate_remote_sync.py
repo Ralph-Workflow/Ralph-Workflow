@@ -627,7 +627,7 @@ def push_target_after_landing(
             remote_unavailable=False,
             configured_remote=None,
         )
-        return record.model_copy(update={"last_publication_decision": decision.value})
+        return record.set_publication_decision(decision)
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
 
     typed_result, decision = push_single_remote(
@@ -638,22 +638,17 @@ def push_target_after_landing(
         remote_client=remote_client,
     )
     if typed_result is None:
-        return record.model_copy(
-            update={
-                "last_publication_decision": decision.value,
-            }
-        )
+        return record.set_publication_decision(decision)
     post_decision = _post_push_publication_decision(typed_result)
     outcome = (
         RebaseOutcomeKind.REMOTE_PUSHED if typed_result.success else RebaseOutcomeKind.REMOTE_FAILED
     )
-    return record.model_copy(
+    return record.set_publication_decision(post_decision).model_copy(
         update={
             "last_push": typed_result.summary,
             "last_remote": typed_result.remote,
             "last_push_status": typed_result.status.value,
             "last_remote_sync": _remote_sync_status(typed_result.status),
-            "last_publication_decision": post_decision.value,
             "last_outcome": outcome,
             "last_reason": (
                 None if typed_result.success else typed_result.detail or typed_result.status.value
@@ -797,9 +792,8 @@ def reconcile_after_rejected_push(
                     if outcome.status is not None
                     else REMOTE_PULL_FAILED
                 ),
-                "last_publication_decision": post_decision.value,
             },
-        )
+        ).set_publication_decision(post_decision)
         if outcome.success:
             return final_record
         if not outcome.pushed:

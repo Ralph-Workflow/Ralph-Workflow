@@ -29,7 +29,12 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
-from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    RebaseOutcomeKind,
+    next_integration_action,
+)
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -62,8 +67,10 @@ from ralph.pipeline.phase_transition import (
 from ralph.pipeline.rebase_state import (
     HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
     RebaseState,
+    StartupRetentionReason,
 )
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
+from ralph.pipeline.state import WaitReason
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -1333,8 +1340,7 @@ def _reselect_preferred_agent(
                 last_retry_delay_ms=ctx.controller.earliest_available_wait_ms(
                     str(state.phase), chain.agents
                 ),
-                is_waiting_state=True,
-            )
+            ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None)
     return state
 
 
@@ -1354,7 +1360,7 @@ def _resume_after_cooldown_wait(
     verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
     if verdict.dispatch_allowed:
         state = _reselect_preferred_agent(state, ctx, allow_wait=False)
-    state = state.copy_with(is_waiting_state=False)
+    state = state.clear_waiting()
     _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
     return state
 
@@ -1399,10 +1405,9 @@ def _run_integration_conflict_resolution(
         from ralph.pipeline.auto_integrate_record import read_record
 
         retained = read_record(ctx.workspace_scope.root)
-        if retained is not None and (
-            retained.merge_commit_pending
-            or retained.rebase_continue_pending
-            or retained.merge_commit_tree is not None
+        if retained is not None and classify_git_operation(retained) in (
+            GitOperationKind.AWAITING_CONTINUE,
+            GitOperationKind.AWAITING_MERGE_COMMIT,
         ):
             return False
         return _run_owned_integration_conflict_resolution(ctx, rebase)
@@ -1988,7 +1993,10 @@ def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
     latest = read_record(ctx.workspace_scope.root)
     if latest is not None and diagnostic_needed(ctx.workspace_scope.root, latest):
         _diagnose_retained_integration(ctx, failure)
-    elif latest is not None and (latest.merge_commit_pending or latest.rebase_continue_pending):
+    elif latest is not None and classify_git_operation(latest) in (
+        GitOperationKind.AWAITING_CONTINUE,
+        GitOperationKind.AWAITING_MERGE_COMMIT,
+    ):
         _repair_pending_merge_commit(ctx, failure)
 
 
@@ -2008,12 +2016,9 @@ def _handle_retained_integration(
     if remaining is not None:
         if not state.rebase.recovery_record_retained:
             state = state.copy_with(
-                rebase=state.rebase.model_copy(
-                    update={
-                        "recovery_record_retained": True,
-                        "last_reason": remaining,
-                    }
-                )
+                rebase=state.rebase.set_recovery_record_retained(
+                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+                ).model_copy(update={"last_reason": remaining})
             )
             _save_recovered_rebase_checkpoint(state, ctx)
         state = state.copy_with(
@@ -2039,17 +2044,21 @@ def _block_unresolved_integration(
     ordinary dispatch suspended while the caller cools down before retrying.
     """
     record = read_record(ctx.workspace_scope.root)
-    if record is not None and record.diagnostic_intervention_required:
+    # The reducer is the single last_decision writer; the typed authority
+    # derives the blocking decision from current evidence and the next
+    # reduce re-persists it.
+    record_action = next_integration_action(record)
+    if record is not None and (
+        record.diagnostic_intervention_required
+        or record_action == IntegrationAction.REQUIRE_INTERVENTION
+    ):
         emit_integration_warn_line(
             ctx.active_display,
             "CRITICAL: diagnostic intervention required; dispatch blocked",
         )
         state = state.copy_with(
             rebase=state.rebase.model_copy(
-                update={
-                    "operation_display_state": "intervention_required",
-                    "last_decision": PhaseDecision.REPORT_INTERVENTION_REQUIRED.value,
-                }
+                update={"operation_display_state": "intervention_required"}
             )
         )
         return state, prev_phase, 1
@@ -2193,14 +2202,16 @@ def _wait_for_integration_retry(state: PipelineState, ctx: _LoopContext) -> Pipe
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, alarm)
     rebase = rebase.model_copy(update={"operation_display_state": "waiting"})
-    state = state.copy_with(rebase=rebase, last_error=alarm, is_waiting_state=True)
+    state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
+        WaitReason.EXHAUSTED_RETRY, None
+    )
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
     ctx.sleep(5.0)
     recovered = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
     if recovered is not None:
         state = state.copy_with(rebase=recovered)
-    return state.copy_with(is_waiting_state=False)
+    return state.clear_waiting()
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineState:
@@ -2950,12 +2961,11 @@ def _execute_with_cleanup(
                 and decision == PhaseDecision.REPORT_TERMINAL_SUCCESS
                 and is_terminal_success_eligible(state, record, state.rebase)
             ):
+                # The reducer re-persists last_decision from the typed
+                # authority on the next reduce; no direct write here.
                 state = state.copy_with(
                     rebase=state.rebase.model_copy(
-                        update={
-                            "operation_display_state": "terminal",
-                            "last_decision": PhaseDecision.REPORT_TERMINAL_SUCCESS.value,
-                        }
+                        update={"operation_display_state": "terminal"}
                     )
                 )
                 loop_ctx.latest_state[:] = [state]
@@ -2968,21 +2978,11 @@ def _execute_with_cleanup(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
             else:
-                failure_decision = (
-                    decision.value
-                    if decision
-                    in (
-                        PhaseDecision.BLOCK_FOR_RECOVERY,
-                        PhaseDecision.REPORT_INTERVENTION_REQUIRED,
-                    )
-                    else PhaseDecision.REPORT_TERMINAL_FAILURE.value
-                )
+                # The reducer re-persists last_decision from the typed
+                # authority on the next reduce; no direct write here.
                 state = state.copy_with(
                     rebase=state.rebase.model_copy(
-                        update={
-                            "operation_display_state": "terminal",
-                            "last_decision": failure_decision,
-                        }
+                        update={"operation_display_state": "terminal"}
                     )
                 )
                 loop_ctx.latest_state[:] = [state]

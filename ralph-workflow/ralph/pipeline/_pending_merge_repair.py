@@ -10,8 +10,9 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
+from ralph.pipeline._integration_diagnostic import _bump_attempt
 from ralph.pipeline.auto_integrate_record import (
-    BUMP_DIAGNOSTIC_ATTEMPT,
     RESUME_REPAIR,
     IntegrationRecord,
     write_record,
@@ -120,7 +121,7 @@ def _repair_owned_merge(
     record = read_record(root)
     matches = record is not None and (
         pending_rebase_identity_matches(root, record)
-        if record.rebase_continue_pending
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
         else pending_merge_identity_matches(root, record)
     )
     if record is None or not matches:
@@ -156,10 +157,7 @@ def _repair_owned_merge(
         if retained is not None:
             write_record(
                 root,
-                retained.with_transition(
-                    BUMP_DIAGNOSTIC_ATTEMPT,
-                    repair_last_error=f"source repair refused: {exc}"[:8192],
-                ),
+                _bump_attempt(retained, f"source repair refused: {exc}"[:8192]),
                 backend=backend,
             )
         return False
@@ -188,12 +186,15 @@ def handoff_pending_merge_repair(
     diagnostic = failure[:8192]
     if record.repair_last_error and record.repair_last_error != diagnostic:
         diagnostic = f"{diagnostic}\nPrevious repair: {record.repair_last_error}"[:8192]
-    operation = "rebase continuation" if record.rebase_continue_pending else "merge commit"
+    kind = classify_git_operation(record)
+    operation = (
+        "rebase continuation" if kind is GitOperationKind.AWAITING_CONTINUE else "merge commit"
+    )
     tree = (
-        record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+        record.rebase_continue_tree if kind is GitOperationKind.AWAITING_CONTINUE else record.merge_commit_tree
     )
     head = (
-        record.rebase_continue_head if record.rebase_continue_pending else record.merge_commit_head
+        record.rebase_continue_head if kind is GitOperationKind.AWAITING_CONTINUE else record.merge_commit_head
     )
     content = (
         f"Repair the blocker preventing the already-resolved {operation}.\n\n"
@@ -221,11 +222,7 @@ def handoff_pending_merge_repair(
         write_text_if_changed(backend, prompt, content)
         write_record(
             root,
-            record.with_transition(
-                BUMP_DIAGNOSTIC_ATTEMPT,
-                merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
-                repair_last_error=diagnostic,
-            ),
+            _bump_attempt(record, diagnostic),
             backend=backend,
         )
         logger.warning("Pending {} repair handed to '{}': {}", operation, agent, diagnostic)

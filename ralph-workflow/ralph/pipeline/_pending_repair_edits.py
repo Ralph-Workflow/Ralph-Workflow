@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._pending_merge_commit import _git_value, pending_merge_identity_matches
 from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
 from ralph.pipeline.auto_integrate_record import (
@@ -82,7 +83,7 @@ def accept_repair_edits(
     """Admit declared edits only after proving existing work and Git parents unchanged."""
     matches = (
         pending_rebase_identity_matches(root, record)
-        if record.rebase_continue_pending
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
         else pending_merge_identity_matches(root, record)
     )
     if not matches:
@@ -108,7 +109,9 @@ def accept_repair_edits(
             "repair source edits differ from declared scope or include protected paths"
         )
     original = (
-        record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+        record.rebase_continue_tree
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
+        else record.merge_commit_tree
     )
     if original is None:
         raise RuntimeError("source correction baseline missing")
@@ -143,7 +146,9 @@ def resume_source_repair(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> IntegrationRecord | str:
     baseline = (
-        record.rebase_continue_tree if record.rebase_continue_pending else record.merge_commit_tree
+        record.rebase_continue_tree
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
+        else record.merge_commit_tree
     )
     if not baseline:
         return "source repair baseline unavailable; integration retained"
@@ -188,14 +193,16 @@ def resume_source_repair(
         repair_pending_diff=None,
         repair_pending_paths=(),
     )
+    # Mutation decision routed through the git-operation authority; the
+    # model fields remain for checkpoint compatibility.
     revised = (
         cleared.with_transition(MARK_PENDING_REBASE_CONTINUE, rebase_continue_tree=tree)
-        if record.rebase_continue_pending
+        if classify_git_operation(cleared) is GitOperationKind.AWAITING_CONTINUE
         else cleared.with_transition(MARK_PENDING_MERGE_COMMIT, merge_commit_tree=tree)
     )
     verified = tree is not None and (
         pending_rebase_identity_matches(root, revised)
-        if revised.rebase_continue_pending
+        if classify_git_operation(revised) is GitOperationKind.AWAITING_CONTINUE
         else pending_merge_identity_matches(root, revised)
     )
     if not verified:
@@ -214,12 +221,12 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
     tree = _git_value(root, "write-tree")
     staged_record = (
         record.with_transition(MARK_PENDING_REBASE_CONTINUE, rebase_continue_tree=tree)
-        if record.rebase_continue_pending
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
         else record.with_transition(MARK_PENDING_MERGE_COMMIT, merge_commit_tree=tree)
     )
     matches = tree is not None and (
         pending_rebase_identity_matches(root, staged_record)
-        if record.rebase_continue_pending
+        if classify_git_operation(staged_record) is GitOperationKind.AWAITING_CONTINUE
         else pending_merge_identity_matches(root, staged_record)
     )
     if (

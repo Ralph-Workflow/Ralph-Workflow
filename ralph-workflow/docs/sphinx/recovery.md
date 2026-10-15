@@ -433,6 +433,9 @@ This taxonomy ensures that evidence diagnosis is never mislabeled as conflict
 resolution when no Git conflict exists, and guarantees that operator-facing
 displays remain synchronized with the underlying state machine.
 
+For an operator-facing summary of these states alongside the seven
+`IntegrationDisplayLabel` values, see [Pipeline states](operator-states.md).
+
 ### Documentation review note
 
 - **What changed:** Added the integration lifecycle authority model, single source of truth rules, the 8-category OperationDisplayState taxonomy, typed IntegrationAction and RebaseOutcomeKind definitions, and the fail-closed completion pre-pass.

@@ -2,16 +2,9 @@
 
 from __future__ import annotations
 
-import warnings
-
 from ralph.pipeline._fan_out_authority import (
     FanOutDecision,
     fan_out_decision,
-    handle_fan_out_started,
-    handle_worker_completed,
-    handle_worker_failed,
-    handle_worker_started,
-    handle_workers_resumed,
 )
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -66,37 +59,3 @@ def test_fan_out_decision_blocked_when_all_cancelled() -> None:
         },
     )
     assert fan_out_decision(state) is FanOutDecision.JOIN_BLOCKED
-
-
-def test_reducer_worker_state_is_deprecated_shim() -> None:
-    """The legacy module is a re-export with a DeprecationWarning.
-
-    Uses :mod:`importlib.reload` so the module-level
-    :func:`warnings.warn` runs again even if the module was
-    already imported by another test.
-    """
-    import importlib
-
-    reducer_worker_state = importlib.import_module("ralph.pipeline._reducer_worker_state")
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        importlib.reload(reducer_worker_state)
-
-    deprecation_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert any("_fan_out_authority" in str(w.message) for w in deprecation_warnings)
-
-
-def test_reducer_worker_state_re_exports_handlers() -> None:
-    """The legacy handlers are re-exported under their original names."""
-    import importlib
-
-    reducer_worker_state = importlib.import_module("ralph.pipeline._reducer_worker_state")
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        assert reducer_worker_state.handle_fan_out_started is handle_fan_out_started
-        assert reducer_worker_state.handle_worker_completed is handle_worker_completed
-        assert reducer_worker_state.handle_worker_failed is handle_worker_failed
-        assert reducer_worker_state.handle_worker_started is handle_worker_started
-        assert reducer_worker_state.handle_workers_resumed is handle_workers_resumed

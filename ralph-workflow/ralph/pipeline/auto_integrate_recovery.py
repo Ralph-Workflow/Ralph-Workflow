@@ -52,6 +52,7 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
@@ -99,7 +100,7 @@ from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -248,6 +249,7 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         return _record_skip(
             reason="live merge/rebase has no readable ownership record; progress retained",
             target=None,
+            retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
             record_retained=True,
         )
     logger.warning(
@@ -430,7 +432,13 @@ def _recover_detached_head(root: Path, git_dir: Path) -> None:
     _reattach_head_to_branch(root, branch)
 
 
-def _record_skip(*, reason: str, target: str | None, record_retained: bool = False) -> RebaseState:
+def _record_skip(
+    *,
+    reason: str,
+    target: str | None,
+    record_retained: bool = False,
+    retention_reason: StartupRetentionReason | None = None,
+) -> RebaseState:
     """Build a ``RebaseState`` recording a recovery skip outcome.
 
     ``record_retained`` marks the skips that left the durable record on
@@ -444,6 +452,7 @@ def _record_skip(*, reason: str, target: str | None, record_retained: bool = Fal
         last_target=target,
         fast_forwarded=False,
         recovery_record_retained=record_retained,
+        recovery_record_retained_reason=retention_reason if record_retained else None,
     )
 
 
@@ -516,6 +525,7 @@ def _continue_fast_forward_from_record(
                 else "recovery: feature tip changed or unreadable; landing withheld"
             ),
             target=record.target,
+            retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
             record_retained=True,
         )
     refresh, pointer_is_fresh = _refresh_before_verdict(config, workspace_root, record.target)
@@ -531,6 +541,7 @@ def _continue_fast_forward_from_record(
                     "recovery: target pointer could not be refreshed, record retained for retry"
                 ),
                 target=record.target,
+                retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
                 record_retained=True,
             ),
             refresh,
@@ -560,6 +571,7 @@ def _continue_fast_forward_from_record(
             _record_skip(
                 reason="recovery: target ancestry unreadable; record retained for retry",
                 target=record.target,
+                retention_reason=StartupRetentionReason.TARGET_POINTER_UNREFRESHABLE,
                 record_retained=True,
             ),
             refresh,
@@ -683,6 +695,7 @@ def _land_and_reconcile(
             _record_skip(
                 reason=("recovery: terminal-state invariant violated; record retained for retry"),
                 target=record.target,
+                retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
                 record_retained=True,
             ),
             refresh,
@@ -711,6 +724,7 @@ def _land_and_reconcile(
             _record_skip(
                 reason=f"recovery: {skip_reason}; record retained for retry",
                 target=record.target,
+                retention_reason=StartupRetentionReason.TRANSIENT_FAST_FORWARD_FAILURE,
                 record_retained=True,
             ),
             refresh,
@@ -719,6 +733,7 @@ def _land_and_reconcile(
         _record_skip(
             reason=f"recovery: {skip_reason}",
             target=record.target,
+            retention_reason=StartupRetentionReason.TRANSIENT_FAST_FORWARD_FAILURE,
             record_retained=True,
         ),
         refresh,
@@ -745,6 +760,7 @@ def recover_incomplete_integration(
             return _record_skip(
                 reason="integration worktree busy; recovery will retry",
                 target=None,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
         try:
@@ -754,6 +770,7 @@ def recover_incomplete_integration(
             return _record_skip(
                 reason=f"integration ownership unreadable: {exc}",
                 target=None,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
         if (
@@ -778,12 +795,14 @@ def recover_incomplete_integration(
                 return _record_skip(
                     reason="diagnostic evidence changed; original evidence must be restored before recovery",
                     target=record.target,
+                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                     record_retained=True,
                 )
             else:
                 return _record_skip(
                     reason="diagnostic evidence unreadable; recovery retained",
                     target=record.target,
+                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                     record_retained=True,
                 )
         return _recover_incomplete_integration_owned(
@@ -805,6 +824,7 @@ def _recover_unresolved_integrating(
         return _record_skip(
             reason="recovery: merge state unreadable; record retained for retry",
             target=record.target,
+            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             record_retained=True,
         )
     return _reintegrate_owned_landing(
@@ -884,7 +904,12 @@ def _recover_pending_merge(
                 target=record.target,
                 failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
             ).model_copy(update={"recovery_record_retained": True})
-        return _record_skip(reason=resumed, target=record.target, record_retained=True)
+        return _record_skip(
+            reason=resumed,
+            target=record.target,
+            record_retained=True,
+            retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
+        )
     return _continue_fast_forward_from_record(
         root,
         resumed,
@@ -931,17 +956,18 @@ def _recover_incomplete_integration_owned(
 
             retained = retained_integration_reason(root)
             return (
-                _record_skip(reason=retained, target=None, record_retained=True)
+                _record_skip(
+                    reason=retained,
+                    target=None,
+                    record_retained=True,
+                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+                )
                 if retained is not None
                 else _reclaim_unowned_stale_rebase(root)
             )
 
         if (
-            record.resolving_rebase
-            or record.rebase_continue_pending
-            or record.resolving_merge
-            or record.merge_commit_pending
-            or record.merge_commit_tree is not None
+            classify_git_operation(record) is not GitOperationKind.NONE
             or (
                 record.operation_kind == "feature_integrate"
                 and next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
@@ -956,6 +982,7 @@ def _recover_incomplete_integration_owned(
             return _record_skip(
                 reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
                 target=record.target,
+                retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
                 record_retained=True,
             )
         return _continue_fast_forward_from_record(
@@ -968,7 +995,12 @@ def _recover_incomplete_integration_owned(
 
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
-        return _record_skip(reason=f"recovery failed: {exc}", target=None, record_retained=True)
+        return _record_skip(
+            reason=f"recovery failed: {exc}",
+            target=None,
+            record_retained=True,
+            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+        )
 
 
 # ----- AC-14 catalog evidence -----

@@ -66,7 +66,6 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
         "unresolved_integration_carried": False,
         "resolution_exhausted": False,
         "resolution_exhaustion_reason": None,
-        "recovery_record_retained": False,
         "integration_retry_attempt": 0,
         "legacy_checkpoint_blocked": False,
     }
@@ -75,7 +74,10 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
             conflict_strategy_index=0,
             conflict_strategies_tried=(),
         )
-    return state.model_copy(update=update)
+    cleared = state.model_copy(update=update)
+    if cleared.recovery_record_retained:
+        return cleared.clear_recovery_record_retained()
+    return cleared
 
 
 def retains_unresolved_resolution_state(state: RebaseState) -> bool:

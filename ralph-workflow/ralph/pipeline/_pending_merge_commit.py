@@ -16,10 +16,10 @@ from ralph.git.merge import (
     unmerged_paths,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline.auto_integrate_record import (
     MARK_PENDING_MERGE_COMMIT,
     MARK_RESOLVING_MERGE,
-    PROMOTE_TO_INTEGRATED,
     IntegrationRecord,
     read_record,
     write_record,
@@ -154,10 +154,13 @@ def _resume_prepared_merge(root: Path, record: IntegrationRecord) -> Integration
             return reasons[0] if reasons else "verified merge commit remains pending"
     elif state != MERGE_STATE_NONE:
         return "pending merge state unreadable; commit not retried"
-    return _promote_completed_merge(root, record)
+    completion = _promote_completed_merge(root, record)
+    if isinstance(completion, str):
+        return completion
+    return completion.record
 
 
-def _promote_completed_merge(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
+def _promote_completed_merge(root: Path, record: IntegrationRecord) -> CommitCompletion | str:
     parents = _git_value(root, "show", "-s", "--format=%P", "HEAD")
     tree = _git_value(root, "rev-parse", "HEAD^{tree}")
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
@@ -167,23 +170,18 @@ def _promote_completed_merge(root: Path, record: IntegrationRecord) -> Integrati
         or parents != f"{record.merge_commit_head} {record.merge_commit_parent}"
     ):
         return "pending merge commit does not match verified tree and parents; landing withheld"
-    integrated = (
+    completion = complete_commit(
         record.with_transition(
             MARK_RESOLVING_MERGE,
             resolving_merge=False,
-        )
-        .with_transition(
+        ).with_transition(
             MARK_PENDING_MERGE_COMMIT,
             merge_commit_pending=False,
             merge_commit_head=None,
             merge_commit_parent=None,
             merge_commit_tree=None,
-        )
-        .with_transition(
-            PROMOTE_TO_INTEGRATED,
-            phase="integrated",
-            integrated_feature_sha=head,
-        )
+        ),
+        integrated_feature_sha=head,
     )
-    write_record(root, integrated)
-    return integrated
+    write_record(root, completion.record)
+    return completion

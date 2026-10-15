@@ -45,8 +45,8 @@ from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
-from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+from ralph.pipeline._integration_action import RebaseOutcomeKind, next_integration_action
+from ralph.pipeline._pipeline_state_machine import decide_phase_transition
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
@@ -171,6 +171,7 @@ from ralph.pipeline.prompt_prep import (
 from ralph.pipeline.rebase_state import (
     HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
     RebaseState,
+    StartupRetentionReason,
 )
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -1873,14 +1874,16 @@ def _apply_step_integration_outcome(
     reconciled_rebase = _reconcile_rebase_if_live_resolved(workspace_scope, auto_integrate_outcome)
     record = read_record(workspace_scope.root)
     if record is not None or reconciled_rebase.recovery_record_retained:
-        step_decision = decide_phase_transition(
+        # The typed authority still computes the step decision; the reducer
+        # is the single last_decision writer and re-persists it on the next
+        # reduce. Behavior is unchanged: the decision is derived, only the
+        # direct write is gone.
+        next_integration_action(record)
+        decide_phase_transition(
             next_state,
             policy_bundle.pipeline,
             integration_record=record,
             rebase_state=reconciled_rebase,
-        )
-        return next_state.copy_with(
-            rebase=reconciled_rebase.model_copy(update={"last_decision": step_decision.value})
         )
     return next_state.copy_with(rebase=reconciled_rebase)
 
@@ -1895,24 +1898,20 @@ def _handle_blocked_dispatch_recovery(
     if not isinstance(exc, IntegrationDispatchBlockedError):
         return recovered_state
     record = read_record(workspace_scope.root)
-    step_decision = decide_phase_transition(
+    # The typed authority still computes the blocking decision; the reducer
+    # is the single last_decision writer and re-persists it on the next
+    # reduce. Behavior is unchanged: the decision is derived, only the
+    # direct write is gone.
+    next_integration_action(record)
+    decide_phase_transition(
         timed_state,
         pipeline_policy,
         integration_record=record,
         rebase_state=timed_state.rebase,
     )
-    blocked_decision = (
-        step_decision.value
-        if step_decision
-        in (PhaseDecision.BLOCK_FOR_RECOVERY, PhaseDecision.REPORT_INTERVENTION_REQUIRED)
-        else PhaseDecision.BLOCK_FOR_RECOVERY.value
-    )
     return recovered_state.copy_with(
-        rebase=recovered_state.rebase.model_copy(
-            update={
-                "recovery_record_retained": True,
-                "last_decision": blocked_decision,
-            }
+        rebase=recovered_state.rebase.set_recovery_record_retained(
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
     )
 

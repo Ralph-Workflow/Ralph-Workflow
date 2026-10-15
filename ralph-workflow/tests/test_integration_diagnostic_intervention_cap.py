@@ -105,8 +105,10 @@ def test_cap_emits_intervention_transition(tmp_path: Path) -> None:
     state = PipelineState(phase="development", rebase=RebaseState())
     blocked = run_loop._block_unresolved_integration(state, ctx, "development")
     assert blocked is not None
+    # WU-G6: the reducer is the sole last_decision writer; the run-loop
+    # boundary surfaces intervention via the record + the authority decision.
     blocked_state = blocked[0]
-    assert blocked_state.rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
+    assert blocked_state.rebase.operation_display_state == "intervention_required"
 
     decision = decide_phase_transition(
         blocked_state,
@@ -143,7 +145,7 @@ def test_cap_does_not_increment_attempt_counter(tmp_path: Path) -> None:
     state = PipelineState(phase="development", rebase=RebaseState())
     blocked = run_loop._block_unresolved_integration(state, ctx, "development")
     assert blocked is not None
-    assert blocked[0].rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
+    assert blocked[0].rebase.operation_display_state == "intervention_required"
 
 
 def test_below_cap_preserves_intervention_false(tmp_path: Path) -> None:

@@ -29,6 +29,7 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     last_outcome_reason,
@@ -40,7 +41,6 @@ from ralph.pipeline.auto_integrate_record import (
     RAISE_DIAGNOSTIC_INTERVENTION,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
-    Transition,
     write_record,
 )
 from ralph.pipeline.operation_evidence import (
@@ -98,20 +98,39 @@ def operation_evidence_collector() -> OperationEvidenceCollector:
     return _OPERATION_EVIDENCE_COLLECTOR[0]
 
 
-def _ownership_fingerprint(record: IntegrationRecord) -> str:
-    """Backward-compatible private alias for :func:`ownership_fingerprint`."""
-    return ownership_fingerprint(record)
+def _raise_intervention(record: IntegrationRecord, reason: str) -> IntegrationRecord:
+    """Emit the ``RAISE_DIAGNOSTIC_INTERVENTION`` transition for ``record``.
 
-
-def _validate_transition(record: IntegrationRecord, transition: Transition) -> None:
-    """Backward-compat shim that delegates to :meth:`Transition.is_legal_from`.
-
-    The validator is now a property of the transition itself, not a
-    free function in this module. This shim remains so older call
-    sites keep working while we migrate them to ``with_transition``.
+    Single authority for the operator-intervention emission.
     """
-    if not transition.is_legal_from(record):
-        raise ValueError(f"Transition {transition.name!r} is not legal from phase={record.phase!r}")
+    return record.with_transition(
+        RAISE_DIAGNOSTIC_INTERVENTION,
+        diagnostic_intervention_required=True,
+        repair_cap_reason=reason,
+    )
+
+
+def _bump_attempt(
+    record: IntegrationRecord,
+    exc: str,
+    *,
+    repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    cap_reason: str = "diagnostic repair exhausted; operator intervention required",
+) -> IntegrationRecord:
+    """Emit ``BUMP_DIAGNOSTIC_ATTEMPT`` and enforce ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP``.
+
+    Single authority for the attempt-counter emission: when the bumped
+    count reaches the cap, the returned record additionally carries the
+    ``RAISE_DIAGNOSTIC_INTERVENTION`` transition with ``cap_reason``.
+    """
+    bumped = record.with_transition(
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
+        repair_last_error=exc,
+    )
+    if bumped.merge_commit_repair_attempts >= repair_attempt_cap:
+        return _raise_intervention(bumped, cap_reason)
+    return bumped
 
 
 def _evidence_to_facts(
@@ -143,11 +162,11 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
         return True
     operation_root = Path(record.owning_worktree) if record.owning_worktree else root
     try:
-        if record.rebase_continue_pending:
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
             from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
 
             return not pending_rebase_identity_matches(operation_root, record)
-        if record.merge_commit_pending:
+        if classify_git_operation(record) is GitOperationKind.AWAITING_MERGE_COMMIT:
             from ralph.pipeline._pending_merge_commit import pending_merge_identity_matches
 
             return not pending_merge_identity_matches(operation_root, record)
@@ -200,12 +219,13 @@ def diagnose_retained_integration(
             or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ):
             if not record.diagnostic_intervention_required:
-                intervention = record.with_transition(
-                    RAISE_DIAGNOSTIC_INTERVENTION,
-                    diagnostic_intervention_required=True,
-                    repair_cap_reason="diagnostic repair exhausted; operator intervention required",
+                write_record(
+                    ctx.workspace_scope.root,
+                    _raise_intervention(
+                        record,
+                        "diagnostic repair exhausted; operator intervention required",
+                    ),
                 )
-                write_record(ctx.workspace_scope.root, intervention)
             return False
 
         operation_root = (
@@ -290,18 +310,7 @@ def diagnose_retained_integration(
         except Exception as exc:
             logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
             current = read_record(ctx.workspace_scope.root) or record
-            bumped = current.with_transition(
-                BUMP_DIAGNOSTIC_ATTEMPT,
-                merge_commit_repair_attempts=current.merge_commit_repair_attempts + 1,
-                repair_last_error=str(exc),
-            )
-            target = bumped
-            if bumped.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-                target = bumped.with_transition(
-                    RAISE_DIAGNOSTIC_INTERVENTION,
-                    diagnostic_intervention_required=True,
-                    repair_cap_reason=f"diagnostic failure: {exc}",
-                )
+            target = _bump_attempt(current, str(exc), cap_reason=f"diagnostic failure: {exc}")
             write_record(ctx.workspace_scope.root, target)
             return False
 
@@ -587,11 +596,7 @@ def _pre_pass_intervention(
     backend: FileBackend,
     reason: str,
 ) -> bool:
-    intervention = record.with_transition(
-        RAISE_DIAGNOSTIC_INTERVENTION,
-        diagnostic_intervention_required=True,
-        repair_cap_reason=reason,
-    )
+    intervention = _raise_intervention(record, reason)
     write_record(root, intervention, backend=backend)
     logger.critical(
         "Operation completion proof failed ({}); operator intervention required",
@@ -693,12 +698,14 @@ def handoff_integration_diagnostic(
         return pre_pass_result
 
     if record.merge_commit_repair_attempts >= repair_attempt_cap:
-        intervention = record.with_transition(
-            RAISE_DIAGNOSTIC_INTERVENTION,
-            diagnostic_intervention_required=True,
-            repair_cap_reason=("diagnostic repair exhausted; operator intervention required"),
+        write_record(
+            root,
+            _raise_intervention(
+                record,
+                "diagnostic repair exhausted; operator intervention required",
+            ),
+            backend=backend,
         )
-        write_record(root, intervention, backend=backend)
         logger.critical(
             "Integration diagnostic repair exhausted after {} attempts; "
             "operator intervention required",
@@ -706,18 +713,15 @@ def handoff_integration_diagnostic(
         )
         return False
     if not agents:
-        bumped = record.with_transition(
-            BUMP_DIAGNOSTIC_ATTEMPT,
-            merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
-            repair_last_error="no eligible diagnostic agent available",
+        target_record = _bump_attempt(
+            record,
+            "no eligible diagnostic agent available",
+            repair_attempt_cap=repair_attempt_cap,
         )
-        target_record = bumped
-        if bumped.merge_commit_repair_attempts >= repair_attempt_cap:
-            target_record = bumped.with_transition(
-                RAISE_DIAGNOSTIC_INTERVENTION,
-                diagnostic_intervention_required=True,
-                repair_cap_reason="diagnostic repair exhausted; operator intervention required",
-            )
+        if (
+            target_record.diagnostic_intervention_required
+            and not record.diagnostic_intervention_required
+        ):
             logger.critical(
                 "Integration diagnostic repair exhausted after {} attempts; "
                 "operator intervention required",
@@ -746,10 +750,5 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    bumped = record.with_transition(
-        BUMP_DIAGNOSTIC_ATTEMPT,
-        merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
-        repair_last_error=failure[:8192],
-    )
-    write_record(root, bumped, backend=backend)
+    write_record(root, _bump_attempt(record, failure[:8192]), backend=backend)
     return invoke(agent, prompt)

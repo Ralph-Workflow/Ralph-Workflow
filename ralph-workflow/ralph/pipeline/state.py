@@ -27,6 +27,7 @@ dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 from __future__ import annotations
 
 from datetime import timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, cast
 
 from pydantic import Field, field_validator, model_validator
@@ -51,6 +52,18 @@ if TYPE_CHECKING:
 
 _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
+
+
+class WaitReason(StrEnum):
+    """Closed set of reasons the pipeline entered the wait state.
+
+    Owned by ``PipelineState.set_waiting``; the wait flag and its reason
+    are always set/cleared together through that seam.
+    """
+
+    ALL_AGENTS_UNAVAILABLE = "all_agents_unavailable"
+    EXHAUSTED_RETRY = "exhausted_retry"
+    COOLDOWN = "cooldown"
 
 
 def _migrate_counter_field(
@@ -211,6 +224,11 @@ class PipelineState(_FrozenPipelineStateModel):
     # is the structured signal the run loop keys off; the ``last_error``
     # text is operator-readable context only and is NOT a contract.
     is_waiting_state: bool = False
+    # Reason the wait flag was raised, and the monotonic-clock deadline
+    # (ms) after which the wait expires. Both have defaults so legacy
+    # checkpoints load cleanly; they are only written via set_waiting.
+    wait_reason: WaitReason | None = None
+    wait_until_monotonic_ms: int | None = None
     progress_guard: dict[str, object] | None = None
 
     @model_validator(mode="after")
@@ -523,6 +541,30 @@ class PipelineState(_FrozenPipelineStateModel):
         """
         return self.model_copy(update={"work_units": (), "worker_states": {}})
 
+    def set_waiting(self, reason: WaitReason, until_monotonic_ms: int | None) -> PipelineState:
+        """Return a copy raised into the wait state with a structured reason.
+
+        Single owner of ``is_waiting_state`` transitions to True: callers
+        must not write the flag directly via ``copy_with``.
+        """
+        return self.model_copy(
+            update={
+                "is_waiting_state": True,
+                "wait_reason": reason,
+                "wait_until_monotonic_ms": until_monotonic_ms,
+            }
+        )
+
+    def clear_waiting(self) -> PipelineState:
+        """Return a copy lowered out of the wait state, clearing reason/deadline."""
+        return self.model_copy(
+            update={
+                "is_waiting_state": False,
+                "wait_reason": None,
+                "wait_until_monotonic_ms": None,
+            }
+        )
+
     def copy_with(self, **updates: object) -> PipelineState:
         """Return a copy with updates applied in a typed-safe manner."""
         if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:
@@ -557,4 +599,5 @@ __all__ = [
     "PipelineState",
     "RebaseState",
     "RunMetrics",
+    "WaitReason",
 ]

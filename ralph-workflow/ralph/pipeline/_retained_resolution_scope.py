@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_MERGE,
     read_record,
@@ -40,7 +41,7 @@ def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
 def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple[str, ...]:
     """Keep resolver scope pinned to the stopped commit, never a prior replay."""
     record = read_record(root)
-    if record is None or not record.resolving_rebase or record.rebase_continue_pending:
+    if record is None or classify_git_operation(record) is not GitOperationKind.RESOLVING_REBASE:
         return paths
     saved = record.resolving_paths if record.resolving_stop_sha == sha else ()
     scope = tuple(sorted(set(paths) | set(saved) | set(original_conflict_paths(root))))

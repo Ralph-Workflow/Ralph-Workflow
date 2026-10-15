@@ -54,7 +54,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
-from ralph.pipeline.rebase_state import ResolutionFailureCause
+from ralph.pipeline.rebase_state import ResolutionFailureCause, StartupRetentionReason
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -414,7 +414,7 @@ def _resolve_conflicted_rebase(
                 reason=record.rebase_continue_error or "verified rebase continuation pending",
                 target=target,
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-            ).model_copy(update={"recovery_record_retained": True}),
+            ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     if not resolved:
         return RebaseRunResult(
@@ -426,7 +426,7 @@ def _resolve_conflicted_rebase(
                 or "rebase resolution incomplete; progress retained for next agent",
                 target=target,
                 failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-            ).model_copy(update={"recovery_record_retained": True}),
+            ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
     return RebaseRunResult(
@@ -598,7 +598,7 @@ def _endpoint_merge_result(
                 reason=merge_result.reason or "verified merge commit pending",
                 target=target,
                 failure_cause=merge_result.failure_cause,
-            ).model_copy(update={"recovery_record_retained": True}),
+            ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     if merge_result.outcome in ("conflict", RESOLUTION_FAILED):
         _clear_record_if_no_inflight_op(root)

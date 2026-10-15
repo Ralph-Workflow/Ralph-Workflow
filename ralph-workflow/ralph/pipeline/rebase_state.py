@@ -9,6 +9,7 @@ from loguru import logger
 from pydantic import ConfigDict, Field, model_validator
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
@@ -31,6 +32,24 @@ class _ResolutionFailureCause(StrEnum):
 _ResolutionFailureCause.__name__ = "ResolutionFailureCause"
 _ResolutionFailureCause.__qualname__ = "ResolutionFailureCause"
 ResolutionFailureCause = _ResolutionFailureCause
+
+
+class _StartupRetentionReason(StrEnum):
+    """Typed vocabulary for why a startup recovery record stayed on disk."""
+
+    FAILED_ABORT = "FAILED_ABORT"
+    FAILED_RESET = "FAILED_RESET"
+    TARGET_POINTER_UNREFRESHABLE = "TARGET_POINTER_UNREFRESHABLE"
+    TRANSIENT_FAST_FORWARD_FAILURE = "TRANSIENT_FAST_FORWARD_FAILURE"
+    OWNED_TARGET_PRECONDITION_FAILED = "OWNED_TARGET_PRECONDITION_FAILED"
+    OWNED_OPERATION_IDENTITY_MISMATCH = "OWNED_OPERATION_IDENTITY_MISMATCH"
+    REMOTE_RECONCILE_RETAINED = "REMOTE_RECONCILE_RETAINED"
+    OBSERVED_RETAINED_ON_DISK = "OBSERVED_RETAINED_ON_DISK"
+
+
+_StartupRetentionReason.__name__ = "StartupRetentionReason"
+_StartupRetentionReason.__qualname__ = "StartupRetentionReason"
+StartupRetentionReason = _StartupRetentionReason
 
 
 class RebaseState(RalphBaseModel):
@@ -289,6 +308,14 @@ class RebaseState(RalphBaseModel):
     # retained".
     recovery_record_retained: bool = False
 
+    # Typed companion to ``recovery_record_retained``: the single-owner
+    # vocabulary describing WHY the durable record was left on disk.
+    # ``None`` for legacy checkpoints and cleared states. Write it only
+    # through :meth:`set_recovery_record_retained` / the constructor's
+    # ``recovery_record_retained_reason`` kwarg; never through
+    # ``model_copy(update={...})`` at call sites.
+    recovery_record_retained_reason: StartupRetentionReason | None = None
+
     # A resolver chain that has tried every allowed candidate is terminal
     # integration evidence.  These defaulted fields preserve compatibility
     # with checkpoints written before conflict-resolution exhaustion was
@@ -389,6 +416,35 @@ class RebaseState(RalphBaseModel):
             or self.resolving_rebase
             or self.resolving_merge
             or bool(self.diagnostic_ownership)
+        )
+
+    def set_recovery_record_retained(self, reason: StartupRetentionReason) -> Self:
+        """Retain the durable recovery record with a typed reason."""
+        return self.model_copy(
+            update={
+                "recovery_record_retained": True,
+                "recovery_record_retained_reason": reason,
+            }
+        )
+
+    def set_publication_decision(self, value: PublicationDecision) -> Self:
+        """Record the remote-publication authority's typed decision.
+
+        Single writer of :attr:`last_publication_decision`;
+        ``value`` must belong to the closed
+        :class:`PublicationDecision` vocabulary.
+        """
+        if not isinstance(value, PublicationDecision):
+            raise ValueError(f"invalid publication decision: {value!r}")
+        return self.model_copy(update={"last_publication_decision": value.value})
+
+    def clear_recovery_record_retained(self) -> Self:
+        """Clear the retained-record fact and its typed reason together."""
+        return self.model_copy(
+            update={
+                "recovery_record_retained": False,
+                "recovery_record_retained_reason": None,
+            }
         )
 
     def is_terminal_action(self) -> bool:

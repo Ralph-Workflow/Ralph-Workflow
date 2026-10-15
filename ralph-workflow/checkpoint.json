@@ -41,6 +41,7 @@
     "resolving_merge": false,
     "diagnostic_ownership": null,
     "recovery_record_retained": false,
+    "recovery_record_retained_reason": null,
     "resolution_exhausted": false,
     "resolution_exhaustion_reason": null,
     "conflict_strategy_index": 0,
@@ -119,5 +120,7 @@
   },
   "last_unavailability_reason": null,
   "is_waiting_state": false,
+  "wait_reason": null,
+  "wait_until_monotonic_ms": null,
   "progress_guard": null
 }

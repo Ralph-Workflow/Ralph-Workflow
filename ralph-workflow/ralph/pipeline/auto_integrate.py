@@ -17,6 +17,7 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
+from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
     recover_before_attempt as _recover_before_attempt,
@@ -68,7 +69,6 @@ from ralph.pipeline.auto_integrate_rebase_merge import (
     run_rebase_or_merge as _run_rebase_or_merge,
 )
 from ralph.pipeline.auto_integrate_record import (
-    PROMOTE_TO_INTEGRATED,
     START_INTEGRATING,
     IntegrationRecord,
     read_record,
@@ -102,6 +102,7 @@ from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.rebase_state import StartupRetentionReason
 
 _MERGE_INSTEAD_STRATEGY_INDEX = 2
 
@@ -189,7 +190,7 @@ def auto_integrate_after_commit(
                 if merge_state(root) == MERGE_STATE_IN_PROGRESS:
                     _abort_merge_safely(root)
                     clear_record(root)
-                    recovered = recovered.model_copy(update={"recovery_record_retained": False})
+                    recovered.clear_recovery_record_retained()
             return preserve_unresolved_resolution_state(recovered, prior=state)
         return preserve_unresolved_resolution_state(
             _auto_integrate_after_commit_inner(
@@ -208,10 +209,11 @@ def auto_integrate_after_commit(
         raise
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
-        return _record_skip(reason=f"unexpected failure: {exc}", target=None).model_copy(
-            update={
-                "recovery_record_retained": read_record(Path(workspace_scope.root)) is not None
-            },
+        skipped = _record_skip(reason=f"unexpected failure: {exc}", target=None)
+        if read_record(Path(workspace_scope.root)) is None:
+            return skipped
+        return skipped.set_recovery_record_retained(
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
 
 
@@ -444,11 +446,21 @@ def _auto_integrate_after_commit_inner(
         # Caught here, not only in the caller's broad guard: this is
         # the first frame knowing the target/identity to scope by.
         logger.warning("auto_integrate: integration attempt failed: {}", exc)
+        charged = record_refresh(
+            _record_skip(reason=f"unexpected failure: {exc}", target=target),
+            refresh,
+        )
+        # Conditional expression, not an if-statement: this handler already
+        # sits at the function's PLR0912 branch budget.
+        charged = (
+            charged.set_recovery_record_retained(
+                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+            )
+            if read_record(root) is not None
+            else charged
+        )
         return charge_failed_attempt(
-            record_refresh(
-                _record_skip(reason=f"unexpected failure: {exc}", target=target),
-                refresh,
-            ).model_copy(update={"recovery_record_retained": read_record(root) is not None}),
+            charged,
             prior=state,
             target=target,
             identity=identity,
@@ -681,11 +693,7 @@ def _integrate_once_owned(
         # (AC-11).
         _write_record(
             root,
-            attempt_record.with_transition(
-                PROMOTE_TO_INTEGRATED,
-                phase="integrated",
-                integrated_feature_sha=feature_sha,
-            ),
+            complete_commit(attempt_record, integrated_feature_sha=feature_sha).record,
         )
 
         refresh_outcome = refresh

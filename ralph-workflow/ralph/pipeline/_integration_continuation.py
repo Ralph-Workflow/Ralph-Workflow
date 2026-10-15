@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancestor, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
-    PROMOTE_TO_INTEGRATED,
     IntegrationRecord,
     read_record,
     write_record,
 )
+from ralph.pipeline.rebase_state import StartupRetentionReason
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -102,14 +103,14 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
         return resume_pending_rebase(root, current)
     legacy = _legacy_completed_rebase(root, current)
     if legacy is not None:
-        write_record(root, legacy)
-        return legacy
+        write_record(root, legacy.record)
+        return legacy.record
     return (
         "retained resolution lacks verified completion proof; work preserved and landing withheld"
     )
 
 
-def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
+def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | None:
     if not record.resolving_rebase or not record.pre_target_sha:
         return None
     branch = _git_value(root, "symbolic-ref", "--quiet", "HEAD")
@@ -133,8 +134,9 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> Integrati
         or not is_ancestor(root, record.pre_target_sha, head)
     ):
         return None
-    return record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=False).with_transition(
-        PROMOTE_TO_INTEGRATED, phase="integrated", integrated_feature_sha=head
+    return complete_commit(
+        record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=False),
+        integrated_feature_sha=head,
     )
 
 
@@ -161,7 +163,9 @@ def recover_before_attempt(
     )
     if recovery_retained_record(recovered):
         if prior_attempt is not None:
-            return prior_attempt.model_copy(update={"recovery_record_retained": True})
+            return prior_attempt.set_recovery_record_retained(
+                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+            )
         return recovered
     if recovered is not None and recovered.fast_forwarded:
         return recovered

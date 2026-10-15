@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline.operation_evidence_collector import (
     OperationEvidenceCollector,
 )
@@ -119,10 +120,7 @@ def _should_capture_repair_facts(
     ):
         return True
     return bool(
-        record.resolving_merge
-        or record.resolving_rebase
-        or record.merge_commit_pending
-        or record.rebase_continue_pending
+        classify_git_operation(record) is not GitOperationKind.NONE
         or record.repair_commit_controls is not None
         or record.repair_pending_diff is not None
     )
@@ -403,8 +401,8 @@ def _read_reachability_facts(
     facts: list[OperationFact] = []
     should_check_merge = (
         DEFAULT_FILE_BACKEND.exists(gitdir / "MERGE_HEAD")
-        or record.resolving_merge
-        or record.merge_commit_pending
+        or classify_git_operation(record)
+        in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.AWAITING_MERGE_COMMIT)
         or (observed is not None and any(f.kind == _KIND_MERGE_OBJECT_RESOLVABLE for f in observed))
     )
     if should_check_merge:
@@ -412,8 +410,8 @@ def _read_reachability_facts(
 
     should_check_rebase = (
         DEFAULT_FILE_BACKEND.exists(gitdir / "REBASE_HEAD")
-        or record.resolving_rebase
-        or record.rebase_continue_pending
+        or classify_git_operation(record)
+        in (GitOperationKind.RESOLVING_REBASE, GitOperationKind.AWAITING_CONTINUE)
         or (
             observed is not None and any(f.kind == _KIND_REBASE_OBJECT_RESOLVABLE for f in observed)
         )

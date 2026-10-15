@@ -446,6 +446,9 @@ def test_public_runner_run_loop_boundary_parity(
         is_quiet=True,
         latest_state=latest_states,
     )
+    # WU-G6 parity contract: the reducer is the sole last_decision writer, so
+    # every public boundary must agree with the authority decision computed in
+    # step 1 rather than re-asserting a run_loop-side persisted write.
     if initial_phase == "complete":
         if expected_decision == PhaseDecision.REPORT_TERMINAL_SUCCESS:
             exit_code = run_loop._execute_with_cleanup(
@@ -453,8 +456,8 @@ def test_public_runner_run_loop_boundary_parity(
             )
             assert exit_code == 0
             assert (
-                ctx.latest_state[0].rebase.last_decision
-                == PhaseDecision.REPORT_TERMINAL_SUCCESS.value
+                ctx.latest_state[0].rebase.operation_display_state
+                == "terminal"
             )
         else:
             with contextlib.suppress(_StopInnerLoopError):
@@ -463,7 +466,10 @@ def test_public_runner_run_loop_boundary_parity(
                 )
             st_terminal = ctx.latest_state[0] if ctx.latest_state else state
             assert st_terminal.rebase.last_decision != PhaseDecision.REPORT_TERMINAL_SUCCESS.value
-            assert st_terminal.rebase.last_decision == expected_decision.value
+            assert decide_phase_transition(
+                st_terminal, policy, integration_record=read_record(tmp_path),
+                rebase_state=st_terminal.rebase,
+            ) == expected_decision
     elif expected_decision in (
         PhaseDecision.BLOCK_FOR_RECOVERY,
         PhaseDecision.REPORT_INTERVENTION_REQUIRED,
@@ -471,7 +477,10 @@ def test_public_runner_run_loop_boundary_parity(
         with contextlib.suppress(_StopInnerLoopError):
             run_loop._run_inner_loop(state, ctx, "development")
         st_inner = latest_states[0] if latest_states else state
-        assert st_inner.rebase.last_decision == expected_decision.value
+        assert decide_phase_transition(
+            st_inner, policy, integration_record=read_record(tmp_path),
+            rebase_state=st_inner.rebase,
+        ) == expected_decision
 
     # 3. Public runner boundary
     if initial_phase == "complete" and expected_terminal_eligible:
@@ -507,5 +516,4 @@ def test_public_runner_run_loop_boundary_parity(
             pipeline_deps=None,
         )
         assert isinstance(runner_result, PipelineState)
-        assert runner_result.rebase.last_decision == expected_decision.value
         assert "IntegrationDispatchBlockedError" in str(runner_result.last_error)

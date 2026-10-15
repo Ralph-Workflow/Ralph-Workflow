@@ -82,7 +82,7 @@ from ralph.pipeline.handoffs import (
     resolve_post_commit_phase,
 )
 from ralph.pipeline.loopback import handle_capped_phase_loopback_policy_driven
-from ralph.pipeline.state import CommitState, PipelineState
+from ralph.pipeline.state import CommitState, PipelineState, WaitReason
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy
@@ -809,9 +809,8 @@ def _retry_or_fall_over(
     if selection.index == chain.current_index:
         new_chain = chain.with_retry_increment()
         new_metrics = state.metrics.with_retry_increment()
-        return state.with_phase_chain(state.phase, new_chain).copy_with(
+        return state.with_phase_chain(state.phase, new_chain).clear_waiting().copy_with(
             metrics=new_metrics,
-            is_waiting_state=False,
         ), []
 
     if selection.index is not None:
@@ -825,8 +824,7 @@ def _retry_or_fall_over(
             metrics=new_metrics,
             last_agent_session_id=None,
             agent_retry_intent=cleared_agent_retry_intent(),
-            is_waiting_state=False,
-        ), []
+        ).clear_waiting(), []
 
     return None
 
@@ -850,8 +848,7 @@ def _all_agents_unavailable_wait_state(
     return state.copy_with(
         last_error=reason,
         last_retry_delay_ms=wait_ms,
-        is_waiting_state=True,
-    ), []
+    ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None), []
 
 
 def _selection_attempt(

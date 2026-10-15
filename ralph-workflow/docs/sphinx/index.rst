@@ -24,7 +24,8 @@ Where to go next
   :doc:`advanced-mcp-configuration`,
   :doc:`advanced-artifact-configuration`
 - Understand: :doc:`concepts` (glossary and Ralph loop),
-  :doc:`mcp-architecture`, :doc:`artifacts`, :doc:`recovery`
+  :doc:`mcp-architecture`, :doc:`artifacts`, :doc:`recovery`,
+  :doc:`operator-states`
 - Operate: :doc:`diagnostics`, :doc:`troubleshooting`,
   :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`,
   :doc:`versioning`, :doc:`pro-support`
@@ -63,6 +64,7 @@ Where to go next
    mcp-architecture
    artifacts
    recovery
+   operator-states
 
 .. toctree::
    :hidden:

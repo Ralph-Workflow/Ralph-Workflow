@@ -1,9 +1,7 @@
 """Single authority for parallel-worker fan-out joins.
 
-The fan-out authority owns the parallel-worker lifecycle. The
-five handlers previously housed in
-:mod:`ralph.pipeline._reducer_worker_state` live here. The new
-module exposes a typed :class:`FanOutDecision` enum; the reducer
+The fan-out authority owns the parallel-worker lifecycle. It
+exposes a typed :class:`FanOutDecision` enum; the reducer
 and run loop read :attr:`RebaseState.last_fan_out_decision` and
 never inspect the worker's :class:`WorkerState` directly.
 """
@@ -29,13 +27,6 @@ class FanOutDecision(StrEnum):
     JOIN_COMPLETE = "join_complete"
     JOIN_PARTIAL_FAILURE = "join_partial_failure"
     JOIN_BLOCKED = "join_blocked"
-
-
-#: Deprecation warning category for the legacy handler module.
-_DEPRECATION_MESSAGE = (
-    "ralph.pipeline._reducer_worker_state is deprecated; the fan-out "
-    "authority now lives in ralph.pipeline._fan_out_authority."
-)
 
 
 def _with_fan_out_decision(state: PipelineState) -> PipelineState:

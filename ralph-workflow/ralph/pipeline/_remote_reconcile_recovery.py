@@ -11,6 +11,7 @@ from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
@@ -25,7 +26,6 @@ from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
-    PROMOTE_TO_INTEGRATED,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
     bind_integration_record_root,
@@ -33,7 +33,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.integration_resolution import retained_integration_reason
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -128,8 +128,8 @@ def _continue_target_record(
             record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True),
         )
         if completed is not None:
-            write_record(root, completed)
-            record = completed
+            write_record(root, completed.record)
+            record = completed.record
         elif merge_state(owner) == MERGE_STATE_NONE and not rebase_in_progress_at(owner):
             started = _start_saved_target_action(owner, root, record, config)
             if isinstance(started, str):
@@ -175,12 +175,12 @@ def _start_saved_target_action(
     if isinstance(result, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress_at(owner):
         head = get_head_sha(owner)
         if head is not None and ancestry_state(owner, record.pre_target_sha, head) is True:
-            retained = retained.with_transition(
-                PROMOTE_TO_INTEGRATED,
-                phase="integrated",
+            completion = complete_commit(
+                retained,
                 integrated_feature_sha=head,
                 resolving_rebase=False,
             )
+            retained = completion.record
             write_record(root, retained)
     return retained
 
@@ -191,5 +191,6 @@ def _retained(record: IntegrationRecord, reason: str) -> RebaseState:
         last_target=record.target,
         last_reason=reason,
         recovery_record_retained=True,
+        recovery_record_retained_reason=StartupRetentionReason.REMOTE_RECONCILE_RETAINED,
         fast_forwarded=False,
     )

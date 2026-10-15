@@ -7,11 +7,12 @@ from pathlib import Path
 from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
 from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.auto_integrate_record import (
     MARK_PENDING_REBASE_CONTINUE,
     MARK_RESOLVING_REBASE,
-    PROMOTE_TO_INTEGRATED,
     IntegrationRecord,
     read_record,
     write_record,
@@ -86,11 +87,11 @@ def finish_pending_rebase(root: Path) -> None:
     """Release only the stop snapshot after Git proves continuation advanced."""
     record = read_record(root)
     if record is not None:
-        if record.rebase_continue_pending and not _resolved_stop_landed(root, record):
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and not _resolved_stop_landed(root, record):
             raise ValueError(
                 "continued rebase does not match the verified stop tree; landing withheld"
             )
-        if record.rebase_continue_pending and not rebase_in_progress_at(root):
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
             promoted = _promote_completed_rebase(root, record)
             if isinstance(promoted, str):
                 raise ValueError(promoted)
@@ -113,7 +114,7 @@ def finish_pending_rebase(root: Path) -> None:
 def retain_pending_rebase_error(root: Path, error: Exception) -> None:
     """Persist actionable hook/lock diagnostics without changing the prepared index."""
     record = read_record(root)
-    if record is not None and record.rebase_continue_pending:
+    if record is not None and classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
         write_record(
             root,
             record.with_transition(
@@ -142,7 +143,7 @@ def resume_pending_rebase(root: Path, record: IntegrationRecord) -> IntegrationR
 
 
 def _resume_prepared_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    if record.rebase_continue_tree is None:
+    if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE and record.rebase_continue_tree is None:
         repaired = _complete_pending_rebase_snapshot(root, record)
         if repaired is None:
             return "pending rebase snapshot incomplete; continuation retained"
@@ -164,16 +165,16 @@ def _resume_prepared_rebase(root: Path, record: IntegrationRecord) -> Integratio
                 return str(exc)
     if rebase_in_progress_at(root):
         return _retain_next_rebase_stop(root)
-    return _promote_completed_rebase(root, record)
+    completion = _promote_completed_rebase(root, record)
+    return completion if isinstance(completion, str) else completion.record
 
 
-def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
+def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | str:
     if not _resolved_stop_landed(root, record):
         return "completed rebase does not prove the verified stop landed; landing withheld"
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    integrated = record.with_transition(
-        PROMOTE_TO_INTEGRATED,
-        phase="integrated",
+    completion = complete_commit(
+        record,
         integrated_feature_sha=head,
         resolving_rebase=False,
         rebase_continue_pending=False,
@@ -184,8 +185,8 @@ def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> Integrat
         rebase_continue_tree=None,
         rebase_continue_error=None,
     )
-    write_record(root, integrated)
-    return integrated
+    write_record(root, completion.record)
+    return completion
 
 
 def _advanced_saved_stop(root: Path, record: IntegrationRecord) -> bool:

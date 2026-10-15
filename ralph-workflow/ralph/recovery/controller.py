@@ -56,7 +56,7 @@ from ralph.pipeline.agent_retry_intent import (
     resume_agent_retry_intent,
 )
 from ralph.pipeline.effects import ExitFailureEffect
-from ralph.pipeline.state import FalloverRecord
+from ralph.pipeline.state import FalloverRecord, WaitReason
 from ralph.policy.models import PhaseRetryPolicy
 from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
 from ralph.recovery._broken_agent_same_shape_tracker import (
@@ -699,8 +699,7 @@ class RecoveryController:
         new_state = state.copy_with(
             last_failure_category=str(failure.category),
             last_retry_delay_ms=retry_delay_ms,
-            is_waiting_state=False,
-        )
+        ).clear_waiting()
 
         if failure.category in (
             FailureCategory.ENVIRONMENTAL,
@@ -1134,9 +1133,8 @@ class RecoveryController:
                 last_error=failure.reason,
                 last_failure_category=str(failure.category),
                 last_retry_delay_ms=delay,
-                is_waiting_state=False,
                 rebase=state.rebase.model_copy(update={"integration_retry_attempt": attempt}),
-            ),
+            ).clear_waiting(),
             [],
             event,
         )
@@ -1467,8 +1465,7 @@ class RecoveryController:
                     # truth; setting it here ensures the WAITING / RESUMED
                     # structured log path is taken on the next loop
                     # iteration.
-                    is_waiting_state=True,
-                ),
+                ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None),
                 [],
                 updated_evt,
             )

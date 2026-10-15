@@ -7,17 +7,17 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
     MARK_RESOLVING_MERGE,
     MARK_RESOLVING_REBASE,
-    PROMOTE_TO_INTEGRATED,
     Transition,
     write_record,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,12 +50,12 @@ def reintegrate_owned_landing(
         return resumed
     completed = _completed_owned_action(root, retained)
     if completed is not None:
-        write_record(root, completed)
+        write_record(root, completed.record)
         from ralph.pipeline.auto_integrate_recovery import _continue_fast_forward_from_record
 
         return _continue_fast_forward_from_record(
             root,
-            completed,
+            completed.record,
             config,
             conflict_resolver,
             rebase_stop_resolver,
@@ -69,6 +69,7 @@ def reintegrate_owned_landing(
             last_target=record.target,
             last_reason="owned target reintegration requires config, unchanged feature tip, and a clean worktree",
             recovery_record_retained=True,
+            recovery_record_retained_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
         )
     from ralph.pipeline._integration_continuation import config_for_owned_integration
     from ralph.pipeline.auto_integrate import _integrate_once_owned
@@ -82,16 +83,17 @@ def reintegrate_owned_landing(
         owned_record=retained,
     )
     if outcome is not None:
-        return outcome.model_copy(
-            update={
-                "recovery_record_retained": retained_integration_reason(root) is not None,
-            }
+        if retained_integration_reason(root) is None:
+            return outcome.clear_recovery_record_retained()
+        return outcome.set_recovery_record_retained(
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
     return RebaseState(
         last_outcome=RebaseOutcomeKind.SKIPPED,
         last_target=record.target,
         last_reason="owned reintegration did not produce completion proof",
         recovery_record_retained=True,
+        recovery_record_retained_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
     )
 
 
@@ -120,6 +122,7 @@ def _resume_owned_operation(
             last_target=record.target,
             last_reason="active operation identity differs from owned reintegration; progress retained",
             recovery_record_retained=True,
+            recovery_record_retained_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
         )
     resumed = record.with_transition(transition, **kwargs)
     write_record(root, resumed)
@@ -128,16 +131,17 @@ def _resume_owned_operation(
     return _recover_pending_merge(root, resumed, config, conflict_resolver, rebase_stop_resolver)
 
 
-def _completed_owned_action(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
+def _completed_owned_action(
+    root: Path, record: IntegrationRecord
+) -> CommitCompletion | None:
     if not record.is_integrating:
         return None
     if (
         get_head_sha(root) == record.pre_feature_sha
         and branch_sha(root, record.target) == record.pre_feature_sha
     ):
-        return record.with_transition(
-            PROMOTE_TO_INTEGRATED,
-            phase="integrated",
+        return complete_commit(
+            record,
             integrated_feature_sha=record.pre_feature_sha,
             reintegrate_pending=False,
         )
@@ -165,9 +169,8 @@ def _completed_owned_action(root: Path, record: IntegrationRecord) -> Integratio
         or previous != record.pre_feature_sha
     ):
         return None
-    return record.with_transition(
-        PROMOTE_TO_INTEGRATED,
-        phase="integrated",
+    return complete_commit(
+        record,
         integrated_feature_sha=head,
         reintegrate_pending=False,
     )

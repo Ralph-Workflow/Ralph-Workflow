@@ -118,7 +118,7 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    fingerprint = diagnostic._ownership_fingerprint(record)
+    fingerprint = ownership_fingerprint(record)
     record = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
