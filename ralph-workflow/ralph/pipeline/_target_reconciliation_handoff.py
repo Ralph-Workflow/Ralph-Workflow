@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING
 
 from ralph.git.merge import branch_sha
 from ralph.git.operations import get_head_sha
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    next_integration_action,
+)
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
     START_INTEGRATING,
@@ -59,7 +63,7 @@ def scheduled_landing(root: Path, target: str) -> IntegrationRecord | None:
             record is not None
             and record.operation_kind == "feature_integrate"
             and record.reintegrate_pending
-            and record.phase == "integrating"
+            and next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
             and record.target == target
             and get_head_sha(root) == record.pre_feature_sha
         )

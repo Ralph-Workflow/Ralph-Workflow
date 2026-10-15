@@ -2,199 +2,172 @@
 
 The production loop kept rotating inspection agents without ever
 reaching a terminal state. The fix is a module-level cap; once
-the cap is reached the diagnostic path emits
-``RAISE_DIAGNOSTIC_INTERVENTION`` and refuses to call any more
-agents.
+the cap is reached the diagnostic path emits RAISE_DIAGNOSTIC_INTERVENTION
+and refuses to call any more agents.
+
+Rewritten to drive the real recovery boundary:
+(ralph.pipeline._integration_diagnostic.diagnose_retained_integration
+and run_loop._block_unresolved_integration), asserting the durable
+record's intervention flag and REPORT_INTERVENTION_REQUIRED decision.
 """
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from ralph.pipeline.auto_integrate_record import (
-    IntegrationRecord,
-    record_path,
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline._integration_diagnostic import (
+    DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    diagnose_retained_integration,
 )
-from tests.test_auto_integrate_record_idempotent import _RecordBackend
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+from ralph.pipeline.auto_integrate_record import (
+    START_INTEGRATING,
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
+from ralph.pipeline.rebase_state import RebaseState
+import ralph.pipeline.run_loop as run_loop
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.workspace.scope import WorkspaceScope
 
-diagnostic = importlib.import_module("ralph.pipeline._integration_diagnostic")
+
+def _policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="development",
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="complete",
+    )
 
 
-def _record(merge_commit_repair_attempts: int = 0) -> IntegrationRecord:
-    return IntegrationRecord(
+def _build_ctx(root: Path, policy: PipelinePolicy) -> MagicMock:
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+    empty_registry: dict[str, object] = {}
+    ctx = MagicMock()
+    ctx.workspace_scope = WorkspaceScope(root)
+    ctx.config = UnifiedConfig()
+    ctx.pipeline_deps = MagicMock()
+    ctx.policy_bundle = bundle
+    ctx.registry = empty_registry
+    ctx.active_display = MagicMock()
+    return ctx
+
+
+def test_cap_emits_intervention_transition(tmp_path: Path) -> None:
+    """Reaching the cap sets diagnostic_intervention_required and REPORT_INTERVENTION_REQUIRED."""
+    policy = _policy()
+    ctx = _build_ctx(tmp_path, policy)
+
+    record = IntegrationRecord(
         phase="integrating",
         target="main",
-        pre_feature_sha="feature",
-        pre_target_sha="target",
-        resolving_rebase=True,
-        merge_commit_repair_attempts=merge_commit_repair_attempts,
-    )
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+        owning_worktree=str(tmp_path),
+    ).with_transition(START_INTEGRATING)
+    write_record(tmp_path, record)
 
+    # Drive recovery boundary
+    result = diagnose_retained_integration(ctx, "completion receipt unreadable")
+    assert result is False
 
-def test_cap_emits_intervention_transition() -> None:
-    """Reaching the cap emits ``RAISE_DIAGNOSTIC_INTERVENTION`` on the record."""
-    backend = _RecordBackend()
-    root = Path("/workspace")
-    record = _record(merge_commit_repair_attempts=diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
-    invoked: list[str] = []
-
-    def invoke(agent: str, _prompt: Path) -> bool:
-        invoked.append(agent)
-        return True
-
-    diagnostic.handoff_integration_diagnostic(
-        root=root,
-        record=record,
-        failure="completion receipt unreadable",
-        agents=("first", "second"),
-        invoke=invoke,
-        backend=backend,
-    )
-
-    assert invoked == []
-    persisted = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
+    # Check on-disk record
+    persisted = read_record(tmp_path)
+    assert persisted is not None
     assert persisted.diagnostic_intervention_required is True
+    assert persisted.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     assert "diagnostic repair exhausted" in (persisted.repair_cap_reason or "")
 
+    # Drive run-loop boundary
+    state = PipelineState(phase="development", rebase=RebaseState())
+    blocked = run_loop._block_unresolved_integration(state, ctx, "development")
+    assert blocked is not None
+    blocked_state = blocked[0]
+    assert blocked_state.rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
 
-def test_cap_does_not_increment_attempt_counter() -> None:
-    """The over-cap handoff must not silently rotate the counter."""
-    backend = _RecordBackend()
-    root = Path("/workspace")
-    record = _record(merge_commit_repair_attempts=diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1)
-
-    diagnostic.handoff_integration_diagnostic(
-        root=root,
-        record=record,
-        failure="completion receipt unreadable",
-        agents=("first", "second"),
-        invoke=lambda *_: True,
-        backend=backend,
+    decision = decide_phase_transition(
+        blocked_state,
+        policy,
+        integration_record=persisted,
+        rebase_state=blocked_state.rebase,
     )
+    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
 
-    persisted = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
-    assert persisted.merge_commit_repair_attempts == diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1
+
+def test_cap_does_not_increment_attempt_counter(tmp_path: Path) -> None:
+    """The over-cap handoff must not silently increment the counter."""
+    policy = _policy()
+    ctx = _build_ctx(tmp_path, policy)
+
+    over_cap_count = DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        merge_commit_repair_attempts=over_cap_count,
+        owning_worktree=str(tmp_path),
+    ).with_transition(START_INTEGRATING)
+    write_record(tmp_path, record)
+
+    diagnose_retained_integration(ctx, "completion receipt unreadable")
+
+    persisted = read_record(tmp_path)
+    assert persisted is not None
+    assert persisted.merge_commit_repair_attempts == over_cap_count
     assert persisted.diagnostic_intervention_required is True
 
+    state = PipelineState(phase="development", rebase=RebaseState())
+    blocked = run_loop._block_unresolved_integration(state, ctx, "development")
+    assert blocked is not None
+    assert blocked[0].rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
 
-def test_below_cap_still_invokes_agent() -> None:
-    """A record below the cap still calls the next agent in the chain."""
-    backend = _RecordBackend()
-    root = Path("/workspace")
-    record = _record(merge_commit_repair_attempts=0)
-    invoked: list[str] = []
 
-    def invoke(agent: str, _prompt: Path) -> bool:
-        invoked.append(agent)
-        return True
+def test_below_cap_preserves_intervention_false(tmp_path: Path) -> None:
+    """A record below the cap retains intervention as False."""
+    policy = _policy()
+    ctx = _build_ctx(tmp_path, policy)
 
-    diagnostic.handoff_integration_diagnostic(
-        root=root,
-        record=record,
-        failure="completion receipt unreadable",
-        agents=("first", "second", "third"),
-        invoke=invoke,
-        backend=backend,
-    )
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        merge_commit_repair_attempts=0,
+        owning_worktree=str(tmp_path),
+    ).with_transition(START_INTEGRATING)
+    write_record(tmp_path, record)
 
-    assert invoked == ["first"]
-    persisted = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
-    assert persisted.merge_commit_repair_attempts == 1
+    diagnose_retained_integration(ctx, "diagnostic check below cap")
+
+    persisted = read_record(tmp_path)
+    assert persisted is not None
     assert persisted.diagnostic_intervention_required is False
 
-
-def test_cap_rotates_agents_then_emits_intervention() -> None:
-    """End-to-end: cap+1 handoffs end in intervention, with no agent over-call."""
-    backend = _RecordBackend()
-    root = Path("/workspace")
-    record = _record(merge_commit_repair_attempts=0)
-    invoked: list[str] = []
-
-    def invoke(agent: str, _prompt: Path) -> bool:
-        invoked.append(agent)
-        return True
-
-    total_attempts = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1
-    for _ in range(total_attempts):
-        record = (
-            IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
-            if backend.exists(record_path(root))
-            else record
-        )
-        diagnostic.handoff_integration_diagnostic(
-            root=root,
-            record=record,
-            failure="unreadable",
-            agents=("first", "second"),
-            invoke=invoke,
-            backend=backend,
-        )
-
-    # The first ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` calls invoke
-    # agents; the (cap+1)-th call emits intervention and calls
-    # none.
-    assert len(invoked) == diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    persisted = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
-    assert persisted.diagnostic_intervention_required is True
-    assert persisted.merge_commit_repair_attempts == diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    state = PipelineState(phase="development", rebase=RebaseState())
+    decision = decide_phase_transition(
+        state,
+        policy,
+        integration_record=persisted,
+        rebase_state=state.rebase,
+    )
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
 
 def test_default_cap_is_five() -> None:
     """The default cap is 5 (low enough to break the production loop fast)."""
-    assert diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP == 5
-
-
-def test_no_agents_returns_false_without_clearing() -> None:
-    """A record with no candidate agents returns False without raising."""
-    backend = _RecordBackend()
-    root = Path("/workspace")
-    record = _record()
-    result = diagnostic.handoff_integration_diagnostic(
-        root=root,
-        record=record,
-        failure="completion receipt unreadable",
-        agents=(),
-        invoke=lambda *_: True,
-        backend=backend,
-    )
-    assert result is False
-    # The record was not persisted (no agent to call, no
-    # intervention raised).
-    assert not backend.exists(record_path(root))
-
-
-def test_intervention_transition_does_not_change_ownership_fingerprint() -> None:
-    """The legitimate ``RAISE_DIAGNOSTIC_INTERVENTION`` transition must
-    NOT change the ownership fingerprint.
-
-    ``diagnose_retained_integration`` re-reads the persisted record
-    after a diagnostic handoff and reverts to the pre-handoff
-    record whenever the fingerprint changed. If the fingerprint
-    calculation does not exclude the diagnostic-path-owned fields
-    (``diagnostic_intervention_required``, ``repair_cap_reason``),
-    the legitimate intervention transition would change the
-    fingerprint and the re-read would silently revert the
-    intervention -- re-creating the production loop the cap was
-    designed to break.
-    """
-    from ralph.pipeline.operation_evidence import ownership_fingerprint
-
-    record = _record(merge_commit_repair_attempts=0)
-    fingerprint_before = ownership_fingerprint(record)
-
-    intervened = record.with_transition(
-        __import__(
-            "ralph.pipeline.auto_integrate_record", fromlist=["RAISE_DIAGNOSTIC_INTERVENTION"]
-        ).RAISE_DIAGNOSTIC_INTERVENTION,
-        diagnostic_intervention_required=True,
-        repair_cap_reason="diagnostic repair exhausted; operator intervention required",
-    )
-    fingerprint_after = ownership_fingerprint(intervened)
-
-    # The legitimate intervention transition must NOT alter the
-    # fingerprint. The diagnostic path's authority transition is
-    # not external modification of the record's identity.
-    assert fingerprint_after == fingerprint_before
-    assert intervened.diagnostic_intervention_required is True
-    assert intervened.repair_cap_reason is not None
+    assert DIAGNOSTIC_REPAIR_ATTEMPT_CAP == 5

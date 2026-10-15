@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from pydantic import ConfigDict, Field, model_validator
 
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
@@ -20,7 +22,7 @@ class RebaseState(RalphBaseModel):
 
     The legacy ``pending``/``in_progress``/``completed`` fields are
     preserved so existing checkpoints deserialize cleanly. The
-    auto-integration fields (``last_action``/``last_reason``/
+    auto-integration fields (``last_outcome``/``last_reason``/
     ``last_target``/``fast_forwarded``) are the surface the runner
     reads to thread the integration outcome into the persisted
     checkpoint, and the surface operators see in run state when a
@@ -34,9 +36,9 @@ class RebaseState(RalphBaseModel):
     in_progress: bool = False
     completed: bool = False
 
-    # Auto-integration outcome. ``last_action`` is the high-level
-    # verb (``rebased``/``merged``/``fast_forwarded``/``skipped``/
-    # ``conflict``/``recovered``); ``last_reason`` is the human-readable
+    # Auto-integration outcome. ``last_outcome`` is the typed outcome
+    # kind (``RebaseOutcomeKind``); ``last_action`` is the backward-compatible
+    # string property projection; ``last_reason`` is the human-readable
     # skip / failure reason when one applies; ``last_target`` is the
     # mainline branch the integration step targeted; ``fast_forwarded``
     # records whether the fast-forward phase actually advanced the
@@ -44,10 +46,43 @@ class RebaseState(RalphBaseModel):
     # concurrent-target-update race, etc.). See
     # ``ralph.pipeline.auto_integrate`` for the producer of these
     # values.
-    last_action: str | None = None
+    last_outcome: RebaseOutcomeKind | None = None
     last_reason: str | None = None
     last_target: str | None = None
     fast_forwarded: bool = False
+
+    @property
+    def last_action(self) -> str | None:
+        """Backward-compatible projection of typed last_outcome."""
+        return self.last_outcome.value if self.last_outcome is not None else None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_legacy_action(cls, data: object) -> object:
+        if isinstance(data, dict) and "last_outcome" not in data and "last_action" in data:
+            raw_action = data.get("last_action")
+            action_str = str(raw_action) if raw_action is not None else None
+            migrated: dict[str, object] = {str(k): v for k, v in data.items()}
+            migrated["last_outcome"] = (
+                RebaseOutcomeKind.from_legacy(action_str) if action_str is not None else None
+            )
+            return migrated
+        return data
+
+    @classmethod
+    def from_legacy_payload(cls, payload: dict[str, object]) -> Self:
+        """One-way migration entry point for legacy checkpoints."""
+        legacy_action = payload.get("last_action")
+        mapped_outcome = (
+            RebaseOutcomeKind.from_legacy(str(legacy_action)) if legacy_action is not None else None
+        )
+        mapped_val = mapped_outcome.value if mapped_outcome is not None else None
+        logger.warning(
+            "MIGRATED_LEGACY: last_action {} -> last_outcome {}",
+            legacy_action,
+            mapped_val,
+        )
+        return cls.model_validate(payload).model_copy(update={"last_outcome": mapped_outcome})
 
     # ``last_refresh`` records the outcome of the origin refresh that
     # ran immediately before the fast-forward observed the target SHA
@@ -221,7 +256,7 @@ class RebaseState(RalphBaseModel):
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
         if self.last_decision is None:
-            if self.last_action in ("intervention_required", "diagnostic_intervention_required"):
+            if self.is_intervention_required:
                 object.__setattr__(self, "last_decision", "report_intervention_required")
             elif self.integration_unresolved:
                 object.__setattr__(self, "last_decision", "block_for_recovery")
@@ -250,13 +285,41 @@ class RebaseState(RalphBaseModel):
         materializing prompts, dispatching agents, or reporting success.
         """
         return (
-            self.last_action == "conflict"
+            self.last_outcome == RebaseOutcomeKind.CONFLICT
             or self.recovery_record_retained
             or self.legacy_checkpoint_blocked
             or self.unresolved_integration_carried
             or self.resolving_rebase
             or self.resolving_merge
             or bool(self.diagnostic_ownership)
+        )
+
+    def is_terminal_action(self) -> bool:
+        """Whether the last outcome kind is terminal."""
+        return self.last_outcome is not None and self.last_outcome.is_terminal()
+
+    def is_diagnostic_action(self) -> bool:
+        """Whether the last outcome kind represents an evidence diagnosis action."""
+        return self.last_outcome in (
+            RebaseOutcomeKind.DIAGNOSING,
+            RebaseOutcomeKind.EVIDENCE_DIAGNOSIS,
+            RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+        )
+
+    def is_rebasing_or_merging(self) -> bool:
+        """Whether the outcome is a rebase or merge."""
+        return self.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+
+    def is_conflict_resolution(self) -> bool:
+        """Whether the outcome represents active conflict resolution."""
+        return _is_conflict_resolution(self)
+
+    @property
+    def is_intervention_required(self) -> bool:
+        """Whether operator intervention is required."""
+        return self.last_outcome in (
+            RebaseOutcomeKind.INTERVENTION_REQUIRED,
+            RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
         )
 
 
@@ -289,9 +352,6 @@ _PUBLISHING_DECISIONS: frozenset[str] = frozenset(
         "publish_deferred_freshness",
     }
 )
-
-#: Last-action values that signal the operation is closed.
-_TERMINAL_ACTIONS: frozenset[str] = frozenset({"terminal", "completed", "remote_pushed"})
 
 
 def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
@@ -326,25 +386,39 @@ def _decision_display_state(rebase: RebaseState) -> str | None:
 def _prose_display_state(rebase: RebaseState) -> str | None:
     if _is_landing(rebase):
         return "landing"
-    if rebase.last_action in _TERMINAL_ACTIONS:
+    if rebase.is_terminal_action():
         return "terminal"
     return _ACTION_DISPLAY_MAP.get(rebase.last_action) if rebase.last_action else None
 
 
 def _is_evidence_diagnosis(rebase: RebaseState) -> bool:
     return (
-        rebase.last_action in ("diagnosing", "evidence_diagnosis")
+        rebase.last_outcome in (RebaseOutcomeKind.DIAGNOSING, RebaseOutcomeKind.EVIDENCE_DIAGNOSIS)
         or bool(rebase.diagnostic_ownership)
         or rebase.recovery_record_retained
     )
 
 
 def _is_conflict_resolution(rebase: RebaseState) -> bool:
-    return rebase.last_action == "conflict" or rebase.resolving_rebase or rebase.resolving_merge
+    return (
+        rebase.last_outcome == RebaseOutcomeKind.CONFLICT
+        or rebase.resolving_rebase
+        or rebase.resolving_merge
+    )
 
 
 def _is_landing(rebase: RebaseState) -> bool:
-    return (rebase.last_action in ("rebased", "merged") and not rebase.fast_forwarded) or (
-        rebase.last_action in ("rebased", "merged", "fast_forwarded", "skipped", "remote_pushed")
+    return (
+        rebase.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        and not rebase.fast_forwarded
+    ) or (
+        rebase.last_outcome
+        in (
+            RebaseOutcomeKind.REBASED,
+            RebaseOutcomeKind.MERGED,
+            RebaseOutcomeKind.FAST_FORWARDED,
+            RebaseOutcomeKind.SKIPPED,
+            RebaseOutcomeKind.REMOTE_PUSHED,
+        )
         and rebase.fast_forwarded
     )

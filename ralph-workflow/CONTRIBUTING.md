@@ -580,6 +580,39 @@ Required invariants:
 4. **Tests are required at both seams:** changes to technical retry behavior must update (a) runner-level tests for direct retry prompt generation and (b) recovery/controller-level tests for cap enforcement and chain progression.
 5. **No new retry writers at call sites:** if a new recoverable technical failure is introduced, route it through the shared technical retry owner instead of adding a new retry loop or prompt builder in place.
 
+## Integration lifecycle authority and typed state contract
+
+The integration lifecycle, Git conflict recovery, and landing pipeline are governed
+by the authoritative single-source-of-truth architecture defined in
+[ADR-0007](docs/architecture/adr-0007-integration-source-of-truth.md) and
+[ADR-0008](docs/architecture/adr-0008-integration-lifecycle-consolidation.md).
+
+Required invariants:
+
+1. **Typed progression authority:** `ralph.pipeline._integration_action.next_integration_action`
+   is the sole authority for integration progression decisions, returning one of 8 typed
+   `IntegrationAction` enum values (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`,
+   `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`,
+   `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`). Do not introduce prose comparisons
+   (`phase == "integrating"`, `phase == "integrated"`, etc.) at call sites.
+2. **Single-writer outcome classification:** `RebaseState.last_outcome: RebaseOutcomeKind | None`
+   is the single authoritative field across 19 closed outcome verbs (`REBASED`, `MERGED`,
+   `CONFLICT`, `REMOTE_FAILED`, etc.). `last_action` is a read-only backward-compatible
+   `@property` projection. Legacy checkpoints are migrated in one direction via
+   `RebaseState.from_legacy_payload(payload)`; do not add ad-hoc migrators or modify
+   `IntegrationRecord.with_transition` for external model migrations.
+3. **Fail-closed operation-completion pre-pass:** The diagnostic recovery boundary
+   (`handoff_integration_diagnostic`) executes an operation-scoped pre-pass before invoking
+   any diagnostic agent. Unreachable marker objects (`_KIND_MERGE_OBJECT_RESOLVABLE` /
+   `_KIND_REBASE_OBJECT_RESOLVABLE` is `False`) halt forward execution and transition the record
+   to `RAISE_DIAGNOSTIC_INTERVENTION` without consuming an attempt. Positive completion proof
+   satisfying all four conditions (commit ancestry, operation ownership, clean index/tree,
+   durable atomic transition) releases evidence and skips agent invocation entirely.
+4. **Typed conflict-resolution routing:** Round selection and fault classification in
+   `ralph/pipeline/conflict_resolution/` must route through `select_resolution_action`
+   (`ResolutionAction`) and `classify_attempt_fault` (`AttemptFault`); do not introduce
+   prose `if evidence` checks.
+
 ## Skill bundle maintenance
 
 - Add or adopt a mirrored default skill by updating the mirrored content under `ralph/skills/content/`, adding the name to `BASELINE_SKILL_NAMES` in `ralph/skills/_content.py`, updating the provenance metadata, and mirroring it in `skills-package/bin/skills.js` as `SKILL_NAMES`.

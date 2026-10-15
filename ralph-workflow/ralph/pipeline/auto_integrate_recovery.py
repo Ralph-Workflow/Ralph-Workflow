@@ -52,6 +52,10 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    next_integration_action,
+)
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
@@ -824,12 +828,9 @@ def _recover_pending_merge(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if record.phase == "integrating" and not (
-        record.resolving_rebase
-        or record.resolving_merge
-        or record.rebase_continue_pending
-        or record.merge_commit_pending
-        or record.merge_commit_tree is not None
+    if (
+        next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+        and record.merge_commit_tree is None
     ):
         return _recover_unresolved_integrating(
             root,
@@ -931,7 +932,10 @@ def _recover_incomplete_integration_owned(
             or record.resolving_merge
             or record.merge_commit_pending
             or record.merge_commit_tree is not None
-            or (record.operation_kind == "feature_integrate" and record.phase == "integrating")
+            or (
+                record.operation_kind == "feature_integrate"
+                and next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+            )
             or (record.operation_kind == "target_reconcile")
         ):
             return _recover_pending_merge(

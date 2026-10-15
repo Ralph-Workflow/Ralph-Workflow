@@ -45,6 +45,7 @@ from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
@@ -764,7 +765,7 @@ def _maybe_clear_invoke_agent_entry_drains(
 ) -> None:
     if isinstance(effect, InvokeAgentEffect):
         is_resume = (
-            state.phase == effect.phase
+            effect.phase == state.phase
             and state.previous_phase is None
             and state.checkpoint_saved_count > 0
         )
@@ -843,11 +844,11 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
     # A skip or conflict means no integration happened this commit; an
     # operator who expects continuous integration must not lose that
     # signal in the INFO stream, so it escalates to a WARN line.
-    if outcome.last_action in ("skipped", "conflict"):
+    if outcome.last_outcome in (RebaseOutcomeKind.SKIPPED, RebaseOutcomeKind.CONFLICT):
         display.emit_warn_line("run", "auto-integrate", message)
         return
     if (
-        outcome.last_action in ("rebased", "merged")
+        outcome.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
         and not outcome.fast_forwarded
         and outcome.last_reason
     ):
@@ -2313,7 +2314,7 @@ def _handle_inline_effect(
                 return recovered_state
         prepared_state = state
         target_phase = effect.phase
-        if state.phase == pipeline_policy.recovery.failed_route:
+        if pipeline_policy.recovery.failed_route == state.phase:
             # Resolve the deadline FIRST. This hop re-enters the phase by
             # writing state.phase directly rather than routing, so it is the
             # one way into the guarded phase that is not a routing boundary --

@@ -237,7 +237,7 @@ def _reduce_phase_failure(
                 classified_failure=classified_failure,
             ),
         )
-        if pipeline_policy is not None and new_state.phase != state.phase:
+        if pipeline_policy is not None and state.phase != new_state.phase:
             new_state = progress.apply_execution_cycle_outcome(
                 state,
                 new_state,
@@ -300,7 +300,7 @@ def _reduce_captured_agent_failure(
         failure,
         FailureContext(phase=state.phase, agent=state.current_agent()),
     )
-    if pipeline_policy is not None and new_state.phase != state.phase:
+    if pipeline_policy is not None and state.phase != new_state.phase:
         new_state = progress.apply_execution_cycle_outcome(
             state,
             new_state,
@@ -373,7 +373,7 @@ def _route_reduced_decision(
             if pipeline_policy.terminal_phase:
                 terminal_states.add(pipeline_policy.terminal_phase)
 
-    is_phase_boundary = (new_state.phase != state.phase) or (
+    is_phase_boundary = (state.phase != new_state.phase) or (
         bool(terminal_states) and new_state.phase in terminal_states
     )
 
@@ -616,7 +616,7 @@ def _enter_failed_recovery(
         last_retry_delay_ms=retry_delay_ms,
     )
     if "integration conflict requires resolution:" in reason:
-        resume_phase = state.phase if state.phase != target else state.previous_phase
+        resume_phase = state.phase if target != state.phase else state.previous_phase
         new_state = new_state.copy_with(
             phase=resume_phase or policy.entry_phase,
             previous_phase=state.previous_phase,
@@ -1062,7 +1062,7 @@ def _handle_execution_result(
     """Route an execution result while carrying any policy-declared commit override."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for execution result routing", policy)
-    if event.phase != state.phase:
+    if state.phase != event.phase:
         return _advance_to_failed(
             state,
             f"Execution result phase '{event.phase}' does not match active phase '{state.phase}'",
@@ -1343,7 +1343,7 @@ def _handle_fix_failure(
         failed_route = _terminal_failure_route(policy)
         # Route to terminal failure if the transition targets a terminal failure pseudo-phase
         # or the policy-declared terminal failure route.
-        if next_phase == failed_route or next_phase not in policy.phases:
+        if failed_route == next_phase or next_phase not in policy.phases:
             failure_reason = _failure_reason(state, "Fix phase failed")
             return _enter_failed_recovery(state, failure_reason, policy)
         return _advance_phase(state, next_phase, policy, routing_timing=routing_timing)
@@ -1494,7 +1494,7 @@ def _advance_through_invocation_gate(
     new_state, effects = _advance_phase(
         gated_state, next_phase, policy, routing_timing=routing_timing
     )
-    if admitted_execution_phase is not None and new_state.phase == next_phase:
+    if admitted_execution_phase is not None and next_phase == new_state.phase:
         new_state = progress.charge_analysis_cycle_for_gate(
             new_state, admitted_execution_phase, policy=policy
         )

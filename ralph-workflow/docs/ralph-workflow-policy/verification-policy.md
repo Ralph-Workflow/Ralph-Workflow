@@ -120,6 +120,60 @@ A documented bypass (e.g. a generated file with a `// @ts-nocheck`
 header) requires a documented rationale, scope, owner, and removal or
 review date. Undocumented bypasses are non-compliant.
 
+## Integration lifecycle verification: object-reachability pre-pass and typed projection
+
+The integration lifecycle is governed by the typed authorities established in
+[ADR-0007](../architecture/adr-0007-integration-source-of-truth.md) and
+[ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md).
+
+### Object-reachability pre-pass
+
+During diagnostic recovery (`handoff_integration_diagnostic` in `ralph.pipeline._integration_diagnostic`),
+Ralph executes an operation-scoped pre-pass before calling any diagnostic agent:
+
+1. **Object reachability**: `SubprocessOperationEvidenceCollector` queries `git cat-file -e <sha>`
+   for `MERGE_HEAD` and `REBASE_HEAD` within the operation worktree. It emits
+   `_KIND_MERGE_OBJECT_RESOLVABLE` and `_KIND_REBASE_OBJECT_RESOLVABLE` facts.
+   If a marker SHA is unresolvable (`False`), the pre-pass halts immediately and transitions the
+   durable record to `diagnostic_intervention_required=True` via `RAISE_DIAGNOSTIC_INTERVENTION`
+   without consuming an attempt, preserving all worktree metadata.
+
+2. **Positive completion proof**: If marker objects are resolvable and `next_integration_action(record)`
+   is `IntegrationAction.CONTINUE_GIT_OPERATION`, Ralph evaluates the four-condition completion proof:
+   - *Commit ancestry*: HEAD matches `integrated_feature_sha` or `pre_target_sha`, and parent of HEAD matches expected parent(s).
+   - *Operation ownership*: `owning_worktree` matches the inspected root, and `diagnostic_ownership` matches `ownership_fingerprint(record)`.
+   - *Clean index and tree*: `MERGE_HEAD` and `REBASE_HEAD` are absent, index contains no unmerged paths, and `git diff --quiet HEAD` is clean.
+   - *Durable atomic transition*: `record.phase == "integrated"` (or integrating with `integrated_feature_sha`) and `diagnostic_evidence` is empty.
+
+If all four conditions pass, Ralph releases diagnostic evidence via `RELEASE_DIAGNOSTIC_EVIDENCE`
+and advances the pipeline without dispatching an agent. If any condition fails, the pre-pass transitions
+to `RAISE_DIAGNOSTIC_INTERVENTION` without consuming an attempt or deleting marker files.
+
+### Worked example: typed projection
+
+```python
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    RebaseOutcomeKind,
+    next_integration_action,
+)
+from ralph.pipeline.rebase_state import RebaseState
+from ralph.display.auto_integrate_message import OperationDisplayState
+
+# 1. Authoritative producer records typed outcome
+state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT)
+
+# 2. Backward-compatible last_action property projects string value
+assert state.last_action == "conflict"
+
+# 3. Next integration action derives directly from typed state
+action = next_integration_action(state)
+assert action == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+# 4. Operator display projects directly from RebaseState without prose parsing
+assert state.operation_display_state == OperationDisplayState.CONFLICT_RESOLUTION
+```
+
 ## Maintenance triggers
 
 This policy MUST be reviewed in the same workflow as any of:

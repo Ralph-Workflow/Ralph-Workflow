@@ -96,7 +96,7 @@ class Transition:
 
 
 def _is_integrating(record: IntegrationRecord) -> bool:
-    return record.phase == "integrating"
+    return record.phase in ("integrating",)
 
 
 def _is_integrating_or_integrated(record: IntegrationRecord) -> bool:

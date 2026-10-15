@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.operation_evidence import (
+    _KIND_MERGE_OBJECT_RESOLVABLE,
+    _KIND_REBASE_OBJECT_RESOLVABLE,
     InMemoryOperationEvidenceCollector,
     OperationEvidenceCollector,
     OperationFact,
@@ -222,6 +224,8 @@ def test_collector_protocol_export() -> None:
     assert hasattr(operation_evidence, "OperationFact")
     assert hasattr(operation_evidence, "SubprocessOperationEvidenceCollector")
     assert hasattr(operation_evidence, "InMemoryOperationEvidenceCollector")
+    assert hasattr(operation_evidence, "_KIND_MERGE_OBJECT_RESOLVABLE")
+    assert hasattr(operation_evidence, "_KIND_REBASE_OBJECT_RESOLVABLE")
     assert hasattr(operation_evidence, "ownership_fingerprint")
 
 
@@ -232,3 +236,96 @@ def test_subprocess_collector_returns_unreadable_when_head_missing(tmp_path: Pat
     head_facts = [fact for fact in facts if fact.kind == "head"]
     assert head_facts
     assert head_facts[0].value == "unreadable"
+
+
+def test_operation_fact_reachability_kinds_round_trip() -> None:
+    merge_fact = OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="True")
+    assert merge_fact.to_evidence_tuple() == ("merge_object_resolvable", "True")
+    rebase_fact = OperationFact(kind=_KIND_REBASE_OBJECT_RESOLVABLE, value="False")
+    assert rebase_fact.to_evidence_tuple() == ("rebase_object_resolvable", "False")
+
+
+def test_in_memory_collector_reachability_support(tmp_path: Path) -> None:
+    collector = InMemoryOperationEvidenceCollector(
+        reachability={"MERGE_HEAD": True, "REBASE_HEAD": False}
+    )
+    record = _record()
+    facts = collector.snapshot(tmp_path, record)
+    kinds = {f.kind: f.value for f in facts}
+    assert kinds[_KIND_MERGE_OBJECT_RESOLVABLE] == "True"
+    assert kinds[_KIND_REBASE_OBJECT_RESOLVABLE] == "False"
+
+
+def test_in_memory_collector_verify_treats_false_reachability_as_gap(tmp_path: Path) -> None:
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
+    )
+    record = _record()
+    assert (
+        collector.verify(
+            tmp_path, record, (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
+        )
+        is False
+    )
+
+
+def test_subprocess_collector_reachability_mock_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _mock_git(monkeypatch, tmp_path / "repo")
+    gitdir = repo / ".git"
+    (gitdir / "MERGE_HEAD").write_text("b" * 40 + "\n", encoding="utf-8")
+
+    def fake_run_git(
+        args: tuple[str, ...] | list[str],
+        cwd: Path | None = None,
+        label: str = "",
+    ) -> GitRunResult:
+        args_t = tuple(args)
+        if args_t == ("rev-parse", "--verify", "HEAD"):
+            return GitRunResult(args=args_t, returncode=0, stdout="a" * 40 + "\n", stderr="")
+        if args_t == ("rev-parse", "--absolute-git-dir"):
+            return GitRunResult(args=args_t, returncode=0, stdout=f"{gitdir}\n", stderr="")
+        if args_t == ("cat-file", "-e", "b" * 40):
+            return GitRunResult(args=args_t, returncode=0, stdout="", stderr="")
+        if args_t == ("cat-file", "-e", "0" * 40):
+            return GitRunResult(args=args_t, returncode=1, stdout="", stderr="missing")
+        return GitRunResult(args=args_t, returncode=1, stdout="", stderr="unsupported")
+
+    monkeypatch.setattr("ralph.git.subprocess_runner.run_git", fake_run_git)
+
+    record = _record(resolving_merge=True)
+    facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
+    merge_facts = [f for f in facts if f.kind == _KIND_MERGE_OBJECT_RESOLVABLE]
+    assert len(merge_facts) == 1
+    assert merge_facts[0].value == "True"
+
+    # Now with unreachable SHA
+    (gitdir / "MERGE_HEAD").write_text("0" * 40 + "\n", encoding="utf-8")
+    facts_unreachable = SubprocessOperationEvidenceCollector().snapshot(repo, record)
+    merge_facts_unreachable = [
+        f for f in facts_unreachable if f.kind == _KIND_MERGE_OBJECT_RESOLVABLE
+    ]
+    assert len(merge_facts_unreachable) == 1
+    assert merge_facts_unreachable[0].value == "False"
+
+
+def test_subprocess_collector_reachability_unreadable_when_marker_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _mock_git(monkeypatch, tmp_path / "repo")
+    record = _record(resolving_merge=True)
+    facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
+    merge_facts = [f for f in facts if f.kind == _KIND_MERGE_OBJECT_RESOLVABLE]
+    assert len(merge_facts) == 1
+    assert merge_facts[0].value == "unreadable"
+
+
+def test_subprocess_collector_verify_treats_false_reachability_as_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _mock_git(monkeypatch, tmp_path / "repo")
+    record = _record()
+    observed = (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
+    collector = SubprocessOperationEvidenceCollector()
+    assert collector.verify(repo, record, observed) is False

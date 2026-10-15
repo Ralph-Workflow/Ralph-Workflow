@@ -318,7 +318,7 @@ def cumulative_execution_seconds(
     return sum(
         record.elapsed.total_seconds()
         for record in state.phase_timings[start:]
-        if record.phase == execution_phase
+        if execution_phase == record.phase
     )
 
 

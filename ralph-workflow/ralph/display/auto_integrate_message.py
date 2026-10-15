@@ -10,6 +10,10 @@ through this function so the two surfaces cannot drift.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
 
 
 class OperationDisplayState(StrEnum):
@@ -33,6 +37,16 @@ _ACTION_REBASED = "rebased"
 _ACTION_MERGED = "merged"
 _ACTION_CONFLICT = "conflict"
 _ACTION_RECOVERED = "recovered"
+
+_LEGACY_ACTIONS: frozenset[str] = frozenset(
+    {
+        _ACTION_SKIPPED,
+        _ACTION_REBASED,
+        _ACTION_MERGED,
+        _ACTION_CONFLICT,
+        _ACTION_RECOVERED,
+    }
+)
 #: Remote-sync verb recorded on ``RebaseState.last_remote_sync`` by the
 #: opt-in remote sync tier. Rendered as a trailing ``[remote: <verb>]``
 #: suffix on the live line and the completion summary, so the
@@ -128,7 +142,31 @@ _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "diagnosing": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
     "completed": OperationDisplayState.TERMINAL.value,
+    "rebased": OperationDisplayState.LANDING.value,
+    "merged": OperationDisplayState.LANDING.value,
+    "fast_forwarded": OperationDisplayState.LANDING.value,
+    "skipped": OperationDisplayState.TERMINAL.value,
+    "conflict": OperationDisplayState.CONFLICT_RESOLUTION.value,
+    "recovered": OperationDisplayState.TERMINAL.value,
+    "remote_pushed": OperationDisplayState.TERMINAL.value,
+    "remote_failed": OperationDisplayState.PUBLISHING.value,
 }
+
+
+def rebase_outcome_to_operation_display_state(
+    outcome: RebaseOutcomeKind | str | None,
+) -> OperationDisplayState | None:
+    """Project a RebaseOutcomeKind or outcome string to an OperationDisplayState.
+
+    Single typed projection from last_outcome to OperationDisplayState (ADR-0007 / ADR-0008).
+    """
+    if outcome is None:
+        return None
+    raw = outcome.value if isinstance(outcome, StrEnum) else str(outcome)
+    state_str = _LEGACY_ACTION_DISPLAY_MAP.get(raw.strip().lower())
+    if state_str is not None:
+        return OperationDisplayState(state_str)
+    return None
 
 
 def _resolve_operation_display_state(
@@ -154,7 +192,9 @@ def _resolve_operation_display_state(
     if action is not None:
         raw_action = action.value if isinstance(action, OperationDisplayState) else action
         if isinstance(raw_action, str):
-            return _LEGACY_ACTION_DISPLAY_MAP.get(raw_action)
+            raw_norm = raw_action.strip().lower()
+            if raw_norm not in _LEGACY_ACTIONS:
+                return _LEGACY_ACTION_DISPLAY_MAP.get(raw_norm)
     return None
 
 
@@ -252,12 +292,13 @@ def format_auto_integrate_message(
     remote: str | None = None,
     freshness_verdict: str | None = None,
     operation_display_state: str | OperationDisplayState | None = None,
+    last_outcome: RebaseOutcomeKind | str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
     Reads ``operation_display_state`` first (the eight-branch typed lifecycle
-    authority from ADR-0007); falls back to ``action``/``reason`` only when
-    the typed state is unset (legacy checkpoints).
+    authority from ADR-0007); falls back to ``last_outcome`` projection or
+    ``action``/``reason`` only when the typed state is unset (legacy checkpoints).
 
     The four basic arguments are the four fields the producer records on
     :class:`ralph.pipeline.rebase_state.RebaseState`. The ``fast_forwarded``
@@ -293,7 +334,16 @@ def format_auto_integrate_message(
     is added at the emit site, and emitting a second one here previously
     doubled the prefix in the live line.
     """
-    state_key = _resolve_operation_display_state(operation_display_state, action)
+    effective_display_state = (
+        operation_display_state
+        if operation_display_state is not None
+        else (
+            rebase_outcome_to_operation_display_state(last_outcome)
+            if last_outcome is not None
+            else None
+        )
+    )
+    state_key = _resolve_operation_display_state(effective_display_state, action)
     if state_key is not None:
         message = _format_typed_state_message(
             state_key,
@@ -322,4 +372,5 @@ def format_auto_integrate_message(
 __all__ = [
     "OperationDisplayState",
     "format_auto_integrate_message",
+    "rebase_outcome_to_operation_display_state",
 ]

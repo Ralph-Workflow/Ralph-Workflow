@@ -11,14 +11,123 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 import typer.testing
 
-if TYPE_CHECKING:
-    import pytest
-
 from ralph.cli.main import app
+
+_CATEGORY_FIXTURES: tuple[
+    tuple[str, tuple[str, ...], str, str, str, str, bool, str, str, float | None],
+    ...,
+] = (
+    (
+        "project_content",
+        (".",),
+        "user source and project content",
+        "user changes",
+        "explicit user retention",
+        "project content is never cleanup eligible",
+        False,
+        "loss is unrecoverable",
+        "user",
+        None,
+    ),
+    (
+        "workflow_records",
+        (
+            ".agent/receipts",
+            ".agent/state.db",
+            ".agent/artifacts/history",
+            ".agent/prompt_history",
+            ".agent/raw",
+        ),
+        "workflow receipts and recoverable state",
+        "workflow runs",
+        "required recovery evidence",
+        "required records are never cleanup eligible",
+        False,
+        "needed to recover workflows",
+        "workflow",
+        None,
+    ),
+    (
+        "workspace_intelligence",
+        (".agent/ralph-explore",),
+        "derived workspace intelligence",
+        "indexing",
+        "rebuildable derived data",
+        "derived intelligence can be rebuilt",
+        True,
+        "rebuilt on next index",
+        "explore",
+        None,
+    ),
+    (
+        "operational_records",
+        (".agent/logs",),
+        "operational logs and diagnostics",
+        "run diagnostics",
+        "required operational evidence",
+        "operational records older than the age bound are recreatable",
+        True,
+        "needed for diagnosis",
+        "operations",
+        1800.0,
+    ),
+    (
+        "temporary_data",
+        (".agent/tmp",),
+        "interrupted-run temporary data",
+        "run scratch creation",
+        "inactive run ownership",
+        "inactive temporary data can be discarded",
+        True,
+        "interrupted work is restarted",
+        "run",
+        None,
+    ),
+)
+
+
+def _fake_inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
+    return tuple(
+        {
+            "category": category,
+            "path": workspace_root / relatives[0],
+            "paths": tuple(workspace_root / relative for relative in relatives),
+            "bytes": 6 if category == "project_content" else 0,
+            "count": 1 if category == "project_content" else 0,
+            "purpose": purpose,
+            "growth_trigger": trigger,
+            "retention_basis": retention,
+            "eligibility_reason": eligibility,
+            "recreatable": recreatable,
+            "recovery_impact": impact,
+            "active_owner": owner,
+            "max_age_seconds": max_age_seconds,
+        }
+        for (
+            category,
+            relatives,
+            purpose,
+            trigger,
+            retention,
+            eligibility,
+            recreatable,
+            impact,
+            owner,
+            max_age_seconds,
+        ) in _CATEGORY_FIXTURES
+    )
+
+
+@pytest.fixture(autouse=True)
+def _patch_inventory_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.diagnostics import workspace_health as diag_module
+
+    monkeypatch.setattr(diag_module, "inventory_storage", _fake_inventory_storage)
+
 
 _runner = typer.testing.CliRunner()
 

@@ -11,6 +11,10 @@ from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    next_integration_action,
+)
 from ralph.pipeline._integration_continuation import (
     _legacy_completed_rebase,
     active_operation_matches,
@@ -110,7 +114,10 @@ def _continue_target_record(
             resolving_merge=merge_state(owner) == MERGE_STATE_IN_PROGRESS,
         )
         write_record(root, record)
-    elif record.phase == "integrating" and not record.rebase_continue_pending:
+    elif (
+        next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+        and not record.rebase_continue_pending
+    ):
         completed = _legacy_completed_rebase(
             owner,
             record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True),

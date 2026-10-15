@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline.auto_integrate_record import (
     PROMOTE_TO_INTEGRATED,
@@ -10,6 +11,7 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
@@ -60,11 +62,17 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     assert on_disk is not None
     assert on_disk.phase == "integrated"
 
-    # 2. Clean pipeline state without pre-seeded decision
+    # 2. Invoke real recovery boundary
     state = PipelineState(
         phase="integrating",
         rebase=RebaseState(),
     )
+    verdict = inspect_integration_resolution(tmp_path, state.rebase)
+    assert not verdict.dispatch_allowed
+
+    action = next_integration_action(on_disk)
+    assert action == IntegrationAction.LAND_TARGET
+
     policy = _policy()
 
     # 3. decide_phase_transition returns BLOCK_FOR_RECOVERY based strictly on durable record

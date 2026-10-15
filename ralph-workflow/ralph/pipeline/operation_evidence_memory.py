@@ -8,25 +8,44 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.operation_fact import (
+    _KIND_MERGE_OBJECT_RESOLVABLE,
+    _KIND_REBASE_OBJECT_RESOLVABLE,
+    OperationFact,
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
-    from ralph.pipeline.operation_fact import OperationFact
 
 
 class InMemoryOperationEvidenceCollector:
-    """Test fake that returns caller-supplied facts verbatim.
+    """Test fake that returns caller-supplied facts and reachability observations."""
 
-    Tests use this collector to simulate a fingerprint that has (or
-    has not) drifted, without depending on the host's ``git`` binary
-    or filesystem layout. The fake never falls back to a subprocess
-    call, so it is safe to use in tests that explicitly forbid real
-    subprocess I/O.
-    """
-
-    def __init__(self, facts: tuple[OperationFact, ...] = ()) -> None:
-        self._facts = tuple(facts)
+    def __init__(
+        self,
+        facts: tuple[OperationFact, ...] = (),
+        reachability: dict[str, bool] | None = None,
+    ) -> None:
+        facts_list = list(facts)
+        if reachability:
+            if "MERGE_HEAD" in reachability:
+                facts_list.append(
+                    OperationFact(
+                        kind=_KIND_MERGE_OBJECT_RESOLVABLE,
+                        value=str(reachability["MERGE_HEAD"]),
+                    )
+                )
+            if "REBASE_HEAD" in reachability:
+                facts_list.append(
+                    OperationFact(
+                        kind=_KIND_REBASE_OBJECT_RESOLVABLE,
+                        value=str(reachability["REBASE_HEAD"]),
+                    )
+                )
+        self._facts = tuple(facts_list)
+        self._reachability = reachability or {}
 
     def snapshot(self, root: Path, record: IntegrationRecord) -> tuple[OperationFact, ...]:
         return self._facts
@@ -37,6 +56,18 @@ class InMemoryOperationEvidenceCollector:
         record: IntegrationRecord,
         observed: tuple[OperationFact, ...],
     ) -> bool:
+        for fact in self._facts:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return False
+        for fact in observed:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return False
         return self._facts == observed
 
 

@@ -44,20 +44,18 @@ class Utf8Backend(MemoryBackend):
 
 _PROSE = "Inspect code then implement independent changes and verify all behavior carefully."
 _CASES = (
-    "Inspect code then implement changes and verify all behavior carefully.",
-    "I cannot approve changes before inspection, so inspect current callers and carefully compare their observable behavior against the requested contract.",
-    "I cannot implement this request because production credentials are unavailable, so implement an offline adapter and verify it with recorded responses.",
-    "I cannot implement this request because production credentials are unavailable.\nImplement an offline adapter using recorded responses, add deterministic tests, and verify the public interface.",
     _PROSE,
-    _PROSE + "\n## Steps\n### [S-1] First\n### [S-1] Second",
-    _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-99",
-    _PROSE + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-2] Second\nDepends on: S-1",
+    (
+        "I cannot implement this request because production credentials are unavailable.\n"
+        "Implement an offline adapter using recorded responses, add deterministic tests, and verify the public interface."
+    ),
     _PROSE
-    + "\n## Work Units\n- [U-1] First\n  Directories: src\n- [U-2] Second\n  Directories: src",
-    _PROSE + "\n## Work Units\n- [U-1] First\n- [U-2] Second",
-    _PROSE + "\n## Work Units\n" + "\n".join(f"- [U-{i}] Work on file {i}" for i in range(1, 66)),
-    _PROSE + "\n## Work Units\n- [U-1] First\n## Parallel Plan\n- [U-2] Second",
-    _PROSE + "\n## Steps\n### [S-1] Change the implementation",
+    + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-1] Duplicate\nDepends on: S-99\n### [S-2] Second\nDepends on: S-1",
+    (
+        _PROSE
+        + "\n## Work Units\n- [U-1] First\n  Directories: src\n## Parallel Plan\n"
+        + "\n".join(f"- [U-{i}] Work on file {i}" for i in range(2, 66))
+    ),
     "---\ntype: plan\ntype: other\nbroken metadata\n---\n" + _PROSE,
 )
 

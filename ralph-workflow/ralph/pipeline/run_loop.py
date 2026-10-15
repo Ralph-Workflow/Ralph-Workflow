@@ -29,6 +29,7 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._pipeline_state_machine import PhaseDecision
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -595,7 +596,7 @@ def _integration_alert_for_state(state: PipelineState) -> str | None:
         return "diagnostic intervention required — manual recovery needed"
     if rebase.operation_display_state == "evidence_diagnosis":
         return "evidence diagnosis — gathering operation facts"
-    if rebase.last_action != "conflict":
+    if rebase.last_outcome != RebaseOutcomeKind.CONFLICT:
         return None
     reason = rebase.last_reason or "unresolved"
     return f"integration conflict ({reason}) — resolution required"
@@ -1295,7 +1296,7 @@ def _apply_startup_rebase_outcomes(
     startup_rebase = _run_startup_integration(ctx, state.rebase)
     if startup_rebase is not None:
         state = state.copy_with(rebase=startup_rebase)
-        if startup_rebase.last_action != "skipped":
+        if startup_rebase.last_outcome != RebaseOutcomeKind.SKIPPED:
             _save_recovered_rebase_checkpoint(state, ctx)
     return state
 
@@ -1704,7 +1705,7 @@ def _is_planning_entry(state: PipelineState, ctx: _LoopContext) -> bool:
     """Whether ``state`` is about to dispatch a planning phase."""
     pipeline = ctx.policy_bundle.pipeline
     phase = str(state.phase)
-    if phase == pipeline.entry_phase:
+    if pipeline.entry_phase == phase:
         return True
     definition = pipeline.phases.get(phase)
     return definition is not None and definition.drain == "planning"
@@ -2297,7 +2298,7 @@ def _run_inner_loop_after_startup(
     # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
     while (
-        state.phase != ctx.policy_bundle.pipeline.terminal_phase
+        ctx.policy_bundle.pipeline.terminal_phase != state.phase
         or retained_integration_reason(ctx.workspace_scope.root) is not None
         or not is_terminal_success_eligible(
             state,
@@ -2886,7 +2887,7 @@ def _execute_with_cleanup(
                 state = loop_ctx.latest_state[0]
                 exit_code = 1
                 raise
-            if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
+            if loop_ctx.policy_bundle.pipeline.terminal_phase == state.phase:
                 state = state.copy_with(
                     rebase=state.rebase.model_copy(
                         update={

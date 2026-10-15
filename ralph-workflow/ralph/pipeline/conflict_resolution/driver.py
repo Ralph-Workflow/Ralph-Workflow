@@ -12,10 +12,26 @@ from loguru import logger
 
 from ralph.git.merge import paths_with_conflict_markers, unmerged_paths
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
+from ralph.pipeline.conflict_resolution._driver_events import (
+    announce_declared_decisions as _announce_declared_decisions,
+)
+from ralph.pipeline.conflict_resolution._driver_events import (
+    emit_attempt_outcome as _emit_attempt_outcome,
+)
+from ralph.pipeline.conflict_resolution._driver_events import (
+    emit_expired_operator_cap as _emit_expired_operator_cap,
+)
+from ralph.pipeline.conflict_resolution._driver_events import (
+    emit_success as _emit_success,
+)
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import INFRASTRUCTURE_TERMINATION_REASONS
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    INFRASTRUCTURE_TERMINATION_REASONS,
+    attempt_fault_to_termination_reason,
+    classify_attempt_fault,
+)
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     next_unvisited as _next_unvisited,
 )
@@ -27,8 +43,6 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
 )
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
-    TERMINAL_RESOLVED,
-    route_after_round,
 )
 from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
 from ralph.pipeline.conflict_resolution.operator_cap import (
@@ -39,6 +53,10 @@ from ralph.pipeline.conflict_resolution.operator_cap import (
 )
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
+from ralph.pipeline.conflict_resolution.resolution_action import (
+    ResolutionAction,
+    select_resolution_action,
+)
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
@@ -121,12 +139,14 @@ def _sleep_seconds(seconds: float) -> None:
 
 __all__ = [
     "MonotonicClock",
+    "ResolutionAction",
     "ResolutionInvoker",
     "RoundAttempt",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",
     "run_rebase_conflict_resolution_pipeline",
+    "select_resolution_action",
 ]
 
 
@@ -543,6 +563,9 @@ def _run_rounds(
             # the only evidence, and that is what `succeeded` carries.
             proved_by_worktree = agent_ran and not decision_paths
             resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
+            action = select_resolution_action(
+                session, round_index, round_cap, resolved=resolved_now
+            )
             round_reason = (
                 None
                 if resolved_now
@@ -566,29 +589,19 @@ def _run_rounds(
                 unresolved_paths=session.unresolved_paths,
             )
             _emit_attempt_outcome(display, outcome)
-            route = route_after_round(
-                agent_ran=succeeded or proved_by_worktree,
-                surviving_marker_paths=session.unresolved_paths,
-                round_index=round_index,
-                cap=round_cap,
-            )
-            if route == TERMINAL_RESOLVED:
+            if action in (
+                ResolutionAction.PROCEED_TO_FAST_FORWARD,
+                ResolutionAction.ACCEPT_WORKTREE_REPAIR,
+            ):
                 if _escalate_unreachable_remainder(session, display):
                     break
                 _emit_success(display, round_index, stop)
                 return True
             if not attempt.invoked:
-                # Carry the reason OUT of the round: the exhaustion line
-                # and ResolutionOutcome.reason are what the operator and
-                # auto-integrate actually read, and "the chain was
-                # exhausted" does not explain a chain nobody could spend.
-                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-                session.unresolved_paths = session.unresolved_paths or conflicted
-                emit_conflict_phase_line(
-                    display,
-                    "every resolution candidate is a dead tool surface; "
-                    "no further round can spend one",
-                )
+                _handle_dead_candidate_chain(session, conflicted, display)
+                break
+            if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
+                _escalate_unreachable_remainder(session, display)
                 break
     finally:
         if prompt_path is not None:
@@ -621,6 +634,20 @@ def _record_unconfigured_resolver(
     session.unresolved_paths = conflicted
     session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
     emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
+
+
+def _handle_dead_candidate_chain(
+    session: ResolutionSession,
+    conflicted: tuple[str, ...],
+    display: ParallelDisplay | None,
+) -> None:
+    """Record that every candidate is dead and cannot spend a round."""
+    session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    session.unresolved_paths = session.unresolved_paths or conflicted
+    emit_conflict_phase_line(
+        display,
+        "every resolution candidate is a dead tool surface; no further round can spend one",
+    )
 
 
 def _escalate_unreachable_remainder(
@@ -679,69 +706,6 @@ def _paths_still_unresolved(
         if path not in unresolved:
             unresolved.append(path)
     return tuple(unresolved)
-
-
-def _announce_declared_decisions(
-    display: ParallelDisplay | None, decision_paths: tuple[str, ...]
-) -> None:
-    """Name the paths whose resolution Ralph cannot read off the file."""
-    if not decision_paths:
-        return
-    emit_conflict_phase_line(
-        display,
-        "conflict(s) git could not write markers into, so the resolution cannot be "
-        f"read off the file and must be declared: {', '.join(decision_paths)}",
-    )
-
-
-def _emit_expired_operator_cap(
-    display: ParallelDisplay | None,
-    session: ResolutionSession,
-    conflicted: tuple[str, ...],
-    clock: MonotonicClock,
-) -> None:
-    """Report a rebase-wide cap before another resolver process is launched."""
-    session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
-    session.last_activity_kind = None
-    session.last_activity_at = None
-    session.last_duration_seconds = max(0.0, clock() - (session.started_at or clock()))
-    _emit_attempt_outcome(
-        display,
-        ResolutionOutcome(
-            succeeded=False,
-            reason=session.terminal_reason,
-            duration_seconds=session.last_duration_seconds,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=session.unresolved_paths or conflicted,
-        ),
-    )
-
-
-def _emit_success(
-    display: ParallelDisplay | None, round_index: int, stop: RebaseStop | None
-) -> None:
-    next_action = (
-        "verifying and continuing the rebase"
-        if stop is not None
-        else "verifying and committing the merge"
-    )
-    emit_conflict_phase_line(display, f"conflicts resolved in round {round_index}; {next_action}")
-
-
-def _emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOutcome) -> None:
-    """Render a typed non-success outcome without misclassifying it as a hang."""
-    if outcome.succeeded or outcome.reason is None:
-        return
-    emit_conflict_phase_line(
-        display,
-        f"{outcome.reason.value}: duration={outcome.duration_seconds:.1f}s; "
-        f"last_activity_kind={outcome.last_activity_kind or 'none'}; "
-        f"last_activity_at={outcome.last_activity_at or 'never'}; "
-        f"last_progress=unresolved_count={len(outcome.unresolved_paths)}; "
-        f"unresolved_paths={', '.join(outcome.unresolved_paths)}; "
-        f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed",
-    )
 
 
 def _run_one_round(
@@ -832,17 +796,18 @@ def _run_one_round(
             # FAILED, while one that ended on its own limits -- pi out of
             # context, a provider it cannot reach -- EXITED. Neither is a
             # verdict on the conflict; the agent has no way to give one.
-            evidence = session.last_attempt_evidence
+            fault = classify_attempt_fault(session.last_attempt_evidence)
             if session.terminal_reason is None:
                 session.terminal_reason = (
-                    ResolutionTerminationReason.CANDIDATE_EXITED
-                    if evidence
-                    else ResolutionTerminationReason.ATTEMPT_FAILED
+                    attempt_fault_to_termination_reason(fault, session.last_attempt_evidence)
+                    or ResolutionTerminationReason.ATTEMPT_FAILED
                 )
             classify_failed_resolution_attempt(
                 session,
                 agent_name,
-                session.last_attempt_failure or evidence or ATTEMPT_FAILED_EVIDENCE,
+                session.last_attempt_failure
+                or session.last_attempt_evidence
+                or ATTEMPT_FAILED_EVIDENCE,
                 candidates=candidates,
                 failed_index=offset,
                 policy_bundle=policy_bundle,
@@ -853,12 +818,17 @@ def _run_one_round(
             and session.last_attempt_saw_activity
             and worktree_resolved()
         ):
-            emit_conflict_phase_line(
-                display,
-                f"round {round_index}: {agent_name} ended badly but the worktree shows "
-                "every marker repaired; not spending another candidate",
-            )
-            return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
+            session.unresolved_paths = ()
+            if (
+                select_resolution_action(session, round_index, attempt_cap)
+                == ResolutionAction.ACCEPT_WORKTREE_REPAIR
+            ):
+                emit_conflict_phase_line(
+                    display,
+                    f"round {round_index}: {agent_name} ended badly but the worktree shows "
+                    "every marker repaired; not spending another candidate",
+                )
+                return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             _remember_dead_surface(session, agent_name)
             skipped = _skipped_candidates(session, candidates)

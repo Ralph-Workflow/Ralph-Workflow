@@ -17,6 +17,7 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
+from ralph.pipeline._integration_action import RebaseOutcomeKind, last_outcome_reason
 from ralph.pipeline._integration_continuation import (
     recover_before_attempt as _recover_before_attempt,
 )
@@ -52,9 +53,6 @@ from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forwar
 from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
     maybe_push_target,
-)
-from ralph.pipeline.auto_integrate_outcome import (
-    ACTION_MERGED as _ACTION_MERGED,
 )
 from ralph.pipeline.auto_integrate_outcome import (
     record_rebase_outcome as _record_rebase_outcome,
@@ -363,7 +361,7 @@ def _auto_integrate_after_commit_inner(
             )
             if not retry_ff:
                 break
-            prefer_merge = record is not None and record.last_action == _ACTION_MERGED
+            prefer_merge = record is not None and record.last_outcome == RebaseOutcomeKind.MERGED
             if attempt + 1 < _MAX_INTEGRATION_ATTEMPTS:
                 logger.info(
                     "auto_integrate: fast-forward did not land on attempt {}; "
@@ -947,7 +945,7 @@ def _handle_precondition_failure(
 ) -> RebaseState | None:
     post_reclaim = _reclaim_and_retry_preconditions(root, target, exc)
     if post_reclaim is not None:
-        if post_reclaim.last_reason == "_reclaim_succeeded":
+        if last_outcome_reason(post_reclaim) == "_reclaim_succeeded":
             return None
         return post_reclaim
     # A precondition failure disables auto-integration for the whole

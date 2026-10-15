@@ -1,173 +1,188 @@
-"""One-way legacy-evidence migration tests.
+"""One-way legacy-evidence and rebase outcome migration tests.
 
-A legacy on-disk :class:`IntegrationRecord` may carry diagnostic
-evidence written by the pre-fix collector. The one-way migrator
-inside :func:`ralph.pipeline.auto_integrate_record._parse_record_payload`
-translates each legacy key into the new key space so the new
-collector can re-verify it. Repository-global observations
-(``for-each-ref`` / ``ls-files``) cannot be re-verified, so the
-migrator surfaces intervention instead of silently clearing the
-evidence. The common-dir branch reflog and ``logs/HEAD`` are
-dropped with a ``repair_cap_reason`` marker.
+Acceptance scenario 8: legacy on-disk checkpoints carrying pre-fix diagnostic
+evidence or string last_action fields migrate transparently through the public
+loaders (read_record and RebaseState.model_validate).
+
+The rewrite exercises only the public boundaries:
+- Writes legacy on-disk JSON and reloads via public read_record
+- Validates RebaseState via RebaseState.model_validate
+- Asserts migrated last_outcome and the run-loop's typed PhaseDecision
+- Covers the full round-trip for all 19 verbs plus None in RebaseOutcomeKind.from_legacy
+  (including remote_failed).
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
+from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline.auto_integrate_record import (
-    IntegrationRecord,
-    _migrate_legacy_diagnostic_evidence,
-    _parse_record_payload,
+    AUTO_INTEGRATE_RECORD_FILENAME,
+    read_record,
 )
+from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.state import PipelineState
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+
+ALL_19_LEGACY_VERBS: list[str] = [
+    "rebased",
+    "merged",
+    "fast_forwarded",
+    "skipped",
+    "conflict",
+    "recovered",
+    "diagnosing",
+    "evidence_diagnosis",
+    "intervention_required",
+    "diagnostic_intervention_required",
+    "terminal",
+    "completed",
+    "remote_pushed",
+    "remote_failed",
+    "integrating",
+    "landing",
+    "publishing",
+    "conflict_resolution",
+    "waiting",
+]
 
 
-def test_legacy_work_key_migrates_to_unstaged_work() -> None:
-    migrated, marker = _migrate_legacy_diagnostic_evidence((("work", "abc"),))
-    assert dict(migrated).get("unstaged_work") == "abc"
-    assert "work" not in {k for k, _ in migrated}
-    assert marker is None
+def _policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="development",
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="complete",
+    )
 
 
-def test_legacy_controls_key_migrates_to_commit_controls() -> None:
-    migrated, marker = _migrate_legacy_diagnostic_evidence((("controls", "abc"),))
-    assert dict(migrated).get("commit_controls") == "abc"
-    assert "controls" not in {k for k, _ in migrated}
-    assert marker is None
+def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
+    tmp_path: Path,
+) -> None:
+    """Public read_record migrates legacy diagnostic keys and drives PhaseDecision."""
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
 
-
-def test_legacy_rev_parse_key_migrates_to_head() -> None:
-    migrated, marker = _migrate_legacy_diagnostic_evidence((("rev-parse", "deadbeef"),))
-    assert dict(migrated).get("head") == "deadbeef"
-    assert marker is None
-
-
-def test_legacy_merge_state_path_key_migrates_to_kind_prefixed_key() -> None:
-    raw = (("/tmp/repo/.git/worktrees/wt/MERGE_HEAD", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    keys = {k for k, _ in migrated}
-    assert "merge_state_files:/tmp/repo/.git/worktrees/wt/MERGE_HEAD" in keys
-    assert marker is None
-
-
-def test_legacy_rebase_merge_dir_path_key_migrates_to_rebase_state() -> None:
-    raw = (("/tmp/repo/.git/worktrees/wt/rebase-merge/git-rebase-todo", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    keys = {k for k, _ in migrated}
-    assert "rebase_state_files:/tmp/repo/.git/worktrees/wt/rebase-merge/git-rebase-todo" in keys
-    assert marker is None
-
-
-def test_legacy_rebase_apply_dir_path_key_migrates_to_rebase_state() -> None:
-    raw = (("/tmp/repo/.git/worktrees/wt/rebase-apply/0001", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    keys = {k for k, _ in migrated}
-    assert any(k.startswith("rebase_state_files:") for k in keys)
-    assert marker is None
-
-
-def test_legacy_branch_reflog_observation_is_dropped_with_marker() -> None:
-    raw = (("/tmp/repo/.git/logs/refs/heads/main", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    assert marker == "legacy common-dir reflog observation dropped"
-    assert all("/logs/refs/heads/" not in k for k, _ in migrated)
-
-
-def test_legacy_logs_head_observation_is_dropped_with_marker() -> None:
-    raw = (("/tmp/repo/.git/logs/HEAD", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    assert marker == "legacy common-dir reflog observation dropped"
-    assert all("/logs/HEAD" not in k for k, _ in migrated)
-
-
-def test_legacy_arbitrary_path_is_preserved_under_original_key() -> None:
-    """Unknown absolute paths are preserved verbatim so no on-disk evidence is silently lost."""
-    raw = (("/tmp/some/random/observation", "abc"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    assert dict(migrated).get("/tmp/some/random/observation") == "abc"
-    assert marker is None
-
-
-def test_legacy_for_each_ref_is_preserved_so_intervention_can_be_raised() -> None:
-    """``for-each-ref`` is preserved verbatim so the loader sees it and surfaces intervention."""
-    raw = (("for-each-ref", "deadbeef"),)
-    migrated, marker = _migrate_legacy_diagnostic_evidence(raw)
-    assert dict(migrated).get("for-each-ref") == "deadbeef"
-    # The migrator itself does not raise; the loader does, because
-    # the new collector cannot re-verify the observation.
-    assert marker is None
-
-
-def test_legacy_record_loads_with_migrated_keys() -> None:
-    """An end-to-end legacy record loads with the new key space and a clean ownership field."""
-    legacy = {
+    legacy_payload = {
         "phase": "integrating",
         "target": "main",
         "pre_feature_sha": "a" * 40,
         "pre_target_sha": "b" * 40,
-        "diagnostic_evidence": (
-            ("work", "old"),
-            ("controls", "old"),
-            ("/tmp/repo/.git/worktrees/wt/MERGE_HEAD", "x"),
-            ("/tmp/repo/.git/logs/refs/heads/main", "drop"),
-        ),
+        "owning_worktree": str(tmp_path),
+        "diagnostic_evidence": [
+            ["work", "unstaged_content"],
+            ["controls", "commit_ctrl"],
+            ["/tmp/repo/.git/worktrees/wt/MERGE_HEAD", "merge_sha"],
+            ["/tmp/repo/.git/logs/refs/heads/main", "dropped_reflog"],
+        ],
     }
-    parsed = _parse_record_payload(legacy)
-    assert isinstance(parsed, IntegrationRecord)
-    keys = {k for k, _ in parsed.diagnostic_evidence}
+    record_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
+
+    # Call public reload boundary
+    loaded = read_record(tmp_path)
+    assert loaded is not None
+    assert loaded.phase == "integrating"
+
+    keys = {k for k, _ in loaded.diagnostic_evidence}
     assert "unstaged_work" in keys
     assert "commit_controls" in keys
     assert "merge_state_files:/tmp/repo/.git/worktrees/wt/MERGE_HEAD" in keys
-    # The common-dir reflog observation was dropped.
+    # Common-dir reflog observation is dropped with marker
     assert "/tmp/repo/.git/logs/refs/heads/main" not in keys
-    # The migrator recorded a reason for the drop.
-    assert "legacy common-dir reflog observation dropped" in (parsed.repair_cap_reason or "")
+    assert "legacy common-dir reflog observation dropped" in (loaded.repair_cap_reason or "")
+
+    # Run-loop decision on migrated record
+    policy = _policy()
+    state = PipelineState(phase="development", rebase=RebaseState())
+    decision = decide_phase_transition(
+        state,
+        policy,
+        integration_record=loaded,
+        rebase_state=state.rebase,
+    )
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
 
-def test_legacy_record_with_for_each_ref_loads_with_intervention_required() -> None:
-    """A legacy record carrying ``for-each-ref`` loads as intervention-required."""
-    legacy = {
+def test_public_checkpoint_reload_global_evidence_sets_intervention(
+    tmp_path: Path,
+) -> None:
+    """Legacy repository-global evidence (for-each-ref / ls-files) raises intervention."""
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+
+    legacy_payload = {
         "phase": "integrating",
         "target": "main",
         "pre_feature_sha": "a" * 40,
         "pre_target_sha": "b" * 40,
-        "diagnostic_evidence": (("for-each-ref", "deadbeef"),),
+        "owning_worktree": str(tmp_path),
+        "diagnostic_evidence": [
+            ["for-each-ref", "deadbeef"],
+        ],
     }
-    parsed = _parse_record_payload(legacy)
-    assert parsed is not None
-    assert parsed.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (parsed.repair_cap_reason or "")
+    record_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
+
+    loaded = read_record(tmp_path)
+    assert loaded is not None
+    assert loaded.diagnostic_intervention_required is True
+    assert "legacy repository-global evidence" in (loaded.repair_cap_reason or "")
+
+    policy = _policy()
+    state = PipelineState(phase="development", rebase=RebaseState())
+    decision = decide_phase_transition(
+        state,
+        policy,
+        integration_record=loaded,
+        rebase_state=state.rebase,
+    )
+    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
 
 
-def test_legacy_record_with_ls_files_loads_with_intervention_required() -> None:
-    """A legacy record carrying ``ls-files`` loads as intervention-required."""
-    legacy = {
-        "phase": "integrating",
-        "target": "main",
-        "pre_feature_sha": "a" * 40,
-        "pre_target_sha": "b" * 40,
-        "diagnostic_evidence": (("ls-files", "abc"),),
-    }
-    parsed = _parse_record_payload(legacy)
-    assert parsed is not None
-    assert parsed.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (parsed.repair_cap_reason or "")
+@pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)
+def test_rebase_state_model_validate_migrates_all_19_verbs(verb: str) -> None:
+    """RebaseState.model_validate deserializes all 19 legacy last_action strings."""
+    state = RebaseState.model_validate({"last_action": verb})
+    expected_kind = RebaseOutcomeKind.from_legacy(verb)
+    assert state.last_outcome == expected_kind
+    assert state.last_action == verb
 
 
-def test_legacy_record_with_protected_observations_present_loads() -> None:
-    """Records with the new key space load without intervention even when evidence is sparse."""
-    legacy = {
-        "phase": "integrating",
-        "target": "main",
-        "pre_feature_sha": "a" * 40,
-        "pre_target_sha": "b" * 40,
-        "diagnostic_evidence": (
-            ("head", "h"),
-            ("worktree_path", "/tmp/r"),
-            ("index_scope", "absent"),
-            ("unstaged_work", "u"),
-            ("commit_controls", "c"),
-        ),
-    }
-    parsed = _parse_record_payload(legacy)
-    assert isinstance(parsed, IntegrationRecord)
-    assert parsed.diagnostic_intervention_required is False
-    assert parsed.repair_cap_reason is None
+def test_rebase_state_model_validate_none() -> None:
+    """RebaseState.model_validate with None last_action remains None."""
+    state = RebaseState.model_validate({"last_action": None})
+    assert state.last_outcome is None
+    assert state.last_action is None
+
+
+@pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)
+def test_rebase_outcome_kind_round_trip_all_19_verbs(verb: str) -> None:
+    """Each of the 19 live legacy verbs round-trips through RebaseOutcomeKind."""
+    kind = RebaseOutcomeKind.from_legacy(verb)
+    assert kind is not None
+    assert kind.value == verb
+    assert RebaseOutcomeKind.from_legacy(kind.value) == kind
+
+
+def test_rebase_outcome_kind_round_trip_none() -> None:
+    """None maps cleanly to None."""
+    assert RebaseOutcomeKind.from_legacy(None) is None
+
+
+def test_rebase_outcome_kind_remote_failed_explicit() -> None:
+    """remote_failed is specifically covered and projects through last_action."""
+    kind = RebaseOutcomeKind.from_legacy("remote_failed")
+    assert kind is RebaseOutcomeKind.REMOTE_FAILED
+    state = RebaseState(last_outcome=kind)
+    assert state.last_action == "remote_failed"

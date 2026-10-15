@@ -364,7 +364,8 @@ never silently discharge or discard the obligation.
 ### Single source of truth
 
 To eliminate drifting state across multiple components, each lifecycle fact is owned
-by a single authority:
+by a single authority (see [ADR-0007](../architecture/adr-0007-integration-source-of-truth.md)
+and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md)):
 
 - **Integration record transitions**: `IntegrationRecord` is a frozen model with an
   explicit transition table (`IntegrationRecord.with_transition`). Direct mutation
@@ -374,12 +375,35 @@ by a single authority:
   `decide_phase_transition`, which returns typed `PhaseDecision` values
   (`CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`,
   `REPORT_TERMINAL_FAILURE`, `REPORT_INTERVENTION_REQUIRED`).
-- **Operation-scoped evidence**: Diagnostic evidence collection is strictly scoped
-  to the operation worktree via `OperationEvidenceCollector`. Observations capture
+- **Integration lifecycle action**: `ralph.pipeline._integration_action.next_integration_action`
+  is the sole authority for integration progression decisions, returning one of 8 typed
+  `IntegrationAction` enum values (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`,
+  `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`,
+  `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`). All prose checks (`phase == "integrating"`, etc.)
+  are eliminated.
+- **Rebase and merge outcome classification**: `RebaseState.last_outcome` is typed with
+  `RebaseOutcomeKind` (19 closed verbs: `REBASED`, `MERGED`, `FAST_FORWARDED`, `SKIPPED`,
+  `CONFLICT`, `RECOVERED`, `DIAGNOSING`, `EVIDENCE_DIAGNOSIS`, `INTERVENTION_REQUIRED`,
+  `DIAGNOSTIC_INTERVENTION_REQUIRED`, `TERMINAL`, `COMPLETED`, `REMOTE_PUSHED`,
+  `REMOTE_FAILED`, `INTEGRATING`, `LANDING`, `PUBLISHING`, `CONFLICT_RESOLUTION`,
+  `WAITING`). `last_action` is a read-only backward-compatible `@property` projection.
+- **Conflict-resolution round selection & fault typing**: `select_resolution_action`
+  returns typed `ResolutionAction` (`CONTINUE_AGENT_ROUND`, `ESCALATE_TO_INTERVENTION`,
+  `ACCEPT_WORKTREE_REPAIR`, `PROCEED_TO_FAST_FORWARD`), while `classify_attempt_fault`
+  classifies attempt evidence into `AttemptFault` (`AGENT_HEALTHY`, `AGENT_EXITED`,
+  `AGENT_INFRASTRUCTURE_FAILURE`, `AGENT_TOOL_DEAD`, `UNKNOWN`), eliminating prose
+  checks in the driver.
+- **Operation-scoped evidence and reachability**: Diagnostic evidence collection is strictly
+  scoped to the operation worktree via `OperationEvidenceCollector`. Observations capture
   worktree-private `HEAD`, worktree root path, index entries for resolving paths,
-  and worktree-private rebase/merge control files. Repository-wide `git for-each-ref`,
-  unscoped index reads, and commondir reflogs are excluded so concurrent branch
-  advancements in other linked worktrees never invalidate diagnostic evidence.
+  and worktree-private rebase/merge control files (`MERGE_HEAD`, `REBASE_HEAD`). Marker
+  SHA reachability is queried via `git cat-file -e <sha>`.
+- **Fail-closed completion pre-pass**: Before any diagnostic agent is invoked,
+  `_run_completion_pre_pass` verifies marker object reachability and evaluates the
+  four-condition positive completion proof (commit ancestry, operation ownership, clean index/tree,
+  durable atomic transition). Reachable proof satisfies `RELEASE_DIAGNOSTIC_EVIDENCE` without
+  agent dispatch; unreachable markers or failed proofs route to `RAISE_DIAGNOSTIC_INTERVENTION`
+  without consuming a repair attempt, preserving all marker files.
 - **Bounded diagnostic recovery**: To prevent infinite diagnostic loops, diagnostic
   repair attempts are bounded by `DIAGNOSTIC_REPAIR_ATTEMPT_CAP` (default 5).
   When reached, the record transitions to `diagnostic_intervention_required = True`,
@@ -411,9 +435,9 @@ displays remain synchronized with the underlying state machine.
 
 ### Documentation review note
 
-- **What changed:** Added the integration lifecycle authority model, single source of truth rules, and the 8-category OperationDisplayState taxonomy.
+- **What changed:** Added the integration lifecycle authority model, single source of truth rules, the 8-category OperationDisplayState taxonomy, typed IntegrationAction and RebaseOutcomeKind definitions, and the fail-closed completion pre-pass.
 - **Why here:** `recovery.md` is the canonical reference for workflow recovery, failure categorization, checkpoints, and intervention states.
-- **What stayed elsewhere:** Low-level transition tables and protocol implementations remain in ADR-0007 and code docstrings.
+- **What stayed elsewhere:** Low-level transition tables and protocol implementations remain in ADR-0007, ADR-0008, and code docstrings.
 - **Duplication:** High-level concepts are explained once here for operators without duplicating code-level schemas.
 - **Clearer route:** Operators can clearly understand why runs enter intervention (diagnostic repair exhausted → operator intervention) or evidence diagnosis, and distinguish Git conflict resolution from diagnostic verification.
 

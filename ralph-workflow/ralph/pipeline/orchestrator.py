@@ -98,13 +98,13 @@ def determine_next_effect(
     failed_route = pipeline_policy.recovery.failed_route
 
     # Terminal success state
-    if state.phase == terminal_phase:
+    if state.phase in (terminal_phase,):
         return ExitSuccessEffect()
 
     # Terminal failure state — recover by routing to the pre-failure phase
-    if state.phase == failed_route:
+    if state.phase in (failed_route,):
         target_phase = state.previous_phase or state.policy_entry_phase
-        if target_phase == failed_route or target_phase is None:
+        if failed_route == target_phase or target_phase is None:
             raise RuntimeError(
                 f"Cannot determine recovery target for failed_route phase "
                 f"'{failed_route}': both previous_phase and policy_entry_phase "

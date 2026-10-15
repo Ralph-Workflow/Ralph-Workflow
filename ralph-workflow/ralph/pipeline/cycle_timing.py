@@ -169,8 +169,8 @@ def apply_cycle_timebox(
     # start_source/start_entry edge.
     if (
         not state.cycle_timebox_active
-        and state.phase == ct.start_source
-        and target_phase == ct.start_entry
+        and ct.start_source == state.phase
+        and ct.start_entry == target_phase
     ):
         return CycleTimeboxDecision(
             state=_started(state, current_epoch=routing_timing.current_epoch),
@@ -296,7 +296,7 @@ def conclude_development_timebox_on_route_out_of_development(
 ) -> PipelineState:
     """Stop the phase timer only on entry to its configured commit boundary."""
     dt = policy.development_timebox
-    if dt is None or not state.dev_timebox_active or next_phase != dt.end_entry:
+    if dt is None or not state.dev_timebox_active or dt.end_entry != next_phase:
         return state
     return state.copy_with(
         dev_timebox_active=False,
@@ -325,7 +325,7 @@ def initialize_legacy_development_timebox_on_resume(
         return state
     if state.dev_timebox_consumed_seconds > 0:
         return state
-    if state.phase == dt.guarded_entry:
+    if dt.guarded_entry == state.phase:
         return state.copy_with(
             dev_timebox_active=True,
             dev_timebox_started_at_epoch=current_epoch,
@@ -343,7 +343,7 @@ def conclude_cycle_on_route_out_of_cycle(
     ct = policy.cycle_timebox
     if ct is None or not state.cycle_timebox_active:
         return state
-    if next_phase != ct.end_entry:
+    if ct.end_entry != next_phase:
         return state
     return _concluded(state)
 
@@ -368,7 +368,7 @@ def start_cycle_for_bypassed_start_source(
     ct = policy.cycle_timebox
     if ct is None or state.cycle_timebox_active:
         return state
-    if target_phase != ct.start_entry or ct.start_source not in skipped_phases:
+    if ct.start_entry != target_phase or ct.start_source not in skipped_phases:
         return state
     return _started(
         state,
@@ -536,7 +536,7 @@ def cycle_deadline_epochs(
     ct = policy.cycle_timebox
     if ct is None or routing_timing is None:
         return None
-    if target_phase != ct.guarded_entry or not state.cycle_timebox_active:
+    if ct.guarded_entry != target_phase or not state.cycle_timebox_active:
         return None
     elapsed = routing_timing.total_elapsed_seconds
     return (

@@ -28,6 +28,7 @@ from ralph.git.rebase.rebase import (
     RebaseNoOp,
     RebaseSuccess,
 )
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
 from ralph.pipeline.rebase_state import RebaseState
 
@@ -38,11 +39,11 @@ if TYPE_CHECKING:
 #: can format the user-facing log line (rebased / merged /
 #: skipped / conflict / recovered). The landing result is recorded
 #: on the separate ``fast_forwarded`` boolean, not as an action verb.
-ACTION_SKIPPED = "skipped"
-ACTION_REBASED = "rebased"
-ACTION_MERGED = "merged"
-ACTION_CONFLICT = "conflict"
-ACTION_RECOVERED = "recovered"
+ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
+ACTION_REBASED = RebaseOutcomeKind.REBASED.value
+ACTION_MERGED = RebaseOutcomeKind.MERGED.value
+ACTION_CONFLICT = RebaseOutcomeKind.CONFLICT.value
+ACTION_RECOVERED = RebaseOutcomeKind.RECOVERED.value
 
 
 def record_skip(
@@ -53,7 +54,7 @@ def record_skip(
 ) -> RebaseState:
     """Build a ``RebaseState`` recording a skip outcome."""
     return RebaseState(
-        last_action=ACTION_SKIPPED,
+        last_outcome=RebaseOutcomeKind.SKIPPED,
         last_reason=reason,
         last_target=target,
         fast_forwarded=fast_forwarded,
@@ -67,7 +68,7 @@ def record_conflict(
 ) -> RebaseState:
     """Build a ``RebaseState`` recording a conflict outcome (AC-07)."""
     return RebaseState(
-        last_action=ACTION_CONFLICT,
+        last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
         last_target=target,
         fast_forwarded=False,
@@ -77,7 +78,7 @@ def record_conflict(
 def record_resolution_exhausted(*, reason: str, target: str | None) -> RebaseState:
     """Build terminal persisted evidence after the resolver chain is exhausted."""
     return RebaseState(
-        last_action=ACTION_CONFLICT,
+        last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
         last_target=target,
         fast_forwarded=False,
@@ -95,7 +96,7 @@ def record_rebase_outcome(
 ) -> RebaseState:
     """Build a ``RebaseState`` from the rebase + optional merge result.
 
-    Success path -> ``last_action='rebased'`` or ``'merged'`` and
+    Success path -> ``last_outcome=REBASED`` or ``MERGED`` and
     ``fast_forwarded`` is set by the caller after the fast-forward
     phase; the function leaves ``fast_forwarded=False`` here so the
     caller can update it once the CAS / worktree-ff step completes.
@@ -109,8 +110,9 @@ def record_rebase_outcome(
         merge_attempted=merge_attempted,
         merge_outcome=merge_outcome,
     )
+    outcome = RebaseOutcomeKind.from_legacy(action)
     return RebaseState(
-        last_action=action,
+        last_outcome=outcome,
         last_reason=reason,
         last_target=target,
         fast_forwarded=False,

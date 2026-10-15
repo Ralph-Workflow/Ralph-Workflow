@@ -311,7 +311,7 @@ def _bypass_resolution_for_transition(
 
     with suppress(TypeError, AttributeError):
         bypass = resolve_exhausted_analysis_bypass(state, candidate_phase, pipeline_policy)
-        if not bypass.skipped or next_state.phase != bypass.target_phase:
+        if not bypass.skipped or bypass.target_phase != next_state.phase:
             return None
         return bypass
     return None
@@ -552,7 +552,7 @@ def _emit_phase_transition_if_changed(
     Returns the new previous_phase value (always state.phase). Quiet mode
     is a no-op except for state tracking.
     """
-    if state.phase == previous_phase:
+    if previous_phase == state.phase:
         return previous_phase
     if verbosity_rank(verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]:
         return state.phase

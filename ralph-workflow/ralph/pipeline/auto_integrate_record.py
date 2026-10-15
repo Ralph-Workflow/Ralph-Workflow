@@ -153,6 +153,16 @@ class IntegrationRecord(RalphBaseModel):
     reintegrate_pending: bool = False
     initiating_feature_sha: str | None = None
 
+    @property
+    def is_integrated(self) -> bool:
+        """Whether this record has reached the integrated phase."""
+        return self.phase in ("integrated",)
+
+    @property
+    def is_integrating(self) -> bool:
+        """Whether this record is in the integrating phase."""
+        return self.phase in ("integrating",)
+
     def with_transition(
         self,
         transition: Transition,

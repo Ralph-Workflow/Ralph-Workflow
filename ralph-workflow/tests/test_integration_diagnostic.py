@@ -4,10 +4,16 @@ import pytest
 
 import ralph.pipeline._integration_diagnostic as diagnostic
 from ralph.pipeline import run_loop
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, record_path
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+    read_record,
+    record_path,
+)
+from ralph.pipeline.operation_evidence import InMemoryOperationEvidenceCollector
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
+from tests.test_pending_merge_commit_recovery import _commit, _git
 from tests.test_pending_merge_repair import _retained_runtime_context
 
 
@@ -143,3 +149,198 @@ def test_pending_identity_unavailable_routes_inspection_instead_of_source_repair
         "ralph.pipeline._pending_rebase_continue.pending_rebase_identity_matches", identity
     )
     assert diagnostic.diagnostic_needed(Path("/workspace"), record)
+
+
+@pytest.mark.subprocess_e2e
+def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "config", "user.name", "Test").returncode == 0
+    assert _git(root, "config", "user.email", "test@example.com").returncode == 0
+
+    base = _commit(root, "shared.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "shared.txt", "feature\n")
+    assert _git(root, "switch", "main").returncode == 0
+    assert _git(root, "merge", "--no-ff", "-m", "merge commit", "feature").returncode == 0
+    merge_sha = _git(root, "rev-parse", "HEAD").stdout.strip()
+
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=base,
+        integrated_feature_sha=merge_sha,
+        merge_commit_parent=feature,
+        merge_commit_pending=True,
+    )
+    collector = InMemoryOperationEvidenceCollector(reachability={"MERGE_HEAD": True})
+    diagnostic.set_operation_evidence_collector(collector)
+    try:
+        agent_called = False
+
+        def fake_invoke(agent: str, prompt: Path) -> bool:
+            nonlocal agent_called
+            agent_called = True
+            return False
+
+        result = diagnostic.handoff_integration_diagnostic(
+            root=root,
+            record=record,
+            failure="test failure",
+            agents=("test-agent",),
+            invoke=fake_invoke,
+        )
+        assert result is True
+        assert not agent_called
+        saved = read_record(root)
+        assert saved is not None
+        assert saved.diagnostic_evidence == ()
+        assert saved.diagnostic_ownership is None
+        assert saved.merge_commit_repair_attempts == 0
+    finally:
+        diagnostic.set_operation_evidence_collector(None)
+
+
+@pytest.mark.subprocess_e2e
+def test_unreachable_merge_object_takes_intervention_path(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "config", "user.name", "Test").returncode == 0
+    assert _git(root, "config", "user.email", "test@example.com").returncode == 0
+    _commit(root, "file.txt", "content\n")
+
+    gitdir = Path(_git(root, "rev-parse", "--absolute-git-dir").stdout.strip())
+    nonexistent_sha = "0" * 40
+    (gitdir / "MERGE_HEAD").write_text(nonexistent_sha + "\n", encoding="utf-8")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_merge=True,
+        merge_commit_repair_attempts=2,
+    )
+    diagnostic.set_operation_evidence_collector(None)
+
+    agent_called = False
+
+    def fake_invoke(agent: str, prompt: Path) -> bool:
+        nonlocal agent_called
+        agent_called = True
+        return False
+
+    result = diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="test failure",
+        agents=("test-agent",),
+        invoke=fake_invoke,
+    )
+    assert result is False
+    assert not agent_called
+    saved = read_record(root)
+    assert saved is not None
+    assert saved.diagnostic_intervention_required is True
+    assert saved.merge_commit_repair_attempts == 2
+    assert (gitdir / "MERGE_HEAD").exists()
+    assert (gitdir / "MERGE_HEAD").read_text(encoding="utf-8").strip() == nonexistent_sha
+
+
+@pytest.mark.subprocess_e2e
+def test_reachable_merge_head_with_unreadable_index_preserves_metadata(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "config", "user.name", "Test").returncode == 0
+    assert _git(root, "config", "user.email", "test@example.com").returncode == 0
+
+    base = _commit(root, "shared.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "shared.txt", "feature content\n")
+    assert _git(root, "switch", "main").returncode == 0
+    _commit(root, "shared.txt", "main content\n")
+
+    assert _git(root, "merge", "--no-commit", "--no-ff", "feature").returncode != 0
+    gitdir = Path(_git(root, "rev-parse", "--absolute-git-dir").stdout.strip())
+    assert (gitdir / "MERGE_HEAD").exists()
+    original_merge_head_bytes = (gitdir / "MERGE_HEAD").read_bytes()
+
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=base,
+        integrated_feature_sha=feature,
+        merge_commit_parent=feature,
+        merge_commit_pending=True,
+        merge_commit_repair_attempts=1,
+    )
+    diagnostic.set_operation_evidence_collector(None)
+
+    agent_called = False
+
+    def fake_invoke(agent: str, prompt: Path) -> bool:
+        nonlocal agent_called
+        agent_called = True
+        return False
+
+    result = diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="test failure",
+        agents=("test-agent",),
+        invoke=fake_invoke,
+    )
+    assert result is False
+    assert not agent_called
+    saved = read_record(root)
+    assert saved is not None
+    assert saved.diagnostic_intervention_required is True
+    assert saved.merge_commit_repair_attempts == 1
+    assert (gitdir / "MERGE_HEAD").read_bytes() == original_merge_head_bytes
+
+
+@pytest.mark.subprocess_e2e
+def test_no_positive_proof_routes_to_intervention_without_consuming_attempt(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "config", "user.name", "Test").returncode == 0
+    assert _git(root, "config", "user.email", "test@example.com").returncode == 0
+    _commit(root, "file.txt", "base\n")
+
+    record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        integrated_feature_sha="2" * 40,
+        merge_commit_pending=True,
+        merge_commit_repair_attempts=0,
+    )
+    diagnostic.set_operation_evidence_collector(None)
+
+    agent_called = False
+
+    def fake_invoke(agent: str, prompt: Path) -> bool:
+        nonlocal agent_called
+        agent_called = True
+        return False
+
+    result = diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="ancestry mismatch",
+        agents=("test-agent",),
+        invoke=fake_invoke,
+    )
+    assert result is False
+    assert not agent_called
+    saved = read_record(root)
+    assert saved is not None
+    assert saved.diagnostic_intervention_required is True
+    assert saved.merge_commit_repair_attempts == 0

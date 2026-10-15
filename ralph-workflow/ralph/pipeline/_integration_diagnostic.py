@@ -29,6 +29,11 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    last_outcome_reason,
+    next_integration_action,
+)
 from ralph.pipeline.auto_integrate_record import (
     BUMP_DIAGNOSTIC_ATTEMPT,
     HOLD_DIAGNOSTIC_EVIDENCE,
@@ -44,7 +49,11 @@ from ralph.pipeline.operation_evidence import (
     SubprocessOperationEvidenceCollector,
     ownership_fingerprint,
 )
-from ralph.pipeline.operation_fact import _UNREADABLE
+from ralph.pipeline.operation_fact import (
+    _KIND_MERGE_OBJECT_RESOLVABLE,
+    _KIND_REBASE_OBJECT_RESOLVABLE,
+    _UNREADABLE,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -327,6 +336,212 @@ def _diagnostic_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
 _default_diagnostic_snapshot = _diagnostic_snapshot
 
 
+def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    from ralph.git.subprocess_runner import run_git
+
+    try:
+        head_res = run_git(
+            ("rev-parse", "--verify", "HEAD"),
+            cwd=root,
+            label="integration_diagnostic:verify_head",
+        )
+    except (OSError, RuntimeError) as exc:
+        return False, f"HEAD rev-parse failed: {exc}"
+    if head_res.returncode != 0:
+        return False, "HEAD is unreadable"
+    head = head_res.stdout.strip()
+    allowed_heads = {record.integrated_feature_sha, record.pre_target_sha} - {None, ""}
+    if head not in allowed_heads:
+        return False, f"HEAD {head} does not match integrated_feature_sha or pre_target_sha"
+    return True, "HEAD matches"
+
+
+def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    from ralph.git.subprocess_runner import run_git
+
+    try:
+        parents_res = run_git(
+            ("show", "-s", "--format=%P", "HEAD"),
+            cwd=root,
+            label="integration_diagnostic:head_parents",
+        )
+    except (OSError, RuntimeError) as exc:
+        return False, f"parents rev-parse failed: {exc}"
+    if parents_res.returncode != 0:
+        return False, "parents of HEAD are unreadable"
+    parents = parents_res.stdout.strip().split()
+
+    is_rebase = bool(record.resolving_rebase or record.rebase_continue_pending)
+    if is_rebase:
+        if not record.pre_target_sha or record.pre_target_sha not in parents:
+            return False, f"parent of HEAD does not match pre_target_sha {record.pre_target_sha}"
+    else:
+        expected_parents = {record.merge_commit_parent, record.pre_target_sha} - {None, ""}
+        if not any(p in parents for p in expected_parents):
+            return (
+                False,
+                f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent} or pre_target_sha {record.pre_target_sha}",
+            )
+    return True, "parents verified"
+
+
+def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    ok, reason = _check_head_match(root, record)
+    if not ok:
+        return False, reason
+    return _check_parent_match(root, record)
+
+
+def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    if record.owning_worktree is not None:
+        try:
+            if Path(record.owning_worktree).resolve() != root.resolve():
+                return False, f"owning_worktree {record.owning_worktree} does not match {root}"
+        except Exception:
+            return False, f"owning_worktree {record.owning_worktree} is invalid"
+
+    if (
+        record.diagnostic_ownership is not None
+        and record.diagnostic_ownership != ownership_fingerprint(record)
+    ):
+        return False, "diagnostic_ownership does not match ownership_fingerprint"
+    return True, "ownership verified"
+
+
+def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
+    from ralph.git.merge import unmerged_paths
+    from ralph.git.subprocess_runner import run_git
+
+    try:
+        merge_head_res = run_git(
+            ("rev-parse", "--verify", "MERGE_HEAD"),
+            cwd=root,
+            label="integration_diagnostic:check_merge_head",
+        )
+        if merge_head_res.returncode == 0:
+            return False, "MERGE_HEAD is present"
+    except (OSError, RuntimeError):
+        pass
+
+    try:
+        rebase_head_res = run_git(
+            ("rev-parse", "--verify", "REBASE_HEAD"),
+            cwd=root,
+            label="integration_diagnostic:check_rebase_head",
+        )
+        if rebase_head_res.returncode == 0:
+            return False, "REBASE_HEAD is present"
+    except (OSError, RuntimeError):
+        pass
+
+    unmerged = unmerged_paths(root)
+    if unmerged or "<unmerged-path-query-failed>" in unmerged:
+        return False, "unmerged paths in index or unmerged query failed"
+
+    try:
+        diff_res = run_git(
+            ("diff", "--quiet", "HEAD"),
+            cwd=root,
+            label="integration_diagnostic:diff_head",
+        )
+        if diff_res.returncode != 0:
+            return False, "git diff against HEAD is non-empty"
+    except (OSError, RuntimeError) as exc:
+        return False, f"git diff failed: {exc}"
+    return True, "index and tree verified"
+
+
+def _check_atomic_transition_proof(record: IntegrationRecord) -> tuple[bool, str]:
+    has_valid_phase = record.phase in ("integrated",) or (
+        record.phase in ("integrating",) and bool(record.integrated_feature_sha)
+    )
+    if not has_valid_phase:
+        return False, f"record.phase is '{record.phase}', expected 'integrated'"
+    if bool(record.diagnostic_evidence):
+        return False, "diagnostic_evidence is not empty"
+    return True, "atomic transition verified"
+
+
+def _check_operation_completion_proof(
+    root: Path,
+    record: IntegrationRecord,
+) -> tuple[bool, str]:
+    checks = (
+        _check_ancestry_proof(root, record),
+        _check_ownership_proof(root, record),
+        _check_index_tree_proof(root),
+        _check_atomic_transition_proof(record),
+    )
+    for ok, reason in checks:
+        if not ok:
+            return False, reason
+    return True, "positive operation-completion proof satisfied"
+
+
+def _pre_pass_intervention(
+    root: Path,
+    record: IntegrationRecord,
+    backend: FileBackend,
+    reason: str,
+) -> bool:
+    intervention = record.with_transition(
+        RAISE_DIAGNOSTIC_INTERVENTION,
+        diagnostic_intervention_required=True,
+        repair_cap_reason=reason,
+    )
+    write_record(root, intervention, backend=backend)
+    logger.critical(
+        "Operation completion proof failed ({}); operator intervention required",
+        reason,
+    )
+    return False
+
+
+def _run_completion_pre_pass(
+    *,
+    root: Path,
+    inspection_root: Path,
+    record: IntegrationRecord,
+    snapshot: tuple[OperationFact, ...],
+    next_action: IntegrationAction,
+    backend: FileBackend,
+) -> bool | None:
+    for fact in snapshot:
+        if fact.kind in (
+            _KIND_MERGE_OBJECT_RESOLVABLE,
+            _KIND_REBASE_OBJECT_RESOLVABLE,
+        ) and fact.value in ("False", "false"):
+            return _pre_pass_intervention(
+                root,
+                record,
+                backend,
+                "unreachable marker object; operator intervention required",
+            )
+
+    if next_action == IntegrationAction.CONTINUE_GIT_OPERATION:
+        proof_ok, proof_reason = _check_operation_completion_proof(inspection_root, record)
+        if proof_ok:
+            cleared = record.with_transition(
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+            )
+            write_record(root, cleared, backend=backend)
+            logger.info(
+                "Positive operation-completion proof verified; released diagnostic evidence"
+            )
+            return True
+        return _pre_pass_intervention(
+            root, record, backend, f"operation completion proof failed: {proof_reason}"
+        )
+
+    if next_action == IntegrationAction.REQUIRE_INTERVENTION:
+        reason = last_outcome_reason(record) or "operator intervention required"
+        return _pre_pass_intervention(root, record, backend, reason)
+
+    return None
+
+
 def handoff_integration_diagnostic(
     *,
     root: Path,
@@ -346,6 +561,26 @@ def handoff_integration_diagnostic(
     loop iteration will see ``diagnostic_intervention_required``
     and surface ``REPORT_INTERVENTION_REQUIRED`` to the operator.
     """
+    inspection_root = (
+        Path(record.owning_worktree)
+        if (record.owning_worktree and backend.exists(Path(record.owning_worktree)))
+        else root
+    )
+    collector = operation_evidence_collector()
+    snapshot = collector.snapshot(inspection_root, record)
+    next_action = next_integration_action(record)
+
+    pre_pass_result = _run_completion_pre_pass(
+        root=root,
+        inspection_root=inspection_root,
+        record=record,
+        snapshot=snapshot,
+        next_action=next_action,
+        backend=backend,
+    )
+    if pre_pass_result is not None:
+        return pre_pass_result
+
     if record.merge_commit_repair_attempts >= repair_attempt_cap:
         intervention = record.with_transition(
             RAISE_DIAGNOSTIC_INTERVENTION,

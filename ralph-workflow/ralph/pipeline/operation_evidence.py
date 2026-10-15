@@ -43,8 +43,10 @@ from ralph.pipeline.operation_fact import (
     _KIND_COMMIT_CONTROLS,
     _KIND_HEAD,
     _KIND_INDEX_SCOPE,
+    _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_MERGE_STATE,
     _KIND_OWNERSHIP,
+    _KIND_REBASE_OBJECT_RESOLVABLE,
     _KIND_REBASE_STATE,
     _KIND_UNSTAGED_WORK,
     _KIND_WORKTREE_PATH,
@@ -137,6 +139,7 @@ class SubprocessOperationEvidenceCollector:
         record: IntegrationRecord,
         *,
         capture_repair_facts: bool | None = None,
+        observed: tuple[OperationFact, ...] | None = None,
     ) -> tuple[OperationFact, ...]:
         facts: list[OperationFact] = [
             OperationFact(kind=_KIND_HEAD, value=_read_head(root)),
@@ -160,6 +163,7 @@ class SubprocessOperationEvidenceCollector:
         if should_repair:
             facts.append(_read_unstaged_work(root))
             facts.append(_read_commit_controls(root, self._backend))
+        facts.extend(_read_reachability_facts(root, record, observed))
         return tuple(facts)
 
     def verify(
@@ -170,13 +174,26 @@ class SubprocessOperationEvidenceCollector:
     ) -> bool:
         if not observed or any(fact.value == _UNREADABLE for fact in observed):
             return False
+        for fact in observed:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return False
         current = self.snapshot(
             root,
             record,
             capture_repair_facts=_should_capture_repair_facts(record, observed),
+            observed=observed,
         )
         if any(fact.value == _UNREADABLE for fact in current):
             return False
+        for fact in current:
+            if fact.kind in (
+                _KIND_MERGE_OBJECT_RESOLVABLE,
+                _KIND_REBASE_OBJECT_RESOLVABLE,
+            ) and fact.value in ("False", "false"):
+                return False
         current_map = {fact.kind: fact.value for fact in current}
         current_scope: dict[tuple[str, str | None], str] = {
             (fact.kind, fact.scope): fact.value for fact in current
@@ -343,7 +360,100 @@ def _read_file_value(path: Path) -> str:
         return _UNREADABLE
 
 
+def _read_reachability_facts(
+    root: Path,
+    record: IntegrationRecord,
+    observed: tuple[OperationFact, ...] | None = None,
+) -> tuple[OperationFact, ...]:
+    from ralph.git.subprocess_runner import run_git
+
+    if not DEFAULT_FILE_BACKEND.exists(root):
+        return ()
+    try:
+        metadata = run_git(
+            ("rev-parse", "--absolute-git-dir"),
+            cwd=root,
+            label="operation_evidence:gitdir:reachability",
+        )
+    except (OSError, RuntimeError):
+        return ()
+    if metadata.returncode:
+        return ()
+    gitdir = Path(metadata.stdout.strip())
+
+    facts: list[OperationFact] = []
+    should_check_merge = (
+        DEFAULT_FILE_BACKEND.exists(gitdir / "MERGE_HEAD")
+        or record.resolving_merge
+        or record.merge_commit_pending
+        or (observed is not None and any(f.kind == _KIND_MERGE_OBJECT_RESOLVABLE for f in observed))
+    )
+    if should_check_merge:
+        facts.append(_read_object_resolvable(root, "MERGE_HEAD", _KIND_MERGE_OBJECT_RESOLVABLE))
+
+    should_check_rebase = (
+        DEFAULT_FILE_BACKEND.exists(gitdir / "REBASE_HEAD")
+        or record.resolving_rebase
+        or record.rebase_continue_pending
+        or (
+            observed is not None and any(f.kind == _KIND_REBASE_OBJECT_RESOLVABLE for f in observed)
+        )
+    )
+    if should_check_rebase:
+        facts.append(_read_object_resolvable(root, "REBASE_HEAD", _KIND_REBASE_OBJECT_RESOLVABLE))
+
+    return tuple(facts)
+
+
+def _read_marker_sha(root: Path, file_name: str) -> str | None:
+    from ralph.git.subprocess_runner import run_git
+
+    if not DEFAULT_FILE_BACKEND.exists(root):
+        return None
+    try:
+        metadata = run_git(
+            ("rev-parse", "--absolute-git-dir"),
+            cwd=root,
+            label=f"operation_evidence:gitdir:{file_name}",
+        )
+    except (OSError, RuntimeError):
+        return None
+    if metadata.returncode:
+        return None
+    marker = Path(metadata.stdout.strip()) / file_name
+    if not DEFAULT_FILE_BACKEND.exists(marker):
+        return None
+    try:
+        raw = DEFAULT_FILE_BACKEND.read_bytes(marker).decode("utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return raw.splitlines()[0].strip() if raw else None
+
+
+def _read_object_resolvable(root: Path, file_name: str, kind: str) -> OperationFact:
+    from ralph.git.subprocess_runner import run_git
+
+    sha = _read_marker_sha(root, file_name)
+    if not sha:
+        return OperationFact(kind=kind, value=_UNREADABLE)
+    try:
+        res = run_git(
+            ("cat-file", "-e", sha),
+            cwd=root,
+            label=f"operation_evidence:{kind}",
+        )
+    except (OSError, RuntimeError):
+        return OperationFact(kind=kind, value=_UNREADABLE)
+    if res.returncode == 0:
+        return OperationFact(kind=kind, value="True")
+    if res.returncode == 1:
+        return OperationFact(kind=kind, value="False")
+    return OperationFact(kind=kind, value=_UNREADABLE)
+
+
 __all__ = [
+    "_KIND_MERGE_OBJECT_RESOLVABLE",
+    "_KIND_REBASE_OBJECT_RESOLVABLE",
     "InMemoryOperationEvidenceCollector",
     "OperationEvidenceCollector",
     "OperationFact",

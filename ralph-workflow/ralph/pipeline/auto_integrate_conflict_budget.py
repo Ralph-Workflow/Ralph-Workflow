@@ -56,6 +56,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._integration_action import RebaseOutcomeKind
+
 if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
@@ -64,7 +66,7 @@ if TYPE_CHECKING:
 #: attempts record an escalation instead of invoking the agent.
 MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 64
 
-_ACTION_CONFLICT = "conflict"
+_ACTION_CONFLICT = RebaseOutcomeKind.CONFLICT.value
 
 __all__ = [
     "MAX_CONSECUTIVE_RESOLVER_ATTEMPTS",
@@ -217,7 +219,7 @@ def apply_conflict_budget(
                 "last_conflict_strategy_index": 0,
             }
         )
-    if record.last_action != _ACTION_CONFLICT:
+    if record.last_outcome != RebaseOutcomeKind.CONFLICT:
         return record.model_copy(
             update={
                 "consecutive_conflicts": carried,

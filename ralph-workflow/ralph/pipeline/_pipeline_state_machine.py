@@ -16,6 +16,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 
 if TYPE_CHECKING:
@@ -66,15 +67,17 @@ def _check_blocking_decision(
     if integration_record is not None:
         if integration_record.diagnostic_intervention_required:
             return PhaseDecision.REPORT_INTERVENTION_REQUIRED
-        if (
-            integration_record.reintegrate_pending
-            or integration_record.phase == "integrating"
-            or (
-                integration_record.phase == "integrated"
-                and (
-                    integration_record.integrated_feature_sha is None
-                    or integration_record.reintegrate_pending
-                )
+        action = next_integration_action(integration_record)
+        if action in (
+            IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+            IntegrationAction.CONTINUE_GIT_OPERATION,
+            IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+            IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+        ) or (
+            action == IntegrationAction.LAND_TARGET
+            and (
+                integration_record.integrated_feature_sha is None
+                or integration_record.reintegrate_pending
             )
         ):
             return PhaseDecision.BLOCK_FOR_RECOVERY

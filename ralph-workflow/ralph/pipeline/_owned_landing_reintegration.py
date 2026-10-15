@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
     MARK_RESOLVING_MERGE,
@@ -58,13 +59,11 @@ def reintegrate_owned_landing(
             rebase_stop_resolver,
         )
     expected = (
-        retained.integrated_feature_sha
-        if retained.phase == "integrated"
-        else retained.pre_feature_sha
+        retained.integrated_feature_sha if retained.is_integrated else retained.pre_feature_sha
     )
     if config is None or get_head_sha(root) != expected or not is_repo_clean(root):
         return RebaseState(
-            last_action="skipped",
+            last_outcome=RebaseOutcomeKind.SKIPPED,
             last_target=record.target,
             last_reason="owned target reintegration requires config, unchanged feature tip, and a clean worktree",
             recovery_record_retained=True,
@@ -87,7 +86,7 @@ def reintegrate_owned_landing(
             }
         )
     return RebaseState(
-        last_action="skipped",
+        last_outcome=RebaseOutcomeKind.SKIPPED,
         last_target=record.target,
         last_reason="owned reintegration did not produce completion proof",
         recovery_record_retained=True,
@@ -115,7 +114,7 @@ def _resume_owned_operation(
         return None
     if not active_operation_matches(root, record):
         return RebaseState(
-            last_action="skipped",
+            last_outcome=RebaseOutcomeKind.SKIPPED,
             last_target=record.target,
             last_reason="active operation identity differs from owned reintegration; progress retained",
             recovery_record_retained=True,
@@ -128,7 +127,7 @@ def _resume_owned_operation(
 
 
 def _completed_owned_action(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
-    if record.phase != "integrating":
+    if not record.is_integrating:
         return None
     if (
         get_head_sha(root) == record.pre_feature_sha

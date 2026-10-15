@@ -94,7 +94,7 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
     current = read_record(root)
     if current is None:
         return "retained integration ownership unreadable after continuation"
-    if current.phase == "integrated":
+    if current.is_integrated:
         return current
     if current.rebase_continue_pending:
         from ralph.pipeline._pending_rebase_continue import resume_pending_rebase

@@ -15,6 +15,7 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import (
     PublicationDecision,
     next_publication_action,
@@ -639,6 +640,9 @@ def push_target_after_landing(
     # reason about whether the push was *attempted*; here we
     # translate the actual outcome into the post-push decision.
     post_decision = _post_push_publication_decision(typed_result)
+    outcome = (
+        RebaseOutcomeKind.REMOTE_PUSHED if typed_result.success else RebaseOutcomeKind.REMOTE_FAILED
+    )
     return record.model_copy(
         update={
             "last_push": typed_result.summary,
@@ -646,7 +650,7 @@ def push_target_after_landing(
             "last_push_status": typed_result.status.value,
             "last_remote_sync": _remote_sync_status(typed_result.status),
             "last_publication_decision": post_decision.value,
-            "last_action": "remote_pushed" if typed_result.success else "remote_failed",
+            "last_outcome": outcome,
             "last_reason": (
                 None if typed_result.success else typed_result.detail or typed_result.status.value
             ),

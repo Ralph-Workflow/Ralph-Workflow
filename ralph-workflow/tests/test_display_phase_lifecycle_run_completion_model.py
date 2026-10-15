@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from ralph.display.auto_integrate_message import (
+    OperationDisplayState,
+    format_auto_integrate_message,
+)
 from ralph.display.phase_lifecycle import (
     PhaseActivityCounts,
     RunCompletionModel,
@@ -243,3 +247,59 @@ class TestRunCompletionModel:
 
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
         assert model.mcp_restart_count == 2
+
+
+def test_integrating_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.INTEGRATING, target="main"
+    )
+    assert msg.startswith("integrating")
+
+
+def test_landing_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.LANDING, target="main"
+    )
+    assert msg.startswith("landing")
+
+
+def test_publishing_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.PUBLISHING, target="main"
+    )
+    assert msg.startswith("publishing")
+
+
+def test_conflict_resolution_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.CONFLICT_RESOLUTION, target="main"
+    )
+    assert msg.startswith("conflict resolution")
+
+
+def test_evidence_diagnosis_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.EVIDENCE_DIAGNOSIS, target="main"
+    )
+    assert msg.startswith("evidence diagnosis")
+
+
+def test_waiting_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.WAITING, target="main"
+    )
+    assert msg.startswith("waiting")
+
+
+def test_intervention_required_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.INTERVENTION_REQUIRED, target="main"
+    )
+    assert msg.startswith("intervention required")
+
+
+def test_terminal_rendered_prefix() -> None:
+    msg = format_auto_integrate_message(
+        operation_display_state=OperationDisplayState.TERMINAL, target="main"
+    )
+    assert msg.startswith("terminal")

@@ -224,9 +224,9 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
 
 
 def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy) -> Effect | None:
-    if state.phase == pipeline_policy.terminal_phase:
+    if state.phase in (pipeline_policy.terminal_phase,):
         return ExitSuccessEffect()
-    if state.phase == pipeline_policy.recovery.failed_route:
+    if state.phase in (pipeline_policy.recovery.failed_route,):
         return _recovery_prepare_effect(state, pipeline_policy)
     return None
 

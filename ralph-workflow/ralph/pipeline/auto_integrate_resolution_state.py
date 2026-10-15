@@ -5,7 +5,7 @@ and conflating them deadlocks the run. The integration seam is not
 ordinary work that must wait for a conflict to be resolved -- it is the
 thing that resolves it. Gating it on the same verdict that gates
 ordinary phase dispatch leaves the only operation able to clear the
-verdict blocked by the verdict, so ``last_action == "conflict"`` latches
+verdict blocked by the verdict, so conflict outcome latches
 for the rest of the run and
 :func:`~ralph.pipeline.integration_resolution.assert_non_resolution_dispatch_allowed`
 then rejects every phase -- against a repository that may already be
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.integration_resolution import persisted_integration_resolution_verdict
 
 if TYPE_CHECKING:
@@ -59,7 +60,9 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
         return state
     clear_strategy = state.resolution_exhausted or state.conflict_strategy_index == 0
     update: dict[str, object] = {
-        "last_action": None if state.last_action == "conflict" else state.last_action,
+        "last_outcome": None
+        if state.last_outcome == RebaseOutcomeKind.CONFLICT
+        else state.last_outcome,
         "unresolved_integration_carried": False,
         "resolution_exhausted": False,
         "resolution_exhaustion_reason": None,

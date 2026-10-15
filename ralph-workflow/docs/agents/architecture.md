@@ -50,9 +50,9 @@ The single canonical entry point for adding, updating, or removing an agent is
 `register_agent_support()` (defined in `ralph/agents/registration.py`).  See the
 step-by-step recipe in [adding-a-new-agent.md](adding-a-new-agent.md).
 
-## Single source of truth: builtin_supports()
+## Built-in catalog declaration: builtin_supports()
 
-Built-in agents are declared in a single module `ralph/agents/builtin.py` which exposes the private `_BUILTIN_AGENT_SUPPORTS` tuple. Callers query the built-in catalog supports through the public `builtin_supports()` function.
+Built-in agents are declared in `ralph/agents/builtin.py`, exposing the private `_BUILTIN_AGENT_SUPPORTS` tuple queried through `builtin_supports()`. For the authoritative lifecycle inventory, domain-fact ownership, and single source of truth across the pipeline, see [ADR-0007](../architecture/adr-0007-integration-source-of-truth.md) and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md). Rather than relying on prose ownership claims, all lifecycle transitions and integration authorities are strictly enumerated in the ADR-0007 domain-fact inventory table and the ADR-0008 typed action inventory.
 
 To keep the catalog and agent registries in lockstep, `AgentRegistry.from_config` and `AgentRegistry(catalog=...)` both invoke `_seed_catalog_with_builtins()`. The seed is idempotent, ensuring that duplicate invocations do not cause double-registration errors.
 

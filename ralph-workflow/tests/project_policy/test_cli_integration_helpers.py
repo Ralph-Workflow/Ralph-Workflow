@@ -13,6 +13,7 @@ Covers the seams that the run-integration tests mock away:
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING
 
 import pytest
@@ -36,10 +37,15 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
+@functools.lru_cache(maxsize=1)
+def _default_bundle() -> PolicyBundle:
+    return load_policy(default_dir())
+
+
 def _bundle_with_development_bound_remediation() -> PolicyBundle:
     """Default bundle rewired: no policy_remediation chain; the drain binds
     to a development chain, mirroring the loader's development-drain backfill."""
-    bundle = load_policy(default_dir())
+    bundle = _default_bundle()
     chains = dict(bundle.agents.agent_chains)
     del chains["policy_remediation"]
     chains["development"] = AgentChainConfig(
@@ -79,7 +85,7 @@ def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:
     """The policy loop uses its own small budget. The global recovery cycle_cap
     (200) governs pipeline recovery cycles and must NOT leak in here: 200
     synchronous agent rounds at startup is a display flood, not a strategy."""
-    bundle = load_policy(default_dir())
+    bundle = _default_bundle()
     assert bundle.pipeline.recovery.cycle_cap == 200
     assert DEFAULT_ANALYSIS_CAP == 3
 
@@ -87,7 +93,7 @@ def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:
 def test_production_closure_forwards_display_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bundle = load_policy(default_dir())
+    bundle = _default_bundle()
     load_result = _load_result(bundle)
     display_context = make_display_context()
     observed_opts: list[dict[str, object]] = []
@@ -194,7 +200,7 @@ def test_ready_preflight_triggers_policy_auto_commit(
     # pipeline call exercises the new helper.
     monkeypatch.setattr(policy_auto_commit_module, "commit_policy_writes", fake_commit)
 
-    load_result = _load_result(load_policy(default_dir()))
+    load_result = _load_result(_default_bundle())
     rc = cli_integration.run_project_policy_readiness(
         load_result=load_result,
         display_context=make_display_context(),
@@ -233,7 +239,7 @@ def test_ready_preflight_condenses_placeholder_agents_md_block(
     )
 
     rc = cli_integration.run_project_policy_readiness(
-        load_result=_load_result(load_policy(default_dir())),
+        load_result=_load_result(_default_bundle()),
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=lambda _m: None,
@@ -309,7 +315,7 @@ def test_remediation_runs_inside_started_display_with_status_bar(
     )
 
     rc = cli_integration.run_project_policy_readiness(
-        load_result=_load_result(load_policy(default_dir())),
+        load_result=_load_result(_default_bundle()),
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=lambda _m: None,
@@ -362,7 +368,7 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
     )
 
     rc = cli_integration.run_project_policy_readiness(
-        load_result=_load_result(load_policy(default_dir())),
+        load_result=_load_result(_default_bundle()),
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=lambda _m: None,
@@ -382,7 +388,7 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
 def test_production_closure_raises_on_launch_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bundle = load_policy(default_dir())
+    bundle = _default_bundle()
     load_result = _load_result(bundle)
 
     def crashing_execute_agent_effect(*args: object, **opts: object) -> object:
