@@ -208,7 +208,9 @@ async def test_a_frame_at_the_buffer_limit_is_still_delivered() -> None:
 
 
 @pytest.mark.asyncio
-async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
+async def test_every_dropped_oversized_frame_leaves_a_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A frame too large to buffer is dropped; the gap must not be silent.
 
     Without a marker the capture skipped from the frame before the gap to
@@ -223,9 +225,10 @@ async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
     import json
 
     from ralph.agents.subprocess_executor import drain_agent_lines
-    from ralph.process.manager import AGENT_STREAM_BUFFER_BYTES
 
-    oversized = b"X" * (AGENT_STREAM_BUFFER_BYTES + 10)
+    buffer_bytes = 128
+    monkeypatch.setattr("ralph.agents.subprocess_executor.AGENT_STREAM_BUFFER_BYTES", buffer_bytes)
+    oversized = b"X" * (buffer_bytes + 10)
     cases = {
         "middle": ([b"a\n", oversized + b"\n", b"c\n"], [b"a\n", b"c\n"], [False]),
         "at_eof_no_newline": ([b"a\n", oversized], [b"a\n"], [True]),
@@ -238,7 +241,7 @@ async def test_every_dropped_oversized_frame_leaves_a_marker() -> None:
     }
 
     for label, (chunks, expected_lines, expected_eof_flags) in cases.items():
-        stream = asyncio.StreamReader(limit=AGENT_STREAM_BUFFER_BYTES)
+        stream = asyncio.StreamReader(limit=buffer_bytes)
         for chunk in chunks:
             stream.feed_data(chunk)
         stream.feed_eof()

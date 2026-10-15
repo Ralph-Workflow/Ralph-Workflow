@@ -17,13 +17,19 @@ _DISPLAY_ROOT = pathlib.Path(__file__).parent.parent / "ralph" / "display"
 
 
 @lru_cache(maxsize=1)
-def _display_trees() -> tuple[ast.Module, ...]:
-    """Parse the fixed display source set once for all anti-drift checks."""
+def _display_sources() -> tuple[tuple[pathlib.Path, str], ...]:
+    """Read the fixed display source set once for all anti-drift checks."""
     return tuple(
-        ast.parse(path.read_text(encoding="utf-8"))
-        for path in _DISPLAY_ROOT.rglob("*.py")
+        (path, path.read_text(encoding="utf-8"))
+        for path in sorted(_DISPLAY_ROOT.rglob("*.py"))
         if "__pycache__" not in path.parts
     )
+
+
+@lru_cache(maxsize=1)
+def _display_trees() -> tuple[ast.Module, ...]:
+    """Parse the fixed display source set once for all anti-drift checks."""
+    return tuple(ast.parse(text) for _, text in _display_sources())
 
 
 @lru_cache(maxsize=1)
@@ -56,14 +62,13 @@ def test_analysis_decision_badge_defined_once() -> None:
     assert _function_def_count("analysis_decision_badge") == 1
 
 
+@pytest.mark.timeout_seconds(10)
 def test_no_inline_elapsed_dot_one_f_formatting() -> None:
     """Elapsed time must go through format_elapsed_seconds, never a raw ``:.1f`` +
     's' literal (the divergence that produced inconsistent rounding)."""
-    offenders: list[str] = []
-    for path in _DISPLAY_ROOT.rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "elapsed_seconds:.1f" in text:
-            offenders.append(str(path.relative_to(_DISPLAY_ROOT.parent)))
+    offenders: list[str] = [
+        str(path.relative_to(_DISPLAY_ROOT.parent))
+        for path, text in _display_sources()
+        if "elapsed_seconds:.1f" in text
+    ]
     assert offenders == [], f"use format_elapsed_seconds instead of :.1f in {offenders}"

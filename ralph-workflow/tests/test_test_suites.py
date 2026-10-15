@@ -10,7 +10,7 @@ under the maintained ``1000``-line-per-file cap.
 
 from __future__ import annotations
 
-import ast
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -18,6 +18,7 @@ import pytest
 
 import ralph.test_suites as test_suites_module
 import tests.conftest as conftest_module
+from ralph.verify_timeout import build_timeout_env, run_command_with_timeout
 from tests._test_test_suites_helpers import (
     _BackpressuredShardProcess,
     _FakeClock,
@@ -824,31 +825,43 @@ def test_static_discovery_populates_source_cache_for_retained_files(
     assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(15)
 def test_real_pty_completion_no_terminal_lost_collected_under_subprocess_e2e_and_smoke() -> None:
-    """Verify that test_real_pty_completion_no_terminal_lost.py is collectable under smoke."""
+    """Verify that test_real_pty_completion_no_terminal_lost.py is collected under smoke."""
     target_rel = "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py"
-    target_path = Path(__file__).resolve().parent.parent / target_rel
+    repo_root = Path(__file__).resolve().parent.parent
+    target_path = repo_root / target_rel
     assert target_path.is_file(), f"{target_rel} must exist on disk"
     assert target_rel in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES, (
         f"{target_rel} must be in REQUIRED_AUTO_INTEGRATE_E2E_FILES"
     )
 
-    source = target_path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(target_path))
-    markers = {
-        node.attr
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute)
-        and isinstance(node.value, ast.Attribute)
-        and node.value.attr == "mark"
-    }
-    assert "smoke" in markers, f"missing smoke marker in {target_rel}"
-    assert "subprocess_e2e" in markers, f"missing subprocess_e2e marker in {target_rel}"
-    test_node_names = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
-    ]
-    assert "test_request_interactive_exit_does_not_lose_returncode" in test_node_names, (
-        f"test function missing in {target_rel}"
+    timeout_s = 15.0
+    result = run_command_with_timeout(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-p",
+            "no:cov",
+            "-m",
+            "subprocess_e2e and smoke",
+            "-q",
+            target_rel,
+        ],
+        cwd=repo_root,
+        env=build_timeout_env(suite_timeout_seconds=timeout_s),
+        suite_timeout_seconds=timeout_s,
+    )
+    assert result.returncode == 0, (
+        f"pytest collection failed with return code {result.returncode}:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert (
+        f"{target_rel}::test_request_interactive_exit_does_not_lose_returncode" in result.stdout
+    ), f"test function missing from collection output in {target_rel}: {result.stdout}"
+    assert "1 test collected" in result.stdout, (
+        f"unexpected test collection count in {target_rel}: {result.stdout}"
     )

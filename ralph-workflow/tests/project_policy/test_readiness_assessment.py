@@ -394,6 +394,7 @@ class _Recorder:
         return True
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_ready_carries_assessment_through_to_result() -> None:
     """A READY run with a matching ledger must surface a non-default
     assessment in the result; the dimensions are evidence-anchored and
@@ -421,6 +422,7 @@ def test_pipeline_ready_carries_assessment_through_to_result() -> None:
     assert result.command_outcomes[0].command == "make test"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false() -> None:
     """A ledger whose ``policy_content_hash`` does NOT match the current
     readiness-evidence signature cannot certify the present policy: the
@@ -438,6 +440,7 @@ def test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false() -> Non
     assert result.assessment.outcome_evidence_reviewed is False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false() -> None:
     """A READY run with NO ledger must report ``implementation_verified=False``:
     the analysis agent approved the policy but never produced proof it
@@ -456,6 +459,7 @@ def test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false() -> 
     assert result.command_outcomes == ()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_blocked_with_ledger_reports_structure_incomplete() -> None:
     """A BLOCKED run with a ledger must still report
     ``structure_complete=False`` (the validator is the gate) and
@@ -475,6 +479,7 @@ def test_pipeline_blocked_with_ledger_reports_structure_incomplete() -> None:
     assert result.assessment.implementation_verified is False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_handles_malformed_ledger_without_crashing() -> None:
     """A malformed ledger must NOT crash the driver; the analysis
     artifact is still parseable for its decision and the dimension
@@ -500,6 +505,7 @@ def test_pipeline_handles_malformed_ledger_without_crashing() -> None:
     assert result.command_outcomes == ()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pipeline_with_failing_ledger_keeps_implementation_verified_false() -> None:
     """A non-zero exit_code in the ledger is honest failure: the
     dimension stays False even when the validator passes.

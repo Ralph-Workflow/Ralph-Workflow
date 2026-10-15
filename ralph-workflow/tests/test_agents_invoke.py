@@ -2310,10 +2310,8 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(
-                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
-            )
-            self.stderr = SimpleNamespace(read=lambda _size: "")
+            self.stdout = iter([json.dumps({"type": "result", "result": "done"}) + "\n"])
+            self.stderr = io.StringIO("")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -2437,10 +2435,8 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(
-                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
-            )
-            self.stderr = SimpleNamespace(read=lambda _size: "")
+            self.stdout = iter([json.dumps({"type": "result", "result": "done"}) + "\n"])
+            self.stderr = io.StringIO("")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:

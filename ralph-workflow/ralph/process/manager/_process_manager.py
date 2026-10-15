@@ -275,6 +275,9 @@ class ProcessManager:
         ]
         for target in targets:
             if target is not None:
+                target_pid: object = getattr(target, "pid", None)
+                if target_pid is not None and target_pid != record.pid:
+                    continue
                 note_fn: object = getattr(target, "note_external_returncode", None)
                 if callable(note_fn):
                     with contextlib.suppress(Exception):
@@ -553,21 +556,29 @@ class ProcessManager:
 
     def _harvest_and_mark_descendant(
         self,
-        fallback_record: ProcessRecord,
+        fallback_record: ProcessRecord | None,
         descendant_pid: int,
         proc: object,
         gone: Sequence[object],
     ) -> None:
+        del fallback_record  # Retained for signature compatibility; never used for status routing
         rc = _extract_psutil_returncode(gone, descendant_pid)
-        if rc is None and gone:
-            raw_rc: object = getattr(gone[0], "returncode", None)
-            if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
-                rc = raw_rc
         if rc is not None:
             desc_rec = self._records.get(descendant_pid)
             if desc_rec is not None:
+                self._note_proc_external_returncode(desc_rec, proc, rc)
                 self._mark_killed(desc_rec, rc)
-            self._note_proc_external_returncode(desc_rec or fallback_record, proc, rc)
+            else:
+                handle: object = (
+                    self._pty_procs.get(descendant_pid)
+                    or self._sync_procs.get(descendant_pid)
+                    or self._async_procs.get(descendant_pid)
+                )
+                if handle is not None:
+                    note_fn: object = getattr(handle, "note_external_returncode", None)
+                    if callable(note_fn):
+                        with contextlib.suppress(Exception):
+                            note_fn(rc)
 
     def _terminate_descendant_no_psutil(self, descendant_pid: int, grace_period_s: float) -> None:
         if not hasattr(os, "kill"):
