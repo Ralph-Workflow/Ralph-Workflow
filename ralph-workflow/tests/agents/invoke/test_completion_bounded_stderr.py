@@ -21,6 +21,7 @@ import pytest
 import ralph.agents.invoke._completion as completion_mod
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import BaseExecutionStrategy
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.invoke._completion import CompletionCheckOptions
 from ralph.agents.invoke._completion_exit_status import (
     _MAX_STDERR_CAPTURE_BYTES,
@@ -195,8 +196,12 @@ def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
 
 def test_completion_rejects_missing_terminal_returncode() -> None:
     """Completion must fail closed when lifecycle finalization did not establish an exit."""
-    with pytest.raises(RuntimeError, match="terminal return code"):
+    with pytest.raises(AgentInvocationError, match="terminal return code") as exc_info:
         completion_mod.check_process_result(_FakeHandle(returncode=None), "test-agent", None, None)
+    assert exc_info.value.agent_name == "test-agent"
+    assert exc_info.value.returncode == -1
+    assert exc_info.value.failure_origin == "agent"
+    assert not isinstance(exc_info.value, RuntimeError)
 
 
 @pytest.mark.timeout_seconds(5)
@@ -223,7 +228,11 @@ def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -
 @pytest.mark.timeout_seconds(5)
 def test_no_terminal_reason_still_raises_runtime_error() -> None:
     """Handle without original_terminal_reason still hits the fail-closed guard."""
-    with pytest.raises(RuntimeError, match="terminal return code"):
+    with pytest.raises(AgentInvocationError, match="terminal return code") as exc_info:
         completion_mod.check_process_result(
             _FakeHandle(returncode=None), "test-agent", parsed_output=None, check_options=None
         )
+    assert exc_info.value.agent_name == "test-agent"
+    assert exc_info.value.returncode == -1
+    assert exc_info.value.failure_origin == "agent"
+    assert not isinstance(exc_info.value, RuntimeError)

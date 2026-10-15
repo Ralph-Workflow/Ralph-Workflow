@@ -690,7 +690,7 @@ def check_process_result(
     if _has_interactive_completion_bypass(handle, parsed_output, check_options):
         return
 
-    returncode = terminal_returncode(handle)
+    returncode = terminal_returncode(handle, agent_name=agent_name)
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None

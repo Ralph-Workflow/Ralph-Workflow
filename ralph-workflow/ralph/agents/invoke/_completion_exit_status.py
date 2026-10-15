@@ -7,6 +7,8 @@ from typing import Protocol, cast, runtime_checkable
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
+from ._agent_invocation_error import AgentInvocationError
+
 _CREDENTIALS_FAILURE_SUBSTRINGS = (
     "401",
     "403",
@@ -30,11 +32,16 @@ def looks_like_credentials_failure(text: str) -> bool:
     return contains_casefolded_marker([text], _CREDENTIALS_FAILURE_SUBSTRINGS)
 
 
-def terminal_returncode(handle: object) -> int:
+def terminal_returncode(handle: object, *, agent_name: str) -> int:
     """Return the finalized process status or fail closed on an incomplete lifecycle."""
     returncode = cast("object", getattr(handle, "returncode", None))
     if not isinstance(returncode, int):
-        raise RuntimeError("process lifecycle ended without a terminal return code")
+        raise AgentInvocationError(
+            agent_name=agent_name,
+            returncode=-1,
+            stderr="process lifecycle ended without a terminal return code",
+            failure_origin="agent",
+        )
     return returncode
 
 
