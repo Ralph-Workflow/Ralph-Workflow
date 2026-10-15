@@ -6,22 +6,15 @@ readers of Git state for diagnostic evidence.
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
+
+from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.operation_fact import OperationFact
-
-
-class EvidenceVerdict(StrEnum):
-    """Closed vocabulary for operation-scoped diagnostic evidence evaluation."""
-
-    UNCHANGED = "unchanged"
-    CHANGED = "changed"
-    UNKNOWN = "unknown"
 
 
 class OperationEvidenceCollector(Protocol):

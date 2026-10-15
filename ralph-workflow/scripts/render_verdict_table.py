@@ -18,7 +18,6 @@ from __future__ import annotations
 import sys
 import weakref
 
-from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.workspace.agent_dir_retention import RetentionPassCoordinator
 from ralph.workspace.awareness import _MAX_DIRTY_PATHS
 

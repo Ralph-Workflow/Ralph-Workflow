@@ -99,6 +99,13 @@ def _stub_determine_effect(effects: list[object]) -> object:
         *,
         config: object = None,
     ) -> object:
+        # The runner may legitimately dispatch more than one pipeline step
+        # before the terminal state is reached (e.g. an extra prepare
+        # dispatch under load). Once the scripted effect has been consumed,
+        # return a terminal effect so the loop exits deterministically
+        # instead of raising IndexError from an empty queue.
+        if not effects:
+            return runner_module.ExitSuccessEffect()
         return effects.pop(0)
 
     return stub

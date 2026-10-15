@@ -45,12 +45,14 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
 )
+from ralph.pipeline.conflict_resolution.invoker import default_invoker as _default_invoker
 from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
 from ralph.pipeline.conflict_resolution.operator_cap import (
     operator_cap_expired as _operator_cap_expired,
 )
-from ralph.pipeline.conflict_resolution.operator_cap import (
-    remaining_operator_cap as _remaining_operator_cap,
+from ralph.pipeline.conflict_resolution.pipeline_entrypoints import (
+    run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
@@ -96,7 +98,6 @@ from ralph.pipeline.conflict_resolution.sight import (
     stage_mechanical_conflicts,
 )
 from ralph.pipeline.conflict_resolution.status import (
-    ResolutionStatusReporter,
     capture_status_bar_model,
     emit_conflict_phase_line,
 )
@@ -105,7 +106,6 @@ from ralph.pipeline.rebase_state import ResolutionFailureCause
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -145,6 +145,7 @@ __all__ = [
     "ResolutionInvoker",
     "RoundAttempt",
     "emit_conflict_phase_line",
+    "invoke_resolution_agent",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",
@@ -241,72 +242,6 @@ def run_rebase_conflict_resolution_outcome(
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
-
-
-def run_conflict_resolution_pipeline(
-    *,
-    root: Path,
-    target: str,
-    config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
-    policy_bundle: PolicyBundle,
-    display: ParallelDisplay | None,
-    display_context: DisplayContext | None,
-    invoke: ResolutionInvoker | None = None,
-    clock: MonotonicClock | None = None,
-    session: ResolutionSession | None = None,
-    strategy_history: tuple[str, ...] = (),
-) -> bool:
-    """Backward-compatible boolean projection of the typed merge outcome."""
-    return run_conflict_resolution_outcome(
-        root=root,
-        target=target,
-        config=config,
-        pipeline_deps=pipeline_deps,
-        workspace_scope=workspace_scope,
-        policy_bundle=policy_bundle,
-        display=display,
-        display_context=display_context,
-        invoke=invoke,
-        clock=clock,
-        session=session,
-        strategy_history=strategy_history,
-    ).succeeded
-
-
-def run_rebase_conflict_resolution_pipeline(
-    *,
-    root: Path,
-    target: str,
-    stop: RebaseStop,
-    config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
-    policy_bundle: PolicyBundle,
-    display: ParallelDisplay | None,
-    display_context: DisplayContext | None,
-    invoke: ResolutionInvoker | None = None,
-    clock: MonotonicClock | None = None,
-    session: ResolutionSession | None = None,
-    strategy_history: tuple[str, ...] = (),
-) -> bool:
-    """Backward-compatible projection of the out-of-graph ``PHASE_RESOLUTION`` outcome."""
-    return run_rebase_conflict_resolution_outcome(
-        root=root,
-        target=target,
-        stop=stop,
-        config=config,
-        pipeline_deps=pipeline_deps,
-        workspace_scope=workspace_scope,
-        policy_bundle=policy_bundle,
-        display=display,
-        display_context=display_context,
-        invoke=invoke,
-        clock=clock,
-        session=session,
-        strategy_history=strategy_history,
-    ).succeeded
 
 
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
@@ -1036,74 +971,3 @@ def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundl
             delay_ms = chain.retry_delay_ms
     if delay_ms > 0:
         _sleep_seconds(delay_ms / 1000.0)
-
-
-def _default_invoker(
-    *,
-    config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
-    policy_bundle: PolicyBundle,
-    display: ParallelDisplay | None,
-    display_context: DisplayContext | None,
-    limits: ConflictResolutionConfig,
-    round_cap: int,
-    inactivity_timeout: float,
-    clock: MonotonicClock,
-    session: ResolutionSession,
-    stop: RebaseStop | None,
-    root: Path,
-    target: str,
-    require_completion_evidence: bool = False,
-) -> ResolutionInvoker:
-    """Build a conflict-only invocation that shares session cap and status context."""
-    cap = session.total_resolution_cap_seconds
-    interval = limits.status_interval_seconds
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        # The cap is also checked between rounds, but a round spends
-        # every live candidate, so it can expire inside one. A zero
-        # remaining cap is rejected by the watchdog's timeout policy,
-        # and that ValueError would be filed as a launch EXCEPTION --
-        # naming the wrong terminal reason for the operator's own cap.
-        remaining = _remaining_operator_cap(cap, session, clock)
-        if remaining is not None and remaining <= 0.0:
-            session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
-            emit_conflict_phase_line(
-                display,
-                f"OPERATOR_CAP_REACHED: the resolution cap expired before "
-                f"round {round_index} could launch {agent_name}",
-            )
-            return False
-        reporter = ResolutionStatusReporter(
-            display=display,
-            target=target,
-            round_index=round_index,
-            round_cap=round_cap,
-            stop_index=stop.stop_index if stop is not None else None,
-            stop_cap=stop.stop_cap if stop is not None else None,
-            clock=clock,
-            interval_seconds=interval or 30.0,
-            started_at=session.started_at or clock(),
-            unresolved_paths=session.unresolved_paths,
-            agent_name=agent_name,
-        )
-        return invoke_resolution_agent(
-            agent_name=agent_name,
-            prompt_path=prompt_path,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            operator_cap_seconds=remaining,
-            inactivity_timeout_seconds=inactivity_timeout,
-            status_interval_seconds=interval,
-            activity_status_listener=reporter.observe,
-            unresolved_paths=session.unresolved_paths,
-            session=session,
-            require_completion_evidence=require_completion_evidence,
-        )
-
-    return _invoke

@@ -18,14 +18,11 @@ Emits one ``<scenario> <metric> <value>`` line per measurement:
 
 from __future__ import annotations
 
-import shutil
-import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 
@@ -133,7 +130,7 @@ def _scenario_interrupted(root: Path) -> None:
 
 def _scenario_concurrent(root: Path) -> None:
     """50 parallel mark_path calls coalesce into one fire."""
-    import ralph.mcp.explore.dirty_paths as dirty_paths
+    from ralph.mcp.explore import dirty_paths
 
     clock = _FakeClock()
 

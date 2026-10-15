@@ -52,11 +52,11 @@ from ralph.pipeline.auto_integrate_record import (
     PROMOTE_TO_INTEGRATED,
     START_INTEGRATING,
     IntegrationRecord,
-    IntegrationRecordStore,
     parse_record_payload,
     read_record,
     write_record,
 )
+from ralph.pipeline.auto_integrate_record_store import IntegrationRecordStore
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_REMOTE_UNREACHABLE,
     RemoteSyncStatus,

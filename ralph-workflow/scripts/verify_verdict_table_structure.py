@@ -48,7 +48,7 @@ def _phase1_structural() -> str:
     # that imports the patched module state via an env hook. The render
     # script reads the module attribute at import time, so a subprocess
     # with an injected sitecustomize forces the new value.
-    import ralph.workspace.awareness as awareness
+    from ralph.workspace import awareness
 
     original = awareness._MAX_DIRTY_PATHS
     awareness._MAX_DIRTY_PATHS = 999

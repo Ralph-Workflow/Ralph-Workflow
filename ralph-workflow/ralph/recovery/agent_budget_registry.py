@@ -91,9 +91,7 @@ class AgentBudgetRegistry:
         """
         new = {
             key: (
-                BudgetState(max_retries=state.max_retries, consumed=0)
-                if key[0] == phase
-                else state
+                BudgetState(max_retries=state.max_retries, consumed=0) if key[0] == phase else state
             )
             for key, state in self._budgets.items()
         }

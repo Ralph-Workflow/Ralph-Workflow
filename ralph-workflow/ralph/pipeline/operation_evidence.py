@@ -38,10 +38,10 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.operation_evidence_collector import (
-    EvidenceVerdict,
     OperationEvidenceCollector,
 )
 from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
+from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
 from ralph.pipeline.operation_fact import (
     _KIND_COMMIT_CONTROLS,
     _KIND_HEAD,

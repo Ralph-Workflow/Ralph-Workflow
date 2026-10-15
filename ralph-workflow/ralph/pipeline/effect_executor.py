@@ -1868,6 +1868,11 @@ def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
     _retry_intent_local.intent = intent
 
 
+def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
+    """Public seam: record the next-attempt retry intent (tests and policy code)."""
+    _set_last_captured_retry_intent(intent)
+
+
 def _write_terminal_missing_artifact_hint(
     ctx: _AgentInvocationCtx,
     exc: Exception,
@@ -1933,5 +1938,6 @@ def pop_last_captured_retry_intent() -> AgentRetryIntent:
 __all__ = [
     "AGENT_NOT_FOUND_REASON",
     "pop_last_captured_retry_intent",
+    "set_last_captured_retry_intent",
     "stage_files",
 ]

@@ -1041,6 +1041,11 @@ ralph.pipeline.auto_integrate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate
+
+ralph.pipeline.auto_integrate_precondition
+------------------------------------------
+
+.. automodule:: ralph.pipeline.auto_integrate_precondition
    :members:
    :show-inheritance:
 
@@ -1099,6 +1104,16 @@ ralph.pipeline.conflict_resolution.abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.conflict_resolution.abort
+
+ralph.pipeline.conflict_resolution.invoker
+------------------------------------------
+
+.. automodule:: ralph.pipeline.conflict_resolution.invoker
+
+ralph.pipeline.conflict_resolution.pipeline_entrypoints
+-------------------------------------------------------
+
+.. automodule:: ralph.pipeline.conflict_resolution.pipeline_entrypoints
    :members:
    :show-inheritance:
 
@@ -1289,6 +1304,11 @@ ralph.pipeline.auto_integrate_record
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_record
+
+ralph.pipeline.auto_integrate_record_store
+------------------------------------------
+
+.. automodule:: ralph.pipeline.auto_integrate_record_store
    :members:
    :show-inheritance:
 
@@ -1310,6 +1330,11 @@ ralph.pipeline.operation_evidence_collector
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.operation_evidence_collector
+
+ralph.pipeline.operation_evidence_verdict
+-----------------------------------------
+
+.. automodule:: ralph.pipeline.operation_evidence_verdict
    :members:
    :show-inheritance:
 
@@ -3661,6 +3686,11 @@ ralph.display.auto_integrate_message
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.auto_integrate_message
+
+ralph.display.integration_display_label
+---------------------------------------
+
+.. automodule:: ralph.display.integration_display_label
    :members:
    :show-inheritance:
 

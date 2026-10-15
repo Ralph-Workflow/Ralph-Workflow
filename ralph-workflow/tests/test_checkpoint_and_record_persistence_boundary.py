@@ -31,10 +31,12 @@ from ralph.pipeline.auto_integrate_record import (
     PROMOTE_TO_INTEGRATED,
     START_INTEGRATING,
     IntegrationRecord,
-    IntegrationRecordStore,
-    apply_record_transition,
     parse_record_payload,
     read_record,
+)
+from ralph.pipeline.auto_integrate_record_store import (
+    IntegrationRecordStore,
+    apply_record_transition,
 )
 from ralph.pipeline.checkpoint import Checkpoint
 from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause

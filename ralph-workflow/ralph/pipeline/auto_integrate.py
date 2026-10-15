@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import random
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -61,6 +60,10 @@ from ralph.pipeline.auto_integrate_outcome import (
 from ralph.pipeline.auto_integrate_outcome import (
     record_skip as _record_skip,
 )
+from ralph.pipeline.auto_integrate_precondition import (
+    _handle_precondition_failure,
+    _read_post_integration_head_sha,
+)
 from ralph.pipeline.auto_integrate_rebase_merge import (
     run_rebase_or_merge as _run_rebase_or_merge,
 )
@@ -78,7 +81,6 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
-    _reclaim_unowned_stale_rebase,
     post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
@@ -833,24 +835,6 @@ def _check_early_skips(
     return None, (root, current_branch, target)
 
 
-def _read_post_integration_head_sha(root: Path, target: str) -> str | None:
-    """Read the feature branch's HEAD after a successful rebase/merge.
-
-    Returns the SHA on success; clears the crash record and returns
-    ``None`` on failure so the orchestrator can fall through to its
-    final state construction without crashing.
-
-    Extracted from :func:`_auto_integrate_after_commit_inner` so the
-    orchestrator keeps a sensible return-statement count.
-    """
-    try:
-        return get_head_sha(root)
-    except Exception as exc:
-        _clear_record(root)
-        logger.warning("auto_integrate: get_head_sha failed post-merge: {}", exc)
-        return None
-
-
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -895,61 +879,6 @@ def _auto_integrate_resolve_context(
     return root, current_branch, target, refresh
 
 
-@dataclass(frozen=True)
-class PreconditionReclaimResult:
-    """Typed result of worktree reclaim attempt at the skip seam."""
-
-    succeeded: bool
-    skip_state: RebaseState | None = None
-
-
-def _reclaim_and_retry_preconditions(
-    root: Path,
-    target: str,
-    precondition_exc: RebasePreconditionError,
-) -> PreconditionReclaimResult:
-    """Reclaim the integration worktree at the skip seam."""
-    reclaimed = _reclaim_unowned_stale_rebase(root)
-    if reclaimed is None:
-        # No reclaim happened: either nothing to reclaim or the
-        # tree was dirty (operator-owned, AC-11 case 4). Let the
-        # caller record a skip with the original cause.
-        return PreconditionReclaimResult(succeeded=False, skip_state=None)
-    if reclaimed.recovery_record_retained:
-        return PreconditionReclaimResult(succeeded=False, skip_state=reclaimed)
-    logger.warning(
-        "auto_integrate: rebase preconditions blocked by stale "
-        "unowned state for target '{}': {}; "
-        "reclaimed at seam (AC-07/R8) -- retrying preconditions",
-        target,
-        precondition_exc,
-    )
-    try:
-        check_rebase_preconditions(root)
-    except RebasePreconditionError as retry_exc:
-        # Reclaim ran but the precondition still fails (e.g.
-        # the state was operator-owned and the dirty-tree check
-        # kept it). Surface the failure loudly with the
-        # original cause so the next seam can retry; never a
-        # silent noop.
-        logger.warning(
-            "auto_integrate: rebase preconditions still failing "
-            "after reclaim at seam for target '{}': {} (was {}); "
-            "the recovery preamble will reclaim on the next run",
-            target,
-            retry_exc,
-            precondition_exc,
-        )
-        return PreconditionReclaimResult(
-            succeeded=False,
-            skip_state=_record_skip(
-                reason=f"preconditions not met after reclaim: {retry_exc}",
-                target=target,
-            ),
-        )
-    return PreconditionReclaimResult(succeeded=True, skip_state=None)
-
-
 def _auto_integrate_check_skip_conditions(
     root: Path,
     current_branch: str,
@@ -989,32 +918,8 @@ def _auto_integrate_check_skip_conditions(
     return None
 
 
-def _handle_precondition_failure(
-    root: Path,
-    target: str,
-    exc: RebasePreconditionError,
-) -> RebaseState | None:
-    reclaim_result = _reclaim_and_retry_preconditions(root, target, exc)
-    if reclaim_result.succeeded:
-        return None
-    if reclaim_result.skip_state is not None:
-        return reclaim_result.skip_state
-    # A precondition failure disables auto-integration for the whole
-    # run, so it must not be visible only as one token on an
-    # activity line that scrolls past. WARN names the target and the
-    # precondition so the cause is greppable in the run log; the
-    # recorded skip keeps the never-crash semantics unchanged.
-    logger.warning(
-        "auto_integrate: rebase preconditions not met for target '{}': {}",
-        target,
-        exc,
-    )
-    return _record_skip(reason=f"preconditions not met: {exc}", target=target)
-
-
 __all__ = [
     "IntegrationRecord",
-    "PreconditionReclaimResult",
     "_create_rebase_backup_ref",
     "_delete_rebase_backup_ref",
     "auto_integrate_after_commit",

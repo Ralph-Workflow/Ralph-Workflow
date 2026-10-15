@@ -6,7 +6,6 @@ from collections.abc import Iterator
 
 from pygments.token import TokenType
 
-
 class Lexer:
     name: str
     aliases: tuple[str, ...]

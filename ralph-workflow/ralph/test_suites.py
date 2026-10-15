@@ -282,9 +282,20 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_display_generated_scenes.py": 460,
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
-    "tests/test_no_anti_drift_regression.py": 70,
+    "tests/test_no_anti_drift_regression.py": 76,
     "tests/test_audit_opts_key_drift.py": 300,
     "tests/test_explore_bench_rss_isolation.py": 70,
+    # Calibrated from --profile-durations per-file wall-clock on shard 15
+    # (weight = round(measured_seconds * 17); band [50, 460] per existing
+    # calibration, ~1022 shard weight / 60 s shard budget). These files sit
+    # on the slowest shard and their heuristic test-count weight
+    # underestimates their wall-clock cost.
+    "tests/test_deterministic_writers_clean_tree.py": 133,
+    "tests/test_audit_artifact_submission_canonical_path.py": 131,
+    "tests/project_policy/test_run_integration.py": 60,
+    "tests/agents/test_workspace_event_backpressure.py": 56,
+    "tests/test_phases_retry_on_stale_session.py": 53,
+    "tests/display/test_operator_display_labels.py": 52,
 }
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.operation_evidence_collector import EvidenceVerdict
+from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
 from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
