@@ -1999,6 +1999,7 @@ def _run_pipeline_step(
             display=display,
             pipeline_subscriber=pipeline_subscriber,
             routing_timing=_effective_routing_timing,
+            recovery_controller=recovery_controller,
         )
         if inline_result is not None:
             # Inline-effect early-return path: a phase transition realized
@@ -2323,6 +2324,7 @@ def _handle_inline_effect(
     pipeline_subscriber: _PipelineSubscriber | None = None,
     routing_timing: RoutingTiming | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> PipelineState | int | None:
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
     checkpoint_path = _checkpoint_path(workspace_scope)
@@ -2377,6 +2379,12 @@ def _handle_inline_effect(
         prepared_state = state
         target_phase = effect.phase
         if pipeline_policy.recovery.failed_route == state.phase:
+            # A recovery cycle re-enters the phase with a fresh chain, so the
+            # per-attempt retry budgets must be replenished too; otherwise the
+            # registry's exhausted flags from the previous cycle make every
+            # agent unselectable and the run exits after one cycle.
+            if recovery_controller is not None:
+                recovery_controller.replenish_phase_budgets(target_phase)
             # Resolve the deadline FIRST. This hop re-enters the phase by
             # writing state.phase directly rather than routing, so it is the
             # one way into the guarded phase that is not a routing boundary --

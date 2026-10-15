@@ -605,6 +605,24 @@ class RecoveryController:
     def budget_registry(self) -> AgentBudgetRegistry:
         return self._registry
 
+    @property
+    def cycle_cap(self) -> int:
+        """Maximum number of recovery cycles before the controller exits."""
+        return self._cap.cap
+
+    def replenish_phase_budgets(self, phase: str) -> None:
+        """Replenish every retry budget for ``phase`` at a recovery-cycle hop.
+
+        The chain state resets on re-entry (``reset_phase_chain_for_recovery``);
+        the budget registry must follow or the next cycle starts with every
+        agent already exhausted. Cross-restart durability is unaffected: the
+        controller snapshot persists ``consumed`` at the cycle boundary.
+        """
+        self._registry = self._registry.replenish_phase(phase)
+        # ``note_retry_exhaustion`` also marks agents spent for the current
+        # round; a replenished budget must clear those marks too.
+        self._spent_agents.pop(phase, None)
+
     def handle(
         self,
         state: PipelineState,

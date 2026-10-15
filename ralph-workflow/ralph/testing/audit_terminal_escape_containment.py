@@ -51,12 +51,21 @@ def _parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
 
 
 def _split_lines(source: str) -> list[str]:
-    """Split source into lines with line breaks preserved, cached across checks."""
+    """Split source into lines the way the ``ast`` module does, ends preserved.
+
+    Cached across checks. Python's tokenizer treats only ``\n``, ``\r``
+    and ``\r\n`` as line separators, so ``str.splitlines`` cannot be used
+    here: it also splits on Unicode separators such as U+2028 inside a
+    string literal, which desynchronizes AST line numbers from the split
+    lines and corrupts the extracted call-site segments.
+    """
     cached = _LINES_CACHE.get(source)
     if cached is not None:
         _LINES_CACHE.move_to_end(source)
         return cached
-    lines = source.splitlines(keepends=True)
+    lines = source.split("\n")
+    if len(lines) > 1:
+        lines = [line + "\n" for line in lines[:-1]] + lines[-1:]
     _LINES_CACHE[source] = lines
     if len(_LINES_CACHE) > _PARSE_CACHE_LIMIT:
         _LINES_CACHE.popitem(last=False)

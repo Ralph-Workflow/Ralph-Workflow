@@ -830,6 +830,60 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     audit_module.PackageWideCallSiteInvariant.reset_cache()
 
 
+def test_package_wide_call_site_invariant_detects_call_after_u2028_in_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A U+2028 inside an earlier string must not blind the segment extractor.
+
+    ``str.splitlines`` splits on U+2028 but Python's tokenizer does not,
+    so source slicing that relies on ``splitlines`` desynchronizes AST
+    line numbers and returns the WRONG segment for calls on later lines --
+    the invariant then misses a forbidden literal (safety-audit false
+    negative). The extractor must match ``ast.get_source_segment``.
+    """
+    fake_source = 'x = "a\u2028b"\nconsole.print(untrusted)\n'
+    inv = PackageWideCallSiteInvariant(
+        callee_name="print",
+        absent=("markup=True",),
+    )
+
+    monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
+    monkeypatch.setattr(
+        audit_module.PackageWideCallSiteInvariant,
+        "_package_files",
+        classmethod(lambda cls: ["fake.py"]),
+    )
+
+    assert inv.violations() == [], (
+        "The call carries no forbidden literal, so the invariant must pass; "
+        "a failure here means the extractor mangled the segment"
+    )
+
+    blind_inv = PackageWideCallSiteInvariant(
+        callee_name="print",
+        absent=("untrusted",),
+        present=("never-passed-literal",),
+    )
+    # With pre-fix splitlines slicing, the extracted segment is 'b"\n', so
+    # both checks miss: no 'untrusted' absent-violation, no present-literal hit.
+    # With correct slicing the segment is 'console.print(untrusted)', so the
+    # absent check must fire (present can never fire for this source).
+    violations = blind_inv.violations()
+    assert any("untrusted" in v for v in violations), (
+        f"Invariant must see the real call segment and flag 'untrusted'; got {violations!r}"
+    )
+    import ast as ast_stdlib
+
+    tree = ast_stdlib.parse(fake_source)
+    call_node = next(n for n in ast_stdlib.walk(tree) if isinstance(n, ast_stdlib.Call))
+    segment = audit_module._get_source_segment(fake_source, call_node)
+    assert segment == "console.print(untrusted)", (
+        f"Segment extraction must match ast.get_source_segment; got {segment!r}"
+    )
+
+    audit_module.PackageWideCallSiteInvariant.reset_cache()
+
+
 def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

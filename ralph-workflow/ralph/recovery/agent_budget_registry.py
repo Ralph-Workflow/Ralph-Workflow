@@ -78,6 +78,27 @@ class AgentBudgetRegistry:
         new[(phase, agent)] = new_state
         return AgentBudgetRegistry(new)
 
+    def replenish_phase(self, phase: str) -> AgentBudgetRegistry:
+        """Return a new registry with every budget for ``phase`` reset to zero.
+
+        Each recovery cycle re-enters the phase with a fresh chain
+        (``reset_phase_chain_for_recovery``), so the per-attempt budgets must
+        be replenished too; otherwise ``preferred_agent_index`` treats every
+        agent as spent after the first cycle and the run exits prematurely.
+        Cross-restart durability is preserved separately: the controller
+        snapshot serializes ``consumed`` before the cycle boundary and
+        ``seed_budget_registry`` restores it when rebuilding the registry.
+        """
+        new = {
+            key: (
+                BudgetState(max_retries=state.max_retries, consumed=0)
+                if key[0] == phase
+                else state
+            )
+            for key, state in self._budgets.items()
+        }
+        return AgentBudgetRegistry(new)
+
     def is_exhausted(self, phase: str, agent: str) -> bool:
         """Check if the budget for (phase, agent) is exhausted."""
         state = self._budgets.get((phase, agent))

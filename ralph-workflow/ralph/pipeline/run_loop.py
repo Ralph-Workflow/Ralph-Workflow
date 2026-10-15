@@ -2284,6 +2284,19 @@ def _retry_guard_requires_intervention(state: PipelineState) -> bool:
     return RetryProgressGuard.from_dict(raw).requires_operator_intervention
 
 
+def _cycle_cap_exhausted(state: PipelineState, ctx: _LoopContext) -> bool:
+    """Whether the recovery controller's cycle cap is exceeded at ``failed_route``.
+
+    When the controller emits ``ExitFailureEffect`` for a cap-exceeded cycle,
+    the inline handler still routes it into ``failed_route`` recovery; without
+    this check the loop would re-enter the failing phase forever. The cap —
+    not the loop shape — is the bound, so the loop consults the same
+    ``CycleCap`` condition the controller used to decide to exit.
+    """
+    count = state.recovery_cycle_count
+    return isinstance(count, int) and count >= ctx.controller.cycle_cap
+
+
 def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2330,6 +2343,7 @@ def _run_inner_loop_after_startup(
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
             and not _retry_guard_requires_intervention(state)
+            and not _cycle_cap_exhausted(state, ctx)
         )
         or (
             ctx.policy_bundle.pipeline.terminal_phase == state.phase
