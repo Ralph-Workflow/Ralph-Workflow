@@ -218,12 +218,15 @@ def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -
 
 def _patch_rel(monkeypatch: pytest.MonkeyPatch, rel_path: str, transform) -> None:
     real_read = audit_module._read
+    cached_transformed: str | None = None
 
     def _read(rel_path_arg: str) -> str:
-        content = real_read(rel_path_arg)
+        nonlocal cached_transformed
         if rel_path_arg == rel_path:
-            return transform(content)
-        return content
+            if cached_transformed is None:
+                cached_transformed = transform(real_read(rel_path_arg))
+            return cached_transformed
+        return real_read(rel_path_arg)
 
     monkeypatch.setattr(audit_module, "_read", _read)
 

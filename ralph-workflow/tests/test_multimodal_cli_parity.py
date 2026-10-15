@@ -17,7 +17,14 @@ from typer.testing import CliRunner
 
 from ralph.cli.main import app
 
-_RUNNER = CliRunner()
+
+def _noop_bootstrap(
+    *,
+    init_requested: bool = False,
+    regenerate_config: bool = False,
+    display_context: object = None,
+) -> None:
+    del init_requested, regenerate_config, display_context
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +39,7 @@ def _wide_help_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     shell width — keeps the assertion environment-independent.
     """
     monkeypatch.setenv("COLUMNS", "200")
-    monkeypatch.setattr("ralph.cli.main._bootstrap_for_command", lambda **_kwargs: None)
+    monkeypatch.setattr("ralph.cli.main._bootstrap_for_command", _noop_bootstrap)
 
 
 #: Every smoke command that exposes ``--multimodal``. The plan locks
@@ -49,7 +56,8 @@ _SMOKE_COMMANDS_WITH_MULTIMODAL = (
 
 
 def _invoke_help(cmd_name: str) -> tuple[int, str]:
-    result = _RUNNER.invoke(app, [cmd_name, "--help"], prog_name="ralph")
+    runner = CliRunner()
+    result = runner.invoke(app, [cmd_name, "--help"], prog_name="ralph")
     return result.exit_code, result.output
 
 

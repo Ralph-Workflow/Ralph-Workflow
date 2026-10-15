@@ -98,6 +98,12 @@ class TestDevelopmentAnalysisWithoutDevResult:
     PRODUCT_CRITERIA.md and PLAN.
     """
 
+    @classmethod
+    def setup_class(cls) -> None:
+        # Pre-warm the prompt template cache so the first test method does not
+        # pay the one-time Jinja2 compilation latency under shard CPU load.
+        _render_development_analysis_no_dev_result(Path("/tmp"))
+
     def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)
         assert len(rendered) > 0

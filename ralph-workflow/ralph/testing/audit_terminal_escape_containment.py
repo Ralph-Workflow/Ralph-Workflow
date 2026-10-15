@@ -18,6 +18,10 @@ _READ_CACHE_LIMIT = 2048
 _PARSE_CACHE_LIMIT = 2048
 _READ_CACHE: OrderedDict[str, str] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
 _PARSE_CACHE: OrderedDict[str, ast.Module] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
+_LINES_CACHE: OrderedDict[str, list[str]] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
+_BODY_CACHE: OrderedDict[tuple[str, str], str | None] = (
+    OrderedDict()
+)  # bounded-accumulator-ok: FIFO cap 2048
 
 
 def _read(rel_path: str) -> str:
@@ -46,6 +50,67 @@ def _parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
     return tree
 
 
+def _split_lines(source: str) -> list[str]:
+    """Split source into lines with line breaks preserved, cached across checks."""
+    cached = _LINES_CACHE.get(source)
+    if cached is not None:
+        _LINES_CACHE.move_to_end(source)
+        return cached
+    lines = source.splitlines(keepends=True)
+    _LINES_CACHE[source] = lines
+    if len(_LINES_CACHE) > _PARSE_CACHE_LIMIT:
+        _LINES_CACHE.popitem(last=False)
+    return lines
+
+
+def _get_source_segment_from_lines(lines: list[str], node: ast.AST) -> str | None:
+    """Return the source segment for ``node`` given pre-split ``lines``."""
+    lineno_val: object = getattr(node, "lineno", None)
+    end_lineno_val: object = getattr(node, "end_lineno", None)
+    col_offset_val: object = getattr(node, "col_offset", None)
+    end_col_offset_val: object = getattr(node, "end_col_offset", None)
+    if (
+        not isinstance(lineno_val, int)
+        or not isinstance(end_lineno_val, int)
+        or not isinstance(col_offset_val, int)
+        or not isinstance(end_col_offset_val, int)
+    ):
+        return None
+
+    lineno: int = lineno_val - 1
+    end_lineno: int = end_lineno_val - 1
+    col_offset: int = col_offset_val
+    end_col_offset: int = end_col_offset_val
+
+    if lineno < 0 or end_lineno >= len(lines) or lineno > end_lineno:
+        return None
+
+    try:
+        if end_lineno == lineno:
+            return (
+                lines[lineno].encode()[col_offset:end_col_offset].decode("utf-8", errors="replace")
+            )
+
+        first = lines[lineno].encode()[col_offset:].decode("utf-8", errors="replace")
+        last = lines[end_lineno].encode()[:end_col_offset].decode("utf-8", errors="replace")
+        mid = lines[lineno + 1 : end_lineno]
+        return first + "".join(mid) + last
+    except Exception:
+        return None
+
+
+def _get_source_segment(source: str, node: ast.AST) -> str | None:
+    """Return the source segment of *source* that generated *node*.
+
+    Standard library ``ast.get_source_segment`` uses ``re.finditer`` to split
+    lines on every invocation without caching. Under parallel test load,
+    repeated scans of multi-thousand-line modules (such as ``parallel_display.py``)
+    exceed per-test CPU time budgets. This helper uses cached C-level
+    ``splitlines`` and slices by node offsets.
+    """
+    return _get_source_segment_from_lines(_split_lines(source), node)
+
+
 def _function_body(rel_path: str, *, qualname: str) -> str | None:
     """Return the source segment of ``qualname`` in ``rel_path``.
 
@@ -54,6 +119,12 @@ def _function_body(rel_path: str, *, qualname: str) -> str | None:
     (the caller treats that as a violation).
     """
     source = _read(rel_path)
+    cache_key = (source, qualname)
+    cached_body = _BODY_CACHE.get(cache_key)
+    if cached_body is not None:
+        _BODY_CACHE.move_to_end(cache_key)
+        return cached_body
+
     tree = _parse_source(source, rel_path)
     parts = qualname.split(".")
     target_name = parts[-1]
@@ -73,7 +144,6 @@ def _function_body(rel_path: str, *, qualname: str) -> str | None:
             elif isinstance(child, ast.ClassDef) and child.name == parts[depth]:
                 if depth < len(parts) - 1:
                     return _walk(child, depth + 1)
-                # ``parts[-1]`` is a method inside this class.
                 for item in child.body:
                     if (
                         isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -85,8 +155,12 @@ def _function_body(rel_path: str, *, qualname: str) -> str | None:
     func = _walk(tree, 0)
     if func is None:
         return None
-    segment = ast.get_source_segment(source, func)
-    return segment if segment is not None else ""
+    segment = _get_source_segment(source, func)
+    body = segment if segment is not None else ""
+    _BODY_CACHE[cache_key] = body
+    if len(_BODY_CACHE) > _PARSE_CACHE_LIMIT:
+        _BODY_CACHE.popitem(last=False)
+    return body
 
 
 def _call_site_sources(rel_path: str, *, callee_name: str) -> list[str]:
@@ -97,6 +171,7 @@ def _call_site_sources(rel_path: str, *, callee_name: str) -> list[str]:
     source = _read(rel_path)
     tree = _parse_source(source, rel_path)
     found: list[str] = []
+    lines = _split_lines(source)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -106,7 +181,7 @@ def _call_site_sources(rel_path: str, *, callee_name: str) -> list[str]:
         )
         if not match:
             continue
-        segment = ast.get_source_segment(source, node)
+        segment = _get_source_segment_from_lines(lines, node)
         if segment is not None:
             found.append(segment)
     return found
@@ -352,6 +427,7 @@ class PackageWideCallSiteInvariant:
                 tree = _parse_source(source, rel_path)
             except SyntaxError:
                 continue
+            lines = _split_lines(source)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -361,7 +437,7 @@ class PackageWideCallSiteInvariant:
                 )
                 if not match:
                     continue
-                segment = ast.get_source_segment(source, node)
+                segment = _get_source_segment_from_lines(lines, node)
                 if segment is None:
                     continue
                 snippet = segment.replace("\n", " ")
@@ -457,6 +533,7 @@ class MarkupParseInvariant:
                 tree = _parse_source(source, rel_path)
             except SyntaxError:
                 continue
+            lines = _split_lines(source)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -468,7 +545,7 @@ class MarkupParseInvariant:
                     continue
                 if node.args and self._is_string_literal(node.args[0]):
                     continue
-                segment = ast.get_source_segment(source, node) or self.callee_name
+                segment = _get_source_segment_from_lines(lines, node) or self.callee_name
                 snippet = " ".join(segment.split())[:120]
                 problems.append(
                     f"{rel_path}:{node.lineno}: unguarded {self.callee_name}() on "

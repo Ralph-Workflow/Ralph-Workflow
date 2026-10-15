@@ -6,6 +6,7 @@ import re
 from io import StringIO
 
 import pytest
+from pygments.lexers import PythonLexer
 from rich.cells import cell_len
 from rich.console import Console
 
@@ -34,6 +35,12 @@ from ralph.display.theme import (
     pick_status_styles,
     preview_background_for_background,
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _prewarm_syntax_lexer() -> None:
+    """Pre-warm pygments syntax lexer so compilation does not hit per-test SIGALRM."""
+    PythonLexer()
 
 
 def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> None:

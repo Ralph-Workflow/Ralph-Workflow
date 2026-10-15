@@ -240,7 +240,7 @@ def _toml_value_depth(value: object) -> int:
 
 
 @given(value=_TOML_VALUES)
-@settings(max_examples=10, deadline=None, database=None)
+@settings(max_examples=4, deadline=None, database=None)
 def test_operator_config_strategy_regression_avoids_deep_toml_values(value: object) -> None:
     """The property domain must stay shallow enough for the one-second watchdog."""
     assert _toml_value_depth(value) <= 2

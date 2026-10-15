@@ -242,9 +242,10 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
     violations: list[str] = []
     for py_file, content in TEST_PY_CONTENTS:
-        if py_file.is_relative_to(RALPH_ROOT):
-            continue
         if py_file.name in TESTS_ALLOWLIST:
+            continue
+        found = [pattern for pattern in all_patterns if pattern in content]
+        if not found:
             continue
         # Keep the audit focused on files below ``tests/``. The shared
         # content snapshot also includes generated/temporary test artifacts
@@ -254,9 +255,7 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
             rel = py_file.relative_to(TESTS_ROOT).as_posix()
         except ValueError:
             continue
-        violations.extend(
-            f"{rel}: contains '{pattern}'" for pattern in all_patterns if pattern in content
-        )
+        violations.extend(f"{rel}: contains '{pattern}'" for pattern in found)
 
     assert not violations, (
         "Direct subprocess/POSIX calls found in tests/ outside the allowlist:\n"

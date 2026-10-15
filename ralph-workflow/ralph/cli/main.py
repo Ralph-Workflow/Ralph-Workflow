@@ -1018,13 +1018,17 @@ def main(
         ``declare_complete`` on success. Bounded subprocesses are
         routed through ``ralph.process.manager``.
     """
-    removed_malloc_debug_vars = sanitize_process_environment()
-    ensure_cli_terminal_restore()
-    if removed_malloc_debug_vars:
+    if removed_malloc_debug_vars := sanitize_process_environment():
         logger.debug(
             "Stripped inherited malloc-debug environment variables: {}",
             ", ".join(removed_malloc_debug_vars),
         )
+    ensure_cli_terminal_restore()
+
+    # If a subcommand was invoked, record telemetry and return without running pipeline bootstrap.
+    if ctx is not None and ctx.invoked_subcommand:
+        _record_cli_command(ctx)
+        return
 
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
@@ -1150,10 +1154,6 @@ def main(
     )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
-
-    # If a subcommand was invoked, we're done
-    if ctx.invoked_subcommand:
-        return
 
     # Best-effort nag if a newer release is available; never blocks the run.
     from ralph.update_check import maybe_render_update_nag
