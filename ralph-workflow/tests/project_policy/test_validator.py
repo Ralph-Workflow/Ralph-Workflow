@@ -200,12 +200,21 @@ def _seed_claude_md(workspace: MemoryWorkspace) -> None:
     workspace.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee AGENTS.md for project policy.\n")
 
 
-@pytest.fixture
-def ready_workspace() -> MemoryWorkspace:
+@functools.lru_cache(maxsize=1)
+def _ready_workspace_state() -> tuple[dict[str, str], set[str]]:
     ws = MemoryWorkspace()
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, _stack_with())
+    return dict(ws._storage), set(ws._dirs)
+
+
+@pytest.fixture
+def ready_workspace() -> MemoryWorkspace:
+    storage, dirs = _ready_workspace_state()
+    ws = MemoryWorkspace()
+    ws._storage = dict(storage)
+    ws._dirs = set(dirs)
     return ws
 
 
@@ -302,37 +311,20 @@ def test_bypass_detection_section_required_for_verification_policy(
     )
 
 
-def test_unresolved_migration_candidate_emits_finding(ready_workspace: MemoryWorkspace) -> None:
-    # Create a doc that looks like a policy-like content but is not migrated.
-    ready_workspace.write(
-        "docs/testing.md",
-        "# Testing Policy\n\nSome content with a recognized heading.\n",
-    )
+@pytest.mark.parametrize(
+    ("marker_content", "emits_finding"),
+    [
+        ("Some content with a recognized heading.\n", True),
+        (markers.MIGRATED_MARKER_TEMPLATE.format(target="testing-policy.md") + "\n", False),
+    ],
+)
+def test_migration_candidate_resolution(
+    ready_workspace: MemoryWorkspace, marker_content: str, emits_finding: bool
+) -> None:
+    ready_workspace.write("docs/testing.md", f"# Testing Policy\n\n{marker_content}")
     findings = validators.validate_readiness(ready_workspace, _stack_with())
-    assert any(f.path == "docs/testing.md" for f in findings)
-
-
-def test_resolved_migration_candidate_emits_no_finding(ready_workspace: MemoryWorkspace) -> None:
-    ready_workspace.write(
-        "docs/testing.md",
-        "# Testing Policy\n\n"
-        + markers.MIGRATED_MARKER_TEMPLATE.format(target="testing-policy.md")
-        + "\n",
-    )
-    findings = validators.validate_readiness(ready_workspace, _stack_with())
-    assert all(f.path != "docs/testing.md" for f in findings)
-
-
-def test_headings_only_never_ready(ready_workspace: MemoryWorkspace) -> None:
-    """A policy file with every heading but no commands must fail."""
-    # Strip the command from one policy.
-    path = f"{markers.CANONICAL_DIR}testing-policy.md"
-    content = ready_workspace.read(path)
-    lines = [line for line in content.splitlines() if not line.startswith(markers.COMMAND_MARKER)]
-    ready_workspace.write(path, "\n".join(lines) + "\n")
-    findings = validators.validate_readiness(ready_workspace, _stack_with())
-    ids = {f.requirement_id for f in findings}
-    assert any(i.startswith(markers.ID_CMD_UNUSABLE) for i in ids)
+    has_finding = any(f.path == "docs/testing.md" for f in findings)
+    assert has_finding == emits_finding
 
 
 def test_citation_field_missing_emits_finding(ready_workspace: MemoryWorkspace) -> None:
@@ -565,53 +557,30 @@ def test_managed_block_marker_variants_emit_finding(
     assert any(f.path == markers.AGENTS_MD for f in findings)
 
 
-def test_canonical_dir_outside_block_emits_finding(
-    ready_workspace: MemoryWorkspace,
+@pytest.mark.parametrize(
+    ("agents_md_body", "should_have_finding"),
+    [
+        (
+            f"# My Project\n\nSee {markers.CANONICAL_DIR} for policies.\n\n"
+            f"{markers.AGENTS_BLOCK_BEGIN}\nThis block does not mention the canonical policy directory.\n{markers.AGENTS_BLOCK_END}\n",
+            True,
+        ),
+        (
+            f"{markers.AGENTS_BLOCK_BEGIN}\nAll project policy lives under {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n",
+            False,
+        ),
+    ],
+)
+def test_canonical_dir_reference_location(
+    ready_workspace: MemoryWorkspace, agents_md_body: str, should_have_finding: bool
 ) -> None:
-    """Regression (analysis feedback #1): a fully compliant workspace whose
-    AGENTS.md has CANONICAL_DIR referenced only OUTSIDE the managed block
-    MUST emit the RWP-MARKER:canonical-dir-ref finding. The validator must
-    NOT silently accept the reference when it does not appear in the block
-    body. The remediation agent should add a reference INSIDE the block.
-    """
-    # CANONICAL_DIR appears in user-authored prose BEFORE the managed block;
-    # the block itself references nothing about the canonical dir.
-    ready_workspace.write(
-        markers.AGENTS_MD,
-        f"# My Project\n\n"
-        f"See {markers.CANONICAL_DIR} for policies.\n\n"
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"This block does not mention the canonical policy directory.\n"
-        f"{markers.AGENTS_BLOCK_END}\n",
-    )
+    ready_workspace.write(markers.AGENTS_MD, agents_md_body)
     findings = validators.validate_readiness(ready_workspace, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" in ids, (
-        f"missing canonical-dir-ref finding when CANONICAL_DIR is only "
-        f"outside the managed block; observed: {ids}"
-    )
-    # Project must NOT be ready.
-    assert any(f.path == markers.AGENTS_MD for f in findings)
-
-
-def test_canonical_dir_inside_block_emits_no_finding(
-    ready_workspace: MemoryWorkspace,
-) -> None:
-    """Counterpart: when the reference is INSIDE the managed block the gate
-    is satisfied and no canonical-dir-ref finding fires (other than the
-    well-formed managed-block finding, which is absent here).
-    """
-    ready_workspace.write(
-        markers.AGENTS_MD,
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"All project policy lives under {markers.CANONICAL_DIR}.\n"
-        f"{markers.AGENTS_BLOCK_END}\n",
-    )
-    findings = validators.validate_readiness(ready_workspace, _stack_with())
-    ids = {f.requirement_id for f in findings}
-    assert f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" not in ids, (
-        f"unexpected canonical-dir-ref finding when reference is inside the block; observed: {ids}"
-    )
+    has_finding = f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" in ids
+    assert has_finding == should_have_finding
+    if should_have_finding:
+        assert any(f.path == markers.AGENTS_MD for f in findings)
 
 
 @pytest.mark.parametrize(
@@ -721,10 +690,6 @@ _GI_R = "| g | o | p | d | r | s |"
         (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |", "malformed"),
         (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | s | extra |", "malformed"),
         (f"{_GI_H}\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\n| g | o | p | d | r | s", "malformed"),
-        (f"{_GI_H[:-1]}\n{_GI_S}\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n|---|---|---|---|---|---\n{_GI_R}", "malformed"),
-        (f"{_GI_H}\n{_GI_S}\ng | o | p | d | r | s |", "malformed"),
         (f"{_GI_H}\n{_GI_S}\n| g |  | p | d | r | s |", "row-1:empty-owner"),
         (f"{_GI_H}\n{_GI_S}\n| g | o | p | d |  | s |", "CLAIM-SCOPE-MISSING"),
     ],

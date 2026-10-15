@@ -9,16 +9,22 @@ Verifies that the policy explanation includes:
 
 from __future__ import annotations
 
+import functools
+
+import pytest
+
 from ralph.policy.explain import PolicyExplanation, explain_policy
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.render import render_explanation_text
 
 
+@functools.lru_cache(maxsize=1)
 def _default_explanation() -> PolicyExplanation:
     bundle = load_policy(default_dir())
     return explain_policy(bundle)
 
 
+@pytest.mark.timeout_seconds(5.0)
 class TestPostCommitRoutesInExplanation:
     """explain_policy populates post_commit_routes on PolicyExplanation."""
 

@@ -329,3 +329,13 @@ def test_subprocess_collector_verify_treats_false_reachability_as_gap(
     observed = (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
     collector = SubprocessOperationEvidenceCollector()
     assert collector.verify(repo, record, observed) is False
+
+
+def test_subprocess_collector_verify_treats_unreadable_reachability_as_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _mock_git(monkeypatch, tmp_path / "repo")
+    record = _record()
+    observed = (OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="unreadable"),)
+    collector = SubprocessOperationEvidenceCollector()
+    assert collector.verify(repo, record, observed) is False

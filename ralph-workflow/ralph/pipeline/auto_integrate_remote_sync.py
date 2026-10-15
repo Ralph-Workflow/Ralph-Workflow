@@ -50,52 +50,76 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
+from enum import StrEnum
+
 # -- Public outcome strings carried on RebaseState.last_remote_sync -----
+
+
+class RemoteSyncStatus(StrEnum):
+    """Closed vocabulary for remote synchronization outcomes."""
+
+    PULLED = "pulled"
+    RECONCILED = "reconciled"
+    CREATED = "created"
+    PUSHED = "pushed"
+    PUSH_RECONCILED = "push reconciled"
+    PUSH_REJECTED = "push rejected"
+    PULL_FAILED = "pull failed"
+    NO_REMOTE = "no remote"
+    NO_REMOTE_BRANCH = "no remote branch"
+    LOCAL_AHEAD = "local ahead"
+    ALREADY_CURRENT = "already current"
+    REMOTE_UNREACHABLE = "origin unreachable"
+    AUTH_FAILED = "auth failed"
+    REJECTED_BY_HOOK = "rejected by remote hook"
+    NON_FAST_FORWARD = "non-fast-forward"
+    TIMEOUT = "timeout"
+
 
 #: The pull fetched and the local target was fast-forwarded to the
 #: remote tip. Recorded so the operator line can name what happened.
-REMOTE_PULLED = "pulled"
+REMOTE_PULLED = RemoteSyncStatus.PULLED
 #: The pull fetched and the local target was rebased onto the remote
 #: target. The remote's existing commits were NEVER rewritten;
 #: only the unpublished local commits on top of ``refs/heads/<target>``
 #: were replayed on top of ``<remote>/<target>``.
-REMOTE_RECONCILED = "reconciled"
+REMOTE_RECONCILED = RemoteSyncStatus.RECONCILED
 #: The pull fetched, ``<remote>/<target>`` did not exist, the push
 #: created it. Distinct outcome so the operator sees a remote branch
 #: appear rather than discovering it later.
-REMOTE_CREATED = "created"
+REMOTE_CREATED = RemoteSyncStatus.CREATED
 #: The push succeeded after a normal landing (or after one or more
 #: reconcile cycles on a non-fast-forward rejection).
-REMOTE_PUSHED = "pushed"
+REMOTE_PUSHED = RemoteSyncStatus.PUSHED
 #: The push was rejected non-fast-forward and a reconcile cycle
 #: succeeded; next attempt will retry the push with the reconciled
 #: target.
-REMOTE_PUSH_RECONCILED = "push reconciled"
+REMOTE_PUSH_RECONCILED = RemoteSyncStatus.PUSH_RECONCILED
 #: The push was rejected and the bounded reconcile loop exhausted
 #: without landing. Recorded, not terminal -- the next seam retries.
-REMOTE_PUSH_REJECTED = "push rejected"
+REMOTE_PUSH_REJECTED = RemoteSyncStatus.PUSH_REJECTED
 #: The pull failed for a transient reason (unreachable, timeout,
 #: auth). Local integration proceeds untouched. The reason is recorded.
-REMOTE_PULL_FAILED = "pull failed"
+REMOTE_PULL_FAILED = RemoteSyncStatus.PULL_FAILED
 #: The remote named in config is not configured in this repository;
 #: the step degrades to local-only with a recorded skip.
-REMOTE_NO_REMOTE = "no remote"
+REMOTE_NO_REMOTE = RemoteSyncStatus.NO_REMOTE
 #: ``<remote>/<target>`` does not exist; nothing to pull. The local
 #: integration proceeds untouched.
-REMOTE_NO_REMOTE_BRANCH = "no remote branch"
+REMOTE_NO_REMOTE_BRANCH = RemoteSyncStatus.NO_REMOTE_BRANCH
 #: The local target is strictly ahead of the remote. No remote-side
 #: motion needed; the next landing pushes the local state to the
 #: remote.
-REMOTE_LOCAL_AHEAD = "local ahead"
-REMOTE_ALREADY_CURRENT = "already current"
+REMOTE_LOCAL_AHEAD = RemoteSyncStatus.LOCAL_AHEAD
+REMOTE_ALREADY_CURRENT = RemoteSyncStatus.ALREADY_CURRENT
 #: Failure classification -- the recorded reason the run did not
 #: publish, used both for the operator line and the waiting-state
 #: end-of-run summary.
-REMOTE_REMOTE_UNREACHABLE = "origin unreachable"
-REMOTE_AUTH_FAILED = "auth failed"
-REMOTE_REJECTED_BY_HOOK = "rejected by remote hook"
-REMOTE_NON_FAST_FORWARD = "non-fast-forward"
-REMOTE_TIMEOUT = "timeout"
+REMOTE_REMOTE_UNREACHABLE = RemoteSyncStatus.REMOTE_UNREACHABLE
+REMOTE_AUTH_FAILED = RemoteSyncStatus.AUTH_FAILED
+REMOTE_REJECTED_BY_HOOK = RemoteSyncStatus.REJECTED_BY_HOOK
+REMOTE_NON_FAST_FORWARD = RemoteSyncStatus.NON_FAST_FORWARD
+REMOTE_TIMEOUT = RemoteSyncStatus.TIMEOUT
 
 FETCH_TIMEOUT_SECONDS = 10.0
 REMOTE_SYNC_INTERVAL_SECONDS = 300.0
@@ -915,7 +939,7 @@ def _record_remote_state(
 ) -> RebaseState:
     """Build the canonical ``RebaseState`` annotation for a remote sync outcome."""
     return RebaseState(
-        last_action="skipped",
+        last_outcome=RebaseOutcomeKind.SKIPPED,
         last_reason=reason,
         last_target=target,
         last_remote_sync=last_remote_sync,
@@ -944,6 +968,7 @@ __all__ = [
     "REMOTE_REMOTE_UNREACHABLE",
     "REMOTE_SYNC_INTERVAL_SECONDS",
     "REMOTE_TIMEOUT",
+    "RemoteSyncStatus",
     "pull_and_reconcile_target",
     "push_single_remote",
     "push_target_after_landing",

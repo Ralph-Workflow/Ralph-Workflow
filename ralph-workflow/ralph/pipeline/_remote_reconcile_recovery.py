@@ -13,6 +13,7 @@ from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.pipeline._integration_action import (
     IntegrationAction,
+    RebaseOutcomeKind,
     next_integration_action,
 )
 from ralph.pipeline._integration_continuation import (
@@ -88,7 +89,7 @@ def recover_target_resolution(
             if reason is not None:
                 return _retained(record, reason)
     return RebaseState(
-        last_action="recovered",
+        last_outcome=RebaseOutcomeKind.RECOVERED,
         last_target=record.target,
         last_reason="completed retained target reconciliation",
         fast_forwarded=False,
@@ -182,7 +183,7 @@ def _start_saved_target_action(
 
 def _retained(record: IntegrationRecord, reason: str) -> RebaseState:
     return RebaseState(
-        last_action="skipped",
+        last_outcome=RebaseOutcomeKind.SKIPPED,
         last_target=record.target,
         last_reason=reason,
         recovery_record_retained=True,

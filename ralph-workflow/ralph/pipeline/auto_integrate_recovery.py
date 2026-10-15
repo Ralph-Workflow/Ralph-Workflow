@@ -54,6 +54,7 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 )
 from ralph.pipeline._integration_action import (
     IntegrationAction,
+    RebaseOutcomeKind,
     next_integration_action,
 )
 from ralph.pipeline._owned_landing_reintegration import (
@@ -102,10 +103,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.workspace.scope import WorkspaceScope
 
-#: Mirrors of the outcome verbs in :mod:`ralph.pipeline.auto_integrate`
-#: (kept local so this module never imports its re-exporting parent).
-_ACTION_SKIPPED = "skipped"
-_ACTION_RECOVERED = "recovered"
 
 __all__ = [
     "TerminalStateViolationError",
@@ -157,12 +154,12 @@ def legacy_rebase_startup_block(workspace_root: Path) -> RebaseState | None:
             _clear_legacy_checkpoint(workspace_root)
             return None
         return RebaseState(
-            last_action="conflict",
+            last_outcome=RebaseOutcomeKind.CONFLICT,
             last_reason="legacy terminal checkpoint contradicts live Git",
             **identity,
         )
     reason = inspection.reason or "legacy rebase checkpoint requires recovery"
-    return RebaseState(last_action="conflict", last_reason=reason, **identity)
+    return RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, last_reason=reason, **identity)
 
 
 def recovery_retained_record(state: RebaseState | None) -> bool:
@@ -269,7 +266,7 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
             target=None,
         )
     return RebaseState(
-        last_action=_ACTION_RECOVERED,
+        last_outcome=RebaseOutcomeKind.RECOVERED,
         last_reason=(
             "reclaimed stale unowned rebase/merge state (no ownership record, clean worktree)"
         ),
@@ -438,7 +435,7 @@ def _record_skip(*, reason: str, target: str | None, record_retained: bool = Fal
     :func:`recovery_retained_record`.
     """
     return RebaseState(
-        last_action=_ACTION_SKIPPED,
+        last_outcome=RebaseOutcomeKind.SKIPPED,
         last_reason=reason,
         last_target=target,
         fast_forwarded=False,
@@ -545,7 +542,7 @@ def _continue_fast_forward_from_record(
                 workspace_root,
                 record.target,
                 RebaseState(
-                    last_action=_ACTION_RECOVERED,
+                    last_outcome=RebaseOutcomeKind.RECOVERED,
                     last_reason="already fast-forwarded",
                     last_target=record.target,
                     fast_forwarded=True,
@@ -696,7 +693,7 @@ def _land_and_reconcile(
                 workspace_root,
                 record.target,
                 RebaseState(
-                    last_action=_ACTION_RECOVERED,
+                    last_outcome=RebaseOutcomeKind.RECOVERED,
                     last_reason=None,
                     last_target=record.target,
                     fast_forwarded=True,
@@ -801,7 +798,7 @@ def _recover_unresolved_integrating(
     ):
         _clear_record(root)
         return RebaseState(
-            last_action=_ACTION_RECOVERED,
+            last_outcome=RebaseOutcomeKind.RECOVERED,
             last_reason="restored feature branch after interrupted rebase",
             last_target=record.target,
             fast_forwarded=False,

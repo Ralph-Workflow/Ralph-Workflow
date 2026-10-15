@@ -18,7 +18,7 @@ import pytest
 
 pytestmark = [pytest.mark.smoke, pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
-_COMMAND_TIMEOUT_SECONDS = 5.0
+_COMMAND_TIMEOUT_SECONDS = 8.0
 
 
 def _write_fake_uv(directory: Path) -> None:

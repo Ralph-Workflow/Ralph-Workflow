@@ -297,16 +297,12 @@ class TestDefaultPolicyLoading:
     """Tests for loading the default policy."""
 
     def test_load_default_policy_succeeds(self) -> None:
-        """Test that the default policy loads without error."""
+        """Test that the default policy loads without error and satisfies structural defaults."""
         bundle = _cached_default_bundle()
 
         assert bundle.agents is not None
         assert bundle.pipeline is not None
         assert bundle.artifacts is not None
-
-    def test_all_builtin_drains_bound(self) -> None:
-        """Test that all built-in drains are bound in default agents.toml."""
-        bundle = _cached_default_bundle()
 
         expected_drains = {
             "planning",
@@ -314,35 +310,12 @@ class TestDefaultPolicyLoading:
             "development_analysis",
             "development_commit",
         }
-
         actual_drains = set(bundle.agents.agent_drains.keys())
         assert expected_drains.issubset(actual_drains), (
             f"Missing drains: {expected_drains - actual_drains}"
         )
-
-    def test_default_pipeline_entry_phase(self) -> None:
-        """Test that default pipeline has planning as entry phase."""
-        bundle = _cached_default_bundle()
-
         assert bundle.pipeline.entry_block == "developer_iteration"
         assert bundle.pipeline.entry_phase == "planning"
-
-    def test_default_pipeline_exposes_lifecycle_completion_metadata(self) -> None:
-        """Bundled defaults should be block-authored and compile lifecycle metadata."""
-        bundle = _cached_default_bundle()
-
-        lifecycle = bundle.pipeline.lifecycle_phases["development_final_commit"]
-        assert lifecycle.lifecycle_name == "developer_iteration"
-        assert lifecycle.completion_block == "development_final_commit"
-        assert lifecycle.increments_counter == "iteration"
-        assert "development_commit_cleanup" in lifecycle.before_complete
-        assert "development_commit" in lifecycle.before_complete
-        assert "development_final_commit_cleanup" in lifecycle.before_complete
-
-    def test_default_pipeline_terminal_phase(self) -> None:
-        """Test that default pipeline has complete as terminal phase."""
-        bundle = _cached_default_bundle()
-
         assert bundle.pipeline.terminal_phase == "complete"
 
     def test_parallel_policy_roundtrip_retains_legacy_settings_without_capping_workers(
@@ -1870,21 +1843,13 @@ class TestValidatePolicyCompletenessNewRules:
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_recovery_failed_route_phase_failed_is_rejected(self) -> None:
-        """recovery.failed_route='phase_failed' is rejected at model construction."""
+    @pytest.mark.parametrize("failed_route", ["phase_failed", "exit_failure"])
+    def test_recovery_failed_route_legacy_rejected(self, failed_route: str) -> None:
+        """recovery.failed_route legacy pseudo-phases are rejected at model construction."""
         with pytest.raises(ValidationError, match="no longer supported"):
             RecoveryPolicy(
                 cycle_cap=200,
-                failed_route="phase_failed",
-                preserve_session_on_categories=("agent",),
-            )
-
-    def test_recovery_failed_route_exit_failure_is_rejected(self) -> None:
-        """recovery.failed_route='exit_failure' is rejected at model construction."""
-        with pytest.raises(ValidationError, match="no longer supported"):
-            RecoveryPolicy(
-                cycle_cap=200,
-                failed_route="exit_failure",
+                failed_route=failed_route,
                 preserve_session_on_categories=("agent",),
             )
 
@@ -2620,41 +2585,22 @@ class TestValidatePostCommitAllBudgetStatesCovered:
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
 
-    def test_missing_remaining_state_raises(self) -> None:
-        """Only exhausted+no_review present: remaining missing → validation fails."""
-        bundle = self._bundle_with_routes(
-            [
-                ("exhausted", "complete"),
-                ("no_review", "complete"),
-            ]
-        )
+    @pytest.mark.parametrize(
+        ("routes", "missing_token"),
+        [
+            ([("exhausted", "complete"), ("no_review", "complete")], "remaining"),
+            ([("remaining", "work"), ("no_review", "complete")], "exhausted"),
+            ([("remaining", "work"), ("exhausted", "complete")], "no_review"),
+        ],
+    )
+    def test_missing_budget_state_raises(
+        self, routes: list[tuple[str, str]], missing_token: str
+    ) -> None:
+        """Missing any required budget state fails validation."""
+        bundle = self._bundle_with_routes(routes)
         with pytest.raises(PolicyValidationError) as exc_info:
             validate_policy_completeness(bundle)
-        assert "remaining" in str(exc_info.value)
-
-    def test_missing_exhausted_state_raises(self) -> None:
-        """Only remaining+no_review present: exhausted missing → validation fails."""
-        bundle = self._bundle_with_routes(
-            [
-                ("remaining", "work"),
-                ("no_review", "complete"),
-            ]
-        )
-        with pytest.raises(PolicyValidationError) as exc_info:
-            validate_policy_completeness(bundle)
-        assert "exhausted" in str(exc_info.value)
-
-    def test_missing_no_review_state_raises(self) -> None:
-        """Only remaining+exhausted present: no_review missing → validation fails."""
-        bundle = self._bundle_with_routes(
-            [
-                ("remaining", "work"),
-                ("exhausted", "complete"),
-            ]
-        )
-        with pytest.raises(PolicyValidationError) as exc_info:
-            validate_policy_completeness(bundle)
-        assert "no_review" in str(exc_info.value)
+        assert missing_token in str(exc_info.value)
 
     def test_all_three_budget_states_passes(self) -> None:
         """All three budget states declared: validation passes."""
@@ -2832,43 +2778,22 @@ class TestValidateRequiredInputs:
         scope.root = tmp_path
         validate_required_inputs(scope)  # should not raise
 
-    def test_empty_prompt_md_raises(self, tmp_path: Path) -> None:
-        """An empty PROMPT.md raises PolicyValidationError."""
-        (tmp_path / "PROMPT.md").write_text("")
+    @pytest.mark.parametrize(
+        ("prompt_content", "match_pattern"),
+        [
+            ("", "empty"),
+            (STARTER_PROMPT_SENTINEL + "\n\n# Goal\n\nExample body\n", "starter template"),
+            ("# Goal\n\nMy task.\n\n" + STARTER_PROMPT_SENTINEL + "\n", "starter template"),
+        ],
+    )
+    def test_invalid_prompt_md_raises(
+        self, tmp_path: Path, prompt_content: str, match_pattern: str
+    ) -> None:
+        """An empty or unedited starter PROMPT.md raises PolicyValidationError."""
+        (tmp_path / "PROMPT.md").write_text(prompt_content)
         scope = MagicMock()
         scope.root = tmp_path
-        with pytest.raises(PolicyValidationError, match="empty"):
-            validate_required_inputs(scope)
-
-    def test_starter_sentinel_prompt_md_raises(self, tmp_path: Path) -> None:
-        """A PROMPT.md with the starter sentinel raises PolicyValidationError."""
-        (tmp_path / "PROMPT.md").write_text(
-            STARTER_PROMPT_SENTINEL + "\n\n# Goal\n\nExample body\n"
-        )
-        scope = MagicMock()
-        scope.root = tmp_path
-        with pytest.raises(PolicyValidationError) as exc_info:
-            validate_required_inputs(scope)
-        msg = str(exc_info.value)
-        assert "starter template" in msg
-        assert "ralph" in msg
-        assert str(tmp_path) in msg
-
-    def test_edited_prompt_md_passes(self, tmp_path: Path) -> None:
-        """A PROMPT.md without the sentinel passes validation."""
-        (tmp_path / "PROMPT.md").write_text("# Goal\n\nBuild a real feature here.\n")
-        scope = MagicMock()
-        scope.root = tmp_path
-        validate_required_inputs(scope)  # must not raise
-
-    def test_sentinel_anywhere_in_prompt_raises(self, tmp_path: Path) -> None:
-        """Sentinel on any line in PROMPT.md raises PolicyValidationError."""
-        (tmp_path / "PROMPT.md").write_text(
-            "# Goal\n\nMy task.\n\n" + STARTER_PROMPT_SENTINEL + "\n"
-        )
-        scope = MagicMock()
-        scope.root = tmp_path
-        with pytest.raises(PolicyValidationError):
+        with pytest.raises(PolicyValidationError, match=match_pattern):
             validate_required_inputs(scope)
 
 

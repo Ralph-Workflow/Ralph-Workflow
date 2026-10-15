@@ -87,7 +87,7 @@ from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
-    REMOTE_NO_REMOTE,
+    RemoteSyncStatus,
     pull_and_reconcile_target,
     reconcile_after_rejected_push,
     remote_sync_enabled,
@@ -471,7 +471,7 @@ def _freshen_attempt_target(
     if record is None:
         return None, None
     refresh = record.last_refresh
-    if record.last_remote_sync == REMOTE_NO_REMOTE:
+    if record.last_remote_sync == RemoteSyncStatus.NO_REMOTE:
         refresh = _refresh_target(config, root, target)
     return record, refresh
 

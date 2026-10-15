@@ -35,6 +35,7 @@ from tests._support.typed_accessors import (
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
+    from ralph.workspace.memory import MemoryWorkspace
 
 
 @functools.lru_cache(maxsize=1)
@@ -42,6 +43,7 @@ def _default_bundle() -> PolicyBundle:
     return load_policy(default_dir())
 
 
+@functools.lru_cache(maxsize=1)
 def _bundle_with_development_bound_remediation() -> PolicyBundle:
     """Default bundle rewired: no policy_remediation chain; the drain binds
     to a development chain, mirroring the loader's development-drain backfill."""
@@ -55,6 +57,14 @@ def _bundle_with_development_bound_remediation() -> PolicyBundle:
     drains["policy_remediation"] = AgentDrainConfig(chain="development", drain_class="development")
     agents = bundle.agents.model_copy(update={"agent_chains": chains, "agent_drains": drains})
     return bundle.model_copy(update={"agents": agents})
+
+
+def _seed_ready_policy(ws: MemoryWorkspace) -> None:
+    from tests.project_policy.test_validator import _ready_workspace_state
+
+    storage, dirs = _ready_workspace_state()
+    ws._storage.update(storage)
+    ws._dirs.update(dirs)
 
 
 def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
@@ -165,19 +175,11 @@ def test_ready_preflight_triggers_policy_auto_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A READY preflight auto-commits the policy surfaces (wt-025 mirror)."""
-    from ralph.language_detector.models import ProjectStack
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
     from ralph.workspace.memory import MemoryWorkspace
-    from tests.project_policy.test_validator import (
-        _seed_agents_md,
-        _seed_all_core_complete,
-        _seed_claude_md,
-    )
 
     ws = MemoryWorkspace()
-    _seed_agents_md(ws)
-    _seed_claude_md(ws)
-    _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+    _seed_ready_policy(ws)
 
     committed_roots: list[object] = []
 
@@ -277,14 +279,8 @@ def test_remediation_runs_inside_started_display_with_status_bar(
     proper: display started (status bar live), a status-bar model pushed for
     the remediation phase, and the display forwarded to execute_agent_effect
     so agent activity renders consistently."""
-    from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.events import PipelineEvent
     from ralph.workspace.memory import MemoryWorkspace
-    from tests.project_policy.test_validator import (
-        _seed_agents_md,
-        _seed_all_core_complete,
-        _seed_claude_md,
-    )
 
     ws = MemoryWorkspace()  # unseeded -> remediation required
     fake_display = _FakeDisplay()
@@ -300,9 +296,7 @@ def test_remediation_runs_inside_started_display_with_status_bar(
         **opts: object,
     ) -> object:
         observed_opts.append(dict(opts))
-        _seed_agents_md(ws)
-        _seed_claude_md(ws)
-        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        _seed_ready_policy(ws)
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
@@ -338,14 +332,8 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
     leave ``Policy Remediation`` in its footer; the persisted pipeline phase
     takes over immediately.
     """
-    from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.events import PipelineEvent
     from ralph.workspace.memory import MemoryWorkspace
-    from tests.project_policy.test_validator import (
-        _seed_agents_md,
-        _seed_all_core_complete,
-        _seed_claude_md,
-    )
 
     ws = MemoryWorkspace()
     fake_display = _FakeDisplay()
@@ -353,9 +341,7 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
     monkeypatch.setattr(cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display)
 
     def fake_execute_agent_effect(*_args: object, **_opts: object) -> object:
-        _seed_agents_md(ws)
-        _seed_claude_md(ws)
-        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        _seed_ready_policy(ws)
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)

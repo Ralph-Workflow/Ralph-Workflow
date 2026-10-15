@@ -26,6 +26,7 @@ from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import DisplayContext
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.skills._capability_state import CapabilityState
 
 
@@ -189,3 +190,43 @@ class TestInjectedDisplayContextIsHonored:
         assert "auto-integrate:" in output.lower()
         normalized_state = state.value.replace("_", " ")
         assert normalized_state in output.lower() or state.value in output.lower()
+
+    @pytest.mark.parametrize("kind", list(RebaseOutcomeKind))
+    def test_completion_summary_rebase_outcome_kinds_use_injected_context(
+        self, kind: RebaseOutcomeKind
+    ) -> None:
+        """Verify rendering completion summary with each RebaseOutcomeKind honors injected DisplayContext."""
+        ctx = _make_display_context()
+        snap = MagicMock(spec=PipelineSnapshot)
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.decision_log = ()
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.total_continuations = 0
+        snap.total_fallbacks = 0
+        snap.total_retries = 0
+        snap.push_count = 0
+        snap.pr_url = None
+        snap.budget_progress = {}
+        snap.mcp_restart_count = 0
+        snap.auto_integrate_action = kind.value
+        snap.auto_integrate_target = "main"
+        snap.auto_integrate_reason = None
+        snap.auto_integrate_fast_forwarded = True
+        snap.auto_integrate_push = None
+        snap.auto_integrate_remote_sync = None
+        snap.auto_integrate_remote = None
+        snap.auto_integrate_freshness_verdict = None
+
+        group = render_completion_summary_group(
+            snap,
+            display_context=ctx,
+            options=CompletionSummaryOptions(),
+        )
+        ctx.console.print(group)
+        assert isinstance(ctx.console.file, StringIO)
+        output = ctx.console.file.getvalue()
+        assert "auto-integrate:" in output.lower()

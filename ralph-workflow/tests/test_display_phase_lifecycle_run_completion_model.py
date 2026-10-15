@@ -9,15 +9,20 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.display.auto_integrate_message import (
     OperationDisplayState,
     format_auto_integrate_message,
+    rebase_outcome_to_operation_display_state,
 )
 from ralph.display.phase_lifecycle import (
     PhaseActivityCounts,
     RunCompletionModel,
 )
 from ralph.display.snapshot import BudgetProgress
+from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline.rebase_state import RebaseState
 
 # ---------------------------------------------------------------------------
 # PhaseEntryModel
@@ -303,3 +308,55 @@ def test_terminal_rendered_prefix() -> None:
         operation_display_state=OperationDisplayState.TERMINAL, target="main"
     )
     assert msg.startswith("terminal")
+
+
+@pytest.mark.parametrize("state", list(OperationDisplayState))
+def test_all_operation_display_states_rendered_prefix(state: OperationDisplayState) -> None:
+    """Every OperationDisplayState value formats with its canonical prefix."""
+    msg = format_auto_integrate_message(operation_display_state=state, target="main")
+    expected_prefix = state.value.replace("_", " ")
+    assert msg.startswith(expected_prefix)
+
+
+@pytest.mark.parametrize("kind", list(RebaseOutcomeKind))
+def test_all_rebase_outcome_kinds_project_and_render_prefix(kind: RebaseOutcomeKind) -> None:
+    """Every RebaseOutcomeKind value projects to OperationDisplayState and renders its prefix."""
+    display_state = rebase_outcome_to_operation_display_state(kind)
+    assert display_state is not None
+    assert isinstance(display_state, OperationDisplayState)
+    msg = format_auto_integrate_message(last_outcome=kind, target="main")
+    expected_prefix = display_state.value.replace("_", " ")
+    assert msg.startswith(expected_prefix)
+
+
+def test_rebase_state_object_outcome_projection() -> None:
+    """rebase_outcome_to_operation_display_state projects directly from a RebaseState object."""
+    state_landing = RebaseState(last_outcome=RebaseOutcomeKind.LANDING)
+    assert rebase_outcome_to_operation_display_state(state_landing) == OperationDisplayState.LANDING
+
+    state_conflict = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT)
+    assert (
+        rebase_outcome_to_operation_display_state(state_conflict)
+        == OperationDisplayState.CONFLICT_RESOLUTION
+    )
+
+    state_unknown = RebaseState(last_outcome=RebaseOutcomeKind.UNKNOWN)
+    assert (
+        rebase_outcome_to_operation_display_state(state_unknown)
+        == OperationDisplayState.INTERVENTION_REQUIRED
+    )
+
+
+def test_format_auto_integrate_message_with_rebase_object() -> None:
+    """format_auto_integrate_message accepts rebase object and renders typed prefix."""
+    state_integrating = RebaseState(last_outcome=RebaseOutcomeKind.INTEGRATING)
+    msg_integrating = format_auto_integrate_message(rebase=state_integrating, target="main")
+    assert msg_integrating.startswith("integrating")
+
+    state_waiting = RebaseState(last_outcome=RebaseOutcomeKind.WAITING)
+    msg_waiting = format_auto_integrate_message(rebase=state_waiting, target="main")
+    assert msg_waiting.startswith("waiting")
+
+    state_unknown = RebaseState(last_outcome=RebaseOutcomeKind.UNKNOWN)
+    msg_unknown = format_auto_integrate_message(rebase=state_unknown, target="main")
+    assert msg_unknown.startswith("intervention required")

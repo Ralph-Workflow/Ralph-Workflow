@@ -590,13 +590,15 @@ def _build_status_bar_model(
 def _integration_alert_for_state(state: PipelineState) -> str | None:
     """Alert text while the last auto-integrate outcome is a conflict or requires intervention."""
     rebase = state.rebase
-    if rebase.last_decision == "report_intervention_required":
+    if (
+        rebase.is_intervention_required
+        or rebase.last_decision == "report_intervention_required"
+        or rebase.operation_display_state == "intervention_required"
+    ):
         return "diagnostic intervention required — manual recovery needed"
-    if rebase.operation_display_state == "intervention_required":
-        return "diagnostic intervention required — manual recovery needed"
-    if rebase.operation_display_state == "evidence_diagnosis":
+    if rebase.is_diagnostic_action() or rebase.operation_display_state == "evidence_diagnosis":
         return "evidence diagnosis — gathering operation facts"
-    if rebase.last_outcome != RebaseOutcomeKind.CONFLICT:
+    if not rebase.is_conflict_resolution() and rebase.last_outcome != RebaseOutcomeKind.CONFLICT:
         return None
     reason = rebase.last_reason or "unresolved"
     return f"integration conflict ({reason}) — resolution required"
@@ -740,7 +742,7 @@ def _run_auto_integrate_recovery_preamble(
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
     if recovered is not None:
-        logger.debug("auto_integrate recovery preamble: {}", recovered.last_action)
+        logger.debug("auto_integrate recovery preamble: {}", recovered.last_outcome)
     return recovered
 
 
@@ -1296,7 +1298,7 @@ def _apply_startup_rebase_outcomes(
     startup_rebase = _run_startup_integration(ctx, state.rebase)
     if startup_rebase is not None:
         state = state.copy_with(rebase=startup_rebase)
-        if startup_rebase.last_outcome != RebaseOutcomeKind.SKIPPED:
+        if not startup_rebase.is_skipped():
             _save_recovered_rebase_checkpoint(state, ctx)
     return state
 
@@ -1878,11 +1880,15 @@ def _ensure_planning_in_sync(
         routed = _route_planning_commit(state, ctx)
         if routed is not state:
             return routed, None
-        failure = (gap, state.rebase.last_action, state.rebase.last_reason)
+        failure = (gap, state.rebase.last_outcome, state.rebase.last_reason)
         if failure == previous_failure:
             break
         previous_failure = failure
-    outcome = state.rebase.last_reason or state.rebase.last_action or "no integration outcome"
+    outcome = (
+        state.rebase.last_reason
+        or (state.rebase.last_outcome.value if state.rebase.last_outcome is not None else None)
+        or "no integration outcome"
+    )
     detail = f"{gap}; {attempt} integration attempt(s) with the conflict resolver did not land it"
     detail += f" (last: {outcome})"
     alarm = f"CRITICAL: integration did not land; planning blocked: {detail}"

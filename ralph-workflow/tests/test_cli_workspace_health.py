@@ -166,8 +166,13 @@ def _invoke(workspace: Path) -> dict[str, object]:
     return json.loads(result.output.strip().splitlines()[-1])
 
 
+@pytest.fixture
+def fake_workspace() -> Path:
+    return Path("/mock/workspace")
+
+
 def test_workspace_health_routes_json_through_shared_display(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    fake_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The command uses the shared display surface for operator output."""
     from ralph.cli.commands import workspace_health as command_module
@@ -185,16 +190,15 @@ def test_workspace_health_routes_json_through_shared_display(
         lambda _display, context: _Display() if context is display_context else None,
     )
 
-    command_module._emit_workspace_health(str(tmp_path), display_context=display_context)
+    command_module._emit_workspace_health(str(fake_workspace), display_context=display_context)
 
     assert len(emitted) == 1
-    assert emitted[0]["workspace"] == str(tmp_path.absolute())
+    assert emitted[0]["workspace"] == str(fake_workspace.absolute())
 
 
-def test_workspace_health_reports_every_ac11_key(tmp_path: Path) -> None:
+def test_workspace_health_reports_every_ac11_key(fake_workspace: Path) -> None:
     """The JSON payload contains every AC-11 key with real values."""
-    (tmp_path / "src.py").write_text("x = 1\n", encoding="utf-8")
-    payload = _invoke(tmp_path)
+    payload = _invoke(fake_workspace)
 
     for key in _REQUIRED_TOP_LEVEL_KEYS:
         assert key in payload, f"missing AC-11 key: {key}"
@@ -245,26 +249,26 @@ def test_workspace_health_reports_every_ac11_key(tmp_path: Path) -> None:
     assert all(isinstance(value, bool) for value in payload["recreatability"].values())
 
 
-def test_workspace_health_is_read_only(tmp_path: Path) -> None:
+def test_workspace_health_is_read_only(fake_workspace: Path) -> None:
     """The health read must not create or delete workspace content."""
-    payload = _invoke(tmp_path)
-    assert payload["workspace"] == str(tmp_path.absolute())
+    payload = _invoke(fake_workspace)
+    assert payload["workspace"] == str(fake_workspace.absolute())
     # No .agent directory is created by the read-only health command.
-    assert not (tmp_path / ".agent").exists()
+    assert not (fake_workspace / ".agent").exists()
 
 
-def test_workspace_health_surfaces_live_fallback_watch_capacity(tmp_path: Path) -> None:
+def test_workspace_health_surfaces_live_fallback_watch_capacity(fake_workspace: Path) -> None:
     """A degraded observer surfaces through watch_capacity, not silently."""
     from ralph.workspace.awareness import (
         awareness_for_workspace,
         release_workspace_awareness,
     )
 
-    awareness_for_workspace(tmp_path).set_live_fallback("watch_capacity")
+    awareness_for_workspace(fake_workspace).set_live_fallback("watch_capacity")
     try:
-        payload = _invoke(tmp_path)
+        payload = _invoke(fake_workspace)
     finally:
-        release_workspace_awareness(tmp_path)
+        release_workspace_awareness(fake_workspace)
 
     assert payload["freshness"]["token"] == "live_fallback"
     assert payload["readiness"] == "live_fallback"

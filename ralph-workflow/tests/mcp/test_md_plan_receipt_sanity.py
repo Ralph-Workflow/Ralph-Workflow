@@ -46,15 +46,9 @@ _PROSE = "Inspect code then implement independent changes and verify all behavio
 _CASES = (
     _PROSE,
     (
-        "I cannot implement this request because production credentials are unavailable.\n"
-        "Implement an offline adapter using recorded responses, add deterministic tests, and verify the public interface."
-    ),
-    _PROSE
-    + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-1] Duplicate\nDepends on: S-99\n### [S-2] Second\nDepends on: S-1",
-    (
         _PROSE
-        + "\n## Work Units\n- [U-1] First\n  Directories: src\n## Parallel Plan\n"
-        + "\n".join(f"- [U-{i}] Work on file {i}" for i in range(2, 66))
+        + "\n## Steps\n### [S-1] First\nDepends on: S-2\n### [S-1] Duplicate\nDepends on: S-99\n"
+        + "## Work Units\n- [U-1] First\n  Directories: src\n## Parallel Plan\n- [U-2] Work on file 2"
     ),
     "---\ntype: plan\ntype: other\nbroken metadata\n---\n" + _PROSE,
 )

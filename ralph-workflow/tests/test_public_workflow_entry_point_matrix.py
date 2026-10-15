@@ -75,16 +75,27 @@ def _eval_phase_boundary_run_loop(
     policy: PipelinePolicy,
     record: IntegrationRecord,
     bundle: PolicyBundle,
-) -> tuple[PhaseDecision, MagicMock]:
+) -> tuple[PhaseDecision, run_loop._LoopContext]:
     latest_states: list[PipelineState] = []
-    ctx = MagicMock()
-    ctx.workspace_scope = WorkspaceScope(tmp_path)
-    ctx.config = UnifiedConfig()
-    ctx.sleep = MagicMock(side_effect=_StopInnerLoopError)
-    ctx.policy_bundle = bundle
-    ctx.pipeline_deps = None
-    ctx.latest_state = latest_states
-    ctx.snapshot_registry = None
+    fake_sleep = MagicMock(side_effect=_StopInnerLoopError)
+    ctx = run_loop._LoopContext(
+        policy_bundle=bundle,
+        workspace_scope=WorkspaceScope(tmp_path),
+        config=UnifiedConfig(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry={},
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=MagicMock(),
+        sleep=fake_sleep,
+        is_quiet=True,
+        latest_state=latest_states,
+    )
 
     with contextlib.suppress(_StopInnerLoopError):
         run_loop._run_inner_loop(shared_state, ctx, "development")
@@ -144,7 +155,7 @@ def _eval_commit_handling(
 def _eval_cooldown_recovery(
     tmp_path: Path,
     shared_state: PipelineState,
-    ctx: MagicMock,
+    ctx: run_loop._LoopContext,
 ) -> PhaseDecision:
     st_recovery = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert st_recovery is not None

@@ -145,21 +145,45 @@ _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "rebased": OperationDisplayState.LANDING.value,
     "merged": OperationDisplayState.LANDING.value,
     "fast_forwarded": OperationDisplayState.LANDING.value,
+    "fast_forward": OperationDisplayState.LANDING.value,
     "skipped": OperationDisplayState.TERMINAL.value,
     "conflict": OperationDisplayState.CONFLICT_RESOLUTION.value,
     "recovered": OperationDisplayState.TERMINAL.value,
     "remote_pushed": OperationDisplayState.TERMINAL.value,
     "remote_failed": OperationDisplayState.PUBLISHING.value,
+    "unknown": OperationDisplayState.INTERVENTION_REQUIRED.value,
 }
 
 
+def _safe_attr(obj: object, name: str) -> object:
+    if obj is None:
+        return None
+    try:
+        val: object = object.__getattribute__(obj, name)
+        return val
+    except AttributeError:
+        return None
+
+
 def rebase_outcome_to_operation_display_state(
-    outcome: RebaseOutcomeKind | str | None,
+    outcome: RebaseOutcomeKind | str | object | None,
 ) -> OperationDisplayState | None:
     """Project a RebaseOutcomeKind or outcome string to an OperationDisplayState.
 
-    Single typed projection from last_outcome to OperationDisplayState (ADR-0007 / ADR-0008).
+    Single typed projection from last_outcome (and rebase.last_outcome) to
+    OperationDisplayState (ADR-0007 / ADR-0008). Accepts a RebaseOutcomeKind,
+    raw verb string, or a state/record object bearing ``last_outcome`` (or
+    ``last_action``).
     """
+    if outcome is None:
+        return None
+    extracted = _safe_attr(outcome, "last_outcome")
+    if extracted is not None:
+        outcome = extracted
+    else:
+        extracted_action = _safe_attr(outcome, "last_action")
+        if extracted_action is not None:
+            outcome = extracted_action
     if outcome is None:
         return None
     raw = outcome.value if isinstance(outcome, StrEnum) else str(outcome)
@@ -190,7 +214,7 @@ def _resolve_operation_display_state(
         return None
 
     if action is not None:
-        raw_action = action.value if isinstance(action, OperationDisplayState) else action
+        raw_action = action.value if isinstance(action, StrEnum) else action
         if isinstance(raw_action, str):
             raw_norm = raw_action.strip().lower()
             if raw_norm not in _LEGACY_ACTIONS:
@@ -293,12 +317,13 @@ def format_auto_integrate_message(
     freshness_verdict: str | None = None,
     operation_display_state: str | OperationDisplayState | None = None,
     last_outcome: RebaseOutcomeKind | str | None = None,
+    rebase: object | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
     Reads ``operation_display_state`` first (the eight-branch typed lifecycle
-    authority from ADR-0007); falls back to ``last_outcome`` projection or
-    ``action``/``reason`` only when the typed state is unset (legacy checkpoints).
+    authority from ADR-0007); falls back to ``last_outcome`` (or ``rebase.last_outcome``)
+    projection or ``action``/``reason`` only when the typed state is unset (legacy checkpoints).
 
     The four basic arguments are the four fields the producer records on
     :class:`ralph.pipeline.rebase_state.RebaseState`. The ``fast_forwarded``
@@ -334,6 +359,30 @@ def format_auto_integrate_message(
     is added at the emit site, and emitting a second one here previously
     doubled the prefix in the live line.
     """
+    if rebase is not None:
+        if last_outcome is None:
+            raw_last_outcome = _safe_attr(rebase, "last_outcome")
+            if isinstance(raw_last_outcome, str):
+                last_outcome = raw_last_outcome
+        if operation_display_state is None:
+            raw_display_state = _safe_attr(rebase, "operation_display_state")
+            if isinstance(raw_display_state, (str, OperationDisplayState)):
+                operation_display_state = raw_display_state
+        if action is None:
+            raw_act = _safe_attr(rebase, "last_action")
+            if isinstance(raw_act, str):
+                action = raw_act
+        if target is None:
+            raw_target = _safe_attr(rebase, "last_target")
+            if isinstance(raw_target, str):
+                target = raw_target
+        if reason is None:
+            raw_reason = _safe_attr(rebase, "last_reason")
+            if isinstance(raw_reason, str):
+                reason = raw_reason
+        if not fast_forwarded and bool(_safe_attr(rebase, "fast_forwarded")):
+            fast_forwarded = True
+
     effective_display_state = (
         operation_display_state
         if operation_display_state is not None

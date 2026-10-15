@@ -52,18 +52,27 @@ def _policy() -> PipelinePolicy:
     )
 
 
-def _build_ctx(root: Path, policy: PipelinePolicy) -> MagicMock:
+def _build_ctx(root: Path, policy: PipelinePolicy) -> run_loop._LoopContext:
     bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     bundle = bundle.model_copy(update={"pipeline": policy})
-    empty_registry: dict[str, object] = {}
-    ctx = MagicMock()
-    ctx.workspace_scope = WorkspaceScope(root)
-    ctx.config = UnifiedConfig()
-    ctx.pipeline_deps = MagicMock()
-    ctx.policy_bundle = bundle
-    ctx.registry = empty_registry
-    ctx.active_display = MagicMock()
-    return ctx
+    return run_loop._LoopContext(
+        policy_bundle=bundle,
+        workspace_scope=WorkspaceScope(root),
+        config=UnifiedConfig(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=MagicMock(),
+        sleep=MagicMock(),
+        is_quiet=True,
+        pipeline_deps=MagicMock(),
+    )
 
 
 def test_cap_emits_intervention_transition(tmp_path: Path) -> None:

@@ -389,6 +389,14 @@ class RebaseState(RalphBaseModel):
         """Whether the outcome represents active conflict resolution."""
         return _is_conflict_resolution(self)
 
+    def is_landing(self) -> bool:
+        """Whether the outcome represents a landing in progress or completed."""
+        return _is_landing(self)
+
+    def is_skipped(self) -> bool:
+        """Whether the outcome was skipped."""
+        return self.last_outcome == RebaseOutcomeKind.SKIPPED
+
     @property
     def is_intervention_required(self) -> bool:
         """Whether operator intervention is required."""
@@ -405,15 +413,15 @@ _DECISION_DISPLAY_MAP: dict[str, str] = {
     "report_intervention_required": "intervention_required",
 }
 
-_ACTION_DISPLAY_MAP: dict[str, str] = {
-    "integrating": "integrating",
-    "waiting": "waiting",
-    "diagnosing": "evidence_diagnosis",
-    "evidence_diagnosis": "evidence_diagnosis",
-    "intervention_required": "intervention_required",
-    "diagnostic_intervention_required": "intervention_required",
-    "terminal": "terminal",
-    "completed": "terminal",
+_OUTCOME_DISPLAY_MAP: dict[RebaseOutcomeKind, str] = {
+    RebaseOutcomeKind.INTEGRATING: "integrating",
+    RebaseOutcomeKind.WAITING: "waiting",
+    RebaseOutcomeKind.DIAGNOSING: "evidence_diagnosis",
+    RebaseOutcomeKind.EVIDENCE_DIAGNOSIS: "evidence_diagnosis",
+    RebaseOutcomeKind.INTERVENTION_REQUIRED: "intervention_required",
+    RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED: "intervention_required",
+    RebaseOutcomeKind.TERMINAL: "terminal",
+    RebaseOutcomeKind.COMPLETED: "terminal",
 }
 
 #: Publication decisions that keep the obligation open. The
@@ -460,11 +468,13 @@ def _decision_display_state(rebase: RebaseState) -> str | None:
 
 
 def _prose_display_state(rebase: RebaseState) -> str | None:
-    if _is_landing(rebase):
+    if rebase.is_landing():
         return "landing"
     if rebase.is_terminal_action():
         return "terminal"
-    return _ACTION_DISPLAY_MAP.get(rebase.last_action) if rebase.last_action else None
+    if rebase.last_outcome is not None:
+        return _OUTCOME_DISPLAY_MAP.get(rebase.last_outcome)
+    return None
 
 
 def _is_evidence_diagnosis(rebase: RebaseState) -> bool:

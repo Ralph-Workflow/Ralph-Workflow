@@ -82,9 +82,9 @@ def _check_active_or_pending(record: object) -> IntegrationAction | None:
         return IntegrationAction.CONTINUE_GIT_OPERATION
     if _safe_attr(record, "reintegrate_pending") is True:
         return IntegrationAction.REINTEGRATE_AGAINST_TARGET
-    if _safe_attr(record, "is_integrating") is True or _safe_attr(record, "phase") == "integrating":
+    if _safe_attr(record, "is_integrating") is True:
         return IntegrationAction.REINTEGRATE_AGAINST_TARGET
-    if _safe_attr(record, "is_integrated") is True or _safe_attr(record, "phase") == "integrated":
+    if _safe_attr(record, "is_integrated") is True:
         return IntegrationAction.LAND_TARGET
     return None
 

@@ -194,3 +194,42 @@ def test_rebase_state_matching_action_and_outcome() -> None:
         {"last_action": "rebased", "last_outcome": RebaseOutcomeKind.REBASED}
     )
     assert state2.last_outcome == RebaseOutcomeKind.REBASED
+
+
+def test_rebase_state_typed_predicates() -> None:
+    """RebaseState typed predicates route accurately through last_outcome."""
+    rebased = RebaseState(last_outcome=RebaseOutcomeKind.REBASED, fast_forwarded=False)
+    assert rebased.is_rebasing_or_merging() is True
+    assert rebased.is_landing() is True
+    assert rebased.is_skipped() is False
+
+    merged = RebaseState(last_outcome=RebaseOutcomeKind.MERGED, fast_forwarded=True)
+    assert merged.is_rebasing_or_merging() is True
+    assert merged.is_landing() is True
+    assert merged.is_skipped() is False
+
+    skipped = RebaseState(last_outcome=RebaseOutcomeKind.SKIPPED)
+    assert skipped.is_skipped() is True
+    assert skipped.is_rebasing_or_merging() is False
+
+    conflict = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT)
+    assert conflict.is_conflict_resolution() is True
+    assert conflict.is_skipped() is False
+
+    diag = RebaseState(last_outcome=RebaseOutcomeKind.DIAGNOSING)
+    assert diag.is_diagnostic_action() is True
+
+
+def test_remote_sync_status_enum() -> None:
+    """RemoteSyncStatus enum members match legacy strings and round-trip."""
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        REMOTE_NO_REMOTE,
+        REMOTE_PUSHED,
+        RemoteSyncStatus,
+    )
+
+    assert RemoteSyncStatus.NO_REMOTE.value == "no remote"
+    assert REMOTE_NO_REMOTE == RemoteSyncStatus.NO_REMOTE
+    assert RemoteSyncStatus.PUSHED.value == "pushed"
+    assert REMOTE_PUSHED == RemoteSyncStatus.PUSHED
+    assert isinstance(RemoteSyncStatus.NO_REMOTE, str)

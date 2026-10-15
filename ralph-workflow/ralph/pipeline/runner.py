@@ -844,14 +844,10 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
     # A skip or conflict means no integration happened this commit; an
     # operator who expects continuous integration must not lose that
     # signal in the INFO stream, so it escalates to a WARN line.
-    if outcome.last_outcome in (RebaseOutcomeKind.SKIPPED, RebaseOutcomeKind.CONFLICT):
+    if outcome.is_skipped() or outcome.last_outcome == RebaseOutcomeKind.CONFLICT:
         display.emit_warn_line("run", "auto-integrate", message)
         return
-    if (
-        outcome.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
-        and not outcome.fast_forwarded
-        and outcome.last_reason
-    ):
+    if outcome.is_rebasing_or_merging() and not outcome.fast_forwarded and outcome.last_reason:
         display.emit_warn_line("run", "auto-integrate", message)
         return
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
