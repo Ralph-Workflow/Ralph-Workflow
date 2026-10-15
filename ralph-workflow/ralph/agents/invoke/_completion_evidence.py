@@ -6,7 +6,16 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Protocol
 
 from ralph.agents.completion_signals import _check_completion_sentinel
+from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.plumbing.smoke_evidence import Evidence, Provenance
+
+
+def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | None:
+    """Resolve the MCP run identity used to correlate completion receipts."""
+    if extra_env is None:
+        return None
+    return extra_env.get(str(MCP_RUN_ID_ENV)) or None
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable

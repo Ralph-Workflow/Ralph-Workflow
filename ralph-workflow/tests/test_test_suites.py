@@ -10,6 +10,8 @@ under the maintained ``1000``-line-per-file cap.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -17,6 +19,7 @@ import pytest
 
 import ralph.test_suites as test_suites_module
 import tests.conftest as conftest_module
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
 from tests._test_test_suites_helpers import (
     _BackpressuredShardProcess,
     _FakeClock,
@@ -24,7 +27,7 @@ from tests._test_test_suites_helpers import (
     _StubSpawner,
 )
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_end_to_end.py",
     "tests/test_integration_obstruction_real_git.py",
     "tests/test_pending_merge_commit_recovery.py",
@@ -87,6 +90,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # linked worktree and asserts the operation-scoped evidence
     # does not shift when an unrelated branch advances.
     "tests/test_integration_diagnostic_worktree_isolation.py",
+    "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",
@@ -820,3 +824,38 @@ def test_static_discovery_populates_source_cache_for_retained_files(
         "tests/test_retained_two.py",
     }
     assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
+def test_real_pty_completion_no_terminal_lost_collected_under_subprocess_e2e_and_smoke() -> None:
+    """Verify that test_real_pty_completion_no_terminal_lost.py is collected with smoke marker."""
+    pm = ProcessManager(ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False))
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-m",
+        "subprocess_e2e and smoke",
+        "--co",
+        "-q",
+        "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
+    ]
+    proc = pm.spawn(
+        command,
+        SpawnOptions(
+            cwd=str(Path.cwd()),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ),
+    )
+    stdout_bytes, stderr_bytes = proc.communicate(timeout=5.0)
+    proc.cleanup_orphans()
+    stdout = (stdout_bytes or b"").decode("utf-8", errors="replace")
+    stderr = (stderr_bytes or b"").decode("utf-8", errors="replace")
+    assert proc.poll() == 0, f"pytest collection failed: {stderr}\n{stdout}"
+    assert (
+        "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py::test_request_interactive_exit_does_not_lose_returncode"
+        in stdout
+    )

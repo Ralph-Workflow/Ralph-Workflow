@@ -204,6 +204,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # on the default ``make test`` profile so the architecture's
     # prohibition of repository-global reads cannot rot silently.
     "tests/test_integration_diagnostic_worktree_isolation.py",
+    "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

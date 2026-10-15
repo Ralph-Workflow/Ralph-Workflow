@@ -45,7 +45,12 @@ class ManagedPtyProcess:
 
     @property
     def returncode(self) -> int | None:
-        return self._proc.returncode
+        rc = self._proc.returncode
+        if rc is not None:
+            return rc
+        if self._record.status in _TERMINAL_STATUSES:
+            return self._record.returncode
+        return None
 
     def poll(self) -> int | None:
         rc = self._proc.poll()
@@ -71,6 +76,10 @@ class ManagedPtyProcess:
     def termination_issuer(self) -> str | None:
         """Return the lifecycle issuer that intentionally stopped this process."""
         return self._manager.termination_issuer(self._record.pid)
+
+    def original_terminal_reason(self) -> str | None:
+        """Return the original terminal reason recorded for this process."""
+        return self._manager.original_terminal_reason(self._record.pid)
 
     def record_terminal_reason(self, reason: str) -> None:
         self._manager.record_terminal_reason(self._record.pid, reason)

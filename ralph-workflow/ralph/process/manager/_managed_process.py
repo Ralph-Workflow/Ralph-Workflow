@@ -468,7 +468,18 @@ class ManagedProcess:
                 proc.terminate()
         # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
         # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, alive = self._manager._safe_wait_procs(psutil_mod, procs, timeout=grace_period_s)
+        gone, alive = self._manager._safe_wait_procs(psutil_mod, procs, timeout=grace_period_s)
+        for p in gone:
+            p_pid: object = getattr(p, "pid", None)
+            if p_pid == self._record.pid:
+                rc: object = getattr(p, "returncode", None)
+                if isinstance(rc, int) and not isinstance(rc, bool):
+                    self._record.returncode = rc
+                    note_fn: object = getattr(self._proc, "note_external_returncode", None)
+                    if callable(note_fn):
+                        with contextlib.suppress(Exception):
+                            note_fn(rc)
+                break
         return [proc for proc in alive if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _kill_psutil_wave(
@@ -483,9 +494,20 @@ class ManagedProcess:
                 proc.kill()
         # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
         # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, still_alive = self._manager._safe_wait_procs(
+        gone, still_alive = self._manager._safe_wait_procs(
             psutil_mod, procs, timeout=self._manager.policy.kill_followup_timeout_s
         )
+        for p in gone:
+            p_pid: object = getattr(p, "pid", None)
+            if p_pid == self._record.pid:
+                rc: object = getattr(p, "returncode", None)
+                if isinstance(rc, int) and not isinstance(rc, bool):
+                    self._record.returncode = rc
+                    note_fn: object = getattr(self._proc, "note_external_returncode", None)
+                    if callable(note_fn):
+                        with contextlib.suppress(Exception):
+                            note_fn(rc)
+                break
         return [proc for proc in still_alive if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _cleanup_descendant_waves(

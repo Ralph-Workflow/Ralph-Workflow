@@ -13,14 +13,25 @@ no real I/O.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import pytest
 
 import ralph.agents.invoke._completion as completion_mod
-from ralph.agents.invoke._completion import (
+from ralph.agents.completion_signals import CompletionSignals
+from ralph.agents.execution_state import BaseExecutionStrategy
+from ralph.agents.invoke._completion import CompletionCheckOptions
+from ralph.agents.invoke._completion_exit_status import (
     _MAX_STDERR_CAPTURE_BYTES,
     _bounded_read,
+    _ReadableTextPipe,
     _truncation_marker,
 )
+from ralph.process.manager import ManagedPtyProcess
+
+if TYPE_CHECKING:
+    from ralph.phases.required_artifacts import RequiredArtifact
 
 
 class _ChunkedPipe:
@@ -40,6 +51,57 @@ class _ChunkedPipe:
         chunk = self._payload[self._offset : end]
         self._offset = end
         return chunk
+
+
+class _FakeHandle(ManagedPtyProcess):
+    """Stub process handle satisfying ManagedPtyProcess for completion tests."""
+
+    def __init__(
+        self,
+        returncode: int | None = None,
+        stderr: _ChunkedPipe | None = None,
+        terminal_reason: str | None = None,
+    ) -> None:
+        self._fake_returncode = returncode
+        self.stderr = stderr
+        self._terminal_reason = terminal_reason
+
+    @property
+    def returncode(self) -> int | None:
+        return self._fake_returncode
+
+    @property
+    def pid(self) -> int:
+        return 0
+
+    def original_terminal_reason(self) -> str | None:
+        return self._terminal_reason
+
+    def termination_issuer(self) -> str | None:
+        return None
+
+
+class _StubStrategy(BaseExecutionStrategy):
+    def supports_incomplete_exit_reprompt(self) -> bool:
+        return True
+
+
+def _stub_eval_completion(
+    workspace: Path,
+    raw_output: list[str] | None = None,
+    *,
+    required_artifact: RequiredArtifact | None = None,
+    run_id: str | None = None,
+    sentinel_secret: str | None = None,
+    receipt_secret: str | None = None,
+) -> CompletionSignals:
+    # Minimal stub — the real terminal logic lives in apply_sentinel_signal
+    # which is called by _agy_has_terminal_completion_evidence after this.
+    return CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=False,
+        artifact_types=(),
+    )
 
 
 def test_bounded_read_caps_at_max_bytes() -> None:
@@ -95,22 +157,15 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
     captured stderr is bounded by the cap with a truncation marker."""
     captured: list[str] = []
 
-    def fake_bounded(pipe: object) -> str:
+    def fake_bounded(pipe: _ReadableTextPipe) -> str:
         out = _bounded_read(pipe)
         captured.append(out)
         return out
 
-    monkeypatch.setattr("ralph.agents.invoke._completion._bounded_read", fake_bounded)
+    monkeypatch.setattr("ralph.agents.invoke._completion_exit_status._bounded_read", fake_bounded)
 
     big_stderr = "Y" * (_MAX_STDERR_CAPTURE_BYTES * 5)
-
-    class _FakeHandle:
-        returncode = 1
-
-        def __init__(self) -> None:
-            self.stderr = _ChunkedPipe(big_stderr)
-
-    fake_handle = _FakeHandle()
+    fake_handle = _FakeHandle(returncode=1, stderr=_ChunkedPipe(big_stderr))
 
     with pytest.raises(Exception) as excinfo:
         completion_mod.check_process_result(fake_handle, "test-agent", None, None)
@@ -126,14 +181,9 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
 
 def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
     """A PTY failure uses its bounded merged output as the error detail."""
-
-    class _FakeHandle:
-        returncode = 1
-        stderr = None
-
     with pytest.raises(Exception) as excinfo:
         completion_mod.check_process_result(
-            _FakeHandle(),
+            _FakeHandle(returncode=1),
             "test-agent",
             ["provider terminal failure"],
             None,
@@ -145,10 +195,35 @@ def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
 
 def test_completion_rejects_missing_terminal_returncode() -> None:
     """Completion must fail closed when lifecycle finalization did not establish an exit."""
-
-    class _FakeHandle:
-        returncode = None
-        stderr = None
-
     with pytest.raises(RuntimeError, match="terminal return code"):
-        completion_mod.check_process_result(_FakeHandle(), "test-agent", None, None)
+        completion_mod.check_process_result(_FakeHandle(returncode=None), "test-agent", None, None)
+
+
+@pytest.mark.timeout_seconds(5)
+def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -> None:
+    """Handle with interactive_completion reason and durable evidence returns
+    success even when returncode is None (the bug case)."""
+    opts = CompletionCheckOptions(
+        workspace_path=tmp_path,
+        execution_strategy=_StubStrategy(),
+        evaluate_completion_fn=_stub_eval_completion,
+        captured_session_id="test-run-id",
+        _sentinel_check_fn=lambda workspace, run_id: True,
+    )
+
+    # Must NOT raise — the new guard short-circuits before the RuntimeError
+    completion_mod.check_process_result(
+        _FakeHandle(returncode=None, terminal_reason="interactive_completion"),
+        "agy",
+        parsed_output=["result SUCCESS"],
+        check_options=opts,
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_no_terminal_reason_still_raises_runtime_error() -> None:
+    """Handle without original_terminal_reason still hits the fail-closed guard."""
+    with pytest.raises(RuntimeError, match="terminal return code"):
+        completion_mod.check_process_result(
+            _FakeHandle(returncode=None), "test-agent", parsed_output=None, check_options=None
+        )

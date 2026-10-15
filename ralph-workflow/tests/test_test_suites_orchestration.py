@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_end_to_end.py",
     "tests/test_integration_obstruction_real_git.py",
     "tests/test_pending_merge_commit_recovery.py",
@@ -89,6 +89,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     # linked worktree and asserts the operation-scoped evidence
     # does not shift when an unrelated branch advances.
     "tests/test_integration_diagnostic_worktree_isolation.py",
+    "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
 )
 
 

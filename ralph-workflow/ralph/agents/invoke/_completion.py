@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import KW_ONLY, dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -22,10 +23,16 @@ from ralph.agents.idle_watchdog._circumstantial_evidence import (
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agy_incomplete_exit_error import raise_missing_completion_evidence
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
-from ralph.agents.invoke._completion_evidence import apply_sentinel_signal
+from ralph.agents.invoke._completion_evidence import (
+    apply_sentinel_signal,
+    completion_run_id_from_extra_env,
+)
 from ralph.agents.invoke._completion_exit_status import (
+    _MAX_STDERR_CAPTURE_BYTES,
+    _truncation_marker,
     credentials_failure_needs_broken_exit,
     looks_like_credentials_failure,
+    read_bounded_stderr,
     terminal_returncode,
 )
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
@@ -45,7 +52,6 @@ from ralph.agents.invoke._session import (
 )
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
 from ralph.agents.timeout_clock import Clock, SystemClock
-from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
@@ -57,54 +63,18 @@ from ralph.recovery.failure_classifier import (
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
-_MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
-
-@runtime_checkable
-class _CapturedStderrHandle(Protocol):
-    @property
-    def _ralph_bounded_stderr(self) -> str: ...
-
-
-@runtime_checkable
-class _ReadableTextPipe(Protocol):
-    """Minimal typed boundary for a captured text stderr pipe."""
-
-    def read(self, size: int = -1, /) -> str: ...
-
-
-def _truncation_marker(capped_bytes: int) -> str:
-    return f"\n[stderr truncated: more than {capped_bytes} bytes]"
-
-
-def _bounded_read(pipe: _ReadableTextPipe) -> str:
-    chunk = pipe.read(_MAX_STDERR_CAPTURE_BYTES)
-    if len(chunk) >= _MAX_STDERR_CAPTURE_BYTES:
-        # Probe one more byte: a successful 1-byte read means the pipe
-        # held more than the cap; a 0-byte read means the cap was exact.
-        probe = pipe.read(1)
-        if probe:
-            chunk = chunk + _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
-    return chunk
-
-
-def read_bounded_stderr(handle: object) -> str:
-    """Return the bounded stderr captured from a subprocess handle, if available.
-
-    Stderr is diagnostic evidence only. A closed or malformed transport pipe
-    must not replace the original process-exit classification, so read errors
-    deliberately degrade to an empty diagnostic.
-    """
-    if isinstance(handle, _CapturedStderrHandle):
-        return handle._ralph_bounded_stderr
-    try:
-        stderr_pipe: object = getattr(handle, "stderr", None)
-        return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""
-    except Exception:
-        return ""
+__all__ = (
+    "_MAX_STDERR_CAPTURE_BYTES",
+    "CompletionCheckOptions",
+    "_truncation_marker",
+    "check_process_result",
+    "completion_run_id_from_extra_env",
+    "read_bounded_stderr",
+)
 
 
 if TYPE_CHECKING:
@@ -114,13 +84,6 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
-
-
-def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | None:
-    """Resolve the MCP run identity used to correlate completion receipts."""
-    if extra_env is None:
-        return None
-    return extra_env.get(str(MCP_RUN_ID_ENV)) or None
 
 
 def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
@@ -617,6 +580,100 @@ def _raise_if_broken_agent_exit(
         )
 
 
+def _has_interactive_completion_bypass(
+    handle: ManagedProcess | ManagedPtyProcess,
+    parsed_output: list[str] | None,
+    check_options: CompletionCheckOptions | None,
+) -> bool:
+    """Return True if interactive completion evidence permits short-circuiting."""
+    if check_options is None:
+        return False
+    with contextlib.suppress(Exception):
+        handle_terminal_reason = cast(
+            "Callable[[], str | None] | None", getattr(handle, "original_terminal_reason", None)
+        )
+        if (
+            handle_terminal_reason is not None
+            and handle_terminal_reason() == "interactive_completion"
+        ):
+            bounded_output = _bounded_output_lines(
+                parsed_output or [],
+                explicit_completion_seen=bool(check_options.explicit_completion_seen),
+            )
+            return bool(_agy_has_terminal_completion_evidence(bounded_output, check_options))
+    return False
+
+
+def _handle_non_zero_returncode(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    parsed_output: list[str] | None,
+    check_options: CompletionCheckOptions | None,
+    returncode: int,
+    stderr_text: str,
+    stderr_available: bool,
+    process_teardown: ProcessTeardown | None,
+) -> None:
+    issuer_method = cast(
+        "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
+    )
+    issuer = issuer_method() if issuer_method is not None else None
+    intentional = returncode in {-15, 143} and isinstance(issuer, str)
+    bounded_output = _bounded_output_lines(
+        parsed_output or [],
+        explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
+    )
+    if _agy_has_terminal_completion_evidence(bounded_output, check_options):
+        return
+    raise_if_quota_exhausted(
+        agent_name,
+        stderr_text,
+        parsed_output,
+        include_output=True,
+    )
+    if not intentional:
+        _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
+    if credentials_failure_needs_broken_exit(
+        stderr_text,
+        check_options.elapsed_seconds if check_options is not None else None,
+    ):
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=process_teardown,
+        )
+        raise BrokenAgentExitError(
+            agent_name,
+            reason="no_output",
+            elapsed_seconds=check_options.elapsed_seconds if check_options is not None else None,
+            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
+            returncode=returncode,
+            stderr=stderr_text,
+        )
+    stderr = stderr_text if stderr_available else ""
+    exc = AgentInvocationError(
+        agent_name,
+        returncode,
+        stderr,
+        bounded_output,
+        failure_origin=(
+            "runtime_launch"
+            if isinstance(handle, AgentLaunchError)
+            else "intentional_termination"
+            if intentional
+            else "agent"
+        ),
+        issuer=issuer if intentional else None,
+    )
+    log_invocation_exit(exc)
+    _teardown_subtree_if_pid_available(
+        handle,
+        issuer=f"invoke:completion:{agent_name}",
+        teardown=process_teardown,
+    )
+    raise exc
+
+
 def check_process_result(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
@@ -627,71 +684,28 @@ def check_process_result(
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
     """Validate one terminal agent process result and its completion evidence."""
+    # wt-16: completion-initiated stop with durable evidence short-circuits the fail-closed
+    # guard if handle has original_terminal_reason "interactive_completion" and evidence passes.
+    # The fail-closed guard below remains the primary path for every other case.
+    if _has_interactive_completion_bypass(handle, parsed_output, check_options):
+        return
+
     returncode = terminal_returncode(handle)
     stderr_text = read_bounded_stderr(handle)
     stderr_attr: object = getattr(handle, "stderr", None)
     stderr_available = stderr_attr is not None
     if returncode != 0:
-        issuer_method = cast(
-            "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
-        )
-        issuer = issuer_method() if issuer_method is not None else None
-        intentional = returncode in {-15, 143} and isinstance(issuer, str)
-        bounded_output = _bounded_output_lines(
-            parsed_output or [],
-            explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
-        )
-        if _agy_has_terminal_completion_evidence(bounded_output, check_options):
-            return
-        raise_if_quota_exhausted(
-            agent_name,
-            stderr_text,
-            parsed_output,
-            include_output=True,
-        )
-        if not intentional:
-            _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
-        if credentials_failure_needs_broken_exit(
-            stderr_text,
-            check_options.elapsed_seconds if check_options is not None else None,
-        ):
-            _teardown_subtree_if_pid_available(
-                handle,
-                issuer=f"invoke:completion:{agent_name}",
-                teardown=process_teardown,
-            )
-            raise BrokenAgentExitError(
-                agent_name,
-                reason="no_output",
-                elapsed_seconds=(
-                    check_options.elapsed_seconds if check_options is not None else None
-                ),
-                grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-                returncode=returncode,
-                stderr=stderr_text,
-            )
-        stderr = stderr_text if stderr_available else ""
-        exc = AgentInvocationError(
-            agent_name,
-            returncode,
-            stderr,
-            bounded_output,
-            failure_origin=(
-                "runtime_launch"
-                if isinstance(handle, AgentLaunchError)
-                else "intentional_termination"
-                if intentional
-                else "agent"
-            ),
-            issuer=issuer if intentional else None,
-        )
-        log_invocation_exit(exc)
-        _teardown_subtree_if_pid_available(
+        _handle_non_zero_returncode(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=process_teardown,
+            agent_name,
+            parsed_output,
+            check_options,
+            returncode,
+            stderr_text,
+            stderr_available,
+            process_teardown,
         )
-        raise exc
+        return
 
     _raise_quota_unless_agy_completed(
         agent_name,

@@ -555,6 +555,7 @@ def test_generated_scene_catalog_elision_owner_derives_a_recoverable_marker() ->
     assert ".agent/raw/codex.log" in visible
 
 
+@pytest.mark.timeout_seconds(5)
 def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_that_renders_them() -> (
     None
 ):
@@ -820,6 +821,7 @@ _E3_ROUTINE_ACCENT_CEILING: dict[str, int] = {
 }
 
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.criteria("E-3")
 def test_generated_scene_routine_output_never_exceeds_the_e3_accent_ceiling() -> None:
     """PLAN.md S-3 / G-10: "a frame of routine output lights no more than

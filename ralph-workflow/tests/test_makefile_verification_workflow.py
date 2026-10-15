@@ -216,7 +216,12 @@ def test_install_make_smoke_is_an_explicit_authoritative_target() -> None:
             "tests/test_install_make_smoke.py",
             "tests/test_smoke_multimodal_end_to_end.py",
             "tests/test_visual_smoke.py",
+            "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py",
         )
+    )
+    assert (
+        "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py"
+        in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
     )
     assert '-m "smoke and subprocess_e2e"' in aggregate[0]
     charged = {
@@ -358,7 +363,9 @@ def test_verify_budget_real_time_test_uses_dedicated_marker(tmp_path: Path) -> N
             for target_node in node.targets:
                 if isinstance(target_node, ast.Name) and target_node.id == "pytestmark":
                     value_src = ast.unparse(node.value)
-                    markers.update(re.findall(r"pytest\.mark\.(\w+)", value_src))
+                    markers.update(
+                        match.group(1) for match in re.finditer(r"pytest\.mark\.(\w+)", value_src)
+                    )
     assert "subprocess_e2e" in markers, (
         "Expected the real-time budget test to keep the subprocess_e2e "
         "marker so the audit treats its subprocess.run as a real-I/O "

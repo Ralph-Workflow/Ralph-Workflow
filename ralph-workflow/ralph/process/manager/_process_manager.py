@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.process._agent_launch_error import AgentLaunchError
+from ralph.process._pty_process import _status_to_returncode
 from ralph.process._spawn_argv import sanitize_spawn_command
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process._spawn_validation import prepare_spawn_command, spawn_payload_bytes
@@ -61,6 +62,31 @@ _PERMITTED_TERMINAL_REASONS = frozenset(
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+
+def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
+    """Return the harvested integer returncode for target_pid from a procs list."""
+    for p in procs:
+        p_pid: object = getattr(p, "pid", None)
+        if p_pid == target_pid:
+            raw_rc: object = getattr(p, "returncode", None)
+            if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
+                return raw_rc
+            break
+    return None
+
+
+def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
+    """Return True if proc is a non-PTY invoke process that has already terminated."""
+    if record.label is None or not record.label.startswith("invoke:"):
+        return False
+    if hasattr(proc, "master_fd"):
+        return False
+    poll_fn: object = getattr(proc, "poll", None)
+    if callable(poll_fn):
+        res: object = poll_fn()
+        return res is not None
+    return False
 
 
 class ProcessManager:
@@ -235,6 +261,25 @@ class ProcessManager:
             )
         return self._terminate_executor
 
+    def _note_proc_external_returncode(
+        self, record: ProcessRecord, proc: object | None, rc: int
+    ) -> None:
+        """Propagate a reaped integer returncode to any process handle that tracks it."""
+        rec_proc: object = getattr(record, "proc", None)
+        targets: list[object] = [
+            rec_proc,
+            proc,
+            self._pty_procs.get(record.pid),
+            self._sync_procs.get(record.pid),
+            self._async_procs.get(record.pid),
+        ]
+        for target in targets:
+            if target is not None:
+                note_fn: object = getattr(target, "note_external_returncode", None)
+                if callable(note_fn):
+                    with contextlib.suppress(Exception):
+                        note_fn(rc)
+
     def _reap_sync_and_mark(
         self,
         record: ProcessRecord,
@@ -259,6 +304,8 @@ class ProcessManager:
                         last_known_rc = None
         except (OSError, ProcessLookupError, ChildProcessError):
             last_known_rc = None
+        if last_known_rc is not None:
+            self._note_proc_external_returncode(record, proc, last_known_rc)
         self._mark_killed(record, last_known_rc, cause=cause)
 
     async def _reap_async_and_mark(
@@ -288,6 +335,8 @@ class ProcessManager:
                     last_known_rc = proc.returncode
         except (OSError, ProcessLookupError, ChildProcessError, asyncio.CancelledError):
             last_known_rc = None
+        if last_known_rc is not None:
+            self._note_proc_external_returncode(record, proc, last_known_rc)
         self._mark_killed(record, last_known_rc, cause=cause)
 
     def _reap_psutil_zombie_and_mark(
@@ -306,10 +355,12 @@ class ProcessManager:
         collect any remaining zombie state. Always calls ``_mark_killed``
         with the supplied cause.
         """
+        harvested_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(OSError, ProcessLookupError, ChildProcessError):
-                    psutil_mod.wait_procs([psutil_proc], timeout=0.0)
+                    gone, _ = psutil_mod.wait_procs([psutil_proc], timeout=0.0)
+                    harvested_rc = _extract_psutil_returncode(gone, record.pid)
                 if (
                     hasattr(os, "waitpid")
                     and hasattr(os, "WNOHANG")
@@ -317,14 +368,20 @@ class ProcessManager:
                 ):
                     for _ in range(3):
                         try:
-                            reaped_pid, _ = os.waitpid(record.pid, os.WNOHANG)
+                            reaped_pid, status = os.waitpid(record.pid, os.WNOHANG)
                         except (OSError, ProcessLookupError, ChildProcessError):
                             break
-                        if reaped_pid in (0, record.pid):
+                        if reaped_pid == record.pid:
+                            if harvested_rc is None:
+                                harvested_rc = _status_to_returncode(status)
                             break
+                        if reaped_pid == 0:
+                            break
+                if harvested_rc is not None:
+                    self._note_proc_external_returncode(record, None, harvested_rc)
         except (OSError, ProcessLookupError, ChildProcessError):
             pass
-        self._mark_killed(record, None, cause=cause)
+        self._mark_killed(record, harvested_rc, cause=cause)
 
     def _reap_async_in_sync_and_mark(
         self,
@@ -341,7 +398,7 @@ class ProcessManager:
         ``proc.returncode``. Always calls ``_mark_killed`` with the
         supplied cause.
         """
-        last_known_rc: int | None = None
+        harvested_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
                 if (
@@ -351,15 +408,26 @@ class ProcessManager:
                 ):
                     for _ in range(3):
                         try:
-                            reaped_pid, _ = os.waitpid(record.pid, os.WNOHANG)
+                            reaped_pid, status = os.waitpid(record.pid, os.WNOHANG)
                         except (OSError, ProcessLookupError, ChildProcessError):
                             break
-                        if reaped_pid in (0, record.pid):
+                        if reaped_pid == record.pid:
+                            harvested_rc = _status_to_returncode(status)
                             break
-                last_known_rc = proc.returncode
+                        if reaped_pid == 0:
+                            break
+                if harvested_rc is None:
+                    raw_rc: object = getattr(proc, "returncode", None)
+                    if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
+                        harvested_rc = raw_rc
+                else:
+                    self._note_proc_external_returncode(record, proc, harvested_rc)
         except (OSError, ProcessLookupError, ChildProcessError):
-            last_known_rc = proc.returncode
-        self._mark_killed(record, last_known_rc, cause=cause)
+            if harvested_rc is None:
+                err_rc: object = getattr(proc, "returncode", None)
+                if isinstance(err_rc, int) and not isinstance(err_rc, bool):
+                    harvested_rc = err_rc
+        self._mark_killed(record, harvested_rc, cause=cause)
 
     def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
         """Subscribe to lifecycle events.  Returns an unsubscribe callable."""
@@ -463,28 +531,18 @@ class ProcessManager:
                 try:
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.terminate()
-                    # _safe_wait_procs: psutil's wait_procs can raise OSError
-                    # (EINVAL) from os.pidfd_open on reaped PIDs; the helper
-                    # classifies per-PID liveness instead of aborting teardown.
-                    self._safe_wait_procs(psutil_mod, [proc], timeout=grace_period_s)
+                    gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=grace_period_s)
+                    self._harvest_and_mark_descendant(record, descendant_pid, proc, gone)
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.kill()
-                    self._safe_wait_procs(psutil_mod, [proc], timeout=kill_followup)
+                    still_gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=kill_followup)
+                    self._harvest_and_mark_descendant(record, descendant_pid, proc, still_gone)
                     terminated.append(descendant_pid)
                 except (OSError, ProcessLookupError):
                     terminated.append(descendant_pid)
                     continue
             else:
-                if hasattr(os, "kill"):
-                    try:
-                        os.kill(descendant_pid, signal.SIGTERM)
-                    except (OSError, ProcessLookupError):
-                        terminated.append(descendant_pid)
-                        continue
-                    with contextlib.suppress(Exception):
-                        _time.sleep(max(0.0, grace_period_s))
-                    with contextlib.suppress(OSError, ProcessLookupError):
-                        os.kill(descendant_pid, signal.SIGKILL)
+                self._terminate_descendant_no_psutil(descendant_pid, grace_period_s)
                 terminated.append(descendant_pid)
         if terminated:
             logger.debug(
@@ -492,6 +550,36 @@ class ProcessManager:
                 f"descendant(s): {terminated}"
             )
         return terminated
+
+    def _harvest_and_mark_descendant(
+        self,
+        fallback_record: ProcessRecord,
+        descendant_pid: int,
+        proc: object,
+        gone: Sequence[object],
+    ) -> None:
+        rc = _extract_psutil_returncode(gone, descendant_pid)
+        if rc is None and gone:
+            raw_rc: object = getattr(gone[0], "returncode", None)
+            if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
+                rc = raw_rc
+        if rc is not None:
+            desc_rec = self._records.get(descendant_pid)
+            if desc_rec is not None:
+                self._mark_killed(desc_rec, rc)
+            self._note_proc_external_returncode(desc_rec or fallback_record, proc, rc)
+
+    def _terminate_descendant_no_psutil(self, descendant_pid: int, grace_period_s: float) -> None:
+        if not hasattr(os, "kill"):
+            return
+        try:
+            os.kill(descendant_pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            return
+        with contextlib.suppress(Exception):
+            _time.sleep(max(0.0, grace_period_s))
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.kill(descendant_pid, signal.SIGKILL)
 
     def _record_termination_outcome(
         self, pid: int, stage: str, outcome: str, issuer: str | None = None
@@ -514,6 +602,13 @@ class ProcessManager:
             if issuer is not None:
                 record["issuer"] = issuer
             outcomes.append(record)
+
+    def original_terminal_reason(self, pid: int) -> str | None:
+        """Return the original terminal reason recorded for ``pid``, if any."""
+        for outcome in self._termination_outcomes.get(pid, []):
+            if outcome.get("stage") == "terminal_reason":
+                return outcome.get("outcome")
+        return None
 
     def termination_issuer(self, pid: int) -> str | None:
         """Return the issuer of an intentional termination for ``pid``."""
@@ -1335,6 +1430,26 @@ class ProcessManager:
                     alive.append(proc)
             return dead, alive
 
+    def _check_and_reap_zombie_survivors(
+        self,
+        record: ProcessRecord,
+        survivors: Sequence[_PsutilProcessLike],
+        psutil_mod: _PsutilModuleLike,
+        proc: _SyncProcessLike | _PtyProcessLike | None = None,
+    ) -> bool:
+        for p in survivors:
+            pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+            if pid_liveness == LivenessResult.ZOMBIE:
+                logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
+                if proc is not None:
+                    self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
+                else:
+                    self._reap_psutil_zombie_and_mark(
+                        record, p, psutil_mod, cause="zombie_after_kill"
+                    )
+                return True
+        return False
+
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         psutil_mod = self._psutil
         if psutil_mod is None:
@@ -1365,9 +1480,10 @@ class ProcessManager:
             f"waiting {grace_period_s}s"
         )
 
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        if harvested_rc is not None:
+            self._note_proc_external_returncode(record, None, harvested_rc)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1376,22 +1492,17 @@ class ProcessManager:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
 
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, still_alive = self._safe_wait_procs(
+        still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        if harvested_rc is None:
+            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            if harvested_rc is not None:
+                self._note_proc_external_returncode(record, None, harvested_rc)
         if still_alive:
-            # Post-kill zombie/liveness check on survivors
-            for p in still_alive:
-                pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
-                if pid_liveness == LivenessResult.ZOMBIE:
-                    logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
-                    self._reap_psutil_zombie_and_mark(
-                        record, p, psutil_mod, cause="zombie_after_kill"
-                    )
-                    return
-            self._mark_termination_failed(record)
+            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod):
+                return
+            self._mark_termination_failed(record, harvested_rc)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
                 record.pid,
@@ -1399,13 +1510,21 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
-        # wt-024 M3 (AC-03): reap registered descendants BEFORE
-        # _mark_killed because _mark_killed also pops
-        # self._descendants[record.pid] as defensive cleanup. The
-        # helper uses .pop(record.pid, []) to consume the registry
-        # entry, so we must read it first.
         self._terminate_registered_descendants(record, grace_period_s)
-        self._mark_killed(record)
+        self._mark_killed(record, harvested_rc)
+
+    def _find_procs_to_terminate(
+        self, record: ProcessRecord, exit_code: int | None, psutil_mod: _PsutilModuleLike
+    ) -> list[_PsutilProcessLike] | None:
+        try:
+            root = psutil_mod.process_from_pid(record.pid)
+            return [root, *root.children(recursive=True)]
+        except psutil_mod.NoSuchProcess:
+            self._mark_killed(record, exit_code)
+            return None
+        except (psutil_mod.AccessDenied, PermissionError):
+            self._raise_access_denied_termination(record, exit_code)
+            return None
 
     def _escalate_termination_sync(
         self,
@@ -1428,16 +1547,9 @@ class ProcessManager:
             self._terminate_root_only_sync(record, proc, grace_period_s)
             return
 
-        try:
-            root = psutil_mod.process_from_pid(record.pid)
-            children = root.children(recursive=True)
-        except psutil_mod.NoSuchProcess:
-            self._mark_killed(record, proc.poll())
+        all_procs = self._find_procs_to_terminate(record, proc.poll(), psutil_mod)
+        if all_procs is None:
             return
-        except (psutil_mod.AccessDenied, PermissionError):
-            self._raise_access_denied_termination(record, proc.poll())
-
-        all_procs = [root, *children]
         self._record_termination_outcome(record.pid, "graceful_terminate", "sent")
         # Drive the owned process object too. This is the canonical lifecycle
         # seam. Invoke tests inject lightweight subprocess doubles with a
@@ -1445,12 +1557,7 @@ class ProcessManager:
         # psutil would signal an unrelated real process.
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
-        if (
-            record.label is not None
-            and record.label.startswith("invoke:")
-            and not hasattr(proc, "master_fd")
-            and proc.poll() is not None
-        ):
+        if _is_reaped_invoke_proc(record, proc):
             self._terminate_registered_descendants(record, grace_period_s)
             self._mark_killed(record, proc.poll())
             return
@@ -1462,9 +1569,10 @@ class ProcessManager:
             f"waiting {grace_period_s}s"
         )
 
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        if harvested_rc is not None:
+            self._note_proc_external_returncode(record, proc, harvested_rc)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1474,20 +1582,19 @@ class ProcessManager:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
 
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, still_alive = self._safe_wait_procs(
+        still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        if harvested_rc is None:
+            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            if harvested_rc is not None:
+                self._note_proc_external_returncode(record, proc, harvested_rc)
         rc = proc.poll()
+        if rc is None:
+            rc = harvested_rc
         if still_alive:
-            # Post-kill zombie/liveness check on survivors
-            for p in still_alive:
-                pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
-                if pid_liveness == LivenessResult.ZOMBIE:
-                    logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
-                    self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
-                    return
+            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod, proc=proc):
+                return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
@@ -1496,11 +1603,6 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
-        # wt-024 M3 (AC-03): reap any descendants registered via
-        # register_descendant BEFORE _mark_killed because
-        # _mark_killed also pops self._descendants[record.pid] as
-        # defensive cleanup. The helper uses .pop(record.pid, [])
-        # to consume the registry, so we must read it first.
         self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record, rc)
 
@@ -1552,12 +1654,13 @@ class ProcessManager:
         pid = record.pid
         policy_kill = self.policy.kill_followup_timeout_s
 
-        def _do_terminate() -> bool:
+        def _do_terminate() -> tuple[bool, int | None]:
+            harvested_rc: int | None = None
             try:
                 root = psutil_mod.process_from_pid(pid)
                 children = root.children(recursive=True)
             except psutil_mod.NoSuchProcess:
-                return False
+                return False, None
             except (psutil_mod.AccessDenied, PermissionError) as exc:
                 raise PermissionError from exc
             all_procs = [root, *children]
@@ -1567,15 +1670,20 @@ class ProcessManager:
             # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL)
             # from os.pidfd_open on an already-reaped PID; the helper classifies
             # per-PID, so this executor path cannot abort the teardown.
-            _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+            gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+            harvested_rc = _extract_psutil_returncode(gone, pid)
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
             # _safe_wait_procs: OSError (EINVAL) from os.pidfd_open on reaped PIDs.
-            _, still_alive = self._safe_wait_procs(psutil_mod, alive, timeout=policy_kill)
-            return bool(still_alive)
+            still_gone, still_alive = self._safe_wait_procs(psutil_mod, alive, timeout=policy_kill)
+            if harvested_rc is None:
+                harvested_rc = _extract_psutil_returncode(still_gone, pid)
+            return bool(still_alive), harvested_rc
 
         loop = asyncio.get_running_loop()
+        harvested_rc: int | None = None
+        still_alive: bool = False
         try:
             # wt-024 AC-02: pass the ProcessManager-owned bounded
             # executor (NOT the event-loop default ``None`` executor).
@@ -1585,10 +1693,24 @@ class ProcessManager:
             # atexit join that ``concurrent.futures`` registers. The
             # dedicated executor is released by ``shutdown_all``'s
             # finally block via ``shutdown(wait=False)``.
-            still_alive = await loop.run_in_executor(self._get_terminate_executor(), _do_terminate)
+            term_res: object = await loop.run_in_executor(
+                self._get_terminate_executor(), _do_terminate
+            )
+            if isinstance(term_res, tuple):
+                try:
+                    raw_alive, raw_rc = term_res
+                    if isinstance(raw_alive, bool):
+                        still_alive = raw_alive
+                    if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
+                        harvested_rc = raw_rc
+                except (ValueError, TypeError):
+                    pass
         except PermissionError:
             self._raise_access_denied_termination(record, proc.returncode)
         rc = proc.returncode
+        if rc is None and harvested_rc is not None:
+            rc = harvested_rc
+            self._note_proc_external_returncode(record, proc, harvested_rc)
         if still_alive:
             # Post-kill zombie/liveness check
             post_liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
@@ -1617,15 +1739,9 @@ class ProcessManager:
         psutil_mod: _PsutilModuleLike,
         grace_period_s: float,
     ) -> None:
-        try:
-            root = psutil_mod.process_from_pid(record.pid)
-            children = root.children(recursive=True)
-        except psutil_mod.NoSuchProcess:
-            self._mark_killed(record, proc.returncode)
+        all_procs = self._find_procs_to_terminate(record, proc.returncode, psutil_mod)
+        if all_procs is None:
             return
-        except (psutil_mod.AccessDenied, PermissionError):
-            self._raise_access_denied_termination(record, proc.returncode)
-        all_procs = [root, *children]
         for p in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.terminate()
@@ -1633,9 +1749,10 @@ class ProcessManager:
             f"Process {record.pid} graceful terminate sent to {len(all_procs)} procs, "
             f"waiting {grace_period_s}s"
         )
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+        harvested_rc = _extract_psutil_returncode(gone, record.pid)
+        if harvested_rc is not None:
+            self._note_proc_external_returncode(record, proc, harvested_rc)
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1643,30 +1760,26 @@ class ProcessManager:
         for p in alive:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
-        _, still_alive = self._safe_wait_procs(
+        still_gone, still_alive = self._safe_wait_procs(
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
+        if harvested_rc is None:
+            harvested_rc = _extract_psutil_returncode(still_gone, record.pid)
+            if harvested_rc is not None:
+                self._note_proc_external_returncode(record, proc, harvested_rc)
+        rc = proc.returncode
+        if rc is None:
+            rc = harvested_rc
         if still_alive:
-            for p in still_alive:
-                post_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
-                if post_liveness == LivenessResult.ZOMBIE:
-                    logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
-                    self._reap_psutil_zombie_and_mark(
-                        record, p, psutil_mod, cause="zombie_after_kill"
-                    )
-                    return
-            self._mark_termination_failed(record, proc.returncode)
+            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod):
+                return
+            self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
                 record.pid, record.pgid, stage="force_kill", reason="still alive"
             )
-        # wt-024 M3 (AC-03): reap registered descendants BEFORE
-        # _mark_killed because _mark_killed also pops
-        # self._descendants[record.pid] as defensive cleanup.
         self._terminate_registered_descendants(record, grace_period_s)
-        self._mark_killed(record, proc.returncode)
+        self._mark_killed(record, rc)
 
     def _escalate_without_psutil(self, record: ProcessRecord, proc: _AsyncProcessLike) -> None:
         with contextlib.suppress(ProcessLookupError, OSError):

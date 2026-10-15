@@ -28,6 +28,12 @@ class PtyProcess:
         self.poll()
         return self._returncode
 
+    def note_external_returncode(self, rc: int) -> None:
+        if isinstance(rc, bool) or not isinstance(rc, int):
+            raise TypeError(f"returncode must be int, got {type(rc).__name__}")
+        if self._returncode is None:
+            self._returncode = rc
+
     def poll(self) -> int | None:
         if self._returncode is not None:
             return self._returncode
