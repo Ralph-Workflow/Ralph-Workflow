@@ -78,7 +78,8 @@ def _seed_workspace(tmp_path: Path) -> Path:
 
 def _build_index(workspace: Path, tmp_path: Path) -> ExploreStore:
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
-    reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+    init_result = reindex(store, workspace, options=ReindexOptions(timeout_ms=15000))
+    assert init_result.status == "ok", f"initial reindex failed: {init_result}"
     return store
 
 

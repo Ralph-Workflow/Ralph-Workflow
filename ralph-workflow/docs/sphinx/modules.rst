@@ -1090,17 +1090,10 @@ ralph.pipeline.conflict_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. Note: ralph.pipeline.conflict_resolution re-exports from its submodules; using
-   :no-members: avoids duplicate object-description warnings.
+   :no-members: avoids duplicate cross-reference warnings.
 
 .. automodule:: ralph.pipeline.conflict_resolution
    :no-members:
-
-ralph.pipeline.conflict_resolution.resolution_action
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.conflict_resolution.resolution_action
-   :members:
-   :show-inheritance:
 
 ralph.pipeline.conflict_resolution.abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1142,6 +1135,7 @@ ralph.pipeline.conflict_resolution.driver
 
 .. automodule:: ralph.pipeline.conflict_resolution.driver
    :members:
+   :exclude-members: ResolutionAction, select_resolution_action
    :show-inheritance:
 
 ralph.pipeline.conflict_resolution.attempt_fault
@@ -1162,6 +1156,13 @@ ralph.pipeline.conflict_resolution.sight
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.conflict_resolution.sight
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.resolution_action
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.resolution_action
    :members:
    :show-inheritance:
 

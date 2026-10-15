@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -22,7 +22,14 @@ if TYPE_CHECKING:
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    driver_mod.emit_conflict_phase_line(display, line)
+    fn = cast(
+        "Callable[[ParallelDisplay | None, str], None] | None",
+        getattr(driver_mod, "emit_conflict_phase_line", None),
+    )
+    if fn is not None:
+        fn(display, line)
+        return
+    emit_conflict_phase_line(display, line)
 
 
 def announce_declared_decisions(

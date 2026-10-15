@@ -23,7 +23,7 @@ class FakePsutil:
 
     NoSuchProcess: type[BaseException] = _FakeNoSuchProcessError
     AccessDenied: type[BaseException] = _FakeAccessDeniedError
-    Process: Callable[[int], FakePsutilProcess]
+    Process: Callable[[int], _PsutilProcessLike]
 
     def __init__(self) -> None:
         self._processes: dict[int, FakePsutilProcess] = {}

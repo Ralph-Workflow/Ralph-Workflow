@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -75,14 +77,16 @@ def test_note_external_returncode_is_idempotent() -> None:
 
 def test_note_external_returncode_rejects_non_int() -> None:
     pty = PtyProcess(pid=0, master_fd=-1, slave_fd=-1)
+    call_external_rc: Callable[..., Any] = pty.note_external_returncode
     with pytest.raises(TypeError, match="returncode must be int"):
-        getattr(pty, "note_external_returncode")(7.5)
+        call_external_rc(7.5)
 
 
 def test_note_external_returncode_rejects_bool() -> None:
     pty = PtyProcess(pid=0, master_fd=-1, slave_fd=-1)
+    call_external_rc: Callable[..., Any] = pty.note_external_returncode
     with pytest.raises(TypeError, match="returncode must be int"):
-        getattr(pty, "note_external_returncode")(True)
+        call_external_rc(True)
 
 
 def test_note_external_returncode_accepts_negative() -> None:

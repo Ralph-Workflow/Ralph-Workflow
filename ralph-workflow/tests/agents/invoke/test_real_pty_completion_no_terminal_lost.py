@@ -51,12 +51,12 @@ def _terminal_signals(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="PTY is POSIX-only")
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_request_interactive_exit_does_not_lose_returncode(tmp_path: Path) -> None:
     pm = ProcessManager(
         ProcessManagerPolicy(
-            default_grace_period_s=0.05,
-            kill_followup_timeout_s=0.05,
+            default_grace_period_s=0.02,
+            kill_followup_timeout_s=0.02,
             log_events=False,
             enable_zombie_reaper=False,
         )
@@ -67,7 +67,7 @@ def test_request_interactive_exit_does_not_lose_returncode(tmp_path: Path) -> No
     )
 
     try:
-        policy = TimeoutPolicy(idle_timeout_seconds=5.0, parent_exit_grace_seconds=0.05)
+        policy = TimeoutPolicy(idle_timeout_seconds=5.0, parent_exit_grace_seconds=0.02)
         reader = object.__new__(PtyLineReader)
         reader._handle = handle
         reader._agent_name = "agy"

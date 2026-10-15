@@ -12,7 +12,7 @@ import os
 import signal
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import IO
 
 import pytest
 
@@ -21,14 +21,6 @@ from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._process_record import ProcessRecord
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import FakeAsyncProcess, FakePsutil, FakePsutilProcess
-
-if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import (
-        _AsyncProcessLike,
-        _PsutilModuleLike,
-        _PsutilProcessLike,
-        _SyncProcessLike,
-    )
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -81,8 +73,8 @@ def test_psutil_zombie_reap_decodes_psutil_returncode() -> None:
 
     manager._reap_psutil_zombie_and_mark(
         record,
-        fake_root,  # type: ignore[arg-type]
-        fake_psutil,  # type: ignore[arg-type]
+        fake_root,
+        fake_psutil,
         cause="zombie_after_kill",
     )
     assert record.returncode == -9
@@ -118,8 +110,8 @@ def test_psutil_zombie_reap_decodes_waitpid_when_no_psutil_returncode(
 
     manager._reap_psutil_zombie_and_mark(
         record,
-        cast("_PsutilProcessLike", fake_root),
-        cast("_PsutilModuleLike", fake_psutil),
+        fake_root,
+        fake_psutil,
         cause="zombie_after_kill",
     )
     assert record.returncode == 7
@@ -148,9 +140,7 @@ def test_reap_async_in_sync_decodes_waitpid_status(
 
     monkeypatch.setattr(os, "waitpid", fake_waitpid)
 
-    manager._reap_async_in_sync_and_mark(
-        record, cast("_AsyncProcessLike", fake_async), cause="zombie_after_kill"
-    )
+    manager._reap_async_in_sync_and_mark(record, fake_async, cause="zombie_after_kill")
     assert record.returncode == -15
 
 
@@ -164,7 +154,7 @@ def test_terminate_by_pid_harvests_gone_list(
 ) -> None:
     """When _safe_wait_procs returns a dead list containing the root with
     returncode==-15, _terminate_by_pid passes that to _mark_killed."""
-    manager = ProcessManager(policy=_FAST_POLICY, psutil=cast("_PsutilModuleLike", FakePsutil()))
+    manager = ProcessManager(policy=_FAST_POLICY, psutil=FakePsutil())
     record = _make_record(manager, pid=7)
 
     fake_root = _PsutilProcessWithReturncode(pid=7)
@@ -176,11 +166,11 @@ def test_terminate_by_pid_harvests_gone_list(
 
     def fake_wait_procs_with_dead(
         procs: Sequence[object], timeout: float | None = None
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        return [cast("_PsutilProcessLike", fake_root)], []
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        return [fake_root], []
 
     monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
-    manager._psutil = cast("_PsutilModuleLike", fake_psutil)
+    manager._psutil = fake_psutil
 
     manager._terminate_by_pid(record, grace_period_s=0.01)
     assert record.returncode == -15
@@ -252,10 +242,10 @@ def test_managed_pty_returncode_falls_back_to_record() -> None:
 
 
 class _FakeSyncProc:
-    pid = 5
-    stdin = None
-    stdout = None
-    stderr = None
+    pid: int = 5
+    stdin: IO[bytes] | None = None
+    stdout: IO[bytes] | None = None
+    stderr: IO[bytes] | None = None
 
     def __init__(self, callback: list[int] | None = None) -> None:
         self._callback = callback
@@ -304,21 +294,19 @@ def test_escalate_termination_sync_harvests_psutil_returncode(
 
     fake_psutil = FakePsutil()
     fake_psutil._processes = {5: fake_root}
-    manager._psutil = cast("_PsutilModuleLike", fake_psutil)
+    manager._psutil = fake_psutil
 
     note_called_with: list[int] = []
     fake_proc = _FakeSyncProc(note_called_with)
 
     def fake_wait_procs_with_dead(
         procs: Sequence[object], timeout: float | None = None
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        return [cast("_PsutilProcessLike", fake_root)], []
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        return [fake_root], []
 
     monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
 
-    manager._escalate_termination_sync(
-        record, cast("_SyncProcessLike", fake_proc), grace_period_s=0.01
-    )
+    manager._escalate_termination_sync(record, fake_proc, grace_period_s=0.01)
     assert record.returncode == -15
     assert -15 in note_called_with
 
@@ -344,20 +332,20 @@ def test_terminate_psutil_wave_harvests_dead_rc(
     fake_psutil._processes = {11: fake_root}
 
     managed_proc = ManagedProcess.__new__(ManagedProcess)
-    managed_proc._proc = cast("_SyncProcessLike", _FakeSyncProc())
+    managed_proc._proc = _FakeSyncProc()
     managed_proc._record = record
     managed_proc._manager = manager
 
     def fake_wait_procs_with_dead(
         procs: Sequence[object], timeout: float | None = None
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        return [cast("_PsutilProcessLike", fake_root)], []
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        return [fake_root], []
 
     monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
 
     survivors = managed_proc._terminate_psutil_wave(
-        cast("_PsutilModuleLike", fake_psutil),
-        [cast("_PsutilProcessLike", fake_root)],
+        fake_psutil,
+        [fake_root],
         grace_period_s=0.0,
     )
     assert record.returncode == -9
@@ -385,20 +373,20 @@ def test_kill_psutil_wave_harvests_dead_rc(
     fake_psutil._processes = {12: fake_root}
 
     managed_proc = ManagedProcess.__new__(ManagedProcess)
-    managed_proc._proc = cast("_SyncProcessLike", _FakeSyncProc())
+    managed_proc._proc = _FakeSyncProc()
     managed_proc._record = record
     managed_proc._manager = manager
 
     def fake_wait_procs_with_dead(
         procs: Sequence[object], timeout: float | None = None
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        return [cast("_PsutilProcessLike", fake_root)], []
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        return [fake_root], []
 
     monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
 
     survivors = managed_proc._kill_psutil_wave(
-        cast("_PsutilModuleLike", fake_psutil),
-        [cast("_PsutilProcessLike", fake_root)],
+        fake_psutil,
+        [fake_root],
     )
     assert record.returncode == -15
     assert len(survivors) == 0

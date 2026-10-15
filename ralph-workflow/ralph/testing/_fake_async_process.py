@@ -49,6 +49,9 @@ class FakeAsyncProcess:
     def returncode(self) -> int | None:
         return self._returncode
 
+    def poll(self) -> int | None:
+        return self._returncode
+
     async def wait(self) -> int:
         return self._returncode if self._returncode is not None else 0
 

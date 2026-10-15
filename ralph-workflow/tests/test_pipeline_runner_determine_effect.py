@@ -305,6 +305,7 @@ class TestDetermineEffect:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
 
+    @pytest.mark.timeout_seconds(5)
     def test_agent_prompt_materialization_rewrites_existing_planning_prompt(
         self,
         tmp_path: Path,

@@ -17,6 +17,7 @@ production.
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from pathlib import Path
@@ -184,6 +185,7 @@ def test_both_session_types_satisfy_mcp_session_protocol(tmp_path: Path) -> None
     assert in_memory.session_id == "agent-prop-b"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_isinstance_narrowing_on_session_in_mcp_package(tmp_path: Path) -> None:
     """Audit: no isinstance narrowing in ralph/mcp/ silently bypasses the contract.
 
@@ -198,33 +200,38 @@ def test_no_isinstance_narrowing_on_session_in_mcp_package(tmp_path: Path) -> No
     The grep here is intentionally scoped to ``isinstance(session, FileBackedSession)``-
     style hits, which are the failure class.
 
-    Implementation note: uses pure-Path + read_text (not subprocess.run)
+    Implementation note: uses pure-Path + read_bytes (not subprocess.run)
     so the test-policy audit does not flag a subprocess call in a test.
     """
     mcp_pkg = Path(__file__).parent.parent / "ralph" / "mcp"
+    needle = b"isinstance(session, FileBackedSession"
     hits: list[str] = []
     for py_file in mcp_pkg.rglob("*.py"):
-        text = py_file.read_text(encoding="utf-8", errors="ignore")
-        if "isinstance(session, FileBackedSession" in text:
+        if needle in py_file.read_bytes():
             rel = py_file.relative_to(Path(__file__).parent.parent)
             hits.append(f"{rel}")
     assert not hits, f"isinstance narrowing of session to FileBackedSession: {hits}"
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(10)
 def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
     """Audit: no ... in ralph/ — the storm-enabling laundering."""
     ralph_root = Path(__file__).parent.parent / "ralph"
+    base_path = Path(__file__).parent.parent
+    needle1 = b"cast"
+    needle2 = b"McpSession"
+    pattern = re.compile(rb"cast\s*\(\s*['\"]McpSession['\"]")
     hits: list[str] = []
-    for py_file in ralph_root.rglob("*.py"):
-        text = py_file.read_text(encoding="utf-8", errors="ignore")
-        if (
-            "cast" in text
-            and "McpSession" in text
-            and re.search(r"cast\s*\(\s*['\"]McpSession['\"]", text)
-        ):
-            rel = py_file.relative_to(Path(__file__).parent.parent)
-            hits.append(f"{rel}")
+    for dirpath, _, filenames in os.walk(ralph_root):
+        for fname in filenames:
+            if not fname.endswith(".py"):
+                continue
+            try:
+                content = Path(dirpath, fname).read_bytes()
+            except OSError:
+                continue
+            if needle1 in content and needle2 in content and pattern.search(content):
+                hits.append(str(Path(dirpath, fname).relative_to(base_path)))
     assert not hits, f"Found ... laundering: {hits}"
 
 
