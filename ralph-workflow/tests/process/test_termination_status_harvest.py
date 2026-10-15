@@ -812,3 +812,107 @@ def test_escalate_termination_sync_cross_harvests_owned_child(
 
     assert parent_handle.returncode == -15
     assert child_handle.returncode == -15
+
+
+# ----------------------------------------------------------------------
+# Test 18: _terminate_by_pid persists harvested root rc when child zombie
+# ----------------------------------------------------------------------
+
+
+def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When a PID-only registered root exits with -15 in wave 1, and a child
+    survives as a zombie in wave 2, _terminate_by_pid reaps the child zombie
+    without corrupting the root record, persisting returncode == -15 with
+    terminal status ProcessStatus.KILLED."""
+    manager = ProcessManager(policy=_FAST_POLICY)
+    record = _make_record(manager, pid=10)
+
+    fake_child = _PsutilProcessWithReturncode(pid=20)
+    fake_child.returncode = -9
+
+    fake_root = _PsutilProcessWithReturncode(pid=10, _children=[fake_child])
+    fake_root._terminated = True
+    fake_root.returncode = -15
+
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {10: fake_root, 20: fake_child}
+    manager._psutil = fake_psutil
+
+    wave = 0
+
+    def fake_wait_procs(
+        procs: Sequence[object], timeout: float | None = None
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        nonlocal wave
+        # During zombie reaping, timeout is 0.0
+        if timeout == 0.0:
+            return [fake_child], []
+        wave += 1
+        if wave == 1:
+            # Wave 1: root is dead, child survived
+            return [fake_root], [fake_child]
+        # Wave 2: child is still alive / zombie
+        return [], [fake_child]
+
+    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
+
+    manager._terminate_by_pid(record, grace_period_s=0.01)
+
+    assert record.status == ProcessStatus.KILLED
+    assert record.returncode == -15
+
+
+# ----------------------------------------------------------------------
+# Test 19: _escalate_termination_sync persists harvested root rc when child zombie
+# ----------------------------------------------------------------------
+
+
+def test_escalate_termination_sync_persists_harvested_root_when_child_zombie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When an owned root process exits with -15 in wave 1, and a child
+    survives as a zombie in wave 2, _escalate_termination_sync reaps the child
+    zombie without corrupting the root record, asserting returncode == -15
+    on both the record and the managed handle."""
+    manager = ProcessManager(policy=_FAST_POLICY)
+    parent_record = _make_record(manager, pid=30)
+    manager.record_terminal_reason(parent_record.pid, "interactive_completion", "test")
+
+    parent_proc = _FakeSyncProc()
+    parent_proc.pid = 30
+    manager._sync_procs[30] = parent_proc
+    parent_handle = ManagedProcess(parent_proc, parent_record, manager)
+
+    fake_child = _PsutilProcessWithReturncode(pid=40)
+    fake_child.returncode = -9
+
+    fake_parent = _PsutilProcessWithReturncode(pid=30, _children=[fake_child])
+    fake_parent._terminated = True
+    fake_parent.returncode = -15
+
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {30: fake_parent, 40: fake_child}
+    manager._psutil = fake_psutil
+
+    wave = 0
+
+    def fake_wait_procs(
+        procs: Sequence[object], timeout: float | None = None
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        nonlocal wave
+        if timeout == 0.0:
+            return [fake_child], []
+        wave += 1
+        if wave == 1:
+            return [fake_parent], [fake_child]
+        return [], [fake_child]
+
+    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
+
+    manager._escalate_termination_sync(parent_record, parent_proc, grace_period_s=0.01)
+
+    assert parent_record.status == ProcessStatus.KILLED
+    assert parent_record.returncode == -15
+    assert parent_handle.returncode == -15

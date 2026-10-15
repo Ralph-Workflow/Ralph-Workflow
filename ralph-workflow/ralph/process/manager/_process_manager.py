@@ -300,6 +300,8 @@ class ProcessManager:
         self, record: ProcessRecord, proc: object | None, rc: int
     ) -> None:
         """Propagate a reaped integer returncode to any process handle that tracks it."""
+        if record.returncode is None:
+            record.returncode = rc
         rec_proc: object = getattr(record, "proc", None)
         targets: list[object] = [
             rec_proc,
@@ -342,6 +344,8 @@ class ProcessManager:
                         last_known_rc = None
         except (OSError, ProcessLookupError, ChildProcessError):
             last_known_rc = None
+        if last_known_rc is None and record.returncode is not None:
+            last_known_rc = record.returncode
         if last_known_rc is not None:
             self._note_proc_external_returncode(record, proc, last_known_rc)
         self._mark_killed(record, last_known_rc, cause=cause)
@@ -373,6 +377,8 @@ class ProcessManager:
                     last_known_rc = proc.returncode
         except (OSError, ProcessLookupError, ChildProcessError, asyncio.CancelledError):
             last_known_rc = None
+        if last_known_rc is None and record.returncode is not None:
+            last_known_rc = record.returncode
         if last_known_rc is not None:
             self._note_proc_external_returncode(record, proc, last_known_rc)
         self._mark_killed(record, last_known_rc, cause=cause)
@@ -415,10 +421,14 @@ class ProcessManager:
                             break
                         if reaped_pid == 0:
                             break
+                if harvested_rc is None and record.returncode is not None:
+                    harvested_rc = record.returncode
                 if harvested_rc is not None:
                     self._note_proc_external_returncode(record, None, harvested_rc)
         except (OSError, ProcessLookupError, ChildProcessError):
             pass
+        if harvested_rc is None and record.returncode is not None:
+            harvested_rc = record.returncode
         self._mark_killed(record, harvested_rc, cause=cause)
 
     def _reap_async_in_sync_and_mark(
@@ -458,13 +468,17 @@ class ProcessManager:
                     raw_rc: object = getattr(proc, "returncode", None)
                     if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
                         harvested_rc = raw_rc
-                else:
+                if harvested_rc is None and record.returncode is not None:
+                    harvested_rc = record.returncode
+                if harvested_rc is not None:
                     self._note_proc_external_returncode(record, proc, harvested_rc)
         except (OSError, ProcessLookupError, ChildProcessError):
             if harvested_rc is None:
                 err_rc: object = getattr(proc, "returncode", None)
                 if isinstance(err_rc, int) and not isinstance(err_rc, bool):
                     harvested_rc = err_rc
+        if harvested_rc is None and record.returncode is not None:
+            harvested_rc = record.returncode
         self._mark_killed(record, harvested_rc, cause=cause)
 
     def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
@@ -1497,24 +1511,85 @@ class ProcessManager:
                     alive.append(proc)
             return dead, alive
 
+    def _reap_untracked_psutil_zombie(
+        self,
+        psutil_proc: _PsutilProcessLike,
+        psutil_mod: _PsutilModuleLike,
+    ) -> None:
+        """Reap a psutil-tracked process that has no ProcessRecord."""
+        pid = psutil_proc.pid
+        harvested_rc: int | None = None
+        try:
+            with contextlib.suppress(OSError, ProcessLookupError, ChildProcessError):
+                gone, _ = psutil_mod.wait_procs([psutil_proc], timeout=0.0)
+                harvested_rc = _extract_psutil_returncode(gone, pid)
+            if (
+                hasattr(os, "waitpid")
+                and hasattr(os, "WNOHANG")
+                and not self._has_running_event_loop()
+            ):
+                for _ in range(3):
+                    try:
+                        reaped_pid, status = os.waitpid(pid, os.WNOHANG)
+                    except (OSError, ProcessLookupError, ChildProcessError):
+                        break
+                    if reaped_pid == pid:
+                        if harvested_rc is None:
+                            harvested_rc = _status_to_returncode(status)
+                        break
+                    if reaped_pid == 0:
+                        break
+            if harvested_rc is not None:
+                self._harvest_owned_process(pid, harvested_rc)
+        except (OSError, ProcessLookupError, ChildProcessError):
+            pass
+
     def _check_and_reap_zombie_survivors(
         self,
         record: ProcessRecord,
         survivors: Sequence[_PsutilProcessLike],
         psutil_mod: _PsutilModuleLike,
         proc: _SyncProcessLike | _PtyProcessLike | None = None,
+        harvested_rc: int | None = None,
     ) -> bool:
+        any_zombies = False
+        all_resolved = True
         for p in survivors:
             pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
             if pid_liveness == LivenessResult.ZOMBIE:
+                any_zombies = True
                 logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
-                if proc is not None:
-                    self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
+                if p.pid == record.pid:
+                    if proc is not None:
+                        self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
+                    else:
+                        self._reap_psutil_zombie_and_mark(
+                            record, p, psutil_mod, cause="zombie_after_kill"
+                        )
+                    if record.returncode is None and harvested_rc is not None:
+                        record.returncode = harvested_rc
                 else:
-                    self._reap_psutil_zombie_and_mark(
-                        record, p, psutil_mod, cause="zombie_after_kill"
-                    )
-                return True
+                    desc_rec = self._records.get(p.pid)
+                    if desc_rec is not None:
+                        self._reap_psutil_zombie_and_mark(
+                            desc_rec, p, psutil_mod, cause="zombie_after_kill"
+                        )
+                    else:
+                        self._reap_untracked_psutil_zombie(p, psutil_mod)
+            elif pid_liveness != LivenessResult.GONE:
+                all_resolved = False
+
+        if any_zombies and all_resolved:
+            root_rc = harvested_rc
+            if root_rc is None:
+                root_rc = record.returncode
+            if root_rc is None and proc is not None:
+                with contextlib.suppress(Exception):
+                    root_rc = proc.poll()
+            if record.status not in _TERMINAL_STATUSES:
+                self._terminate_registered_descendants(record, grace_period_s=0.0)
+                self._mark_killed(record, root_rc, cause="zombie_after_kill")
+            return True
         return False
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
@@ -1529,16 +1604,10 @@ class ProcessManager:
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
-        try:
-            root = psutil_mod.process_from_pid(record.pid)
-            children = root.children(recursive=True)
-        except psutil_mod.NoSuchProcess:
-            self._mark_killed(record)
+        all_procs = self._find_procs_to_terminate(record, None, psutil_mod)
+        if all_procs is None:
             return
-        except (psutil_mod.AccessDenied, PermissionError):
-            self._raise_access_denied_termination(record)
 
-        all_procs = [root, *children]
         for proc in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
@@ -1563,12 +1632,15 @@ class ProcessManager:
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
         still_harvested_rc = self._harvest_gone_processes(still_gone, root_pid=record.pid)
-        if harvested_rc is None:
+        if harvested_rc is None and still_harvested_rc is not None:
             harvested_rc = still_harvested_rc
-            if harvested_rc is not None:
-                self._note_proc_external_returncode(record, None, harvested_rc)
+            self._note_proc_external_returncode(record, None, harvested_rc)
+        if harvested_rc is None:
+            harvested_rc = record.returncode
         if still_alive:
-            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod):
+            if self._check_and_reap_zombie_survivors(
+                record, still_alive, psutil_mod, harvested_rc=harvested_rc
+            ):
                 return
             self._mark_termination_failed(record, harvested_rc)
             logger.error("Process {} still alive after kill", record.pid)
@@ -1654,15 +1726,16 @@ class ProcessManager:
             psutil_mod, alive, timeout=self.policy.kill_followup_timeout_s
         )
         still_harvested_rc = self._harvest_gone_processes(still_gone, root_pid=record.pid)
-        if harvested_rc is None:
+        if harvested_rc is None and still_harvested_rc is not None:
             harvested_rc = still_harvested_rc
-            if harvested_rc is not None:
-                self._note_proc_external_returncode(record, proc, harvested_rc)
+            self._note_proc_external_returncode(record, proc, harvested_rc)
         rc = proc.poll()
         if rc is None:
-            rc = harvested_rc
+            rc = harvested_rc if harvested_rc is not None else record.returncode
         if still_alive:
-            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod, proc=proc):
+            if self._check_and_reap_zombie_survivors(
+                record, still_alive, psutil_mod, proc=proc, harvested_rc=rc
+            ):
                 return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
@@ -1821,6 +1894,8 @@ class ProcessManager:
         harvested_rc = self._harvest_gone_processes(gone, root_pid=record.pid)
         if harvested_rc is not None:
             self._note_proc_external_returncode(record, proc, harvested_rc)
+            if record.returncode is None:
+                record.returncode = harvested_rc
         if alive:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -1836,11 +1911,19 @@ class ProcessManager:
             harvested_rc = still_harvested_rc
             if harvested_rc is not None:
                 self._note_proc_external_returncode(record, proc, harvested_rc)
+                if record.returncode is None:
+                    record.returncode = harvested_rc
+        elif record.returncode is None:
+            record.returncode = harvested_rc
         rc = proc.returncode
         if rc is None:
             rc = harvested_rc
+        if rc is None:
+            rc = record.returncode
         if still_alive:
-            if self._check_and_reap_zombie_survivors(record, still_alive, psutil_mod):
+            if self._check_and_reap_zombie_survivors(
+                record, still_alive, psutil_mod, harvested_rc=rc
+            ):
                 return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
@@ -1967,7 +2050,8 @@ class ProcessManager:
                 return
             prev = record.status
             record.status = ProcessStatus.KILLED
-            record.returncode = returncode
+            if returncode is not None or record.returncode is None:
+                record.returncode = returncode
             record.ended_at = datetime.now(tz=UTC)
             record.cause = cause
             record.failure_message = None
@@ -1992,7 +2076,8 @@ class ProcessManager:
                 return
             prev = record.status
             record.status = ProcessStatus.FAILED
-            record.returncode = returncode
+            if returncode is not None or record.returncode is None:
+                record.returncode = returncode
             record.ended_at = datetime.now(tz=UTC)
             record.cause = "termination_failed"
             record.failure_message = reason

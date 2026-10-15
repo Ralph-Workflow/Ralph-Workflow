@@ -116,11 +116,13 @@ def test_resolver_truncates_large_spills(tmp_path: Path) -> None:
     resolver = _make_resolver(tmp_path)
     spill = tmp_path / ".agent" / "tmp" / "ralph-exec-big.txt"
     spill.parent.mkdir(parents=True, exist_ok=True)
-    payload = b"x" * (8 * 1024 * 1024)  # 8 MiB > 4 MiB cap
-    spill.write_bytes(payload)
+    target_size = 8 * 1024 * 1024  # 8 MiB > 4 MiB cap
+    with spill.open("wb") as handle:
+        handle.seek(target_size - 1)
+        handle.write(b"x")
     uri = resolver.register(spill)
     data, _mime, total = resolver.read(uri)
-    assert total == len(payload)
+    assert total == target_size
     assert len(data) < total
     # Cap is the published 4 MiB.
     from ralph.mcp.tools._exec_resource_uri import MAX_READ_BYTES
