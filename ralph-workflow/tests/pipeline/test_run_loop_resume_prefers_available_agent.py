@@ -60,6 +60,7 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     )
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     workspace = MemoryWorkspace("/memory/resume-selection")
@@ -771,6 +772,7 @@ def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_availab
     )
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
@@ -829,6 +831,7 @@ def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zer
     )
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
@@ -886,6 +889,7 @@ def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_availab
     )
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(

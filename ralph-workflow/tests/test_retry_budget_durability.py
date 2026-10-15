@@ -229,15 +229,17 @@ class TestRetryProgressGuardDurability:
 
         updated_state = apply_session_capture(initial_state)
         assert updated_state.progress_guard == snap
-        assert updated_state.chain_for_phase("development") is not None
-        assert updated_state.chain_for_phase("development").progress_guard == snap  # type: ignore[union-attr]
+        updated_chain = updated_state.chain_for_phase("development")
+        assert updated_chain is not None
+        assert updated_chain.progress_guard == snap
 
         # Success clears the saved progress guard
         set_last_captured_session_id("sess-success")
         success_state = apply_session_capture(updated_state)
         assert success_state.progress_guard is None
-        assert success_state.chain_for_phase("development") is not None
-        assert success_state.chain_for_phase("development").progress_guard is None  # type: ignore[union-attr]
+        success_chain = success_state.chain_for_phase("development")
+        assert success_chain is not None
+        assert success_chain.progress_guard is None
 
 
 class TestAutoIntegrateBackoffClockBoundaries:

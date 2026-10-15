@@ -2304,17 +2304,12 @@ def _run_inner_loop_after_startup(
     # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
     while (
-        state.phase not in ctx.policy_bundle.pipeline.terminal_states()
-        or (
-            ctx.policy_bundle.pipeline.terminal_phase == state.phase
-            and (
-                retained_integration_reason(ctx.workspace_scope.root) is not None
-                or not is_terminal_success_eligible(
-                    state,
-                    read_record(ctx.workspace_scope.root),
-                    state.rebase,
-                )
-            )
+        ctx.policy_bundle.pipeline.terminal_phase != state.phase
+        or retained_integration_reason(ctx.workspace_scope.root) is not None
+        or not is_terminal_success_eligible(
+            state,
+            read_record(ctx.workspace_scope.root),
+            state.rebase,
         )
     ):
         captured_phase = str(state.phase)

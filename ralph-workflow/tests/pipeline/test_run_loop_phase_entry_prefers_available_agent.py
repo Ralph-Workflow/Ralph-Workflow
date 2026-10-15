@@ -50,6 +50,7 @@ def test_run_loop_reselects_preferred_agent_on_phase_entry(
     )
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     workspace = MemoryWorkspace("/memory/phase-selection")
@@ -207,6 +208,7 @@ def test_phase_entry_picks_highest_priority_when_cursor_points_past_index_zero(
 
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
@@ -284,6 +286,7 @@ def test_phase_entry_skips_higher_priority_in_cooldown_returns_to_lower_priority
 
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
@@ -356,6 +359,7 @@ def test_phase_entry_returns_to_highest_priority_after_cooldown_expiry(
 
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
@@ -439,6 +443,7 @@ def test_phase_entry_all_agents_unavailable_waits_with_priority_first_ordering(
 
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = run_loop._LoopContext(
