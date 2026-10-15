@@ -2269,6 +2269,21 @@ def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineS
         return state.copy_with(last_retry_delay_ms=1000)
 
 
+def _retry_guard_requires_intervention(state: PipelineState) -> bool:
+    """Whether the persisted retry guard demands a hard stop at ``failed_route``.
+
+    A missing guard (fresh state, older checkpoint) never hard-stops: the
+    exhausted-retry case always persists a guard snapshot via
+    ``apply_session_capture`` before ``failed_route`` is entered.
+    """
+    raw = state.progress_guard
+    if raw is None:
+        return False
+    from ralph.pipeline._retry_progress_guard import RetryProgressGuard
+
+    return RetryProgressGuard.from_dict(raw).requires_operator_intervention
+
+
 def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2303,13 +2318,29 @@ def _run_inner_loop_after_startup(
     # the development loop so the timer is tracked from the resume time
     # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
+    # ``failed_route`` (e.g. ``failed_terminal``) is a *recoverable* terminal:
+    # the effect router's ``_recovery_prepare_effect`` turns it back into a
+    # PreparePromptEffect on the pre-failure phase. Only the persisted
+    # RetryProgressGuard (exhausted / failed-closed, d02a57143) converts it
+    # into a hard stop, so the budget — not the loop shape — bounds recovery.
+    # Guard is persisted on PipelineState by apply_session_capture, so this
+    # survives checkpoint restarts.
     while (
-        ctx.policy_bundle.pipeline.terminal_phase != state.phase
-        or retained_integration_reason(ctx.workspace_scope.root) is not None
-        or not is_terminal_success_eligible(
-            state,
-            read_record(ctx.workspace_scope.root),
-            state.rebase,
+        state.phase not in ctx.policy_bundle.pipeline.terminal_states()
+        or (
+            state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
+            and not _retry_guard_requires_intervention(state)
+        )
+        or (
+            ctx.policy_bundle.pipeline.terminal_phase == state.phase
+            and (
+                retained_integration_reason(ctx.workspace_scope.root) is not None
+                or not is_terminal_success_eligible(
+                    state,
+                    read_record(ctx.workspace_scope.root),
+                    state.rebase,
+                )
+            )
         )
     ):
         captured_phase = str(state.phase)

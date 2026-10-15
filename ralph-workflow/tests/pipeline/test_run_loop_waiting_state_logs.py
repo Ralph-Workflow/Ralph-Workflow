@@ -108,6 +108,8 @@ def _build_loop_context_and_state(
     """
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
+    policy_bundle.pipeline.recovery.failed_route = "failed_terminal"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
 

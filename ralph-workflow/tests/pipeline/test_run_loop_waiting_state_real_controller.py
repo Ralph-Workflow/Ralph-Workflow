@@ -45,6 +45,8 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.run_loop import _LoopContext, _run_inner_loop
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -179,6 +181,7 @@ def _build_run_loop_context(
     """
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete"}
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
     ctx = _LoopContext(
@@ -287,6 +290,16 @@ def test_real_controller_wait_state_emits_waiting_logs(
 
     monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+    # The run loop's integration seams inspect real Git state at the
+    # workspace root (a MemoryWorkspace path that has no Git repo). Stub
+    # the resolution inspection to a RESOLVED verdict so no real git
+    # subprocess runs and the loop is deterministic.
+    monkeypatch.setattr(
+        "ralph.pipeline.run_loop.inspect_integration_resolution",
+        lambda *_a, **_k: IntegrationResolutionVerdict(
+            status=IntegrationResolutionStatus.RESOLVED,
+        ),
+    )
 
     records, sink_id = _capture_loguru_records()
     try:

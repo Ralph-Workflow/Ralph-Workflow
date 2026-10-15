@@ -134,6 +134,8 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
     """Run loop emits WAITING status before cooldown sleep and RESUMED after, using the guard."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
+    policy_bundle.pipeline.recovery.failed_route = "failed_terminal"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
 
@@ -208,6 +210,8 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
     """Run loop catches sleep exception, logs it, and continues rather than crashing."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
+    policy_bundle.pipeline.recovery.failed_route = "failed_terminal"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
 
@@ -334,6 +338,8 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
     """Once-per-phase guard suppresses duplicate WAITING emissions until phase changes."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
+    policy_bundle.pipeline.recovery.failed_route = "failed_terminal"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
 
