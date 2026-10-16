@@ -26,7 +26,6 @@ The ABSENT case is the proceeding control.
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Generator
 from pathlib import Path
 from typing import cast
@@ -118,9 +117,22 @@ def _seed_unreadable_record(workspace_root: Path, cause: str) -> bytes:
 @pytest.fixture(autouse=True)
 def workspace_root(tmp_path: Path) -> Generator[Path, None, None]:
     """A real git worktree: the entry-point seams run real git commands."""
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
+    from ralph.git.subprocess_runner import GitRunOptions, run_git
+
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["config", "user.email", "test@example.com"],
+        ["config", "user.name", "test"],
+    ):
+        assert (
+            run_git(
+                args,
+                cwd=tmp_path,
+                label="unreadable-record-test",
+                options=GitRunOptions(timeout=5),
+            ).returncode
+            == 0
+        )
     yield tmp_path
 
 

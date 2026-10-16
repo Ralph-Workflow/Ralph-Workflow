@@ -10,12 +10,11 @@ contract without spawning git.
 
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref,
     delete_rebase_backup_ref,
@@ -29,15 +28,12 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
-def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ("git", *args),
+def _run(repo_root: Path, *args: str):
+    return run_git(
+        args,
         cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=15,
-        env={**os.environ},
+        label="backup-ref-scope-test",
+        options=GitRunOptions(timeout=15),
     )
 
 

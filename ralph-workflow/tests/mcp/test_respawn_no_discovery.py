@@ -81,7 +81,7 @@ class _FakeMcpUpstreamServer:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_sock.bind(("127.0.0.1", 0))
         self._port = server_sock.getsockname()[1]
-        server_sock.listen(8)
+        server_sock.listen(32)
         self._server_socket = server_sock
         self._thread = threading.Thread(target=self._serve, daemon=True, name="fake-upstream")
         self._thread.start()
@@ -99,8 +99,14 @@ class _FakeMcpUpstreamServer:
                 except TimeoutError:
                     continue
                 try:
-                    self._handle_client(client)
-                finally:
+                    # Handle in a short-lived daemon thread so a slow handshake
+                    # never blocks the accept loop (de-flakes under xdist load).
+                    threading.Thread(
+                        target=self._handle_client_and_close,
+                        args=(client,),
+                        daemon=True,
+                    ).start()
+                except OSError:
                     client.close()
             except OSError:
                 if not self._stop_event.is_set():
@@ -108,10 +114,16 @@ class _FakeMcpUpstreamServer:
 
         sock.close()
 
+    def _handle_client_and_close(self, client: socket.socket) -> None:
+        try:
+            self._handle_client(client)
+        finally:
+            client.close()
+
     def _handle_client(self, client: socket.socket) -> None:
         """Handle one HTTP/MCP JSON-RPC exchange."""
         try:
-            client.settimeout(2.0)
+            client.settimeout(30.0)
             # Read request line + headers
             header_bytes = b""
             while b"\r\n\r\n" not in header_bytes:

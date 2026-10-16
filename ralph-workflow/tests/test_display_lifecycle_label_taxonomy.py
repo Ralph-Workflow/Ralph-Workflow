@@ -144,15 +144,25 @@ def test_unreadable_evidence_projects_to_intervention_label(tmp_path: object, ca
     evidence diagnosis or conflict resolution -- even though the handoff
     retains the recovery record.
     """
-    import subprocess
-
     from ralph.config.models import UnifiedConfig
+    from ralph.git.subprocess_runner import GitRunOptions, run_git
     from ralph.pipeline import run_loop
     from ralph.workspace.scope import WorkspaceScope
 
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["config", "user.email", "t@t"],
+        ["config", "user.name", "t"],
+    ):
+        assert (
+            run_git(
+                args,
+                cwd=tmp_path,
+                label="display-lifecycle-test",
+                options=GitRunOptions(timeout=5),
+            ).returncode
+            == 0
+        )
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True)
     if cause == "corrupt_json":

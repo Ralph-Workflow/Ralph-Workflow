@@ -156,7 +156,11 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
     tmp_git_repo: Path,
     receipt: str,
 ) -> None:
-    from ralph.pipeline.auto_integrate_record import clear_record, record_path
+    from ralph.pipeline.auto_integrate_record import (
+        RecordUnreadableError,
+        clear_record,
+        record_path,
+    )
 
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
@@ -195,12 +199,19 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
         assert direct is not None and direct.recovery_record_retained
         assert _git(root, "rev-parse", target).stdout.strip() == base
         assert not inspect_integration_resolution(root, recovered).dispatch_allowed
+        if receipt == "malformed":
+            with pytest.raises(RecordUnreadableError):
+                clear_record(root)
+            assert record_path(root).read_bytes() == original
+            assert not inspect_integration_resolution(
+                root, RebaseState(recovery_record_retained=True)
+            ).dispatch_allowed
     else:
         assert recovered.fast_forwarded
         assert read_record(root) is None
         assert _git(root, "rev-parse", target).stdout.strip() == feature
         assert inspect_integration_resolution(root, recovered).dispatch_allowed
-    clear_record(root)
-    assert inspect_integration_resolution(
-        root, RebaseState(recovery_record_retained=True)
-    ).dispatch_allowed
+        clear_record(root)
+        assert inspect_integration_resolution(
+            root, RebaseState(recovery_record_retained=True)
+        ).dispatch_allowed

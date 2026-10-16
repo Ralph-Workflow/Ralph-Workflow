@@ -10,7 +10,12 @@ import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, record_path
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+    RecordReadOutcome,
+    RecordReadOutcomeDisposition,
+    record_path,
+)
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
@@ -254,6 +259,11 @@ def test_runtime_retained_resolution_retries_owner_before_dispatch(
     def read(_root: Path) -> IntegrationRecord | None:
         return record
 
+    def read_outcome(*_args: object, **_kwargs: object) -> RecordReadOutcome:
+        if record is None:
+            return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.PRESENT, record=record)
+
     def inspect(root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
         active = record is not None and evidence != "no_live_operation"
         porcelain = "UU shared.txt\n" if active and evidence == "unmerged_live" else ""
@@ -293,6 +303,7 @@ def test_runtime_retained_resolution_retries_owner_before_dispatch(
         saved.append(current)
 
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", read)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record_outcome", read_outcome)
     monkeypatch.setattr(run_loop, "inspect_integration_resolution", inspect)
     monkeypatch.setattr(run_loop, "_run_startup_integration", continue_owned)
     monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", bypass)

@@ -760,3 +760,22 @@ def test_store_transition_absent_start_integrating_semantics_preserved() -> None
     )
     assert initial.phase == "integrating"
     assert backend.exists(store.record_path)
+
+
+def test_store_transition_refuses_busy_with_no_mutation() -> None:
+    """TOCTOU regression: single authoritative read; BUSY refuses every mutation."""
+    root = Path("/ws")
+    valid = _valid_record_bytes()
+    backend = _TransientBackend(
+        {record_path(root): valid},
+        err=OSError(errno.EAGAIN, "resource temporarily unavailable"),
+    )
+    store = IntegrationRecordStore(root, backend=backend)
+    with pytest.raises(RecordBusyError):
+        store.transition(
+            MARK_RESOLVING_REBASE,
+            resolving_rebase=True,
+        )
+    assert backend.files[record_path(root)] == valid
+    assert backend.write_calls == []
+    assert backend.replace_calls == []

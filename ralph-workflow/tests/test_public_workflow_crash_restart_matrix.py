@@ -78,7 +78,7 @@ def _mock_post_head_sha(root: Path, target: str) -> str:
     return "feat_sha_integrated"
 
 
-def _mock_backup_ref(root: Path, sha: str) -> str:
+def _mock_backup_ref(*args: object) -> str:
     return "refs/rebase-backup/1"
 
 

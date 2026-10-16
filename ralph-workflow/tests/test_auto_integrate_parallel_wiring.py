@@ -13,7 +13,11 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.auto_integrate_record import IntegrationRecord
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+    RecordReadOutcome,
+    RecordReadOutcomeDisposition,
+)
 from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
@@ -173,10 +177,16 @@ def test_fan_out_completed_phase_waits_for_retained_integration(monkeypatch: Mon
     def read(_root: Path) -> IntegrationRecord:
         return record
 
+    def read_outcome(*_args: object, **_kwargs: object) -> RecordReadOutcome:
+        if record is None:
+            return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.PRESENT, record=record)
+
     def integrate(*_args: object, **_kwargs: object) -> RebaseState:
         return retained
 
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", read)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record_outcome", read_outcome)
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", integrate)
     scope = WorkspaceScope(Path("/workspace"))
     state = PipelineState(phase="development")

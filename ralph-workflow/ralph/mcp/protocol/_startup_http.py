@@ -49,6 +49,8 @@ else:
 JsonRpcResponse = dict[str, object]
 _HTTP_OK = 200
 _HTTP_ACCEPTED = 202
+# Generous bound: still fail-closed, but tolerant of slow scheduling under load.
+_HTTP_JSONRPC_POST_TIMEOUT_S = 20.0
 
 
 @dataclass(frozen=True)
@@ -323,7 +325,7 @@ def post_http_jsonrpc_with_session(
             endpoint,
             json=payload_obj,
             headers=headers,
-            timeout=5.0,
+            timeout=_HTTP_JSONRPC_POST_TIMEOUT_S,
         )
     except httpx.TransportError as exc:
         raise RetryablePreflightError(

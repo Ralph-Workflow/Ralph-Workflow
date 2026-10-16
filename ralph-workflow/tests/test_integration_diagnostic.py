@@ -9,6 +9,8 @@ from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
+    RecordReadOutcome,
+    RecordReadOutcomeDisposition,
     read_record,
     record_path,
     write_record,
@@ -90,6 +92,12 @@ def test_runtime_missing_completion_evidence_reaches_diagnostic_agent(
         failures.append(failure)
 
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", read)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_record.read_record_outcome",
+        lambda _root, **_kw: RecordReadOutcome(
+            disposition=RecordReadOutcomeDisposition.PRESENT, record=record
+        ),
+    )
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", save)
     monkeypatch.setattr(

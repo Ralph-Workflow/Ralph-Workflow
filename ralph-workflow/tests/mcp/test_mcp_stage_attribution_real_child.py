@@ -10,7 +10,6 @@ not ``last_stage_unknown``.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -22,6 +21,7 @@ from ralph.mcp.server._start_stage_tracker import (
     read_last_stage,
     stage_file_path,
 )
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -69,20 +69,24 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
     script_path = tmp_path / "child_record_and_exit.py"
     script_path.write_text(script_content, encoding="utf-8")
 
-    # Run the child; it exits 42 before any preflight.
+    # Run the child via ProcessManager; it exits 42 before any preflight.
     child_env = dict(os.environ)
     child_env["RALPH_MCP_STAGE_ID"] = spawn_id
 
-    result = subprocess.run(
+    proc = get_process_manager().spawn(
         [sys.executable, str(script_path)],
-        cwd=str(tmp_path),
-        env=child_env,
-        timeout=10,
-        check=False,  # the child intentionally exits 42 before preflight
+        SpawnOptions(cwd=str(tmp_path), env=child_env, label="mcp-stage-attribution-child"),
     )
+    try:
+        returncode = proc.wait(timeout=10)
+        stderr = b""
+    except Exception:
+        proc.kill()
+        returncode = -1
+        stderr = b"timeout"
 
     # Child exited 42 as designed.
-    assert result.returncode == 42, f"child exited {result.returncode}; stderr={result.stderr!r}"
+    assert returncode == 42, f"child exited {returncode}; stderr={stderr!r}"
 
     # --- stage-file verification (parent reads with explicit spawn_id) --------
     last_stage = read_last_stage(tmp_path, spawn_id=spawn_id)

@@ -101,13 +101,6 @@ class IntegrationRecordStore:
                 "persisted deadline owns the backoff"
             )
 
-        outcome = self.read_outcome()
-        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            raise RecordUnreadableError(
-                f"refusing transition {transition.name!r}: unreadable record "
-                f"evidence at {self.record_path} "
-                f"(reason: {outcome.unreadable_reason})"
-            )
         current = outcome.record
         if current is None:
             if transition.name == "START_INTEGRATING":
