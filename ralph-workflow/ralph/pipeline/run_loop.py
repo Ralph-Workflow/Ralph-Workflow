@@ -2072,15 +2072,18 @@ def _handle_retained_integration(
     if continued is not None:
         state = state.copy_with(rebase=continued)
         _save_recovered_rebase_checkpoint(state, ctx)
-    remaining = retained_integration_reason(ctx.workspace_scope.root)
-    if remaining is not None:
-        if not state.rebase.recovery_record_retained:
-            state = state.copy_with(
-                rebase=state.rebase.set_recovery_record_retained(
-                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-                ).model_copy(update={"last_reason": remaining})
-            )
-            _save_recovered_rebase_checkpoint(state, ctx)
+    # Pass 2: re-read both signals after the owner ran.
+    disk_after = retained_integration_reason(ctx.workspace_scope.root)
+    if not disk_after:
+        # The owner had its shot and no durable record remains: the disk is
+        # the retention authority, so the caller's guarded inspect (plus its
+        # reconcile) owns any stale in-memory evidence. Re-latching the
+        # blocking handoff from a memory-only flag here would loop forever
+        # on a repository whose git evidence has already resolved.
+        return state, None
+    # Blocking path: the durable record is still retained after the owner ran.
+    remaining = disk_after or state.rebase.last_reason or "durable integration record retained"
+    if not state.rebase.recovery_record_retained:
         state = state.copy_with(
             rebase=state.rebase.model_copy(
                 update={
