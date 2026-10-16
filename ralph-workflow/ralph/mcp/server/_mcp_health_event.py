@@ -181,9 +181,7 @@ def record_restart_decision(
                         # ``None`` (log unavailable) serialises as JSON null so an
                         # operator can tell it apart from ``[]`` (log captured, empty).
                         "log_tail": (
-                            list(decision.log_tail)
-                            if decision.log_tail is not None
-                            else None
+                            list(decision.log_tail) if decision.log_tail is not None else None
                         ),
                         "stage": decision.stage,
                     }

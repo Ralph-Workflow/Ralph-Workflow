@@ -15,11 +15,11 @@ returns leaves the latest label on disk.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
@@ -93,8 +93,10 @@ def record(root: Path, stage: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # tempfile.mkstemp already sets O_EXCL; sibling of the final path so
     # os.replace stays on one filesystem. Mode 0o644 for operator reads.
-    fd, tmp_name = tempfile.mkstemp(  # filesystem-write-ok: temp sibling immediately atomically replaced via os.replace — the only durable artifact is the final stage file
-        dir=path.parent, prefix=f"{path.name}.", suffix=".tmp"
+    fd, tmp_name = (
+        tempfile.mkstemp(  # filesystem-write-ok: temp sibling immediately atomically replaced via os.replace — the only durable artifact is the final stage file
+            dir=path.parent, prefix=f"{path.name}.", suffix=".tmp"
+        )
     )
     tmp_path = Path(tmp_name)
     try:
@@ -108,7 +110,7 @@ def record(root: Path, stage: str) -> None:
             )
         finally:
             os.close(fd)
-        os.replace(tmp_path, path)
+        tmp_path.replace(path)
         # fsync the directory so the rename itself is durable.
         dir_fd = os.open(  # resource-lifecycle-ok: directory fsync immediately closed in finally  # filesystem-write-ok: durability barrier for the rename so the replaced stage file survives a child SIGKILL
             path.parent, os.O_RDONLY
@@ -120,10 +122,8 @@ def record(root: Path, stage: str) -> None:
     except BaseException:
         # A failed mid-write must leave the previous stage file intact:
         # clean up the temp sibling so no stale ``.tmp`` clutter remains.
-        try:
+        with contextlib.suppress(FileNotFoundError):
             tmp_path.unlink()
-        except FileNotFoundError:
-            pass
         raise
 
 

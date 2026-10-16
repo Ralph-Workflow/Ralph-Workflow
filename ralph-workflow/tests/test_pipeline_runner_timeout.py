@@ -966,14 +966,14 @@ def test_typed_mcp_server_error_path_skips_logger_exception(
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
     result = effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
 
     assert result == PipelineEvent.AGENT_FAILURE
     assert exception_calls == []

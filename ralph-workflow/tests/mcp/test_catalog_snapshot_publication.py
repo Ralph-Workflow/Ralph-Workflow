@@ -137,5 +137,9 @@ class TestSnapshotContract:
 
         # Present non-empty: env var is set to the serialized catalog.
         env_full: dict[str, str] = {}
-        apply_tool_catalog_env(env_full, UpstreamToolCatalogSnapshot(present=True, value=_catalog()))
-        assert env_full[UPSTREAM_MCP_TOOL_CATALOG_ENV] == serialize_upstream_tool_catalog(_catalog())
+        apply_tool_catalog_env(
+            env_full, UpstreamToolCatalogSnapshot(present=True, value=_catalog())
+        )
+        assert env_full[UPSTREAM_MCP_TOOL_CATALOG_ENV] == serialize_upstream_tool_catalog(
+            _catalog()
+        )
