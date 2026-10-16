@@ -29,6 +29,8 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.rebase_state import RebaseState
 
+pytestmark = pytest.mark.subprocess_e2e
+
 UNREADABLE_CAUSES: tuple[str, ...] = ("corrupt_json", "unsupported_schema")
 
 

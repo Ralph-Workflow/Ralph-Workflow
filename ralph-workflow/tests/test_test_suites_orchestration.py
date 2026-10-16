@@ -122,6 +122,13 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_discovery_aggregate_budget.py",
     "tests/mcp/test_start_stage_tracker_fresh_spawn.py",
     "tests/mcp/test_preflight_error_carries_stage_and_elapsed.py",
+    # wt-16 (WU-B follow-up): both files shell out to real git in tmp_path
+    # repos and now carry the ``subprocess_e2e`` module marker (enforced by
+    # the process-audit AST exemption), so they MUST be registered here to
+    # stay on the default ``make test`` profile — otherwise discovery
+    # excludes them and their coverage silently rots.
+    "tests/test_display_lifecycle_label_taxonomy.py",
+    "tests/test_unreadable_record_entry_points.py",
 )
 
 

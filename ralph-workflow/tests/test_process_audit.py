@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 RALPH_ROOT = Path(__file__).parent.parent / "ralph"
@@ -212,6 +213,57 @@ TEST_PY_CONTENTS = tuple(
 )
 
 
+def _parse_ast_safe(content: str) -> ast.AST | None:
+    """Parse Python source for AST inspection; return None on syntax errors.
+
+    Fail-closed: a file that cannot be parsed cannot be guaranteed to carry
+    (or NOT carry) a real marker, so the audit treats it as a non-exempt
+    file and runs the substring check normally.
+    """
+    try:
+        return ast.parse(content, type_comments=True)
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _is_pytest_mark_subprocess_e2e(node: ast.AST) -> bool:
+    """True when ``node`` represents ``@pytest.mark.subprocess_e2e``."""
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "subprocess_e2e"
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "mark"
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "pytest"
+    )
+
+
+def _has_subprocess_e2e_marker(tree: ast.AST | None) -> bool:
+    """True when the AST carries a real ``@pytest.mark.subprocess_e2e`` decorator or ``pytestmark`` assignment.
+
+    Comment and docstring literals are NOT matched — only real decorator
+    expressions on ``FunctionDef``/``ClassDef`` nodes and module-level
+    ``pytestmark = pytest.mark.subprocess_e2e`` (or list) assignments.
+    """
+    if tree is None:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            for dec in node.decorator_list:
+                if _is_pytest_mark_subprocess_e2e(dec):
+                    return True
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    if _is_pytest_mark_subprocess_e2e(node.value):
+                        return True
+                    if isinstance(node.value, ast.List):
+                        for elt in node.value.elts:
+                            if _is_pytest_mark_subprocess_e2e(elt):
+                                return True
+    return False
+
+
 def _allowed(rel_path: str) -> bool:
     return any(rel_path == path for path, _ in ALLOWLIST)
 
@@ -237,6 +289,9 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     """Assert no test file uses subprocess or POSIX kill APIs directly.
 
     Allowlisted files are test-infrastructure uses (git setup, pattern literals).
+    Files that carry ``@pytest.mark.subprocess_e2e`` or ``pytestmark =
+    pytest.mark.subprocess_e2e`` are also skipped (AST-based detection;
+    comment/docstring literals do not qualify).
     New test files must not bypass ProcessManager.
     """
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
@@ -246,6 +301,12 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
             continue
         found = [pattern for pattern in all_patterns if pattern in content]
         if not found:
+            continue
+        # Only parse AST when the file actually contains a forbidden pattern.
+        # Fail-closed: if the file cannot be parsed, _parse_ast_safe returns
+        # None and _has_subprocess_e2e_marker returns False, so the substring
+        # audit runs normally.
+        if _has_subprocess_e2e_marker(_parse_ast_safe(content)):
             continue
         # Keep the audit focused on files below ``tests/``. The shared
         # content snapshot also includes generated/temporary test artifacts
@@ -268,4 +329,52 @@ def test_mcp_fixtures_no_longer_allowlisted() -> None:
     regressions = _MCP_FIXTURE_FILES & TESTS_ALLOWLIST
     assert not regressions, "MCP fixture files were re-added to TESTS_ALLOWLIST:\n" + "\n".join(
         sorted(regressions)
+    )
+
+
+def test_subprocess_e2e_marker_positive__real_pytestmark_exempts_subprocess_run(
+    tmp_path: Path,
+) -> None:
+    """A file with ``pytestmark = pytest.mark.subprocess_e2e`` and a real ``subprocess.run`` call is exempt."""
+    source = """
+import pytest
+import subprocess
+
+pytestmark = pytest.mark.subprocess_e2e
+
+def test_real():
+    subprocess.run(["git", "status"], check=False)
+"""
+    fixture_path = tmp_path / "test_positive_fixture.py"
+    fixture_path.write_text(source, encoding="utf-8")
+    content = fixture_path.read_text(encoding="utf-8")
+    tree = _parse_ast_safe(content)
+    assert _has_subprocess_e2e_marker(tree) is True, (
+        "A file with real pytestmark = pytest.mark.subprocess_e2e must be recognized exempt"
+    )
+
+
+def test_subprocess_e2e_marker_negative__comment_only_does_not_exempt_subprocess_run(
+    tmp_path: Path,
+) -> None:
+    """A file with ``subprocess.run`` and a comment mentioning ``subprocess_e2e`` (no real marker) is NOT exempt.
+
+    This is load-bearing: ``test_audit_test_policy.py`` writes the marker string as
+    a fixture literal; the AST predicate must NOT fall back to substring matching.
+    """
+    source = """
+import subprocess
+
+# uses pytest.mark.subprocess_e2e
+
+def test_fake():
+    subprocess.run(["git", "status"], check=False)
+"""
+    fixture_path = tmp_path / "test_negative_fixture.py"
+    fixture_path.write_text(source, encoding="utf-8")
+    content = fixture_path.read_text(encoding="utf-8")
+    tree = _parse_ast_safe(content)
+    assert _has_subprocess_e2e_marker(tree) is False, (
+        "A comment-only mention of subprocess_e2e must NOT exempt the file;"
+        " test_audit_test_policy.py fixture strings must remain non-exempt"
     )

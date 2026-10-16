@@ -2066,35 +2066,51 @@ def _handle_retained_integration(
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
     """Handle retained integration reason on disk."""
-    if retained_integration_reason(ctx.workspace_scope.root) is None:
+    # Pass 1: read both signals once.
+    disk_reason = retained_integration_reason(ctx.workspace_scope.root)
+    in_memory_retained = bool(state.rebase.recovery_record_retained)
+    if not disk_reason and not in_memory_retained:
+        # Both signals clear; the caller's guarded inspect decides whether
+        # stale unresolved evidence may be reconciled.
         return state, None
+    # At least one signal says retained: call the durable owner once.
     continued = _run_startup_integration(ctx, state.rebase)
     if continued is not None:
         state = state.copy_with(rebase=continued)
         _save_recovered_rebase_checkpoint(state, ctx)
-    remaining = retained_integration_reason(ctx.workspace_scope.root)
-    if remaining is not None:
-        if not state.rebase.recovery_record_retained:
-            state = state.copy_with(
-                rebase=state.rebase.set_recovery_record_retained(
-                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-                ).model_copy(update={"last_reason": remaining})
-            )
-            _save_recovered_rebase_checkpoint(state, ctx)
+    # Pass 2: re-read both signals after the owner ran.
+    disk_after = retained_integration_reason(ctx.workspace_scope.root)
+    in_memory_after = bool(state.rebase.recovery_record_retained)
+    if not disk_after and not in_memory_after:
+        # Owner reconciled both signals; the caller's guarded inspect decides
+        # whether stale unresolved evidence may be reconciled.
+        return state, None
+    # Blocking path: at least one signal still retained.
+    remaining = (
+        disk_after
+        or state.rebase.last_reason
+        or "in-memory recovery_record_retained=True; durable owner returned without reconciling the retained signal"
+    )
+    if not state.rebase.recovery_record_retained:
         state = state.copy_with(
-            rebase=state.rebase.model_copy(
-                update={
-                    "operation_display_state": (
-                        "intervention_required"
-                        if state.rebase.is_intervention_required
-                        else "evidence_diagnosis"
-                    )
-                }
-            )
+            rebase=state.rebase.set_recovery_record_retained(
+                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+            ).model_copy(update={"last_reason": remaining})
         )
-        _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
-        return state, (state, prev_phase, 0)
-    return state, None
+        _save_recovered_rebase_checkpoint(state, ctx)
+    state = state.copy_with(
+        rebase=state.rebase.model_copy(
+            update={
+                "operation_display_state": (
+                    "intervention_required"
+                    if state.rebase.is_intervention_required
+                    else "evidence_diagnosis"
+                )
+            }
+        )
+    )
+    _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
+    return state, (state, prev_phase, 0)
 
 
 def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router: each return is one distinct lifecycle decision (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked).
