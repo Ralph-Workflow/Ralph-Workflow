@@ -105,7 +105,9 @@ class _FallbackStandaloneServer:
         gate_path = self._env_getter(MCP_TEST_PRE_SERVE_GATE_ENV, None)
         if gate_path:
             deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
-            while not Path(gate_path).exists():
+            while not Path(
+                gate_path
+            ).exists():  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; cannot route through FileBackend because the test fixture writes outside the workspace
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "

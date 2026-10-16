@@ -175,6 +175,24 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         # import the result without a second module. Splitting them
         # across modules would scatter the explicit-outcome contract.
         "ralph/git/scoped_auto_commit.py",
+        # wt-16: ``IntegrationRecord`` and the four record-status
+        # family (RecordBusyError, RecordUnreadableError,
+        # RecordReadOutcomeDisposition, RecordReadOutcome) are one
+        # typed duck-typed record family sharing the
+        # ``read_record`` / ``write_record`` seams that every
+        # pipeline-state consumer patches in tests. Splitting them
+        # across modules would rebind those seams and weaken the
+        # fail-closed record-store contract.
+        "ralph/pipeline/auto_integrate_record.py",
+        # wt-16: the four ``TestBusyRetryActionMapping``,
+        # ``TestRecoveryReleaseRefusals``,
+        # ``TestDiagnosticCompletionRefusals``, and
+        # ``TestRemoteReconcileReleaseRefusals`` test classes cover
+        # one shared record-store seam and share a parametrized
+        # fixture set; splitting them across files would scatter
+        # the action-mapping table that the integration
+        # recovery-flow test pins.
+        "tests/test_recovery_release_uses_record_store.py",
         "ralph/agents/idle_watchdog/_evidence_tier.py",
         "ralph/agents/idle_watchdog/_stuck_classifier.py",
         "ralph/agents/invoke/_command_builders/__init__.py",
@@ -1509,7 +1527,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # ``set_durable_sink_path`` must mutate it in place via
         # ``global`` (PLW0603) for the same reason as
         # ``_start_stage_tracker`` above.
-        ("ralph/mcp/server/_mcp_health_event.py", 106),
+        ("ralph/mcp/server/_mcp_health_event.py", 109),
         # wt-14: ``_validate_decision_contract`` returns one branch per
         # analysis-decision artifact type; the function is the shared
         # contract used by planning / development / policy / review
@@ -1672,6 +1690,12 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pipeline/run_loop.py", 730),
         ("ralph/pipeline/run_loop.py", 841),
         ("ralph/pipeline/run_loop.py", 1019),
+        # wt-16: ``_block_unresolved_integration`` routes each distinct
+        # lifecycle decision through a dedicated return (busy wait /
+        # busy exhausted / unreadable / intervention / retained /
+        # post-recovery clear / blocked). audit_lint_bypass already
+        # authorises ``run_loop.PLR0911`` for the same fan-out.
+        ("ralph/pipeline/run_loop.py", 2121),
         ("ralph/pipeline/runner.py", 224),
         ("ralph/pro_support/heartbeat.py", 82),
         ("ralph/prompts/materialize.py", 142),

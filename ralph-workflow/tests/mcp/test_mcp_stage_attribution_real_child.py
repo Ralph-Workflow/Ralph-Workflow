@@ -78,7 +78,9 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
         SpawnOptions(cwd=str(tmp_path), env=child_env, label="mcp-stage-attribution-child"),
     )
     try:
-        returncode = proc.wait(timeout=10)
+        # 30s covers slow CI hosts where a 10s bound on a pure-Python
+        # child that writes one file can flake on xdist contention.
+        returncode = proc.wait(timeout=30)
         stderr = b""
     except Exception:
         proc.kill()

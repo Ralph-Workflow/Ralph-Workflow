@@ -17,7 +17,15 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 # ponytail: real Git clone and fetch setup under xdist can exceed 5s; the 60s suite budget remains authoritative.
-pytestmark = [pytest.mark.timeout_seconds(10)]
+# subprocess_e2e: this file shells out to real ``git`` in tmp_path repos
+# and was already excluded from the test-policy audit by the
+# audit_test_policy's required-auto-integrate set; the explicit marker
+# aligns the audit AST walk with the test_suites.py registration so the
+# policy violations no longer flag subprocess + filesystem I/O.
+pytestmark = [
+    pytest.mark.timeout_seconds(10),
+    pytest.mark.subprocess_e2e,
+]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:

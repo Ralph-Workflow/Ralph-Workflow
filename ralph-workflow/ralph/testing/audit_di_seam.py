@@ -106,8 +106,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # MCP_INHERITED_FD_ENV (parent-owned listening FD) and MCP_RESPAWN_ENV
     # (respawn sentinel) to adopt the inherited socket and short-circuit
     # upstream discovery. Same composition-root contract as 199/242 above.
-    "mcp/server/runtime.py:367",
-    "mcp/server/runtime.py:382",
+    "mcp/server/runtime.py:397",
+    "mcp/server/runtime.py:421",
     "mcp/server/runtime.py:406",
     # mcp/server/_start_stage_tracker.py:38 — import-time spawn identity:
     # the module reads MCP_STAGE_ID_ENV once at import so parent and

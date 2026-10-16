@@ -139,6 +139,10 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ),  # wt-15 -- lazy import of _content_checks to publish the citation-path workspace seam
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
+    (
+        "run_loop",
+        "PLR0911",
+    ),  # _block_unresolved_integration routes each distinct lifecycle decision through a dedicated return (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked)
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators
     ("idle_watchdog", "PLR0912"),  # _handle_waiting_branch has 5 reasons + gate path branches
     ("idle_watchdog", "PLR0915"),  # _handle_waiting_branch orchestrates 5 reasons

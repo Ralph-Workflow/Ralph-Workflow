@@ -57,8 +57,6 @@ def busy_refusal_outcome(
     return _map(retry_deadline, clock=clock)
 
 
-
-
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
@@ -183,7 +181,10 @@ def _apply_release_or_refuse(
             diagnostic_ownership=None,
         )
     except RecordBusyError:
-        if busy_refusal_outcome(retry_deadline, clock=clock) is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+        if (
+            busy_refusal_outcome(retry_deadline, clock=clock)
+            is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+        ):
             return _retained(
                 record,
                 "target reconciliation worktree busy; recovery will retry",

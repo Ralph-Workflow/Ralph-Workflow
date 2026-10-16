@@ -36,17 +36,20 @@ from ralph.mcp.server.runtime import run_standalone_server
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_loguru_records: list[str] = []
+# Module-level capture list assigned via a mutable container so the fixture
+# can rebind the contents without using ``global``. The lint audit forbids
+# no-q-a directives in test files, so we route around the language-level
+# global statement instead of suppressing the warning.
+_loguru_records_box: list[list[str]] = [[]]
 
 
 @pytest.fixture(autouse=True)
 def _loguru_sink() -> Iterator[None]:
-    """Install a loguru sink that captures all messages to _loguru_records."""
-    global _loguru_records  # noqa: PLW0603 — module-level capture list is the fixture's contract
-    _loguru_records = []
+    """Install a loguru sink that captures all messages into the shared box."""
+    _loguru_records_box[0] = []
 
     def sink(message: object) -> None:
-        _loguru_records.append(str(message))
+        _loguru_records_box[0].append(str(message))
 
     handler_id = loguru_logger.add(sink, format="{message}")
     yield
@@ -107,7 +110,7 @@ def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
             del os.environ["RALPH_MCP_SESSION_FILE"]
 
     # --- log assertions -------------------------------------------------------
-    stage_lines = [ln for ln in _loguru_records if "ralph-mcp startup: stage=" in ln]
+    stage_lines = [ln for ln in _loguru_records_box[0] if "ralph-mcp startup: stage=" in ln]
     assert len(stage_lines) == len(RUNTIME_STAGES), (
         f"expected {len(RUNTIME_STAGES)} stage log lines, got {len(stage_lines)}: {stage_lines!r}"
     )

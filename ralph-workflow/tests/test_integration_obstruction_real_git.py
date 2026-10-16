@@ -27,7 +27,14 @@ if TYPE_CHECKING:
 
 from ralph.git.merge import merge_in_progress, merge_target_into_current
 
-pytestmark = [pytest.mark.timeout_seconds(5)]
+# subprocess_e2e: this file shells out to real ``git`` in tmp_path repos
+# and is registered in REQUIRED_AUTO_INTEGRATE_E2E_FILES. The marker
+# aligns the audit_test_policy AST walk with that registration so the
+# real-git subprocess + filesystem I/O is not flagged.
+pytestmark = [
+    pytest.mark.timeout_seconds(5),
+    pytest.mark.subprocess_e2e,
+]
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
