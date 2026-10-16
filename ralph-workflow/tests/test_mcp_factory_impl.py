@@ -29,9 +29,6 @@ def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:
 def test_build_creates_handles_with_distinct_endpoints(tmp_path: Path) -> None:
     seen: list[tuple[object, object, object]] = []
 
-    def fake_reserve_port() -> int:
-        return 43000 + len(seen) + 1
-
     def fake_start_server(
         session: object,
         workspace: object,
@@ -39,14 +36,14 @@ def test_build_creates_handles_with_distinct_endpoints(tmp_path: Path) -> None:
         deps: lifecycle.LifecycleDeps | None = None,
     ) -> FakeBridge:
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         endpoint = f"http://127.0.0.1:{port}/mcp"
         seen.append((session, workspace, endpoint))
         return FakeBridge(endpoint=endpoint, pid=port)
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -135,11 +132,6 @@ def test_handle_shutdown_releases_allocated_endpoint(tmp_path: Path) -> None:
     the set is empty so the next build can reuse the ports.
     """
     bridges: list[FakeBridge] = []
-    counter = {"port": 44000}
-
-    def fake_reserve_port() -> int:
-        counter["port"] += 1
-        return counter["port"]
 
     def fake_start_server(
         session: object,
@@ -148,14 +140,14 @@ def test_handle_shutdown_releases_allocated_endpoint(tmp_path: Path) -> None:
         deps: lifecycle.LifecycleDeps | None = None,
     ) -> FakeBridge:
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         bridge = FakeBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=port)
         bridges.append(bridge)
         return bridge
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -191,11 +183,6 @@ def test_handle_shutdown_releases_endpoint_even_when_bridge_raises(tmp_path: Pat
     A future build must still be able to reserve the port.
     """
     bridges: list[FakeBridge] = []
-    counter = {"port": 44100}
-
-    def fake_reserve_port() -> int:
-        counter["port"] += 1
-        return counter["port"]
 
     def fake_start_server(
         session: object,
@@ -205,7 +192,8 @@ def test_handle_shutdown_releases_endpoint_even_when_bridge_raises(tmp_path: Pat
     ) -> FakeBridge:
         del session, workspace
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         bridge = FakeBridge(
             endpoint=f"http://127.0.0.1:{port}/mcp",
             pid=port,
@@ -216,7 +204,6 @@ def test_handle_shutdown_releases_endpoint_even_when_bridge_raises(tmp_path: Pat
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -243,12 +230,8 @@ def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> Non
     The release must happen in the except path; the next
     ``build()`` call must then be able to reserve the same port.
     """
-    counter = {"port": 44200}
     raised = {"count": 0}
-
-    def fake_reserve_port() -> int:
-        counter["port"] += 1
-        return counter["port"]
+    reserved_sockets: list[object] = []
 
     def fake_start_server_raises(
         session: object,
@@ -257,18 +240,19 @@ def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> Non
         deps: lifecycle.LifecycleDeps | None = None,
     ) -> FakeBridge:
         del session, workspace
-        # Reserve the port the way the production lifecycle does so
-        # the test exercises the real reserve/release contract even
-        # when startup itself fails. The bridge is never returned.
+        # Reserve a real listening socket the way the production
+        # lifecycle does so the test exercises the reserve/release
+        # contract even when startup itself fails. The bridge is
+        # never returned.
         assert deps is not None
-        deps.reserve_port()
+        _host, _port, sock = deps.reserve_listening_socket()
+        reserved_sockets.append(sock)
         raised["count"] += 1
         msg = "preflight failed: tool unreachable"
         raise RuntimeError(msg)
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server_raises,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -280,13 +264,16 @@ def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> Non
         "startup failure MUST release the reserved endpoint so the next build can reuse the port"
     )
     assert raised["count"] == 1
+    # The factory must close the reserved listening socket too.
+    assert all(sock.fileno() == -1 for sock in reserved_sockets), (
+        "startup failure MUST close the reserved listening socket"
+    )
 
     # A subsequent build with a working start_server must succeed and
-    # allocate a fresh port (the previous attempt's port is back in
-    # the pool). The handle's endpoint matches the bridge; the
-    # reserved endpoint matches the port the factory allocated.
-    counter["port"] = 44200
-
+    # allocate a fresh port (the previous attempt's socket was closed
+    # and the endpoint released back into the pool). The handle's
+    # endpoint matches the bridge; the reserved endpoint matches the
+    # port the factory allocated.
     def fake_start_server_ok(
         session: object,
         workspace: object,
@@ -295,17 +282,17 @@ def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> Non
     ) -> FakeBridge:
         del session, workspace
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         return FakeBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=port)
 
     ok_factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server_ok,
     )
     handle = ok_factory.build(session)
-    assert handle.endpoint == "http://127.0.0.1:44201/mcp"
-    assert handle.pid == 44201
+    port = int(handle.endpoint.rsplit(":", 1)[1].split("/")[0])
+    assert handle.pid == port
 
 
 def test_build_releases_endpoint_when_post_startup_extraction_fails(
@@ -327,12 +314,6 @@ def test_build_releases_endpoint_when_post_startup_extraction_fails(
             msg = "agent endpoint vanished after startup"
             raise RuntimeError(msg)
 
-    counter = {"port": 44300}
-
-    def fake_reserve_port() -> int:
-        counter["port"] += 1
-        return counter["port"]
-
     def fake_start_server(
         session: object,
         workspace: object,
@@ -341,12 +322,12 @@ def test_build_releases_endpoint_when_post_startup_extraction_fails(
     ) -> _FailingEndpointBridge:
         del session, workspace
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         return _FailingEndpointBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=port)
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -382,12 +363,6 @@ def test_build_releases_endpoint_when_bridge_pid_extraction_fails(
         def shutdown(self) -> None:
             pass
 
-    counter = {"port": 44400}
-
-    def fake_reserve_port() -> int:
-        counter["port"] += 1
-        return counter["port"]
-
     def fake_start_server(
         session: object,
         workspace: object,
@@ -396,12 +371,12 @@ def test_build_releases_endpoint_when_bridge_pid_extraction_fails(
     ) -> _BridgeWithoutProcess:
         del session, workspace
         assert deps is not None
-        port = deps.reserve_port()
+        _host, port, sock = deps.reserve_listening_socket()
+        sock.close()
         return _BridgeWithoutProcess(endpoint=f"http://127.0.0.1:{port}/mcp")
 
     factory = DynamicBindingMcpServerFactory(
         workspace=FsWorkspace(tmp_path),
-        reserve_port=fake_reserve_port,
         start_server=fake_start_server,
     )
     session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
@@ -413,3 +388,118 @@ def test_build_releases_endpoint_when_bridge_pid_extraction_fails(
         "_bridge_pid failure MUST release the reserved endpoint so the "
         "next build can reuse the port"
     )
+
+
+def _fake_process_with_poll(pid: int) -> object:
+    """FakeProcess with the poll() surface StandaloneMcpProcess.shutdown needs."""
+    from tests._mcp_factory_impl_helper_fakeprocess import FakeProcess
+
+    class _P(FakeProcess):
+        def poll(self) -> int:
+            return 0
+
+        def terminate(self, grace_period_s: float = 5.0) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    return _P(pid)
+
+
+def test_factory_uses_listening_socket_not_port_number(tmp_path: Path) -> None:
+    """R1 migration: the factory reserves a real listening socket, not a port number.
+
+    The returned handle's endpoint must come from the reserved listening
+    socket (a live LISTEN, not a bind-then-release port number), and the
+    stashed socket must be handed to start_mcp_server via the deps
+    override so the bridge serves on the SAME port.
+    """
+    reserved: dict[str, object] = {}
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> FakeBridge:
+        del session, workspace
+        assert deps is not None
+        host, port, sock = deps.reserve_listening_socket()
+        reserved["host"] = host
+        reserved["port"] = port
+        reserved["sock"] = sock
+        return FakeBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=43123)
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    handle = factory.build(session)
+
+    port = reserved["port"]
+    assert isinstance(port, int)
+    assert handle.endpoint == f"http://127.0.0.1:{port}/mcp", (
+        "the handle endpoint must come from the reserved listening socket"
+    )
+    assert f"http://127.0.0.1:{port}/mcp" in factory._allocated_endpoints
+    # The socket the factory stashed is live (not the old bind-then-release).
+    assert not reserved["sock"]._closed  # type: ignore[attr-defined]
+    handle.shutdown()
+
+
+def test_factory_releases_listening_socket_on_shutdown(tmp_path: Path) -> None:
+    """R1: bridge shutdown must close the parent-owned listening socket.
+
+    After shutdown, the port returns to the kernel: a fresh bind on the
+    same port must succeed.
+    """
+    import socket as _s
+
+    captured_sock: list[object] = []
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> RestartAwareMcpBridge:
+        del session, workspace
+        assert deps is not None
+        _host, port, sock = deps.reserve_listening_socket()
+        captured_sock.append(sock)
+        inner = StandaloneMcpProcess(
+            endpoint=f"http://127.0.0.1:{port}/mcp",
+            process=_fake_process_with_poll(43999),
+            session_file=tmp_path / "session.json",
+        )
+        return RestartAwareMcpBridge(
+            inner,
+            restart_fn=lambda: inner,
+            restart_policy=McpRestartPolicy(),
+            run_id="test-run",
+        )
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    handle = factory.build(session)
+    port = int(handle.endpoint.rsplit(":", 1)[1].split("/")[0])
+    assert handle.endpoint in factory._allocated_endpoints
+
+    handle.shutdown()
+
+    assert handle.endpoint not in factory._allocated_endpoints
+    sock = captured_sock[0]
+    assert sock._closed  # type: ignore[attr-defined]
+    # The port is released back to the kernel: a fresh bind must succeed.
+    probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", port))
+    finally:
+        probe.close()

@@ -209,7 +209,6 @@ def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
         raise RuntimeError(msg)
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=lambda: 43123,
         create_session_file=lambda root, session: tmp_path / "session.json",
         subprocess_env=lambda session_file: {},
         spawn_process=lambda command, cwd, env, *, phase=None, pass_fds=(): FakeProcess(

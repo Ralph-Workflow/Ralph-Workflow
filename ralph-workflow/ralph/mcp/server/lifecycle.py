@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import socket
 import sys
 import tempfile
 import threading
@@ -68,18 +67,17 @@ from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._start_stage_tracker import read_last_stage as _read_start_stage
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.upstream.config import (
-    UPSTREAM_MCP_TOOL_CATALOG_ENV,
+from ralph.mcp.upstream.tool_catalog_cache import (
+    UpstreamToolCatalogSnapshot,
+    apply_tool_catalog_env,
+    get_tool_catalog_snapshot,
 )
-from ralph.mcp.upstream.config import (
-    serialize_upstream_tool_catalog as _serialize_tool_catalog,
-)
-from ralph.mcp.upstream.tool_catalog_cache import get_tool_catalog as _get_tool_catalog
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from socket import socket as _socket_type
 
     from ralph.mcp.protocol.startup import SessionLike, WorkspaceLike
     from ralph.mcp.server._activity_relay import ActivityRelay
@@ -293,11 +291,6 @@ class RestartAwareMcpBridge:
         # Production uses ``time.sleep`` (default below).
         self._sleep_fn: Callable[[float], object] | None = sleep_fn
         self._restart_count = 0
-        # S4: tracks whether the previous restart attempt raised
-        # McpServerError so the cooldown is applied only between
-        # consecutive McpServerError-class restarts. Probe-failure
-        # and healthy restarts leave this False.
-        self._prev_restart_had_error: bool = False
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
         # misses one bounded probe window. Restarting on the first miss
@@ -325,7 +318,7 @@ class RestartAwareMcpBridge:
         # shutdown. The field is declared on the instance (not the
         # class) so existing RestartAwareMcpBridge(...) call sites
         # stay backward-compatible.
-        self._listening_socket: socket.socket | None = None
+        self._listening_socket: _socket_type | None = None
         # R3-durability: the path to this bridge's unique health-event
         # sink file. Set by start_mcp_server; never cleared on shutdown
         # so evidence is retained after bridge shutdown for incident triage.
@@ -385,7 +378,7 @@ class RestartAwareMcpBridge:
         # FD stays live for every other concurrent call site. The
         # bridge holds the listening socket for its full lifetime;
         # shutdown is the only path that releases it.
-        listening_socket: socket.socket | None = getattr(self, "_listening_socket", None)
+        listening_socket: _socket_type | None = getattr(self, "_listening_socket", None)
         if listening_socket is not None:
             # Best-effort: a foreign close on a shared FD is not
             # actionable from the bridge; the kernel has already
@@ -405,11 +398,10 @@ class RestartAwareMcpBridge:
         function takes no argument: the policy is read off the
         bridge and the injected clock/sleep seam is used. Tests pass
         a ``FakeClock`` / sentinel ``sleep_fn`` so the production
-        2.0-second default does not stall the suite. Healthy
-        restarts (no McpServerError on the previous attempt) keep
-        cooldown_seconds=0.0 by passing ``0.0`` here, but this
-        function is only called from the failure path so the
-        production path always honours the named floor.
+        2.0-second default does not stall the suite. Called before
+        EVERY restart attempt (healthy or failed): fresh child
+        processes spike the same host load regardless of why the
+        previous one died.
         """
         seconds = self._restart_policy.cooldown_seconds
         # Defensive: tests may inject a MagicMock as the policy
@@ -568,14 +560,12 @@ class RestartAwareMcpBridge:
                 log_tail=log_tail,
                 stage="process_exited" if process_exited else "probe_failed",
             )
-            # S4: space consecutive McpServerError-class restarts by
-            # the policy cooldown. Only apply cooldown when the
-            # previous restart attempt raised McpServerError;
-            # healthy/probe-timeout restarts observe 0.0s cooldown
-            # because the previous attempt did not raise.
-            if self._prev_restart_had_error:
-                self._cooldown_after_failure()
-            self._prev_restart_had_error = False
+            # S4: space every restart by the policy cooldown. The
+            # backoff is unconditional — process-exit and probe-failure
+            # restarts are backed off identically to McpServerError
+            # restarts (fresh child processes spike the same host
+            # load regardless of why the previous one died).
+            self._cooldown_after_failure()
             try:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
@@ -586,7 +576,6 @@ class RestartAwareMcpBridge:
                 # path stays — the exception is propagated to the
                 # caller (typically the supervisor thread) with the
                 # actual ``restart_count`` visible.
-                self._prev_restart_had_error = True
                 raise McpServerError(
                     f"MCP restart attempt {attempt_index}/"
                     f"{self._restart_policy.max_restarts} failed: {restart_exc}",
@@ -863,9 +852,7 @@ def start_mcp_server(
     ``_reserve_listening_socket``). Every spawned child inherits the
     FD by number, so a client connecting during a respawn queues in
     the kernel backlog instead of being refused with
-    ``ECONNREFUSED``. The previous bind-then-release pattern in
-    ``_reserve_port`` is kept for the few callers that still inject
-    their own port reservation, but production paths use the new hook.
+    ``ECONNREFUSED``. Production paths always use the listening-socket hook.
 
     R2: the bridge hands the cached tool catalog to every respawn
     via ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` so the respawn path does
@@ -878,49 +865,37 @@ def start_mcp_server(
     visible_tools = _visible_mcp_tool_names_owned(
         session, workspace, upstream_registry=upstream_registry
     )
-    # Snapshot the tool catalog from the parent-owned cache so a
-    # respawn can take the network-free path even when the parent
-    # originally probed the upstreams.
-    cached_tool_catalog: str | None = None
-    try:
-        live_catalog = _get_tool_catalog(root)
-        if live_catalog:
-            cached_tool_catalog = _serialize_tool_catalog(live_catalog)
-    except ImportError:
-        # The upstream catalog cache lives in a sibling module; an
-        # import error here is a structural defect and should never
-        # reach production, but we keep the respawn path alive by
-        # treating the catalog as absent (a respawn without catalog
-        # is caught later by the runtime's typed McpServerError).
-        cached_tool_catalog = None
+    # I1b: each spawn resolves the catalog snapshot fresh from the
+    # parent-owned cache, so a restart never re-uses a stale snapshot.
+    def _resolve_catalog_snapshot() -> UpstreamToolCatalogSnapshot:
+        try:
+            return get_tool_catalog_snapshot(root)
+        except ImportError:
+            # Import error is a structural defect that should never
+            # reach production, but keep the spawn path alive by
+            # treating the catalog as absent.
+            return UpstreamToolCatalogSnapshot(present=False)
 
     # R1: bind the listening socket ONCE in the parent and reuse it
-    # across every respawn. The previous ``reserve_port`` returned a
-    # number and immediately closed the socket, which is the bug
-    # behind the production ECONNREFUSED-on-respawn symptom: the
-    # port was in the ephemeral range with no live LISTEN.
+    # across every respawn. The port comes from a live LISTEN socket
+    # the parent owns for the bridge's full lifetime; a bind-then-
+    # release port number is never used, so a client connecting
+    # during a respawn queues in the backlog instead of receiving
+    # ECONNREFUSED.
     reserve = (
         lifecycle_deps.reserve_listening_socket
         if lifecycle_deps.reserve_listening_socket is not None
         else _reserve_listening_socket
     )
     _host, port, listening_socket = reserve()
-    inner = _spawn_mcp_process(
-        root,
-        session,
-        lifecycle_deps,
-        effective_extras.phase,
-        effective_extras.extra_env,
-        visible_tools,
-        port=port,
-        inherited_fd=listening_socket.fileno(),
-        respawn=False,
-        tool_catalog_env=cached_tool_catalog,
-        activity_relay=effective_extras.activity_relay,
-    )
-
-    def _restart_fn() -> StandaloneMcpProcess:
-        return _spawn_mcp_process(
+    # Listening-socket cleanup invariant: if anything fails between
+    # the reservation and handing the socket to the bridge, the
+    # parent closes it here; otherwise the FD (and the bound port)
+    # leak for the lifetime of the process. Once the bridge owns the
+    # socket (``bridge._listening_socket``), its ``shutdown`` closes
+    # it deterministically.
+    try:
+        inner = _spawn_mcp_process(
             root,
             session,
             lifecycle_deps,
@@ -929,29 +904,48 @@ def start_mcp_server(
             visible_tools,
             port=port,
             inherited_fd=listening_socket.fileno(),
-            respawn=True,
-            tool_catalog_env=cached_tool_catalog,
+            respawn=False,
+            tool_catalog_snapshot=_resolve_catalog_snapshot(),
             activity_relay=effective_extras.activity_relay,
         )
 
-    bridge = RestartAwareMcpBridge(
-        inner,
-        restart_fn=_restart_fn,
-        restart_policy=effective_extras.restart_policy or McpRestartPolicy(),
-        run_id=session.run_id,
-        probe_fn=lifecycle_deps.probe,
-        probe_timeout_fn=lifecycle_deps.probe_timeout,
-        activity_relay=effective_extras.activity_relay,
-        workspace_root=root,
-    )
-    # Stash the listening socket on the bridge so ``shutdown`` can
-    # close it deterministically (R1 invariant: the port stays ours
-    # until bridge shutdown, never released early).
-    bridge._listening_socket = listening_socket
-    # R3-durability: each bridge owns a unique health-event sink file.
-    # The path is persisted on the bridge object so shutdown does not
-    # delete it (evidence is retained across shutdown for incident triage).
-    bridge._durable_sink_path = _configure_bridge_sink(root, uuid.uuid4().hex[:12])
+        def _restart_fn() -> StandaloneMcpProcess:
+            return _spawn_mcp_process(
+                root,
+                session,
+                lifecycle_deps,
+                effective_extras.phase,
+                effective_extras.extra_env,
+                visible_tools,
+                port=port,
+                inherited_fd=listening_socket.fileno(),
+                respawn=True,
+                tool_catalog_snapshot=_resolve_catalog_snapshot(),
+                activity_relay=effective_extras.activity_relay,
+            )
+
+        bridge = RestartAwareMcpBridge(
+            inner,
+            restart_fn=_restart_fn,
+            restart_policy=effective_extras.restart_policy or McpRestartPolicy(),
+            run_id=session.run_id,
+            probe_fn=lifecycle_deps.probe,
+            probe_timeout_fn=lifecycle_deps.probe_timeout,
+            activity_relay=effective_extras.activity_relay,
+            workspace_root=root,
+        )
+        # Stash the listening socket on the bridge so ``shutdown`` can
+        # close it deterministically (R1 invariant: the port stays ours
+        # until bridge shutdown, never released early).
+        bridge._listening_socket = listening_socket
+        # R3-durability: each bridge owns a unique health-event sink file.
+        # The path is persisted on the bridge object so shutdown does not
+        # delete it (evidence is retained across shutdown for incident triage).
+        bridge._durable_sink_path = _configure_bridge_sink(root, uuid.uuid4().hex[:12])
+    except BaseException:
+        with contextlib.suppress(OSError):
+            listening_socket.close()
+        raise
     return bridge
 
 
@@ -975,7 +969,7 @@ def _spawn_mcp_process(
     port: int,
     inherited_fd: int | None = None,
     respawn: bool = False,
-    tool_catalog_env: str | None = None,
+    tool_catalog_snapshot: UpstreamToolCatalogSnapshot | None = None,
     activity_relay: ActivityRelay | None = None,
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation.
@@ -985,8 +979,9 @@ def _spawn_mcp_process(
     var; the child adopts the listening socket without re-binding.
     R2: when ``respawn`` is set, ``RALPH_MCP_RESPAWN=1`` is added so
     the runtime takes the catalog-only path (zero network I/O before
-    serving). ``tool_catalog_env`` materialises the parent's cached
-    catalog into the subprocess env so the runtime can find it.
+    serving). ``tool_catalog_snapshot`` is applied after the extra_env
+    merge so the parent-owned catalog state unconditionally wins over
+    worker-injected env values.
     """
     endpoint = f"http://127.0.0.1:{port}/mcp"
     # Recorded BEFORE the spawn so a startup failure reports only what THIS
@@ -1000,6 +995,11 @@ def _spawn_mcp_process(
             # Merge extra_env so the subprocess inherits worker-specific env vars
             # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
             env.update(_extra_env)
+        # I1b: the parent-owned catalog snapshot takes precedence over
+        # anything merged from extra_env (present -> set even if empty,
+        # absent -> pop).
+        if tool_catalog_snapshot is not None:
+            apply_tool_catalog_env(env, tool_catalog_snapshot)
         if activity_relay is not None:
             env.update(activity_relay.server_environment())
         if inherited_fd is not None:
@@ -1013,13 +1013,6 @@ def _spawn_mcp_process(
         # UUID and ``read_last_stage`` would always return ``None`` from
         # the parent's perspective.
         stage_id = env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
-        if tool_catalog_env:
-            # The catalog has been materialised by the caller as a
-            # single env-var value (the production
-            # ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` shape). Inject
-            # under the documented env-var name so the runtime
-            # loader can take the catalog-only path.
-            env[UPSTREAM_MCP_TOOL_CATALOG_ENV] = tool_catalog_env
         pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
         spawn_start = time.monotonic()
         process = deps.spawn_process(
@@ -1117,14 +1110,6 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
     raise ValueError(msg)
 
 
-def _reserve_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return cast(
-            "int", sock.getsockname()[1]
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-
-
 def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
@@ -1210,7 +1195,6 @@ def _spawn_process(
 
 def _default_lifecycle_deps() -> LifecycleDeps:
     return LifecycleDeps(
-        reserve_port=_reserve_port,
         reserve_listening_socket=_reserve_listening_socket,
         create_session_file=_create_session_file,
         subprocess_env=_subprocess_env,

@@ -52,6 +52,11 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
 )
+from ralph.mcp.protocol._startup_timeouts import (
+    _CONFIG_LOAD_BUDGET_S,
+    mcp_discovery_budget_from_env,
+    record_stage_elapsed,
+)
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV, MCP_OWNER_PID_ENV, MCP_RESPAWN_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
@@ -87,6 +92,7 @@ from ralph.mcp.upstream.config import (
     load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.tool_catalog_cache import publish_tool_catalog_to_parent
 from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
@@ -141,6 +147,10 @@ class McpServerExtras:
 
 
 FallbackStandaloneServer = _FallbackStandaloneServer
+
+# Test seam for stage-deadline measurement: tests monkeypatch this to a fake
+# monotonic clock (see test_mcp_server_startup_stages_observable).
+_clock = time.monotonic
 
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
@@ -199,6 +209,7 @@ def build_standalone_http_server(
     """
     _extras = extras or McpServerExtras()
     env_map = os.environ if env is None else env
+    t0 = _clock()
     effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
@@ -227,6 +238,11 @@ def build_standalone_http_server(
     # preflight failure. ``config_loaded`` is the first boundary — any
     # hang before here is a load-time defect, not a startup-stage defect.
     _log_and_record_stage(workspace_root, "config_loaded")
+    record_stage_elapsed(
+        "config_loaded",
+        _clock() - t0,
+        budget_s=_CONFIG_LOAD_BUDGET_S,
+    )
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
     # The production loader defaults to ``os.environ``; ``env_map`` remains
@@ -260,16 +276,38 @@ def build_standalone_http_server(
     elif upstream_servers and tool_catalog:
         upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
     elif upstream_servers:
-        # RALPH_MCP_STRICT is documented as the switch to warn-and-skip, but this
-        # path ignored it and always hard-failed -- so ONE unreachable custom MCP
-        # server aborted the whole subprocess before it could bind its port,
-        # taking every built-in Ralph tool down with it and leaving the parent to
-        # report nothing but "connection refused". Strict stays the default; the
-        # documented escape hatch now actually works.
-        upstream_reg = UpstreamRegistry.build(
-            upstream_servers,
-            on_unreachable="raise" if strict_mode_from_env(env_map) else "warn_and_skip",
-        )
+        # RALPH_MCP_STRICT ... works.
+        try:
+            upstream_reg = UpstreamRegistry.build(
+                upstream_servers,
+                on_unreachable="raise" if strict_mode_from_env(env_map) else "warn_and_skip",
+            )
+            # First start owns the catalog: publish the freshly discovered
+            # mapping so the parent (and any respawn) sees it on disk.
+            publish_tool_catalog_to_parent(
+                workspace_root,
+                {
+                    server.name: [
+                        pt.tool for pt in upstream_reg.tool_definitions() if pt.server_name == server.name
+                    ]
+                    for server in upstream_servers
+                },
+            )
+        except McpServerError:
+            (workspace_root / ".agent" / "mcp" / "parent_catalog.json").unlink(missing_ok=True)
+            raise
+        except Exception as exc:
+            # A failed first start must not leave a stale/partial published
+            # catalog behind: the parent would serve tools the child could not
+            # bind. Unlink before re-raising so respawn never reads a ghost.
+            # UpstreamValidationError is normalized to the typed McpServerError
+            # so the supervisor's restart budget sees a typed stage failure.
+            (workspace_root / ".agent" / "mcp" / "parent_catalog.json").unlink(missing_ok=True)
+            raise McpServerError(
+                f"first-start upstream discovery failed: {exc}",
+                restart_count=0,
+                last_stage="upstream_catalog_or_discovery_done",
+            ) from exc
     else:
         upstream_reg = None
     # R4-LOGS: upstream_catalog_or_discovery_done is ALWAYS logged and
@@ -289,6 +327,11 @@ def build_standalone_http_server(
             m=n_proxied,
         )
     _log_and_record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    record_stage_elapsed(
+        "upstream_catalog_or_discovery_done",
+        _clock() - t0,
+        budget_s=mcp_discovery_budget_from_env().total_seconds(),
+    )
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,

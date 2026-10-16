@@ -112,18 +112,15 @@ def test_cooldown_after_failed_restart_sleeps_policy_value() -> None:
         run_id="test-run",
         sleep_fn=fake_sleep,
     )
-    # First call: no prior error, no cooldown applied
-    with contextlib.suppress(lifecycle.McpServerError):
-        bridge.check_health_and_restart_if_needed()
-    assert sleep_calls == []
-    # Second call: previous restart had error, cooldown applied
-    with contextlib.suppress(lifecycle.McpServerError):
-        bridge.check_health_and_restart_if_needed()
-    assert sleep_calls == [1.5]
+    # Every call: cooldown applied before each restart (every-restart backoff)
+    for expected in ([1.5], [1.5, 1.5]):
+        with contextlib.suppress(lifecycle.McpServerError):
+            bridge.check_health_and_restart_if_needed()
+        assert sleep_calls == expected
 
 
-def test_cooldown_not_applied_after_healthy_restart() -> None:
-    """S4: healthy restart (no McpServerError) does not trigger cooldown."""
+def test_cooldown_applied_after_healthy_restart() -> None:
+    """S4: every restart is backed off by the policy cooldown, healthy or not."""
     sleep_calls: list[float] = []
 
     def fake_sleep(seconds: float) -> None:
@@ -142,15 +139,15 @@ def test_cooldown_not_applied_after_healthy_restart() -> None:
         run_id="test-run",
         sleep_fn=fake_sleep,
     )
-    # First call: restart succeeds, no cooldown on exit
+    # First call: restart succeeds, cooldown applied (every restart backed off)
     result = bridge.check_health_and_restart_if_needed()
     assert result is True
-    assert sleep_calls == []
+    assert sleep_calls == [2.0]
     # Second call: previous restart succeeded, no cooldown applied
     # (process is healthy, returns False immediately)
     result = bridge.check_health_and_restart_if_needed()
     assert result is False
-    assert sleep_calls == []
+    assert sleep_calls == [2.0]
 
 
 def test_consecutive_mcp_error_restarts_all_have_cooldown() -> None:
@@ -172,12 +169,8 @@ def test_consecutive_mcp_error_restarts_all_have_cooldown() -> None:
         run_id="test-run",
         sleep_fn=fake_sleep,
     )
-    # Call 1: no prior error, no cooldown
-    with contextlib.suppress(lifecycle.McpServerError):
-        bridge.check_health_and_restart_if_needed()
-    assert sleep_calls == []
-    # Calls 2-4: each previous restart had error, cooldown applied
-    for _ in range(3):
+    # Calls 1-4: every restart is backed off (every-restart backoff)
+    for i in range(4):
         with contextlib.suppress(lifecycle.McpServerError):
             bridge.check_health_and_restart_if_needed()
-    assert sleep_calls == [2.0, 2.0, 2.0]
+        assert sleep_calls == [2.0] * (i + 1)

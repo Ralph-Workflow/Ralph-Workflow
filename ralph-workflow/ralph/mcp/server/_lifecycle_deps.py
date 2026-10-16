@@ -21,7 +21,6 @@ type PreflightFn = Callable[[str, list[str], timedelta], None]
 class LifecycleDeps:
     """Injectable dependencies for MCP server lifecycle management."""
 
-    reserve_port: Callable[[], int]
     create_session_file: Callable[[Path, SessionLike], Path]
     subprocess_env: Callable[[Path], dict[str, str]]
     spawn_process: SpawnProcess
@@ -30,11 +29,10 @@ class LifecycleDeps:
     probe: Callable[[str, timedelta], None] | None = None
     probe_timeout: Callable[[], timedelta] | None = None
     # R1 hook: return (host, port, listening socket) the parent owns
-    # for the bridge's full lifetime. ``reserve_port`` stays in the
-    # dataclass for backward compatibility, but every production
-    # caller wires the new hook to :func:`_reserve_listening_socket`
-    # so the kernel backlog absorbs a respawn instead of returning
-    # ``ECONNREFUSED`` to a queued client.
+    # for the bridge's full lifetime. The kernel backlog absorbs a
+    # respawn instead of returning ``ECONNREFUSED`` to a queued
+    # client. Every production caller wires this hook to
+    # :func:`_reserve_listening_socket`.
     reserve_listening_socket: Callable[[], tuple[str, int, socket]] | None = None
 
 

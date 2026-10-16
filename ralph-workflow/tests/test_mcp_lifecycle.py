@@ -73,9 +73,6 @@ class FakeProcess:
 def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-    def fake_reserve_port() -> int:
-        seen["reserved"] = True
-        return 53123
 
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
         seen["reserved_socket"] = True
@@ -116,7 +113,6 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         seen["timeout"] = timeout
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -148,8 +144,6 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-    def fake_reserve_port() -> int:
-        return 43124
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session-extra-env.json"
@@ -175,7 +169,6 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         del endpoint, required_tools, timeout
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -212,8 +205,6 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
 def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-    def fake_reserve_port() -> int:
-        return 43125
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session-upstream.json"
@@ -252,7 +243,6 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
     )
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -502,8 +492,6 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
     preflight_calls: list[str] = []
     spawn_call_count = [0]
 
-    def fake_reserve_port() -> int:
-        return 43200 + spawn_call_count[0]
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         del root, session
@@ -530,7 +518,6 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
         preflight_calls.append(endpoint)
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -745,9 +732,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     # Ephemeral port: parallel shards must not collide on a fixed port.
     stable_port = _free_tcp_port()
 
-    def fake_reserve_port() -> int:
-        # legacy seam, not used by the new lifecycle
-        return stable_port
 
     def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
         import socket as _s
@@ -785,7 +769,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
         endpoints_seen.append(endpoint)
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=fake_reserve_listening_socket_for_stable_test,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -826,8 +809,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight_ready(
     tmp_path: Path,
 ) -> None:
-    def fake_reserve_port() -> int:
-        return 43126
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         del root, session
@@ -854,7 +835,6 @@ def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight
         raise RuntimeError("connection refused")
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=fake_reserve_port,
         reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
@@ -1028,3 +1008,177 @@ def test_session_payload_json_includes_parallel_worker_metadata(tmp_path: Path) 
     assert payload["worker_artifact_dir"] == str(worker_namespace / "artifacts")
     assert payload["worker_namespace"] == str(worker_namespace)
     assert payload["allowed_roots"] == [str(allowed_root), str(worker_namespace)]
+
+
+def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path) -> None:
+    """R1 cleanup invariant: the reserved listening socket must not leak.
+
+    When the FIRST spawn's preflight fails, start_mcp_server raises
+    before a bridge exists to own the socket. The failure path must
+    close the reserved socket so the port returns to the kernel (a
+    fresh bind on the same port succeeds) and no FD is leaked.
+    """
+    import socket as _s
+
+    reserved_socks: list[object] = []
+    fixed_port = _free_tcp_port()
+
+    def fake_reserve_listening_socket() -> tuple[str, int, object]:
+        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        sock.bind(("127.0.0.1", fixed_port))
+        sock.listen(128)
+        reserved_socks.append(sock)
+        return "127.0.0.1", fixed_port, sock
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        path = tmp_path / "session-preflight-fail.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
+
+    def fake_spawn(
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> FakeProcess:
+        del command, cwd, env, phase, pass_fds
+        return FakeProcess(poll_result=None)
+
+    def failing_preflight(
+        endpoint: str, required_tools: list[str], timeout: timedelta
+    ) -> None:
+        del endpoint, required_tools, timeout
+        msg = "endpoint never became ready"
+        raise RuntimeError(msg)
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_listening_socket=fake_reserve_listening_socket,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=failing_preflight,
+        preflight_timeout=lambda: timedelta(seconds=1),
+    )
+
+    session = AgentSession(
+        session_id="preflight-fail",
+        run_id="run-preflight-fail",
+        drain="planning",
+        capabilities=set(),
+    )
+
+    with pytest.raises(lifecycle.McpServerError, match="did not become ready"):
+        lifecycle.start_mcp_server(session, lifecycle.FsWorkspace(tmp_path), deps=deps)
+
+    assert len(reserved_socks) == 1
+    sock = reserved_socks[0]
+    assert sock._closed  # type: ignore[attr-defined]
+    # The port is back in the kernel: a fresh bind on the SAME port succeeds.
+    probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", fixed_port))
+    finally:
+        probe.close()
+
+
+def _lifecycle_deps_capturing_env(
+    tmp_path: Path,
+    captured_env: dict[str, str],
+) -> lifecycle.LifecycleDeps:
+    def fake_reserve_listening_socket() -> tuple[str, int, object]:
+        import socket as _s
+
+        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(128)
+        port = sock.getsockname()[1]
+        return "127.0.0.1", port, sock
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        path = tmp_path / "session.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
+
+    def fake_spawn(
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> FakeProcess:
+        captured_env.update(env)
+        return FakeProcess(pid=9999)
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+
+    return lifecycle.LifecycleDeps(
+        reserve_listening_socket=fake_reserve_listening_socket,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=PREFLIGHT_TIMEOUT),
+    )
+
+
+def _start_and_capture(tmp_path: Path) -> dict[str, str]:
+    from ralph.mcp.protocol.session import AgentSession
+
+    captured_env: dict[str, str] = {}
+    deps = _lifecycle_deps_capturing_env(tmp_path, captured_env)
+    session = AgentSession(
+        session_id="catalog-snapshot",
+        run_id="run-catalog-snapshot",
+        drain="planning",
+        capabilities={"WorkspaceRead"},
+    )
+    bridge = lifecycle.start_mcp_server(
+        session,
+        lifecycle.FsWorkspace(tmp_path),
+        deps=deps,
+        extras=lifecycle.McpServerExtras(
+            extra_env={"UPSTREAM_MCP_TOOL_CATALOG_ENV": "stale-junk"},
+        ),
+    )
+    bridge.shutdown()
+    return captured_env
+
+
+def test_extra_env_stale_catalog_overwritten_by_absent_snapshot(tmp_path: Path) -> None:
+    from ralph.mcp.upstream.tool_catalog_cache import (
+        UPSTREAM_MCP_TOOL_CATALOG_ENV,
+        clear_tool_catalog,
+    )
+
+    clear_tool_catalog(tmp_path)
+    captured_env = _start_and_capture(tmp_path)
+    assert UPSTREAM_MCP_TOOL_CATALOG_ENV not in captured_env
+
+
+def test_extra_env_stale_catalog_replaced_by_present_snapshot(tmp_path: Path) -> None:
+    from ralph.mcp.upstream.tool_catalog_cache import (
+        UPSTREAM_MCP_TOOL_CATALOG_ENV,
+        cache_tool_catalog,
+        clear_tool_catalog,
+    )
+    from ralph.mcp.upstream.upstream_tool import UpstreamTool
+
+    clear_tool_catalog(tmp_path)
+    cache_tool_catalog(
+        tmp_path,
+        {"fake-upstream": [UpstreamTool(name="search", description="Search", input_schema={})]},
+    )
+    captured_env = _start_and_capture(tmp_path)
+    value = captured_env[UPSTREAM_MCP_TOOL_CATALOG_ENV]
+    assert value != "stale-junk"
+    assert "fake-upstream" in value

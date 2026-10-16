@@ -15,6 +15,7 @@ public build_standalone_http_server API.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -25,7 +26,7 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.runtime import McpServerExtras
 from ralph.mcp.upstream.client import HttpUpstreamClient, JsonRpcCaller
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.models import UpstreamTool
+from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
     from ralph.config.mcp_models import McpConfig
@@ -268,3 +269,95 @@ def test_non_respawn_first_start_does_not_trigger_respawn_check() -> None:
             ),
             env=env,
         )
+
+
+# ---------------------------------------------------------------------------
+# I1b step 2: first-start publication + failure unlink
+# ---------------------------------------------------------------------------
+
+
+def test_first_start_publishes_to_parent(tmp_path: Path) -> None:
+    """First-start discovery must publish the discovered catalog to
+    ``.agent/mcp/parent_catalog.json`` so the parent (and respawn) can read it."""
+    counter: list[int] = []
+    servers = [_make_upstream_server("remote")]
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_tool_catalog",
+            return_value={},
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        build_standalone_http_server(
+            workspace_root=workspace,
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env={},
+        )
+
+    catalog_file = workspace / ".agent" / "mcp" / "parent_catalog.json"
+    assert catalog_file.is_file()
+    payload = json.loads(catalog_file.read_text(encoding="utf-8"))
+    assert set(payload) == {"remote"}
+    assert [t["name"] for t in payload["remote"]] == ["fake-tool"]
+
+
+def test_first_start_failure_removes_published_file(tmp_path: Path) -> None:
+    """A failed first-start discovery must unlink any published catalog and
+    propagate the typed error so respawn never reads a ghost file."""
+    servers = [_make_upstream_server("remote")]
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    catalog_file = workspace / ".agent" / "mcp" / "parent_catalog.json"
+    catalog_file.parent.mkdir(parents=True)
+    catalog_file.write_text('{"remote": []}', encoding="utf-8")
+
+    def failing_caller(_method: str, _payload: dict[str, object]) -> dict[str, object]:
+        raise UpstreamCallError("boom")
+
+    def failing_factory(_server: UpstreamMcpServer) -> HttpUpstreamClient:
+        return HttpUpstreamClient(_server, caller=failing_caller)
+
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_tool_catalog",
+            return_value={},
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            failing_factory,
+        ),
+        pytest.raises(McpServerError) as exc_info,
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        build_standalone_http_server(
+            workspace_root=workspace,
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env={},
+        )
+
+    assert not catalog_file.exists()
+    assert isinstance(exc_info.value, McpServerError)

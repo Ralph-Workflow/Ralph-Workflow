@@ -13,9 +13,10 @@ injectable clock to verify timing behaviour deterministically without
 
 from __future__ import annotations
 
-import pytest
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
+
+import pytest
 
 from ralph.mcp.protocol._startup_timeouts import (
     mcp_discovery_budget_from_env,

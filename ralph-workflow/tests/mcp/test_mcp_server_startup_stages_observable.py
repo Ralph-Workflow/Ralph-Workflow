@@ -146,3 +146,46 @@ def test_closed_stage_vocabulary_is_six() -> None:
         "registry_built",
         "ready_to_serve",
     )
+
+
+def test_observed_stage_deadline_enforces_bound(tmp_path: Path) -> None:
+    """When the fake clock reports elapsed time past a stage budget, the
+    build path raises McpServerError with last_stage matching the offending
+    stage and elapsed_s > budget."""
+    from unittest.mock import patch
+
+    from ralph.mcp.protocol._startup_timeouts import mcp_discovery_budget_from_env
+    from ralph.mcp.server import runtime as runtime_module
+    from ralph.mcp.server._mcp_server_error import McpServerError
+    from ralph.mcp.server.runtime import McpServerExtras
+
+    budget = mcp_discovery_budget_from_env().total_seconds()
+    past_budget = budget + 5.0
+    ticks = iter((0.0, past_budget, past_budget * 2, past_budget * 3))
+    session = AgentSession(
+        session_id="test-session",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+    with (
+        patch.object(runtime_module, "_clock", lambda: next(ticks)),
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=(),
+        ),
+        pytest.raises(McpServerError) as exc_info,
+    ):
+        runtime_module.build_standalone_http_server(
+            workspace_root=tmp_path,
+            extras=McpServerExtras(
+                session=session,
+                upstream_registry=None,
+                mcp_config=runtime_module.load_mcp_config(config_path=None),
+            ),
+            env={},
+        )
+
+    err = exc_info.value
+    assert err.last_stage in ("config_loaded", "upstream_catalog_or_discovery_done")
+    assert err.elapsed_s is not None and err.elapsed_s > budget

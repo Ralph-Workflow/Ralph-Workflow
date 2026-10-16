@@ -35,7 +35,6 @@ def test_spawn_failure_removes_created_session_file(tmp_path: Path) -> None:
         raise RuntimeError("spawn failed")
 
     deps = lifecycle.LifecycleDeps(
-        reserve_port=lambda: 1,
         create_session_file=lifecycle._create_session_file,
         subprocess_env=lambda _session_file: {},
         spawn_process=fail_spawn,
