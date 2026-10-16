@@ -446,7 +446,7 @@ def test_factory_uses_listening_socket_not_port_number(tmp_path: Path) -> None:
     )
     assert f"http://127.0.0.1:{port}/mcp" in factory._allocated_endpoints
     # The socket the factory stashed is live (not the old bind-then-release).
-    assert reserved["sock"].fileno() != -1  # a live socket keeps its descriptor
+    assert reserved["sock"].fileno() != -1  # an open socket has a file descriptor
     handle.shutdown()
 
 
@@ -496,7 +496,7 @@ def test_factory_releases_listening_socket_on_shutdown(tmp_path: Path) -> None:
 
     assert handle.endpoint not in factory._allocated_endpoints
     sock = captured_sock[0]
-    assert sock.fileno() == -1  # a closed socket has no descriptor
+    assert sock.fileno() == -1  # a closed socket has no file descriptor
     # The port is released back to the kernel: a fresh bind must succeed.
     probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     try:

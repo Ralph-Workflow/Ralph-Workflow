@@ -50,6 +50,19 @@ def test_integration_action_continue_git_operation() -> None:
     assert next_integration_action(record_merge) == IntegrationAction.CONTINUE_GIT_OPERATION
 
 
+def test_integration_action_continue_over_resolve_when_overlap() -> None:
+    """Continuation pending wins when both resolving_rebase and rebase_continue_pending are set."""
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        resolving_rebase=True,
+        rebase_continue_pending=True,
+    )
+    assert next_integration_action(record) == IntegrationAction.CONTINUE_GIT_OPERATION
+
+
 def test_integration_action_reintegrate_against_target() -> None:
     """Record in integrating phase or with reintegrate_pending yields REINTEGRATE_AGAINST_TARGET."""
     record = IntegrationRecord(

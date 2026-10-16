@@ -71,15 +71,15 @@ def _check_intervention(record: object) -> IntegrationAction | None:
 def _check_active_or_pending(record: object) -> IntegrationAction | None:
     """Check active operations and pending continuations or reintegrations."""
     if (
-        _safe_attr(record, "resolving_rebase") is True
-        or _safe_attr(record, "resolving_merge") is True
-    ):
-        return IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    if (
         _safe_attr(record, "rebase_continue_pending") is True
         or _safe_attr(record, "merge_commit_pending") is True
     ):
         return IntegrationAction.CONTINUE_GIT_OPERATION
+    if (
+        _safe_attr(record, "resolving_rebase") is True
+        or _safe_attr(record, "resolving_merge") is True
+    ):
+        return IntegrationAction.RESOLVE_ACTIVE_OPERATION
     if (
         _safe_attr(record, "reintegrate_pending") is True
         or _safe_attr(record, "target_moved") is True

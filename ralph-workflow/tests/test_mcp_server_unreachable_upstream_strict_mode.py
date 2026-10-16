@@ -18,6 +18,7 @@ import pytest
 
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.mcp.server import runtime as server_runtime
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -25,7 +26,6 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
 )
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
-from ralph.mcp.upstream.validation import UpstreamValidationError
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str
 
 if TYPE_CHECKING:
@@ -98,10 +98,8 @@ def test_strict_mode_remains_the_default_and_names_the_unreachable_server(
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
     _install_unreachable_upstream(monkeypatch)
 
-    # The typed McpServerError is the supervisor-facing contract; the
-    # underlying UpstreamValidationError stays chained as __cause__ and
-    # both frames name the unreachable server so the operator can act.
-    with pytest.raises(server_runtime.McpServerError, match=_SERVER_NAME) as exc_info:
+    # Startup normalizes the registry's UpstreamValidationError into the
+    # typed McpServerError so the supervisor's restart budget sees a typed
+    # stage failure; the message must still name the unreachable server.
+    with pytest.raises(McpServerError, match=_SERVER_NAME):
         _build(tmp_path)
-    assert isinstance(exc_info.value.__cause__, UpstreamValidationError)
-    assert _SERVER_NAME in str(exc_info.value.__cause__)

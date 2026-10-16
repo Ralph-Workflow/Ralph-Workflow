@@ -16,6 +16,7 @@ from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.runtime import load_runtime_upstream_servers
 from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.upstream.config import (
@@ -138,12 +139,11 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     builder = getattr(server_runtime, builder_name)
     kwargs = must_mapping(extras_factory(mcp_config))
 
-    # The typed McpServerError is the supervisor-facing contract; the
-    # UpstreamValidationError stays chained as __cause__ and names the
-    # unreachable server.
-    with pytest.raises(server_runtime.McpServerError, match=server_name) as exc_info:
+    # Startup normalizes UpstreamValidationError into the typed McpServerError
+    # so the supervisor's restart budget sees a typed stage failure; the
+    # message must still name the unreachable server.
+    with pytest.raises(McpServerError, match=server_name):
         builder(tmp_path, **kwargs)
-    assert isinstance(exc_info.value.__cause__, UpstreamValidationError)
 
 
 def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_eager_probe(

@@ -265,39 +265,18 @@ def _upstream_config_json(port: int) -> str:
 
 
 def _endpoint_serves_fake_tool(endpoint: str) -> bool:
-    """POST initialize + tools/list to the endpoint; True when the fake
-    upstream tool appears in the response (stateless one-shot exchange)."""
+    """True when tools/list on the endpoint includes the fake upstream tool.
+
+    Uses the same bounded HTTP reader the respawn alias check uses, so a
+    large tools/list body is not truncated to a single 64KiB recv.
+    """
+    from ralph.mcp.server._http_tools_list import _http_tools_list_names
+
     try:
-        with socket.create_connection(
-            (urllib.parse.urlsplit(endpoint).hostname or "127.0.0.1",
-             urllib.parse.urlsplit(endpoint).port or 0),
-            timeout=5.0,
-        ) as sock:
-            sock.settimeout(5.0)
-            for method, params, msg_id in (
-                ("initialize", {"clientInfo": {"name": "respawn-test"}}, 1),
-                ("notifications/initialized", None, None),
-                ("tools/list", {}, 2),
-            ):
-                if method == "notifications/initialized":
-                    body = json.dumps({"jsonrpc": "2.0", "method": method}).encode()
-                else:
-                    body = json.dumps(
-                        {"jsonrpc": "2.0", "id": msg_id, "method": method, "params": params}
-                    ).encode()
-                req = (
-                    f"POST {urllib.parse.urlsplit(endpoint).path or '/mcp'} HTTP/1.1\r\n"
-                    f"Host: 127.0.0.1\r\nContent-Type: application/json\r\n"
-                    f"Content-Length: {len(body)}\r\nConnection: keep-alive\r\n\r\n"
-                ).encode() + body
-                sock.sendall(req)
-                time.sleep(0.1)
-                resp = sock.recv(65536)
-                if method == "notifications/initialized":
-                    continue
-            return "fake-upstream-tool" in resp.decode("utf-8", errors="replace")
+        names = _http_tools_list_names(endpoint, timeout=5.0)
     except OSError:
         return False
+    return any("fake-upstream-tool" in name for name in names)
 
 
 def _poll_endpoint(endpoint: str, deadline: float) -> bool:
@@ -510,8 +489,7 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
                     break
                 time.sleep(0.1)
             assert catalog_path.exists(), (
-                "first start must publish parent_catalog.json "
-                "(runtime.py first-start call site)"
+                "first start must publish parent_catalog.json (runtime.py first-start call site)"
             )
             assert fake_server.tools_list_count == 1, (
                 f"first start must probe the fake upstream exactly once; "
@@ -539,9 +517,10 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
 
             # The respawned child is alive and serves the fake tool.
             assert bridge.process.poll() is None, "respawned child must be alive"
-            assert _endpoint_serves_fake_tool(endpoint), (
-                "respawned child must serve the fake upstream tool"
-            )
+            from ralph.mcp.server._http_tools_list import _http_tools_list_names
+
+            served = _http_tools_list_names(endpoint, timeout=5.0)
+            assert any("fake-upstream-tool" in name for name in served), served[:30]
 
         finally:
             bridge.shutdown()

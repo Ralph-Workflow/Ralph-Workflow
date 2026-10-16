@@ -1077,7 +1077,7 @@ def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path
 
     assert len(reserved_socks) == 1
     sock = reserved_socks[0]
-    assert sock.fileno() == -1  # a closed socket has no descriptor
+    assert sock.fileno() == -1  # a closed socket has no file descriptor
     # The port is back in the kernel: a fresh bind on the SAME port succeeds.
     probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     try:

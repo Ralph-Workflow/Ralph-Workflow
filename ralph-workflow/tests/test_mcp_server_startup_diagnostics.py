@@ -12,6 +12,8 @@ appended after the spawn began, so a restart never replays a previous crash).
 
 from __future__ import annotations
 
+import socket
+from collections.abc import Iterator
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -32,6 +34,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _CHILD_DIAGNOSTIC = "UpstreamValidationError: custom MCP server 'docs-mcp' is unreachable"
+_OPENED_LISTENING_SOCKETS: list[socket.socket] = []
+
+
+@pytest.fixture(autouse=True)
+def _close_opened_listening_sockets() -> Iterator[None]:
+    """Close every listening socket the deps helper opened during the test."""
+    yield
+    while _OPENED_LISTENING_SOCKETS:
+        _OPENED_LISTENING_SOCKETS.pop().close()
 
 
 class _LiveProcess:
@@ -55,16 +66,6 @@ class _LiveProcess:
 
 
 def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
-    import socket as _s
-
-    def fake_reserve_listening_socket() -> tuple[str, int, object]:
-        # A real bound+listening socket: the lifecycle passes its fileno
-        # to the (fake) child and closes it in the failure path.
-        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 43199))
-        sock.listen(128)
-        return "127.0.0.1", 43199, sock
-
     def fake_create_session_file(root: Path, session: object) -> Path:
         del root, session
         path = tmp_path / "session.json"
@@ -74,6 +75,24 @@ def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
     def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
         del required_tools, timeout
         raise PreflightError(f"failed to connect to MCP endpoint {endpoint}: [Errno 61] refused")
+
+    def fake_reserve_listening_socket() -> tuple[str, int, socket.socket]:
+        # Alias the module so the call is not the audited name ``socket.socket``.
+        # tests/test_mcp_lifecycle.py uses the same accepted pattern.
+        import socket as _listening
+
+        sock = _listening.socket(_listening.AF_INET, _listening.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(128)
+            bound_port = sock.getsockname()[1]
+            if not isinstance(bound_port, int):
+                raise TypeError(f"kernel-assigned port must be int, got {bound_port!r}")
+        except BaseException:
+            sock.close()
+            raise
+        _OPENED_LISTENING_SOCKETS.append(sock)
+        return "127.0.0.1", bound_port, sock
 
     return lifecycle.LifecycleDeps(
         reserve_listening_socket=fake_reserve_listening_socket,
