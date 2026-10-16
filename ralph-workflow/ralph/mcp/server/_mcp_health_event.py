@@ -158,7 +158,11 @@ def record_restart_decision(
         try:
             with _DURABLE_SINK_LOCK:
                 _DURABLE_SINK_PATH.parent.mkdir(parents=True, exist_ok=True)
-                with _DURABLE_SINK_PATH.open("a", encoding="utf-8") as fh:
+                with (
+                    _DURABLE_SINK_PATH.open(  # filesystem-write-ok: append-only durable JSONL stream; each restart decision must append, never rewrite history
+                        "a", encoding="utf-8"
+                    ) as fh
+                ):
                     record: dict[str, object] = {
                         "reason": decision.reason.value,
                         "exit_status": decision.exit_status,

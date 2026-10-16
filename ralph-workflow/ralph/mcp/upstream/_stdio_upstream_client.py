@@ -32,9 +32,7 @@ class StdioUpstreamClient:
         caller: JsonRpcCaller | None = None,
     ) -> None:
         self._server = server
-        self._caller: JsonRpcCaller = (
-            caller if caller is not None else _make_stdio_caller(server)
-        )
+        self._caller: JsonRpcCaller = caller if caller is not None else _make_stdio_caller(server)
 
     def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         caller = (

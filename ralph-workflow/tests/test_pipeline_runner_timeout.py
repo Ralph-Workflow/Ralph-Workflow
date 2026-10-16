@@ -886,3 +886,46 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         f"expected {custom_interval}, got {captured_intervals[0]}"
     )
     assert captured_scopes and captured_scopes[0]
+
+
+def test_mcp_server_error_captures_retry_intent_failure_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """McpServerError health failure sets AgentRetryIntent(fresh, McpServerError)."""
+    del monkeypatch
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    def fake_materialize_master_prompt(
+        workspace_root: Path,
+        name: str,
+        default_product_criteria: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
+
+    def fake_check_mcp_bridge_health(_bridge: object) -> None:
+        raise McpServerError("budget exhausted", restart_count=3)
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=fake_materialize_master_prompt,
+        registry_factory=_registry_factory,
+        check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    assert result == PipelineEvent.AGENT_FAILURE
+    intent = effect_executor_module.pop_last_captured_retry_intent()
+    assert intent.action == "fresh"
+    assert intent.failure_reason == "McpServerError"

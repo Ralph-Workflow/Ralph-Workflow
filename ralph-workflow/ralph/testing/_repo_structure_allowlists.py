@@ -1502,7 +1502,14 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # the bridge to a shared object and break the supervisor's
         # preflight read path. PLW0603 (global-statement) is the ruff
         # diagnostic that names this exception explicitly.
-        ("ralph/mcp/server/_start_stage_tracker.py", 50),
+        ("ralph/mcp/server/_start_stage_tracker.py", 58),
+        # wt-16: ``_mcp_health_event`` keeps a process-lifetime
+        # module-level ``_DURABLE_SINK_PATH`` scalar set once by the
+        # supervisor before the first restart decision is recorded;
+        # ``set_durable_sink_path`` must mutate it in place via
+        # ``global`` (PLW0603) for the same reason as
+        # ``_start_stage_tracker`` above.
+        ("ralph/mcp/server/_mcp_health_event.py", 106),
         # wt-14: ``_validate_decision_contract`` returns one branch per
         # analysis-decision artifact type; the function is the shared
         # contract used by planning / development / policy / review

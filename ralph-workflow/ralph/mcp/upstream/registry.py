@@ -121,8 +121,7 @@ class UpstreamRegistry:
                 continue
             else:
                 logger.info(
-                    "ralph-mcp upstream probe: server={name} elapsed_ms={ms:.1f} "
-                    "n_tools={n}",
+                    "ralph-mcp upstream probe: server={name} elapsed_ms={ms:.1f} n_tools={n}",
                     name=server.name,
                     ms=probe_elapsed_ms,
                     n=len(tools),

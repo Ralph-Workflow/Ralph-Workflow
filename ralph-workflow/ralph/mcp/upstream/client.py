@@ -567,9 +567,7 @@ def _with_call_timeout(
     thread.start()
     thread.join(timeout_s)
     if thread.is_alive():
-        raise UpstreamCallError(
-            f"injected caller timed out after {timeout_s:.1f}s during {method}"
-        )
+        raise UpstreamCallError(f"injected caller timed out after {timeout_s:.1f}s during {method}")
     error = result.get("error")
     if isinstance(error, BaseException):
         if isinstance(error, UpstreamCallError):

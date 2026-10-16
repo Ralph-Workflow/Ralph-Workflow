@@ -107,7 +107,14 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # (respawn sentinel) to adopt the inherited socket and short-circuit
     # upstream discovery. Same composition-root contract as 199/242 above.
     "mcp/server/runtime.py:367",
-    "mcp/server/runtime.py:391",
+    "mcp/server/runtime.py:382",
+    "mcp/server/runtime.py:406",
+    # mcp/server/_start_stage_tracker.py:38 — import-time spawn identity:
+    # the module reads MCP_STAGE_ID_ENV once at import so parent and
+    # child share the per-spawn stage file (R3 fix, commit 3a7d61c4d).
+    # This is a composition-root read; the value is consumed exactly
+    # once and re-reading it via a seam would not change behavior.
+    "mcp/server/_start_stage_tracker.py:38",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

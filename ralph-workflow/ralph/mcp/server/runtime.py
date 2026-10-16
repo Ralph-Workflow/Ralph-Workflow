@@ -418,6 +418,7 @@ def run_standalone_server(
             "ralph-mcp respawn on inherited FD (no network discovery, "
             "registry built from cached tool catalog)"
         )
+
     # R4: record ready_to_serve and emit the banner INSIDE
     # ``server.run()`` so the banner fires when serving actually
     # starts, not before. The stage file is the authoritative
