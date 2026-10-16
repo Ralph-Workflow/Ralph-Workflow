@@ -52,7 +52,7 @@ class _ProbeCounterClient:
         self._server = server
         self._counter = counter
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         self._counter.append(1)
         return [
             UpstreamTool(
@@ -81,7 +81,7 @@ class _TimeAdvancingClient:
         self._probe_duration = probe_duration
         self._time_advancer = time_advancer
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         self._time_advancer(self._probe_duration)
         self._counter.append(1)
         return [
@@ -158,7 +158,9 @@ class TestAggregateBudgetEnforcement:
             # Probe 2: remaining = 18.5 > 0, clock → 19, remaining = 9 > 0 ✓
             # Probe 3: remaining = 9 > 0, clock → 28.5, remaining = -0.5 ≤ 0 ✗
             # Probe 4: remaining ≤ 0, skipped.
-            return _TimeAdvancingClient(server, counter, probe_duration=9.5, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=9.5, time_advancer=clock.advance
+            )
 
         registry = UpstreamRegistry.build(
             servers,
@@ -190,7 +192,9 @@ class TestAggregateBudgetEnforcement:
         counter: list[int] = []
 
         def advancing_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            return _TimeAdvancingClient(server, counter, probe_duration=7.0, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=7.0, time_advancer=clock.advance
+            )
 
         registry = UpstreamRegistry.build(
             servers,
@@ -218,7 +222,9 @@ class TestAggregateBudgetEnforcement:
         counter: list[int] = []
 
         def fast_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            return _TimeAdvancingClient(server, counter, probe_duration=0.5, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=0.5, time_advancer=clock.advance
+            )
 
         registry = UpstreamRegistry.build(
             servers,
@@ -247,7 +253,9 @@ class TestAggregateBudgetEnforcement:
         counter: list[int] = []
 
         def fast_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            return _TimeAdvancingClient(server, counter, probe_duration=0.5, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=0.5, time_advancer=clock.advance
+            )
 
         # No error should be raised
         registry = UpstreamRegistry.build(
@@ -284,7 +292,9 @@ class TestAggregateBudgetEnforcement:
 
         def factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
             # 2 * 14.5s = 29s < 30s preflight; 3 * 14.5s = 43.5s > 28s budget
-            return _TimeAdvancingClient(server, counter, probe_duration=14.5, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=14.5, time_advancer=clock.advance
+            )
 
         UpstreamRegistry.build(
             servers,
@@ -307,7 +317,9 @@ class TestAggregateBudgetEnforcement:
         counter: list[int] = []
 
         def multi_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            return _TimeAdvancingClient(server, counter, probe_duration=2.0, time_advancer=clock.advance)
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=2.0, time_advancer=clock.advance
+            )
 
         registry = UpstreamRegistry.build(
             servers,
@@ -322,3 +334,111 @@ class TestAggregateBudgetEnforcement:
         # 10 * 2s = 20s < 28s budget: all 10 fit
         assert len(counter) == 10
         assert len(registry.tool_definitions()) == 10
+
+
+class _TimeoutRecordingClient:
+    """Fake client that records the timeout_s passed to each list_tools call.
+
+    Advances the shared test clock by 15s per call (simulating a slow probe).
+    """
+
+    def __init__(
+        self,
+        server: UpstreamMcpServer,
+        time_advancer: Callable[[float], None],
+        recorded_timeouts: list[float | None],
+    ) -> None:
+        self._server = server
+        self._time_advancer = time_advancer
+        self._recorded_timeouts = recorded_timeouts
+
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+        self._recorded_timeouts.append(timeout_s)
+        self._time_advancer(15.0)
+        return [
+            UpstreamTool(
+                name=f"tool-{self._server.name}",
+                description="timeout-recording fake",
+                input_schema={"type": "object"},
+            )
+        ]
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        return {}
+
+
+class TestHardBoundTimeoutEnforcement:
+    """Each probe call is capped by the remaining budget so the sum never overshoots."""
+
+    def test_second_probe_receives_remaining_budget(self) -> None:
+        """The second probe's timeout_s equals the remaining budget after the first.
+
+        Budget = 28s, first probe consumes 15s, leaving 13s. The second probe
+        must receive timeout_s == 13.0 (the remaining budget), proving the hard
+        bound is enforced per-call so the aggregate never exceeds the deadline.
+        """
+        clock = _FakeMonotonic()
+        servers = _make_servers("slow-1", "slow-2")
+        recorded_timeouts: list[float | None] = []
+
+        def recording_factory(server: UpstreamMcpServer) -> _TimeoutRecordingClient:
+            return _TimeoutRecordingClient(server, clock.advance, recorded_timeouts)
+
+        registry = UpstreamRegistry.build(
+            servers,
+            client_factory=cast(
+                "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                recording_factory,
+            ),
+            on_unreachable="warn_and_skip",
+            _monotonic=clock,
+        )
+
+        # Both servers are probed
+        assert len(recorded_timeouts) == 2
+
+        # First call: remaining = 28s, env budget >= 28s so no cap needed
+        # Second call: remaining after first = 13s, so timeout_s == 13.0
+        assert recorded_timeouts[0] == 28.0, (
+            f"expected first call timeout_s=28.0, got {recorded_timeouts[0]}"
+        )
+        assert recorded_timeouts[1] == 13.0, (
+            f"expected second call timeout_s=13.0 (28 - 15), got {recorded_timeouts[1]}"
+        )
+
+        # Fake clock advances 15s per call regardless of timeout
+        assert clock() == 30.0
+
+        # Both tools are registered
+        assert len(registry.tool_definitions()) == 2
+
+    def test_third_server_skipped_after_budget_exhausted(self) -> None:
+        """After two 15s probes, remaining budget is -2s; the third server is skipped.
+
+        The recorded timeout_s values (28.0, 13.0) prove the hard bound was applied
+        to each call, ensuring the aggregate never exceeds the 28s budget.
+        """
+        clock = _FakeMonotonic()
+        servers = _make_servers("probe-1", "probe-2", "probe-3")
+        recorded_timeouts: list[float | None] = []
+
+        def recording_factory(server: UpstreamMcpServer) -> _TimeoutRecordingClient:
+            return _TimeoutRecordingClient(server, clock.advance, recorded_timeouts)
+
+        registry = UpstreamRegistry.build(
+            servers,
+            client_factory=cast(
+                "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                recording_factory,
+            ),
+            on_unreachable="warn_and_skip",
+            _monotonic=clock,
+        )
+
+        # Only two probes executed; third was skipped due to exhausted budget
+        assert len(recorded_timeouts) == 2
+        assert recorded_timeouts[0] == 28.0
+        assert recorded_timeouts[1] == 13.0
+
+        # Third server was skipped (no remaining budget)
+        assert len(registry.tool_definitions()) == 2

@@ -203,6 +203,36 @@ def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = N
     return _UPSTREAM_CALL_TIMEOUT_SECONDS
 
 
+# Import-time invariant: a *configured* preflight (one set in the actual
+# process environment at module load) must also clear the safety floor.
+# ``from ralph.mcp.protocol._startup_timeouts import …`` is the operator's
+# only chance to discover the configuration is bad before the supervisor
+# SIGKILLs the child mid-probe; the runtime check inside
+# ``mcp_preflight_timeout_from_env`` is too late because the bridge
+# constructor reads the function lazily. This block is ``if``/``raise``
+# so the check holds under ``python -O`` (regression of the D-02
+# import-time invariant: a sub-``_PROBE_SAFETY_S`` ceiling configured
+# in the environment must abort the import itself, not just the next
+# function call). Absent env var -> default, which already passes the
+# existing module-level check above.
+_configured_preflight: timedelta = (
+    _timeout_ms_from_env(os.environ, MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
+)
+_configured_ceiling: timedelta = _configured_preflight * _PROBE_BUDGET_SHARE
+if not (_configured_ceiling.total_seconds() > _PROBE_SAFETY_S):
+    raise RuntimeError(
+        f"import-time invariant violated: configured "
+        f"RALPH_MCP_PREFLIGHT_TIMEOUT_MS "
+        f"({_configured_preflight.total_seconds() * 1000:.0f}ms = "
+        f"{_configured_preflight.total_seconds():.0f}s) yields a probe ceiling of "
+        f"only {_configured_ceiling.total_seconds():.1f}s, which is at or below "
+        f"_PROBE_SAFETY_S ({_PROBE_SAFETY_S}s). "
+        f"Raise RALPH_MCP_PREFLIGHT_TIMEOUT_MS to at least "
+        f"{int(_PROBE_SAFETY_S / _PROBE_BUDGET_SHARE * 1000)} ms, "
+        f"or unset it to use the default {_DEFAULT_PREFLIGHT.total_seconds():.0f}s."
+    )
+
+
 __all__ = [
     "_PROBE_SAFETY_S",
     "mcp_discovery_budget_from_env",

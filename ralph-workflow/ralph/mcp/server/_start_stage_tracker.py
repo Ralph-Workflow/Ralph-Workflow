@@ -19,6 +19,8 @@ import os
 import uuid
 from typing import TYPE_CHECKING
 
+from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -27,7 +29,13 @@ _STAGE_FILE_NAME_COMPONENT: str = ".agent/.ralph_mcp_start_stage"
 
 #: Module-level spawn identity. ``reset_spawn_id()`` regenerates this so a
 #: new spawn scoped to the same workspace root gets a new file.
-_spawn_id: str = str(uuid.uuid4())
+#: If the parent set ``RALPH_MCP_STAGE_ID`` before the child imports this
+#: module, the child's spawn identity is taken from that env var (and the
+#: module-level UUID fallback is replaced) so the parent and the child
+#: address the SAME per-spawn stage file. Without this, the child records
+#: under its own import-time UUID and the parent's ``read_last_stage``
+#: always returns ``None`` after a preflight failure.
+_spawn_id: str = os.environ.get(MCP_STAGE_ID_ENV) or str(uuid.uuid4())
 
 
 def _get_spawn_id() -> str:

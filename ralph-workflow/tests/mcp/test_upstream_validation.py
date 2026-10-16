@@ -78,7 +78,7 @@ class _StubClient:
     def __init__(self, tools: list[UpstreamTool]) -> None:
         self._tools = tools
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         return list(self._tools)
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> object:  # pragma: no cover

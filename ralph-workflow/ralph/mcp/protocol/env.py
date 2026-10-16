@@ -48,6 +48,14 @@ class McpEnvVar(StrEnum):
     # the first start, so first-start discovery still probes
     # configured upstreams once and caches the catalog in the parent.
     RESPAWN = "RALPH_MCP_RESPAWN"
+    # Per-spawn stage identity: the parent generates one UUID per
+    # spawn and hands it to the child via this env var. The child
+    # uses it as the stage-file name suffix so the parent and the
+    # child address the same file across the spawn boundary — the
+    # module-level UUID at import time would otherwise give each
+    # side a different file and the parent's ``read_last_stage``
+    # would always return ``None`` after a preflight failure.
+    STAGE_ID = "RALPH_MCP_STAGE_ID"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -72,3 +80,4 @@ DEV_WARN_EPOCH_ENV = McpEnvVar.DEV_WARN_EPOCH
 DEV_DEADLINE_EPOCH_ENV = McpEnvVar.DEV_DEADLINE_EPOCH
 MCP_INHERITED_FD_ENV = McpEnvVar.INHERITED_FD
 MCP_RESPAWN_ENV = McpEnvVar.RESPAWN
+MCP_STAGE_ID_ENV = McpEnvVar.STAGE_ID

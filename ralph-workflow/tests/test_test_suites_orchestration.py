@@ -115,6 +115,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py",
     "tests/mcp/test_restart_aware_bridge_failed_restart_fn.py",
     "tests/mcp/test_restart_aware_bridge_policy_cooldown.py",
+    # wt-16 WU-4: additional respawn regression gates
+    "tests/mcp/test_runtime_respawn_precheck.py",
+    "tests/mcp/test_discovery_aggregate_budget.py",
+    "tests/mcp/test_start_stage_tracker_fresh_spawn.py",
+    "tests/mcp/test_preflight_error_carries_stage_and_elapsed.py",
 )
 
 
@@ -164,9 +169,9 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (1, "1"),
         (2, "1"),
         (12, "10"),
-        (16, "16"),
-        (32, "16"),
-        (64, "16"),
+        (16, "8"),
+        (32, "8"),
+        (64, "8"),
     ),
 )
 def test_auto_worker_count_uses_verified_sixteen_shard_cap(
@@ -174,12 +179,14 @@ def test_auto_worker_count_uses_verified_sixteen_shard_cap(
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps shards at the verified sixteen-worker limit.
+    """Auto profile caps shards at the verified eight-worker limit.
 
-    Sixteen shards keep the maintained 40-core host's full selected suite
+    Eight shards keep the maintained 40-core host's full selected suite
     inside the immutable 60 s combined budget while preserving
-    exact-once selection. The 12-core profile reserves two logical cores
-    for orchestration while using the other ten for test shards.
+    exact-once selection. Sixteen shards caused I/O contention during
+    collection, timing out every shard on the 40-core host. The 12-core
+    profile reserves two logical cores for orchestration while using the
+    other ten for test shards.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)

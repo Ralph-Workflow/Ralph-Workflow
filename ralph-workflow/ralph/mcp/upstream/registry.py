@@ -106,7 +106,11 @@ class UpstreamRegistry:
                 "custom MCP server" if server.origin == "custom" else "upstream MCP server"
             )
             try:
-                tools = client.list_tools()
+                # D-04: per-server probe timing so the operator sees
+                # which upstream consumed the discovery budget.
+                probe_start = _clock()
+                tools = client.list_tools(timeout_s=remaining)
+                probe_elapsed_ms = (_clock() - probe_start) * 1000.0
             except UpstreamCallError as exc:
                 if on_unreachable == "raise":
                     env_key_repr = f" env_keys={sorted(server.env.keys())}" if server.env else ""
@@ -115,6 +119,14 @@ class UpstreamRegistry:
                     ) from exc
                 logger.warning("Skipping {} {}: {}", server_kind, server.name, exc)
                 continue
+            else:
+                logger.info(
+                    "ralph-mcp upstream probe: server={name} elapsed_ms={ms:.1f} "
+                    "n_tools={n}",
+                    name=server.name,
+                    ms=probe_elapsed_ms,
+                    n=len(tools),
+                )
 
             clients[server.name] = client
             for tool in tools:

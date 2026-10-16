@@ -77,7 +77,8 @@ def _unreachable_upstream_registry(server_name: str) -> UpstreamRegistry:
     server = UpstreamMcpServer(name=server_name, transport="stdio", command="/not/a/real/command")
 
     class _FailingClient:
-        def list_tools(self) -> list[UpstreamTool]:
+        def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+            del timeout_s
             raise UpstreamCallError("connection refused: /not/a/real/command")
 
         def call_tool(self, name: str, args: object) -> object:

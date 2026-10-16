@@ -231,7 +231,8 @@ def test_direct_standalone_server_protects_secret_before_session_read(
     )
 
     class _Server:
-        def run(self, *, transport: str) -> None:
+        def run(self, *, transport: str, ready_event: object = None, on_ready: object = None) -> None:
+            del ready_event, on_ready
             del transport
             calls.append("run")
 

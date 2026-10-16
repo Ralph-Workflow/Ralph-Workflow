@@ -24,7 +24,7 @@ class _CountingUpstreamClient(HttpUpstreamClient):
         self._server = server
         self._counter = counter
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         self._counter.append(1)
         return [
             UpstreamTool(

@@ -210,6 +210,10 @@ def build_standalone_http_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
+    # R4: record stages at the ACTUAL work boundaries, not after
+    # ``build`` returns. A hang inside ``build`` must leave the last
+    # stage visible to the supervisor.
+    _record_stage(workspace_root, "config_loaded")
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
     # The production loader defaults to ``os.environ``; ``env_map`` remains
@@ -255,6 +259,20 @@ def build_standalone_http_server(
         )
     else:
         upstream_reg = None
+    # R4: per-server timings for upstream_catalog_or_discovery_done.
+    # ``ready_to_serve`` is recorded inside ``server.run()`` via
+    # the ``on_ready`` callback so it lands when the socket is
+    # actually accepting connections, not before.
+    if upstream_reg is not None and upstream_servers:
+        n_proxied = len(list(upstream_reg.tool_definitions()))
+        n_servers = len(upstream_servers)
+        logger.info(
+            "ralph-mcp startup: stage={stage} n_servers={k} n_proxied_tools={m}",
+            stage="upstream_catalog_or_discovery_done",
+            k=n_servers,
+            m=n_proxied,
+        )
+    _record_stage(workspace_root, "upstream_catalog_or_discovery_done")
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,
@@ -282,11 +300,8 @@ def build_standalone_http_server(
             activity_relay_sender.emit if activity_relay_sender is not None else None
         ),
     )
-    # R4: record stages at the ACTUAL work boundaries, not after
-    # ``build`` returns. A hang inside ``build`` must leave the last
-    # stage visible to the supervisor.
-    _record_stage(workspace_root, "config_loaded")
-    _record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    # R4: ``registry_built`` is recorded AFTER the McpServer wrapper
+    # exists, right before we hand control to ``server.run()``.
     _record_stage(workspace_root, "registry_built")
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
@@ -407,8 +422,14 @@ def run_standalone_server(
     # ``server.run()`` so the banner fires when serving actually
     # starts, not before. The stage file is the authoritative
     # marker the supervisor reads on preflight failure.
-    _stage("ready_to_serve")
-    server.run(transport=DEFAULT_TRANSPORT, ready_event=ready_event)
+    def _record_ready_to_serve() -> None:
+        _stage("ready_to_serve")
+
+    server.run(
+        transport=DEFAULT_TRANSPORT,
+        ready_event=ready_event,
+        on_ready=_record_ready_to_serve,
+    )
 
 
 def _agent_transport_choices() -> list[str]:

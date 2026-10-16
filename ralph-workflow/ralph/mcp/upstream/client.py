@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
@@ -63,9 +64,19 @@ class HttpUpstreamClient:
             caller if caller is not None else _make_http_caller(server.url or "")
         )
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+        caller = self._caller
+
+        def caller_with_timeout(method: str, params: JsonObject) -> JsonObject:
+            effective_timeout = (
+                min(upstream_call_timeout_seconds(method), timeout_s)
+                if timeout_s is not None
+                else upstream_call_timeout_seconds(method)
+            )
+            return _with_call_timeout(caller, method, params, effective_timeout)
+
         try:
-            result = self._caller("tools/list", {})
+            result = caller_with_timeout("tools/list", {})
         except UpstreamCallError:
             raise
         except Exception as exc:
@@ -490,39 +501,84 @@ def normalize_upstream_content_blocks(
     result["content"] = normalized
 
 
+def _http_rpc_call(url: str, method: str, params: JsonObject, timeout_s: float) -> JsonObject:
+    """Make a single HTTP JSON-RPC call with an explicit timeout."""
+    payload_obj: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": method,
+        "params": params,
+    }
+    if looks_like_legacy_sse_endpoint(url):
+        responses = legacy_sse_jsonrpc_exchange(
+            url,
+            (initialize_request(), initialized_notification(), payload_obj),
+            timeout_s=timeout_s,
+        )
+        return _json_rpc_result(responses[-1], f"'{url}'")
+    try:
+        response = httpx.post(
+            url,
+            content=json.dumps(payload_obj, separators=(",", ":")).encode(),
+            headers={"Content-Type": "application/json"},
+            timeout=timeout_s,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise UpstreamCallError(f"HTTP request to '{url}' failed: {exc}") from exc
+    raw: object = json.loads(response.content)
+    return _json_rpc_result(raw, f"'{url}'")
+
+
 def _make_http_caller(url: str) -> JsonRpcCaller:
     def _call(method: str, params: JsonObject) -> JsonObject:
-        payload_obj: dict[str, object] = {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": method,
-            "params": params,
-        }
         # Discovery (``tools/list``) runs inside a starting MCP server
         # subprocess, before its port is bound, so it is capped below the
         # server-readiness budget; a real tool call keeps the full call budget.
         timeout_s = upstream_call_timeout_seconds(method)
-        if looks_like_legacy_sse_endpoint(url):
-            responses = legacy_sse_jsonrpc_exchange(
-                url,
-                (initialize_request(), initialized_notification(), payload_obj),
-                timeout_s=timeout_s,
-            )
-            return _json_rpc_result(responses[-1], f"'{url}'")
-        try:
-            response = httpx.post(
-                url,
-                content=json.dumps(payload_obj, separators=(",", ":")).encode(),
-                headers={"Content-Type": "application/json"},
-                timeout=timeout_s,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise UpstreamCallError(f"HTTP request to '{url}' failed: {exc}") from exc
-        raw: object = json.loads(response.content)
-        return _json_rpc_result(raw, f"'{url}'")
+        return _http_rpc_call(url, method, params, timeout_s)
 
     return _call
+
+
+def _with_call_timeout(
+    caller: JsonRpcCaller, method: str, params: JsonObject, timeout_s: float
+) -> JsonObject:
+    """Apply ``timeout_s`` to one injected-caller JSON-RPC call.
+
+    An injected ``caller`` (test fake or alternate transport) has no
+    timeout parameter of its own, so a deadline-capped discovery call
+    cannot otherwise bound the fake. Run it on a daemon thread and
+    abandon it past ``timeout_s``: the aggregate discovery deadline
+    then stays a hard bound regardless of what the injected caller
+    does. The abandoned thread is left to finish or block on its own;
+    it holds no shared lock and writes only to its own result slot.
+    """
+
+    result: dict[str, JsonObject | BaseException] = {}
+
+    def _run() -> None:
+        try:
+            result["value"] = caller(method, params)
+        except BaseException as exc:
+            result["error"] = exc
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if thread.is_alive():
+        raise UpstreamCallError(
+            f"injected caller timed out after {timeout_s:.1f}s during {method}"
+        )
+    error = result.get("error")
+    if isinstance(error, BaseException):
+        if isinstance(error, UpstreamCallError):
+            raise error
+        raise UpstreamCallError(f"{method} failed: {error}") from error
+    value = result.get("value")
+    if not isinstance(value, dict):
+        raise UpstreamCallError(f"{method} returned a non-object result")
+    return value
 
 
 __all__ = [

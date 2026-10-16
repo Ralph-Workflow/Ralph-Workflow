@@ -84,7 +84,7 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # budget before the smoke step could complete. 16 shards trims the
 # slowest shard to ~42 s on the same host without tripping the 1.0 s
 # per-test SIGALRM cap on any test in the maintained suite.
-_MAX_PYTEST_WORKERS = 16
+_MAX_PYTEST_WORKERS = 8
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 # The maintained 12-core host completes the suite faster with eight shards;
 # additional shard startup and filesystem contention consume smoke headroom.

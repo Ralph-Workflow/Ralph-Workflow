@@ -50,7 +50,7 @@ class StubUpstreamClient(HttpUpstreamClient):
         self._tools = tools if tools is not None else [FAKE_TOOL]
         self._call_result = call_result or HTTP_CALL_RESULT
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         return list(self._tools)
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> object:

@@ -32,11 +32,18 @@ class StdioUpstreamClient:
         caller: JsonRpcCaller | None = None,
     ) -> None:
         self._server = server
-        self._caller: JsonRpcCaller = caller if caller is not None else _make_stdio_caller(server)
+        self._caller: JsonRpcCaller = (
+            caller if caller is not None else _make_stdio_caller(server)
+        )
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+        caller = (
+            _make_stdio_caller(self._server, probe_timeout_override_s=timeout_s)
+            if timeout_s is not None
+            else self._caller
+        )
         try:
-            result = self._caller("tools/list", {})
+            result = caller("tools/list", {})
         except UpstreamCallError:
             raise
         except Exception as exc:
@@ -84,6 +91,7 @@ def _make_stdio_caller(
     server: UpstreamMcpServer,
     *,
     pm: ProcessManager | None = None,
+    probe_timeout_override_s: float | None = None,
 ) -> JsonRpcCaller:
     effective_pm = pm if pm is not None else get_process_manager()
 
@@ -134,7 +142,14 @@ def _make_stdio_caller(
         # allowed to burn the whole readiness window gets that subprocess killed
         # mid-call -- so the operator saw "connection refused" instead of the
         # name of the upstream that stalled.
-        probe_timeout_s = upstream_call_timeout_seconds(method)
+        # When a hard bound (remaining budget) is supplied via probe_timeout_override_s,
+        # the effective timeout is the minimum of the env budget and that bound.
+        env_timeout = upstream_call_timeout_seconds(method)
+        probe_timeout_s = (
+            min(env_timeout, probe_timeout_override_s)
+            if probe_timeout_override_s is not None
+            else env_timeout
+        )
         try:
             stdout_bytes, _stderr = handle.communicate(
                 input=payload.encode(), timeout=probe_timeout_s

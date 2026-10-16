@@ -46,7 +46,7 @@ class _UnreachableClient:
     def __init__(self, server: UpstreamMcpServer) -> None:
         self._server = server
 
-    def list_tools(self) -> list[UpstreamTool]:
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         raise UpstreamCallError(f"upstream server '{self._server.name}' timed out")
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> object:

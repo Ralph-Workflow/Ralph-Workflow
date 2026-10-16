@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
@@ -27,7 +28,12 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
-from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV, MCP_OWNER_PID_ENV, MCP_RESPAWN_ENV
+from ralph.mcp.protocol.env import (
+    MCP_INHERITED_FD_ENV,
+    MCP_OWNER_PID_ENV,
+    MCP_RESPAWN_ENV,
+    MCP_STAGE_ID_ENV,
+)
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     mcp_preflight_timeout_from_env,
@@ -41,7 +47,9 @@ from ralph.mcp.server._http_tools_list import (
 )
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._mcp_health_event import RestartReason
+from ralph.mcp.server._mcp_health_event import clear_durable_sink as _clear_durable_sink
 from ralph.mcp.server._mcp_health_event import record_restart_decision as _record_restart_decision
+from ralph.mcp.server._mcp_health_event import set_durable_sink_path as _set_durable_sink_path
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
@@ -152,6 +160,16 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 #: first miss tore down working servers in the middle of agent calls.
 _PROBE_FAILURES_BEFORE_RESTART = 3
 
+#: Filename of the durable JSONL sink for restart decisions, stored under
+#: ``<workspace>/.agent/`` so it is workspace-local and bounded by the
+#: bridge lifecycle.  "ralph_mcp_restart_decisions" is distinctive enough
+#: to identify the file in incident triage without polluting the root.
+_DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
+
+
+#: Number of child log lines captured for a restart incident record.
+_LOG_TAIL_LINES: int = 10
+
 
 class RestartAwareMcpBridge:
     """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
@@ -178,6 +196,7 @@ class RestartAwareMcpBridge:
         probe_timeout_fn: Callable[[], timedelta] | None = None,
         activity_relay: ActivityRelay | None = None,
         sleep_fn: Callable[[float], object] | None = None,
+        workspace_root: Path | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -216,6 +235,13 @@ class RestartAwareMcpBridge:
         # policy's max_restarts. See _tool_registry_resets property.
         self._tool_registry_resets = 0
         self._lock = threading.Lock()
+        # Workspace root used to locate the child MCP server log for the
+        # durable restart-decision evidence.  Stored on the bridge so the
+        # log tail can be captured at the r3-sink call site (which is
+        # deep inside check_health_and_restart_if_needed, not on the
+        # start_mcp_server call path).  None is safe: log_tail will be
+        # None when the workspace root is unavailable.
+        self._workspace_root: Path | None = workspace_root
         # R1: the parent-owned listening socket; set by
         # start_mcp_server after the spawn succeeds, closed in
         # shutdown. The field is declared on the instance (not the
@@ -285,6 +311,11 @@ class RestartAwareMcpBridge:
             with contextlib.suppress(OSError):
                 listening_socket.close()
             self._listening_socket = None
+        # Best-effort removal of the lifecycle-bounded durable sink.
+        # The sink is workspace-local so it is cleared here (not in
+        # the parent start_mcp_server) to match the stated contract:
+        # "a new bridge starts with an empty incident log".
+        _clear_durable_sink()
 
     def _cooldown_after_failure(self) -> None:
         """Sleep for the policy cooldown, driven by an injectable clock.
@@ -327,6 +358,28 @@ class RestartAwareMcpBridge:
         if self._activity_relay is None:
             return lambda: None
         return self._activity_relay.register_sink(sink)
+
+    def _read_mcp_log_tail(self) -> tuple[str, ...] | None:
+        """Read the last 10 lines of the child MCP server log, if accessible.
+
+        Returns ``None`` when the workspace root is not set, the log file
+        does not exist, or the read fails.  ``None`` (not an empty tuple)
+        signals "log was unavailable" so the durable record distinguishes
+        "unavailable" from "log was present but empty".
+        """
+        root = self._workspace_root
+        if root is None:
+            return None
+        log_path = mcp_server_log_path(root)
+        try:
+            with log_path.open("r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return None
+        # Return the last _LOG_TAIL_LINES lines; empty file yields []
+        # which becomes ().
+        tail = lines[-_LOG_TAIL_LINES:] if len(lines) > _LOG_TAIL_LINES else lines
+        return tuple(line.rstrip("\n") for line in tail) or None
 
     def check_health_and_restart_if_needed(self) -> bool:
         """Check if MCP server is alive and responsive; restart if not.
@@ -420,6 +473,12 @@ class RestartAwareMcpBridge:
             # health-event sink so an incident triage has direct
             # evidence of every restart reason, exit status, and
             # probe duration — no loguru parsing required.
+            # Capture the child log tail (last _LOG_TAIL_LINES lines) so an incident
+            # investigator can see the subprocess output at decision time;
+            # ``None`` signals "log was unavailable" and is stored as
+            # ``None`` so the durable record distinguishes unavailable
+            # from "log was present but empty".
+            log_tail = self._read_mcp_log_tail()
             _record_restart_decision(
                 reason=(
                     RestartReason.PROCESS_EXITED
@@ -428,6 +487,7 @@ class RestartAwareMcpBridge:
                 ),
                 exit_status=self._inner.process.poll() if process_exited else None,
                 probe_duration_s=probe_duration_s if probe_failed else None,
+                log_tail=log_tail,
                 stage="process_exited" if process_exited else "probe_failed",
             )
             # S4: space consecutive McpServerError-class restarts by
@@ -800,11 +860,21 @@ def start_mcp_server(
         probe_fn=lifecycle_deps.probe,
         probe_timeout_fn=lifecycle_deps.probe_timeout,
         activity_relay=effective_extras.activity_relay,
+        workspace_root=root,
     )
     # Stash the listening socket on the bridge so ``shutdown`` can
     # close it deterministically (R1 invariant: the port stays ours
     # until bridge shutdown, never released early).
     bridge._listening_socket = listening_socket
+    # Configure the durable JSONL sink for restart decisions.
+    # The path is workspace-local (<workspace>/.agent/<name>) so it is
+    # bounded by the bridge lifecycle.  Cleared first so a fresh bridge
+    # starts with an empty incident log; set to None first so the clear
+    # targets the old path if a prior configure landed elsewhere.
+    _set_durable_sink_path(None)
+    _clear_durable_sink()
+    durable_sink = root.joinpath(".agent", _DURABLE_SINK_FILENAME)
+    _set_durable_sink_path(durable_sink)
     return bridge
 
 
@@ -859,6 +929,13 @@ def _spawn_mcp_process(
             env[MCP_INHERITED_FD_ENV] = str(inherited_fd)
         if respawn:
             env[MCP_RESPAWN_ENV] = "1"
+        # D-03: a fresh per-spawn stage identity is generated by the
+        # parent and handed to the child so the child's stage tracker
+        # writes to a file the parent can read on preflight failure.
+        # Without this, both sides would compute a different import-time
+        # UUID and ``read_last_stage`` would always return ``None`` from
+        # the parent's perspective.
+        env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
         if tool_catalog_env:
             # The catalog has been materialised by the caller as a
             # single env-var value (the production

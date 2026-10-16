@@ -65,6 +65,7 @@ class _FallbackStandaloneServer:
         transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
         *,
         ready_event: Event | None = None,
+        on_ready: Callable[[], None] | None = None,
     ) -> None:
         if transport != DEFAULT_TRANSPORT:
             raise ValueError(f"Unsupported transport: {transport}")
@@ -121,6 +122,12 @@ class _FallbackStandaloneServer:
         # has been constructed but not started".
         if ready_event is not None:
             ready_event.set()
+        if on_ready is not None:
+            # The parent records the ready_to_serve stage file at the
+            # actual serving boundary, not when ``build_standalone_http_server``
+            # returns. Without this hook the stage would land BEFORE
+            # the socket is actually accepting connections.
+            on_ready()
         print(f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}")
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)

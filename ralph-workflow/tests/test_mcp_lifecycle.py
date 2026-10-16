@@ -728,23 +728,35 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
     assert probe_calls  # probe was called
 
 
+def _free_tcp_port() -> int:
+    """Grab an ephemeral free TCP port (socket closed before use)."""
+    import socket as _s
+
+    with _s.socket(_s.AF_INET, _s.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
 def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
     """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
     reserved_listening_calls: list[str] = []
     spawn_call_count = [0]
 
+    # Ephemeral port: parallel shards must not collide on a fixed port.
+    stable_port = _free_tcp_port()
+
     def fake_reserve_port() -> int:
         # legacy seam, not used by the new lifecycle
-        return 43300
+        return stable_port
 
     def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
         import socket as _s
 
         sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 43300))
+        sock.bind(("127.0.0.1", stable_port))
         sock.listen(128)
         reserved_listening_calls.append("called")
-        return "127.0.0.1", 43300, sock
+        return "127.0.0.1", stable_port, sock
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / f"session-stable-{spawn_call_count[0]}.json"
@@ -806,7 +818,7 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     assert reserved_listening_calls == ["called"], "reserve_listening_socket called more than once"
     # Endpoint unchanged after restart
     assert bridge.agent_endpoint_uri() == initial_endpoint
-    assert initial_endpoint == "http://127.0.0.1:43300/mcp"
+    assert initial_endpoint == f"http://127.0.0.1:{stable_port}/mcp"
     # Both preflight calls use the same endpoint
     assert endpoints_seen == [initial_endpoint, initial_endpoint]
 
