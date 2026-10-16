@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
+from ralph.mcp.artifacts._path_file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
 from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
@@ -106,14 +107,15 @@ class _FallbackStandaloneServer:
         if gate_path:
             gate_path_obj = Path(gate_path)
             deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
-            # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; cannot route through FileBackend because the test fixture writes outside the workspace
-            while not gate_path_obj.exists():
+            while not DEFAULT_FILE_BACKEND.exists(
+                gate_path_obj
+            ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "
                         f"waiting for {gate_path}"
                     )
-                # filesystem-poll-ok: subprocess-E2E test seam waits between polls for the fixture to create the gate file; the loop is bounded by _PRE_SERVE_GATE_TIMEOUT_S and an injected clock seam is not viable because the gate is a fixture-only construct
+                # filesystem-poll-ok: test-only pre-serve gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
                 time.sleep(0.05)
         # Startup banner announces the live configuration so an operator can
         # confirm which transport, which session class, and which effective

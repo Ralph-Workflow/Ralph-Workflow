@@ -26,7 +26,7 @@ The ABSENT case is the proceeding control.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -191,7 +191,7 @@ def _policy_bundle() -> PolicyBundle:
 def _loop_context(
     workspace_root: Path,
     latest_state: list[PipelineState],
-    sleep: object,
+    sleep: Callable[[float], None],
 ) -> run_loop._LoopContext:
     return run_loop._LoopContext(
         policy_bundle=_policy_bundle(),

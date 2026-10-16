@@ -94,6 +94,18 @@ if TYPE_CHECKING:
 # fired. The error message MUST contain the substring
 # 'tool-registry-reset exhausted' so the orchestrator can branch on it.
 _TOOL_REGISTRY_MAX_RESETS: int = 3
+
+
+def _restart_error_fields(exc: BaseException) -> tuple[str | None, float | None]:
+    """Checked boundary: pull optional restart diagnostics off a foreign exception."""
+    last_stage: object = getattr(exc, "last_stage", None)
+    elapsed_s: object = getattr(exc, "elapsed_s", None)
+    return (
+        last_stage if isinstance(last_stage, str) else None,
+        elapsed_s if isinstance(elapsed_s, float) and not isinstance(elapsed_s, bool) else None,
+    )
+
+
 if not _TOOL_REGISTRY_MAX_RESETS > 0:
     raise RuntimeError(
         f"_TOOL_REGISTRY_MAX_RESETS must be positive (got {_TOOL_REGISTRY_MAX_RESETS})"
@@ -579,8 +591,8 @@ class RestartAwareMcpBridge:
                     f"MCP restart attempt {attempt_index}/"
                     f"{self._restart_policy.max_restarts} failed: {restart_exc}",
                     restart_count=self._restart_count,
-                    last_stage=_optional_attr_str(restart_exc),
-                    elapsed_s=_optional_attr_float(restart_exc),
+                    last_stage=_restart_error_fields(restart_exc)[0],
+                    elapsed_s=_restart_error_fields(restart_exc)[1],
                 ) from restart_exc
             self._consecutive_probe_failures = 0
             logger.info(
@@ -651,8 +663,8 @@ class RestartAwareMcpBridge:
                     f"MCP tool-registry-reset attempt {attempt_index}/"
                     f"{_TOOL_REGISTRY_MAX_RESETS} failed: {restart_exc}",
                     restart_count=self._restart_count,
-                    last_stage=_optional_attr_str(restart_exc),
-                    elapsed_s=_optional_attr_float(restart_exc),
+                    last_stage=_restart_error_fields(restart_exc)[0],
+                    elapsed_s=_restart_error_fields(restart_exc)[1],
                 ) from restart_exc
             # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
             # alias is present in the post-respawn tools/list
