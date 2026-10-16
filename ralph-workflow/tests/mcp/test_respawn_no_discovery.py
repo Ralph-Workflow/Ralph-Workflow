@@ -137,8 +137,11 @@ class _FakeMcpUpstreamServer:
             for line in header_lines:
                 if line.lower().startswith("content-length:"):
                     content_length = int(line.split(":", 1)[1].strip())
-            # Read body
-            body = b""
+            # Body bytes may already have arrived in the same TCP segment as
+            # the headers; carry the remainder over so the body read below
+            # does not block waiting for data it already consumed.
+            header_end = header_bytes.index(b"\r\n\r\n") + 4
+            body = header_bytes[header_end:]
             while len(body) < content_length:
                 chunk = client.recv(content_length - len(body))
                 if not chunk:
@@ -245,7 +248,7 @@ def _make_session() -> AgentSession:
         session_id="test-respawn-no-discovery",
         run_id="run-respawn-no-discovery",
         drain="development",
-        capabilities={"WorkspaceRead"},
+        capabilities={"WorkspaceRead", "UpstreamToolUse"},
     )
 
 
@@ -462,12 +465,19 @@ def test_respawn_increments_restart_count(tmp_path: Path) -> None:
 
 
 @pytest.mark.timeout_seconds(30)
-def test_cold_first_start_then_warm_respawn_zero_discovery(tmp_path: Path) -> None:
+def test_cold_first_start_then_warm_respawn_zero_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """NO pre-populated cache: the real first child probes the fake upstream
     once (tools_list_count == 1) and publishes parent_catalog.json via the
     runtime first-start call site; the respawn then uses that published
     snapshot and makes ZERO new tools/list calls (I1b).
     """
+    # Keep the child's upstream probe short so a test-environment hiccup
+    # fails fast instead of burning the full 30 s preflight (the fake
+    # server answers in milliseconds when healthy).
+    monkeypatch.setenv("RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS", "3000")
+    monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "20000")
     fake_server = _FakeMcpUpstreamServer()
     fake_server.start()
     try:
@@ -549,27 +559,39 @@ def test_absent_or_corrupt_snapshot_fails_closed(tmp_path: Path) -> None:
     fake_server = _FakeMcpUpstreamServer()
     fake_server.start()
     try:
-        cache_tool_catalog(tmp_path, {"fake-upstream": [_FAKE_TOOL]})
-        # Corrupt the authoritative disk file AFTER the cache write: the
-        # reader treats malformed JSON as absent (fail-closed contract).
-        catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
-        assert catalog_path.exists()
-        catalog_path.write_text("{not valid json", encoding="utf-8")
-
         session = _make_session()
         workspace = FsWorkspace(tmp_path)
-        deps = _make_deps(tmp_path, lifecycle._default_lifecycle_deps().spawn_process)
+        # REAL preflight: the corrupt-snapshot respawn must kill the child
+        # before it serves, and only the real preflight notices a child that
+        # dies before listening.
+        deps = lifecycle._default_lifecycle_deps()
         upstream_config = _upstream_config_json(fake_server.port)
         extras = lifecycle.McpServerExtras(extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config})
 
+        catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
+        # First start with a NO catalog on disk: the child discovers the fake
+        # upstream itself and publishes parent_catalog.json (the normal path).
         bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
         try:
+            deadline = time.monotonic() + 20.0
+            while time.monotonic() < deadline and not catalog_path.exists():
+                time.sleep(0.1)
+            assert catalog_path.exists(), "first start must publish parent_catalog.json"
+
+            # Corrupt the authoritative disk file AFTER the first start: the
+            # reader treats malformed JSON as absent (fail-closed contract),
+            # so the next spawn must NOT get a usable catalog.
+            catalog_path.write_text("{not valid json", encoding="utf-8")
+
             bridge._inner.process.kill()
             with pytest.raises(lifecycle.McpServerError) as exc_info:
                 bridge.check_health_and_restart_if_needed()
-            # Typed, attributed failure: stage is the respawn precheck, not
-            # a network error and not a silent fallback to probing.
-            assert exc_info.value.last_stage == "respawn_precheck"
+            # Typed, attributed failure: the child refused to probe upstreams
+            # during respawn (the R2 invariant message must be preserved in
+            # the wrapper). last_stage reflects the child's last recorded
+            # stage before the typed raise, so assert on the contract, not
+            # the stage attribution.
+            assert "refusing to probe upstreams during respawn" in str(exc_info.value)
             assert exc_info.value.restart_count == 1
             assert bridge.restart_count == 1
         finally:

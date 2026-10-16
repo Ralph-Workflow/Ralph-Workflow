@@ -98,5 +98,10 @@ def test_strict_mode_remains_the_default_and_names_the_unreachable_server(
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
     _install_unreachable_upstream(monkeypatch)
 
-    with pytest.raises(UpstreamValidationError, match=_SERVER_NAME):
+    # The typed McpServerError is the supervisor-facing contract; the
+    # underlying UpstreamValidationError stays chained as __cause__ and
+    # both frames name the unreachable server so the operator can act.
+    with pytest.raises(server_runtime.McpServerError, match=_SERVER_NAME) as exc_info:
         _build(tmp_path)
+    assert isinstance(exc_info.value.__cause__, UpstreamValidationError)
+    assert _SERVER_NAME in str(exc_info.value.__cause__)

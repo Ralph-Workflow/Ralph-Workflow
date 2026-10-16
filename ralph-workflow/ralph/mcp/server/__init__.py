@@ -11,9 +11,9 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ._activity_sink import reset_subagent_sink, set_subagent_sink
-from .lifecycle import McpServerExtras, SessionBridgeLike, shutdown_mcp_server, start_mcp_server
 
 if TYPE_CHECKING:
+    from .lifecycle import McpServerExtras, SessionBridgeLike, shutdown_mcp_server, start_mcp_server
     from .runtime import run_standalone_server
 
 __all__ = [
@@ -28,11 +28,22 @@ __all__ = [
 ]
 
 
+_LAZY_MODULES = {
+    "factory_impl": "ralph.mcp.server.factory_impl",
+    "run_standalone_server": "ralph.mcp.server.runtime",
+    "start_mcp_server": "ralph.mcp.server.lifecycle",
+    "shutdown_mcp_server": "ralph.mcp.server.lifecycle",
+    "McpServerExtras": "ralph.mcp.server.lifecycle",
+    "SessionBridgeLike": "ralph.mcp.server.lifecycle",
+}
+
+
 def __getattr__(name: str) -> object:
-    if name == "factory_impl":
-        return cast("object", import_module("ralph.mcp.server.factory_impl"))
-    if name == "run_standalone_server":
-        return cast("object", getattr(import_module("ralph.mcp.server.runtime"), name))
+    target = _LAZY_MODULES.get(name)
+    if target is not None:
+        # Lazy: an eager lifecycle import here creates a cycle
+        # (upstream.config -> server._mcp_server_error -> package init).
+        return cast("object", getattr(import_module(target), name))
     try:
         return import_module(f"ralph.mcp.server.{name}")
     except ImportError:

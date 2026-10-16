@@ -59,13 +59,13 @@ def test_cache_tool_catalog_evicts_oldest_workspace_when_cap_exceeded(
     for index, path in enumerate(newest_paths):
         _seed_workspace(path, f"new-{index}")
 
-    # The 5 oldest workspaces MUST have been evicted from the cache.
-    # Disk remains authoritative, so eviction is observed on the cache
-    # (the fast path), not via get_tool_catalog, which falls back to disk.
-    for index, path in enumerate(oldest_paths):
-        assert str(path.resolve()) not in tool_catalog_cache._CACHE, (
-            f"oldest workspace old-{index} must be evicted when cap exceeded"
-        )
+    # The 5 oldest workspaces MUST have been evicted from the in-process
+    # cache. (The disk file remains authoritative — the snapshot reader
+    # may still re-read them from disk by design.)
+    evicted_keys = {tool_catalog_cache._cache_key(p) for p in oldest_paths}
+    assert not (evicted_keys & set(tool_catalog_cache._CACHE)), (
+        "oldest workspaces must be evicted from the cache when cap exceeded"
+    )
 
     # The most recent cap workspaces MUST still be cached.
     for index, path in enumerate(newest_paths):
@@ -105,9 +105,9 @@ def test_cache_tool_catalog_refreshes_existing_key_position(tmp_path: Path) -> N
 
     # The first key (refreshed) must still be cached.
     assert "keep-0-refreshed" in tool_catalog_cache.get_tool_catalog(paths[0])
-    # The previously-second key (which is now the oldest) MUST be evicted
-    # from the cache (observed on the cache; disk stays authoritative).
-    assert str(paths[1].resolve()) not in tool_catalog_cache._CACHE
+    # The previously-second key (now the oldest) MUST be evicted from the
+    # in-process cache (its disk file remains authoritative by design).
+    assert tool_catalog_cache._cache_key(paths[1]) not in tool_catalog_cache._CACHE
     # The newest key must be present.
     assert "extra" in tool_catalog_cache.get_tool_catalog(extra)
 

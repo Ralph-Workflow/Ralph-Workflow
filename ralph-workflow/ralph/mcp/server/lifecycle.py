@@ -245,6 +245,7 @@ def _optional_attr_float(exc: BaseException) -> float | None:
 
 #: Number of child log lines captured for a restart incident record.
 _LOG_TAIL_LINES: int = 10
+_LOG_TAIL_MAX_BYTES: int = 16 * 1024
 
 
 class RestartAwareMcpBridge:
@@ -438,20 +439,36 @@ class RestartAwareMcpBridge:
         does not exist, or the read fails.  ``None`` (not an empty tuple)
         signals "log was unavailable" so the durable record distinguishes
         "unavailable" from "log was present but empty".
+
+        Reads only the bounded tail of the file, so a subprocess that
+        logged megabytes before dying cannot flood this path.
         """
         root = self._workspace_root
         if root is None:
             return None
         log_path = mcp_server_log_path(root)
         try:
-            with log_path.open("r", encoding="utf-8", errors="replace") as fh:
-                lines = fh.readlines()
+            size = mcp_server_log_size(root)
+            if size == 0:
+                # Empty file is readable-but-empty: []. Only a MISSING file
+                # (stat fails) yields the unavailable sentinel None.
+                if log_path.exists():
+                    return ()
+                return None
+            with log_path.open("rb") as fh:
+                # Bounded tail: seek near the end and read at most the
+                # last chunk; a partial first line is dropped below.
+                fh.seek(max(0, size - _LOG_TAIL_MAX_BYTES))
+                chunk = fh.read().decode("utf-8", errors="replace")
         except OSError:
             return None
-        # Return the last _LOG_TAIL_LINES lines; empty file yields []
-        # which becomes ().
-        tail = lines[-_LOG_TAIL_LINES:] if len(lines) > _LOG_TAIL_LINES else lines
-        return tuple(line.rstrip("\n") for line in tail) or None
+        lines = chunk.split("\n")
+        if size > _LOG_TAIL_MAX_BYTES and len(lines) > 1:
+            # Drop the possibly-truncated leading line.
+            lines = lines[1:]
+        if lines and lines[-1] == "":
+            lines.pop()  # trailing newline, not a line of content
+        return tuple(lines[-_LOG_TAIL_LINES:])
 
     def check_health_and_restart_if_needed(self) -> bool:
         """Check if MCP server is alive and responsive; restart if not.
@@ -552,6 +569,7 @@ class RestartAwareMcpBridge:
             # from "log was present but empty".
             log_tail = self._read_mcp_log_tail()
             _record_restart_decision(
+                sink_path=self._durable_sink_path,
                 reason=(
                     RestartReason.PROCESS_EXITED if not probe_failed else RestartReason.PROBE_FAILED
                 ),

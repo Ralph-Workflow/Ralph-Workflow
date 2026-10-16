@@ -55,6 +55,16 @@ class _LiveProcess:
 
 
 def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
+    import socket as _s
+
+    def fake_reserve_listening_socket() -> tuple[str, int, object]:
+        # A real bound+listening socket: the lifecycle passes its fileno
+        # to the (fake) child and closes it in the failure path.
+        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 43199))
+        sock.listen(128)
+        return "127.0.0.1", 43199, sock
+
     def fake_create_session_file(root: Path, session: object) -> Path:
         del root, session
         path = tmp_path / "session.json"
@@ -66,7 +76,7 @@ def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
         raise PreflightError(f"failed to connect to MCP endpoint {endpoint}: [Errno 61] refused")
 
     return lifecycle.LifecycleDeps(
-        reserve_port=lambda: 43199,
+        reserve_listening_socket=fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=lambda session_file: {str(MCP_SESSION_FILE_ENV): str(session_file)},
         spawn_process=spawn,

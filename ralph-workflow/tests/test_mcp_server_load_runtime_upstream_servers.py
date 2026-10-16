@@ -138,8 +138,12 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     builder = getattr(server_runtime, builder_name)
     kwargs = must_mapping(extras_factory(mcp_config))
 
-    with pytest.raises(UpstreamValidationError, match=server_name):
+    # The typed McpServerError is the supervisor-facing contract; the
+    # UpstreamValidationError stays chained as __cause__ and names the
+    # unreachable server.
+    with pytest.raises(server_runtime.McpServerError, match=server_name) as exc_info:
         builder(tmp_path, **kwargs)
+    assert isinstance(exc_info.value.__cause__, UpstreamValidationError)
 
 
 def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_eager_probe(

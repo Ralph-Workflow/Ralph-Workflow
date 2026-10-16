@@ -159,7 +159,7 @@ def test_observed_stage_deadline_enforces_bound(tmp_path: Path) -> None:
     from ralph.mcp.server._mcp_server_error import McpServerError
     from ralph.mcp.server.runtime import McpServerExtras
 
-    budget = mcp_discovery_budget_from_env().total_seconds()
+    budget = mcp_discovery_budget_from_env({}).total_seconds()
     past_budget = budget + 5.0
     ticks = iter((0.0, past_budget, past_budget * 2, past_budget * 3))
     session = AgentSession(

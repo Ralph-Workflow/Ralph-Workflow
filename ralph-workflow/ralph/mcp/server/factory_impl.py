@@ -139,7 +139,9 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
         # re-stash so bridge shutdown still closes the socket.
         existing_socket: object | None = getattr(bridge, "_listening_socket", None)
         if existing_socket is None:
-            bridge._listening_socket = reserved_sock  # type: ignore[attr-defined]
+            # Custom doubles are untyped bridges; setdefault-by-name keeps
+            # their shutdown hook working without a suppression.
+            object.__setattr__(bridge, "_listening_socket", reserved_sock)
         # wt-024 M8 (AC-06): release the endpoint from
         # ``_allocated_endpoints`` AFTER the server process is down
         # so the same factory can reuse the port on a later build.

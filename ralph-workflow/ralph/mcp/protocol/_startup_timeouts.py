@@ -47,6 +47,7 @@ from ralph.mcp.protocol.env import (
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
     MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV,
 )
+from ralph.mcp.server._mcp_server_error import McpServerError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -219,14 +220,6 @@ def record_stage_elapsed(stage: str, elapsed_s: float, *, budget_s: float) -> No
     """
 
     if elapsed_s > budget_s:
-        # Deferred import: importing McpServerError at module load pulls in
-        # ralph.mcp.server.__init__ -> lifecycle -> protocol.startup, which
-        # imports this module back — an import cycle. Verified by the
-        # failing test run that motivated this defer.
-        from ralph.mcp.server._mcp_server_error import (  # noqa: PLC0415 — lazy import breaks protocol<->server import cycle
-            McpServerError,
-        )
-
         raise McpServerError(
             f"startup stage {stage!r} took {elapsed_s:.3f}s, over its budget of {budget_s:.3f}s",
             last_stage=stage,
