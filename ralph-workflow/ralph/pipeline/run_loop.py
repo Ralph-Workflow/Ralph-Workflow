@@ -2093,15 +2093,14 @@ def _handle_retained_integration(
     if not disk_after:
         return state, None
     # Blocking path: the durable record is still retained after the owner
-    # ran. Mirror the durable signal onto the in-memory flag once so the
-    # rest of the loop reads a single source of truth, then always run the
-    # diagnostic handoff (the durable record, not the in-memory flag, is
-    # what re-triggers the blocking decision on the next iteration).
+    # ran, so the durable owner keeps dispatch -- regardless of the
+    # in-memory flag (which may or may not have been latched yet).
+    remaining = disk_after or state.rebase.last_reason or "durable integration record retained"
     if not state.rebase.recovery_record_retained:
         state = state.copy_with(
             rebase=state.rebase.set_recovery_record_retained(
                 StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-            )
+            ).model_copy(update={"last_reason": remaining})
         )
         _save_recovered_rebase_checkpoint(state, ctx)
     state = state.copy_with(
@@ -2115,7 +2114,7 @@ def _handle_retained_integration(
             }
         )
     )
-    _handoff_retained_failure(ctx, state.rebase.last_reason or disk_after)
+    _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
     return state, (state, prev_phase, 0)
 
 
