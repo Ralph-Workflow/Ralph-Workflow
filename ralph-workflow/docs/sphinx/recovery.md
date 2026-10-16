@@ -420,6 +420,36 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
   Git conflict, completing a Git continuation, reintegrating against a moved target,
   landing the target locally, and publishing to a configured remote.
 
+### Closed-table loader + recovery release
+
+Two specific bypasses would have let one lifecycle fact disagree with another, and
+both are now closed:
+
+- **Loader intervention bypass**: the loader used to author
+  `diagnostic_intervention_required=True` directly via a `dict(**data_raw, ...)`
+  spread inside `_migrate_payload_evidence`. That spread is the documented
+  forbidden mutation (ADR-0009 §1: "One Authority Per Domain Fact"). The
+  loader now constructs a bare `IntegrationRecord` from the migrated dict
+  and applies the closed `RAISE_DIAGNOSTIC_INTERVENTION` transition. The
+  intervention flag's only path to flip is the transition table.
+- **Recovery release bypass**: the three sibling release sites
+  (`auto_integrate_recovery.recover_incomplete_integration`,
+  `_integration_diagnostic.handoff_integration_diagnostic`,
+  `_remote_reconcile_recovery.recover_target_resolution`) used to call
+  bare `write_record(...)` after `with_transition(RELEASE_DIAGNOSTIC_EVIDENCE, ...)`.
+  They now route through `IntegrationRecordStore.transition` (via
+  `apply_record_transition`). The store's typed refusal contract —
+  `RecordBusyError` for demonstrable transient lock contention and
+  `RecordUnreadableError` for unreadable bytes — is enforced at every
+  release site:
+  - `BUSY` refusals map to a typed retained-skip outcome so the bounded
+    retry owner (`RebaseState.retry_deadline` per
+    `_integration_action.py:_conflict_action:111-141`) decides
+    `WAIT_FOR_BOUNDED_RETRY` vs `REQUIRE_INTERVENTION`.
+  - `UNREADABLE` refusals map to `DIAGNOSTIC_INTERVENTION_REQUIRED` with
+    `recovery_record_retained=True` and bytes preserved on disk. The
+    release path NEVER erases UNREADABLE bytes.
+
 ## OperationDisplayState taxonomy
 
 User interfaces, status bars, and log transcripts project directly from the typed

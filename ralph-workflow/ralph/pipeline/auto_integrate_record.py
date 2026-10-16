@@ -607,7 +607,16 @@ def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, obje
 
 
 def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
-    """Migrate legacy diagnostic evidence keys in payload; return None on parse error."""
+    """Migrate legacy diagnostic evidence keys in payload; return None on parse error.
+
+    Returns the migrated dict, with ``diagnostic_intervention_required``
+    and ``repair_cap_reason`` left UNTOUCHED for the legacy global
+    evidence case: :func:`parse_record_payload` then constructs a bare
+    :class:`IntegrationRecord` and routes through the
+    :data:`RAISE_DIAGNOSTIC_INTERVENTION` transition (the closed
+    transition table is the single authority for flipping the
+    intervention flag). No dict-spread bypass remains in this helper.
+    """
     raw_evidence = data_raw.get("diagnostic_evidence")
     if raw_evidence is None:
         return data_raw
@@ -618,14 +627,11 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
     if sequence is None:
         return None
     if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
-        return {
-            **data_raw,
-            "diagnostic_intervention_required": True,
-            "repair_cap_reason": (
-                "legacy repository-global evidence observation present; "
-                "operator intervention required"
-            ),
-        }
+        # Global-evidence legacy key triggers intervention via the
+        # closed transition table in parse_record_payload; here we
+        # only signal the case through a marker key the caller reads
+        # after the model_validate + with_transition path.
+        return {**data_raw, "_global_evidence_intervention_marker": True}
     migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
     if drop_marker is not None:
         existing_reason = data_raw.get("repair_cap_reason")
@@ -656,7 +662,10 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     ``for-each-ref`` / ``ls-files`` keys is rejected as
     intervention-required -- the new collector would not be able
     to re-verify them, and silently clearing the evidence would
-    lose the operator-visible fingerprint.
+    lose the operator-visible fingerprint. The intervention flag
+    is set through the closed :data:`RAISE_DIAGNOSTIC_INTERVENTION`
+    transition; the loader never authors the flag via a bare
+    ``dict(**data_raw, ...)``.
     """
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
@@ -664,11 +673,25 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None
+    # The intervention marker is a transient signal (stripped before
+    # model_validate); the loader reaches the closed transition table
+    # to flip the intervention flag instead of dict-spread authoring it.
+    intervention_marker = bool(migrated.pop("_global_evidence_intervention_marker", False))
     with_cause = _coerce_payload_failure_cause(migrated)
     try:
-        return IntegrationRecord.model_validate(with_cause)
+        record = IntegrationRecord.model_validate(with_cause)
     except Exception:
         return None
+    if intervention_marker:
+        record = record.with_transition(
+            RAISE_DIAGNOSTIC_INTERVENTION,
+            diagnostic_intervention_required=True,
+            repair_cap_reason=(
+                "legacy repository-global evidence observation present; "
+                "operator intervention required"
+            ),
+        )
+    return record
 
 
 _parse_record_payload = parse_record_payload

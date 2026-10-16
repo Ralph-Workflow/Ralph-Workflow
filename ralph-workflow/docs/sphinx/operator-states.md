@@ -24,6 +24,31 @@ any moment:
 | `INTERVENTION_REQUIRED` | Automatic recovery is exhausted (diagnostic repair or conflict budget); a human operator must act. |
 | `TERMINAL` | The operation-level final state. Maps integration outcomes such as `skipped`, `recovered`, and `remote_pushed` onto `OperationDisplayState.TERMINAL`. This is distinct from whole-pipeline terminal-success eligibility, which is governed exclusively by `ralph.pipeline._terminal_authority.is_terminal_success_eligible`. |
 
+### Closed ownership model
+
+The lifecycle states above are the **typed projection** of the closed
+ownership model: every transition between states is the result of
+exactly one authoritative owner applying a closed transition table or
+calling a typed decision function. There is no fallback authority:
+
+- The durable integration record (`ralph.pipeline.auto_integrate_record.IntegrationRecord`)
+  is the single source of truth for the integration lifecycle. All
+  mutations flow through
+  `IntegrationRecord.with_transition(...)`; the closed
+  `Transition` table is the only path that flips
+  `diagnostic_intervention_required`. Ad-hoc
+  `model_copy(update=...)` is forbidden.
+- The recovery release sites route every `RELEASE_DIAGNOSTIC_EVIDENCE`
+  through `IntegrationRecordStore.transition` (via
+  `apply_record_transition`). BUSY refusals are mapped to typed retry
+  outcomes; UNREADABLE refusals are mapped to intervention with
+  bytes preserved on disk. The release path NEVER erases
+  ownership evidence.
+- The run loop, the diagnostic path, and the publication state
+  machine all consult the same authority — they never infer
+  progression from prose, from worktree cleanliness, or from
+  record absence.
+
 ## IntegrationDisplayLabel — the seven display labels
 
 `IntegrationDisplayLabel` (defined in

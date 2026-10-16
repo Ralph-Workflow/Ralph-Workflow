@@ -41,8 +41,11 @@ from ralph.pipeline.auto_integrate_record import (
     RAISE_DIAGNOSTIC_INTERVENTION,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
+    RecordBusyError,
+    RecordUnreadableError,
     write_record,
 )
+from ralph.pipeline.auto_integrate_record_store import apply_record_transition
 from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     OperationEvidenceCollector,
@@ -631,22 +634,12 @@ def _run_completion_pre_pass(
         IntegrationAction.CONTINUE_GIT_OPERATION,
         IntegrationAction.LAND_TARGET,
     ):
-        proof_ok, proof_reason = _check_operation_completion_proof(
-            inspection_root, record, collector=collector
-        )
-        if proof_ok:
-            cleared = record.with_transition(
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
-            )
-            write_record(root, cleared, backend=backend)
-            logger.info(
-                "Positive operation-completion proof verified; released diagnostic evidence"
-            )
-            return True
-        return _pre_pass_intervention(
-            root, record, backend, f"operation completion proof failed: {proof_reason}"
+        return _complete_or_intervene(
+            root=root,
+            inspection_root=inspection_root,
+            record=record,
+            backend=backend,
+            collector=collector,
         )
 
     if next_action == IntegrationAction.REQUIRE_INTERVENTION:
@@ -654,6 +647,51 @@ def _run_completion_pre_pass(
         return _pre_pass_intervention(root, record, backend, reason)
 
     return None
+
+
+def _complete_or_intervene(
+    *,
+    root: Path,
+    inspection_root: Path,
+    record: IntegrationRecord,
+    backend: FileBackend,
+    collector: OperationEvidenceCollector | None,
+) -> bool:
+    """Run the positive-completion pre-pass through the typed record store."""
+    proof_ok, proof_reason = _check_operation_completion_proof(
+        inspection_root, record, collector=collector
+    )
+    if not proof_ok:
+        return _pre_pass_intervention(
+            root, record, backend, f"operation completion proof failed: {proof_reason}"
+        )
+    try:
+        apply_record_transition(
+            root,
+            RELEASE_DIAGNOSTIC_EVIDENCE,
+            backend=backend,
+            diagnostic_evidence=(),
+            diagnostic_ownership=None,
+        )
+    except RecordBusyError:
+        logger.warning(
+            "Release busy; record bytes preserved for bounded retry"
+        )
+        return False
+    except RecordUnreadableError:
+        logger.critical(
+            "Release refused: durable record unreadable; intervention required"
+        )
+        return _pre_pass_intervention(
+            root,
+            record,
+            backend,
+            "release refusal: durable record unreadable; intervention required",
+        )
+    logger.info(
+        "Positive operation-completion proof verified; released diagnostic evidence"
+    )
+    return True
 
 
 def handoff_integration_diagnostic(

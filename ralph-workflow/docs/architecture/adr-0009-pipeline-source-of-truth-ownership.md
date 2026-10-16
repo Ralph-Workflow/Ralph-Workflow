@@ -100,6 +100,15 @@ Rebase backup refs are operation-scoped: `refs/rebase-backup/<wt8>-<sha8>-<sha>`
 
 The operator surface exposes exactly seven integration display labels — `conflict resolution`, `evidence diagnosis`, `integration`, `landing`, `publication`, `waiting`, `intervention` — defined in `ralph.display.integration_display_label.IntegrationDisplayLabel`. Pairwise distinctness of all seven is verified by `tests/test_display_lifecycle_label_taxonomy.py`. These labels are pure display projections (Decision §1 / matrix row "Operator Surface Display") and never gate dispatch or terminal success.
 
+### Closed-transition loader + recovery release guarantee (U9)
+
+The loader and the three sibling release sites now flow through the closed transition table and the typed record store, closing the two real bypasses that let one lifecycle fact disagree with another:
+
+- **Loader intervention bypass** — `_migrate_payload_evidence` no longer authors `diagnostic_intervention_required=True` via `dict(**data_raw, ...)`. The legacy global-evidence case returns a transient marker; `parse_record_payload` constructs a bare `IntegrationRecord.model_validate(...)` and applies `RAISE_DIAGNOSTIC_INTERVENTION` through the closed transition table. The intervention flag's only path to flip is the transition table.
+- **Recovery release bypass** — the three sibling release sites (`auto_integrate_recovery.py:636-665`, `_integration_diagnostic.py:638-668`, `_remote_reconcile_recovery.py:60-95`) now route `RELEASE_DIAGNOSTIC_EVIDENCE` through `IntegrationRecordStore.transition` (via `apply_record_transition`). Each site catches `RecordBusyError` (mapped to a typed retained-skip outcome so the bounded retry owner — `RebaseState.retry_deadline` per `_integration_action.py:_conflict_action:111-141` — decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION) and `RecordUnreadableError` (mapped to `DIAGNOSTIC_INTERVENTION_REQUIRED` with `recovery_record_retained=True` and bytes preserved on disk). The release path NEVER erases UNREADABLE bytes.
+
+Both refinements are public-boundary: `tests/test_integration_record_closed_transition_loader.py` and `tests/test_recovery_release_uses_record_store.py` exercise the seam without AST walks.
+
 ## Dependency Injection Boundaries
 
 To ensure complete black-box testability without live Git or filesystem side-effects in unit suites:

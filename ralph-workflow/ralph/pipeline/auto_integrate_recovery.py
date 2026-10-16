@@ -84,7 +84,9 @@ from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
+    RecordBusyError,
     RecordReadOutcomeDisposition,
+    RecordUnreadableError,
     read_record_outcome,
 )
 from ralph.pipeline.auto_integrate_record import (
@@ -93,9 +95,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_record import (
     read_record as _read_record,
 )
-from ralph.pipeline.auto_integrate_record import (
-    write_record as _write_record,
-)
+from ralph.pipeline.auto_integrate_record_store import apply_record_transition
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     _TERMINAL_MARKER_FILES,
     TerminalStateViolationError,
@@ -570,6 +570,116 @@ def _continue_fast_forward_from_record(
     return _land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
 
 
+def _read_outcome_or_skip(
+    root: Path, backend: FileBackend
+) -> RebaseState | None:
+    """Read the durable record outcome; map UNREADABLE to a typed intervention state.
+
+    Returns ``None`` when the outcome is PRESENT or ABSENT (the
+    caller proceeds with the recovery). Returns a typed
+    :class:`RebaseState` for UNREADABLE bytes (intervention, bytes
+    preserved) or an unreadable read exception (retained skip).
+    """
+    try:
+        outcome = read_record_outcome(root, backend=backend)
+    except Exception as exc:
+        logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
+        return _record_skip(
+            reason=f"integration ownership unreadable: {exc}",
+            target=None,
+            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+            record_retained=True,
+        )
+    if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        # Decision-complete startup handoff (U4d): a PRESENT-but-unreadable
+        # record cannot answer the recovery authorities, so the startup
+        # path returns the same typed intervention decision as the other
+        # entry points instead of a generic retained skip. The unreadable
+        # bytes stay untouched on disk as ownership evidence.
+        reason = "durable integration record unreadable; intervention required" + (
+            f" ({outcome.unreadable_reason})" if outcome.unreadable_reason else ""
+        )
+        return RebaseState(
+            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            last_reason=reason,
+            last_target=None,
+            recovery_record_retained=True,
+            recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
+        )
+    return None
+
+
+def _maybe_release_diagnostic(
+    root: Path,
+    workspace_scope: WorkspaceScope,
+    backend: FileBackend,
+) -> IntegrationRecord | RebaseState | None:
+    """Apply the release path through the typed record store, or return a refusal.
+
+    Returns ``None`` when there is no diagnostic evidence to release
+    (caller proceeds with the recovery). Returns the
+    :class:`IntegrationRecord` (unchanged) on a successful release.
+    Returns a typed :class:`RebaseState` for BUSY/UNREADABLE
+    refusals (bounded retry vs intervention) or CHANGED/UNKNOWN
+    diagnostic verdicts (retained skip).
+    """
+    outcome = read_record_outcome(root, backend=backend)
+    record = outcome.record
+    if (
+        record is None
+        or not record.diagnostic_evidence
+        or record.operation_kind == "target_reconcile"
+    ):
+        return record
+    from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
+    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+    from ralph.pipeline.operation_evidence import EvidenceVerdict
+
+    verdict = release_verified_diagnostic(
+        Path(record.owning_worktree or workspace_scope.root), record
+    )
+    if verdict == EvidenceVerdict.UNCHANGED:
+        try:
+            apply_record_transition(
+                root,
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                backend=backend,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+            )
+        except RecordBusyError:
+            return _record_skip(
+                reason="integration record busy; recovery will retry",
+                target=record.target,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+                record_retained=True,
+            )
+        except RecordUnreadableError:
+            return RebaseState(
+                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_reason=(
+                    "durable integration record unreadable at release; "
+                    "intervention required"
+                ),
+                last_target=record.target,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=(
+                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+                ),
+            )
+        # Re-read after release; the on-disk state is the source of truth.
+        updated = read_record_outcome(root, backend=backend)
+        return updated.record
+    if verdict in (EvidenceVerdict.CHANGED, EvidenceVerdict.UNKNOWN):
+        return _record_skip(
+            reason=diagnostic_evidence_gate_reason(verdict),
+            target=record.target,
+            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+            record_retained=True,
+        )
+    return record
+
+
 def recover_incomplete_integration(
     workspace_scope: WorkspaceScope,
     *,
@@ -594,66 +704,14 @@ def recover_incomplete_integration(
                 retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
-        try:
-            outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
-        except Exception as exc:
-            logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
-            return _record_skip(
-                reason=f"integration ownership unreadable: {exc}",
-                target=None,
-                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-                record_retained=True,
-            )
-        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            # Decision-complete startup handoff (U4d): a PRESENT-but-unreadable
-            # record cannot answer the recovery authorities, so the startup
-            # path returns the same typed intervention decision as the other
-            # entry points instead of a generic retained skip. The unreadable
-            # bytes stay untouched on disk as ownership evidence.
-            reason = "durable integration record unreadable; intervention required" + (
-                f" ({outcome.unreadable_reason})" if outcome.unreadable_reason else ""
-            )
-            return RebaseState(
-                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-                last_reason=reason,
-                last_target=None,
-                recovery_record_retained=True,
-                recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
-            )
-        record = outcome.record
-        if (
-            record is not None
-            and record.diagnostic_evidence
-            and record.operation_kind != "target_reconcile"
-        ):
-            from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
-            from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
-            from ralph.pipeline.operation_evidence import EvidenceVerdict
-
-            verdict = release_verified_diagnostic(
-                Path(record.owning_worktree or workspace_scope.root), record
-            )
-            if verdict == EvidenceVerdict.UNCHANGED:
-                record = record.with_transition(
-                    RELEASE_DIAGNOSTIC_EVIDENCE,
-                    diagnostic_evidence=(),
-                    diagnostic_ownership=None,
-                )
-                _write_record(Path(workspace_scope.root), record)
-            elif verdict == EvidenceVerdict.CHANGED:
-                return _record_skip(
-                    reason=diagnostic_evidence_gate_reason(verdict),
-                    target=record.target,
-                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-                    record_retained=True,
-                )
-            else:
-                return _record_skip(
-                    reason=diagnostic_evidence_gate_reason(verdict),
-                    target=record.target,
-                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-                    record_retained=True,
-                )
+        early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
+        if early is not None:
+            return early
+        record = _maybe_release_diagnostic(
+            Path(workspace_scope.root), workspace_scope, backend
+        )
+        if isinstance(record, RebaseState):
+            return record
         return _recover_incomplete_integration_owned(
             workspace_scope,
             config=config,

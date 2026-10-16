@@ -201,6 +201,11 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
         owning_worktree=str(root),
     )
     record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    # The release path now routes through apply_record_transition, which
+    # requires the on-disk record to be the transition source. Persist
+    # the record first; the function then reads it, applies the
+    # transition, and writes back the cleared result.
+    write_record(root, record)
     collector = InMemoryOperationEvidenceCollector(reachability={"MERGE_HEAD": True})
     diagnostic.set_operation_evidence_collector(collector)
     try:

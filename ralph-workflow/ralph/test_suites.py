@@ -224,6 +224,12 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # boundary rather than a black-box test seam.
     "tests/test_audit_opts_key_drift.py",
     "tests/test_audit_kwargs_forwarding.py",
+    # wt-03-fix-bug (U4a): real-git regression pinning acceptance
+    # scenarios 1 (linked worktree) and 2 (target movement) on the
+    # public-boundary decision surface. Real-git, in-budget, must
+    # run on the default ``make test`` profile so the linked-
+    # worktree obligation retention cannot rot silently.
+    "tests/test_authority_audit_scenario_1_2_worktree_target.py",
     # wt-16: root-cause + containment regression tests for the
     # MCP respawn bug (R1-R4, S1-S4).
     "tests/mcp/test_reserved_socket_held_across_respawn.py",

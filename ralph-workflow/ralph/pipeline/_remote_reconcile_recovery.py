@@ -29,9 +29,12 @@ from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
+    RecordBusyError,
+    RecordUnreadableError,
     bind_integration_record_root,
     write_record,
 )
+from ralph.pipeline.auto_integrate_record_store import apply_record_transition
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
@@ -58,44 +61,110 @@ def recover_target_resolution(
     with lease as acquired:
         if not acquired or (foreign and retained_integration_reason(owner) is not None):
             return _retained(record, "target reconciliation worktree busy; recovery will retry")
-        if record.diagnostic_evidence:
-            from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
-            from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
-            from ralph.pipeline.operation_evidence import EvidenceVerdict
+        release_state = _maybe_release_target_diagnostic(owner, root, record)
+        if release_state is not None:
+            return release_state
+        return _continue_target_reconciliation(
+            owner,
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
+        )
 
-            verdict = release_verified_diagnostic(owner, record)
-            if verdict != EvidenceVerdict.UNCHANGED:
-                diag_reason = diagnostic_evidence_gate_reason(verdict)
-                return _retained(record, diag_reason)
-            record = record.with_transition(
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
+
+def _maybe_release_target_diagnostic(
+    owner: Path, root: Path, record: IntegrationRecord
+) -> RebaseState | None:
+    """Release the diagnostic evidence through the typed record store.
+
+    Returns ``None`` when there is no diagnostic evidence OR the
+    release succeeded. Returns a typed :class:`RebaseState` for
+    CHANGED/UNKNOWN verdicts (retained skip) or BUSY/UNREADABLE
+    refusals (bounded retry vs intervention).
+    """
+    if not record.diagnostic_evidence:
+        return None
+    from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
+    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+    from ralph.pipeline.operation_evidence import EvidenceVerdict
+
+    verdict = release_verified_diagnostic(owner, record)
+    if verdict != EvidenceVerdict.UNCHANGED:
+        return _retained(record, diagnostic_evidence_gate_reason(verdict))
+    return _apply_release_or_refuse(root, record)
+
+
+def _continue_target_reconciliation(
+    owner: Path,
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState:
+    """Continue the target reconciliation; returns the final RebaseState."""
+    with bind_integration_record_root(owner, root):
+        continued = _continue_target_record(
+            owner, root, record, config, conflict_resolver, rebase_stop_resolver
+        )
+        if isinstance(continued, str) or branch_sha(
+            owner, record.target
+        ) != continued.integrated_feature_sha:
+            return _retained(
+                record,
+                continued
+                if isinstance(continued, str)
+                else "target reconciliation completion does not match target",
             )
-            write_record(root, record)
-        with bind_integration_record_root(owner, root):
-            continued = _continue_target_record(
-                owner, root, record, config, conflict_resolver, rebase_stop_resolver
-            )
-            if (
-                isinstance(continued, str)
-                or branch_sha(owner, record.target) != continued.integrated_feature_sha
-            ):
-                return _retained(
-                    record,
-                    continued
-                    if isinstance(continued, str)
-                    else "target reconciliation completion does not match target",
-                )
-            reason = finish_target_substep(root, record)
-            if reason is not None:
-                return _retained(record, reason)
+        reason = finish_target_substep(root, record)
+        if reason is not None:
+            return _retained(record, reason)
     return RebaseState(
         last_outcome=RebaseOutcomeKind.RECOVERED,
         last_target=record.target,
         last_reason="completed retained target reconciliation",
         fast_forwarded=False,
     )
+
+
+def _apply_release_or_refuse(root: Path, record: IntegrationRecord) -> RebaseState | None:
+    """Route the release through the typed record store; return refusal RebaseState or None.
+
+    BUSY refusals are mapped to a typed retained-skip outcome so the
+    bounded retry owner decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION.
+    UNREADABLE refusals are mapped to DIAGNOSTIC_INTERVENTION_REQUIRED with
+    recovery_record_retained=True and bytes preserved on disk (the
+    concrete ``recovery_record_retained_reason=`` field is set on
+    the refusal RebaseState below).
+    """
+    try:
+        apply_record_transition(
+            root,
+            RELEASE_DIAGNOSTIC_EVIDENCE,
+            diagnostic_evidence=(),
+            diagnostic_ownership=None,
+        )
+    except RecordBusyError:
+        return _retained(
+            record,
+            "target reconciliation worktree busy; recovery will retry",
+        )
+    except RecordUnreadableError:
+        return RebaseState(
+            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            last_reason=(
+                "durable integration record unreadable at release; "
+                "intervention required"
+            ),
+            last_target=record.target,
+            recovery_record_retained=True,
+            recovery_record_retained_reason=(
+                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+            ),
+        )
+    return None
 
 
 def _continue_target_record(
