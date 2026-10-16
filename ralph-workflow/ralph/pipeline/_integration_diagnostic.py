@@ -32,6 +32,7 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
+    RebaseOutcomeKind,
     last_outcome_reason,
     next_integration_action,
 )
@@ -58,6 +59,7 @@ from ralph.pipeline.operation_fact import (
     _KIND_REBASE_OBJECT_RESOLVABLE,
     _UNREADABLE,
 )
+from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -593,6 +595,24 @@ def _check_operation_completion_proof(
     return True, "positive operation-completion proof satisfied"
 
 
+def busy_refusal_outcome(
+    retry_deadline: float | None,
+    *,
+    clock: object = None,
+) -> IntegrationAction:
+    """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
+
+    Single mapping used by the release-refusal BUSY sites: an unexpired
+    persisted deadline authorizes ``WAIT_FOR_BOUNDED_RETRY``; a missing,
+    malformed, or expired deadline fails closed to
+    ``REQUIRE_INTERVENTION``. The decision is delegated to the existing
+    ``next_integration_action`` authority (its conflict branch), so the
+    semantics live in exactly one place.
+    """
+    state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, retry_deadline=retry_deadline)
+    return next_integration_action(state, clock=clock)
+
+
 def _pre_pass_intervention(
     root: Path,
     record: IntegrationRecord,
@@ -674,16 +694,23 @@ def _complete_or_intervene(
             diagnostic_ownership=None,
         )
     except RecordBusyError:
-        logger.warning("Release busy; record bytes preserved for bounded retry")
+        # Fail closed: no write, no fresh retry allowance. The caller
+        # decides bounded wait vs intervention from the PERSISTED
+        # ``RebaseState.retry_deadline`` (see :func:`busy_refusal_outcome`);
+        # with no deadline in scope this is REQUIRE_INTERVENTION. The
+        # record bytes stay untouched on disk.
+        logger.warning("Release busy; record bytes preserved for the bounded-retry authority")
         return False
     except RecordUnreadableError:
-        logger.critical("Release refused: durable record unreadable; intervention required")
-        return _pre_pass_intervention(
-            root,
-            record,
-            backend,
-            "release refusal: durable record unreadable; intervention required",
+        # Fail closed: NEVER bare-write over UNREADABLE bytes. The bytes
+        # on disk are the only proof of the interrupted integration; the
+        # typed DIAGNOSTIC_INTERVENTION_REQUIRED outcome is derived from
+        # the unchanged UNREADABLE read on the next seam.
+        logger.critical(
+            "Release refused: durable record unreadable; intervention required; "
+            "unreadable bytes preserved"
         )
+        return False
     logger.info("Positive operation-completion proof verified; released diagnostic evidence")
     return True
 

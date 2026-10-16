@@ -1,34 +1,48 @@
 """Authority audit — acceptance scenarios 3, 4, and 9 (restart / retry / exhaustion).
 
-Acceptance scenario 3: interrupt each major lifecycle transition and restart. The
-same authority must continue idempotently without replaying completed business
-work.
+Acceptance scenario 3: every named transition in the closed table (15 total,
+including ``MARK_LEGACY_FIELDS_PRESERVED`` and ``CLEAR``) is interrupted both
+BEFORE and AFTER the durable persistence inside
+:meth:`IntegrationRecordStore.transition`. The authority/store is then
+recreated as fresh restart objects, and the test asserts retained ownership,
+the authoritative next action, and no replay of completed business work.
 
-Acceptance scenario 4: make required evidence unreadable. Dispatch and success
-remain blocked, and bounded recovery ends in visible intervention rather than
-an infinite loop.
+Acceptance scenario 4: make the durable record unreadable. Recovery and the
+dispatch/mutation boundary stay blocked, intervention is surfaced, and the
+unreadable bytes are retained untouched.
 
-Acceptance scenario 9: exhaust recovery, restart Ralph, and confirm no
-automatic attempt budget is silently replenished.
+Acceptance scenario 9: recovery is exhausted through the real
+``handoff_integration_diagnostic`` boundary, then the runtime objects
+(store, collector, invoke probes) are freshly recreated and the handoff is
+exercised again: attempts stay at the cap (no replenishment) and no renewed
+diagnostic invocation happens after restart.
 
-The tests pin the closed transition table + typed read outcome as the single
-authority for the integration lifecycle.
+All tests run against real on-disk records via the default durable backend;
+no subprocesses are spawned, so this is a plain (non-``subprocess_e2e``)
+suite.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
+import contextlib
 from pathlib import Path
 
 import pytest
 
-from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    next_integration_action,
+)
+from ralph.pipeline._integration_diagnostic import (
+    DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    handoff_integration_diagnostic,
+)
 from ralph.pipeline._pipeline_state_machine import (
     PhaseDecision,
     decide_phase_transition,
 )
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_record import (
     AUTO_INTEGRATE_RECORD_FILENAME,
     IntegrationRecord,
@@ -39,20 +53,76 @@ from ralph.pipeline.auto_integrate_record_store import (
     RecordUnreadableError,
 )
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.auto_integrate_transition import Transition, transition_by_name
+from ralph.pipeline.operation_evidence import InMemoryOperationEvidenceCollector
+from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
-# The test uses subprocess to spin up a real git repo for scenario 9;
-# the subprocess audit allowlists the entire file via this module-level
-# marker so the static policy check accepts the bounded subprocess call.
-pytestmark = pytest.mark.subprocess_e2e
+# --- Shared helpers -----------------------------------------------------
 
-# --- Bounded transition matrix ---
 
-# Each entry is (transition, kwargs). The major durable transitions are the
-# mutations that change authoritative record state.
-_MAJOR_TRANSITIONS: tuple[tuple[str, object], ...] = (
+def _record_path(root: Path) -> Path:
+    return root / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+
+
+def _seed_record(root: Path, **extra: object) -> IntegrationRecord:
+    """Seed a durable integrating record through a real store."""
+    payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+    }
+    payload.update(extra)
+    record = IntegrationRecord.model_validate(payload)
+    IntegrationRecordStore(root).write(record)
+    return record
+
+
+class _CrashBeforeWriteBackend:
+    """Backend whose every persisting call crashes BEFORE bytes reach disk."""
+
+    def __init__(self, inner: FileBackend) -> None:
+        self._inner = inner
+
+    def _crash(self, *_args: object) -> None:
+        raise OSError("simulated crash before durable persistence")
+
+    write_bytes = _crash
+    write_text = _crash
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._crash(source, destination)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
+class _CrashAfterWriteBackend:
+    """Backend whose persists land durably and THEN crash.
+
+    Only ``replace`` (the atomic publication step) is wrapped: the staged
+    bytes are delegated to the real backend first, so the record is fully
+    durable before the simulated crash fires.
+    """
+
+    def __init__(self, inner: FileBackend) -> None:
+        self._inner = inner
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._inner.replace(source, destination)
+        raise OSError("simulated crash after durable persistence")
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
+# --- Scenario 3: crash at each lifecycle transition, then restart -------
+
+
+_MATRIX: tuple[tuple[str, dict[str, object]], ...] = (
     (
         "START_INTEGRATING",
         {"target": "main", "pre_feature_sha": "a" * 40, "pre_target_sha": "b" * 40},
@@ -80,242 +150,235 @@ _MAJOR_TRANSITIONS: tuple[tuple[str, object], ...] = (
         "HOLD_DIAGNOSTIC_EVIDENCE",
         {"diagnostic_evidence": (("k", "v"),), "diagnostic_ownership": "owner"},
     ),
-    (
-        "RELEASE_DIAGNOSTIC_EVIDENCE",
-        {"diagnostic_evidence": (), "diagnostic_ownership": None},
-    ),
-    (
-        "BUMP_DIAGNOSTIC_ATTEMPT",
-        {"merge_commit_repair_attempts": 1, "repair_last_error": "x"},
-    ),
+    ("RELEASE_DIAGNOSTIC_EVIDENCE", {"diagnostic_evidence": (), "diagnostic_ownership": None}),
+    ("BUMP_DIAGNOSTIC_ATTEMPT", {"merge_commit_repair_attempts": 1, "repair_last_error": "x"}),
     (
         "RAISE_DIAGNOSTIC_INTERVENTION",
+        {"diagnostic_intervention_required": True, "repair_cap_reason": "cap"},
+    ),
+    ("MARK_REINTEGRATE_PENDING", {"reintegrate_pending": True, "owning_worktree": "/tmp/owner"}),
+    (
+        "MARK_LEGACY_FIELDS_PRESERVED",
         {
-            "diagnostic_intervention_required": True,
-            "repair_cap_reason": "test",
+            "diagnostic_evidence": (("k", "v"),),
+            "diagnostic_ownership": "owner",
+            "repair_cap_reason": "legacy preserved",
         },
     ),
-    (
-        "MARK_REINTEGRATE_PENDING",
-        {"reintegrate_pending": True, "owning_worktree": "/tmp/owner"},
-    ),
+    ("CLEAR", {}),
 )
 
-
-def _write_seeded_record(
-    tmp_path: Path,
-    *,
-    phase: str = "integrating",
-    target: str = "main",
-    pre_feature_sha: str | None = None,
-    pre_target_sha: str | None = None,
-    integrated_feature_sha: str | None = None,
-    extra: dict[str, object] | None = None,
-) -> IntegrationRecord:
-    """Seed a record on disk and return it for parameterised tests."""
-    payload: dict[str, object] = {
-        "phase": phase,
-        "target": target,
-        "pre_feature_sha": pre_feature_sha or "a" * 40,
-        "pre_target_sha": pre_target_sha or "b" * 40,
-        "integrated_feature_sha": integrated_feature_sha,
-    }
-    if extra:
-        payload.update(extra)
-    record = IntegrationRecord.model_validate(payload)
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
-    record_file.parent.mkdir(parents=True, exist_ok=True)
-    record_file.write_text(json.dumps(payload), encoding="utf-8")
-    return record
-
-
-def _transition_by_name(name: str):
-    from ralph.pipeline.auto_integrate_transition import transition_by_name
-
-    return transition_by_name(name)
+# The matrix must cover exactly the closed transition table.
+assert {t.name for t in Transition.ALL} == {name for name, _ in _MATRIX}
 
 
 @pytest.mark.parametrize(
     ("transition_name", "kwargs"),
-    _MAJOR_TRANSITIONS,
-    ids=[t[0] for t in _MAJOR_TRANSITIONS],
+    _MATRIX,
+    ids=[f"{name}-before" for name, _ in _MATRIX],
 )
-def test_crash_at_each_lifecycle_transition_is_idempotent_on_restart(
+def test_crash_before_persistence_retains_prior_ownership_on_restart(
     tmp_path: Path, transition_name: str, kwargs: dict[str, object]
 ) -> None:
-    """Scenario 3: each major transition survives a crash + restart.
+    """Crash BEFORE the durable write: the prior state owns the workspace after restart."""
+    seeded = _seed_record(tmp_path)
+    original_bytes = _record_path(tmp_path).read_bytes()
+    transition = transition_by_name(transition_name)
 
-    A crash BEFORE the write leaves the prior recoverable state.
-    A crash AFTER the write leaves the new recoverable state.
-    In both cases, replaying the same transition must NOT replay
-    completed business work; the store is idempotent for the
-    PROMOTE_TO_INTEGRATED boundary and otherwise refuses to apply
-    the same logical change twice.
+    crashing_store = IntegrationRecordStore(
+        tmp_path, backend=_CrashBeforeWriteBackend(DEFAULT_FILE_BACKEND)
+    )
+    with contextlib.suppress(OSError):
+        crashing_store.transition(transition, **kwargs)
+    # A byte-identical update legitimately skips publication entirely
+    # (atomic_write_bytes_if_changed), so "no write, no crash" is the
+    # correct crash-before outcome for idempotent replays too.
+
+    # Restart: fresh authority + fresh store, real backend.
+    restarted_store = IntegrationRecordStore(tmp_path)
+    reloaded = restarted_store.read()
+    assert reloaded == seeded, "crash-before must leave the prior recoverable state"
+    assert _record_path(tmp_path).read_bytes() == original_bytes
+
+    # The authoritative next action is unchanged by the crash.
+    assert next_integration_action(reloaded) == next_integration_action(seeded)
+
+
+@pytest.mark.parametrize(
+    ("transition_name", "kwargs"),
+    _MATRIX,
+    ids=[f"{name}-after" for name, _ in _MATRIX],
+)
+def test_crash_after_persistence_is_recovered_and_never_replays_business_work(
+    tmp_path: Path, transition_name: str, kwargs: dict[str, object]
+) -> None:
+    """Crash AFTER the durable write: the new state owns the workspace after restart.
+
+    Restarting must observe the transitioned state, and replaying the same
+    transition through a fresh store must NOT replay completed business
+    work (durable identity fields stay fixed; the replay is either
+    idempotent or refused by the transition guard).
     """
-    _write_seeded_record(tmp_path)
-    store = IntegrationRecordStore(tmp_path)
-    transition = _transition_by_name(transition_name)
+    seeded = _seed_record(tmp_path)
+    transition = transition_by_name(transition_name)
+    expected = seeded.with_transition(transition, **kwargs)
 
-    # Apply once. This is the "after the write" state.
-    store.transition(transition, **kwargs)
+    crashing_store = IntegrationRecordStore(
+        tmp_path, backend=_CrashAfterWriteBackend(DEFAULT_FILE_BACKEND)
+    )
+    # The crash fires after the bytes are already durable.
+    with contextlib.suppress(OSError):
+        crashing_store.transition(transition, **kwargs)
 
-    # Apply again. For PROMOTE_TO_INTEGRATED idempotency, the store
-    # short-circuits; for other transitions, the transition guard
-    # raises. Either way, completed business work is not replayed.
-    if transition_name == "PROMOTE_TO_INTEGRATED":
-        # Idempotent replay path: same expected_sha -> same record.
-        before = store.read()
-        store.transition(transition, **kwargs)
-        after = store.read()
-        assert after is not None
-        assert after.integrated_feature_sha == before.integrated_feature_sha
-    elif transition_name == "HOLD_DIAGNOSTIC_EVIDENCE":
-        # Re-apply is allowed (HOLD is a state assertion, not a
-        # phase mutation); the record bytes stay the same.
-        before = store.read()
-        store.transition(transition, **kwargs)
-        after = store.read()
-        assert after is not None
-        assert after.diagnostic_evidence == before.diagnostic_evidence
-    elif transition_name == "RELEASE_DIAGNOSTIC_EVIDENCE":
-        # Re-apply is allowed (RELEASE is a state assertion).
-        before = store.read()
-        store.transition(transition, **kwargs)
-        after = store.read()
-        assert after is not None
-        assert after.diagnostic_evidence == before.diagnostic_evidence
-    else:
-        # Other transitions either are no-ops on a re-apply (because
-        # the field values are the same) or raise. Both outcomes
-        # prove "no replay of completed business work".
-        try:
-            store.transition(transition, **kwargs)
-            # Re-apply succeeded: the new state is the same as before.
-            after = store.read()
-            assert after is not None
-        except (ValueError, RecordBusyError, RecordUnreadableError):
-            # Transition guard refused re-apply: completed work is
-            # not replayed.
-            pass
+    # Restart: fresh authority + fresh store, real backend.
+    restarted_store = IntegrationRecordStore(tmp_path)
+    reloaded = restarted_store.read()
+    assert reloaded is not None
+    assert reloaded.model_dump() == expected.model_dump(), (
+        "crash-after must leave the transitioned recoverable state"
+    )
+    assert next_integration_action(reloaded) == next_integration_action(expected)
+
+    # No replay of completed business work: the durable identity fields
+    # never move, no matter how the replay attempt terminates.
+    identity_before = (
+        reloaded.phase,
+        reloaded.target,
+        reloaded.pre_feature_sha,
+        reloaded.pre_target_sha,
+    )
+    # Guard refusal is a valid no-replay outcome.
+    with contextlib.suppress(ValueError, RecordBusyError, RecordUnreadableError):
+        restarted_store.transition(transition, **kwargs)
+    after_replay = restarted_store.read()
+    assert after_replay is not None
+    identity_after = (
+        after_replay.phase,
+        after_replay.target,
+        after_replay.pre_feature_sha,
+        after_replay.pre_target_sha,
+    )
+    assert identity_after == identity_before
 
 
-def test_unreadable_evidence_dispatch_blocked_visible_intervention(
+# --- Scenario 4: unreadable evidence blocks dispatch and is retained ----
+
+
+def test_unreadable_evidence_blocks_dispatch_and_recovery_retains_bytes(
     tmp_path: Path,
 ) -> None:
-    """Scenario 4: UNREADABLE evidence -> REPORT_INTERVENTION_REQUIRED, bytes preserved."""
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    """UNREADABLE record: recovery reports intervention, mutations are refused,
+    bytes are retained untouched."""
+    record_file = _record_path(tmp_path)
     record_file.parent.mkdir(parents=True, exist_ok=True)
-    # Corrupt JSON -> UNREADABLE outcome.
     record_file.write_text("{not valid json", encoding="utf-8")
     original_bytes = record_file.read_bytes()
 
+    # Startup recovery maps the unreadable evidence to typed intervention.
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
     assert outcome.last_decision == "report_intervention_required"
     assert outcome.recovery_record_retained is True
-
-    # The unreadable bytes stay untouched on disk.
     assert record_file.read_bytes() == original_bytes
 
     # The pipeline state machine surfaces REPORT_INTERVENTION_REQUIRED.
     state = PipelineState(phase="development", rebase=outcome)
-    loaded = record_file.read_bytes()  # confirm bytes untouched
-    assert loaded == original_bytes
     decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
     assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert record_file.read_bytes() == original_bytes
+
+    # The dispatch/mutation boundary is blocked: every durable mutation is
+    # refused with a typed error through a fresh store (restart), and the
+    # unreadable bytes remain the retained ownership evidence.
+    fresh_store = IntegrationRecordStore(tmp_path)
+    with pytest.raises(RecordUnreadableError):
+        fresh_store.transition(transition_by_name("START_INTEGRATING"), target="main")
+    assert record_file.read_bytes() == original_bytes
 
 
-def test_exhausted_recovery_no_replenishment_after_restart(
+# --- Scenario 9: actual recovery exhaustion across fresh restarts -------
+
+
+def _handoff_record(attempts: int) -> IntegrationRecord:
+    return IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        resolving_rebase=True,
+        merge_commit_repair_attempts=attempts,
+    )
+
+
+def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
     tmp_path: Path,
 ) -> None:
-    """Scenario 9: exhausted recovery -> intervention; restart must not replenish.
+    """Scenario 9: exhaust recovery through the real handoff boundary, then
+    restart with freshly created runtime objects and exercise it again.
+    Attempts stay at the cap (no replenishment) and no renewed diagnostic
+    invocation happens after restart."""
+    cap = DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    invoked: list[str] = []
 
-    Authoritative starting state: a record at ``phase='integrating'`` with
-    ``merge_commit_repair_attempts == 5`` (the diagnostic-repair cap).
-    The pipeline decision must surface
-    :data:`PhaseDecision.REPORT_INTERVENTION_REQUIRED` and preserve
-    the attempt counter (no replenishment after restart).
-    """
-    cap = 5
-    # Make tmp_path a real git repository so the recovery boundary
-    # can run end-to-end; the test is about the counter, not git.
-    assert (
-        subprocess.run(
-            ("git", "init", "-b", "main"),
-            cwd=tmp_path,
-            capture_output=True,
-            check=False,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "T",
-                "GIT_AUTHOR_EMAIL": "t@x",
-                "GIT_COMMITTER_NAME": "T",
-                "GIT_COMMITTER_EMAIL": "t@x",
-            },
-        ).returncode
-        == 0
-    )
-    assert (
-        subprocess.run(
-            ("git", "config", "user.name", "T"),
-            cwd=tmp_path,
-            capture_output=True,
-            check=False,
-        ).returncode
-        == 0
-    )
-    assert (
-        subprocess.run(
-            ("git", "config", "user.email", "t@x"),
-            cwd=tmp_path,
-            capture_output=True,
-            check=False,
-        ).returncode
-        == 0
-    )
-    (tmp_path / "shared.txt").write_text("base\n", encoding="utf-8")
-    assert (
-        subprocess.run(
-            ("git", "add", "shared.txt"),
-            cwd=tmp_path,
-            capture_output=True,
-            check=False,
-        ).returncode
-        == 0
-    )
-    assert (
-        subprocess.run(
-            ("git", "commit", "-m", "init"),
-            cwd=tmp_path,
-            capture_output=True,
-            check=False,
-        ).returncode
-        == 0
-    )
-    _write_seeded_record(
-        tmp_path,
-        extra={
-            "merge_commit_repair_attempts": cap,
-            "diagnostic_intervention_required": True,
-        },
+    def invoke(agent: str, _prompt: Path) -> bool:
+        invoked.append(agent)
+        return False
+
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
 
-    # Re-read after restart: the on-disk record keeps the cap (no
-    # replenishment). The integration record carries the intervention
-    # flag and the attempt count, both authoritative.
-    # START_INTEGRATING on a present record is refused; this proves
-    # the boundary rejects a fresh start. The cap and flag are
-    # preserved.
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
-    raw = json.loads(record_file.read_text(encoding="utf-8"))
-    assert raw["merge_commit_repair_attempts"] == cap
-    assert raw["diagnostic_intervention_required"] is True
+    # --- First runtime: exhaust recovery (cap-1 -> cap) through the ---
+    # --- real handoff boundary --------------------------------------
+    record = _handoff_record(cap - 1)
+    assert not handoff_integration_diagnostic(
+        root=tmp_path,
+        record=record,
+        failure="receipt unreadable",
+        agents=(),  # no eligible agents: the handoff consumes one attempt
+        invoke=invoke,
+        collector=collector,
+    )
+    record = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
+    assert record.merge_commit_repair_attempts == cap
+    assert record.diagnostic_intervention_required is True
+    assert "diagnostic repair exhausted" in (record.repair_cap_reason or "")
+    assert invoked == []
 
-    # The pipeline decision surfaces the intervention flag.
+    # --- Restart: fresh authority over the same durable record --------
+    assert next_integration_action(record) is IntegrationAction.REQUIRE_INTERVENTION
     rebase_state = RebaseState(last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED)
     state = PipelineState(phase="development", rebase=rebase_state)
-    decision = decide_phase_transition(
-        state, None, integration_record=None, rebase_state=rebase_state
+    assert (
+        decide_phase_transition(state, None, integration_record=None, rebase_state=rebase_state)
+        is PhaseDecision.REPORT_INTERVENTION_REQUIRED
     )
-    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+
+    # --- Second runtime: freshly created runtime objects; restart must ---
+    # --- neither replenish the budget nor re-invoke a diagnostic agent ---
+    fresh_collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+    )
+    fresh_invoked: list[str] = []
+
+    def fresh_invoke(agent: str, _prompt: Path) -> bool:
+        fresh_invoked.append(agent)
+        return False
+
+    for _round in range(2):
+        assert not handoff_integration_diagnostic(
+            root=tmp_path,
+            record=record,
+            failure="receipt unreadable after restart",
+            agents=("agent-a", "agent-b"),
+            invoke=fresh_invoke,
+            collector=fresh_collector,
+        )
+        reloaded = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
+        assert reloaded.merge_commit_repair_attempts == cap, (
+            "restart must never replenish the attempt budget"
+        )
+        assert reloaded.diagnostic_intervention_required is True
+        assert fresh_invoked == [], "no renewed diagnostic invocation after restart"
+        record = reloaded

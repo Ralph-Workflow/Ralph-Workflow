@@ -1,33 +1,35 @@
 # status_display_state_and_diagnostic_reporting
 
 ## Authoritative owner
-`ralph.display.integration_display_label.IntegrationDisplayLabel` is
+- `ralph.display.integration_display_label.IntegrationDisplayLabel` is
 the single closed vocabulary for the seven integration display labels;
 `ralph.display.auto_integrate_message.OperationDisplayState` is the
 single closed vocabulary for the eight pipeline-state projections
-(`display/integration_display_label.py`,
-`display/auto_integrate_message.py`).
+(`display/integration_display_label.py:12`,
+`display/auto_integrate_message.py:22`).
 
 ## Writers
 - `ralph.display.auto_integrate_message.OperationDisplayState` is
-  set on the durable `RebaseState.operation_display_state` field
-  by the run loop's `reconcile_stale_unresolved_state`.
+  set on the durable `RebaseState.operation_display_state` field by
+  the `RebaseState` post-validation population hook and by the run
+  loop / runner intervention paths (`rebase_state.py:375-385`,
+  `run_loop.py:2042,2109`, `runner.py:1902,1924`).
 - `ralph.display.integration_display_label.DISPLAY_LABEL_MAP` is
-  the producer-side string-to-label routing table
-  (`display/integration_display_label.py:DISPLAY_LABEL_MAP`).
+  the producer-side string-to-label routing table, consumed by
+  `display/auto_integrate_message.py:15,288`
+  (`display/integration_display_label.py:25`).
 
 ## Readers
-- `ralph.pipeline.run_loop` reads the `operation_display_state` for
-  the run-loop boundary messages.
-- `ralph.cli` and the operator surface read both
-  `operation_display_state` and the `IntegrationDisplayLabel` for
-  status output.
+- `ralph.pipeline.runner` reads the `operation_display_state` to
+  render the run-loop boundary messages via
+  `format_auto_integrate_message` (`runner.py:833-845`);
+  `run_loop.py` gates on it at `run_loop.py:599-612`.
 
 ## Derived projections
 - `OperationDisplayState` is a closed 8-value enum
-  (`display/auto_integrate_message.py:OperationDisplayState`).
+  (`display/auto_integrate_message.py:22`).
 - `IntegrationDisplayLabel` is a closed 7-value enum
-  (`display/integration_display_label.py:IntegrationDisplayLabel`).
+  (`display/integration_display_label.py:12`).
 
 ## Valid transitions
 - The display states are derived projections, not transitions;

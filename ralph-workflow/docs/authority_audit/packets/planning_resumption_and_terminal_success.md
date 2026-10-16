@@ -3,7 +3,7 @@
 ## Authoritative owner
 `ralph.pipeline._terminal_authority.is_terminal_success_eligible` is
 the single authority for terminal-success eligibility
-(`_terminal_authority.py:26-50`).
+(`_terminal_authority.py:26-46`).
 
 ## Writers
 - `ralph.pipeline._terminal_authority` is the only writer of the
@@ -12,22 +12,27 @@ the single authority for terminal-success eligibility
   `PhaseDecision.REPORT_TERMINAL_SUCCESS` or
   `PhaseDecision.REPORT_TERMINAL_FAILURE` outcomes.
 - `ralph.pipeline._pipeline_state_machine.decide_phase_transition`
-  writes the typed `PhaseDecision` to the durable `last_decision`
-  projection on `RebaseState`
-  (`_pipeline_state_machine.py:118-172`).
+  consults `is_terminal_success_eligible` and writes the typed
+  `PhaseDecision` (`REPORT_TERMINAL_SUCCESS` /
+  `REPORT_TERMINAL_FAILURE`) (`_pipeline_state_machine.py:157-166`).
 
 ## Readers
 - `ralph.pipeline.run_loop` reads `is_terminal_success_eligible` at
   the terminal entry point and routes the verdict to the run-loop
   boundary.
-- `ralph.display.auto_integrate_message` reads the
-  `last_publication_decision` and `last_fan_out_decision` for the
-  operator display.
+- `ralph.display.auto_integrate_message` renders the operator
+  surface from the `RebaseState` display projection, including the
+  `last_publication_decision` mapping in
+  `rebase_state.py:535`).
 
 ## Derived projections
-- `last_publication_decision` (typed `PublicationDecision`) and
-  `last_fan_out_decision` (typed `FanOutDecision`) are the typed
-  projections of the publication and fan-out authorities.
+- `last_publication_decision` (typed `PublicationDecision`) is
+  the typed projection of the publication authority; the single
+  writer is `RebaseState.set_publication_decision`
+  (`rebase_state.py:430-439`), applied via
+  `auto_integrate_remote_sync.push_target_after_landing`.
+  `last_fan_out_decision` is written by the fan-out reducer event
+  handlers (`_fan_out_authority.py:32-35`).
 
 ## Valid transitions
 - Terminal-success is an outcome, not a transition; the
@@ -45,8 +50,9 @@ previous turn decided to block).
 ## UNKNOWN representation
 - `last_publication_decision is None` or
   `last_fan_out_decision is None` means the corresponding authority
-  has not yet decided; the terminal authority treats
-  `None` as "not yet proven terminal" and blocks terminal success.
+  has not yet decided; the terminal authority treats `None` as
+  eligible — an absent decision does NOT block terminal success
+  (`_terminal_authority.py:44-45`).
 
 ## What blocks dispatch / terminal success
 - `integration_record is not None` blocks terminal success
@@ -57,6 +63,8 @@ previous turn decided to block).
 - `rebase_state.is_intervention_required` blocks terminal
   success.
 - A non-terminal `last_publication_decision` (anything other than
-  `PUBLICATION_TERMINAL`) blocks terminal success.
+  `PUBLICATION_TERMINAL`) blocks terminal success
+  (`_terminal_authority.py:44`).
 - A non-complete `last_fan_out_decision` (anything other than
-  `JOIN_COMPLETE`) blocks terminal success.
+  `JOIN_COMPLETE`) blocks terminal success
+  (`_terminal_authority.py:45`).

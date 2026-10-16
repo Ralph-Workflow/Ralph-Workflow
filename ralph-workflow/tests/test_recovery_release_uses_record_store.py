@@ -1,72 +1,107 @@
-"""Recovery release site must use the record store and handle typed refusals.
+"""Caller-boundary release-refusal tests for the three RELEASE_DIAGNOSTIC sites.
 
-The plan's UNIT 2 closes the recovery release bypass: the three sibling
-release sites use ``apply_record_transition`` (which enforces the
-typed BUSY/UNREADABLE guards) AND each call site catches
-``RecordBusyError`` / ``RecordUnreadableError`` and maps them to the
-authoritative typed outcome.
+Unit WU-1b. Each test drives a REAL release caller across the PRESENT,
+BUSY, and UNREADABLE race windows and asserts the typed refusal outcome
+plus byte-for-byte UNCHANGED record bytes on disk:
 
-Tests cover all three sibling release sites:
-- :func:`ralph.pipeline.auto_integrate_recovery.recover_incomplete_integration`
-- :func:`ralph.pipeline._integration_diagnostic.diagnose_retained_integration`
-- :func:`ralph.pipeline._remote_reconcile_recovery.recover_remote_target_reconcile`
+- recovery: ``auto_integrate_recovery._maybe_release_diagnostic``
+- diagnostic: ``_integration_diagnostic._complete_or_intervene``
+- remote reconcile: ``_remote_reconcile_recovery._apply_release_or_refuse``
+  (also reached through ``_maybe_release_target_diagnostic``)
 
-Public-seam assertions only. No AST walks. Each test reads/writes through
-the public ``FileBackend`` seam so the released record bytes are
-observable on disk.
+Every refusal case asserts the record bytes on disk are byte-for-byte
+identical before and after the call: a refusal must never overwrite.
+The typed busy decision authority (``busy_refusal_outcome`` re-exports) is
+pinned too.
 """
 
 from __future__ import annotations
 
 import errno
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline.auto_integrate_record import (
-    AUTO_INTEGRATE_RECORD_FILENAME,
+from ralph.mcp.artifacts._path_file_backend import PathFileBackend
+from ralph.pipeline._integration_action import IntegrationAction, RebaseOutcomeKind
+from ralph.pipeline._integration_diagnostic import (
+    _complete_or_intervene,
+)
+from ralph.pipeline._integration_diagnostic import (
+    busy_refusal_outcome as diagnostic_busy_refusal_outcome,
+)
+from ralph.pipeline._remote_reconcile_recovery import (
     RecordBusyError,
     RecordUnreadableError,
+    _apply_release_or_refuse,
+    _maybe_release_target_diagnostic,
+)
+from ralph.pipeline._remote_reconcile_recovery import (
+    busy_refusal_outcome as remote_busy_refusal_outcome,
+)
+from ralph.pipeline.auto_integrate_record import (
+    AUTO_INTEGRATE_RECORD_FILENAME,
+    IntegrationRecord,
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.auto_integrate_recovery import (
+    _maybe_release_diagnostic,
+)
+from ralph.pipeline.auto_integrate_recovery import (
+    busy_refusal_outcome as recovery_busy_refusal_outcome,
+)
 from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
+from ralph.pipeline.operation_evidence import ownership_fingerprint
+from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
+from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.file_backend import FileBackend
 
+RECORD_FILE = Path(".agent") / AUTO_INTEGRATE_RECORD_FILENAME
+DEFAULT_BACKEND: FileBackend = PathFileBackend()
+
+
 # ---------------------------------------------------------------------------
-# Backend fakes — the only public seam we exercise
+# Seams
 # ---------------------------------------------------------------------------
 
 
-class _BusyReadBackend:
-    """Backend that reports BUSY on the first ``exists`` call (read path).
+class _InjectedBackend:
+    """FileBackend wrapper that injects one typed race window at call N.
 
-    The :class:`IntegrationRecordStore` translates ``EAGAIN`` from
-    ``backend.exists()`` into the typed ``RecordReadOutcomeDisposition.BUSY``
-    outcome, which ``apply_record_transition`` then surfaces as
-    :class:`RecordBusyError`. This is the lower-level read-side
-    typed-refusal contract the recovery release sites depend on.
+    ``fail_mode="busy"`` makes the Nth ``exists`` call raise
+    ``OSError(EAGAIN)`` (transient lock contention -> BUSY).
+    ``fail_mode="unreadable"`` makes the Nth ``read_text`` call raise a
+    generic ``OSError`` (backend read failure -> UNREADABLE). Earlier
+    and later calls are fully transparent, so the caller's own
+    top-level read succeeds and the injection lands exactly inside the
+    record store's re-read during the transition.
     """
 
-    def __init__(self, inner: FileBackend) -> None:
+    def __init__(self, inner: FileBackend, fail_mode: str, fail_on_call: int) -> None:
         self._inner = inner
-        self._busy_reads = 0
+        self._fail_mode = fail_mode
+        self._fail_on_call = fail_on_call
+        self._exists_calls = 0
+        self._read_calls = 0
 
     def exists(self, path: Path) -> bool:
-        if self._busy_reads == 0:
-            self._busy_reads += 1
-            err = OSError(errno.EAGAIN, "Resource temporarily unavailable")
-            raise err
+        self._exists_calls += 1
+        if self._fail_mode == "busy" and self._exists_calls == self._fail_on_call:
+            raise OSError(errno.EAGAIN, "Resource temporarily unavailable")
         return self._inner.exists(path)
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
         self._inner.mkdir(path, parents=parents, exist_ok=exist_ok)
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        self._read_calls += 1
+        if self._fail_mode == "unreadable" and self._read_calls == self._fail_on_call:
+            raise OSError(errno.EIO, "injected backend read failure")
         return self._inner.read_text(path, encoding=encoding)
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
@@ -91,41 +126,317 @@ class _BusyReadBackend:
         return self._inner.glob(path, pattern)
 
 
-def _write_present_record(tmp_path: Path) -> None:
-    """Write a PRESENT record with diagnostic_evidence on disk."""
-    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+class _UnchangedCollector(InMemoryOperationEvidenceCollector):
+    """Collector whose verdict is always UNCHANGED (positive evidence)."""
 
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
-    record_file.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self) -> None:
+        from ralph.pipeline.operation_fact import OperationFact
+
+        super().__init__(facts=(OperationFact(kind="head", value="integrated"),))
+
+
+def _verified_record(owning_worktree: str | None = None) -> IntegrationRecord:
+    """A PRESENT integrating record whose evidence verdict is UNCHANGED."""
     record = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="a" * 40,
         pre_target_sha="b" * 40,
-        diagnostic_evidence=(("work", "evidence"),),
-        diagnostic_ownership="test",
+        diagnostic_evidence=(("head", "integrated"),),
+        diagnostic_ownership=None,
+        owning_worktree=owning_worktree,
     )
-    write_record(tmp_path, record)
+    return record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+
+
+def _write_present_record(tmp_path: Path, record: IntegrationRecord | None = None) -> bytes:
+    """Write a PRESENT record; return its exact on-disk bytes."""
+    write_record(tmp_path, record if record is not None else _verified_record(str(tmp_path)))
+    return (tmp_path / RECORD_FILE).read_bytes()
+
+
+def _install_unchanged_collector(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Install the always-UNCHANGED collector as the diagnostic-path default."""
+    from ralph.pipeline._integration_diagnostic import set_operation_evidence_collector
+
+    set_operation_evidence_collector(_UnchangedCollector())
+    monkeypatch.setattr(
+        "ralph.pipeline._integration_diagnostic.set_operation_evidence_collector",
+        set_operation_evidence_collector,
+    )
+
+
+def _assert_bytes_unchanged(record_file: Path, before: bytes) -> None:
+    """The single strongest refusal contract: no overwrite, ever."""
+    assert record_file.read_bytes() == before
 
 
 # ---------------------------------------------------------------------------
-# Public-seam coverage of the recovery release sites
+# busy_refusal_outcome canonical mapping (re-exported by all three modules)
 # ---------------------------------------------------------------------------
 
 
-def test_apply_record_transition_refuses_busy_with_typed_error(tmp_path: Path) -> None:
-    """``apply_record_transition`` raises ``RecordBusyError`` on BUSY reads.
+@pytest.mark.parametrize(
+    ("busy_refusal_outcome",),
+    [
+        pytest.param(recovery_busy_refusal_outcome, id="recovery"),
+        pytest.param(diagnostic_busy_refusal_outcome, id="diagnostic"),
+        pytest.param(remote_busy_refusal_outcome, id="remote"),
+    ],
+)
+class TestBusyRetryActionMapping:
+    """The typed BUSY decision authority is identical at all three sites."""
 
-    This is the lower-level test that documents the typed refusal
-    contract ``apply_record_transition`` enforces; the recovery
-    release site depends on this refusal to map BUSY to a typed
-    retry outcome (rather than erasing the record bytes).
+    def test_unexpired_deadline_waits_for_bounded_retry(self, busy_refusal_outcome: object) -> None:
+        action = busy_refusal_outcome(10_000.0, clock=lambda: 1.0)
+        assert action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+    def test_missing_deadline_requires_intervention(self, busy_refusal_outcome: object) -> None:
+        action = busy_refusal_outcome(None, clock=lambda: 1.0)
+        assert action is IntegrationAction.REQUIRE_INTERVENTION
+
+    def test_expired_deadline_requires_intervention(self, busy_refusal_outcome: object) -> None:
+        action = busy_refusal_outcome(10.0, clock=lambda: 100.0)
+        assert action is IntegrationAction.REQUIRE_INTERVENTION
+
+
+# ---------------------------------------------------------------------------
+# Site 1: recovery - auto_integrate_recovery._maybe_release_diagnostic
+# ---------------------------------------------------------------------------
+
+
+class TestRecoveryReleaseRefusals:
+    """``recover_incomplete_integration``'s release path (PRESENT record)."""
+
+    def test_present_record_released_through_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A PRESENT record releases through the typed store (not a bare write)."""
+        _install_unchanged_collector(monkeypatch)
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        outcome = _maybe_release_diagnostic(tmp_path, WorkspaceScope(tmp_path), DEFAULT_BACKEND)
+        assert isinstance(outcome, IntegrationRecord)
+        assert not outcome.diagnostic_evidence
+        assert outcome.diagnostic_ownership is None
+        # The store rewrote the record via RELEASE_DIAGNOSTIC_EVIDENCE;
+        # identity fields survive.
+        assert outcome.target == "main"
+        assert outcome.pre_feature_sha == "a" * 40
+        assert record_file.read_bytes() != before  # evidence released on disk
+
+    def test_busy_refusal_retains_record_bytes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUSY at the store's re-read maps to a retained skip; bytes untouched."""
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        # Call 1 = the release site's top-level read; call 2 = the store's
+        # re-read inside apply_record_transition.
+        backend = _InjectedBackend(DEFAULT_BACKEND, "busy", fail_on_call=2)
+        assert isinstance(backend, object)
+        outcome = _maybe_release_diagnostic(tmp_path, WorkspaceScope(tmp_path), backend)
+        assert isinstance(outcome, RebaseState)
+        assert outcome.last_outcome is RebaseOutcomeKind.SKIPPED
+        assert "busy" in (outcome.last_reason or "")
+        assert outcome.recovery_record_retained is True
+        assert outcome.recovery_record_retained_reason is (
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+        )
+        _assert_bytes_unchanged(record_file, before)
+
+    def test_unreadable_refusal_maps_to_typed_intervention(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """UNREADABLE at the store's re-read maps to intervention, never an overwrite."""
+        _install_unchanged_collector(monkeypatch)
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        backend = _InjectedBackend(DEFAULT_BACKEND, "unreadable", fail_on_call=2)
+        outcome = _maybe_release_diagnostic(tmp_path, WorkspaceScope(tmp_path), backend)
+        assert isinstance(outcome, RebaseState)
+        assert outcome.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+        assert "unreadable" in (outcome.last_reason or "")
+        assert outcome.recovery_record_retained is True
+        assert outcome.recovery_record_retained_reason is (
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+        )
+        _assert_bytes_unchanged(record_file, before)
+
+
+# ---------------------------------------------------------------------------
+# Site 2: diagnostic - _integration_diagnostic._complete_or_intervene
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnosticCompletionRefusals:
+    """``handoff_integration_diagnostic``'s completion pre-pass release.
+
+    The pre-pass verifies a positive operation-completion proof in a
+    real git repo (HEAD == integrated_feature_sha == pre_target_sha,
+    clean tree) BEFORE the release transition, so the PRESENT case
+    proves the happy path and the BUSY/UNREADABLE cases prove the
+    refusal AFTER the proof passes.
     """
-    from ralph.mcp.artifacts._path_file_backend import PathFileBackend
 
-    _write_present_record(tmp_path)
-    backend = _BusyReadBackend(PathFileBackend())
+    def _setup(self, tmp_git_repo: Path) -> tuple[Path, Path, bytes]:
+        from ralph.git.subprocess_runner import run_git
 
+        head = run_git(("rev-parse", "HEAD"), cwd=tmp_git_repo, label="test:head").stdout.strip()
+        record = _verified_record(owning_worktree=str(tmp_git_repo))
+        record = record.model_copy(update={"integrated_feature_sha": head, "pre_target_sha": head})
+        record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+        before = _write_present_record(tmp_git_repo, record)
+        return tmp_git_repo, tmp_git_repo / RECORD_FILE, before
+
+    def _run(self, root: Path, backend: FileBackend) -> bool:
+        record = IntegrationRecord.model_validate_json(
+            (root / RECORD_FILE).read_text(encoding="utf-8")
+        )
+        return _complete_or_intervene(
+            root=root,
+            inspection_root=root,
+            record=record,
+            backend=backend,
+            collector=_UnchangedCollector(),
+        )
+
+    def test_present_record_released_through_store(self, tmp_git_repo: Path) -> None:
+        root, record_file, before = self._setup(tmp_git_repo)
+        assert self._run(root, DEFAULT_BACKEND) is True
+        released = IntegrationRecord.model_validate_json(record_file.read_text("utf-8"))
+        assert not released.diagnostic_evidence
+        assert released.diagnostic_ownership is None
+        assert record_file.read_bytes() != before
+
+    def test_busy_refusal_returns_false_and_preserves_bytes(self, tmp_git_repo: Path) -> None:
+        root, record_file, before = self._setup(tmp_git_repo)
+        backend = _InjectedBackend(DEFAULT_BACKEND, "busy", fail_on_call=1)
+        assert self._run(root, backend) is False
+        _assert_bytes_unchanged(record_file, before)
+
+    def test_unreadable_refusal_returns_false_and_preserves_bytes(self, tmp_git_repo: Path) -> None:
+        root, record_file, before = self._setup(tmp_git_repo)
+        backend = _InjectedBackend(DEFAULT_BACKEND, "unreadable", fail_on_call=1)
+        assert self._run(root, backend) is False
+        _assert_bytes_unchanged(record_file, before)
+
+
+# ---------------------------------------------------------------------------
+# Site 3: remote reconcile - _apply_release_or_refuse / _maybe_release_target_diagnostic
+# ---------------------------------------------------------------------------
+
+
+def _raise_busy(*args: object, **kwargs: object) -> IntegrationRecord:
+    del args, kwargs
+    raise RecordBusyError("injected: transient record lock contention")
+
+
+def _raise_unreadable(*args: object, **kwargs: object) -> IntegrationRecord:
+    del args, kwargs
+    raise RecordUnreadableError("injected: unreadable record evidence")
+
+
+class TestRemoteReconcileReleaseRefusals:
+    """``recover_remote_target_reconcile``'s release path (default backend).
+
+    This site calls ``apply_record_transition`` through its module-level
+    binding with the DEFAULT backend, so the BUSY/UNREADABLE windows are
+    injected at the module's own store binding -- the same catch site the
+    production caller relies on.
+    """
+
+    def test_present_record_releases_to_none(self, tmp_path: Path) -> None:
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        assert _apply_release_or_refuse(tmp_path, _verified_record()) is None
+        released = IntegrationRecord.model_validate_json(record_file.read_text("utf-8"))
+        assert not released.diagnostic_evidence
+        assert record_file.read_bytes() != before
+
+    @pytest.mark.parametrize(
+        ("deadline", "bounded"),
+        [(10.0, True), (None, False)],
+    )
+    def test_busy_refusal_typed_and_bytes_preserved(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        deadline: float | None,
+        bounded: bool,
+    ) -> None:
+        """BUSY maps through busy_refusal_outcome: bounded wait vs intervention."""
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        monkeypatch.setattr(
+            "ralph.pipeline._remote_reconcile_recovery.apply_record_transition", _raise_busy
+        )
+        state = _apply_release_or_refuse(
+            tmp_path, _verified_record(), retry_deadline=deadline, clock=lambda: 1.0
+        )
+        assert state is not None
+        if bounded:
+            assert state.last_outcome is RebaseOutcomeKind.SKIPPED
+        else:
+            assert state.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+        assert "busy" in (state.last_reason or "")
+        assert state.recovery_record_retained is True
+        _assert_bytes_unchanged(record_file, before)
+
+    def test_unreadable_refusal_maps_to_typed_intervention(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """UNREADABLE maps to DIAGNOSTIC_INTERVENTION_REQUIRED, never an overwrite."""
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        monkeypatch.setattr(
+            "ralph.pipeline._remote_reconcile_recovery.apply_record_transition",
+            _raise_unreadable,
+        )
+        state = _apply_release_or_refuse(
+            tmp_path, _verified_record(), retry_deadline=10.0, clock=lambda: 1.0
+        )
+        assert state is not None
+        assert state.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+        assert state.recovery_record_retained is True
+        assert state.recovery_record_retained_reason is (
+            StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+        )
+        _assert_bytes_unchanged(record_file, before)
+
+    def test_busy_refusal_via_public_caller_preserves_bytes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``_maybe_release_target_diagnostic`` surfaces the same typed refusal."""
+        _install_unchanged_collector(monkeypatch)
+        before = _write_present_record(tmp_path)
+        record_file = tmp_path / RECORD_FILE
+        monkeypatch.setattr(
+            "ralph.pipeline._remote_reconcile_recovery.apply_record_transition", _raise_busy
+        )
+        state = _maybe_release_target_diagnostic(
+            tmp_path,
+            tmp_path,
+            _verified_record(),
+            retry_deadline=10.0,
+            clock=lambda: 1.0,
+        )
+        assert state is not None
+        assert state.last_outcome is RebaseOutcomeKind.SKIPPED
+        assert "busy" in (state.last_reason or "")
+        _assert_bytes_unchanged(record_file, before)
+
+
+# ---------------------------------------------------------------------------
+# Cross-site: the store itself owns the refusal (never a bare overwrite)
+# ---------------------------------------------------------------------------
+
+
+def test_store_refuses_busy_without_overwriting(tmp_path: Path) -> None:
+    """BUSY bytes must survive: the store, not the caller, refuses the write."""
+    before = _write_present_record(tmp_path)
+    record_file = tmp_path / RECORD_FILE
+    backend = _InjectedBackend(DEFAULT_BACKEND, "busy", fail_on_call=1)
     with pytest.raises(RecordBusyError):
         apply_record_transition(
             tmp_path,
@@ -134,29 +445,15 @@ def test_apply_record_transition_refuses_busy_with_typed_error(tmp_path: Path) -
             diagnostic_evidence=(),
             diagnostic_ownership=None,
         )
-
-    # The on-disk record was NOT overwritten; the BUSY refusal preserves evidence.
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
-    raw = json.loads(record_file.read_text(encoding="utf-8"))
-    assert raw["diagnostic_evidence"] == [["work", "evidence"]]
-    assert raw["diagnostic_ownership"] == "test"
+    _assert_bytes_unchanged(record_file, before)
 
 
-def test_apply_record_transition_refuses_unreadable_with_typed_error(
-    tmp_path: Path,
-) -> None:
-    """``apply_record_transition`` raises ``RecordUnreadableError`` on UNREADABLE writes.
-
-    Documents the typed refusal contract: when the read outcome is
-    UNREADABLE, the store refuses to write and the bytes stay
-    untouched on disk as ownership evidence.
-    """
-    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+def test_store_refuses_unreadable_without_overwriting(tmp_path: Path) -> None:
+    """UNREADABLE bytes are the only ownership proof: never overwritten."""
+    record_file = tmp_path / RECORD_FILE
     record_file.parent.mkdir(parents=True, exist_ok=True)
-    # Write bytes that produce an UNREADABLE outcome (corrupt JSON).
     record_file.write_text("{not valid json", encoding="utf-8")
-    original_bytes = record_file.read_bytes()
-
+    before = record_file.read_bytes()
     with pytest.raises(RecordUnreadableError):
         apply_record_transition(
             tmp_path,
@@ -164,54 +461,4 @@ def test_apply_record_transition_refuses_unreadable_with_typed_error(
             diagnostic_evidence=(),
             diagnostic_ownership=None,
         )
-
-    # The UNREADABLE bytes are preserved on disk.
-    assert record_file.read_bytes() == original_bytes
-
-
-@pytest.mark.parametrize(
-    ("module_name",),
-    [
-        ("ralph.pipeline.auto_integrate_recovery",),
-        ("ralph.pipeline._integration_diagnostic",),
-        ("ralph.pipeline._remote_reconcile_recovery",),
-    ],
-)
-def test_release_sites_use_apply_record_transition_for_release(
-    module_name: str,
-) -> None:
-    """Every sibling RELEASE_DIAGNOSTIC_EVIDENCE site uses the record store.
-
-    Public-seam assertion: each release module imports
-    ``apply_record_transition`` (the typed record store) so its
-    RELEASE_DIAGNOSTIC_EVIDENCE site can refuse BUSY/UNREADABLE
-    instead of overwriting ownership evidence. A future regression
-    that swaps the store call back to a bare ``write_record`` fails
-    this pin.
-    """
-    import importlib
-
-    module = importlib.import_module(module_name)
-
-    assert hasattr(module, "apply_record_transition"), (
-        f"{module_name} must import apply_record_transition so "
-        "the RELEASE_DIAGNOSTIC_EVIDENCE site can refuse BUSY/UNREADABLE."
-    )
-
-
-def test_recovery_seam_uses_apply_record_transition_for_release(
-    tmp_path: Path,
-) -> None:
-    """The recovery seam's RELEASE_DIAGNOSTIC_EVIDENCE site uses the record store.
-
-    Public-seam assertion: the recovery module imports
-    ``apply_record_transition`` (the typed record store) so the
-    RELEASE_DIAGNOSTIC_EVIDENCE site can refuse BUSY/UNREADABLE
-    instead of overwriting ownership evidence.
-    """
-    import ralph.pipeline.auto_integrate_recovery as recovery_mod
-
-    assert hasattr(recovery_mod, "apply_record_transition"), (
-        "auto_integrate_recovery must import apply_record_transition so "
-        "the RELEASE_DIAGNOSTIC_EVIDENCE site can refuse BUSY/UNREADABLE."
-    )
+    _assert_bytes_unchanged(record_file, before)

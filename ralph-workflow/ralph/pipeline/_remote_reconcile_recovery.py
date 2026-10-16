@@ -39,6 +39,26 @@ from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
+
+def busy_refusal_outcome(
+    retry_deadline: float | None,
+    *,
+    clock: object = None,
+) -> IntegrationAction:
+    """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
+
+    Canonical mapping lives in :mod:`ralph.pipeline._integration_diagnostic`
+    (lazy import avoids an import cycle): an unexpired persisted deadline
+    yields ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
+    deadline yields ``REQUIRE_INTERVENTION``.
+    """
+    from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as _map
+
+    return _map(retry_deadline, clock=clock)
+
+
+
+
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
@@ -75,7 +95,12 @@ def recover_target_resolution(
 
 
 def _maybe_release_target_diagnostic(
-    owner: Path, root: Path, record: IntegrationRecord
+    owner: Path,
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    retry_deadline: float | None = None,
+    clock: object = None,
 ) -> RebaseState | None:
     """Release the diagnostic evidence through the typed record store.
 
@@ -93,7 +118,7 @@ def _maybe_release_target_diagnostic(
     verdict = release_verified_diagnostic(owner, record)
     if verdict != EvidenceVerdict.UNCHANGED:
         return _retained(record, diagnostic_evidence_gate_reason(verdict))
-    return _apply_release_or_refuse(root, record)
+    return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
 
 
 def _continue_target_reconciliation(
@@ -130,15 +155,25 @@ def _continue_target_reconciliation(
     )
 
 
-def _apply_release_or_refuse(root: Path, record: IntegrationRecord) -> RebaseState | None:
+def _apply_release_or_refuse(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    retry_deadline: float | None = None,
+    clock: object = None,
+) -> RebaseState | None:
     """Route the release through the typed record store; return refusal RebaseState or None.
 
-    BUSY refusals are mapped to a typed retained-skip outcome so the
-    bounded retry owner decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION.
-    UNREADABLE refusals are mapped to DIAGNOSTIC_INTERVENTION_REQUIRED with
-    recovery_record_retained=True and bytes preserved on disk (the
-    concrete ``recovery_record_retained_reason=`` field is set on
-    the refusal RebaseState below).
+    BUSY refusals are mapped through the PERSISTED
+    ``RebaseState.retry_deadline`` (via :func:`busy_refusal_outcome`):
+    an unexpired deadline yields a bounded-wait retained skip; a
+    missing or expired deadline fails closed to
+    DIAGNOSTIC_INTERVENTION_REQUIRED. UNREADABLE refusals always map
+    to DIAGNOSTIC_INTERVENTION_REQUIRED with recovery_record_retained
+    =True and bytes preserved on disk -- never bare-written over.
+    Callers with access to the checkpointed RebaseState pass its
+    ``retry_deadline``; without one the deadline is treated as missing
+    (REQUIRE_INTERVENTION).
     """
     try:
         apply_record_transition(
@@ -148,9 +183,20 @@ def _apply_release_or_refuse(root: Path, record: IntegrationRecord) -> RebaseSta
             diagnostic_ownership=None,
         )
     except RecordBusyError:
-        return _retained(
-            record,
-            "target reconciliation worktree busy; recovery will retry",
+        if busy_refusal_outcome(retry_deadline, clock=clock) is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+            return _retained(
+                record,
+                "target reconciliation worktree busy; recovery will retry",
+            )
+        return RebaseState(
+            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            last_reason=(
+                "target reconciliation record busy with no persisted retry deadline; "
+                "intervention required"
+            ),
+            last_target=record.target,
+            recovery_record_retained=True,
+            recovery_record_retained_reason=(StartupRetentionReason.REMOTE_RECONCILE_RETAINED),
         )
     except RecordUnreadableError:
         return RebaseState(

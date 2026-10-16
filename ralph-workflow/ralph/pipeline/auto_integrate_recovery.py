@@ -118,11 +118,28 @@ if TYPE_CHECKING:
 
 __all__ = [
     "TerminalStateViolationError",
+    "busy_refusal_outcome",
     "legacy_rebase_startup_block",
     "post_attempt_verify",
     "recover_incomplete_integration",
     "recovery_retained_record",
 ]
+
+
+def busy_refusal_outcome(
+    retry_deadline: float | None,
+    *,
+    clock: object = None,
+) -> IntegrationAction:
+    """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
+
+    Delegates to the ``next_integration_action`` conflict authority: an
+    unexpired persisted deadline yields ``WAIT_FOR_BOUNDED_RETRY``; a
+    missing, malformed, or expired deadline yields
+    ``REQUIRE_INTERVENTION``. Used by the release-refusal BUSY sites.
+    """
+    state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, retry_deadline=retry_deadline)
+    return next_integration_action(state, clock=clock)
 
 
 def _clear_legacy_checkpoint(workspace_root: Path) -> None:
@@ -646,6 +663,13 @@ def _maybe_release_diagnostic(
                 diagnostic_ownership=None,
             )
         except RecordBusyError:
+            # Fail closed: bytes untouched. The bounded wait vs
+            # intervention decision belongs to the run loop's typed
+            # authority over the PERSISTED ``RebaseState.retry_deadline``
+            # (checkpoint), not to a fresh allowance minted here. The
+            # retained-skip outcome carries no deadline, so a caller
+            # without a persisted unexpired deadline routes to
+            # REQUIRE_INTERVENTION (see busy_refusal_outcome).
             return _record_skip(
                 reason="integration record busy; recovery will retry",
                 target=record.target,

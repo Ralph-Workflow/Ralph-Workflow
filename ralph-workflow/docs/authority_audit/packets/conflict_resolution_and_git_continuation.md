@@ -3,21 +3,23 @@
 ## Authoritative owner
 `ralph.pipeline._integration_action.next_integration_action` is the
 single authority for the integration lifecycle action
-(`_integration_action.py:224-252`); for in-flight conflict and merge
+(`_integration_action.py:224-255`); for in-flight conflict and merge
 state, the authority is the
-`ralph.pipeline._git_operation_authority.classify_git_operation` enum.
+`ralph.pipeline._git_operation_authority.classify_git_operation` enum
+(`_git_operation_authority.py:30`).
 
 ## Writers
 - `ralph.pipeline._git_operation_authority.classify_git_operation`
   classifies the current Git operation into a typed
-  `GitOperationKind` (`_git_operation_authority.py:classify_git_operation`).
-- `ralph.pipeline.auto_integrate_rebase_merge` writes the resolve
-  and continuation transitions
-  (`auto_integrate_rebase_merge.py:resolve_rebase`,
-  `continue_rebase`).
+  `GitOperationKind` (`_git_operation_authority.py:30-48`).
+- `ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
+  drives the resolve and continuation transitions
+  (`auto_integrate_rebase_merge.py:123`);
+  `git/rebase/rebase_continuation.continue_rebase_at` performs the
+  rebase continuation (`rebase_continuation.py:153`).
 - `ralph.pipeline._pending_merge_commit` writes the
   `MARK_PENDING_MERGE_COMMIT` transition on a verified commit
-  (`_pending_merge_commit.py`).
+  (`_pending_merge_commit.py:54,77`).
 
 ## Readers
 - `ralph.pipeline.run_loop` reads the integration action and the
@@ -27,7 +29,7 @@ state, the authority is the
 
 ## Derived projections
 - `IntegrationAction` is a closed 8-value enum
-  (`_integration_action.py:17-26`); `GitOperationKind` is the
+  (`_integration_action.py:17-27`); `GitOperationKind` is the
   classification enum.
 
 ## Valid transitions
@@ -36,15 +38,15 @@ state, the authority is the
   `ACCEPT_REPAIR_EDITS`, `RESUME_REPAIR` are the in-flight
   transitions; `START_INTEGRATING`, `PROMOTE_TO_INTEGRATED`, `CLEAR`
   are the boundary transitions
-  (`auto_integrate_transition.py:_register_all_transitions`).
+  (`auto_integrate_transition.py:261`).
 
 ## Restart behaviour
 A crash before a transition leaves the prior recoverable state; a
 crash after leaves the new recoverable state. The pending rebase
 metadata captured at `MARK_PENDING_REBASE_CONTINUE` is the durable
-replay queue (`auto_integrate_transition.py:MARK_PENDING_REBASE_CONTINUE`)
-and is consumed by `resume_pending_rebase` on the next turn
-(`_pending_rebase_continue.py:resume_pending_rebase`).
+replay queue (`auto_integrate_transition.py:152`) and is consumed by
+`resume_pending_rebase` on the next turn
+(`_pending_rebase_continue.py:131`).
 
 ## UNKNOWN representation
 - `classify_git_operation` returns `GitOperationKind.NONE` when

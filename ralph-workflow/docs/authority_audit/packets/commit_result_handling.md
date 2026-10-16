@@ -3,7 +3,7 @@
 ## Authoritative owner
 `ralph.pipeline._commit_completion_authority.complete_commit` is the
 single authority for the commit-completion promotion
-(`_commit_completion_authority.py:complete_commit`).
+(`_commit_completion_authority.py:28`).
 
 ## Writers
 - `ralph.pipeline.auto_integrate_recovery_terminal` writes the
@@ -22,7 +22,7 @@ single authority for the commit-completion promotion
 ## Derived projections
 - `RebaseState.last_outcome` (typed `RebaseOutcomeKind`) is the
   derived projection; `last_action` is a read-only backward-
-  compatible `@property` (`rebase_state.py:74-93`).
+  compatible `@property` (`rebase_state.py:84-93`).
 
 ## Valid transitions
 - `PROMOTE_TO_INTEGRATED` is the transition that records the
@@ -38,7 +38,7 @@ in its prior phase; on restart, the recovery boundary re-derives the
 next action. A crash after `complete_commit` returns but before the
 record is written is closed by `IntegrationRecordStore.transition`'s
 PROMOTE_TO_INTEGRATED idempotency short-circuit
-(`auto_integrate_record_store.py:IntegrationRecordStore.transition`).
+(`auto_integrate_record_store.py:75`).
 
 ## UNKNOWN representation
 - An empty `pre_target_sha` means the atomic compare-and-swap is
@@ -51,4 +51,4 @@ PROMOTE_TO_INTEGRATED idempotency short-circuit
 - An unlanded rebase (`last_outcome in (REBASED, MERGED)` and
   `fast_forwarded is False`) blocks dispatch and terminal success
   via `_pipeline_state_machine._check_blocking_decision`
-  (`_pipeline_state_machine.py:90-100`).
+  (`_pipeline_state_machine.py:90-99`).
