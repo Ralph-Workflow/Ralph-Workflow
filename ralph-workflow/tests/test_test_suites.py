@@ -103,6 +103,19 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # boundary rather than a black-box test seam.
     "tests/test_audit_opts_key_drift.py",
     "tests/test_audit_kwargs_forwarding.py",
+    # wt-16: root-cause + containment regression tests for the
+    # MCP respawn bug (R1-R4, S1-S4). See
+    # ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` in
+    # ``ralph/test_suites.py`` for the rationale on why the
+    # E2E shard is the right home for these.
+    "tests/mcp/test_reserved_socket_held_across_respawn.py",
+    "tests/mcp/test_mcp_endpoint_never_refuses.py",
+    "tests/mcp/test_mcp_slow_startup_served_from_backlog.py",
+    "tests/mcp/test_respawn_no_discovery.py",
+    "tests/mcp/test_mcp_server_startup_stages_observable.py",
+    "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py",
+    "tests/mcp/test_restart_aware_bridge_failed_restart_fn.py",
+    "tests/mcp/test_restart_aware_bridge_policy_cooldown.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

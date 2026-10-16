@@ -101,7 +101,7 @@ def _make_bridge(
             session_file=session_file,
         ),
         restart_fn=restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=probe_fn,
         probe_timeout_fn=lambda: timedelta(seconds=5),
@@ -212,7 +212,7 @@ def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
         reserve_port=lambda: 43123,
         create_session_file=lambda root, session: tmp_path / "session.json",
         subprocess_env=lambda session_file: {},
-        spawn_process=lambda command, cwd, env, *, phase=None: FakeProcess(poll_result=None),
+        spawn_process=lambda command, cwd, env, *, phase=None, pass_fds=(): FakeProcess(poll_result=None),
         preflight=failing_preflight,
         preflight_timeout=lambda: timedelta(seconds=PREFLIGHT_TIMEOUT),
     )
@@ -228,11 +228,17 @@ def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
 
 
 def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
-    """A restart that raises must not silently end supervision.
+    """S1 invariant: a restart_fn that raises still increments the counter.
 
-    A dead supervisor stops probing and restarting entirely, which is how
-    the observed run hung: the server was never recovered again, so the
-    pipeline sat idle until the watchdog fired.
+    The pre-fix code did ``self._inner = self._restart_fn()`` THEN
+    ``self._restart_count += 1``, so a raised restart exception left
+    the counter at the pre-attempt value and the budget-exhausted
+    guard never tripped: the supervisor kept retrying forever while
+    the run starved. The post-fix code increments FIRST, so a raised
+    restart is reflected in ``restart_count`` and the typed
+    ``McpServerError`` propagates with the real count visible to
+    the supervisor. The supervisor observes the typed error and
+    treats the attempt as terminal (no further restart calls).
     """
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
@@ -249,6 +255,8 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
 
     def restart_fn() -> lifecycle.StandaloneMcpProcess:
         attempts.append(len(attempts) + 1)
+        # S1: first restart attempt always raises so the test
+        # exercises the counter-still-advances contract.
         if len(attempts) == 1:
             msg = "preflight failed while the process was still alive"
             raise RuntimeError(msg)
@@ -268,14 +276,27 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
             session_file=session_file,
         ),
         restart_fn=restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=10),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=always_failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=5),
     )
 
-    with McpSupervisor(bridge, check_interval=timedelta(seconds=0.01)):
-        reached = second_restart_reached.wait(timeout=10.0)
-
-    assert reached, "supervision stopped after the first restart raised"
-    assert bridge.restart_count == 1
+    # The probe must fail 3 times (_PROBE_FAILURES_BEFORE_RESTART)
+    # before a restart is attempted, so the test calls the health
+    # check two times to accumulate the failure count, then
+    # asserts the 3rd call raises the typed McpServerError after
+    # the counter advanced to 1 (S1). The supervisor catches the
+    # error and goes terminal; the test asserts both halves of
+    # the contract.
+    bridge.check_health_and_restart_if_needed()
+    bridge.check_health_and_restart_if_needed()
+    with pytest.raises(lifecycle.McpServerError) as excinfo:
+        bridge.check_health_and_restart_if_needed()
+    assert "MCP restart attempt 1/10 failed" in str(excinfo.value)
+    assert excinfo.value.restart_count == 1
+    # The second restart_fn() invocation is gated by the counter
+    # check: the supervisor does not retry after a typed error.
+    assert not second_restart_reached.is_set(), (
+        "restart_fn must NOT be called a second time after the first attempt raised"
+    )

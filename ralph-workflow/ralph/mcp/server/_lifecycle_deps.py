@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from socket import socket
 
     from ralph.mcp.protocol.startup import SessionLike
     from ralph.mcp.server._spawn_process import SpawnProcess
@@ -28,6 +29,13 @@ class LifecycleDeps:
     preflight_timeout: Callable[[], timedelta]
     probe: Callable[[str, timedelta], None] | None = None
     probe_timeout: Callable[[], timedelta] | None = None
+    # R1 hook: return (host, port, listening socket) the parent owns
+    # for the bridge's full lifetime. ``reserve_port`` stays in the
+    # dataclass for backward compatibility, but every production
+    # caller wires the new hook to :func:`_reserve_listening_socket`
+    # so the kernel backlog absorbs a respawn instead of returning
+    # ``ECONNREFUSED`` to a queued client.
+    reserve_listening_socket: Callable[[], tuple[str, int, socket]] | None = None
 
 
 __all__ = ["LifecycleDeps", "PreflightFn"]

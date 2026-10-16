@@ -207,7 +207,7 @@ def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
     bridge = RestartAwareMcpBridge(
         inner=inner,
         restart_fn=restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
 
@@ -248,7 +248,7 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
     bridge = RestartAwareMcpBridge(
         inner=inner,
         restart_fn=restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=probe_fn,
     )

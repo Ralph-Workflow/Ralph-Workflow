@@ -60,7 +60,7 @@ def test_shutdown_called_on_dead_inner_before_respawn() -> None:
     bridge = RestartAwareMcpBridge(
         inner=old_inner,
         restart_fn=restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
 
@@ -85,7 +85,7 @@ def test_no_restart_when_process_is_healthy() -> None:
     bridge = RestartAwareMcpBridge(
         inner=healthy_inner,
         restart_fn=restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
     restarted = bridge.check_health_and_restart_if_needed()
@@ -144,11 +144,17 @@ def test_adversarial_restart_fn_raises_propagates() -> None:
     bridge = RestartAwareMcpBridge(
         inner=old_inner,
         restart_fn=broken_restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    with pytest.raises(RuntimeError, match="respawn failed"):
+    # S1: the failure is wrapped in a typed `McpServerError` so
+    # the recovery loop can branch on the type and surface the
+    # real `restart_count`. The original `RuntimeError` is chained
+    # via `__cause__` so the underlying message is preserved.
+    with pytest.raises(McpServerError) as excinfo:
         bridge.check_health_and_restart_if_needed()
+    assert "respawn failed" in str(excinfo.value)
+    assert excinfo.value.restart_count == 1
     # The old inner was shut down before the failure
     assert old_inner.shutdown_calls
 
@@ -172,7 +178,7 @@ def test_restart_count_caps_at_max_restarts() -> None:
     bridge = RestartAwareMcpBridge(
         inner=inners[0],
         restart_fn=rotating_restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1),
+        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
     # First restart succeeds

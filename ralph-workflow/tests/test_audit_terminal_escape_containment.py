@@ -830,21 +830,28 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     audit_module.PackageWideCallSiteInvariant.reset_cache()
 
 
-def test_package_wide_call_site_invariant_detects_call_after_u2028_in_string(
+@pytest.mark.timeout_seconds(5)
+@pytest.mark.parametrize(
+    "separator",
+    ["", "\u2028", "\u2029", "\x0c", "\u0085"],
+    ids=["plain", "ls", "ps", "ff", "nel"],
+)
+def test_package_wide_call_site_invariant_flags_stdin_none_despite_unicode_separators(
     monkeypatch: pytest.MonkeyPatch,
+    separator: str,
 ) -> None:
-    """A U+2028 inside an earlier string must not blind the segment extractor.
+    """Line-splitting must match Python AST line semantics for every separator.
 
-    ``str.splitlines`` splits on U+2028 but Python's tokenizer does not,
-    so source slicing that relies on ``splitlines`` desynchronizes AST
-    line numbers and returns the WRONG segment for calls on later lines --
-    the invariant then misses a forbidden literal (safety-audit false
-    negative). The extractor must match ``ast.get_source_segment``.
+    ``str.splitlines`` also breaks on U+2028/U+2029, NEL, and form feed,
+    but Python's tokenizer does not: a call preceded by such a character
+    is on AST line 3 while a naive split puts it on line 4, so extraction
+    silently missed the forbidden literal. The audit must flag it for all
+    of them.
     """
-    fake_source = 'x = "a\u2028b"\nconsole.print(untrusted)\n'
+    fake_source = f'x = "a{separator}"\nSpawnOptions(stdin=None,)\n'
     inv = PackageWideCallSiteInvariant(
-        callee_name="print",
-        absent=("markup=True",),
+        callee_name="SpawnOptions",
+        absent=("stdin=None",),
     )
 
     monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
@@ -854,31 +861,9 @@ def test_package_wide_call_site_invariant_detects_call_after_u2028_in_string(
         classmethod(lambda cls: ["fake.py"]),
     )
 
-    assert inv.violations() == [], (
-        "The call carries no forbidden literal, so the invariant must pass; "
-        "a failure here means the extractor mangled the segment"
-    )
-
-    blind_inv = PackageWideCallSiteInvariant(
-        callee_name="print",
-        absent=("untrusted",),
-        present=("never-passed-literal",),
-    )
-    # With pre-fix splitlines slicing, the extracted segment is 'b"\n', so
-    # both checks miss: no 'untrusted' absent-violation, no present-literal hit.
-    # With correct slicing the segment is 'console.print(untrusted)', so the
-    # absent check must fire (present can never fire for this source).
-    violations = blind_inv.violations()
-    assert any("untrusted" in v for v in violations), (
-        f"Invariant must see the real call segment and flag 'untrusted'; got {violations!r}"
-    )
-    import ast as ast_stdlib
-
-    tree = ast_stdlib.parse(fake_source)
-    call_node = next(n for n in ast_stdlib.walk(tree) if isinstance(n, ast_stdlib.Call))
-    segment = audit_module._get_source_segment(fake_source, call_node)
-    assert segment == "console.print(untrusted)", (
-        f"Segment extraction must match ast.get_source_segment; got {segment!r}"
+    violations = inv.violations()
+    assert any("stdin=None" in v for v in violations), (
+        f"audit missed stdin=None after separator {separator!r}; got {violations!r}"
     )
 
     audit_module.PackageWideCallSiteInvariant.reset_cache()

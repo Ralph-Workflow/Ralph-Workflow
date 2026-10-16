@@ -35,6 +35,19 @@ class McpEnvVar(StrEnum):
     # once it is reparented away from it instead of running orphaned.
     OWNER_PID = "RALPH_MCP_OWNER_PID"
     REQUEST_TIMEOUT_MS = "RALPH_MCP_REQUEST_TIMEOUT_MS"
+    # Inherited-FD handoff for the parent-owned listening socket: the
+    # lifecycle reserves the port once, the child adopts the FD by
+    # number, and the bridge inherits the same socket across respawns
+    # so a kernel backlog (not a refused connection) is what an
+    # in-flight client sees between respawns.
+    INHERITED_FD = "RALPH_MCP_INHERITED_FD"
+    # Respawn sentinel: every child beyond the first runs with this
+    # flag set. The runtime reads it to take the catalog-only
+    # ``UpstreamRegistry.build_from_tool_catalog`` path so a respawn
+    # does zero network I/O before serving. The flag is absent for
+    # the first start, so first-start discovery still probes
+    # configured upstreams once and caches the catalog in the parent.
+    RESPAWN = "RALPH_MCP_RESPAWN"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -57,3 +70,5 @@ CYCLE_WARN_EPOCH_ENV = McpEnvVar.CYCLE_WARN_EPOCH
 CYCLE_DEADLINE_EPOCH_ENV = McpEnvVar.CYCLE_DEADLINE_EPOCH
 DEV_WARN_EPOCH_ENV = McpEnvVar.DEV_WARN_EPOCH
 DEV_DEADLINE_EPOCH_ENV = McpEnvVar.DEV_DEADLINE_EPOCH
+MCP_INHERITED_FD_ENV = McpEnvVar.INHERITED_FD
+MCP_RESPAWN_ENV = McpEnvVar.RESPAWN

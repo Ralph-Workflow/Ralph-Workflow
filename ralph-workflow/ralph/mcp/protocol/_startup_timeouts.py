@@ -44,6 +44,33 @@ _DEFAULT_PREFLIGHT = timedelta(milliseconds=30_000)
 # who raises RALPH_MCP_PREFLIGHT_TIMEOUT_MS to accommodate a slow upstream.
 _PROBE_BUDGET_SHARE = 0.5
 
+# Floor on the time the child needs to fail loudly after the last probe. With N
+# upstreams sharing the probe budget, the child can be left with no room to
+# report a stall if this safety margin is zero or the worst-case probe budget
+# per upstream is below it; we bound the upstream count below so the child
+# always has at least one safety margin's worth of time to surface the failure.
+_PROBE_SAFETY_S: float = 2.0
+
+# Worst-case count of upstreams at defaults (30 s preflight, 0.5 share = 15 s
+# probe budget) whose per-probe budget stays at or above the safety margin and
+# whose probes still leave the child at least one safety margin to fail loudly.
+_MAX_UPSTREAMS_AT_DEFAULTS: int = int(
+    (_DEFAULT_PREFLIGHT * _PROBE_BUDGET_SHARE - timedelta(seconds=_PROBE_SAFETY_S))
+    / timedelta(seconds=_PROBE_SAFETY_S)
+)
+
+# Import-time invariant: a non-positive safety floor or a degenerate upstream
+# count would silently invalidate the math above. ``if``/``raise`` (not
+# ``assert``) so this holds under ``python -O`` as well as a plain import.
+if not (_PROBE_SAFETY_S > 0):
+    raise RuntimeError(
+        f"_PROBE_SAFETY_S must be > 0, got {_PROBE_SAFETY_S!r}"
+    )
+if _MAX_UPSTREAMS_AT_DEFAULTS < 1:
+    raise RuntimeError(
+        f"_MAX_UPSTREAMS_AT_DEFAULTS must be >= 1, got {_MAX_UPSTREAMS_AT_DEFAULTS!r}"
+    )
+
 _DISCOVERY_METHOD = "tools/list"
 
 # Budget for an upstream tool call, which runs outside the startup window.

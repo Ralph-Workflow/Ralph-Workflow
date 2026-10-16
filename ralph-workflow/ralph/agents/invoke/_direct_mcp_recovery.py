@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final, cast
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.agents.invoke._supervision_infrastructure_error import SupervisionInfrastructureError
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.runtime_events import RuntimeEventRecorder, record_runtime_event, runtime_event_scope
 
@@ -148,7 +149,12 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
         # (same contract as ``_invocation_error_with_output``).
         exc.parsed_output = [*_exception_parsed_output(exc), diagnostic]
         return exc
-    return RuntimeError(f"{diagnostic} Original failure: {exc}")
+    # Non-AgentInvocationError: preserve the original typed exception so
+    # callers' ``pytest.raises`` and upstream classifiers key on the real
+    # type, and attach the diagnostic as a note rather than rebuilding it
+    # as a bare ``RuntimeError`` that would erase that type.
+    exc.add_note(diagnostic)
+    return exc
 
 
 def _retry_plan_for_exception(
@@ -220,6 +226,8 @@ def _run_with_direct_mcp_recovery[T](
             return run_attempt(current_session_id, _capture_session_id)
         except SupervisionInfrastructureError:
             raise
+        except McpServerError:
+            raise
         except Exception as exc:
             if type(exc).__name__ == "OpenCodeResumableExitError" and not retry_resumable_exit:
                 raise
@@ -263,7 +271,7 @@ def _run_with_direct_mcp_recovery[T](
             retries_used += 1
 
 
-def _iter_with_direct_mcp_recovery(
+def _iter_with_direct_mcp_recovery(  # noqa: PLR0912  # recovery loop; branches are intentional
     run_attempt: Callable[[str | None], Iterable[str]],
     *,
     max_retries: int,
@@ -300,6 +308,8 @@ def _iter_with_direct_mcp_recovery(
                         on_session_observed(observed_session_id)
                 yield line
             return
+        except McpServerError:
+            raise
         except Exception as exc:
             if type(exc).__name__ == "OpenCodeResumableExitError":
                 raise

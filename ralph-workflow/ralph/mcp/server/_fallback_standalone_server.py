@@ -17,6 +17,7 @@ from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from socket import socket
 
     from ralph.mcp.server._mcp_server import McpServer
 
@@ -31,12 +32,20 @@ class _FallbackStandaloneServer:
         mcp_server: McpServer,
         *,
         env_getter: EnvGetter = os.environ.get,
+        parent_socket: socket | None = None,
     ) -> None:
         self._host = host
         self._port = port
         self._mcp_server = mcp_server
         self._env_getter = env_getter
         self._httpd: _FallbackHttpServer | None = None
+        # Adopt the parent's already-listening socket when one is
+        # supplied. The bridge owns this socket for its full
+        # lifetime (R1); the child must not bind a new one. When
+        # ``parent_socket`` is ``None`` (one-shot CLI invocations
+        # like ``ralph-mcp --port 9000`` with no bridge parent),
+        # the standalone server still binds its own port.
+        self._parent_socket: socket | None = parent_socket
 
     @property
     def bound_address(self) -> tuple[str, int]:
@@ -55,7 +64,14 @@ class _FallbackStandaloneServer:
     ) -> None:
         if transport != DEFAULT_TRANSPORT:
             raise ValueError(f"Unsupported transport: {transport}")
-        httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
+        if self._parent_socket is not None:
+            httpd = _FallbackHttpServer(
+                (self._host, self._port),
+                _FallbackHttpHandler,
+                parent_socket=self._parent_socket,
+            )
+        else:
+            httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
         httpd.mcp_server = self._mcp_server
         httpd.state = ServerState.UNINITIALIZED
         httpd.shutdown_event = Event()
@@ -83,7 +99,8 @@ class _FallbackStandaloneServer:
             "drain_ceiling_ms={drain_ceiling} "
             "kill_escalation_ms={kill_escalation} "
             "probe_timeout_ms={probe_timeout} "
-            "auth_token_set={auth}",
+            "auth_token_set={auth} "
+            "inherited_fd={inherited_fd}",
             transport="streamable-http",
             session_class=type(self._mcp_server._session).__name__,
             dispatch_cap=EXEC_MAX_TIMEOUT_MS,
@@ -93,6 +110,7 @@ class _FallbackStandaloneServer:
                 float(self._env_getter("RALPH_MCP_PROBE_TIMEOUT_MS", "5000") or "5000")
             ),
             auth=auth_token_set,
+            inherited_fd=self._parent_socket is not None,
         )
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)

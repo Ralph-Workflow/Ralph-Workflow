@@ -49,3 +49,4 @@ class SpawnOptions:
     allow_activity_relay_controls: bool = False
     # Reserved for the parent-owned standalone MCP bootstrap only.
     allow_broker_secret: bool = False
+    pass_fds: tuple[int, ...] = ()

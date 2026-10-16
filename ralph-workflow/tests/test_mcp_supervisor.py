@@ -60,7 +60,7 @@ def _make_bridge_with_process(
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts, cooldown_seconds=0.0),
         run_id="test-run",
     )
     return bridge, initial_process
@@ -79,7 +79,7 @@ def _make_exhausted_bridge(max_restarts: int = 0) -> lifecycle.RestartAwareMcpBr
     return lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: inner,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts, cooldown_seconds=0.0),
         run_id="test-run",
     )
 
@@ -239,7 +239,7 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=controlled_probe,
         probe_timeout_fn=lambda: timedelta(milliseconds=200),

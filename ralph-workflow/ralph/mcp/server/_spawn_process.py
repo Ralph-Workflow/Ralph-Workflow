@@ -15,6 +15,11 @@ class SpawnProcess(Protocol):
 
     The ``phase`` keyword argument, when set, is used to label the process
     ``phase:<phase>:mcp-server`` so it is reaped by the phase-scope cleanup.
+
+    The ``pass_fds`` keyword argument carries file-descriptor numbers
+    the child must inherit past ``exec``; R1 uses it to hand a
+    parent-owned listening socket to a freshly spawned MCP server
+    without going through the bind/listen cycle again.
     """
 
     def __call__(
@@ -24,6 +29,7 @@ class SpawnProcess(Protocol):
         env: dict[str, str],
         *,
         phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> ProcessLike: ...
 
 

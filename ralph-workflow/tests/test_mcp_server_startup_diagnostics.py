@@ -86,7 +86,12 @@ def _session() -> AgentSession:
 
 def test_startup_failure_reports_the_child_diagnostic_output(tmp_path: Path) -> None:
     def spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> ProcessLike:
         del command, env, phase
         log = mcp_server_log_path(cwd)
@@ -111,7 +116,12 @@ def test_startup_failure_omits_output_written_before_this_spawn(tmp_path: Path) 
     log.write_text(f"{stale}\n", encoding="utf-8")
 
     def spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> ProcessLike:
         del command, env, phase
         with mcp_server_log_path(cwd).open("a", encoding="utf-8") as stream:
@@ -130,7 +140,12 @@ def test_startup_failure_omits_output_written_before_this_spawn(tmp_path: Path) 
 
 def test_startup_failure_without_child_output_still_reports_the_endpoint(tmp_path: Path) -> None:
     def spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> ProcessLike:
         del command, cwd, env, phase
         return _LiveProcess()

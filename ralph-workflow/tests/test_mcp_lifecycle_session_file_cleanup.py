@@ -24,9 +24,14 @@ def test_session_metadata_uses_system_temporary_storage_outside_workspace(tmp_pa
 
 def test_spawn_failure_removes_created_session_file(tmp_path: Path) -> None:
     def fail_spawn(
-        _command: list[str], _cwd: Path, _env: dict[str, str], *, phase: str | None = None
+        _command: list[str],
+        _cwd: Path,
+        _env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> object:
-        del phase
+        del phase, pass_fds
         raise RuntimeError("spawn failed")
 
     deps = lifecycle.LifecycleDeps(

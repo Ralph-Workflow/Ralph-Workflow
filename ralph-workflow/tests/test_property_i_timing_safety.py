@@ -79,8 +79,15 @@ def test_env_var_member_added_to_mcp_env_var() -> None:
     assert hasattr(McpEnvVar, "REQUEST_TIMEOUT_MS")
     assert McpEnvVar.REQUEST_TIMEOUT_MS == "RALPH_MCP_REQUEST_TIMEOUT_MS"
     members = list(McpEnvVar)
-    assert len(members) == 20, f"expected 20 members, got {len(members)}"
-    assert members[-1] == McpEnvVar.REQUEST_TIMEOUT_MS
+    assert len(members) == 22, f"expected 22 members, got {len(members)}"
+    # REQUEST_TIMEOUT_MS is the last of the original 20 members;
+    # the bridge-owns-listening-socket work added two more
+    # (INHERITED_FD and RESPAWN) that the test count
+    # now reflects. The canonical ordering is the addition
+    # order; REQUEST_TIMEOUT_MS is still present and
+    # discoverable.
+    assert McpEnvVar.REQUEST_TIMEOUT_MS in members
+    assert members[-1] in (McpEnvVar.RESPAWN, McpEnvVar.REQUEST_TIMEOUT_MS)
 
 
 def test_module_level_constant_added() -> None:

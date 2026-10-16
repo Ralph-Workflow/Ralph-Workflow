@@ -216,7 +216,7 @@ def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -
         _sentinel_check_fn=lambda workspace, run_id: True,
     )
 
-    # Must NOT raise — the bypass short-circuits before the fail-closed guard
+    # Must NOT raise — the new guard short-circuits before the RuntimeError
     completion_mod.check_process_result(
         _FakeHandle(returncode=None, terminal_reason="interactive_completion"),
         "agy",
@@ -226,8 +226,8 @@ def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -
 
 
 @pytest.mark.timeout_seconds(5)
-def test_no_terminal_reason_still_fails_closed_with_typed_invocation_error() -> None:
-    """Handle without original_terminal_reason still hits the fail-closed guard."""
+def test_no_terminal_reason_raises_agent_invocation_error() -> None:
+    """Handle without original_terminal_reason still raises the classified error."""
     with pytest.raises(AgentInvocationError, match="terminal return code") as exc_info:
         completion_mod.check_process_result(
             _FakeHandle(returncode=None), "test-agent", parsed_output=None, check_options=None

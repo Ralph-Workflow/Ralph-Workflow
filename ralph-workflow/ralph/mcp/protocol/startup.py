@@ -389,8 +389,13 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
 
 
 def mcp_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    """Return the configured MCP responsiveness probe timeout duration."""
-    default = timedelta(milliseconds=5_000)
+    """Return the configured MCP responsiveness probe timeout duration.
+
+    Default floor is 6 seconds (6000 ms) when ``env`` is empty and the
+    override variable is unset, so a healthy server is not killed under
+    transient host load.
+    """
+    default = timedelta(milliseconds=6_000)
     env_map = os.environ if env is None else env
     raw = env_map.get(MCP_PROBE_TIMEOUT_MS_ENV)
     if raw is None:

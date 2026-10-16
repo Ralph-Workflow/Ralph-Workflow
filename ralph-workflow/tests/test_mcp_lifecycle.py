@@ -30,6 +30,20 @@ if TYPE_CHECKING:
 PREFLIGHT_TIMEOUT = 123
 
 
+def _default_fake_reserve_listening_socket(
+    port: int | None = None,
+) -> tuple[str, int, object]:
+    # Use port 0 (kernel-assigned) when no port is given, so the
+    # helper is callable from every test without port collisions.
+    import socket as _s
+    sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    sock.bind(("127.0.0.1", port or 0))
+    sock.listen(128)
+    bound_port = sock.getsockname()[1]
+    return "127.0.0.1", bound_port, sock
+
+
+
 class FakeProcess:
     def __init__(self, poll_result: int | None = None, pid: int = 12345) -> None:
         self._poll_result = poll_result
@@ -61,7 +75,15 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 
     def fake_reserve_port() -> int:
         seen["reserved"] = True
-        return 43123
+        return 53123
+
+    def fake_reserve_listening_socket() -> tuple[str, int, object]:
+        seen["reserved_socket"] = True
+        import socket as _s
+        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 53123))
+        sock.listen(128)
+        return "127.0.0.1", 53123, sock
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         seen["session_root"] = root
@@ -75,7 +97,12 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         seen["command"] = command
         seen["cwd"] = cwd
@@ -89,6 +116,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
@@ -106,11 +134,14 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 
     bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
 
-    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:43123/mcp"
+    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:53123/mcp"
     assert seen["session_root"] == tmp_path
-    assert seen["endpoint"] == "http://127.0.0.1:43123/mcp"
+    assert seen["endpoint"] == "http://127.0.0.1:53123/mcp"
     assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path
+    # R1: the parent-owned listening socket is released on shutdown
+    # so the next test (which re-uses the same port) can bind it.
+    bridge.shutdown()
 
 
 def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> None:
@@ -128,7 +159,12 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         del command, cwd, phase
         seen["env"] = env
@@ -139,6 +175,7 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
@@ -186,7 +223,12 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         return FakeProcess()
 
@@ -210,6 +252,7 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
@@ -260,7 +303,7 @@ def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
     )
     result = bridge.check_health_and_restart_if_needed()
@@ -275,7 +318,7 @@ def test_restart_aware_bridge_restarts_dead_process() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: new_inner,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
     )
     result = bridge.check_health_and_restart_if_needed()
@@ -289,7 +332,7 @@ def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: _make_standalone(poll_result=1),
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=2),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
         run_id="test-run",
     )
     bridge.check_health_and_restart_if_needed()  # restart 1
@@ -313,7 +356,7 @@ def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=counting_restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
     )
     bridge.check_health_and_restart_if_needed()
@@ -358,7 +401,7 @@ def test_conflict_resolution_relay_drops_events_after_bridge_shutdown(tmp_path: 
             session_file=session_file,
         ),
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
         activity_relay=relay,
     )
@@ -385,7 +428,7 @@ def test_sender_timeout_reported_by_probe_interrupts_the_parent_without_agent_ou
             session_file=pathlib.Path("/unused-session.json"),
         ),
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-relay-failure",
         probe_fn=probe,
         activity_relay=relay,
@@ -426,7 +469,7 @@ def test_restart_aware_bridge_closes_relay_before_terminating_the_server(tmp_pat
             session_file=session_file,
         ),
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
         activity_relay=_Relay(),
     )
@@ -471,7 +514,12 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         del command, cwd, env, phase
         spawn_call_count[0] += 1
@@ -482,6 +530,7 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
@@ -497,7 +546,14 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
     )
     workspace = lifecycle.FsWorkspace(tmp_path)
 
-    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
+    bridge = lifecycle.start_mcp_server(
+        session,
+        workspace,
+        deps=deps,
+        extras=lifecycle.McpServerExtras(
+            restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
+        ),
+    )
     assert len(preflight_calls) == 1, "preflight runs once at initial spawn"
 
     # Trigger a restart: process is dead (poll_result=1), so health check restarts
@@ -530,7 +586,7 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: restarted,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
     )
 
@@ -571,7 +627,7 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: (restart_calls.append(1), new_inner)[-1],
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
@@ -593,7 +649,7 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: _make_standalone(poll_result=None),
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=0),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=0, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
@@ -624,7 +680,7 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: new_inner,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
@@ -640,7 +696,7 @@ def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=None,
     )
@@ -660,7 +716,7 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=_make_standalone,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=passing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
@@ -673,12 +729,20 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
 
 def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
     """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
-    reserved_ports: list[int] = []
+    reserved_listening_calls: list[str] = []
     spawn_call_count = [0]
 
     def fake_reserve_port() -> int:
-        reserved_ports.append(43300)
+        # legacy seam, not used by the new lifecycle
         return 43300
+
+    def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
+        import socket as _s
+        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 43300))
+        sock.listen(128)
+        reserved_listening_calls.append("called")
+        return "127.0.0.1", 43300, sock
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / f"session-stable-{spawn_call_count[0]}.json"
@@ -689,7 +753,12 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         del command, cwd, env, phase
         spawn_call_count[0] += 1
@@ -703,6 +772,7 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=fake_reserve_listening_socket_for_stable_test,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
@@ -718,13 +788,20 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     )
     workspace = lifecycle.FsWorkspace(tmp_path)
 
-    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
+    bridge = lifecycle.start_mcp_server(
+        session,
+        workspace,
+        deps=deps,
+        extras=lifecycle.McpServerExtras(
+            restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
+        ),
+    )
     initial_endpoint = bridge.agent_endpoint_uri()
 
     bridge.check_health_and_restart_if_needed()
 
     # Port reserved exactly once, not on each restart
-    assert reserved_ports == [43300], "reserve_port called more than once"
+    assert reserved_listening_calls == ["called"], "reserve_listening_socket called more than once"
     # Endpoint unchanged after restart
     assert bridge.agent_endpoint_uri() == initial_endpoint
     assert initial_endpoint == "http://127.0.0.1:43300/mcp"
@@ -748,7 +825,12 @@ def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight
         return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
-        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> FakeProcess:
         del command, cwd, env, phase
         return FakeProcess(poll_result=23)
@@ -759,6 +841,7 @@ def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight
 
     deps = lifecycle.LifecycleDeps(
         reserve_port=fake_reserve_port,
+        reserve_listening_socket=_default_fake_reserve_listening_socket,
         create_session_file=fake_create_session_file,
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,

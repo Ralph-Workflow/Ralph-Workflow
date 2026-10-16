@@ -13,6 +13,15 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 
+
+def _split_python_lines(source: str) -> list[str]:
+    """Split on CR/LF only, keeping ends, to match Python AST line semantics."""
+    lines = [part + "\n" for part in source.split("\n")[:-1]]
+    last = source.rsplit("\n", 1)[-1]
+    if last:
+        lines.append(last)
+    return lines
+
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _READ_CACHE_LIMIT = 2048
 _PARSE_CACHE_LIMIT = 2048
@@ -51,21 +60,19 @@ def _parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
 
 
 def _split_lines(source: str) -> list[str]:
-    """Split source into lines the way the ``ast`` module does, ends preserved.
+    """Split source into Python-AST lines with line breaks preserved, cached across checks.
 
-    Cached across checks. Python's tokenizer treats only ``\n``, ``\r``
-    and ``\r\n`` as line separators, so ``str.splitlines`` cannot be used
-    here: it also splits on Unicode separators such as U+2028 inside a
-    string literal, which desynchronizes AST line numbers from the split
-    lines and corrupts the extracted call-site segments.
+    ``str.splitlines`` also breaks on U+2028/U+2029, NEL, and form feed,
+    which Python's tokenizer treats as ordinary characters inside a line.
+    Splitting on them desynchronizes the line indices from the AST's
+    ``lineno`` offsets, so extraction silently misses forbidden calls.
+    Split only on CR/LF pairs to match AST line semantics.
     """
     cached = _LINES_CACHE.get(source)
     if cached is not None:
         _LINES_CACHE.move_to_end(source)
         return cached
-    lines = source.split("\n")
-    if len(lines) > 1:
-        lines = [line + "\n" for line in lines[:-1]] + lines[-1:]
+    lines = _split_python_lines(source)
     _LINES_CACHE[source] = lines
     if len(_LINES_CACHE) > _PARSE_CACHE_LIMIT:
         _LINES_CACHE.popitem(last=False)
