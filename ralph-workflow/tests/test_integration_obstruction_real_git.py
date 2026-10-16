@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from ralph.git.merge import merge_in_progress, merge_target_into_current
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:

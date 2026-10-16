@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 pytestmark = [
-    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
     # Real-git setup; each test must stay far inside the per-suite cap and
     # the file must complete in well under 4 seconds (immutable 60s budget).
     pytest.mark.timeout_seconds(5),

@@ -54,7 +54,7 @@ from ralph.git.commit_result import CommitCreationResult
 from ralph.git.scoped_auto_commit import ScopedCommitResult, ScopedCommitStatus
 
 pytestmark = [
-    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
     pytest.mark.timeout_seconds(5),
 ]
 

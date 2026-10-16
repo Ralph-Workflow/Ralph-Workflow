@@ -39,7 +39,7 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 from ralph.skills._installer import install_project_baseline_skills_with_diff
 
 pytestmark = [
-    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
     pytest.mark.timeout_seconds(15),
 ]
 

@@ -29,7 +29,10 @@ from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.smoke]
+pytestmark = [
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.smoke,
+]  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
 
 
 def _terminal_signals(

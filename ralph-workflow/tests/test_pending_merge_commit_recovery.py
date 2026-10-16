@@ -11,7 +11,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def _git(root: Path, *args: str) -> GitRunResult:

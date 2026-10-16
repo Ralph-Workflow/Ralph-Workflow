@@ -18,7 +18,7 @@ from ralph.mcp.tools.git_read import (
     handle_git_status,
 )
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 class _Session:

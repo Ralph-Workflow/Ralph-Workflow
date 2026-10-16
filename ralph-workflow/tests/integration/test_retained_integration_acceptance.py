@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
     from ralph.pipeline.conflict_resolution import RebaseStop
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 def _git(root: Path, *args: str) -> GitRunResult:

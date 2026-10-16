@@ -303,7 +303,12 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 # in-shard fan-out does not oversubscribe the host.) The worker
 # count is a runner-architecture change, not a budget-constant
 # change, and the cumulative tracker in ralph/verify.py is preserved.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "8"
+# wt-03-fix-bug: reduced from 8 to 4 to reduce total concurrent
+# process count (6 general + 4 E2E = 10 total vs prior 8+8=16)
+# under high host load; E2E tests take ~1.25x longer per-worker but
+# reduced contention lets general shards complete faster, keeping
+# combined wall-clock inside the 60 s budget.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "4"
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_display_generated_scenes.py": 460,

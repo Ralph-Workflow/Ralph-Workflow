@@ -173,7 +173,7 @@ def test_default_run_propagates_display_subscriber(
     monkeypatch.setattr(
         run_loop_module,
         "_apply_startup_rebase_outcomes",
-        lambda current_state, _ctx: current_state,
+        lambda current_state, _ctx, **_kwargs: current_state,
     )
     monkeypatch.setattr(run_loop_module, "_block_unresolved_integration", lambda *_args: None)
     monkeypatch.setattr(

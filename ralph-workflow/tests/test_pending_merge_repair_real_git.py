@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
     from ralph.git.subprocess_runner import GitRunOptions
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def _install_validation_hook(root: Path, *, custom: bool) -> Path:

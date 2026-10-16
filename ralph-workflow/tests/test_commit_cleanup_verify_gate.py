@@ -34,11 +34,7 @@ _VERIFY_GATE_FILE = "tests/test_commit_cleanup_verify_gate.py"
 _PIPELINE_COMMIT_E2E_FILE = "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py"
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
-pytestmark = [
-    pytest.mark.timeout_seconds(5),
-    pytest.mark.subprocess_e2e,
-    pytest.mark.required_auto_integrate_e2e,
-]
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.required_auto_integrate_e2e]
 
 
 def _write_commit_cleanup_artifact(

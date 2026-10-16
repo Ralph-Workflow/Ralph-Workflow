@@ -548,7 +548,7 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.recover_incomplete_integration",
-        lambda _scope, *, config=None: recovered,
+        lambda _scope, *, config=None, **_kwargs: recovered,
     )
     monkeypatch.setattr(run_loop_module._runner_module, "save_checkpoint_or_log", saved)
     monkeypatch.setattr(

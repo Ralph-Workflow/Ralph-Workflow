@@ -74,7 +74,9 @@ def _nothing(*_args: object, **_kwargs: object) -> None:
     return None
 
 
-def _unchanged_state(state: PipelineState, _context: object) -> PipelineState:
+def _unchanged_state(
+    state: PipelineState, _context: object, **_kwargs: object
+) -> PipelineState:
     return state
 
 

@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(60)]
+pytestmark = [pytest.mark.timeout_seconds(60)]
 
 
 SCRIPT_TEMPLATE = """

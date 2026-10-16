@@ -85,7 +85,7 @@ def run_recovery_scenario(
     def exhausted(*_args: object) -> bool:
         return not recovered
 
-    def recover(*_args: object) -> None:
+    def recover(*_args: object, **_kwargs: object) -> None:
         return None
 
     def sync_target(_ctx: run_loop._LoopContext) -> tuple[Path, str]:
@@ -100,7 +100,9 @@ def run_recovery_scenario(
     def legacy(_root: Path) -> RebaseState:
         return state.rebase
 
-    def startup_outcome(current: PipelineState, _ctx: run_loop._LoopContext) -> PipelineState:
+    def startup_outcome(
+        current: PipelineState, _ctx: run_loop._LoopContext, **_kwargs: object
+    ) -> PipelineState:
         return current
 
     display = SimpleNamespace(emit_warn_line=warn)

@@ -507,7 +507,7 @@ def _install_recovery_seams(
     first.
     """
     events: list[str] = []
-    monkeypatch.setattr(recovery, "_read_record", lambda _root: _integrated_record())
+    monkeypatch.setattr(recovery, "_read_record", lambda _root, **_kwargs: _integrated_record())
     landing = importlib.import_module("ralph.pipeline._recovery_fast_forward_landing")
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: events.append("clear"))
     monkeypatch.setattr(landing, "_clear_record", lambda _root: events.append("clear"))

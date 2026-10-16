@@ -440,7 +440,7 @@ def test_terminal_entry_point_reports_intervention(workspace_root: Path, cause: 
 
 
 # --------------------------------------------------------------------------
-# Backend read failure driven through the REAL startup entry point.
+# Backend read failure driven through the startup entry point seam.
 # --------------------------------------------------------------------------
 
 
@@ -450,19 +450,182 @@ def test_startup_entry_point_reports_intervention_on_backend_read_failure(
     record_file = _record_file(workspace_root)
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    outcome = read_record_outcome(workspace_root, backend=_FailingReadBackend(record_file))
-    assert outcome.unreadable_reason == "backend_read_failure"
-    # The same startup seam consumed the failing backend must still land on
-    # the intervention projection: drive the recovery preamble through the
-    # real seam and assert the closed decision via the authority.
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
+    # Drive the startup recovery seam with the failing backend: the
+    # PermissionError from exists() maps to UNREADABLE(backend_read_failure)
+    # at the producer, so the decision must be strictly REPORT_INTERVENTION_REQUIRED.
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(workspace_root),
+        backend=_FailingReadBackend(record_file),
     )
-    # The preamble may see ABSENT (its own read uses the default backend and
-    # does not fail here) or UNREADABLE; in neither case may it dispatch.
-    decision = _authority_decision(recovered if recovered is not None else RebaseState())
-    assert decision in (INTERVENTION, PhaseDecision.CONTINUE_PHASE)
-    assert record_file.read_bytes() == b'{"phase": "integrating", "target": "main"}'
+    assert recovered is not None
+    assert recovered.last_outcome.value == "diagnostic_intervention_required"
+    assert recovered.last_decision == INTERVENTION.value
+    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
+
+
+# --------------------------------------------------------------------------
+# Backend read failure driven through the phase-boundary entry point seam.
+# --------------------------------------------------------------------------
+
+
+def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure(
+    workspace_root: Path,
+) -> None:
+    record_file = _record_file(workspace_root)
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
+    # Drive the phase-boundary loop with the failing backend threaded
+    # through _run_inner_loop -> _apply_startup_rebase_outcomes ->
+    # _run_auto_integrate_recovery_preamble -> recover_incomplete_integration.
+    # The failing backend causes exists() to return True but read_text() to
+    # raise PermissionError, mapping to UNREADABLE(backend_read_failure) and
+    # strictly REPORT_INTERVENTION_REQUIRED.
+    state = PipelineState(phase="development", rebase=RebaseState())
+    latest_state: list[PipelineState] = []
+    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    ctx = _loop_context(workspace_root, latest_state, sleep)
+    with pytest.raises(StopIteration):
+        run_loop._run_inner_loop(
+            state,
+            ctx,
+            "development",
+            backend=_FailingReadBackend(record_file),
+        )
+    assert sleep.called, "the phase-boundary loop must reach the cooldown sleep, not dispatch"
+    assert ctx.latest_state, "the blocked turn must publish its state"
+    blocked = ctx.latest_state[0]
+    assert blocked.is_waiting_state is True
+    assert blocked.rebase.last_decision == INTERVENTION.value
+    _assert_intervention(
+        workspace_root, blocked.rebase, b'{"phase": "integrating", "target": "main"}'
+    )
+    reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
+    assert reloaded is not None
+    assert reloaded.rebase.last_decision == INTERVENTION.value
+
+
+# --------------------------------------------------------------------------
+# Backend read failure driven through the commit entry point seam.
+# --------------------------------------------------------------------------
+
+
+def test_commit_entry_point_reports_intervention_on_backend_read_failure(
+    workspace_root: Path,
+) -> None:
+    record_file = _record_file(workspace_root)
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(workspace_root),
+        backend=_FailingReadBackend(record_file),
+    )
+    assert recovered is not None
+    assert recovered.last_outcome.value == "diagnostic_intervention_required"
+    assert recovered.last_decision == INTERVENTION.value
+    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
+
+
+# --------------------------------------------------------------------------
+# Backend read failure driven through the cooldown entry point seam.
+# --------------------------------------------------------------------------
+
+
+def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
+    workspace_root: Path,
+) -> None:
+    record_file = _record_file(workspace_root)
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
+    # Drive the cooldown path with the failing backend threaded through
+    # _wait_for_integration_retry -> _run_auto_integrate_recovery_preamble ->
+    # recover_incomplete_integration.  The PermissionError from read_text()
+    # maps to UNREADABLE(backend_read_failure) and strictly
+    # REPORT_INTERVENTION_REQUIRED.
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(workspace_root),
+        backend=_FailingReadBackend(record_file),
+    )
+    assert recovered is not None
+    assert recovered.last_outcome.value == "diagnostic_intervention_required"
+    assert recovered.last_decision == INTERVENTION.value
+    state = PipelineState(phase="development", rebase=recovered)
+    latest_state: list[PipelineState] = [state]
+    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    ctx = _loop_context(workspace_root, latest_state, sleep)
+    with pytest.raises(StopIteration):
+        run_loop._wait_for_integration_retry(
+            state,
+            ctx,
+            backend=_FailingReadBackend(record_file),
+        )
+    assert sleep.called
+    assert sleep.call_args is not None
+    delay = sleep.call_args.args[0]
+    assert isinstance(delay, (int, float)) and delay > 0
+    cooled = ctx.latest_state[0]
+    assert cooled.rebase.last_decision == INTERVENTION.value
+    _assert_intervention(
+        workspace_root, cooled.rebase, b'{"phase": "integrating", "target": "main"}'
+    )
+    reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
+    assert reloaded is not None
+    assert reloaded.rebase.last_decision == INTERVENTION.value
+
+
+# --------------------------------------------------------------------------
+# Backend read failure driven through the parallel-join entry point seam.
+# --------------------------------------------------------------------------
+
+
+def test_parallel_join_entry_point_reports_intervention_on_backend_read_failure(
+    workspace_root: Path,
+) -> None:
+    record_file = _record_file(workspace_root)
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(workspace_root),
+        backend=_FailingReadBackend(record_file),
+    )
+    assert recovered is not None
+    assert recovered.last_outcome.value == "diagnostic_intervention_required"
+    assert recovered.last_decision == INTERVENTION.value
+    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
+
+
+# --------------------------------------------------------------------------
+# Backend read failure driven through the terminal entry point seam.
+# --------------------------------------------------------------------------
+
+
+def test_terminal_entry_point_reports_intervention_on_backend_read_failure(
+    workspace_root: Path,
+) -> None:
+    record_file = _record_file(workspace_root)
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+
+    recovered = recover_incomplete_integration(
+        WorkspaceScope(workspace_root),
+        backend=_FailingReadBackend(record_file),
+    )
+    assert recovered is not None
+    assert recovered.last_outcome.value == "diagnostic_intervention_required"
+    assert recovered.last_decision == INTERVENTION.value
+    _assert_intervention(
+        workspace_root, recovered, b'{"phase": "integrating", "target": "main"}', phase="complete"
+    )
+    terminal_state = PipelineState(phase="complete", rebase=recovered)
+    assert is_terminal_success_eligible(terminal_state, None, recovered) is False
 
 
 # --------------------------------------------------------------------------

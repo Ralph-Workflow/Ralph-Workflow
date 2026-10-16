@@ -43,7 +43,7 @@ def _record(phase: str) -> IntegrationRecord:
 
 def _stub_recovery(monkeypatch: MonkeyPatch, *, phase: str) -> list[Path]:
     cleared: list[Path] = []
-    monkeypatch.setattr(recovery, "_read_record", lambda _root: _record(phase))
+    monkeypatch.setattr(recovery, "_read_record", lambda _root, **_kwargs: _record(phase))
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "abort_rebase_discarding_progress", lambda _root: None)

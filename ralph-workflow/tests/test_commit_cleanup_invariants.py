@@ -30,11 +30,7 @@ if TYPE_CHECKING:
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 
-pytestmark = [
-    pytest.mark.timeout_seconds(5),
-    pytest.mark.subprocess_e2e,
-    pytest.mark.required_auto_integrate_e2e,
-]
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.required_auto_integrate_e2e]
 
 
 def _write_commit_cleanup_artifact(

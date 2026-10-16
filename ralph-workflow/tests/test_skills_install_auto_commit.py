@@ -35,7 +35,7 @@ from ralph.skills._content import _MANAGED_MARKER, get_skill_content
 from ralph.skills._installer import install_project_baseline_skills_with_diff
 
 pytestmark = [
-    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
     # wt-012 DA-007/DA-012: the per-test timeout is widened from 5s to
     # 15s because the candidate-set expansion enumerates every
     # baseline skill leaf under every sibling root, which is many

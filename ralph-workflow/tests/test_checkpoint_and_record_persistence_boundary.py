@@ -568,6 +568,20 @@ class _TransientBackend(_InMemoryBackend):
         return super().read_text(path, encoding=encoding)
 
 
+class _ExistsPermissionErrorBackend(_InMemoryBackend):
+    """Backend whose exists() raises PermissionError (file is inaccessible)."""
+
+    def exists(self, path: Path) -> bool:
+        raise PermissionError(13, "permission denied")
+
+
+class _ExistsEagainBackend(_InMemoryBackend):
+    """Backend whose exists() raises EAGAIN (transient lock contention)."""
+
+    def exists(self, path: Path) -> bool:
+        raise OSError(errno.EAGAIN, "resource temporarily unavailable")
+
+
 def _valid_record_bytes() -> bytes:
     record = IntegrationRecord(
         phase="integrating",
@@ -779,3 +793,43 @@ def test_store_transition_refuses_busy_with_no_mutation() -> None:
     assert backend.files[record_path(root)] == valid
     assert backend.write_calls == []
     assert backend.replace_calls == []
+
+
+# ---------------------------------------------------------------------------
+# 9. backend.exists() failure maps to typed outcome (not raw exception escape)
+# ---------------------------------------------------------------------------
+
+
+def test_read_record_outcome_exists_permission_error_is_unreadable() -> None:
+    """PermissionError from backend.exists() maps to UNREADABLE, not a raw exception."""
+    backend = _ExistsPermissionErrorBackend()
+    outcome = read_record_outcome(Path("/ws"), backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
+    assert outcome.unreadable_reason == "backend_read_failure"
+    assert outcome.record is None
+
+
+def test_read_record_outcome_exists_eagain_is_busy() -> None:
+    """EAGAIN from backend.exists() maps to BUSY, not a raw exception."""
+    backend = _ExistsEagainBackend()
+    outcome = read_record_outcome(Path("/ws"), backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
+    assert outcome.busy_attempt is None
+    assert outcome.busy_deadline is None
+
+
+def test_read_record_outcome_exists_returns_true_read_raises_filenotfound_is_absent() -> None:
+    """Race: exists=True then read raises FileNotFoundError => ABSENT (disappearance wins)."""
+
+    class _ExistsTrueReadFNFBackend(_InMemoryBackend):
+        def exists(self, path: Path) -> bool:
+            return True  # File exists
+
+        def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+            raise FileNotFoundError("file vanished between exists and read")
+
+    backend = _ExistsTrueReadFNFBackend()
+    outcome = read_record_outcome(Path("/ws"), backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.ABSENT
+    assert outcome.record is None
+    assert outcome.unreadable_reason is None

@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
 
 pytestmark = [
-    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
     # ponytail: real-git setup; 5s per test fits inside the 60s combined verify budget.
     pytest.mark.timeout_seconds(5),
 ]

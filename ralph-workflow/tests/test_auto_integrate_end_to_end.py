@@ -17,7 +17,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 # ponytail: real Git clone and fetch setup under xdist can exceed 5s; the 60s suite budget remains authoritative.
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:

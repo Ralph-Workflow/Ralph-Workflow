@@ -18,6 +18,7 @@ from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
@@ -101,7 +102,11 @@ def inspect_integration_resolution(
     return _verdict_from_persisted_reasons(reasons)
 
 
-def retained_integration_reason(root: object) -> str | None:
+def retained_integration_reason(
+    root: object,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> str | None:
     """A durable receipt owns dispatch until recovery proves and clears it."""
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
@@ -114,6 +119,7 @@ def retained_integration_reason(root: object) -> str | None:
     try:
         outcome = read_record_outcome(
             root,
+            backend=backend,
             busy_clock=time.monotonic,
         )
         if outcome.disposition in (

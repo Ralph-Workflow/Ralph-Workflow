@@ -487,30 +487,46 @@ def read_record_outcome(
     """
     del busy_attempt, busy_clock  # WU-A: no fresh allowances at read time
     record_file = record_path(workspace_root)
-    if not backend.exists(record_file):
-        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+    outcome: RecordReadOutcome | None = None
+    record_exists = False
     try:
-        raw_text = backend.read_text(record_file, encoding="utf-8")
+        record_exists = backend.exists(record_file)
     except FileNotFoundError:
-        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
-    except (OSError, UnicodeError, KeyError) as exc:
-        return _outcome_from_read_error(exc)
-    parsed = _parse_outcome_payload(raw_text)
-    if parsed is None:
-        return RecordReadOutcome(
-            disposition=RecordReadOutcomeDisposition.UNREADABLE,
-            unreadable_reason="corrupt_json",
-        )
-    record = parse_record_payload(parsed)
-    if record is None:
-        return RecordReadOutcome(
-            disposition=RecordReadOutcomeDisposition.UNREADABLE,
-            unreadable_reason="unsupported_schema",
-        )
-    return RecordReadOutcome(
-        disposition=RecordReadOutcomeDisposition.PRESENT,
-        record=record,
-    )
+        pass  # absence proven by the raised not-found
+    except OSError as exc:
+        if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+            outcome = RecordReadOutcome(disposition=RecordReadOutcomeDisposition.BUSY)
+        else:
+            outcome = _outcome_from_read_error(exc)
+    if outcome is None and not record_exists:
+        outcome = RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+    if outcome is None:
+        try:
+            raw_text = backend.read_text(record_file, encoding="utf-8")
+        except FileNotFoundError:
+            outcome = RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+        except (OSError, UnicodeError, KeyError) as exc:
+            outcome = _outcome_from_read_error(exc)
+        else:
+            parsed = _parse_outcome_payload(raw_text)
+            if parsed is None:
+                outcome = RecordReadOutcome(
+                    disposition=RecordReadOutcomeDisposition.UNREADABLE,
+                    unreadable_reason="corrupt_json",
+                )
+            else:
+                record = parse_record_payload(parsed)
+                if record is None:
+                    outcome = RecordReadOutcome(
+                        disposition=RecordReadOutcomeDisposition.UNREADABLE,
+                        unreadable_reason="unsupported_schema",
+                    )
+                else:
+                    outcome = RecordReadOutcome(
+                        disposition=RecordReadOutcomeDisposition.PRESENT,
+                        record=record,
+                    )
+    return outcome
 
 
 def read_record(

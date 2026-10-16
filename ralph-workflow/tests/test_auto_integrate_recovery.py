@@ -705,6 +705,92 @@ def test_unreadable_record_reports_intervention_not_retained_skip(
     assert record_file.read_bytes() == payload
 
 
+def test_unreadable_exists_permission_error_reports_intervention_not_generic_skip(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PermissionError from backend.exists() flows to UNREADABLE branch, not generic skip.
+
+    This is the producer-fix verification (WU-1): ``read_record_outcome`` now
+    catches ``PermissionError`` from ``backend.exists()`` and returns the typed
+    ``UNREADABLE`` outcome instead of letting the exception escape to
+    ``recover_incomplete_integration``\'s outer ``except Exception`` handler (which
+    would return a generic retained skip). The typed path returns the diagnostic
+    intervention decision and leaves the record file bytes untouched.
+    """
+    import ralph.pipeline.auto_integrate_recovery as recovery_mod
+
+    # 1. Write a valid record so the record file is present. The bytes are
+    #    irrelevant to the test -- ``exists()`` raises before ``read_text()``.
+    record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    valid_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+    )
+    record_file.write_text(valid_record.model_dump_json(), encoding="utf-8")
+    original_bytes = record_file.read_bytes()
+
+    # 2. Mock ``read_record_outcome`` to return UNREADABLE with
+    #    ``backend_read_failure`` -- the outcome that ``read_record_outcome``
+    #    now produces when ``backend.exists()`` raises ``PermissionError``.
+    #    This verifies the consumer reaches the typed UNREADABLE branch.
+    from ralph.pipeline.auto_integrate_record import (
+        RecordReadOutcome,
+        RecordReadOutcomeDisposition,
+    )
+
+    def _unreadable_exists_outcome(
+        workspace_root: object,
+        *,
+        backend: object = None,
+        busy_attempt: object = None,
+        busy_clock: object = None,
+    ) -> RecordReadOutcome:
+        return RecordReadOutcome(
+            disposition=RecordReadOutcomeDisposition.UNREADABLE,
+            unreadable_reason="backend_read_failure",
+        )
+
+    monkeypatch.setattr(
+        recovery_mod,
+        "read_record_outcome",
+        _unreadable_exists_outcome,
+    )
+
+    # 3. Mock ``integration_transaction`` so the recovery path proceeds past the
+    #    lock-acquisition gate without needing a real lease. Use a simple
+    #    context-manager class rather than a generator (the real
+    #    ``integration_transaction`` is a generator-function, but ``with`` only
+    #    needs ``__enter__``/__exit__`` on the returned object).
+    class _AlwaysAcquired:
+        def __enter__(self) -> bool:
+            return True
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+    def _fake_transaction(root: object) -> _AlwaysAcquired:
+        return _AlwaysAcquired()
+
+    monkeypatch.setattr(recovery_mod, "integration_transaction", _fake_transaction)
+
+    # 4. Call the startup recovery path and assert the typed intervention decision.
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+
+    # 5. The typed UNREADABLE branch must be reached (NOT the generic retained
+    #    skip from the outer except handler that would catch an escaped exception).
+    assert outcome is not None
+    assert outcome.last_outcome.value == "diagnostic_intervention_required"
+    assert outcome.last_decision == "report_intervention_required"
+    assert outcome.operation_display_state == "intervention_required"
+    assert outcome.recovery_record_retained is True
+    # 6. The record file bytes are unchanged (the intervention path never mutates).
+    assert record_file.read_bytes() == original_bytes
+
+
 # ---------------------------------------------------------------------------
 # Security regression: branch names starting with ``-`` are refs, not options
 # ---------------------------------------------------------------------------

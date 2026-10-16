@@ -27,6 +27,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -725,7 +726,10 @@ def _push_status_bar_if_changed(
 
 
 def _run_auto_integrate_recovery_preamble(
-    workspace_scope: WorkspaceScope, config: UnifiedConfig | None = None
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None = None,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> RebaseState | None:
     """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
 
@@ -749,7 +753,7 @@ def _run_auto_integrate_recovery_preamble(
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
 
-        recovered = recover_incomplete_integration(workspace_scope, config=config)
+        recovered = recover_incomplete_integration(workspace_scope, config=config, backend=backend)
     except Exception as recover_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
@@ -1250,6 +1254,8 @@ def _announce_deferred_startup_integration(ctx: _LoopContext, recovered: RebaseS
 def _apply_startup_rebase_outcomes(
     state: PipelineState,
     ctx: _LoopContext,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
     """Run crash recovery + startup integration; thread outcomes into state.
 
@@ -1290,7 +1296,9 @@ def _apply_startup_rebase_outcomes(
             return state
         return state.copy_with(rebase=injected_rebase)
 
-    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
+    recovered_rebase = _run_auto_integrate_recovery_preamble(
+        ctx.workspace_scope, ctx.config, backend=backend
+    )
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
         verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
@@ -1829,7 +1837,11 @@ def _route_planning_commit(state: PipelineState, ctx: _LoopContext) -> PipelineS
 
 
 def _resume_planning_after_commit(
-    state: PipelineState | int, ctx: _LoopContext, previous: PipelineState
+    state: PipelineState | int,
+    ctx: _LoopContext,
+    previous: PipelineState,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState | int:
     """Keep integration commit recovery inside its original planning boundary."""
     from ralph.git.operations import has_uncommitted_changes
@@ -1839,7 +1851,7 @@ def _resume_planning_after_commit(
     if not isinstance(resume, str):
         return state
     if isinstance(state, int):
-        return _wait_for_integration_retry(previous, ctx)
+        return _wait_for_integration_retry(previous, ctx, backend=backend)
     definition = ctx.policy_bundle.pipeline.phases.get(str(state.phase))
     if definition is not None and definition.role in {"commit_cleanup", "commit"}:
         return state
@@ -1848,7 +1860,7 @@ def _resume_planning_after_commit(
     )
     _save_recovered_rebase_checkpoint(state, ctx)
     if has_uncommitted_changes(ctx.workspace_scope.root):
-        state = _wait_for_integration_retry(state, ctx)
+        state = _wait_for_integration_retry(state, ctx, backend=backend)
     return state
 
 
@@ -2072,32 +2084,39 @@ def _handle_retained_integration(
     if continued is not None:
         state = state.copy_with(rebase=continued)
         _save_recovered_rebase_checkpoint(state, ctx)
-    # Pass 2: re-read both signals after the owner ran.
+    # Pass 2: re-read both signals after the owner ran. The disk is the
+    # retention authority: when it is clear, the caller's guarded inspect
+    # (plus its reconcile) owns any stale in-memory evidence. Re-latching
+    # the blocking handoff from a memory-only flag would loop forever on
+    # a repository whose durable evidence has already resolved.
     disk_after = retained_integration_reason(ctx.workspace_scope.root)
     if not disk_after:
-        # The owner had its shot and no durable record remains: the disk is
-        # the retention authority, so the caller's guarded inspect (plus its
-        # reconcile) owns any stale in-memory evidence. Re-latching the
-        # blocking handoff from a memory-only flag here would loop forever
-        # on a repository whose git evidence has already resolved.
         return state, None
-    # Blocking path: the durable record is still retained after the owner ran.
-    remaining = disk_after or state.rebase.last_reason or "durable integration record retained"
+    # Blocking path: the durable record is still retained after the owner
+    # ran. Mirror the durable signal onto the in-memory flag once so the
+    # rest of the loop reads a single source of truth, then always run the
+    # diagnostic handoff (the durable record, not the in-memory flag, is
+    # what re-triggers the blocking decision on the next iteration).
     if not state.rebase.recovery_record_retained:
         state = state.copy_with(
-            rebase=state.rebase.model_copy(
-                update={
-                    "operation_display_state": (
-                        "intervention_required"
-                        if state.rebase.is_intervention_required
-                        else "evidence_diagnosis"
-                    )
-                }
+            rebase=state.rebase.set_recovery_record_retained(
+                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
             )
         )
-        _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
-        return state, (state, prev_phase, 0)
-    return state, None
+        _save_recovered_rebase_checkpoint(state, ctx)
+    state = state.copy_with(
+        rebase=state.rebase.model_copy(
+            update={
+                "operation_display_state": (
+                    "intervention_required"
+                    if state.rebase.is_intervention_required
+                    else "evidence_diagnosis"
+                )
+            }
+        )
+    )
+    _handoff_retained_failure(ctx, state.rebase.last_reason or disk_after)
+    return state, (state, prev_phase, 0)
 
 
 def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router: each return is one distinct lifecycle decision (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked).
@@ -2237,6 +2256,8 @@ def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
     """Apply startup integration before entering the phase-dispatch loop."""
     workspace_root_raw: object = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
@@ -2253,19 +2274,21 @@ def _run_inner_loop(
     # never be cleared and every later run exited with zero agent calls.
     # Neither seam below dispatches an ordinary phase; the fail-closed
     # check still guards dispatch, from _continue_after_startup_integration.
-    state = _apply_startup_rebase_outcomes(state, ctx)
-    return _continue_after_startup_integration(state, ctx, prev_phase)
+    state = _apply_startup_rebase_outcomes(state, ctx, backend=backend)
+    return _continue_after_startup_integration(state, ctx, prev_phase, backend=backend)
 
 
 def _continue_after_startup_integration(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
     """Validate startup integration before entering ordinary dispatch."""
     blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
     if blocked_startup is not None:
-        state = _wait_for_integration_retry(blocked_startup[0], ctx)
+        state = _wait_for_integration_retry(blocked_startup[0], ctx, backend=backend)
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 
@@ -2302,7 +2325,12 @@ def _publish_state_snapshot(ctx: _LoopContext, state: PipelineState) -> None:
     ctx.snapshot_registry.publish(build_pipeline_state_snapshot(state, ctx.workspace_scope.root))
 
 
-def _wait_for_integration_retry(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+def _wait_for_integration_retry(
+    state: PipelineState,
+    ctx: _LoopContext,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> PipelineState:
     from ralph.pipeline.auto_integrate_resolution_state import CONFLICT_RESOLUTION_STRATEGIES
 
     rebase = state.rebase
@@ -2336,7 +2364,9 @@ def _wait_for_integration_retry(state: PipelineState, ctx: _LoopContext) -> Pipe
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
     ctx.sleep(5.0)
-    recovered = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
+    recovered = _run_auto_integrate_recovery_preamble(
+        ctx.workspace_scope, ctx.config, backend=backend
+    )
     if recovered is not None:
         state = state.copy_with(rebase=recovered)
     return state.clear_waiting()
@@ -2440,6 +2470,8 @@ def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
+    *,  # keyword-only seam for backend injection
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
     """Dispatch pipeline phases after startup has established a safe state."""
     # State holder so the providers captured by run_pipeline_step can
@@ -2499,12 +2531,12 @@ def _run_inner_loop_after_startup(
         captured_phase = str(state.phase)
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:
-            state = _wait_for_integration_retry(blocked_integration[0], ctx)
+            state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
             continue
         state = _reconcile_dispatch_state(state)
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
-            state = _wait_for_integration_retry(state, ctx)
+            state = _wait_for_integration_retry(state, ctx, backend=backend)
             continue
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]
@@ -2533,7 +2565,7 @@ def _run_inner_loop_after_startup(
             _cycle_sample_box=cycle_sample_box,
             _development_sample_box=development_sample_box,
         )
-        step_result = _resume_planning_after_commit(step_result, ctx, state)
+        step_result = _resume_planning_after_commit(step_result, ctx, state, backend=backend)
         if isinstance(step_result, int):
             return state, prev_phase, step_result
         state = step_result

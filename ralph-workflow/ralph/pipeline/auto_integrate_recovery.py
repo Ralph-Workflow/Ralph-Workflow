@@ -22,6 +22,7 @@ from ralph.git.rebase.rebase_checkpoint import (
     inspect_legacy_rebase_checkpoint,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_dir_lock_paths as _common_dir_lock_paths,
 )
@@ -575,6 +576,7 @@ def recover_incomplete_integration(
     config: UnifiedConfig | None = None,
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> RebaseState | None:
     """Recover owned Git operations under an exclusive worktree lease.
 
@@ -593,7 +595,7 @@ def recover_incomplete_integration(
                 record_retained=True,
             )
         try:
-            outcome = read_record_outcome(Path(workspace_scope.root))
+            outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
         except Exception as exc:
             logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
             return _record_skip(
@@ -657,6 +659,7 @@ def recover_incomplete_integration(
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
+            backend=backend,
         )
 
 
@@ -776,6 +779,7 @@ def _recover_incomplete_integration_owned(
     config: UnifiedConfig | None = None,
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> RebaseState | None:
     """Recover from an interrupted integration at run-loop startup.
 
@@ -801,7 +805,7 @@ def _recover_incomplete_integration_owned(
     """
     try:
         root = Path(workspace_scope.root)
-        record = _read_record(root)
+        record = _read_record(root, backend=backend)
         if record is None:
             from ralph.pipeline.integration_resolution import retained_integration_reason
 

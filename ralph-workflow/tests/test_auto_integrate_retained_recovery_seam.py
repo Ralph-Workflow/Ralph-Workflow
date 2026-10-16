@@ -159,7 +159,7 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     subprocess: ``_clear_record`` is also stubbed, so a branch that
     wrongly cleared instead of retaining still reaches the assertion.
     """
-    monkeypatch.setattr(recovery, "_read_record", lambda _root: record)
+    monkeypatch.setattr(recovery, "_read_record", lambda _root, **_kwargs: record)
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: None)
     monkeypatch.setattr(_landing_module(), "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
@@ -336,7 +336,9 @@ def _install_run_loop_seams(
     events: list[str] = []
     saves: list[PipelineState] = []
 
-    def _fake_recover(workspace_scope: object, config: object = None) -> RebaseState | None:
+    def _fake_recover(
+        workspace_scope: object, config: object = None, **_kwargs: object
+    ) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return recovered
