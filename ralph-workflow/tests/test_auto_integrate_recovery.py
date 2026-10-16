@@ -1161,9 +1161,11 @@ def test_recovery_honors_target_reclaim_opt_out(
     def refused(*_args: object, **kwargs: object) -> tuple[bool, str]:
         return False, str(kwargs["reclaim_target_worktree"])
 
-    monkeypatch.setattr(recovery, "fast_forward_target", refused)
-    monkeypatch.setattr(recovery, "post_attempt_verify", _no_op)
-    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", _no_op)
+    from ralph.pipeline import _recovery_fast_forward_landing as landing
+
+    monkeypatch.setattr(landing, "fast_forward_target", refused)
+    monkeypatch.setattr(landing, "post_attempt_verify", _no_op)
+    monkeypatch.setattr(landing, "_delete_rebase_backup_refs", _no_op)
 
     outcome = recovery._land_and_reconcile(
         tmp_path,

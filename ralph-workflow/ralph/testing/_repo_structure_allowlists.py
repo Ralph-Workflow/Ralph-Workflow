@@ -357,6 +357,20 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.protocol.startup",
             ("_visible_mcp_tool_names_owned",),
         ),
+        # wt-03-fix-bug: the S-3 regression test patches the landing
+        # collaborators (``fast_forward_target``,
+        # ``post_attempt_verify``, ``_delete_rebase_backup_refs``) that
+        # the refactor relocated into
+        # ``_recovery_fast_forward_landing``. The test asserts the
+        # public ``recovery._land_and_reconcile`` honors the opt-out
+        # configuration end-to-end; the private module is the only
+        # honest monkeypatch seam because the landing is an
+        # inlined collaborator of the recovery entry point.
+        (
+            "tests/test_auto_integrate_recovery.py",
+            "ralph.pipeline",
+            ("_recovery_fast_forward_landing",),
+        ),
         (
             "tests/test_mcp_contract_single_source_of_truth.py",
             "ralph.mcp.server.lifecycle",
