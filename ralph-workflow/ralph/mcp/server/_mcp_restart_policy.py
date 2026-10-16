@@ -43,8 +43,7 @@ if not _DEFAULT_COOLDOWN_SECONDS > 0:
     )
 if not _DEFAULT_MAX_RESTARTS > 0:
     raise RuntimeError(
-        f"McpRestartPolicy.max_restarts default must be positive "
-        f"(got {_DEFAULT_MAX_RESTARTS})"
+        f"McpRestartPolicy.max_restarts default must be positive (got {_DEFAULT_MAX_RESTARTS})"
     )
 
 

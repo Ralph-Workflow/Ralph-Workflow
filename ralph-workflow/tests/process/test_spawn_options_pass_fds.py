@@ -69,9 +69,7 @@ def test_default_sync_process_factory_forwards_pass_fds_to_popen(
 
     _default_sync_process_factory(["/bin/true"], SpawnOptions(pass_fds=(4, 5)))
 
-    assert len(captured) == 1, (
-        f"subprocess.Popen must be invoked exactly once; got {len(captured)}"
-    )
+    assert len(captured) == 1, f"subprocess.Popen must be invoked exactly once; got {len(captured)}"
     popen_kwargs = captured[0]["kwargs"]
     assert popen_kwargs.get("pass_fds") == (4, 5), (
         f"sync factory must forward pass_fds to Popen unchanged; "

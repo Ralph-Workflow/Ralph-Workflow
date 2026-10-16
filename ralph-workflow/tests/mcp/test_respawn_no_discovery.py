@@ -56,9 +56,7 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls() -> None:
     initial = UpstreamRegistry.build([server], client_factory=factory)
     initial_count = len(counter)
     assert initial_count == 1
-    catalog_for_respawn = {
-        server.name: [pt.tool for pt in initial.tool_definitions()]
-    }
+    catalog_for_respawn = {server.name: [pt.tool for pt in initial.tool_definitions()]}
     respawn = UpstreamRegistry.build_from_tool_catalog(
         [server], catalog_for_respawn, client_factory=factory
     )
@@ -74,9 +72,7 @@ def test_respawn_factory_never_called_for_cached_servers() -> None:
     )
     catalog = {
         server.name: [
-            UpstreamTool(
-                name="alpha", description="seeded", input_schema={"type": "object"}
-            )
+            UpstreamTool(name="alpha", description="seeded", input_schema={"type": "object"})
         ]
     }
     UpstreamRegistry.build_from_tool_catalog([server], catalog, client_factory=factory)
@@ -90,9 +86,7 @@ def test_respawn_via_tool_catalog_serves_one_tool() -> None:
     )
     catalog = {
         server.name: [
-            UpstreamTool(
-                name="alpha", description="seeded", input_schema={"type": "object"}
-            )
+            UpstreamTool(name="alpha", description="seeded", input_schema={"type": "object"})
         ]
     }
     respawn = UpstreamRegistry.build_from_tool_catalog([server], catalog)

@@ -31,7 +31,7 @@ def original_conflict_paths(root: Path) -> tuple[str, ...]:
 def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
     """Use only durable or Git-recorded conflict paths from the active merge."""
     record = read_record(root)
-    if record is None or not record.resolving_merge:
+    if record is None or classify_git_operation(record) is not GitOperationKind.RESOLVING_MERGE:
         return paths
     return tuple(
         sorted(set(paths) | set(record.resolving_paths) | set(original_conflict_paths(root)))

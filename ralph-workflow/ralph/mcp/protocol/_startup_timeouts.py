@@ -63,9 +63,7 @@ _MAX_UPSTREAMS_AT_DEFAULTS: int = int(
 # count would silently invalidate the math above. ``if``/``raise`` (not
 # ``assert``) so this holds under ``python -O`` as well as a plain import.
 if not (_PROBE_SAFETY_S > 0):
-    raise RuntimeError(
-        f"_PROBE_SAFETY_S must be > 0, got {_PROBE_SAFETY_S!r}"
-    )
+    raise RuntimeError(f"_PROBE_SAFETY_S must be > 0, got {_PROBE_SAFETY_S!r}")
 if _MAX_UPSTREAMS_AT_DEFAULTS < 1:
     raise RuntimeError(
         f"_MAX_UPSTREAMS_AT_DEFAULTS must be >= 1, got {_MAX_UPSTREAMS_AT_DEFAULTS!r}"

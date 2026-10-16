@@ -383,7 +383,7 @@ def run_standalone_server(
                 restart_count=0,
                 last_stage="fd_inherit_failed",
             ) from exc
-    # R2: a respawn runs with ``RALPH_MCP_RESPAWN=1`` set. The
+    # R2: a respawn runs with ``MCP_RESPAWN_ENV=1`` set. The
     # upstream registry must come from the cached tool catalog the
     # parent hands us, never from a live probe — a respawn has no
     # network budget. First start keeps the existing path so

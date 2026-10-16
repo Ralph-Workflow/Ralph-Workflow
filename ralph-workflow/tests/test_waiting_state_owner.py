@@ -55,7 +55,14 @@ def test_no_direct_writers_outside_state_module() -> None:
     for path in (_REPO_ROOT / "ralph").rglob("*.py"):
         if path == _STATE_MODULE or path in _EXEMPT_MODULES:
             continue
-        for lineno in _flag_writer_lines(path.read_text(encoding="utf-8")):
+        # Cheap pre-filter: only parse files that mention the flag at all.
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "is_waiting_state" not in text:
+            continue
+        for lineno in _flag_writer_lines(text):
             offenders.append(
                 f"{path.relative_to(_REPO_ROOT)}:{lineno}: direct is_waiting_state writer"
             )

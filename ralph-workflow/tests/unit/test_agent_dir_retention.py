@@ -312,6 +312,7 @@ def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path)
     assert not dead_home.exists()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
     """AC-9 (in-process): the active-run registry protects both registered
     runs from every parallel sweep, even when each caller passes a single

@@ -12,6 +12,6 @@ def test_mcp_probe_timeout_default_is_six_seconds() -> None:
 
 
 def test_mcp_probe_timeout_respects_env_override() -> None:
-    assert mcp_probe_timeout_from_env(
-        {"RALPH_MCP_PROBE_TIMEOUT_MS": "12345"}
-    ) == timedelta(milliseconds=12_345)
+    assert mcp_probe_timeout_from_env({"RALPH_MCP_PROBE_TIMEOUT_MS": "12345"}) == timedelta(
+        milliseconds=12_345
+    )

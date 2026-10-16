@@ -22,6 +22,7 @@ def _split_python_lines(source: str) -> list[str]:
         lines.append(last)
     return lines
 
+
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _READ_CACHE_LIMIT = 2048
 _PARSE_CACHE_LIMIT = 2048

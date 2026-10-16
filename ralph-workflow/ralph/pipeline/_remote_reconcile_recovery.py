@@ -12,6 +12,7 @@ from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.pipeline._commit_completion_authority import complete_commit
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
@@ -135,9 +136,10 @@ def _continue_target_record(
             if isinstance(started, str):
                 return started
             record = started
+    kind = classify_git_operation(record)
     return (
         resume_pending_rebase(owner, record)
-        if record.rebase_continue_pending
+        if kind is GitOperationKind.AWAITING_CONTINUE
         else continue_retained_resolution(
             owner, record, config, conflict_resolver, rebase_stop_resolver
         )

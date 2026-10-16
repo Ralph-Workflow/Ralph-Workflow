@@ -312,6 +312,10 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # STALL_RESUMED / HARD_STOP fallback). The kind dispatch is
     # one-statement-per-branch and consolidating it into a dict-based
     # dispatcher would scatter the per-kind diagnostic payload
+    # wt-16: _iter_with_direct_mcp_recovery preserves the recovery loop's
+    # per-step branch fan-out (session recovery, mcp-reset, retry
+    # classification) -- each branch short-circuits to a typed outcome.
+    ("_direct_mcp_recovery", "PLR0912"),
     # handling (workspace_event_delta / alive_by / subagent_activity)
     # across helper functions and obscure the per-kind fallback that
     # the wt-047 plan locks against the ``hit hard ceiling``

@@ -11,10 +11,11 @@ record -- and never merge contradictory truths heuristically.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
-from ralph.pipeline.auto_integrate_record import parse_record_payload, read_record, write_record
+from ralph.pipeline.auto_integrate_record import read_record, record_path
 from ralph.pipeline.checkpoint import Checkpoint
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
@@ -69,6 +70,18 @@ def _policy() -> PipelinePolicy:
     )
 
 
+def _write_raw_legacy_record(tmp_path: Path, payload: dict[str, object]) -> None:
+    """Write raw legacy record bytes directly to disk — no pre-migration.
+
+    Bypasses write_record so the public read_record boundary must parse
+    and migrate the legacy bytes on restart, exercising the full
+    parse_record_payload codepath that the production startup uses.
+    """
+    path = record_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
 def _write_contradicting_legacy_pair(tmp_path: Path, payload: dict[str, object]) -> Path:
     """Persist a legacy checkpoint claiming ``development`` alongside a
     legacy integration record claiming ``integrating``.
@@ -76,14 +89,15 @@ def _write_contradicting_legacy_pair(tmp_path: Path, payload: dict[str, object])
     Both artifacts live under the isolated ``tmp_path`` storage so the
     restart below reads exactly what was written — no repo-global paths,
     no unused backends.
+
+    The record is written as raw legacy JSON so read_record (the public
+    startup/recovery boundary) must parse and migrate it on restart.
     """
     checkpoint_path = tmp_path / "checkpoint.json"
     checkpoint = Checkpoint(checkpoint_path)
     checkpoint.save(PipelineState(phase="development"))
 
-    migrated = parse_record_payload(payload)
-    assert migrated is not None, "legacy record payload must migrate to a typed record"
-    write_record(tmp_path, migrated)
+    _write_raw_legacy_record(tmp_path, payload)
     return checkpoint_path
 
 

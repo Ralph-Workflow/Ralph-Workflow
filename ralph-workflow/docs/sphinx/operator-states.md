@@ -22,7 +22,7 @@ any moment:
 | `EVIDENCE_DIAGNOSIS` | The diagnostic lock is held while retained integration evidence is inspected — this is deliberately distinct from conflict resolution. |
 | `WAITING` | A bounded retry timer or cooldown delay is running before the next attempt. |
 | `INTERVENTION_REQUIRED` | Automatic recovery is exhausted (diagnostic repair or conflict budget); a human operator must act. |
-| `TERMINAL` | The workflow reached a final success or failure and the run loop has stopped. |
+| `TERMINAL` | The operation-level final state. Maps integration outcomes such as `skipped`, `recovered`, and `remote_pushed` onto `OperationDisplayState.TERMINAL`. This is distinct from whole-pipeline terminal-success eligibility, which is governed exclusively by `ralph.pipeline._terminal_authority.is_terminal_success_eligible`. |
 
 ## IntegrationDisplayLabel — the seven display labels
 

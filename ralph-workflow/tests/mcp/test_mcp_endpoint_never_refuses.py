@@ -65,8 +65,7 @@ def test_endpoint_inherited_socket_is_listen_state() -> None:
         try:
             assert server.socket is sock
             assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 0, (
-                "inherited socket must be in LISTEN state;"
-                " SO_ACCEPTCONN must be non-zero"
+                "inherited socket must be in LISTEN state; SO_ACCEPTCONN must be non-zero"
             )
         finally:
             server.server_close()

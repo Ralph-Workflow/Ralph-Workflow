@@ -52,7 +52,11 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     select_rebase_state_dir as _select_rebase_state_dir,
 )
-from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
+from ralph.pipeline._git_operation_authority import (
+    GitOperationKind,
+    classify_git_operation,
+    is_in_active_resolution_state,
+)
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
@@ -700,7 +704,8 @@ def _recover_pending_merge(
             conflict_resolver,
             rebase_stop_resolver,
         )
-    if record.resolving_merge or (record.resolving_rebase and not record.rebase_continue_pending):
+    kind = classify_git_operation(record)
+    if kind in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.RESOLVING_REBASE):
         from ralph.pipeline._integration_continuation import continue_retained_resolution
 
         resumed = continue_retained_resolution(
@@ -713,12 +718,12 @@ def _recover_pending_merge(
     else:
         resumed = (
             resume_pending_rebase(root, record)
-            if record.rebase_continue_pending
+            if kind is GitOperationKind.AWAITING_CONTINUE
             else resume_pending_merge(root, record)
         )
     if isinstance(resumed, str):
         logger.critical("CRITICAL: {}", resumed)
-        if record.resolving_merge or record.resolving_rebase:
+        if is_in_active_resolution_state(record):
             from ralph.pipeline.auto_integrate_outcome import record_conflict
             from ralph.pipeline.rebase_state import ResolutionFailureCause
 

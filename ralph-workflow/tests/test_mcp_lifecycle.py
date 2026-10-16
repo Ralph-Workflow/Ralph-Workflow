@@ -36,12 +36,12 @@ def _default_fake_reserve_listening_socket(
     # Use port 0 (kernel-assigned) when no port is given, so the
     # helper is callable from every test without port collisions.
     import socket as _s
+
     sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     sock.bind(("127.0.0.1", port or 0))
     sock.listen(128)
     bound_port = sock.getsockname()[1]
     return "127.0.0.1", bound_port, sock
-
 
 
 class FakeProcess:
@@ -80,6 +80,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
         seen["reserved_socket"] = True
         import socket as _s
+
         sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
         sock.bind(("127.0.0.1", 53123))
         sock.listen(128)
@@ -738,6 +739,7 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 
     def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
         import socket as _s
+
         sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
         sock.bind(("127.0.0.1", 43300))
         sock.listen(128)

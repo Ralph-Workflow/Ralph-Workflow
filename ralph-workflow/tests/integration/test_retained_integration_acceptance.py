@@ -264,24 +264,30 @@ def test_acceptance_scenario_5_conflict_resolved_landing_pending(
 def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     tmp_path: Path,
 ) -> None:
-    """Scenario 4 (WU-S4): unreadable evidence at the public boundary.
+    """Scenario 4 (WU-S4): UNKNOWN evidence durable increment to intervention.
 
     ``diagnose_retained_integration`` is driven end-to-end through its
-    public signature with an injected collector whose evidence is
-    unreadable every time: dispatch stays blocked, attempts persist to
-    the durable record, and bounded recovery ends in visible operator
-    intervention (``diagnostic_intervention_required``) instead of an
-    infinite retry loop.
+    public signature with an injected collector whose evidence returns
+    ``EvidenceVerdict.UNKNOWN`` on every call (value = "unreadable" sentinel).
+    Each call durably increments ``merge_commit_repair_attempts`` by exactly 1
+    (no agents registered → ``handoff_integration_diagnostic`` bumps the
+    counter instead of dispatching).  After exactly
+    ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` calls the record carries
+    ``diagnostic_intervention_required=True``.  A simulated restart (reload
+    from disk) confirms the exhausted state persists and a further call is a
+    no-op — no extra attempt, no counter reset.
     """
     root = tmp_path / "repo"
     root.mkdir()
+
+    # Start clean: zero attempts so every call drives the UNKNOWN bump path.
     record = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="0" * 40,
         pre_target_sha="1" * 40,
         resolving_rebase=True,
-        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 2,
+        merge_commit_repair_attempts=0,
         owning_worktree=str(root),
     )
     write_record(root, record)
@@ -292,30 +298,68 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     ctx.config = UnifiedConfig()
     ctx.pipeline_deps = MagicMock()
     ctx.policy_bundle = bundle
-    ctx.registry: dict[str, object] = {}
+    ctx.registry: dict[str, object] = {}  # no agents → bumps counter
     ctx.active_display = MagicMock()
     ctx.display_context = None
 
-    # Unreadable evidence on every observation: the rebase marker object
-    # cannot be resolved, so completion proof can never be established.
+    # Collector returns "unreadable" sentinel on every snapshot.
+    # This makes ``evaluate()`` → ``EvidenceVerdict.UNKNOWN`` and also
+    # makes ``diagnostic_evidence_verdict`` → ``UNKNOWN`` on subsequent
+    # calls (the stored evidence also carries value="unreadable").
+    # "unreadable" does NOT match the ("False", "false") pre_pass guard,
+    # so we never take the CHANGED/immediate-intervention shortcut.
     collector = InMemoryOperationEvidenceCollector(
-        facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
+        facts=(OperationFact(kind="rebase_object_resolvable", value="unreadable"),),
     )
 
-    # The first unreadable observation fails closed to visible operator
-    # intervention on the durable record -- never an unbounded retry loop.
-    assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
-    s2 = read_record(root)
-    assert s2 is not None
-    assert s2.diagnostic_intervention_required is True
+    # (a) dispatch_allowed is False throughout.
+    # (b) Each call increments merge_commit_repair_attempts by exactly 1.
+    # (c) Durability: reload from disk after every write and confirm counter.
+    for expected_attempts in range(1, DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1):
+        assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector), (
+            f"call {expected_attempts} should return False"
+        )
+        saved = read_record(root)
+        assert saved is not None
+        assert saved.merge_commit_repair_attempts == expected_attempts, (
+            f"attempt counter should be {expected_attempts}, got "
+            f"{saved.merge_commit_repair_attempts}"
+        )
+        assert saved.diagnostic_intervention_required is (
+            expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+        ), (
+            f"intervention should be {expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP}, got {saved.diagnostic_intervention_required}"
+        )
+        assert saved.diagnostic_evidence not in (None, ()), (
+            f"call {expected_attempts}: diagnostic_evidence should be set"
+        )
 
-    # Public boundaries all report the intervention, and a fourth call is
-    # a no-op (no unbounded loop).
-    assert next_integration_action(s2) == IntegrationAction.REQUIRE_INTERVENTION
+    # (c) Simulated restart: reload from disk and confirm exhausted state.
+    after_restart = read_record(root)
+    assert after_restart is not None
+    assert after_restart.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert after_restart.diagnostic_intervention_required is True
+
+    # (d) A further call after restart does NOT enter the diagnostic repair path
+    # again — no extra attempt, no counter reset.
+    assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
+    after_extra = read_record(root)
+    assert after_extra is not None
+    assert after_extra.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP, (
+        "counter must not grow after exhaustion"
+    )
+
+    # (a) dispatch_allowed stays False; (e) terminal success remains blocked.
     resolution = inspect_integration_resolution(root, RebaseState())
     assert resolution.dispatch_allowed is False
     assert resolution.status == IntegrationResolutionStatus.RECOVERABLE
-    assert is_terminal_success_eligible(None, s2, RebaseState()) is False
-    assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
-    saved = read_record(root)
-    assert saved == s2
+    assert next_integration_action(after_restart) == IntegrationAction.REQUIRE_INTERVENTION
+    assert is_terminal_success_eligible(None, after_restart, RebaseState()) is False
+
+    # One more no-op call to round out the proof.
+    assert not diagnose_retained_integration(
+        ctx, "unreadable evidence after restart", collector=collector
+    )
+    final = read_record(root)
+    assert final is not None
+    assert final.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP

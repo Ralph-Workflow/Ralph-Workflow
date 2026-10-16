@@ -1,6 +1,7 @@
 """Tests for the single commit-completion authority (WU-G5)."""
 
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ralph.pipeline._commit_completion_authority import complete_commit
@@ -52,14 +53,22 @@ def test_complete_commit_threads_extra_fields() -> None:
     assert completion.record.reintegrate_pending is False
 
 
+def _has_stray_literal(rel: str) -> bool:
+    return 'phase="integrated"' in REPO.joinpath(rel).read_text(encoding="utf-8")
+
+
 def test_no_stray_phase_integrated_literals() -> None:
-    offenders = []
-    for path in sorted(REPO.joinpath("ralph").rglob("*.py")):
-        rel = path.relative_to(REPO).as_posix()
-        if rel in _ALLOWED_PHASE_INTEGRATED:
-            continue
-        if 'phase="integrated"' in path.read_text(encoding="utf-8"):
-            offenders.append(rel)
+    candidates = [
+        path.relative_to(REPO).as_posix()
+        for path in sorted(REPO.joinpath("ralph").rglob("*.py"))
+        if path.relative_to(REPO).as_posix() not in _ALLOWED_PHASE_INTEGRATED
+    ]
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        offenders = [
+            rel
+            for rel, hit in zip(candidates, pool.map(_has_stray_literal, candidates), strict=True)
+            if hit
+        ]
     assert offenders == []
 
 

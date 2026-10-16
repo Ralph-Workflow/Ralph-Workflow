@@ -48,7 +48,21 @@ def classify_git_operation(record: IntegrationRecord) -> GitOperationKind:
     return GitOperationKind.NONE
 
 
+def is_in_active_resolution_state(record: IntegrationRecord) -> bool:
+    """True when the record is in RESOLVING_MERGE or RESOLVING_REBASE.
+
+    This is derived from :func:`classify_git_operation` so that callers
+    can check "are we on the retained-resolution path" without reading
+    raw flags.  It is *not* true for AWAITING_CONTINUE even when the
+    record also carries ``resolving_rebase=True`` (that state belongs to
+    the pending-rebase branch, not the resolution branch).
+    """
+    kind = classify_git_operation(record)
+    return kind in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.RESOLVING_REBASE)
+
+
 __all__ = [
     "GitOperationKind",
     "classify_git_operation",
+    "is_in_active_resolution_state",
 ]

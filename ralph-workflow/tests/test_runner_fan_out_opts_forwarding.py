@@ -20,13 +20,11 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.pipeline import runner as runner_module
+import pytest
 
-if TYPE_CHECKING:
-    import pytest
+from ralph.pipeline import runner as runner_module
 
 
 def _captured_opts(monkeypatch: pytest.MonkeyPatch, **call_kwargs: object) -> dict[str, object]:
@@ -78,6 +76,7 @@ def test_caller_supplied_injectables_win_over_the_module_globals(
     assert opts["_reducer_reduce"] is sentinel
 
 
+@pytest.mark.timeout_seconds(5)
 def test_reads_the_monitor_stop_callback_under_the_name_fan_out_reads() -> None:
     """``fan_out`` looks up ``_monitor_stop_cb``; the producer must spell it that way.
 

@@ -85,7 +85,9 @@ def record(root: Path, stage: str) -> None:
         os.write(fd, stage.encode("ascii"))
         # Flush + fsync so the kernel cannot reorder a subsequent
         # SIGKILL before the bytes hit disk.
-        os.fsync(fd)
+        os.fsync(  # filesystem-write-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk
+            fd
+        )
     finally:
         os.close(fd)
 
