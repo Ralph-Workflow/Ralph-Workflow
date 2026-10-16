@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import time
+from pathlib import Path
 from threading import Event
 from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
+from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
 from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
@@ -26,6 +29,12 @@ if TYPE_CHECKING:
     from ralph.mcp.server._mcp_server import McpServer
 
     EnvGetter = Callable[[str, str | None], str | None]
+
+
+#: Upper bound (seconds) the test-only pre-serve gate waits for its sentinel
+#: file before failing the child loudly. Bounded so a forgotten sentinel can
+#: never wedge a subprocess-E2E run.
+_PRE_SERVE_GATE_TIMEOUT_S: float = 60.0
 
 
 class _FallbackStandaloneServer:
@@ -88,6 +97,21 @@ class _FallbackStandaloneServer:
         httpd.health_probe_fn = None
         httpd.metrics = None
         self._httpd = httpd
+        # Subprocess-E2E test seam (R1 "slow startup still becomes ready"
+        # invariant): when the env names a sentinel file, block here — the
+        # server object exists but nothing has accepted a connection yet —
+        # until the file appears. Production never sets this variable, so
+        # real runs skip the branch entirely.
+        gate_path = self._env_getter(MCP_TEST_PRE_SERVE_GATE_ENV, None)
+        if gate_path:
+            deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
+            while not Path(gate_path).exists():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "
+                        f"waiting for {gate_path}"
+                    )
+                time.sleep(0.05)
         # Startup banner announces the live configuration so an operator can
         # confirm which transport, which session class, and which effective
         # timeouts are running. The earlier code only printed host/port —

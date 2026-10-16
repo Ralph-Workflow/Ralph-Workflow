@@ -56,6 +56,13 @@ class McpEnvVar(StrEnum):
     # side a different file and the parent's ``read_last_stage``
     # would always return ``None`` after a preflight failure.
     STAGE_ID = "RALPH_MCP_STAGE_ID"
+    # Subprocess-E2E test seam: path to a sentinel file. When set,
+    # the standalone server blocks after construction but BEFORE the
+    # first accept() until the file appears, so a test can prove a
+    # request sent during a slow pre-serve stage is queued in the
+    # kernel backlog and served on the same connection afterwards.
+    # Production never sets this variable.
+    TEST_PRE_SERVE_GATE = "RALPH_MCP_TEST_PRE_SERVE_GATE"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -81,3 +88,4 @@ DEV_DEADLINE_EPOCH_ENV = McpEnvVar.DEV_DEADLINE_EPOCH
 MCP_INHERITED_FD_ENV = McpEnvVar.INHERITED_FD
 MCP_RESPAWN_ENV = McpEnvVar.RESPAWN
 MCP_STAGE_ID_ENV = McpEnvVar.STAGE_ID
+MCP_TEST_PRE_SERVE_GATE_ENV = McpEnvVar.TEST_PRE_SERVE_GATE
