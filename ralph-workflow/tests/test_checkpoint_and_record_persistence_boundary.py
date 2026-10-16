@@ -13,6 +13,7 @@ Verifies:
 
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from ralph.pipeline.auto_integrate_record import (
     PROMOTE_TO_INTEGRATED,
     START_INTEGRATING,
     IntegrationRecord,
+    RecordBusyError,
     RecordReadOutcomeDisposition,
     RecordUnreadableError,
     clear_record,
@@ -549,26 +551,21 @@ def test_execution_components_round_trip() -> None:
 # 8. Typed record read outcome (read_record_outcome) -- closed dispositions
 # ---------------------------------------------------------------------------
 
-class _BusyOnceBackend(_InMemoryBackend):
-    """Backend whose first read of a path fails transiently (lock contention)."""
 
-    def __init__(self, files: dict[Path, bytes]) -> None:
+class _TransientBackend(_InMemoryBackend):
+    """Backend whose first read of a path fails with the given errno/error."""
+
+    def __init__(self, files: dict[Path, bytes], *, err: Exception) -> None:
         super().__init__()
         self.files.update(files)
+        self._err = err
         self.busy_reads = 1
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         if self.busy_reads > 0:
             self.busy_reads -= 1
-            raise OSError("resource temporarily unavailable (simulated lock)")
+            raise self._err
         return super().read_text(path, encoding=encoding)
-
-
-class _FixedClock:
-    """Injected clock abstraction: fixed monotonic seconds."""
-
-    def monotonic(self) -> float:
-        return 100.0
 
 
 def _valid_record_bytes() -> bytes:
@@ -624,17 +621,53 @@ def test_read_record_outcome_unsupported_schema_is_unreadable() -> None:
     assert outcome.unreadable_reason == "unsupported_schema"
 
 
-def test_read_record_outcome_backend_read_failure_is_busy_with_bounded_retry() -> None:
+def test_read_record_outcome_eagain_is_busy_with_no_minted_deadline() -> None:
+    """BUSY is reserved for demonstrable EAGAIN/EWOULDBLOCK contention.
+
+    No attempt/deadline is minted at read time: a fresh deadline would
+    replenish the bounded-retry budget on every failing read. The
+    consumer must consult existing PERSISTED retry state and decide
+    REQUIRE_INTERVENTION itself when no valid unexpired deadline exists.
+    """
     root = Path("/ws")
-    backend = _BusyOnceBackend({record_path(root): _valid_record_bytes()})
-    outcome = read_record_outcome(root, backend=backend, busy_clock=_FixedClock())
+    err = OSError(errno.EAGAIN, "resource temporarily unavailable")
+    backend = _TransientBackend({record_path(root): _valid_record_bytes()}, err=err)
+    outcome = read_record_outcome(root, backend=backend)
     assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
-    assert outcome.busy_attempt == 1
-    # Deadline comes from the existing bounded-retry authority, no new counter.
-    assert outcome.busy_deadline == 100.0 + 0.5
-    # Second attempt succeeds: PRESENT (bounded retry, not a permanent state).
-    outcome2 = read_record_outcome(root, backend=backend, busy_clock=_FixedClock())
+    assert outcome.busy_attempt is None
+    assert outcome.busy_deadline is None
+    # Second read succeeds: BUSY is transient, not a permanent state.
+    outcome2 = read_record_outcome(root, backend=backend)
     assert outcome2.disposition is RecordReadOutcomeDisposition.PRESENT
+
+
+def test_read_record_outcome_ewouldblock_is_busy() -> None:
+    root = Path("/ws")
+    err = OSError(errno.EWOULDBLOCK, "operation would block")
+    backend = _TransientBackend({record_path(root): _valid_record_bytes()}, err=err)
+    outcome = read_record_outcome(root, backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
+    assert outcome.busy_deadline is None
+
+
+@pytest.mark.parametrize(
+    ("label", "err"),
+    [
+        ("permission", OSError(errno.EACCES, "permission denied")),
+        ("generic_os", OSError("backend exploded")),
+        ("decode", UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")),
+        ("keyerror", KeyError("backend internal key missing")),
+    ],
+)
+def test_read_record_outcome_read_failures_are_unreadable(label: str, err: Exception) -> None:
+    """Backend read/permission/decoding failures map to UNREADABLE, never BUSY."""
+    del label
+    root = Path("/ws")
+    backend = _TransientBackend({record_path(root): _valid_record_bytes()}, err=err)
+    outcome = read_record_outcome(root, backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
+    assert outcome.unreadable_reason == "backend_read_failure"
+    assert outcome.record is None
 
 
 def test_clear_record_refuses_to_unlink_unreadable_evidence() -> None:
@@ -670,6 +703,50 @@ def test_store_transition_refuses_start_integrating_over_unreadable_evidence() -
     assert backend.read_bytes(record_path(root)) == corrupt
     assert backend.write_calls == []
     assert backend.replace_calls == []
+
+
+def test_store_transition_refuses_all_mutations_on_busy_read() -> None:
+    """BUSY (EAGAIN contention) refuses every mutation, preserving file bytes.
+
+    With no valid unexpired persisted deadline, the consumer decides
+    REQUIRE_INTERVENTION; the store never mints a fresh allowance.
+    """
+    root = Path("/ws")
+    existing = _valid_record_bytes()
+    err = OSError(errno.EAGAIN, "resource temporarily unavailable")
+    backend = _TransientBackend({record_path(root): existing}, err=err)
+    backend.busy_reads = 10  # persistent contention across the two store reads
+    store = IntegrationRecordStore(root, backend=backend)
+    with pytest.raises(RecordBusyError):
+        store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+    with pytest.raises(RecordBusyError):
+        store.transition(
+            START_INTEGRATING,
+            target="main",
+            pre_feature_sha="a" * 40,
+            pre_target_sha=None,
+        )
+    assert backend.read_bytes(record_path(root)) == existing
+    assert backend.write_calls == []
+    assert backend.replace_calls == []
+
+
+def test_store_transition_busy_absent_file_does_not_create_record() -> None:
+    """BUSY on a transiently-unreadable existing file never creates a fresh record."""
+    root = Path("/ws")
+    evidence = b"{torn write evidence"
+    err = OSError(errno.EAGAIN, "lock held")
+    backend = _TransientBackend({record_path(root): evidence}, err=err)
+    backend.busy_reads = 10  # persistent contention across the two store reads
+    store = IntegrationRecordStore(root, backend=backend)
+    with pytest.raises(RecordBusyError):
+        store.transition(
+            START_INTEGRATING,
+            target="main",
+            pre_feature_sha="a" * 40,
+            pre_target_sha=None,
+        )
+    assert backend.read_bytes(record_path(root)) == evidence
 
 
 def test_store_transition_absent_start_integrating_semantics_preserved() -> None:

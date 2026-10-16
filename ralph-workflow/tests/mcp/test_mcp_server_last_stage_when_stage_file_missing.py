@@ -12,8 +12,6 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-import pytest
-
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._start_stage_tracker import (
     read_last_stage,

@@ -370,7 +370,15 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
 - **Integration record transitions**: `IntegrationRecord` is a frozen model with an
   explicit transition table (`IntegrationRecord.with_transition`). Direct mutation
   is prevented, and records cannot be cleared while diagnostic intervention is
-  required or an active Git operation is pending.
+  required or an active Git operation is pending. Reads of the durable record are
+  typed via `read_record_outcome` with four dispositions (`ABSENT`, `PRESENT`,
+  `BUSY`, `UNREADABLE`); `IntegrationRecordStore.transition` (including
+  `START_INTEGRATING` creation) and `clear_record` refuse every mutation on a
+  `BUSY` (`RecordBusyError`) or `UNREADABLE` (`RecordUnreadableError`) record and
+  preserve the file bytes. `BUSY` means transient lock contention (`EAGAIN`/
+  `EWOULDBLOCK`) and carries no freshly computed deadline — bounded retry is
+  authorized only by a valid, unexpired persisted retry deadline; otherwise the
+  run requires operator intervention.
 - **Pipeline progression**: The pipeline run loop consults
   `decide_phase_transition`, which returns typed `PhaseDecision` values
   (`CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`,

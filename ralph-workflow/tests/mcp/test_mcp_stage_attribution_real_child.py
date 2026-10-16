@@ -55,15 +55,17 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
     # It sets the env (matching what the parent's lifecycle sets), imports
     # the stage tracker (which reads the env var and sets _spawn_id), and
     # records one stage before exiting non-zero.
-    script_content = "\n".join([
-        "import os, sys",
-        "from pathlib import Path",
-        f"os.environ['RALPH_MCP_STAGE_ID'] = {repr(spawn_id)}",
-        f"sys.path.insert(0, {repr(str(ralph_workflow_root))})",
-        "from ralph.mcp.server._start_stage_tracker import record",
-        f"record(Path({repr(str(tmp_path))}), {repr(stage_name)})",
-        "sys.exit(42)",
-    ])
+    script_content = "\n".join(
+        [
+            "import os, sys",
+            "from pathlib import Path",
+            f"os.environ['RALPH_MCP_STAGE_ID'] = {spawn_id!r}",
+            f"sys.path.insert(0, {str(ralph_workflow_root)!r})",
+            "from ralph.mcp.server._start_stage_tracker import record",
+            f"record(Path({str(tmp_path)!r}), {stage_name!r})",
+            "sys.exit(42)",
+        ]
+    )
     script_path = tmp_path / "child_record_and_exit.py"
     script_path.write_text(script_content, encoding="utf-8")
 
@@ -76,19 +78,16 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
         cwd=str(tmp_path),
         env=child_env,
         timeout=10,
+        check=False,  # the child intentionally exits 42 before preflight
     )
 
     # Child exited 42 as designed.
-    assert result.returncode == 42, (
-        f"child exited {result.returncode}; "
-        f"stderr={result.stderr!r}"
-    )
+    assert result.returncode == 42, f"child exited {result.returncode}; stderr={result.stderr!r}"
 
     # --- stage-file verification (parent reads with explicit spawn_id) --------
     last_stage = read_last_stage(tmp_path, spawn_id=spawn_id)
     assert last_stage == stage_name, (
-        f"expected last_stage={stage_name!r} for spawn_id={spawn_id!r}, "
-        f"got {last_stage!r}"
+        f"expected last_stage={stage_name!r} for spawn_id={spawn_id!r}, got {last_stage!r}"
     )
 
     # A wrong/mismatched spawn_id finds nothing.
@@ -98,9 +97,7 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
     )
 
     # The on-disk file content matches what read_last_stage returned.
-    on_disk = stage_file_path(tmp_path, spawn_id=spawn_id).read_text(
-        encoding="ascii"
-    ).strip()
+    on_disk = stage_file_path(tmp_path, spawn_id=spawn_id).read_text(encoding="ascii").strip()
     assert on_disk == stage_name
 
 
@@ -127,8 +124,8 @@ def test_mcp_server_error_last_stage_carries_child_stage(tmp_path: Path) -> None
 
     # The lifecycle constructs the error with last_stage from the stage file.
     err = McpServerError(
-        f"MCP server endpoint http://127.0.0.1:0/mcp did not become ready: "
-        f"preflight connection refused",
+        "MCP server endpoint http://127.0.0.1:0/mcp did not become ready: "
+        "preflight connection refused",
         restart_count=0,
         last_stage=last_stage,
         elapsed_s=1.23,

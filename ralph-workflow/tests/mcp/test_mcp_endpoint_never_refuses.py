@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import errno
 import socket
-import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -22,9 +21,9 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._lifecycle_deps import LifecycleDeps, PreflightFn
 
 if TYPE_CHECKING:
+    from ralph.mcp.server._lifecycle_deps import LifecycleDeps
     from ralph.mcp.server._process_like import ProcessLike
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -133,7 +132,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             with pytest.raises(OSError) as exc_info:
-                foreign.bind(( "127.0.0.1", listening_socket.getsockname()[1]))
+                foreign.bind(("127.0.0.1", listening_socket.getsockname()[1]))
             assert exc_info.value.errno == errno.EADDRINUSE, (
                 f"foreign bind while bridge owns socket must EADDRINUSE, got {exc_info.value.errno}"
             )
@@ -200,9 +199,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         # After respawn: ECONNREFUSED must still be impossible
         conn_refused_seen = False
         conn_succeeded = try_connect()
-        assert conn_succeeded, (
-            "connect after respawn must succeed; ECONNREFUSED must be impossible"
-        )
+        assert conn_succeeded, "connect after respawn must succeed; ECONNREFUSED must be impossible"
         assert not conn_refused_seen
 
     finally:

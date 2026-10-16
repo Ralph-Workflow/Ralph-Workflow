@@ -12,6 +12,7 @@ outside :mod:`ralph.pipeline.auto_integrate`.
 
 from __future__ import annotations
 
+import errno
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -23,7 +24,6 @@ from pydantic import ConfigDict
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
-from ralph.pipeline.auto_integrate_backoff import compute_retry_deadline
 from ralph.pipeline.auto_integrate_transition import (
     ACCEPT_REPAIR_EDITS,
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -382,6 +382,14 @@ def write_record(
     )
 
 
+class RecordBusyError(RuntimeError):
+    """Typed refusal: the record read hit demonstrable transient lock contention.
+
+    Raised by :func:`clear_record` and by
+    :meth:`ralph.pipeline.auto_integrate_record_store.IntegrationRecordStore.transition`
+    when the backend reports ``EAGAIN``/``EWOULDBLOCK`` so no mutation is
+    applied without a valid unexpired persisted retry deadline.
+    """
 
 
 class RecordUnreadableError(RuntimeError):
@@ -403,9 +411,7 @@ class RecordReadOutcomeDisposition(StrEnum):
     UNREADABLE = "unreadable"
 
 
-RecordUnreadableReason = Literal[
-    "corrupt_json", "unsupported_schema", "backend_read_failure"
-]
+RecordUnreadableReason = Literal["corrupt_json", "unsupported_schema", "backend_read_failure"]
 
 
 class RecordReadOutcome(RalphBaseModel):
@@ -415,13 +421,16 @@ class RecordReadOutcome(RalphBaseModel):
 
     * ``ABSENT`` -- no record file exists; ``record`` is ``None``.
     * ``PRESENT`` -- a valid record was loaded into ``record``.
-    * ``BUSY`` -- transient lock contention on the read path; the
-      bounded retry authority (attempt/deadline via
-      :func:`compute_retry_deadline`) governs the backoff, no new
-      counter is introduced.
+    * ``BUSY`` -- demonstrably transient lock contention (the backend
+      reported ``EAGAIN``/``EWOULDBLOCK``). No attempt count or
+      deadline is minted at read time: they come only from existing
+      PERSISTED retry state; with no valid unexpired persisted
+      deadline the consumer decides REQUIRE_INTERVENTION.
     * ``UNREADABLE`` -- the file exists but is unusable, with a
-      reason from :data:`RecordUnreadableReason`. Callers MUST NOT
-      mutate or unlink the evidence.
+      reason from :data:`RecordUnreadableReason`. Backend read and
+      permission failures and decoding errors map to
+      ``backend_read_failure``. Callers MUST NOT mutate or unlink
+      the evidence.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -431,6 +440,18 @@ class RecordReadOutcome(RalphBaseModel):
     unreadable_reason: RecordUnreadableReason | None = None
     busy_attempt: int | None = None
     busy_deadline: float | None = None
+
+
+def _outcome_from_read_error(exc: OSError | UnicodeError | KeyError) -> RecordReadOutcome:
+    """Map a backend read failure to BUSY (EAGAIN contention) or UNREADABLE."""
+    if isinstance(exc, OSError) and exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+        # Demonstrable transient lock contention; no deadline is minted
+        # here (persisted retry state alone authorizes waits).
+        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.BUSY)
+    return RecordReadOutcome(
+        disposition=RecordReadOutcomeDisposition.UNREADABLE,
+        unreadable_reason="backend_read_failure",
+    )
 
 
 def _parse_outcome_payload(raw_text: str) -> dict[str, object] | None:
@@ -448,7 +469,7 @@ def read_record_outcome(
     workspace_root: Path,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
-    busy_attempt: int = 1,
+    busy_attempt: int | None = None,
     busy_clock: object | None = None,
 ) -> RecordReadOutcome:
     """Read the durable record and return a CLOSED typed outcome.
@@ -456,10 +477,15 @@ def read_record_outcome(
     Unlike :func:`read_record` this never collapses corruption or
     transient read failure into ``None``: ABSENT is proven by the
     file not existing, and UNREADABLE preserves the evidence for the
-    caller. BUSY is a bounded-retry-only disposition: the attempt
-    count and deadline come from the existing bounded-retry authority
-    (:func:`ralph.pipeline.auto_integrate_backoff.compute_retry_deadline`).
+    caller. BUSY is reserved for demonstrable transient lock
+    contention (``EAGAIN``/``EWOULDBLOCK``); its attempt/deadline
+    fields are always ``None`` because a fresh deadline minted at
+    read time would replenish the bounded-retry budget on every
+    failing read. ``busy_attempt`` and ``busy_clock`` are ignored
+    (kept so out-of-scope callers keep importing); they carry no
+    retry authority.
     """
+    del busy_attempt, busy_clock  # WU-A: no fresh allowances at read time
     record_file = record_path(workspace_root)
     if not backend.exists(record_file):
         return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
@@ -467,12 +493,8 @@ def read_record_outcome(
         raw_text = backend.read_text(record_file, encoding="utf-8")
     except FileNotFoundError:
         return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
-    except (OSError, UnicodeError, KeyError):
-        return RecordReadOutcome(
-            disposition=RecordReadOutcomeDisposition.BUSY,
-            busy_attempt=busy_attempt,
-            busy_deadline=compute_retry_deadline(busy_attempt, clock=busy_clock),
-        )
+    except (OSError, UnicodeError, KeyError) as exc:
+        return _outcome_from_read_error(exc)
     parsed = _parse_outcome_payload(raw_text)
     if parsed is None:
         return RecordReadOutcome(
@@ -725,9 +747,9 @@ def clear_record(
             f"{record_path(workspace_root)} (reason: {outcome.unreadable_reason})"
         )
     if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
-        raise RecordUnreadableError(
+        raise RecordBusyError(
             f"transient record lock contention at {record_path(workspace_root)}; "
-            "bounded retry owns the backoff"
+            "bounded retry with a persisted deadline owns the backoff"
         )
     record = outcome.record
     if record is not None:
@@ -779,6 +801,7 @@ __all__ = [
     "IntegrationOperation",
     "IntegrationPhase",
     "IntegrationRecord",
+    "RecordBusyError",
     "RecordReadOutcome",
     "RecordReadOutcomeDisposition",
     "RecordUnreadableError",

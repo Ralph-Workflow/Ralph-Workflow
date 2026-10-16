@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
+    RecordBusyError,
     RecordReadOutcome,
     RecordReadOutcomeDisposition,
     RecordUnreadableError,
@@ -79,21 +80,27 @@ class IntegrationRecordStore:
         """Apply a Transition atomically and durably to the stored record.
 
         Consumes the typed read outcome: when the durable evidence is
-        UNREADABLE, EVERY mutation is refused with a typed
-        :class:`RecordUnreadableError` -- the corrupt bytes are the
-        only proof an integration was interrupted, so overwriting
-        them with a fresh START_INTEGRATING record would erase the
-        evidence. ABSENT keeps the existing START_INTEGRATING /
-        CLEAR semantics.
-
-        Loads the authoritative record from this store, applies the transition
-        via :meth:`IntegrationRecord.with_transition`, and writes the new record
-        atomically.
-
-        Idempotence: If called with identical transition and fields when the
-        transition has already been applied, the write is a no-op (bytes unchanged),
-        ensuring crash-recovery replay before or after the transition is safe.
+        UNREADABLE **or BUSY**, EVERY mutation is refused with a typed
+        refusal -- the corrupt bytes are the only proof an integration
+        was interrupted, so overwriting them with a fresh
+        START_INTEGRATING record would erase the evidence, and a BUSY
+        read grants no fresh retry allowance. ABSENT keeps the
+        existing START_INTEGRATING / CLEAR semantics.
         """
+        outcome = self.read_outcome()
+        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            raise RecordUnreadableError(
+                f"refusing transition {transition.name!r}: unreadable record "
+                f"evidence at {self.record_path} "
+                f"(reason: {outcome.unreadable_reason})"
+            )
+        if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
+            raise RecordBusyError(
+                f"refusing transition {transition.name!r}: transient record "
+                f"lock contention at {self.record_path}; bounded retry with a "
+                "persisted deadline owns the backoff"
+            )
+
         outcome = self.read_outcome()
         if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
             raise RecordUnreadableError(
@@ -148,6 +155,7 @@ def apply_record_transition(
 
 __all__ = [
     "IntegrationRecordStore",
+    "RecordBusyError",
     "RecordUnreadableError",
     "apply_record_transition",
 ]

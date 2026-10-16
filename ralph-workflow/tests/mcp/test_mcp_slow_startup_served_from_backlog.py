@@ -11,7 +11,6 @@ bridge owns the listening socket from the start.
 from __future__ import annotations
 
 import socket
-import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -21,10 +20,9 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 
 if TYPE_CHECKING:
-    from ralph.mcp.server._process_like import ProcessLike
+    from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 
 pytestmark = pytest.mark.subprocess_e2e
 

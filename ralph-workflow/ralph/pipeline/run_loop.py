@@ -2201,8 +2201,15 @@ def _post_recovery_verdict(
     state: PipelineState,
     prev_phase: str,
     verdict: IntegrationResolutionVerdict,
-) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int]:
-    """Run one recovery pass, then re-inspect; return either verdict or a block."""
+) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
+    """Run one recovery pass, then re-inspect.
+
+    Returns ``None`` when dispatch is allowed after recovery (with the
+    reconciled state threaded through ``ctx.latest_state`` and the
+    checkpoint), or the still-blocking verdict when recovery did not
+    land. Returning a RESOLVED verdict would make the caller treat a
+    successful recovery as another block.
+    """
     _announce_conflict_resolution_entry(ctx, verdict)
     _run_integration_conflict_resolution(ctx, state.rebase)
     recovered = _run_startup_integration(ctx, state.rebase)
@@ -2215,7 +2222,11 @@ def _post_recovery_verdict(
         if reconciled != state.rebase:
             state = state.copy_with(rebase=reconciled)
             _save_recovered_rebase_checkpoint(state, ctx)
-        return post_recovery
+        # Propagate the reconciled state so the caller (and the interrupt
+        # unwinding path) sees the post-recovery rebase, not the pre-recovery one.
+        ctx.latest_state[:] = [state]
+        return None
+    ctx.latest_state[:] = [state]
     return post_recovery
 
 

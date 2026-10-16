@@ -706,7 +706,10 @@ def test_handoff_unreadable_record_persists_intervention_projection(
     assert "unreadable" in (rebase.last_reason or "")
     # idempotent across restarts: calling again is stable
     run_loop_module._handoff_retained_failure(ctx, "retained on unreadable record")
-    assert ctx.latest_state[0].rebase.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+    assert (
+        ctx.latest_state[0].rebase.last_outcome
+        is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+    )
 
 
 def test_handoff_readable_record_still_runs_diagnostic(
@@ -783,3 +786,137 @@ def test_runner_exit_success_blocked_by_unreadable_record(
     )
     assert code == 1
     assert emitted == []
+
+
+# --- WU-B: post-recovery dispatch and state propagation ---------------------
+
+
+def _wu_b_ctx(tmp_path: Path, state: PipelineState) -> object:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        workspace_scope=SimpleNamespace(root=tmp_path),
+        latest_state=[state],
+        active_display=MagicMock(),
+        config=MagicMock(
+            conflict_resolution=MagicMock(
+                max_consecutive_resolver_attempts=3,
+            )
+        ),
+        policy_bundle=MagicMock(),
+        registry=MagicMock(get=lambda _name: None),
+        pipeline_deps=None,
+        display_context=MagicMock(),
+    )
+
+
+def test_post_recovery_dispatch_returns_continuation_not_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Successful post-recovery dispatch must clear the block and persist state."""
+    from ralph.pipeline import run_loop as run_loop_module
+    from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+
+    # Clean tree: no record file, no git repo => verdict goes through.
+    assert not (tmp_path / ".agent" / "auto_integrate_in_progress.json").exists()
+    state = PipelineState(phase="development")
+    rebase = state.rebase.model_copy(
+        update={
+            "last_outcome": RebaseOutcomeKind.CONFLICT,
+            "last_reason": "conflict",
+            "unresolved_integration_carried": True,
+            "resolution_exhausted": True,
+            "resolution_exhaustion_reason": "resolver chain exhausted",
+        }
+    )
+    state = state.copy_with(rebase=rebase)
+    ctx = _wu_b_ctx(tmp_path, state)
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_integration_conflict_resolution",
+        lambda _ctx, _rebase: True,
+    )
+    recovered_calls: list[object] = []
+
+    def _fake_startup(_ctx: object, _rebase: object) -> object:
+        recovered_calls.append(_rebase)
+        # Recovery landed: the recovered rebase clears all conflict evidence.
+        return _rebase.model_copy(
+            update={
+                "last_outcome": RebaseOutcomeKind.FAST_FORWARDED,
+                "last_reason": "recovered",
+                "unresolved_integration_carried": False,
+                "resolution_exhausted": False,
+                "resolution_exhaustion_reason": None,
+            }
+        )
+
+    monkeypatch.setattr(run_loop_module, "_run_startup_integration", _fake_startup)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_announce_conflict_resolution_entry",
+        lambda *_a, **_kw: None,
+    )
+    checkpoint_saves: list[PipelineState] = []
+    monkeypatch.setattr(
+        run_loop_module,
+        "_save_recovered_rebase_checkpoint",
+        lambda s, _ctx: checkpoint_saves.append(s),
+    )
+
+    from ralph.pipeline.integration_resolution import inspect_integration_resolution
+
+    verdict = inspect_integration_resolution(tmp_path, state.rebase)
+    result = run_loop_module._post_recovery_verdict(ctx, state, "development", verdict)
+
+    # BUG (pre-fix): both branches returned the raw verdict, so the caller
+    # treated success as another block. The contract: success returns None
+    # (dispatch allowed) with the reconciled state persisted.
+    assert result is None, "successful post-recovery dispatch must not block"
+    assert recovered_calls, "startup integration must run"
+    final = ctx.latest_state[0].rebase
+    assert not final.resolution_exhausted
+    assert not final.unresolved_integration_carried
+    assert checkpoint_saves, "reconciled state must be checkpointed"
+
+
+def test_post_recovery_blocked_still_returns_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A still-recoverable verdict after recovery keeps the block behavior."""
+    from ralph.pipeline import run_loop as run_loop_module
+    from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+    from ralph.pipeline.integration_resolution import (
+        IntegrationResolutionStatus,
+        IntegrationResolutionVerdict,
+    )
+
+    state = PipelineState(phase="development")
+    rebase = state.rebase.model_copy(
+        update={
+            "last_outcome": RebaseOutcomeKind.CONFLICT,
+            "last_reason": "conflict",
+            "resolution_exhausted": True,
+            "resolution_exhaustion_reason": "resolver chain exhausted",
+        }
+    )
+    state = state.copy_with(rebase=rebase)
+    ctx = _wu_b_ctx(tmp_path, state)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_integration_conflict_resolution",
+        lambda _ctx, _rebase: False,
+    )
+    monkeypatch.setattr(run_loop_module, "_run_startup_integration", lambda _c, _r: None)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_announce_conflict_resolution_entry",
+        lambda *_a, **_kw: None,
+    )
+    blocked = IntegrationResolutionVerdict(
+        IntegrationResolutionStatus.RECOVERABLE, ("still blocked",), "drain"
+    )
+    result = run_loop_module._post_recovery_verdict(ctx, state, "development", blocked)
+    assert isinstance(result, IntegrationResolutionVerdict)
+    assert not result.dispatch_allowed

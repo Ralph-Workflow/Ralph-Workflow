@@ -31,6 +31,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -191,6 +192,9 @@ def test_default_run_propagates_display_subscriber(
     # Short-circuit immediately: enter -> exit by going straight to complete.
     state = MagicMock()
     state.phase = "complete"
+    # Terminal-success eligibility compares real decision values on the
+    # rebase state, so the fake state carries a default (idle) RebaseState.
+    state.rebase = RebaseState()
     monkeypatch.setattr(
         runner_module,
         "determine_effect_from_policy",

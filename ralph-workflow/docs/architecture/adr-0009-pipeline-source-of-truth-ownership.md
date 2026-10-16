@@ -74,13 +74,25 @@ The following implementation refinements strengthen the ownership model above; e
 
 The retention reason `"diagnostic evidence changed; original evidence must be restored before recovery"` has exactly one definition: `ralph.pipeline._diagnostic_evidence_gate.diagnostic_evidence_gate_reason`. The gate covers both *changed* and *unreadable* diagnostic verdicts, and both `auto_integrate_recovery.py:608` and `_remote_reconcile_recovery.py:62` import the reason from that single site. `grep` confirms exactly one definition in the tree.
 
-### Typed record reads and UNREADABLE ownership (U4a)
+### Typed record reads and BUSY/UNREADABLE ownership (U4a)
 
-`ralph.pipeline.auto_integrate_record.read_record_outcome` returns a `RecordReadOutcome` with a closed disposition set — `ABSENT`, `PRESENT`, `BUSY`, `UNREADABLE` — where unreadable evidence carries a typed reason (`corrupt_json`, `unsupported_schema`, `backend_read_failure`). `clear_record` refuses to unlink evidence whose disposition is `UNREADABLE` (`RecordUnreadableError`, `auto_integrate_record.py:387`), and `IntegrationRecordStore.transition` refuses every mutation on an `UNREADABLE` record. Unreadable ownership evidence therefore cannot be silently destroyed; this implements the "Query failures ... fail closed" principle from Decision §2.
+`ralph.pipeline.auto_integrate_record.read_record_outcome` returns a `RecordReadOutcome` with a closed four-disposition set — `ABSENT`, `PRESENT`, `BUSY`, `UNREADABLE`:
+
+- `UNREADABLE` carries a typed reason (`corrupt_json`, `unsupported_schema`, `backend_read_failure`); backend read and permission failures and decoding errors all map to `backend_read_failure`.
+- `BUSY` is reserved for demonstrably transient lock contention (the backend reported `EAGAIN`/`EWOULDBLOCK`). It carries NO freshly computed attempt count or deadline: `busy_attempt`/`busy_deadline` are always `None`; they come only from existing persisted retry state. An absent, invalid, or expired persisted deadline means the consumer requires intervention.
+- Both `clear_record` and `IntegrationRecordStore.transition` refuse EVERY mutation — including `START_INTEGRATING` creation and `CLEAR` — on a `BUSY` record (`RecordBusyError`) or an `UNREADABLE` record (`RecordUnreadableError`); the file bytes are preserved. `ABSENT` keeps its existing semantics (idempotent, missing-ok).
+
+### Run-loop consumption of record outcomes (U4b)
+
+`ralph.pipeline.run_loop` consumes the typed outcomes decision-completely:
+
+- `UNREADABLE` routes through `_handoff_retained_failure`, which persists the intervention projection exactly once (a label distinct from evidence diagnosis) and never launches a new diagnostic agent or unlinks the evidence — a corrupt or unsupported record cannot answer `diagnostic_needed`, so re-running the diagnostic would loop forever.
+- `BUSY` authorizes bounded retry ONLY with a valid, unexpired persisted retry deadline; otherwise it routes to intervention.
+- `_post_recovery_verdict` returns `None` when post-recovery dispatch is allowed, threading the reconciled state through `ctx.latest_state` and checkpointing it via `reconcile_stale_unresolved_state` / `_save_recovered_rebase_checkpoint`, so the caller proceeds to dispatch instead of converting a successful recovery into another block. It returns the still-blocking verdict only when recovery did not land.
 
 ### Operation-scoped rebase backup refs (U5)
 
-Rebase backup refs are operation-scoped: `refs/rebase-backup/<worktree>-<sha8>-<sha>`, named by `qualified_backup_ref` (`auto_integrate_backup_refs.py:16`). Deletion during recovery is by exact ref name only (`delete_rebase_backup_refs`, `auto_integrate_recovery_terminal.py:88-131`) — never `for-each-ref` namespace enumeration. Refs from other linked worktrees sharing the same pre-feature SHA, and legacy SHA-only refs (`refs/rebase-backup/<sha8>-<sha>`), are never deleted; under-delete is the accepted failure direction and is logged. Verified by `tests/test_backup_ref_operation_scope.py` (6 cases, including the same-SHA linked-worktree collision where worktree A's cleanup preserves worktree B's ref).
+Rebase backup refs are operation-scoped: `refs/rebase-backup/<wt8>-<sha8>-<sha>`, where `wt8` is the first 8 hex chars of the SHA-256 of `owning_worktree`, named by `qualified_backup_ref` (`auto_integrate_backup_refs.py:16`). Deletion during recovery is by exact ref name only (`delete_rebase_backup_refs`, `auto_integrate_recovery_terminal.py:88-131`) — never `for-each-ref` namespace enumeration. Refs from other linked worktrees sharing the same pre-feature SHA, and legacy SHA-only refs (`refs/rebase-backup/<sha8>-<sha>`), are never deleted; under-delete is the accepted failure direction and is logged. Verified by `tests/test_backup_ref_operation_scope.py` (6 cases, including the same-SHA linked-worktree collision where worktree A's cleanup preserves worktree B's ref).
 
 **Known accepted observation (reclaim namespace)**: `_auto_integrate_reclaim.py:140` `_prune_reclaim_refs` still enumerates `refs/ralph-reclaim/<target>/` by prefix and prunes by age/count. That namespace is keyed by target branch only, so two worktrees reclaiming the same target share one prune pool — a snapshot from one worktree may be pruned by the other. This is accepted as lower-risk: reclaim snapshots are snapshot hygiene for worktree reset, not a sole recovery authority (recovery also relies on the operation-scoped backup refs above). Flagged for potential follow-up if reclaim snapshots are ever promoted to a recovery authority.
 

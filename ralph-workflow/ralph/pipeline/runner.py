@@ -2518,10 +2518,7 @@ def _handle_inline_effect(
         return (
             _emit_success_exit(display, os.getenv)
             if is_terminal_success_eligible(state, record, state.rebase)
-            and (
-                record is not None
-                or retained_integration_reason(workspace_scope.root) is None
-            )
+            and (record is not None or retained_integration_reason(workspace_scope.root) is None)
             else 1
         )
 

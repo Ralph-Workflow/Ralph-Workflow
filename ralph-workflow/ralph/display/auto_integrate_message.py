@@ -213,6 +213,23 @@ def integration_action_to_operation_display_state(
 def _is_diagnosis_state(action_or_state: object, is_diagnosis: bool) -> bool:
     if is_diagnosis:
         return True
+    # A settled intervention projection is decision-complete, never an open
+    # diagnosis: the recovery-record retention that comes with it must not
+    # reclassify it as evidence diagnosis (the unreadable-record handoff
+    # carries both and must show 'intervention').
+    settled_last_outcome = _safe_attr(action_or_state, "last_outcome")
+    if settled_last_outcome is not None:
+        settled_norm = (
+            (
+                settled_last_outcome.value
+                if isinstance(settled_last_outcome, StrEnum)
+                else str(settled_last_outcome)
+            )
+            .strip()
+            .lower()
+        )
+        if settled_norm in ("intervention_required", "diagnostic_intervention_required"):
+            return False
     diag_owner = _safe_attr(action_or_state, "diagnostic_ownership")
     retained_rec = _safe_attr(action_or_state, "recovery_record_retained")
     if diag_owner is not None or retained_rec is True:

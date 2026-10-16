@@ -616,9 +616,7 @@ def recover_incomplete_integration(
                 last_reason=reason,
                 last_target=None,
                 recovery_record_retained=True,
-                recovery_record_retained_reason=(
-                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-                ),
+                recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
             )
         record = outcome.record
         if (

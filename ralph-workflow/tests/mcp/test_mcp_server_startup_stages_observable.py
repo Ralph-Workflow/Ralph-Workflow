@@ -42,7 +42,7 @@ _loguru_records: list[str] = []
 @pytest.fixture(autouse=True)
 def _loguru_sink() -> Iterator[None]:
     """Install a loguru sink that captures all messages to _loguru_records."""
-    global _loguru_records
+    global _loguru_records  # noqa: PLW0603 — module-level capture list is the fixture's contract
     _loguru_records = []
 
     def sink(message: object) -> None:
@@ -73,6 +73,7 @@ def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
     session_file.write_text(session_payload_json(session), encoding="utf-8")
 
     import os
+
     old_session_file = os.environ.get("RALPH_MCP_SESSION_FILE")
     try:
         os.environ["RALPH_MCP_SESSION_FILE"] = str(session_file)
@@ -115,9 +116,7 @@ def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
 
     # --- stage-file assertions -----------------------------------------------
     last = read_last_stage(tmp_path)
-    assert last == RUNTIME_STAGES[-1], (
-        f"expected last stage {RUNTIME_STAGES[-1]!r}, got {last!r}"
-    )
+    assert last == RUNTIME_STAGES[-1], f"expected last stage {RUNTIME_STAGES[-1]!r}, got {last!r}"
 
     sp = stage_file_path(tmp_path)
     assert sp.exists(), f"stage file missing at {sp}"

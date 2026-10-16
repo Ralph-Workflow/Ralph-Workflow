@@ -361,7 +361,7 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
     """Upstream mixed text+image+audio must preserve all blocks without silent dropping."""
 
     class _FakeClient:
-        def list_tools(self) -> list[object]:
+        def list_tools(self, timeout_s: float | None = None) -> list[object]:
 
             return [UpstreamTool(name="mix", description="mixed content tool")]
 
@@ -416,7 +416,7 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
     """
 
     class _FakeClient:
-        def list_tools(self) -> list[object]:
+        def list_tools(self, timeout_s: float | None = None) -> list[object]:
 
             return [UpstreamTool(name="pdf_tool", description="returns a PDF URI")]
 

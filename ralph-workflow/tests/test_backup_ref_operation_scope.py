@@ -82,9 +82,7 @@ def test_qualified_backup_ref_is_deterministic_and_worktree_scoped() -> None:
     # wt8 = sha256(str(owning_worktree))[:8]
     import hashlib
 
-    assert ref_a.split("/")[2].startswith(
-        hashlib.sha256(b"/wt/a").hexdigest()[:8]
-    )
+    assert ref_a.split("/")[2].startswith(hashlib.sha256(b"/wt/a").hexdigest()[:8])
 
 
 def test_two_linked_worktrees_get_distinct_backup_refs(tmp_path: Path) -> None:

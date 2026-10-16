@@ -94,13 +94,12 @@ def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
     (fail-closed under-delete).
     """
     if backup_ref is None:
-        logger.warning(
-            "recovery: no backup ref recorded; legacy or foreign refs left in place"
-        )
+        logger.warning("recovery: no backup ref recorded; legacy or foreign refs left in place")
         return
-    if not backup_ref.startswith("refs/rebase-backup/") or len(
-        backup_ref.split("/")[2].split("-")
-    ) < _MIN_QUALIFIED_BACKUP_REF_SEGMENTS:
+    if (
+        not backup_ref.startswith("refs/rebase-backup/")
+        or len(backup_ref.split("/")[2].split("-")) < _MIN_QUALIFIED_BACKUP_REF_SEGMENTS
+    ):
         logger.warning(
             "recovery: refusing to delete non-qualified backup ref {} "
             "(legacy SHA-only refs are never deleted)",
@@ -118,5 +117,3 @@ def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
         return
     if deletion.returncode not in (0, 1):
         logger.warning("recovery: backup-ref deletion failed for {}", backup_ref)
-
-

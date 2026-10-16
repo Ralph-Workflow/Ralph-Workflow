@@ -42,10 +42,7 @@ def is_terminal_success_eligible(
         or rebase_state.recovery_record_retained is True
         or rebase_state.is_intervention_required is True
         or (pub is not None and pub != PublicationDecision.PUBLICATION_TERMINAL)
-        or (
-            fan_out is not None
-            and fan_out != FanOutDecision.JOIN_COMPLETE
-        )
+        or (fan_out is not None and fan_out != FanOutDecision.JOIN_COMPLETE)
     )
 
 
