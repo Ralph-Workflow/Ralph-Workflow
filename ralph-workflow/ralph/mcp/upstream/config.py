@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.upstream_config_error import UpstreamConfigError
 from ralph.mcp.upstream.upstream_tool import UpstreamTool
@@ -155,19 +156,29 @@ def serialize_upstream_tool_catalog(
 
 
 def load_upstream_tool_catalog(raw: str | None) -> dict[str, list[UpstreamTool]]:
-    """Decode upstream tool metadata from its serialized environment payload."""
+    """Decode upstream tool metadata from its serialized environment payload.
+
+    Fail-closed: invalid JSON or a non-mapping payload raises
+    ``McpServerError(last_stage="parent_catalog_load", restart_count=0)``
+    instead of silently continuing with an empty catalog.
+    """
 
     if not raw:
         return {}
     try:
         decoded: object = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning(
-            "RALPH_UPSTREAM_MCP_TOOL_CATALOG contains invalid JSON; ignoring tool catalog."
-        )
-        return {}
+    except json.JSONDecodeError as exc:
+        raise McpServerError(
+            "RALPH_UPSTREAM_MCP_TOOL_CATALOG contains invalid JSON.",
+            last_stage="parent_catalog_load",
+            restart_count=0,
+        ) from exc
     if not isinstance(decoded, Mapping):
-        return {}
+        raise McpServerError(
+            "RALPH_UPSTREAM_MCP_TOOL_CATALOG payload is not a JSON mapping.",
+            last_stage="parent_catalog_load",
+            restart_count=0,
+        )
 
     catalog: dict[str, list[UpstreamTool]] = {}
     for server_name, raw_tools in decoded.items():

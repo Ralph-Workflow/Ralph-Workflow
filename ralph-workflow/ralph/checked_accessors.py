@@ -47,6 +47,7 @@ __all__ = [
     "as_str_dict",
     "as_str_list",
     "optional_bool",
+    "optional_float",
     "optional_int",
     "optional_str",
     "optional_str_list",
@@ -299,6 +300,28 @@ def optional_int(value: object, *, field: str | None = None) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value
+
+
+def optional_float(value: object, *, field: str | None = None) -> float | None:
+    """Return ``value`` if it is a non-bool :class:`float`, else ``None``.
+
+    Accepts both :class:`float` and :class:`int` (a finite numeric value
+    is numeric) so a JSON deserialiser that produces ``int`` for whole
+    numbers does not lose precision at the boundary. ``bool`` is
+    rejected: a boolean is not a float.
+
+    Args:
+        value: The raw value read from an untyped boundary.
+        field: Optional field name used for debugging messages.
+
+    Returns:
+        The validated float, or ``None`` when the value is not a
+        numeric scalar.
+    """
+    del field
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def optional_bool(value: object, *, field: str | None = None) -> bool | None:

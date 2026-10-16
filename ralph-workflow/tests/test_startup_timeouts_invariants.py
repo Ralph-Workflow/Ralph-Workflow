@@ -176,3 +176,64 @@ class TestProbeSafetyConstantExistence:
         # The formula is: int((ceiling - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
         computed = int((ceiling.total_seconds() - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
         assert computed == _MAX_UPSTREAMS_AT_DEFAULTS
+
+
+class TestPerStageBudgets:
+    """WU-C2: per-stage budgets, the shared deadline helper, and the import-time invariant."""
+
+    def test_stage_budget_constants_are_documented(self) -> None:
+        from ralph.mcp.protocol import _startup_timeouts as mod
+
+        assert mod._CONFIG_LOAD_BUDGET_S == 1.0
+        assert mod._REGISTRY_BUILD_BUDGET_S == 1.0
+        # Both constants and the stage vocabulary must be in the docstring.
+        doc = mod.__doc__ or ""
+        for needle in (
+            "_CONFIG_LOAD_BUDGET_S",
+            "_REGISTRY_BUILD_BUDGET_S",
+            "config_loaded",
+            "upstream_catalog_or_discovery_done",
+            "ready_to_serve",
+            "mcp_discovery_budget_from_env",
+            "preflight",
+        ):
+            assert needle in doc, f"module docstring must document {needle!r}"
+        docstring = mod.record_stage_elapsed.__doc__ or ""
+        assert "monotonic" in docstring, "helper must document fake-clock friendliness"
+
+    def test_record_stage_elapsed_enforces_shared_deadline(self) -> None:
+        from ralph.mcp.protocol._startup_timeouts import record_stage_elapsed
+        from ralph.mcp.server._mcp_server_error import McpServerError
+
+        # Under budget: no raise.
+        record_stage_elapsed("config_loaded", 0.5, budget_s=1.0)
+        # Over budget: typed error with the measured values, not the budget.
+        with pytest.raises(McpServerError) as exc_info:
+            record_stage_elapsed("ready_to_serve", 1.25, budget_s=1.0)
+        err = exc_info.value
+        assert err.last_stage == "ready_to_serve"
+        assert err.elapsed_s == 1.25
+        assert err.restart_count == 0
+
+    def test_per_stage_envelope_independent_of_sum(self) -> None:
+        """A single stage exceeding its own budget raises even while the
+        aggregate stays below preflight (per-stage bounds are individual,
+        the aggregate is enforced by the shared deadline, not by summing)."""
+        from ralph.mcp.protocol._startup_timeouts import (
+            _CONFIG_LOAD_BUDGET_S,
+            mcp_discovery_budget_from_env,
+            mcp_preflight_timeout_from_env,
+            record_stage_elapsed,
+        )
+        from ralph.mcp.server._mcp_server_error import McpServerError
+
+        preflight = mcp_preflight_timeout_from_env({}).total_seconds()
+        discovery = mcp_discovery_budget_from_env({}).total_seconds()
+        # Aggregate is comfortably under preflight...
+        assert discovery < preflight
+        # ...yet an individual stage violation still raises.
+        stage_elapsed = _CONFIG_LOAD_BUDGET_S + 0.1
+        assert stage_elapsed < preflight
+        with pytest.raises(McpServerError) as exc_info:
+            record_stage_elapsed("config_loaded", stage_elapsed, budget_s=_CONFIG_LOAD_BUDGET_S)
+        assert exc_info.value.last_stage == "config_loaded"

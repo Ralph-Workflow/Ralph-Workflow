@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -155,6 +154,20 @@ def no_diagnosis_agent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return calls
 
 
+def _as_mock(value: object) -> MagicMock:
+    """Narrow ``object`` to ``MagicMock`` for tests that need to call mock methods.
+
+    The helper exists so the test module never uses ``typing.cast`` over
+    arbitrary test data; the type checker is told the truth via the
+    runtime ``isinstance`` check rather than an assertion. The call site
+    is bounded: this function is only used to hand a ``MagicMock`` (the
+    pre-existing contract for ``run_loop._LoopContext.sleep``) into a
+    parameter typed as ``object``.
+    """
+    assert isinstance(value, MagicMock), f"expected MagicMock, got {type(value).__name__}"
+    return value
+
+
 def _policy_bundle() -> PolicyBundle:
     policy = PipelinePolicy(
         phases={
@@ -194,7 +207,7 @@ def _loop_context(
         cli_overrides={},
         monitor_stop=None,
         connectivity_monitor=MagicMock(),
-        sleep=cast("MagicMock", sleep),
+        sleep=_as_mock(sleep),
         is_quiet=True,
         latest_state=latest_state,
     )

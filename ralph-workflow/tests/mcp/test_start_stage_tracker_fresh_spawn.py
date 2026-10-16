@@ -190,3 +190,47 @@ def _restore_spawn_id(spawn_id: str) -> None:
     import ralph.mcp.server._start_stage_tracker as m
 
     m._spawn_id = spawn_id
+
+
+# ---------------------------------------------------------------------------
+# Atomic-replacement invariants
+# ---------------------------------------------------------------------------
+
+
+def test_record_replaces_file_atomically_identity_preserved(tmp_path: Path) -> None:
+    """The stage file content is never blank: mid-record reads see old or new, not empty.
+
+    os.replace swaps the whole inode, so a reader that opened the file
+    before the rename keeps reading the previous (complete) content, and
+    the file at the path is never observed truncated.
+    """
+    record(tmp_path, RUNTIME_STAGES[0])
+    path = stage_file_path(tmp_path)
+    # No temp siblings left behind after a successful record.
+    siblings = [p for p in path.parent.iterdir() if p.name.endswith(".tmp")]
+    assert siblings == []
+    record(tmp_path, RUNTIME_STAGES[2])
+    # The final file is the complete new label, never blank or truncated.
+    assert path.read_text(encoding="ascii") == RUNTIME_STAGES[2]
+    assert path.stat().st_size == len(RUNTIME_STAGES[2])
+
+
+def test_record_mid_write_failure_leaves_previous_stage_intact(
+    tmp_path: Path,
+) -> None:
+    """A failure during the write phase must not destroy the previous stage file."""
+    record(tmp_path, RUNTIME_STAGES[1])
+    path = stage_file_path(tmp_path)
+    with patch("ralph.mcp.server._start_stage_tracker.os.replace") as replace_mock:
+        replace_mock.side_effect = OSError("simulated mid-write failure")
+        try:
+            record(tmp_path, RUNTIME_STAGES[4])
+        except OSError as exc:
+            assert "simulated mid-write failure" in str(exc)
+        else:
+            raise AssertionError("record must propagate the write failure")
+    # The previous label is intact — the reader never saw a blank file.
+    assert read_last_stage(tmp_path) == RUNTIME_STAGES[1]
+    # The temp sibling was cleaned up.
+    siblings = [p for p in path.parent.iterdir() if p.name.endswith(".tmp")]
+    assert siblings == []

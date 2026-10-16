@@ -343,9 +343,9 @@ def test_durable_sink_log_unavailable_records_none(
         read_back = read_durable_sink()
         assert len(read_back) == 1
         record = read_back[0]
-        # log_tail=None serialises as [] — this is distinguishable from
-        # a successful read that happened to return zero lines.
-        assert record["log_tail"] == []
+        # log_tail=None serialises as JSON null — distinguishable from
+        # a successful read that returned zero lines ([]).
+        assert record["log_tail"] is None
     finally:
         set_durable_sink_path(orig)
         clear_durable_sink()
@@ -438,3 +438,92 @@ def test_sink_survives_shutdown_semantics(tmp_path: Path) -> None:
     records_x = read_durable_sink(path=path_a)
     assert len(records_x) == 1
     assert records_x[0]["exit_status"] == 99
+
+
+# ---------------------------------------------------------------------------
+# Explicit-target (bridge-scoped) sink routing — interleaved A/B/A
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_sink_path_routes_records_per_bridge_interleaved(
+    tmp_path: Path,
+) -> None:
+    """With two bridges, interleaved A/B/A records each land only in their own sink.
+
+    The explicit ``sink_path`` parameter routes each record to its target
+    file; the module-global sink is never consulted and never polluted.
+    """
+    sink_a = tmp_path / "bridge-a.jsonl"
+    sink_b = tmp_path / "bridge-b.jsonl"
+    set_durable_sink_path(None)  # no global sink: routing must come from sink_path
+
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=10,
+        stage="A-first",
+        sink_path=sink_a,
+    )
+    record_restart_decision(
+        reason=RestartReason.PROBE_FAILED,
+        probe_duration_s=0.25,
+        stage="B-only",
+        sink_path=sink_b,
+    )
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=20,
+        stage="A-second",
+        sink_path=sink_a,
+    )
+
+    records_a = read_durable_sink(path=sink_a)
+    records_b = read_durable_sink(path=sink_b)
+    # A got exactly its own two records, in order; B got exactly its one.
+    assert [r["stage"] for r in records_a] == ["A-first", "A-second"]
+    assert [r["exit_status"] for r in records_a] == [10, 20]
+    assert [r["stage"] for r in records_b] == ["B-only"]
+    assert records_b[0]["probe_duration_s"] == 0.25
+    # The unavailable tail serialises as null.
+    assert records_a[0]["log_tail"] is None
+
+
+def test_explicit_sink_tail_none_vs_empty_distinct(tmp_path: Path) -> None:
+    """``log_tail=None`` and ``log_tail=()`` persist differently in the sink."""
+    sink = tmp_path / "tails.jsonl"
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=1,
+        log_tail=None,
+        stage="unavailable",
+        sink_path=sink,
+    )
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=2,
+        log_tail=(),
+        stage="available-empty",
+        sink_path=sink,
+    )
+    records = read_durable_sink(path=sink)
+    assert records[0]["log_tail"] is None  # unavailable
+    assert records[1]["log_tail"] == []  # available but empty
+
+
+def test_explicit_sink_none_falls_back_to_global(tmp_path: Path) -> None:
+    """``sink_path=None`` keeps the legacy global-sink behaviour (backward compat)."""
+    orig = get_durable_sink_path()
+    sink = tmp_path / "global.jsonl"
+    try:
+        set_durable_sink_path(sink)
+        record_restart_decision(
+            reason=RestartReason.PROBE_FAILED,
+            probe_duration_s=0.5,
+            stage="legacy",
+            sink_path=None,
+        )
+        assert sink.exists()
+        records = read_durable_sink(path=sink)
+        assert records[-1]["stage"] == "legacy"
+    finally:
+        set_durable_sink_path(orig)
+        clear_durable_sink(sink)

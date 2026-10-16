@@ -122,6 +122,7 @@ def record_restart_decision(
     probe_duration_s: float | None = None,
     log_tail: tuple[str, ...] | None = None,
     stage: str,
+    sink_path: Path | None = None,
 ) -> None:
     """Append a fully-evidenced restart decision to ``_DECISIONS``.
 
@@ -144,6 +145,12 @@ def record_restart_decision(
     stage : str
         The startup stage or health-state label active when the
         decision was made.
+    sink_path : Path | None
+        Explicit durable sink target. When ``None`` the module-global
+        sink configured via :func:`set_durable_sink_path` is used, so
+        existing callers keep working; bridge-scoped callers pass the
+        bridge's own ``_durable_sink_path`` so records land only in
+        that bridge's file regardless of the global setting.
     """
     decision = RestartDecision(
         reason=reason,
@@ -157,12 +164,13 @@ def record_restart_decision(
     # swallowed: the bounded in-memory deque is the authoritative
     # record for the running supervisor and a failed disk append
     # must not stop the supervisor from recording this restart.
-    if _DURABLE_SINK_PATH is not None:
+    target = sink_path if sink_path is not None else _DURABLE_SINK_PATH
+    if target is not None:
         try:
             with _DURABLE_SINK_LOCK:
-                _DURABLE_SINK_PATH.parent.mkdir(parents=True, exist_ok=True)
+                target.parent.mkdir(parents=True, exist_ok=True)
                 with (
-                    _DURABLE_SINK_PATH.open(  # filesystem-write-ok: append-only durable JSONL stream; each restart decision must append, never rewrite history
+                    target.open(  # filesystem-write-ok: append-only durable JSONL stream; each restart decision must append, never rewrite history
                         "a", encoding="utf-8"
                     ) as fh
                 ):
@@ -170,7 +178,13 @@ def record_restart_decision(
                         "reason": decision.reason.value,
                         "exit_status": decision.exit_status,
                         "probe_duration_s": decision.probe_duration_s,
-                        "log_tail": list(decision.log_tail or ()),
+                        # ``None`` (log unavailable) serialises as JSON null so an
+                        # operator can tell it apart from ``[]`` (log captured, empty).
+                        "log_tail": (
+                            list(decision.log_tail)
+                            if decision.log_tail is not None
+                            else None
+                        ),
                         "stage": decision.stage,
                     }
                     fh.write(json.dumps(record))

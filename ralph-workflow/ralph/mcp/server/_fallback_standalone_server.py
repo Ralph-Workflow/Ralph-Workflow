@@ -104,15 +104,16 @@ class _FallbackStandaloneServer:
         # real runs skip the branch entirely.
         gate_path = self._env_getter(MCP_TEST_PRE_SERVE_GATE_ENV, None)
         if gate_path:
+            gate_path_obj = Path(gate_path)
             deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
-            while not Path(
-                gate_path
-            ).exists():  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; cannot route through FileBackend because the test fixture writes outside the workspace
+            # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; cannot route through FileBackend because the test fixture writes outside the workspace
+            while not gate_path_obj.exists():
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "
                         f"waiting for {gate_path}"
                     )
+                # filesystem-poll-ok: subprocess-E2E test seam waits between polls for the fixture to create the gate file; the loop is bounded by _PRE_SERVE_GATE_TIMEOUT_S and an injected clock seam is not viable because the gate is a fixture-only construct
                 time.sleep(0.05)
         # Startup banner announces the live configuration so an operator can
         # confirm which transport, which session class, and which effective

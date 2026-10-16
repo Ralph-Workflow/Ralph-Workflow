@@ -13,6 +13,7 @@ injectable clock to verify timing behaviour deterministically without
 
 from __future__ import annotations
 
+import pytest
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
@@ -442,3 +443,31 @@ class TestHardBoundTimeoutEnforcement:
 
         # Third server was skipped (no remaining budget)
         assert len(registry.tool_definitions()) == 2
+
+
+class TestAggregateVsPerStageEnvelope:
+    """WU-C2: the aggregate bound is the shared deadline, not a sum of stage budgets."""
+
+    def test_aggregate_bound_is_preflight_enforced_by_deadline(self) -> None:
+        """Spawn-to-tools/list is bounded by preflight via the shared deadline;
+        it is NOT the sum of the per-stage budgets (which would exceed it)."""
+        from ralph.mcp.protocol import _startup_timeouts as mod
+
+        preflight = mcp_preflight_timeout_from_env({}).total_seconds()
+        discovery = mcp_discovery_budget_from_env({}).total_seconds()
+        assert discovery < preflight
+        per_stage_sum = mod._CONFIG_LOAD_BUDGET_S + mod._REGISTRY_BUILD_BUDGET_S + discovery
+        assert per_stage_sum > discovery, "summing must not be the enforcement mechanism"
+        # The registry tests above already prove the shared deadline skips
+        # probes past the budget; here we pin the helper that records stage
+        # overruns against per-stage envelopes.
+        from ralph.mcp.protocol._startup_timeouts import record_stage_elapsed
+        from ralph.mcp.server._mcp_server_error import McpServerError
+
+        with pytest.raises(McpServerError) as exc_info:
+            record_stage_elapsed(
+                "upstream_catalog_or_discovery_done",
+                mod._REGISTRY_BUILD_BUDGET_S + 0.01,
+                budget_s=mod._REGISTRY_BUILD_BUDGET_S,
+            )
+        assert exc_info.value.last_stage == "upstream_catalog_or_discovery_done"

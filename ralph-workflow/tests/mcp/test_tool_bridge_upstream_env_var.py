@@ -10,11 +10,16 @@ from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
 )
 from ralph.mcp.upstream.config import (
+    UPSTREAM_MCP_TOOL_CATALOG_ENV,
     UpstreamMcpServer,
     load_upstream_mcp_servers,
     serialize_upstream_mcp_servers,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.tool_catalog_cache import (
+    UpstreamToolCatalogSnapshot,
+    apply_tool_catalog_env,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -96,3 +101,9 @@ class TestUpstreamEnvVar:
 
         assert result == ()
         assert any("invalid JSON" in record.message for record in caplog.records)
+
+    def test_present_empty_catalog_snapshot_sets_empty_env_var(self) -> None:
+        """Present-but-empty snapshot -> env var is SET to '{}' (not popped)."""
+        env: dict[str, str] = {UPSTREAM_MCP_TOOL_CATALOG_ENV: "stale-leftover"}
+        apply_tool_catalog_env(env, UpstreamToolCatalogSnapshot(present=True, value={}))
+        assert env[UPSTREAM_MCP_TOOL_CATALOG_ENV] == "{}"

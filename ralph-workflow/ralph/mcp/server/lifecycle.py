@@ -170,6 +170,69 @@ _PROBE_FAILURES_BEFORE_RESTART = 3
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
+def _has_stage(exc: BaseException) -> bool:
+    """Return True when ``exc`` carries the supervisor ``last_stage`` attribute.
+
+    Runtime predicate that gates the typed ``last_stage`` / ``elapsed_s``
+    read in :func:`_optional_attr_str` and :func:`_optional_attr_float`.
+    The restart loop catches a generic :class:`BaseException`; only
+    subclasses that declare the supervisor contract (in practice
+    :class:`McpServerError`) contribute values to the rewrap.
+    """
+    return hasattr(exc, "last_stage") and hasattr(exc, "elapsed_s")
+
+
+def _read_supervisor_field(exc: BaseException, name: str) -> object:
+    """Read a single attribute from ``exc.__dict__`` as ``object``.
+
+    The returned value is intentionally typed as :class:`object`: it is
+    an untyped read that the caller narrows with ``isinstance``. The
+    helper exists so the ``__dict__`` access (which mypy types as
+    ``dict[str, Any]``) lives in one place, gated by the ``_has_stage``
+    runtime predicate, instead of being open-coded at every rewrap call
+    site. Returning :class:`object` keeps the expression typed and
+    avoids ``disallow_any_expr`` violations at the call site.
+    """
+    storage: dict[str, object] = exc.__dict__
+    return storage[name]
+
+
+def _optional_attr_str(exc: BaseException) -> str | None:
+    """Return ``exc.last_stage`` if it is a non-empty :class:`str`, else ``None``.
+
+    Typed boundary helper for the supervisor's exception-rewrap path.
+    The ``_has_stage`` gate confines the dynamic attribute read to a
+    narrow surface: any exception that does not declare the supervisor
+    contract short-circuits to ``None``. The read goes through
+    :func:`_read_supervisor_field` so the only ``Any``-typed value
+    lives behind a single typed boundary, and ``isinstance(raw, str)``
+    narrows to a typed :class:`str` at the call site without an
+    unchecked downcast.
+    """
+    if not _has_stage(exc):
+        return None
+    raw = _read_supervisor_field(exc, "last_stage")
+    if not isinstance(raw, str) or not raw:
+        return None
+    return raw
+
+
+def _optional_attr_float(exc: BaseException) -> float | None:
+    """Return ``exc.elapsed_s`` if it is a non-bool numeric, else ``None``.
+
+    Mirror of :func:`_optional_attr_str` for the elapsed-time field. The
+    ``isinstance`` check accepts both :class:`float` and :class:`int` so
+    a JSON-derived numeric that arrives as ``int`` (whole seconds) is
+    not silently dropped at the typed boundary.
+    """
+    if not _has_stage(exc):
+        return None
+    raw = _read_supervisor_field(exc, "elapsed_s")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw)
+
+
 #: Number of child log lines captured for a restart incident record.
 _LOG_TAIL_LINES: int = 10
 
@@ -516,8 +579,8 @@ class RestartAwareMcpBridge:
                     f"MCP restart attempt {attempt_index}/"
                     f"{self._restart_policy.max_restarts} failed: {restart_exc}",
                     restart_count=self._restart_count,
-                    last_stage=cast("str | None", getattr(restart_exc, "last_stage", None)),
-                    elapsed_s=cast("float | None", getattr(restart_exc, "elapsed_s", None)),
+                    last_stage=_optional_attr_str(restart_exc),
+                    elapsed_s=_optional_attr_float(restart_exc),
                 ) from restart_exc
             self._consecutive_probe_failures = 0
             logger.info(
@@ -588,8 +651,8 @@ class RestartAwareMcpBridge:
                     f"MCP tool-registry-reset attempt {attempt_index}/"
                     f"{_TOOL_REGISTRY_MAX_RESETS} failed: {restart_exc}",
                     restart_count=self._restart_count,
-                    last_stage=cast("str | None", getattr(restart_exc, "last_stage", None)),
-                    elapsed_s=cast("float | None", getattr(restart_exc, "elapsed_s", None)),
+                    last_stage=_optional_attr_str(restart_exc),
+                    elapsed_s=_optional_attr_float(restart_exc),
                 ) from restart_exc
             # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
             # alias is present in the post-respawn tools/list

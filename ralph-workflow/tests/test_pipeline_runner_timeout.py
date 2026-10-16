@@ -929,3 +929,54 @@ def test_mcp_server_error_captures_retry_intent_failure_reason(
     intent = effect_executor_module.pop_last_captured_retry_intent()
     assert intent.action == "fresh"
     assert intent.failure_reason == "McpServerError"
+
+
+def test_typed_mcp_server_error_path_skips_logger_exception(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A typed McpServerError returns AGENT_FAILURE without logger.exception."""
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    def fake_materialize_master_prompt(
+        workspace_root: Path,
+        name: str,
+        default_product_criteria: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
+
+    def fake_check_mcp_bridge_health(_bridge: object) -> None:
+        raise McpServerError("budget exhausted", restart_count=3)
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        master_prompt_materializer=fake_materialize_master_prompt,
+        registry_factory=_registry_factory,
+        check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
+    )
+
+    exception_calls: list[str] = []
+
+    def _spy_exception(message: object, *args: object) -> None:
+        exception_calls.append(str(message))
+
+    monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
+
+    result = effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_a, **_kw: [],
+            agent_invocation_error=RuntimeError,
+        )
+
+    assert result == PipelineEvent.AGENT_FAILURE
+    assert exception_calls == []
+    intent = effect_executor_module.pop_last_captured_retry_intent()
+    assert intent.action == "fresh"
+    assert intent.failure_reason == "McpServerError"

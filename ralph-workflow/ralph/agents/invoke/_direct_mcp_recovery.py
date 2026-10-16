@@ -273,6 +273,9 @@ def _run_with_direct_mcp_recovery[T](
                 record_runtime_event("mcp_operation", "reset_tool_registry")
                 try:
                     reset_tool_registry()
+                except McpServerError:
+                    # Callback failures keep their typed identity.
+                    raise
                 except Exception as mcp_exc:
                     raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
             current_session_id = retry_plan.session_id
@@ -356,6 +359,9 @@ def _iter_with_direct_mcp_recovery(  # noqa: PLR0912  # recovery loop; branches 
                 record_runtime_event("mcp_operation", "reset_tool_registry")
                 try:
                     reset_tool_registry()
+                except McpServerError:
+                    # Callback failures keep their typed identity.
+                    raise
                 except Exception as mcp_exc:
                     raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
             current_session_id = retry_plan.session_id

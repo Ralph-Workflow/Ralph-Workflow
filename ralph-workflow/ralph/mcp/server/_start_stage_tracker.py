@@ -16,13 +16,12 @@ returns leaves the latest label on disk.
 from __future__ import annotations
 
 import os
+import tempfile
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 #: Default stage-tracker filename component (resolved against the workspace root).
 _STAGE_FILE_NAME_COMPONENT: str = ".agent/.ralph_mcp_start_stage"
@@ -82,30 +81,50 @@ def stage_file_path(root: Path, *, spawn_id: str | None = None) -> Path:
 def record(root: Path, stage: str) -> None:
     """Atomically write ``stage`` to the per-spawn stage file.
 
-    The file is opened with ``O_CREAT | O_TRUNC | O_WRONLY`` and
-    flushed before close so a SIGKILL of the child after this point
-    leaves the latest label on disk for the supervisor. The label is
-    plain ASCII — the bound stage vocabulary is closed and
-    introspectable.
+    The label is written to a temporary sibling file and then moved into
+    place with ``os.replace``, so a concurrent supervisor reader sees
+    either the complete previous label or the complete new label —
+    never a blank or truncated file (``os.replace`` is atomic on POSIX
+    and Windows). The temp file is fsynced before the rename and the
+    directory is fsynced after it, so a SIGKILL of the child after
+    ``record()`` returns leaves the latest label on disk.
     """
     path = stage_file_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # ``O_TRUNC`` is required so a stale label from the same spawn's
-    # prior stage does not survive a fast respawn within the same run.
-    fd = os.open(  # resource-lifecycle-ok: small per-bridge startup-stage file, lifecycle-bounded by try/finally close  # filesystem-write-ok: per-spawn stage label requires O_TRUNC-on-fd so a stale same-spawn label never survives a fast respawn — the canonical idempotent_write primitives do not expose O_TRUNC semantics
-        path,
-        os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-        0o644,
+    # tempfile.mkstemp already sets O_EXCL; sibling of the final path so
+    # os.replace stays on one filesystem. Mode 0o644 for operator reads.
+    fd, tmp_name = tempfile.mkstemp(  # filesystem-write-ok: temp sibling immediately atomically replaced via os.replace — the only durable artifact is the final stage file
+        dir=path.parent, prefix=f"{path.name}.", suffix=".tmp"
     )
+    tmp_path = Path(tmp_name)
     try:
-        os.write(fd, stage.encode("ascii"))
-        # Flush + fsync so the kernel cannot reorder a subsequent
-        # SIGKILL before the bytes hit disk.
-        os.fsync(  # resource-lifecycle-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk  # filesystem-write-ok: durability barrier for the per-spawn stage label — fd-level fsync before close so the supervisor preflight read cannot miss the stage across a child SIGKILL
-            fd
+        try:
+            os.fchmod(fd, 0o644)
+            os.write(fd, stage.encode("ascii"))
+            # Flush + fsync the temp file so the kernel cannot reorder a
+            # subsequent SIGKILL before the bytes hit disk.
+            os.fsync(  # resource-lifecycle-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk  # filesystem-write-ok: durability barrier for the per-spawn stage label — fd-level fsync before rename so the supervisor preflight read cannot miss the stage across a child SIGKILL
+                fd
+            )
+        finally:
+            os.close(fd)
+        os.replace(tmp_path, path)
+        # fsync the directory so the rename itself is durable.
+        dir_fd = os.open(  # resource-lifecycle-ok: directory fsync immediately closed in finally  # filesystem-write-ok: durability barrier for the rename so the replaced stage file survives a child SIGKILL
+            path.parent, os.O_RDONLY
         )
-    finally:
-        os.close(fd)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except BaseException:
+        # A failed mid-write must leave the previous stage file intact:
+        # clean up the temp sibling so no stale ``.tmp`` clutter remains.
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def read_last_stage(root: Path, *, spawn_id: str | None = None) -> str | None:

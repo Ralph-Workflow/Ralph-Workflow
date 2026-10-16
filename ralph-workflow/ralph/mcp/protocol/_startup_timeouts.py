@@ -16,6 +16,21 @@ handed a bare ``[Errno 61] Connection refused``. Clamping the probe budget
 strictly below the readiness budget guarantees the child always has time left to
 fail loudly and say which upstream stalled.
 
+Stage vocabulary tracked by :func:`record_stage_elapsed`:
+
+- ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_BUDGET_S``;
+- ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery
+  finished; bounded by ``_REGISTRY_BUILD_BUDGET_S``;
+- ``ready_to_serve`` — the port is bound and the server answers requests.
+
+The aggregate spawn-to-``tools/list`` bound is the discovery budget
+(``mcp_discovery_budget_from_env`` = preflight - ``_PROBE_SAFETY_S``) and is
+NOT the sum of the per-stage budgets: it is enforced by the shared monotonic
+deadline consumed across all probes (see ``UpstreamRegistry.build``), bounded
+above by the preflight timeout. The per-stage budgets below are individual
+upper bounds on how long ONE stage may take; they do not add up to the
+aggregate.
+
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
 on it without an import cycle. ``startup`` re-exports both functions as the
@@ -95,6 +110,13 @@ _DISCOVERY_METHOD = "tools/list"
 
 # Budget for an upstream tool call, which runs outside the startup window.
 _UPSTREAM_CALL_TIMEOUT_SECONDS = 30.0
+
+# Individual upper bounds on how long ONE startup stage may take. These are
+# per-stage envelopes, not an aggregate: the aggregate spawn-to-tools/list
+# bound is the discovery budget enforced by the shared deadline, NOT the sum
+# of these.
+_CONFIG_LOAD_BUDGET_S: float = 1.0
+_REGISTRY_BUILD_BUDGET_S: float = 1.0
 
 
 def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
@@ -188,6 +210,30 @@ def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timed
     return preflight - timedelta(seconds=_PROBE_SAFETY_S)
 
 
+def record_stage_elapsed(stage: str, elapsed_s: float, *, budget_s: float) -> None:
+    """Enforce a per-stage startup budget; raise ``McpServerError`` when exceeded.
+
+    Fake-clock friendly by design: the caller measures ``elapsed_s`` (with its
+    own clock) and passes it in; this function never reads ``time.monotonic``,
+    so tests control time entirely.
+    """
+
+    if elapsed_s > budget_s:
+        # Deferred import: importing McpServerError at module load pulls in
+        # ralph.mcp.server.__init__ -> lifecycle -> protocol.startup, which
+        # imports this module back — an import cycle. Verified by the
+        # failing test run that motivated this defer.
+        from ralph.mcp.server._mcp_server_error import McpServerError
+
+        raise McpServerError(
+            f"startup stage {stage!r} took {elapsed_s:.3f}s, over its budget "
+            f"of {budget_s:.3f}s",
+            last_stage=stage,
+            elapsed_s=elapsed_s,
+            restart_count=0,
+        )
+
+
 def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = None) -> float:
     """Return the bounded ``timeout=`` an upstream JSON-RPC ``method`` may claim.
 
@@ -233,8 +279,23 @@ if not (_configured_ceiling.total_seconds() > _PROBE_SAFETY_S):
     )
 
 
+# Import-time invariant: the discovery budget must stay strictly below the
+# preflight timeout (``if``/``raise``, not ``assert``, so it holds under
+# ``python -O``). With defaults this is 28s < 30s. Placed after the function
+# definitions because it calls them.
+if not (
+    mcp_discovery_budget_from_env() < mcp_preflight_timeout_from_env()
+):  # pragma: no cover - guards future edits to the budget math
+    raise RuntimeError(
+        "import-time invariant violated: mcp_discovery_budget_from_env() "
+        "must be strictly less than mcp_preflight_timeout_from_env()"
+    )
+
+
 __all__ = [
+    "_CONFIG_LOAD_BUDGET_S",
     "_PROBE_SAFETY_S",
+    "_REGISTRY_BUILD_BUDGET_S",
     "mcp_discovery_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",
