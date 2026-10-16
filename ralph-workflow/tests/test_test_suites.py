@@ -116,6 +116,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py",
     "tests/mcp/test_restart_aware_bridge_failed_restart_fn.py",
     "tests/mcp/test_restart_aware_bridge_policy_cooldown.py",
+    # wt-16 WU-4: additional respawn regression gates
+    "tests/mcp/test_runtime_respawn_precheck.py",
+    "tests/mcp/test_discovery_aggregate_budget.py",
+    "tests/mcp/test_start_stage_tracker_fresh_spawn.py",
+    "tests/mcp/test_preflight_error_carries_stage_and_elapsed.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

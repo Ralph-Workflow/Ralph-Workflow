@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import socket
 
 import pytest
@@ -14,11 +15,11 @@ pytestmark = pytest.mark.subprocess_e2e
 
 def _make_stub_handler() -> type:
     class _StubHandler:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: object, **kwargs: object) -> None:
             pass
 
-        def log_message(self, *args, **kwargs):
-            return
+        def log_message(self, *args: object, **kwargs: object) -> None:
+            pass
 
     return _StubHandler
 
@@ -39,9 +40,9 @@ def test_endpoint_never_refuses_after_inherited_socket_adoption() -> None:
                 try:
                     client.connect((host, port))
                 except OSError as exc:
-                    if exc.errno in (socket.ECONNREFUSED,):
+                    if exc.errno == errno.ECONNREFUSED:
                         raise AssertionError(
-                            f"inherited listening socket must not ECONNREFUSE"
+                            f"inherited listening socket must not ECONNREFUSED"
                             f" a queued client; got errno={exc.errno} {exc!r}"
                         ) from exc
             finally:

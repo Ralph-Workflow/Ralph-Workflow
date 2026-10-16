@@ -2,40 +2,39 @@
 
 from __future__ import annotations
 
+import pathlib
+import tempfile
+
 import pytest
+
+from ralph.mcp.server import lifecycle
 
 pytestmark = pytest.mark.subprocess_e2e
 
 
-import pathlib
-import tempfile
-
-from ralph.mcp.server import lifecycle
-
-
 class _FakeProcess:
-    def __init__(self, poll_result=None, pid=9999):
+    def __init__(self, poll_result: int | None, pid: int = 9999) -> None:
         self._poll_result = poll_result
         self._pid = pid
 
     @property
-    def pid(self):
+    def pid(self) -> int:
         return self._pid
 
-    def poll(self):
+    def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s=5.0):
+    def terminate(self, grace_period_s: float = 5.0) -> None:
         self._poll_result = 0
 
-    def wait(self, timeout=None):
+    def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self):
+    def kill(self) -> None:
         return None
 
 
-def _make_inner(poll_result):
+def _make_inner(poll_result: int | None) -> lifecycle.StandaloneMcpProcess:
     session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     return lifecycle.StandaloneMcpProcess(
@@ -47,11 +46,10 @@ def _make_inner(poll_result):
 
 def test_bridge_increments_counter_every_failed_attempt() -> None:
     """S1: counter advances per attempt regardless of restart_fn outcome."""
-    import pytest
-    attempts = []
+    attempts: list[int] = []
     inner = _make_inner(poll_result=1)
 
-    def always_failing_restart_fn():
+    def always_failing_restart_fn() -> lifecycle.StandaloneMcpProcess:
         attempts.append(len(attempts) + 1)
         raise RuntimeError("synthetic restart failure")
 
@@ -87,10 +85,9 @@ def test_bridge_increments_counter_every_failed_attempt() -> None:
 
 
 def test_bridge_failed_restart_propagates_typed_error() -> None:
-    import pytest
     inner = _make_inner(poll_result=1)
 
-    def restart_fn():
+    def restart_fn() -> lifecycle.StandaloneMcpProcess:
         raise RuntimeError("synthetic")
 
     bridge = lifecycle.RestartAwareMcpBridge(

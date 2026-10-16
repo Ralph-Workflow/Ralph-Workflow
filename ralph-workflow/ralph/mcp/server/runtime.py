@@ -40,6 +40,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -52,7 +53,7 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
-from ralph.mcp.protocol.env import MCP_OWNER_PID_ENV
+from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV, MCP_OWNER_PID_ENV, MCP_RESPAWN_ENV
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server._activity_relay_sender import (
     ActivityRelaySender,
@@ -219,6 +220,24 @@ def build_standalone_http_server(
         upstream_servers = tuple(
             server for server in upstream_servers if server.name in tool_catalog
         )
+    # R2 respawn invariant: a child started with ``RALPH_MCP_RESPAWN=1``
+    # must NOT probe upstreams. The parent owns the catalog and hands
+    # it via ``UPSTREAM_MCP_TOOL_CATALOG_ENV``; a respawn that cannot
+    # find that catalog would silently fall through to the network
+    # probe above and burn the readiness budget before serving. The
+    # contract: respawn without a catalog is a typed McpServerError
+    # BEFORE any preflight and BEFORE any UpstreamRegistry.build() call,
+    # so the supervisor never sees a half-bound child.
+    is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
+    if is_respawn and upstream_servers and not tool_catalog:
+        raise McpServerError(
+            "MCP respawn missing tool catalog (RALPH_MCP_RESPAWN=1 set but no "
+            "UPSTREAM_MCP_TOOL_CATALOG_ENV); refusing to probe upstreams during "
+            f"respawn (servers={[s.name for s in upstream_servers]})",
+            restart_count=0,
+            last_stage="respawn_precheck",
+        )
+
     if _extras.upstream_registry is not None:
         upstream_reg = _extras.upstream_registry
     elif upstream_servers and tool_catalog:
@@ -236,23 +255,6 @@ def build_standalone_http_server(
         )
     else:
         upstream_reg = None
-    # R2 respawn invariant: a child started with ``RALPH_MCP_RESPAWN=1``
-    # must NOT probe upstreams. The parent owns the catalog and hands
-    # it via ``UPSTREAM_MCP_TOOL_CATALOG_ENV``; a respawn that cannot
-    # find that catalog would silently fall through to the network
-    # probe above and burn the readiness budget before serving. The
-    # contract: respawn without a catalog is a typed McpServerError
-    # BEFORE any preflight, so the supervisor never sees a half-bound
-    # child.
-    is_respawn = env_map.get("RALPH_MCP_RESPAWN") == "1"
-    if is_respawn and upstream_servers and not tool_catalog:
-        raise McpServerError(
-            "MCP respawn missing tool catalog (RALPH_MCP_RESPAWN=1 set but no "
-            "UPSTREAM_MCP_TOOL_CATALOG_ENV); refusing to probe upstreams during "
-            f"respawn (servers={[s.name for s in upstream_servers]})",
-            restart_count=0,
-            last_stage="respawn_precheck",
-        )
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,
@@ -280,6 +282,12 @@ def build_standalone_http_server(
             activity_relay_sender.emit if activity_relay_sender is not None else None
         ),
     )
+    # R4: record stages at the ACTUAL work boundaries, not after
+    # ``build`` returns. A hang inside ``build`` must leave the last
+    # stage visible to the supervisor.
+    _record_stage(workspace_root, "config_loaded")
+    _record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    _record_stage(workspace_root, "registry_built")
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
 
@@ -315,6 +323,7 @@ def run_standalone_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     agent_transport: str | None = None,
+    ready_event: Event | None = None,
 ) -> None:
     """Run the standalone Ralph MCP server over HTTP.
 
@@ -323,18 +332,15 @@ def run_standalone_server(
 
     R4: every startup stage is logged as a flushed ``logger.info``
     line AND recorded to a stage-tracker file the supervisor reads
-    on preflight failure. ``PYTHONUNBUFFERED=1`` is set inside the
-    function so even loguru's line-buffered default cannot reorder a
-    flush before a SIGKILL. The six stage markers form a closed
+    on preflight failure. The six stage markers form a closed
     vocabulary; the audit at
     :mod:`ralph.testing.audit_resource_lifecycle` validates that the
     runtime emits each in the right order on the readiness path.
+    ``PYTHONUNBUFFERED=1`` is set in the PARENT's ``_subprocess_env``
+    so the child inherits unbuffered streams from the start.
     """
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
-    # R4: unbuffered stdout/stderr so the stage markers below reach
-    # the server log before a SIGKILL can drop them.
-    os.environ["PYTHONUNBUFFERED"] = "1"
 
     def _stage(name: str) -> None:
         logger.info("ralph-mcp startup: stage={stage}", stage=name)
@@ -358,7 +364,7 @@ def run_standalone_server(
     # re-binding, so a client that connects during a respawn queues
     # in the kernel backlog instead of being refused.
     parent_socket: socket.socket | None = None
-    inherited_fd_raw = os.environ.get("RALPH_MCP_INHERITED_FD", "")
+    inherited_fd_raw = os.environ.get(MCP_INHERITED_FD_ENV, "")
     if inherited_fd_raw.isdigit():
         try:
             parent_socket = socket.socket(
@@ -382,7 +388,7 @@ def run_standalone_server(
     # parent hands us, never from a live probe — a respawn has no
     # network budget. First start keeps the existing path so
     # discovery still happens once.
-    is_respawn = os.environ.get("RALPH_MCP_RESPAWN") == "1"
+    is_respawn = os.environ.get(MCP_RESPAWN_ENV) == "1"
     server = build_standalone_http_server(
         workspace_root,
         host=host,
@@ -392,24 +398,17 @@ def run_standalone_server(
         activity_relay_sender=relay_sender,
         parent_socket=parent_socket,
     )
-    _stage("config_loaded")
-    # R2 timing marker: the catalog was either reused (respawn) or
-    # freshly discovered (first start). The log carries the count so
-    # the operator can attribute the cost to the right source.
     if is_respawn:
         logger.info(
             "ralph-mcp respawn on inherited FD (no network discovery, "
             "registry built from cached tool catalog)"
         )
-    _stage("upstream_catalog_or_discovery_done")
-    _stage("registry_built")
-    # R4: the banner is emitted ONLY at ready-to-serve time so a
-    # SIGTERM mid-startup never leaves a "listening" line in the
-    # server log that contradicts the actual state. The stage file
-    # is the authoritative marker the supervisor reads.
+    # R4: record ready_to_serve and emit the banner INSIDE
+    # ``server.run()`` so the banner fires when serving actually
+    # starts, not before. The stage file is the authoritative
+    # marker the supervisor reads on preflight failure.
     _stage("ready_to_serve")
-    print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")
-    server.run(transport=DEFAULT_TRANSPORT)
+    server.run(transport=DEFAULT_TRANSPORT, ready_event=ready_event)
 
 
 def _agent_transport_choices() -> list[str]:

@@ -2,41 +2,40 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.subprocess_e2e
-
-
 import contextlib
 import pathlib
 import tempfile
 
+import pytest
+
 from ralph.mcp.server import lifecycle
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 class _FakeProcess:
-    def __init__(self, poll_result=None, pid=9999):
+    def __init__(self, poll_result: int | None, pid: int = 9999) -> None:
         self._poll_result = poll_result
         self._pid = pid
 
     @property
-    def pid(self):
+    def pid(self) -> int:
         return self._pid
 
-    def poll(self):
+    def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s=5.0):
+    def terminate(self, grace_period_s: float = 5.0) -> None:
         self._poll_result = 0
 
-    def wait(self, timeout=None):
+    def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self):
+    def kill(self) -> None:
         return None
 
 
-def _make_inner(poll_result):
+def _make_inner(poll_result: int | None) -> lifecycle.StandaloneMcpProcess:
     session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     return lifecycle.StandaloneMcpProcess(
@@ -54,11 +53,10 @@ def test_cooldown_seconds_default_is_two() -> None:
 
 
 def test_cooldown_after_failure_honors_policy() -> None:
-    sleep_calls = []
+    sleep_calls: list[float] = []
 
-    def fake_sleep(seconds):
+    def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
-        return None
 
     inner = _make_inner(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -73,11 +71,10 @@ def test_cooldown_after_failure_honors_policy() -> None:
 
 
 def test_cooldown_zero_short_circuits_no_sleep() -> None:
-    sleep_calls = []
+    sleep_calls: list[float] = []
 
-    def fake_sleep(seconds):
+    def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
-        return None
 
     inner = _make_inner(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -92,15 +89,20 @@ def test_cooldown_zero_short_circuits_no_sleep() -> None:
 
 
 def test_cooldown_after_failed_restart_sleeps_policy_value() -> None:
-    sleep_calls = []
+    """S4: cooldown is applied on the second consecutive McpServerError restart.
 
-    def fake_sleep(seconds):
+    The first call has no prior error, so no cooldown is applied.
+    The failed restart sets _prev_restart_had_error=True, so the
+    second call applies cooldown before attempting the restart.
+    """
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
-        return None
 
     inner = _make_inner(poll_result=1)
 
-    def restart_fn():
+    def restart_fn() -> lifecycle.StandaloneMcpProcess:
         raise RuntimeError("synthetic")
 
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -110,6 +112,72 @@ def test_cooldown_after_failed_restart_sleeps_policy_value() -> None:
         run_id="test-run",
         sleep_fn=fake_sleep,
     )
+    # First call: no prior error, no cooldown applied
+    with contextlib.suppress(lifecycle.McpServerError):
+        bridge.check_health_and_restart_if_needed()
+    assert sleep_calls == []
+    # Second call: previous restart had error, cooldown applied
     with contextlib.suppress(lifecycle.McpServerError):
         bridge.check_health_and_restart_if_needed()
     assert sleep_calls == [1.5]
+
+
+def test_cooldown_not_applied_after_healthy_restart() -> None:
+    """S4: healthy restart (no McpServerError) does not trigger cooldown."""
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    inner = _make_inner(poll_result=1)
+
+    def restart_fn() -> lifecycle.StandaloneMcpProcess:
+        # Return a healthy inner (poll_result=None)
+        return _make_inner(poll_result=None)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3, cooldown_seconds=2.0),
+        run_id="test-run",
+        sleep_fn=fake_sleep,
+    )
+    # First call: restart succeeds, no cooldown on exit
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is True
+    assert sleep_calls == []
+    # Second call: previous restart succeeded, no cooldown applied
+    # (process is healthy, returns False immediately)
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is False
+    assert sleep_calls == []
+
+
+def test_consecutive_mcp_error_restarts_all_have_cooldown() -> None:
+    """S4: each McpServerError restart after the first triggers cooldown."""
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    inner = _make_inner(poll_result=1)
+
+    def restart_fn() -> lifecycle.StandaloneMcpProcess:
+        raise RuntimeError("synthetic")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=5, cooldown_seconds=2.0),
+        run_id="test-run",
+        sleep_fn=fake_sleep,
+    )
+    # Call 1: no prior error, no cooldown
+    with contextlib.suppress(lifecycle.McpServerError):
+        bridge.check_health_and_restart_if_needed()
+    assert sleep_calls == []
+    # Calls 2-4: each previous restart had error, cooldown applied
+    for _ in range(3):
+        with contextlib.suppress(lifecycle.McpServerError):
+            bridge.check_health_and_restart_if_needed()
+    assert sleep_calls == [2.0, 2.0, 2.0]

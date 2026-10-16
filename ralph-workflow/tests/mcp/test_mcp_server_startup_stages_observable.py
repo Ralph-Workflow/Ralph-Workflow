@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.subprocess_e2e
-
-
 import io
 import logging
 from pathlib import Path
+
+import pytest
 
 from ralph.mcp.server._start_stage_tracker import (
     RUNTIME_STAGES,
@@ -17,6 +14,8 @@ from ralph.mcp.server._start_stage_tracker import (
     record,
     stage_file_path,
 )
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 @pytest.mark.timeout_seconds(5)

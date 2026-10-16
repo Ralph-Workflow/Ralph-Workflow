@@ -27,7 +27,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
-from ralph.mcp.protocol.env import MCP_OWNER_PID_ENV
+from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV, MCP_OWNER_PID_ENV, MCP_RESPAWN_ENV
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     mcp_preflight_timeout_from_env,
@@ -40,7 +40,8 @@ from ralph.mcp.server._http_tools_list import (
     _http_tools_list_names,
 )
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
-from ralph.mcp.server._mcp_health_event import record_stage as _record_stage_health
+from ralph.mcp.server._mcp_health_event import RestartReason
+from ralph.mcp.server._mcp_health_event import record_restart_decision as _record_restart_decision
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
@@ -195,6 +196,11 @@ class RestartAwareMcpBridge:
         # Production uses ``time.sleep`` (default below).
         self._sleep_fn: Callable[[float], object] | None = sleep_fn
         self._restart_count = 0
+        # S4: tracks whether the previous restart attempt raised
+        # McpServerError so the cooldown is applied only between
+        # consecutive McpServerError-class restarts. Probe-failure
+        # and healthy restarts leave this False.
+        self._prev_restart_had_error: bool = False
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
         # misses one bounded probe window. Restarting on the first miss
@@ -338,6 +344,7 @@ class RestartAwareMcpBridge:
         with self._lock:
             process_exited = self._inner.process.poll() is not None
             probe_failed = False
+            probe_duration_s: float | None = None
             if not process_exited and self._probe_fn is not None:
                 try:
                     probe_timeout = (
@@ -345,6 +352,7 @@ class RestartAwareMcpBridge:
                         if self._probe_timeout_fn is not None
                         else timedelta(seconds=5)
                     )
+                    probe_start = time.monotonic()
                     self._probe_fn(self._inner.endpoint, probe_timeout)
                 except Exception as exc:
                     if (
@@ -355,6 +363,7 @@ class RestartAwareMcpBridge:
                         self._activity_relay.record_sender_error(str(exc))
                         return False
                     probe_failed = True
+                    probe_duration_s = time.monotonic() - probe_start
 
             if probe_failed:
                 self._consecutive_probe_failures += 1
@@ -407,21 +416,28 @@ class RestartAwareMcpBridge:
                     attempt_index,
                     self._restart_policy.max_restarts,
                 )
-            # R3: record this restart decision in the bounded
+            # R3-sink: record this restart decision in the bounded
             # health-event sink so an incident triage has direct
-            # evidence of every available/unavailable verdict the
-            # supervisor emitted, with no loguru parsing required.
-            _record_stage_health(
-                "process_exited" if not probe_failed else "probe_failed",
-                available=False,
+            # evidence of every restart reason, exit status, and
+            # probe duration — no loguru parsing required.
+            _record_restart_decision(
+                reason=(
+                    RestartReason.PROCESS_EXITED
+                    if not probe_failed
+                    else RestartReason.PROBE_FAILED
+                ),
+                exit_status=self._inner.process.poll() if process_exited else None,
+                probe_duration_s=probe_duration_s if probe_failed else None,
+                stage="process_exited" if process_exited else "probe_failed",
             )
             # S4: space consecutive McpServerError-class restarts by
-            # the policy cooldown. Healthy probe-timeout restarts
-            # (the only non-error path here) still sleep 0 because
-            # the previous attempt did not raise. The cooldown
-            # remains bounded by the policy so a hostile cycle
-            # cannot grow without limit.
-            self._cooldown_after_failure()
+            # the policy cooldown. Only apply cooldown when the
+            # previous restart attempt raised McpServerError;
+            # healthy/probe-timeout restarts observe 0.0s cooldown
+            # because the previous attempt did not raise.
+            if self._prev_restart_had_error:
+                self._cooldown_after_failure()
+            self._prev_restart_had_error = False
             try:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
@@ -432,6 +448,7 @@ class RestartAwareMcpBridge:
                 # path stays — the exception is propagated to the
                 # caller (typically the supervisor thread) with the
                 # actual ``restart_count`` visible.
+                self._prev_restart_had_error = True
                 raise McpServerError(
                     f"MCP restart attempt {attempt_index}/"
                     f"{self._restart_policy.max_restarts} failed: {restart_exc}",
@@ -839,9 +856,9 @@ def _spawn_mcp_process(
         if activity_relay is not None:
             env.update(activity_relay.server_environment())
         if inherited_fd is not None:
-            env["RALPH_MCP_INHERITED_FD"] = str(inherited_fd)
+            env[MCP_INHERITED_FD_ENV] = str(inherited_fd)
         if respawn:
-            env["RALPH_MCP_RESPAWN"] = "1"
+            env[MCP_RESPAWN_ENV] = "1"
         if tool_catalog_env:
             # The catalog has been materialised by the caller as a
             # single env-var value (the production
@@ -850,6 +867,7 @@ def _spawn_mcp_process(
             # loader can take the catalog-only path.
             env[UPSTREAM_MCP_TOOL_CATALOG_ENV] = tool_catalog_env
         pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
+        spawn_start = time.monotonic()
         process = deps.spawn_process(
             [
                 sys.executable,
@@ -887,12 +905,14 @@ def _spawn_mcp_process(
         # the failure to a specific named stage.
         last_stage: str | None = _read_start_stage(root)
         last_stage_str: str = last_stage if last_stage is not None else "last_stage_unknown"
+        elapsed_s = time.monotonic() - spawn_start
         if returncode is not None:
             raise McpServerError(
                 f"MCP server process exited before endpoint {endpoint} became ready "
                 f"(rc={returncode}){diagnostic}",
                 restart_count=0,
                 last_stage=last_stage_str,
+                elapsed_s=elapsed_s,
             ) from exc
         # A live-but-unready process is the same failure class as an exited
         # one, so it must surface as McpServerError too. Re-raising the raw
@@ -902,6 +922,7 @@ def _spawn_mcp_process(
             f"MCP server endpoint {endpoint} did not become ready: {exc}{diagnostic}",
             restart_count=0,
             last_stage=last_stage_str,
+            elapsed_s=elapsed_s,
         ) from exc
 
     return bridge
@@ -952,6 +973,10 @@ def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
     env[MCP_OWNER_PID_ENV] = str(os.getpid())
+    # R4 / R4-b: set in the parent so the child inherits unbuffered
+    # streams from the start — setting it inside the already-running
+    # child cannot reconfigure its own stdio.
+    env["PYTHONUNBUFFERED"] = "1"
     package_root = str(_PACKAGE_ROOT)
     # The MCP server subprocess runs ``sys.executable -m ralph.mcp.server``
     # and MUST resolve the SAME package tree the parent imported

@@ -8,11 +8,13 @@ use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immedia
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
+from ralph.mcp.protocol._startup_timeouts import mcp_discovery_budget_from_env
 from ralph.mcp.tools.names import proxied_mcp_tool_name
 from ralph.mcp.upstream._proxied_tool import ProxiedTool
 from ralph.mcp.upstream._registry_collision_error import RegistryCollisionError
@@ -56,13 +58,49 @@ class UpstreamRegistry:
         *,
         client_factory: UpstreamClientFactory | None = None,
         on_unreachable: Literal["raise", "warn_and_skip"] = "raise",
+        _monotonic: Callable[[], float] | None = None,
     ) -> UpstreamRegistry:
+        """Build a registry by probing each server for its tool list.
+
+        Args:
+            servers: iterable of configured upstream servers.
+            client_factory: optional factory for creating upstream clients.
+            on_unreachable: when to raise vs. warn-and-skip.
+            _monotonic: injectable clock for testing (defaults to time.monotonic).
+
+        The aggregate first-start discovery budget is ``mcp_discovery_budget_from_env``,
+        which is strictly below the preflight timeout by construction. When the
+        deadline expires, remaining servers are warned-and-skipped rather than
+        probed, guaranteeing the worst-case discovery time is bounded below the
+        preflight timeout.
+        """
+
         _factory = client_factory if client_factory is not None else make_upstream_client
+        _clock = _monotonic if _monotonic is not None else time.monotonic
+
+        discovery_budget_seconds = mcp_discovery_budget_from_env().total_seconds()
+        deadline = _clock() + discovery_budget_seconds
+
         seen_aliases: dict[str, tuple[str, str]] = {}
         proxied_tools: list[ProxiedTool] = []
         clients: dict[str, _AnyUpstreamClient] = {}
 
         for server in servers:
+            # Check aggregate budget deadline before probing each server.
+            remaining = deadline - _clock()
+            if remaining <= 0:
+                server_kind = (
+                    "custom MCP server" if server.origin == "custom" else "upstream MCP server"
+                )
+                logger.warning(
+                    "Skipping {} {}: aggregate discovery budget ({:.1f}s) exhausted "
+                    "before reaching this server.",
+                    server_kind,
+                    server.name,
+                    discovery_budget_seconds,
+                )
+                continue
+
             client = _factory(server)
             server_kind = (
                 "custom MCP server" if server.origin == "custom" else "upstream MCP server"

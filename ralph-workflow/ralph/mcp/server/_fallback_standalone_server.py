@@ -11,7 +11,11 @@ from loguru import logger
 from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
-from ralph.mcp.server._runtime_constants import DEFAULT_TRANSPORT, SERVER_POLL_INTERVAL_SECONDS
+from ralph.mcp.server._runtime_constants import (
+    DEFAULT_MOUNT_PATH,
+    DEFAULT_TRANSPORT,
+    SERVER_POLL_INTERVAL_SECONDS,
+)
 from ralph.mcp.server._server_state import ServerState
 from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
@@ -83,8 +87,6 @@ class _FallbackStandaloneServer:
         httpd.health_probe_fn = None
         httpd.metrics = None
         self._httpd = httpd
-        if ready_event is not None:
-            ready_event.set()
         # Startup banner announces the live configuration so an operator can
         # confirm which transport, which session class, and which effective
         # timeouts are running. The earlier code only printed host/port —
@@ -112,6 +114,14 @@ class _FallbackStandaloneServer:
             auth=auth_token_set,
             inherited_fd=self._parent_socket is not None,
         )
+        # R4 / R4-banner: signal ready and emit the listening banner
+        # ONLY when serving is about to start (before serve_forever
+        # blocks). This ensures the banner and the stage file both
+        # reflect "server is accepting connections", not "server
+        # has been constructed but not started".
+        if ready_event is not None:
+            ready_event.set()
+        print(f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}")
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
         finally:

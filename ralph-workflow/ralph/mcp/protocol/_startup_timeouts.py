@@ -71,6 +71,28 @@ if _MAX_UPSTREAMS_AT_DEFAULTS < 1:
         f"_MAX_UPSTREAMS_AT_DEFAULTS must be >= 1, got {_MAX_UPSTREAMS_AT_DEFAULTS!r}"
     )
 
+# Import-time invariant: the default preflight budget must leave room for the
+# child to report a probe failure loudly. When the ceiling (preflight * share)
+# is at or below _PROBE_SAFETY_S, every probe that hits the ceiling would burn
+# the child's entire failure-reporting window and the supervisor would SIGKILL
+# it before it could log which upstream stalled. The example in the brief:
+#   PYTHONDONTWRITEBYTECODE=1 RALPH_MCP_PREFLIGHT_TIMEOUT_MS=1000 \
+#     uv run python -B -O -c 'from ralph.mcp.protocol._startup_timeouts import mcp_preflight_timeout_from_env'
+# must exit non-zero because 1000 ms * 0.5 = 500 ms < 2.0 s = _PROBE_SAFETY_S.
+# This is tested in tests/test_startup_timeouts_invariants.py.
+_DEFAULT_PREFLIGHT_BUDGET = _DEFAULT_PREFLIGHT * _PROBE_BUDGET_SHARE
+if not (_DEFAULT_PREFLIGHT_BUDGET.total_seconds() > _PROBE_SAFETY_S):
+    raise RuntimeError(
+        f"import-time invariant violated: default preflight budget "
+        f"({_DEFAULT_PREFLIGHT_BUDGET.total_seconds():.1f}s = "
+        f"{_DEFAULT_PREFLIGHT.total_seconds():.0f}s * {_PROBE_BUDGET_SHARE} share) "
+        f"must exceed _PROBE_SAFETY_S ({_PROBE_SAFETY_S}s) to give the child "
+        f"time to report a stalled probe before the supervisor SIGKILLs it. "
+        f"Raise RALPH_MCP_PREFLIGHT_TIMEOUT_MS above "
+        f"{int(_PROBE_SAFETY_S / _PROBE_BUDGET_SHARE * 1000)} ms, "
+        f"or lower _PROBE_BUDGET_SHARE."
+    )
+
 _DISCOVERY_METHOD = "tools/list"
 
 # Budget for an upstream tool call, which runs outside the startup window.
@@ -89,24 +111,55 @@ def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
 
 
 def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    """Return the configured MCP preflight timeout duration."""
+    """Return the configured MCP preflight timeout duration.
+
+    Raises:
+        RuntimeError: if the preflight is so small that the probe ceiling
+            (preflight * _PROBE_BUDGET_SHARE) would be at or below
+            _PROBE_SAFETY_S, leaving no time for the child to report a
+            stalled upstream before the supervisor SIGKILLs it.
+    """
 
     env_map = os.environ if env is None else env
-    return _timeout_ms_from_env(env_map, MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
+    preflight = _timeout_ms_from_env(env_map, MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
+    ceiling = preflight * _PROBE_BUDGET_SHARE
+    if ceiling.total_seconds() <= _PROBE_SAFETY_S:
+        raise RuntimeError(
+            f"preflight timeout ({preflight.total_seconds():.0f}s) yields a "
+            f"probe ceiling of only {ceiling.total_seconds():.1f}s, which is "
+            f"at or below _PROBE_SAFETY_S ({_PROBE_SAFETY_S}s). "
+            f"Raise RALPH_MCP_PREFLIGHT_TIMEOUT_MS to at least "
+            f"{int(_PROBE_SAFETY_S / _PROBE_BUDGET_SHARE * 1000)} ms, "
+            f"or lower _PROBE_BUDGET_SHARE."
+        )
+    return preflight
 
 
 def mcp_upstream_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
     """Return the per-upstream discovery budget, clamped below the readiness budget.
 
     ``RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS`` lowers it explicitly. A value that
-    would not leave the child room to report its own failure is clamped rather
-    than honoured: to genuinely allow a slower upstream, raise
-    ``RALPH_MCP_PREFLIGHT_TIMEOUT_MS`` as well, which lifts both budgets
-    together.
+    would not leave the child room to report its own failure raises
+    ``RuntimeError``: to allow a slower upstream, raise
+    ``RALPH_MCP_PREFLIGHT_TIMEOUT_MS`` as well, which lifts the ceiling.
     """
 
     env_map = os.environ if env is None else env
     ceiling = mcp_preflight_timeout_from_env(env_map) * _PROBE_BUDGET_SHARE
+    # Raise rather than silently under-sizing: a ceiling at or below the safety
+    # floor means the supervisor would SIGKILL the child before it could log
+    # which upstream stalled.
+    if ceiling.total_seconds() <= _PROBE_SAFETY_S:
+        raise RuntimeError(
+            f"probe timeout budget ({ceiling.total_seconds():.1f}s = "
+            f"{mcp_preflight_timeout_from_env(env_map).total_seconds():.0f}s * "
+            f"{_PROBE_BUDGET_SHARE} share) must exceed _PROBE_SAFETY_S "
+            f"({_PROBE_SAFETY_S}s) to give the child time to report a stalled "
+            f"upstream before the supervisor SIGKILLs it. "
+            f"Raise RALPH_MCP_PREFLIGHT_TIMEOUT_MS to at least "
+            f"{int(_PROBE_SAFETY_S / _PROBE_BUDGET_SHARE * 1000)} ms, "
+            f"or lower _PROBE_BUDGET_SHARE."
+        )
     requested = _timeout_ms_from_env(env_map, MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV)
     if requested is None:
         return ceiling
@@ -117,6 +170,24 @@ def mcp_upstream_probe_timeout_seconds(env: Mapping[str, str] | None = None) -> 
     """Return :func:`mcp_upstream_probe_timeout_from_env` as seconds for ``timeout=``."""
 
     return mcp_upstream_probe_timeout_from_env(env).total_seconds()
+
+
+def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
+    """Return the aggregate first-start discovery budget.
+
+    This is the preflight window minus the safety margin reserved for the child
+    to report a failure after discovery completes, before the supervisor
+    SIGKILLs it. It is strictly below ``mcp_preflight_timeout_from_env`` by
+    construction.
+
+    The discovery loop in ``UpstreamRegistry.build`` must consume this budget
+    across all probes: when it expires, remaining servers are warned-and-skipped
+    rather than probed, guaranteeing the worst-case discovery time is bounded
+    below the preflight timeout.
+    """
+
+    preflight = mcp_preflight_timeout_from_env(env)
+    return preflight - timedelta(seconds=_PROBE_SAFETY_S)
 
 
 def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = None) -> float:
@@ -135,6 +206,8 @@ def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = N
 
 
 __all__ = [
+    "_PROBE_SAFETY_S",
+    "mcp_discovery_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_seconds",

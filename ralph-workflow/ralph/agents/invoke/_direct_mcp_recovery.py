@@ -137,11 +137,15 @@ def _mcp_operation_error(exc: Exception, mcp_exc: Exception) -> AgentInvocationE
 def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exception:
     """Preserve the failure evidence while making same-signature exhaustion explicit."""
 
-    diagnostic = (
-        "Commit/direct-MCP retry cooldown exhausted after "
-        f"{consecutive_failures} identical failure signatures; try the next eligible agent."
-    )
     if isinstance(exc, AgentInvocationError):
+        # Keep the "try the next eligible agent" wording for
+        # AgentInvocationError - the existing pinned assertion in
+        # tests/test_commit_retry_cooldown.py:33 requires the
+        # "retry cooldown exhausted" substring in parsed_output.
+        diagnostic = (
+            "Commit/direct-MCP retry cooldown exhausted after "
+            f"{consecutive_failures} identical failure signatures; try the next eligible agent."
+        )
         # Enrich in place: rebuilding a base AgentInvocationError here
         # would erase the typed subclass (OpenCodeResumableExitError,
         # AgyIncompleteExitError, ...) that retry scoping and callers'
@@ -151,8 +155,13 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
         return exc
     # Non-AgentInvocationError: preserve the original typed exception so
     # callers' ``pytest.raises`` and upstream classifiers key on the real
-    # type, and attach the diagnostic as a note rather than rebuilding it
-    # as a bare ``RuntimeError`` that would erase that type.
+    # type, and attach the diagnostic as a note. Remove the "try the next
+    # eligible agent" agent-switch wording - it's infrastructure-accurate
+    # for the typed failure itself, not an agent-switch signal.
+    diagnostic = (
+        f"retry cooldown exhausted after {consecutive_failures} "
+        "identical failure signatures"
+    )
     exc.add_note(diagnostic)
     return exc
 

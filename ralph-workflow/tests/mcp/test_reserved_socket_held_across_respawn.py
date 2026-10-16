@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.subprocess_e2e
-
-
 import errno
 import socket
 
+import pytest
+
 from ralph.mcp.server._reserved_socket import _reserve_listening_socket
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 def test_reserved_listening_socket_holds_port_until_closed() -> None:
@@ -33,7 +32,7 @@ def test_reserved_listening_socket_holds_port_until_closed() -> None:
     try:
         foreign.bind((host, port))
         foreign.close()
-    except OSError as exc:
+    except OSError as exc:  # pragma: no cover
         foreign.close()
         pytest.fail(f"expected a fresh bind to succeed after the parent closed: {exc!r}")
 

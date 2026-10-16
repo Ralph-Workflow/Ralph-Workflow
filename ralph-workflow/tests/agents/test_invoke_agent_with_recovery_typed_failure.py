@@ -87,3 +87,21 @@ def test_invoke_agent_with_recovery_keeps_commit_retry_cooldown_text() -> None:
         )
 
     assert "retry cooldown exhausted" in "\n".join(exc_info.value.parsed_output)
+
+
+def test_terminal_retry_error_no_agent_switch_wording_for_typed_failure() -> None:
+    """S3: non-AgentInvocationError terminal error has no agent-switch wording."""
+
+    class _TypedError(Exception):
+        pass
+
+    original = _TypedError("typed failure")
+    result = _terminal_retry_error(original, consecutive_failures=3)
+
+    assert result is original
+    # Must have the retry cooldown diagnostic
+    notes = getattr(result, "__notes__", ())
+    joined = " ".join((*result.args, *notes))
+    assert "retry cooldown exhausted" in joined
+    # Must NOT have agent-switch wording
+    assert "try the next eligible agent" not in joined

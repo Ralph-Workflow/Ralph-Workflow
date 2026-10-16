@@ -2,26 +2,26 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.subprocess_e2e
-
-
+import errno
 import socket
 import threading
 import time
 
+import pytest
+
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._reserved_socket import _reserve_listening_socket
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 def _make_blocking_handler() -> type:
     class _BlockingHandler:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: object, **kwargs: object) -> None:
             time.sleep(2.0)
 
-        def log_message(self, *args, **kwargs):
-            return
+        def log_message(self, *args: object, **kwargs: object) -> None:
+            pass
 
     return _BlockingHandler
 
@@ -33,9 +33,9 @@ def test_slow_startup_is_served_from_backlog() -> None:
     try:
         server_holder = []
         constructor_done = threading.Event()
-        constructor_error = []
+        constructor_error: list[Exception] = []
 
-        def _construct():
+        def _construct() -> None:
             try:
                 server_holder.append(
                     _FallbackHttpServer(
@@ -44,7 +44,7 @@ def test_slow_startup_is_served_from_backlog() -> None:
                         parent_socket=sock,
                     )
                 )
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover
                 constructor_error.append(exc)
             finally:
                 constructor_done.set()
@@ -58,9 +58,9 @@ def test_slow_startup_is_served_from_backlog() -> None:
             try:
                 client.connect((host, port))
             except OSError as exc:
-                if exc.errno in (socket.ECONNREFUSED,):
+                if exc.errno == errno.ECONNREFUSED:
                     raise AssertionError(
-                        f"inherited listening socket must not ECONNREFUSE"
+                        f"inherited listening socket must not ECONNREFUSED"
                         f" a slow-starting child; got errno={exc.errno} {exc!r}"
                     ) from exc
         finally:
