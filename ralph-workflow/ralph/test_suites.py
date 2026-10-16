@@ -130,6 +130,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
+    # U5: worktree-qualified backup-ref identity. Real-Git proof that
+    # linked worktrees sharing a pre-feature SHA get distinct refs and
+    # that one operation's cleanup never enumerates the namespace.
+    "tests/test_backup_ref_operation_scope.py",
     "tests/test_tool_git_read_path_validation.py",
     # I1/I2/I4 housekeeping bounds live in a subprocess_e2e module; keep
     # them on the default make-test profile via this registry.

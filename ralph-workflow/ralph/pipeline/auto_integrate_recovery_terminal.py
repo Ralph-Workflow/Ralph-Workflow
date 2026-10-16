@@ -82,29 +82,41 @@ def _head_matches_sha(root: Path, expected_sha: str) -> bool:
     return _read_head_sha(root) == expected_sha
 
 
-def delete_rebase_backup_refs(root: Path) -> None:
-    """Best-effort delete of recovery backup refs after a verified outcome."""
+_MIN_QUALIFIED_BACKUP_REF_SEGMENTS = 3  # <wt8>-<sha8>-<sha> segments in a qualified ref name
+
+
+def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
+    """Best-effort delete of THIS operation's exact worktree-qualified ref.
+
+    Deletion is by exact name only -- never namespace enumeration. Shared
+    ``refs/rebase-backup/`` refs from other worktrees, and legacy SHA-only
+    refs (``refs/rebase-backup/<sha8>-<sha>``), are never touched
+    (fail-closed under-delete).
+    """
+    if backup_ref is None:
+        logger.warning(
+            "recovery: no backup ref recorded; legacy or foreign refs left in place"
+        )
+        return
+    if not backup_ref.startswith("refs/rebase-backup/") or len(
+        backup_ref.split("/")[2].split("-")
+    ) < _MIN_QUALIFIED_BACKUP_REF_SEGMENTS:
+        logger.warning(
+            "recovery: refusing to delete non-qualified backup ref {} "
+            "(legacy SHA-only refs are never deleted)",
+            backup_ref,
+        )
+        return
     try:
-        result = run_git(
-            ("for-each-ref", "--format=%(refname)", "refs/rebase-backup/"),
+        deletion = run_git(
+            ("update-ref", "-d", backup_ref),
             cwd=root,
-            label="recovery:list-backup-refs",
+            label=f"recovery:delete-backup-ref:{backup_ref}",
         )
     except Exception as exc:  # pragma: no cover -- defensive logging
-        logger.warning("recovery: backup-ref enumeration failed: {}", exc)
+        logger.warning("recovery: backup-ref deletion failed for {}: {}", backup_ref, exc)
         return
-    if result.returncode != 0:
-        return
-    for raw_ref in result.stdout.splitlines():
-        ref = raw_ref.strip()
-        if not ref:
-            continue
-        try:
-            deletion = run_git(
-                ("update-ref", "-d", ref), cwd=root, label=f"recovery:delete-backup-ref:{ref}"
-            )
-        except Exception as exc:  # pragma: no cover -- defensive logging
-            logger.warning("recovery: backup-ref deletion failed for {}: {}", ref, exc)
-            continue
-        if deletion.returncode not in (0, 1):
-            logger.warning("recovery: backup-ref deletion failed for {}", ref)
+    if deletion.returncode not in (0, 1):
+        logger.warning("recovery: backup-ref deletion failed for {}", backup_ref)
+
+

@@ -11,8 +11,12 @@ from typing import TYPE_CHECKING
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
+    RecordReadOutcome,
+    RecordReadOutcomeDisposition,
+    RecordUnreadableError,
     clear_record,
     read_record,
+    read_record_outcome,
     record_path,
     write_record,
 )
@@ -63,12 +67,24 @@ class IntegrationRecordStore:
         """Clear the record file from this store."""
         clear_record(self._workspace_root, backend=self._backend)
 
+    def read_outcome(self) -> RecordReadOutcome:
+        """Read the authoritative record as a CLOSED typed outcome."""
+        return read_record_outcome(self._workspace_root, backend=self._backend)
+
     def transition(
         self,
         transition: Transition,
         **fields: object,
     ) -> IntegrationRecord:
         """Apply a Transition atomically and durably to the stored record.
+
+        Consumes the typed read outcome: when the durable evidence is
+        UNREADABLE, EVERY mutation is refused with a typed
+        :class:`RecordUnreadableError` -- the corrupt bytes are the
+        only proof an integration was interrupted, so overwriting
+        them with a fresh START_INTEGRATING record would erase the
+        evidence. ABSENT keeps the existing START_INTEGRATING /
+        CLEAR semantics.
 
         Loads the authoritative record from this store, applies the transition
         via :meth:`IntegrationRecord.with_transition`, and writes the new record
@@ -78,7 +94,14 @@ class IntegrationRecordStore:
         transition has already been applied, the write is a no-op (bytes unchanged),
         ensuring crash-recovery replay before or after the transition is safe.
         """
-        current = self.read()
+        outcome = self.read_outcome()
+        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            raise RecordUnreadableError(
+                f"refusing transition {transition.name!r}: unreadable record "
+                f"evidence at {self.record_path} "
+                f"(reason: {outcome.unreadable_reason})"
+            )
+        current = outcome.record
         if current is None:
             if transition.name == "START_INTEGRATING":
                 base = IntegrationRecord(
@@ -123,4 +146,8 @@ def apply_record_transition(
     return store.transition(transition, **fields)
 
 
-__all__ = ["IntegrationRecordStore", "apply_record_transition"]
+__all__ = [
+    "IntegrationRecordStore",
+    "RecordUnreadableError",
+    "apply_record_transition",
+]

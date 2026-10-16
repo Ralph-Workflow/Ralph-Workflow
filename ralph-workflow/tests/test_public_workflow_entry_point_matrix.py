@@ -11,6 +11,7 @@ from ralph.pipeline import run_loop, runner
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import (
+    AUTO_INTEGRATE_RECORD_FILENAME,
     START_INTEGRATING,
     IntegrationRecord,
     read_record,
@@ -524,3 +525,56 @@ def test_public_runner_run_loop_boundary_parity(
         )
         assert isinstance(runner_result, PipelineState)
         assert "IntegrationDispatchBlockedError" in str(runner_result.last_error)
+
+
+# ---------------------------------------------------------------------------
+# U4d: unreadable durable record routes startup through the intervention path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cause", "payload"),
+    [
+        ("corrupt_json", b"{not valid json"),
+        ("unsupported_schema", b'{"totally_unknown_shape": [1, 2, 3]}'),
+    ],
+)
+def test_unreadable_record_startup_reports_intervention(
+    tmp_path: Path,
+    cause: str,
+    payload: bytes,
+) -> None:
+    """Startup recovery on an unreadable record yields the typed intervention decision."""
+    (tmp_path / ".git").mkdir()
+    # A minimal VALID repository: the integration lease requires
+    # `git rev-parse --absolute-git-dir` to succeed, and an empty .git
+    # directory fails closed to "worktree busy".
+    for sub in ("objects", "refs/heads"):
+        (tmp_path / ".git" / sub).mkdir(parents=True)
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (tmp_path / ".git" / "config").write_text("[core]\n\trepositoryformatversion = 0\n")
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(payload)
+
+    shared_rebase = RebaseState()
+    shared_state = PipelineState(phase="development", rebase=shared_rebase)
+    st_recovery = recover_incomplete_integration(WorkspaceScope(tmp_path))
+    assert st_recovery is not None
+    assert st_recovery.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
+    assert st_recovery.operation_display_state == "intervention_required"
+    assert cause in (st_recovery.last_reason or "")
+    assert st_recovery.recovery_record_retained is True
+    assert record_file.read_bytes() == payload
+
+    policy = _policy()
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+    assert inspect_integration_resolution(tmp_path, shared_rebase).dispatch_allowed is False
+    decision = decide_phase_transition(
+        shared_state,
+        policy,
+        integration_record=None,
+        rebase_state=st_recovery,
+    )
+    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED

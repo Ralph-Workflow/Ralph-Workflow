@@ -270,3 +270,37 @@ def test_reclaim_regression_discard_failure_restores_owner_state(
     assert _run(tmp_git_repo, "diff", "--cached", "--binary").stdout == before_cached
     assert tracked.read_text(encoding="utf-8") == "staged plus unstaged\n"
     assert untracked.read_text(encoding="utf-8") == "untracked\n"
+
+
+def test_dirty_checked_out_target_qualifies_its_backup_ref_with_owning_worktree(
+    tmp_git_repo: Path,
+) -> None:
+    """U5: the create seam records the record's worktree-qualified ref name.
+
+    The pre-U5 name keyed only on the pre-feature SHA, so two linked
+    worktrees sharing a base commit shared one recovery ref. The record
+    seam must now produce refs/rebase-backup/<wt8>-<sha8>-<sha>.
+    """
+    import hashlib
+
+    from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
+
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
+    feature = tmp_git_repo.parent / "feature-qual"
+    _add_worktree(tmp_git_repo, feature, "feature-qual")
+    pre_sha = _commit(feature, "feature.txt", "feature\n", "feature change")
+
+    outcome = auto_integrate_after_commit(_config(main), WorkspaceScope(feature), RebaseState())
+    assert outcome is not None
+
+    expected = qualified_backup_ref(str(feature), pre_sha)
+    wt8 = expected.split("/")[2].split("-")[0]
+    assert wt8 == hashlib.sha256(str(feature).encode("utf-8")).hexdigest()[:8]
+    # If the attempt is still in flight, its live ref must be the
+    # qualified one; legacy SHA-only names must never reappear.
+    refs = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)").stdout.splitlines()
+    live = [r.strip() for r in refs if r.strip().startswith("refs/rebase-backup/")]
+    for ref in live:
+        parts = ref.split("/")[2].split("-")
+        assert len(parts) == 3, f"unqualified backup ref survived: {ref!r}"

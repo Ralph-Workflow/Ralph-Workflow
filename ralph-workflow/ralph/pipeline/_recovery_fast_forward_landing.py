@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
 from ralph.pipeline.auto_integrate_context import record_refresh
 from ralph.pipeline.auto_integrate_ff import fast_forward_target, maybe_push_target
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -146,7 +147,12 @@ def _land_and_reconcile(
         )
     # R6/AC-06: the invariant passed. Safe to clean up.
     if ok:
-        _delete_rebase_backup_refs(workspace_root)
+        _delete_rebase_backup_refs(
+            workspace_root,
+            qualified_backup_ref(
+                record.owning_worktree or str(workspace_root), record.pre_feature_sha
+            ),
+        )
         _clear_record(workspace_root)
         return record_refresh(
             maybe_push_target(

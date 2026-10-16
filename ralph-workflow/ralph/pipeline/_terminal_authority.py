@@ -14,6 +14,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._fan_out_authority import FanOutDecision
+from ralph.pipeline._publication_state_machine import PublicationDecision
+
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.rebase_state import RebaseState
@@ -38,8 +41,11 @@ def is_terminal_success_eligible(
         or rebase_state.integration_unresolved is True
         or rebase_state.recovery_record_retained is True
         or rebase_state.is_intervention_required is True
-        or (isinstance(pub, str) and pub != "publication_terminal")
-        or (isinstance(fan_out, str) and fan_out != "join_complete")
+        or (pub is not None and pub != PublicationDecision.PUBLICATION_TERMINAL)
+        or (
+            fan_out is not None
+            and fan_out != FanOutDecision.JOIN_COMPLETE
+        )
     )
 
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
@@ -22,6 +23,7 @@ from pydantic import ConfigDict
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
+from ralph.pipeline.auto_integrate_backoff import compute_retry_deadline
 from ralph.pipeline.auto_integrate_transition import (
     ACCEPT_REPAIR_EDITS,
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -380,6 +382,115 @@ def write_record(
     )
 
 
+
+
+class RecordUnreadableError(RuntimeError):
+    """Typed refusal: the durable record exists but cannot be read.
+
+    Raised by :func:`clear_record` and by
+    :meth:`ralph.pipeline.auto_integrate_record_store.IntegrationRecordStore.transition`
+    so the UNREADABLE ownership evidence is never silently unlinked
+    or overwritten with a fresh record.
+    """
+
+
+class RecordReadOutcomeDisposition(StrEnum):
+    """Closed disposition set for :func:`read_record_outcome`."""
+
+    ABSENT = "absent"
+    PRESENT = "present"
+    BUSY = "busy"
+    UNREADABLE = "unreadable"
+
+
+RecordUnreadableReason = Literal[
+    "corrupt_json", "unsupported_schema", "backend_read_failure"
+]
+
+
+class RecordReadOutcome(RalphBaseModel):
+    """Closed typed result of reading the durable crash record.
+
+    Exactly one of four dispositions:
+
+    * ``ABSENT`` -- no record file exists; ``record`` is ``None``.
+    * ``PRESENT`` -- a valid record was loaded into ``record``.
+    * ``BUSY`` -- transient lock contention on the read path; the
+      bounded retry authority (attempt/deadline via
+      :func:`compute_retry_deadline`) governs the backoff, no new
+      counter is introduced.
+    * ``UNREADABLE`` -- the file exists but is unusable, with a
+      reason from :data:`RecordUnreadableReason`. Callers MUST NOT
+      mutate or unlink the evidence.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    disposition: RecordReadOutcomeDisposition
+    record: IntegrationRecord | None = None
+    unreadable_reason: RecordUnreadableReason | None = None
+    busy_attempt: int | None = None
+    busy_deadline: float | None = None
+
+
+def _parse_outcome_payload(raw_text: str) -> dict[str, object] | None:
+    """Parse outcome JSON text into a dict, or None for any parse failure."""
+    try:
+        parsed: object = json.loads(raw_text)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def read_record_outcome(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    busy_attempt: int = 1,
+    busy_clock: object | None = None,
+) -> RecordReadOutcome:
+    """Read the durable record and return a CLOSED typed outcome.
+
+    Unlike :func:`read_record` this never collapses corruption or
+    transient read failure into ``None``: ABSENT is proven by the
+    file not existing, and UNREADABLE preserves the evidence for the
+    caller. BUSY is a bounded-retry-only disposition: the attempt
+    count and deadline come from the existing bounded-retry authority
+    (:func:`ralph.pipeline.auto_integrate_backoff.compute_retry_deadline`).
+    """
+    record_file = record_path(workspace_root)
+    if not backend.exists(record_file):
+        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+    try:
+        raw_text = backend.read_text(record_file, encoding="utf-8")
+    except FileNotFoundError:
+        return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
+    except (OSError, UnicodeError, KeyError):
+        return RecordReadOutcome(
+            disposition=RecordReadOutcomeDisposition.BUSY,
+            busy_attempt=busy_attempt,
+            busy_deadline=compute_retry_deadline(busy_attempt, clock=busy_clock),
+        )
+    parsed = _parse_outcome_payload(raw_text)
+    if parsed is None:
+        return RecordReadOutcome(
+            disposition=RecordReadOutcomeDisposition.UNREADABLE,
+            unreadable_reason="corrupt_json",
+        )
+    record = parse_record_payload(parsed)
+    if record is None:
+        return RecordReadOutcome(
+            disposition=RecordReadOutcomeDisposition.UNREADABLE,
+            unreadable_reason="unsupported_schema",
+        )
+    return RecordReadOutcome(
+        disposition=RecordReadOutcomeDisposition.PRESENT,
+        record=record,
+    )
+
+
 def read_record(
     workspace_root: Path,
     *,
@@ -600,8 +711,25 @@ def clear_record(
     cleared silently (the operator must act), and a record whose
     phase is ``integrating`` with a non-empty resolution flag
     cannot be cleared (the operation has unfinished work).
+
+    UNREADABLE evidence is refused: a record that exists but cannot
+    be parsed MUST NOT be unlinked, because it is the only durable
+    proof of an interrupted integration. The typed
+    :class:`RecordUnreadableError` carries the refusal. ABSENT
+    remains idempotent (missing-ok unlink).
     """
-    record = read_record(workspace_root, backend=backend)
+    outcome = read_record_outcome(workspace_root, backend=backend)
+    if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        raise RecordUnreadableError(
+            f"refusing to unlink unreadable record evidence at "
+            f"{record_path(workspace_root)} (reason: {outcome.unreadable_reason})"
+        )
+    if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
+        raise RecordUnreadableError(
+            f"transient record lock contention at {record_path(workspace_root)}; "
+            "bounded retry owns the backoff"
+        )
+    record = outcome.record
     if record is not None:
         if record.diagnostic_intervention_required:
             raise RuntimeError(
@@ -651,10 +779,15 @@ __all__ = [
     "IntegrationOperation",
     "IntegrationPhase",
     "IntegrationRecord",
+    "RecordReadOutcome",
+    "RecordReadOutcomeDisposition",
+    "RecordUnreadableError",
+    "RecordUnreadableReason",
     "Transition",
     "clear_record",
     "parse_record_payload",
     "read_record",
+    "read_record_outcome",
     "record_path",
     "set_resolving_rebase",
     "transition_by_name",

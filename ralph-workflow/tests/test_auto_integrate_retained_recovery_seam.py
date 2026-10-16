@@ -168,7 +168,7 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
     landing = _landing_module()
     monkeypatch.setattr(landing, "post_attempt_verify", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root: None)
+    monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root, _ref: None)
     monkeypatch.setattr(landing, "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "_head_matches_sha", lambda _root, _sha: True)
 

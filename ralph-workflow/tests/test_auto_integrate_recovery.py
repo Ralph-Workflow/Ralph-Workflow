@@ -674,6 +674,38 @@ def test_recovery_treats_bogus_phase_record_as_corrupt(
 
 
 # ---------------------------------------------------------------------------
+# U4d: PRESENT-but-UNREADABLE record surfaces typed intervention, not a skip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cause", "payload"),
+    [
+        ("corrupt_json", b"{not valid json"),
+        ("unsupported_schema", b'{"totally_unknown_shape": [1, 2, 3]}'),
+    ],
+)
+def test_unreadable_record_reports_intervention_not_retained_skip(
+    tmp_git_repo: Path,
+    cause: str,
+    payload: bytes,
+) -> None:
+    """A PRESENT-but-unreadable record must yield the typed intervention state."""
+    record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_bytes(payload)
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+    assert outcome is not None
+    assert outcome.last_outcome.value == "diagnostic_intervention_required"
+    assert outcome.last_decision == "report_intervention_required"
+    assert outcome.operation_display_state == "intervention_required"
+    assert cause in (outcome.last_reason or "")
+    assert outcome.recovery_record_retained is True
+    # The unreadable evidence bytes stay untouched on disk.
+    assert record_file.read_bytes() == payload
+
+
+# ---------------------------------------------------------------------------
 # Security regression: branch names starting with ``-`` are refs, not options
 # ---------------------------------------------------------------------------
 
@@ -902,7 +934,7 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
     # the B11/E5 contract: a concurrent ``git gc --prune`` in a
     # shared object store cannot reclaim the in-flight tip while
     # the backup ref is reachable.
-    backup_ref = _create_rebase_backup_ref(tmp_git_repo, pre_feature_sha)
+    backup_ref = _create_rebase_backup_ref(tmp_git_repo, pre_feature_sha, str(tmp_git_repo))
     assert backup_ref is not None, (
         "B11/E5: _create_rebase_backup_ref MUST return a non-None "
         "ref name when given a non-None pre-attempt SHA"

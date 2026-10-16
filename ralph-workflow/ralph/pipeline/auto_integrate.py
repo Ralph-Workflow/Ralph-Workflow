@@ -71,7 +71,9 @@ from ralph.pipeline.auto_integrate_rebase_merge import (
 from ralph.pipeline.auto_integrate_record import (
     START_INTEGRATING,
     IntegrationRecord,
+    RecordReadOutcomeDisposition,
     read_record,
+    read_record_outcome,
 )
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -210,7 +212,10 @@ def auto_integrate_after_commit(
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
         skipped = _record_skip(reason=f"unexpected failure: {exc}", target=None)
-        if read_record(Path(workspace_scope.root)) is None:
+        if (
+            read_record_outcome(Path(workspace_scope.root)).disposition
+            is RecordReadOutcomeDisposition.ABSENT
+        ):
             return skipped
         return skipped.set_recovery_record_retained(
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
@@ -454,7 +459,12 @@ def _auto_integrate_after_commit_inner(
         # sits at the function's PLR0912 branch budget.
         charged = (
             charged.set_recovery_record_retained(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK)
-            if read_record(root) is not None
+            if read_record_outcome(root).disposition
+            in (
+                RecordReadOutcomeDisposition.PRESENT,
+                RecordReadOutcomeDisposition.UNREADABLE,
+                RecordReadOutcomeDisposition.BUSY,
+            )
             else charged
         )
         return charge_failed_attempt(
@@ -628,7 +638,9 @@ def _integrate_once_owned(
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
     retained = read_record(root)
-    if retained != owned_record:
+    if retained != owned_record or (
+        read_record_outcome(root).disposition is RecordReadOutcomeDisposition.UNREADABLE
+    ):
         return _record_skip(
             reason="unfinished integration retained for recovery", target=target
         ), False
@@ -656,7 +668,11 @@ def _integrate_once_owned(
     # retained through the attempt (the recovery preamble reads it
     # to restore the pre-attempt tip on a verified abort) and
     # deleted after a successful land or a verified abort.
-    backup_ref = _create_rebase_backup_ref(root, pre_feature_sha)
+    backup_ref = _create_rebase_backup_ref(
+        root,
+        pre_feature_sha,
+        attempt_record.owning_worktree or str(root),
+    )
     owns_resolution = False
     try:
         rebase_result = _run_rebase_or_merge(

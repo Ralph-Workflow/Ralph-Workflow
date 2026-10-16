@@ -145,6 +145,7 @@ from ralph.pipeline.integration_resolution import (
     RESOLUTION_DRAIN,
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
+    retained_integration_reason,
 )
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
@@ -2510,9 +2511,17 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
+        # Route through the same run-loop authority: a retained record or
+        # a live retained-reason on disk is an open obligation, not a raw
+        # read-record miss.
+        record = read_record(workspace_scope.root)
         return (
             _emit_success_exit(display, os.getenv)
-            if is_terminal_success_eligible(state, read_record(workspace_scope.root), state.rebase)
+            if is_terminal_success_eligible(state, record, state.rebase)
+            and (
+                record is not None
+                or retained_integration_reason(workspace_scope.root) is None
+            )
             else 1
         )
 

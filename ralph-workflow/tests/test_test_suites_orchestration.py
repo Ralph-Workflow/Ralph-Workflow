@@ -34,6 +34,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_retained_resolution_handoff.py",
     "tests/test_retained_resolution_dispatch.py",
     "tests/integration/test_retained_integration_acceptance.py",
+    "tests/test_backup_ref_operation_scope.py",
     "tests/test_tool_git_read_path_validation.py",
     "tests/test_commit_cleanup_invariants.py",
     "tests/test_commit_cleanup_verify_gate.py",

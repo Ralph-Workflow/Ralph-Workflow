@@ -31,12 +31,20 @@ from ralph.pipeline.auto_integrate_record import (
     PROMOTE_TO_INTEGRATED,
     START_INTEGRATING,
     IntegrationRecord,
+    RecordReadOutcomeDisposition,
+    RecordUnreadableError,
+    clear_record,
     parse_record_payload,
     read_record,
+    read_record_outcome,
+    record_path,
 )
 from ralph.pipeline.auto_integrate_record_store import (
     IntegrationRecordStore,
     apply_record_transition,
+)
+from ralph.pipeline.auto_integrate_record_store import (
+    RecordUnreadableError as StoreRecordUnreadableError,
 )
 from ralph.pipeline.checkpoint import Checkpoint
 from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
@@ -535,3 +543,143 @@ def test_execution_components_round_trip() -> None:
     reconstructed_ctx = RunContext.from_dict(ctx_dict)
     assert reconstructed_ctx.actual_developer_runs == 1
     assert reconstructed_ctx.actual_reviewer_runs == 1
+
+
+# ---------------------------------------------------------------------------
+# 8. Typed record read outcome (read_record_outcome) -- closed dispositions
+# ---------------------------------------------------------------------------
+
+class _BusyOnceBackend(_InMemoryBackend):
+    """Backend whose first read of a path fails transiently (lock contention)."""
+
+    def __init__(self, files: dict[Path, bytes]) -> None:
+        super().__init__()
+        self.files.update(files)
+        self.busy_reads = 1
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        if self.busy_reads > 0:
+            self.busy_reads -= 1
+            raise OSError("resource temporarily unavailable (simulated lock)")
+        return super().read_text(path, encoding=encoding)
+
+
+class _FixedClock:
+    """Injected clock abstraction: fixed monotonic seconds."""
+
+    def monotonic(self) -> float:
+        return 100.0
+
+
+def _valid_record_bytes() -> bytes:
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+    )
+    return record.model_dump_json().encode("utf-8")
+
+
+def test_read_record_outcome_absent() -> None:
+    backend = _InMemoryBackend()
+    outcome = read_record_outcome(Path("/ws"), backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.ABSENT
+    assert outcome.record is None
+    assert outcome.unreadable_reason is None
+
+
+def test_read_record_outcome_present_round_trips_exact_record() -> None:
+    backend = _InMemoryBackend()
+    root = Path("/ws")
+    backend.files[record_path(root)] = _valid_record_bytes()
+    outcome = read_record_outcome(root, backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.PRESENT
+    assert outcome.record is not None
+    assert outcome.record.target == "main"
+    # Restart re-read: same bytes -> identical record, byte-for-byte payload preserved
+    outcome2 = read_record_outcome(root, backend=backend)
+    assert outcome2.record == outcome.record
+    assert backend.read_bytes(record_path(root)) == _valid_record_bytes()
+
+
+def test_read_record_outcome_corrupt_json_is_unreadable() -> None:
+    backend = _InMemoryBackend()
+    root = Path("/ws")
+    backend.files[record_path(root)] = b"{not json at all"
+    outcome = read_record_outcome(root, backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
+    assert outcome.unreadable_reason == "corrupt_json"
+    assert outcome.record is None
+
+
+def test_read_record_outcome_unsupported_schema_is_unreadable() -> None:
+    backend = _InMemoryBackend()
+    root = Path("/ws")
+    # Valid JSON dict, but an unknown phase value (older / partial write).
+    payload: dict[str, object] = {"phase": "warping", "target": "main"}
+    backend.files[record_path(root)] = json.dumps(payload).encode("utf-8")
+    outcome = read_record_outcome(root, backend=backend)
+    assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
+    assert outcome.unreadable_reason == "unsupported_schema"
+
+
+def test_read_record_outcome_backend_read_failure_is_busy_with_bounded_retry() -> None:
+    root = Path("/ws")
+    backend = _BusyOnceBackend({record_path(root): _valid_record_bytes()})
+    outcome = read_record_outcome(root, backend=backend, busy_clock=_FixedClock())
+    assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
+    assert outcome.busy_attempt == 1
+    # Deadline comes from the existing bounded-retry authority, no new counter.
+    assert outcome.busy_deadline == 100.0 + 0.5
+    # Second attempt succeeds: PRESENT (bounded retry, not a permanent state).
+    outcome2 = read_record_outcome(root, backend=backend, busy_clock=_FixedClock())
+    assert outcome2.disposition is RecordReadOutcomeDisposition.PRESENT
+
+
+def test_clear_record_refuses_to_unlink_unreadable_evidence() -> None:
+    backend = _InMemoryBackend()
+    root = Path("/ws")
+    backend.files[record_path(root)] = b"{corrupt"
+    with pytest.raises(RecordUnreadableError):
+        clear_record(root, backend=backend)
+    # Evidence is byte-identical: the refusal never mutates the file.
+    assert backend.read_bytes(record_path(root)) == b"{corrupt"
+
+
+def test_clear_record_absent_is_idempotent() -> None:
+    backend = _InMemoryBackend()
+    clear_record(Path("/never-existed"), backend=backend)
+
+
+def test_store_transition_refuses_start_integrating_over_unreadable_evidence() -> None:
+    backend = _InMemoryBackend()
+    root = Path("/ws")
+    corrupt = b"{unreadable evidence"
+    backend.files[record_path(root)] = corrupt
+    store = IntegrationRecordStore(root, backend=backend)
+    with pytest.raises(StoreRecordUnreadableError):
+        store.transition(
+            START_INTEGRATING,
+            target="main",
+            pre_feature_sha="a" * 40,
+            pre_target_sha=None,
+        )
+    # The unreadable file is left byte-identical; no fresh START_INTEGRATING
+    # record was written over the evidence.
+    assert backend.read_bytes(record_path(root)) == corrupt
+    assert backend.write_calls == []
+    assert backend.replace_calls == []
+
+
+def test_store_transition_absent_start_integrating_semantics_preserved() -> None:
+    backend = _InMemoryBackend()
+    store = IntegrationRecordStore(Path("/ws"), backend=backend)
+    initial = store.transition(
+        START_INTEGRATING,
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha=None,
+    )
+    assert initial.phase == "integrating"
+    assert backend.exists(store.record_path)

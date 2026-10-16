@@ -658,3 +658,128 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
     assert exit_code == 0
     assert recording.started, "late marker should have started the heartbeat"
     assert recording.stopped, "cleanup should have stopped the heartbeat"
+
+
+# --- U4b: fail-closed consumers of read_record_outcome ----------------------
+
+
+def _minimal_ctx(tmp_path: Path, state: PipelineState) -> object:
+    """Build a duck-typed _LoopContext for the handoff unit under test."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        workspace_scope=SimpleNamespace(root=tmp_path),
+        latest_state=[state],
+        active_display=MagicMock(),
+    )
+
+
+def _seed_corrupt_record(tmp_path: Path) -> None:
+    from ralph.pipeline.auto_integrate_record import record_path
+
+    record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    record_path(tmp_path).write_text("{not json", encoding="utf-8")
+
+
+def test_handoff_unreadable_record_persists_intervention_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UNREADABLE handoff must be decision-complete: no diagnostic, intervention persisted."""
+    from ralph.pipeline import run_loop as run_loop_module
+    from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+
+    _seed_corrupt_record(tmp_path)
+    state = PipelineState(phase="development")
+    ctx = _minimal_ctx(tmp_path, state)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_diagnose_retained_integration",
+        lambda _ctx, _failure: pytest.fail("diagnostic must not launch on UNREADABLE"),
+    )
+
+    run_loop_module._handoff_retained_failure(ctx, "retained on unreadable record")
+
+    rebase = ctx.latest_state[0].rebase
+    assert rebase.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+    assert rebase.is_intervention_required
+    assert rebase.operation_display_state == "intervention_required"
+    assert "unreadable" in (rebase.last_reason or "")
+    # idempotent across restarts: calling again is stable
+    run_loop_module._handoff_retained_failure(ctx, "retained on unreadable record")
+    assert ctx.latest_state[0].rebase.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+
+
+def test_handoff_readable_record_still_runs_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A readable retained record keeps its existing diagnostic handoff."""
+    from ralph.pipeline import run_loop as run_loop_module
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+
+    write_record(
+        tmp_path,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="a" * 40,
+            pre_target_sha="b" * 40,
+        ),
+    )
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        run_loop_module,
+        "_diagnose_retained_integration",
+        lambda _ctx, failure: seen.append(failure),
+    )
+    ctx = _minimal_ctx(tmp_path, PipelineState(phase="development"))
+    run_loop_module._handoff_retained_failure(ctx, "failure-x")
+    assert seen == ["failure-x"]
+
+
+def test_retained_integration_reason_unreadable_blocks_dispatch(tmp_path: Path) -> None:
+    """UNREADABLE and BUSY dispositions retain ownership like a readable record."""
+    from ralph.pipeline.integration_resolution import retained_integration_reason
+
+    _seed_corrupt_record(tmp_path)
+    assert retained_integration_reason(tmp_path) is not None
+
+
+def test_runner_exit_success_blocked_by_unreadable_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ExitSuccessEffect must fail closed when the record is unreadable."""
+    import types
+
+    import ralph.pipeline.runner as runner_module
+    from ralph.pipeline.auto_integrate_record import record_path
+    from ralph.pipeline.effects.exit_success_effect import ExitSuccessEffect
+    from ralph.pipeline.state import PipelineState
+
+    record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    record_path(tmp_path).write_text("{corrupt", encoding="utf-8")
+    state = PipelineState(phase="complete")
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        runner_module,
+        "_emit_success_exit",
+        lambda _display, _getenv: emitted.append("success") or 0,
+    )
+    code = runner_module._handle_inline_effect(
+        effect=ExitSuccessEffect(),
+        state=state,
+        pipeline_policy=MagicMock(),
+        artifacts_policy=MagicMock(),
+        workspace_scope=types.SimpleNamespace(root=tmp_path),
+        agents_policy=None,
+        registry=None,
+        config=None,
+        pipeline_deps=None,
+        display=MagicMock(),
+        pipeline_subscriber=None,
+        routing_timing=None,
+        dashboard_subscriber=None,
+        recovery_controller=None,
+    )
+    assert code == 1
+    assert emitted == []

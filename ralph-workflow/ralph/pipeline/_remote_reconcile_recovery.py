@@ -59,16 +59,13 @@ def recover_target_resolution(
         if not acquired or (foreign and retained_integration_reason(owner) is not None):
             return _retained(record, "target reconciliation worktree busy; recovery will retry")
         if record.diagnostic_evidence:
+            from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
             from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
             from ralph.pipeline.operation_evidence import EvidenceVerdict
 
             verdict = release_verified_diagnostic(owner, record)
             if verdict != EvidenceVerdict.UNCHANGED:
-                diag_reason = (
-                    "diagnostic evidence changed; original evidence must be restored before recovery"
-                    if verdict == EvidenceVerdict.CHANGED
-                    else "diagnostic evidence unreadable; recovery retained"
-                )
+                diag_reason = diagnostic_evidence_gate_reason(verdict)
                 return _retained(record, diag_reason)
             record = record.with_transition(
                 RELEASE_DIAGNOSTIC_EVIDENCE,

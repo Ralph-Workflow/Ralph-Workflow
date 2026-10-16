@@ -83,6 +83,8 @@ from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
+    RecordReadOutcomeDisposition,
+    read_record_outcome,
 )
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -591,7 +593,7 @@ def recover_incomplete_integration(
                 record_retained=True,
             )
         try:
-            record = _read_record(Path(workspace_scope.root))
+            outcome = read_record_outcome(Path(workspace_scope.root))
         except Exception as exc:
             logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
             return _record_skip(
@@ -600,11 +602,31 @@ def recover_incomplete_integration(
                 retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
+        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            # Decision-complete startup handoff (U4d): a PRESENT-but-unreadable
+            # record cannot answer the recovery authorities, so the startup
+            # path returns the same typed intervention decision as the other
+            # entry points instead of a generic retained skip. The unreadable
+            # bytes stay untouched on disk as ownership evidence.
+            reason = "durable integration record unreadable; intervention required" + (
+                f" ({outcome.unreadable_reason})" if outcome.unreadable_reason else ""
+            )
+            return RebaseState(
+                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_reason=reason,
+                last_target=None,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=(
+                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
+                ),
+            )
+        record = outcome.record
         if (
             record is not None
             and record.diagnostic_evidence
             and record.operation_kind != "target_reconcile"
         ):
+            from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
             from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
             from ralph.pipeline.operation_evidence import EvidenceVerdict
 
@@ -620,14 +642,14 @@ def recover_incomplete_integration(
                 _write_record(Path(workspace_scope.root), record)
             elif verdict == EvidenceVerdict.CHANGED:
                 return _record_skip(
-                    reason="diagnostic evidence changed; original evidence must be restored before recovery",
+                    reason=diagnostic_evidence_gate_reason(verdict),
                     target=record.target,
                     retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                     record_retained=True,
                 )
             else:
                 return _record_skip(
-                    reason="diagnostic evidence unreadable; recovery retained",
+                    reason=diagnostic_evidence_gate_reason(verdict),
                     target=record.target,
                     retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                     record_retained=True,

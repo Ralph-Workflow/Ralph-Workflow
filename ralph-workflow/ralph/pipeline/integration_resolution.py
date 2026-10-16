@@ -8,6 +8,7 @@ it is the sole recovery executor named by a blocking verdict.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -102,12 +103,24 @@ def inspect_integration_resolution(
 
 def retained_integration_reason(root: object) -> str | None:
     """A durable receipt owns dispatch until recovery proves and clears it."""
-    from ralph.pipeline.auto_integrate_record import read_record, record_path
+    from ralph.pipeline.auto_integrate_record import (
+        RecordReadOutcomeDisposition,
+        read_record_outcome,
+        record_path,
+    )
 
     if not isinstance(root, Path):
         return None
     try:
-        if read_record(root) is not None:
+        outcome = read_record_outcome(
+            root,
+            busy_clock=time.monotonic,
+        )
+        if outcome.disposition in (
+            RecordReadOutcomeDisposition.PRESENT,
+            RecordReadOutcomeDisposition.UNREADABLE,
+            RecordReadOutcomeDisposition.BUSY,
+        ):
             return (
                 "durable integration record retained; recovery must finish before ordinary dispatch"
             )

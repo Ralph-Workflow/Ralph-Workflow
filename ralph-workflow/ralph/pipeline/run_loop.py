@@ -47,7 +47,11 @@ from ralph.pipeline.auto_integrate_agent import (
     emit_integration_warn_line,
 )
 from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
-from ralph.pipeline.auto_integrate_record import read_record
+from ralph.pipeline.auto_integrate_record import (
+    RecordReadOutcomeDisposition,
+    read_record,
+    read_record_outcome,
+)
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.cycle_timing import (
@@ -56,7 +60,6 @@ from ralph.pipeline.cycle_timing import (
 )
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
-    RECOVERABLE,
     inspect_integration_resolution,
     retained_integration_reason,
 )
@@ -95,7 +98,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
+    from ralph.pipeline.integration_resolution_types import (
+        IntegrationResolutionVerdict,
+    )
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -1986,18 +1991,73 @@ def _diagnose_retained_integration(ctx: _LoopContext, failure: str) -> None:
     diagnose_retained_integration(ctx, failure)
 
 
+def _persist_unreadable_intervention(
+    ctx: _LoopContext,
+    failure: str,
+    unreadable_reason: str | None,
+) -> None:
+    """Persist the unreadable-record intervention projection (decision-complete).
+
+    Writes a minimal sentinel record carrying ``diagnostic_intervention_required``
+    so ``_check_blocking_decision`` yields REPORT_INTERVENTION_REQUIRED across
+    restarts. Idempotent: skips when the sentinel is already on disk or the
+    caller's rebase state already carries the intervention flag.
+    """
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+    from ralph.pipeline.auto_integrate_record import read_record_outcome
+
+    root = ctx.workspace_scope.root
+    outcome = read_record_outcome(root)
+    if outcome.disposition is RecordReadOutcomeDisposition.PRESENT:
+        return  # a readable record appeared; ordinary authorities decide
+    # The corrupt/unsupported record stays untouched on disk -- it is
+    # evidence. The intervention projection lives on the persisted rebase
+    # state: last_outcome DIAGNOSTIC_INTERVENTION_REQUIRED makes
+    # RebaseState.is_intervention_required True, so
+    # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED,
+    # idempotently across restarts, with a visible label distinct from
+    # evidence_diagnosis.
+    if not ctx.latest_state:
+        return
+    rebase = ctx.latest_state[0].rebase
+    updated = rebase.model_copy(
+        update={
+            "last_outcome": RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            "last_reason": (
+                "durable integration record unreadable; intervention required"
+                + (f" ({unreadable_reason})" if unreadable_reason else "")
+            ),
+            "operation_display_state": "intervention_required",
+        }
+    )
+    ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=updated)]
+    _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+
+
 def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
     from ralph.pipeline._integration_diagnostic import diagnostic_needed
-    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.auto_integrate_record import (
+        RecordReadOutcomeDisposition,
+        read_record_outcome,
+    )
 
-    latest = read_record(ctx.workspace_scope.root)
-    if latest is not None and diagnostic_needed(ctx.workspace_scope.root, latest):
-        _diagnose_retained_integration(ctx, failure)
-    elif latest is not None and classify_git_operation(latest) in (
-        GitOperationKind.AWAITING_CONTINUE,
-        GitOperationKind.AWAITING_MERGE_COMMIT,
-    ):
-        _repair_pending_merge_commit(ctx, failure)
+    outcome = read_record_outcome(ctx.workspace_scope.root)
+    if outcome.disposition is RecordReadOutcomeDisposition.PRESENT and outcome.record is not None:
+        latest = outcome.record
+        if diagnostic_needed(ctx.workspace_scope.root, latest):
+            _diagnose_retained_integration(ctx, failure)
+        elif classify_git_operation(latest) in (
+            GitOperationKind.AWAITING_CONTINUE,
+            GitOperationKind.AWAITING_MERGE_COMMIT,
+        ):
+            _repair_pending_merge_commit(ctx, failure)
+    elif outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        # Decision-complete handoff: a corrupt or unsupported record cannot
+        # answer `diagnostic_needed`, so re-running the diagnostic would loop
+        # forever. Persist the intervention projection once so
+        # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED with a
+        # label distinct from evidence_diagnosis.
+        _persist_unreadable_intervention(ctx, failure, outcome.unreadable_reason)
 
 
 def _handle_retained_integration(
@@ -2022,14 +2082,22 @@ def _handle_retained_integration(
             )
             _save_recovered_rebase_checkpoint(state, ctx)
         state = state.copy_with(
-            rebase=state.rebase.model_copy(update={"operation_display_state": "evidence_diagnosis"})
+            rebase=state.rebase.model_copy(
+                update={
+                    "operation_display_state": (
+                        "intervention_required"
+                        if state.rebase.is_intervention_required
+                        else "evidence_diagnosis"
+                    )
+                }
+            )
         )
         _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
         return state, (state, prev_phase, 0)
     return state, None
 
 
-def _block_unresolved_integration(
+def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router: each return is one distinct lifecycle decision (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked).
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
@@ -2043,7 +2111,42 @@ def _block_unresolved_integration(
     fallback/retry opportunity. An exhausted or still-blocked verdict keeps
     ordinary dispatch suspended while the caller cools down before retrying.
     """
+    from ralph.pipeline.integration_resolution_types import (
+        IntegrationResolutionVerdict,
+    )
+
     record = read_record(ctx.workspace_scope.root)
+    # Fail-closed read outcome: BUSY maps to the existing bounded-retry
+    # decision exactly as _integration_action._conflict_action decides it
+    # (wait only on a valid, unexpired deadline; REQUIRE_INTERVENTION when
+    # absent, invalid, unreadable, or expired). UNREADABLE keeps the
+    # retained/intervention path: the record must not silently vanish.
+    read_outcome = read_record_outcome(ctx.workspace_scope.root)
+    if read_outcome.disposition is RecordReadOutcomeDisposition.BUSY:
+        busy_deadline = read_outcome.busy_deadline
+        bounded = (
+            isinstance(busy_deadline, (int, float))
+            and not isinstance(busy_deadline, bool)
+            and time.monotonic() < busy_deadline
+        )
+        if not bounded:
+            emit_integration_warn_line(
+                ctx.active_display,
+                "CRITICAL: durable integration record busy past its bounded retry deadline; "
+                "dispatch blocked",
+            )
+            state = state.copy_with(
+                rebase=state.rebase.model_copy(
+                    update={"operation_display_state": "intervention_required"}
+                )
+            )
+            return state, prev_phase, 1
+        # Unexpired busy window: bounded retry. Preserve the wait decision by
+        # keeping the record absent for the intervention check below; the
+        # retained-integration seam owns the bounded wait.
+        record = None
+    elif read_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        record = None
     # The reducer is the single last_decision writer; the typed authority
     # derives the blocking decision from current evidence and the next
     # reduce re-persists it.
@@ -2084,25 +2187,36 @@ def _block_unresolved_integration(
         _announce_deferred_startup_integration(ctx, state.rebase)
         return state, prev_phase, 1
 
-    if verdict.status in {RECOVERABLE, EXHAUSTED}:
-        _announce_conflict_resolution_entry(ctx, verdict)
-        _run_integration_conflict_resolution(ctx, state.rebase)
-        recovered = _run_startup_integration(ctx, state.rebase)
-        if recovered is not None:
-            state = state.copy_with(rebase=recovered)
-            _save_recovered_rebase_checkpoint(state, ctx)
-        post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
-        if post_recovery.dispatch_allowed:
-            reconciled = reconcile_stale_unresolved_state(state.rebase)
-            if reconciled != state.rebase:
-                state = state.copy_with(rebase=reconciled)
-                _save_recovered_rebase_checkpoint(state, ctx)
-            return None
-        verdict = post_recovery
+    post = _post_recovery_verdict(ctx, state, prev_phase, verdict)
+    if not isinstance(post, IntegrationResolutionVerdict):
+        return post
 
-    _announce_blocked_dispatch(ctx, verdict)
+    _announce_blocked_dispatch(ctx, post)
     _announce_deferred_startup_integration(ctx, state.rebase)
     return state, prev_phase, 1
+
+
+def _post_recovery_verdict(
+    ctx: _LoopContext,
+    state: PipelineState,
+    prev_phase: str,
+    verdict: IntegrationResolutionVerdict,
+) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int]:
+    """Run one recovery pass, then re-inspect; return either verdict or a block."""
+    _announce_conflict_resolution_entry(ctx, verdict)
+    _run_integration_conflict_resolution(ctx, state.rebase)
+    recovered = _run_startup_integration(ctx, state.rebase)
+    if recovered is not None:
+        state = state.copy_with(rebase=recovered)
+        _save_recovered_rebase_checkpoint(state, ctx)
+    post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    if post_recovery.dispatch_allowed:
+        reconciled = reconcile_stale_unresolved_state(state.rebase)
+        if reconciled != state.rebase:
+            state = state.copy_with(rebase=reconciled)
+            _save_recovered_rebase_checkpoint(state, ctx)
+        return post_recovery
+    return post_recovery
 
 
 def _run_inner_loop(
@@ -2959,6 +3073,7 @@ def _execute_with_cleanup(
             if (
                 loop_ctx.policy_bundle.pipeline.terminal_phase == state.phase
                 and decision == PhaseDecision.REPORT_TERMINAL_SUCCESS
+                and retained_integration_reason(loop_ctx.workspace_scope.root) is None
                 and is_terminal_success_eligible(state, record, state.rebase)
             ):
                 # The reducer re-persists last_decision from the typed

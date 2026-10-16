@@ -62,6 +62,32 @@ The following table documents the complete 8-field architectural contract for ev
 | **Retry & Conflict Budget** | `RetryProgressGuard` & `apply_conflict_budget` | Guard `.record()`, `apply_conflict_budget()` | Conflict driver, run loop, backoff wait | `streak`, `consecutive_conflicts`, `retry_deadline` | Streak increments to cap &rarr; `is_exhausted = True` &rarr; `REQUIRE_INTERVENTION` | `RetryProgressGuard` snapshot persisted in `PipelineState.progress_guard` and `AgentChainState.progress_guard` atomically in checkpoint; restored via `from_dict` | Malformed or contradictory snapshots fail closed to intervention | Exhausted budget blocks automatic retry and requires operator intervention |
 | **Operator Surface Display** | `OperationDisplayState` taxonomy | Computed projection from `RebaseState.operation_display_state` | Rich console, status bar, event streams | 8 display labels (`INTEGRATING`, `LANDING`, `PUBLISHING`, `WAITING`, etc.) | Derived synchronously from `last_outcome` and `last_decision` | Re-projected immediately upon state load | Unknown state falls back to safe generic indicator | Pure display projection; never gates or mutates pipeline dispatch |
 
+## Landed Refinements (2026 update)
+
+The following implementation refinements strengthen the ownership model above; each cites its code authority.
+
+### Terminal eligibility compares typed enum members (U2)
+
+`ralph.pipeline._terminal_authority` compares publication and fan-out states against the imported enum members `PublicationDecision.PUBLICATION_TERMINAL` and `FanOutDecision.JOIN_COMPLETE` rather than string literals (`_terminal_authority.py:43-46`). Because these enums are `StrEnum`, legacy checkpoints that serialized plain strings still compare equal, so no migration is required. Unknown or unrecognized checkpoint strings are not equal to any terminal member and therefore continue to block terminal success (fail closed).
+
+### Single diagnostic evidence-gate reason (U3)
+
+The retention reason `"diagnostic evidence changed; original evidence must be restored before recovery"` has exactly one definition: `ralph.pipeline._diagnostic_evidence_gate.diagnostic_evidence_gate_reason`. The gate covers both *changed* and *unreadable* diagnostic verdicts, and both `auto_integrate_recovery.py:608` and `_remote_reconcile_recovery.py:62` import the reason from that single site. `grep` confirms exactly one definition in the tree.
+
+### Typed record reads and UNREADABLE ownership (U4a)
+
+`ralph.pipeline.auto_integrate_record.read_record_outcome` returns a `RecordReadOutcome` with a closed disposition set — `ABSENT`, `PRESENT`, `BUSY`, `UNREADABLE` — where unreadable evidence carries a typed reason (`corrupt_json`, `unsupported_schema`, `backend_read_failure`). `clear_record` refuses to unlink evidence whose disposition is `UNREADABLE` (`RecordUnreadableError`, `auto_integrate_record.py:387`), and `IntegrationRecordStore.transition` refuses every mutation on an `UNREADABLE` record. Unreadable ownership evidence therefore cannot be silently destroyed; this implements the "Query failures ... fail closed" principle from Decision §2.
+
+### Operation-scoped rebase backup refs (U5)
+
+Rebase backup refs are operation-scoped: `refs/rebase-backup/<worktree>-<sha8>-<sha>`, named by `qualified_backup_ref` (`auto_integrate_backup_refs.py:16`). Deletion during recovery is by exact ref name only (`delete_rebase_backup_refs`, `auto_integrate_recovery_terminal.py:88-131`) — never `for-each-ref` namespace enumeration. Refs from other linked worktrees sharing the same pre-feature SHA, and legacy SHA-only refs (`refs/rebase-backup/<sha8>-<sha>`), are never deleted; under-delete is the accepted failure direction and is logged. Verified by `tests/test_backup_ref_operation_scope.py` (6 cases, including the same-SHA linked-worktree collision where worktree A's cleanup preserves worktree B's ref).
+
+**Known accepted observation (reclaim namespace)**: `_auto_integrate_reclaim.py:140` `_prune_reclaim_refs` still enumerates `refs/ralph-reclaim/<target>/` by prefix and prunes by age/count. That namespace is keyed by target branch only, so two worktrees reclaiming the same target share one prune pool — a snapshot from one worktree may be pruned by the other. This is accepted as lower-risk: reclaim snapshots are snapshot hygiene for worktree reset, not a sole recovery authority (recovery also relies on the operation-scoped backup refs above). Flagged for potential follow-up if reclaim snapshots are ever promoted to a recovery authority.
+
+### Closed operator display label taxonomy (U8)
+
+The operator surface exposes exactly seven integration display labels — `conflict resolution`, `evidence diagnosis`, `integration`, `landing`, `publication`, `waiting`, `intervention` — defined in `ralph.display.integration_display_label.IntegrationDisplayLabel`. Pairwise distinctness of all seven is verified by `tests/test_display_lifecycle_label_taxonomy.py`. These labels are pure display projections (Decision §1 / matrix row "Operator Surface Display") and never gate dispatch or terminal success.
+
 ## Dependency Injection Boundaries
 
 To ensure complete black-box testability without live Git or filesystem side-effects in unit suites:
