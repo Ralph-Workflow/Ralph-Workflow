@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 # concurrency without dropping recently-used workspaces.
 _MAX_CACHE_ENTRIES: int = 32
 
-# bounded-accumulator-ok: FIFO cap 32
-# (OrderedDict.popitem(last=False) eviction in cache_tool_catalog)
-_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = OrderedDict()
+_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = (
+    OrderedDict()
+)  # bounded-accumulator-ok: FIFO cap 32 via popitem(last=False) in cache_tool_catalog
 
 _CATALOG_DIR_MODE: int = 0o700
 _CATALOG_FILE_MODE: int = 0o600
@@ -81,7 +81,9 @@ def _write_catalog_file(workspace_root: Path, catalog: dict[str, list[UpstreamTo
         _ensure_catalog_dir(workspace_root)
         tmp = target.with_name(target.name + ".tmp")
         payload = serialize_upstream_tool_catalog(catalog)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _CATALOG_FILE_MODE)
+        fd = os.open(  # resource-lifecycle-ok: 0o600 catalog temp file, closed in finally  # filesystem-write-ok: 0o600 temp file, atomically replaced via os.replace and removed on any failure so a stale snapshot cannot survive a failed publish
+            tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _CATALOG_FILE_MODE
+        )
         try:
             os.write(fd, payload.encode("utf-8"))
         finally:

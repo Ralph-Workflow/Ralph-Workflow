@@ -288,7 +288,9 @@ def build_standalone_http_server(
                 workspace_root,
                 {
                     server.name: [
-                        pt.tool for pt in upstream_reg.tool_definitions() if pt.server_name == server.name
+                        pt.tool
+                        for pt in upstream_reg.tool_definitions()
+                        if pt.server_name == server.name
                     ]
                     for server in upstream_servers
                 },

@@ -105,17 +105,20 @@ def record(root: Path, stage: str) -> None:
             os.write(fd, stage.encode("ascii"))
             # Flush + fsync the temp file so the kernel cannot reorder a
             # subsequent SIGKILL before the bytes hit disk.
-            os.fsync(  # resource-lifecycle-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk  # filesystem-write-ok: durability barrier for the per-spawn stage label — fd-level fsync before rename so the supervisor preflight read cannot miss the stage across a child SIGKILL
+            # filesystem-write-ok: durability barrier for the per-spawn stage label — fd-level fsync before rename so the supervisor preflight read cannot miss the stage across a child SIGKILL
+            os.fsync(  # resource-lifecycle-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk
                 fd
             )
         finally:
             os.close(fd)
+        # filesystem-write-ok: atomic-replace boundary — the stage file must never be observed blank or truncated by the supervisor's preflight read
         tmp_path.replace(path)
         # fsync the directory so the rename itself is durable.
         dir_fd = os.open(  # resource-lifecycle-ok: directory fsync immediately closed in finally  # filesystem-write-ok: durability barrier for the rename so the replaced stage file survives a child SIGKILL
             path.parent, os.O_RDONLY
         )
         try:
+            # filesystem-write-ok: durability barrier for the rename so the replaced stage file survives a child SIGKILL
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
@@ -123,7 +126,7 @@ def record(root: Path, stage: str) -> None:
         # A failed mid-write must leave the previous stage file intact:
         # clean up the temp sibling so no stale ``.tmp`` clutter remains.
         with contextlib.suppress(FileNotFoundError):
-            tmp_path.unlink()
+            tmp_path.unlink()  # filesystem-write-ok: cleanup of the transient .tmp sibling so a failed mid-write leaves no stale clutter
         raise
 
 

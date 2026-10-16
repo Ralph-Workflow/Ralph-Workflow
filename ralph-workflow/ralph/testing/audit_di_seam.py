@@ -22,7 +22,7 @@ PASS 1 — env+open ambient reads
     - ``ralph/mcp/protocol/env.py`` — defines constants; no actual env read.
     - ``ralph/mcp/server/_timing_safety.py`` — imports constants; one-line
       justification.
-    - ``ralph/mcp/server/runtime.py:199`` and ``:242`` — composition root
+    - ``ralph/mcp/server/runtime.py:211`` and ``:389`` — composition root
       that reads ``MCP_*_ENV`` / ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` to wire
       the factory.
     - ``ralph/mcp/websearch/secrets.py:17`` — ``os.getenv`` is used as a
@@ -100,21 +100,21 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # side-effecting implementations are assembled in exactly one place —
     # the composition root." The line numbers shift with docstring edits;
     # the audit must be re-pointed whenever the docstring changes.
-    "mcp/server/runtime.py:199",
-    "mcp/server/runtime.py:242",
+    "mcp/server/runtime.py:211",
+    "mcp/server/runtime.py:389",
     # Composition root for the standalone R1/R2 respawn bridge: reads
     # MCP_INHERITED_FD_ENV (parent-owned listening FD) and MCP_RESPAWN_ENV
     # (respawn sentinel) to adopt the inherited socket and short-circuit
     # upstream discovery. Same composition-root contract as 199/242 above.
-    "mcp/server/runtime.py:397",
-    "mcp/server/runtime.py:421",
-    "mcp/server/runtime.py:406",
-    # mcp/server/_start_stage_tracker.py:38 — import-time spawn identity:
+    "mcp/server/runtime.py:442",
+    "mcp/server/runtime.py:466",
+    "mcp/server/runtime.py:428",
+    # mcp/server/_start_stage_tracker.py:37 — import-time spawn identity:
     # the module reads MCP_STAGE_ID_ENV once at import so parent and
     # child share the per-spawn stage file (R3 fix, commit 3a7d61c4d).
     # This is a composition-root read; the value is consumed exactly
     # once and re-reading it via a seam would not change behavior.
-    "mcp/server/_start_stage_tracker.py:38",
+    "mcp/server/_start_stage_tracker.py:37",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

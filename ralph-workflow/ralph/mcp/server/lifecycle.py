@@ -883,6 +883,7 @@ def start_mcp_server(
     visible_tools = _visible_mcp_tool_names_owned(
         session, workspace, upstream_registry=upstream_registry
     )
+
     # I1b: each spawn resolves the catalog snapshot fresh from the
     # parent-owned cache, so a restart never re-uses a stale snapshot.
     def _resolve_catalog_snapshot() -> UpstreamToolCatalogSnapshot:

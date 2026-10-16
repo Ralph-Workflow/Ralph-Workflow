@@ -73,7 +73,6 @@ class FakeProcess:
 def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
         seen["reserved_socket"] = True
         import socket as _s
@@ -144,7 +143,6 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session-extra-env.json"
         path.write_text("{}", encoding="utf-8")
@@ -204,7 +202,6 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
 
 def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
-
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session-upstream.json"
@@ -492,7 +489,6 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
     preflight_calls: list[str] = []
     spawn_call_count = [0]
 
-
     def fake_create_session_file(root: Path, session: object) -> Path:
         del root, session
         path = tmp_path / f"session-{spawn_call_count[0]}.json"
@@ -731,7 +727,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 
     # Ephemeral port: parallel shards must not collide on a fixed port.
     stable_port = _free_tcp_port()
-
 
     def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
         import socket as _s
@@ -1049,9 +1044,7 @@ def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path
         del command, cwd, env, phase, pass_fds
         return FakeProcess(poll_result=None)
 
-    def failing_preflight(
-        endpoint: str, required_tools: list[str], timeout: timedelta
-    ) -> None:
+    def failing_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
         del endpoint, required_tools, timeout
         msg = "endpoint never became ready"
         raise RuntimeError(msg)

@@ -1488,6 +1488,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         # the production API surface for test convenience only.
         (
             "tests/mcp/test_discovery_aggregate_budget.py",
+            "ralph.mcp.protocol",
+            ("_startup_timeouts",),
+        ),
+        (
+            "tests/mcp/test_discovery_aggregate_budget.py",
             "ralph.mcp.protocol._startup_timeouts",
             ("_PROBE_SAFETY_S",),
         ),
@@ -1512,7 +1517,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # retry classification) where each branch short-circuits to a
         # typed outcome; flattening the branches would obscure the
         # typed control flow.
-        ("ralph/agents/invoke/_direct_mcp_recovery.py", 282),
+        ("ralph/agents/invoke/_direct_mcp_recovery.py", 285),
         # wt-16: ``_start_stage_tracker`` uses a process-lifetime
         # module-level ``_spawn_id`` UUID that ``reset_spawn_id`` and
         # ``record`` must mutate in place; the alternative (a
@@ -1520,7 +1525,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # the bridge to a shared object and break the supervisor's
         # preflight read path. PLW0603 (global-statement) is the ruff
         # diagnostic that names this exception explicitly.
-        ("ralph/mcp/server/_start_stage_tracker.py", 58),
+        ("ralph/mcp/server/_start_stage_tracker.py", 57),
         # wt-16: ``_mcp_health_event`` keeps a process-lifetime
         # module-level ``_DURABLE_SINK_PATH`` scalar set once by the
         # supervisor before the first restart decision is recorded;

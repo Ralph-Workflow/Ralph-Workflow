@@ -530,7 +530,9 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
 
 
 @pytest.mark.timeout_seconds(20)
-def test_absent_or_corrupt_snapshot_fails_closed(tmp_path: Path) -> None:
+def test_absent_or_corrupt_snapshot_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A corrupt parent_catalog.json reads as absent, so the respawn's
     catalog precheck fails CLOSED with the typed McpServerError
     (last_stage=respawn_precheck) instead of probing upstreams.
@@ -545,7 +547,14 @@ def test_absent_or_corrupt_snapshot_fails_closed(tmp_path: Path) -> None:
         # dies before listening.
         deps = lifecycle._default_lifecycle_deps()
         upstream_config = _upstream_config_json(fake_server.port)
-        extras = lifecycle.McpServerExtras(extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config})
+        extras = lifecycle.McpServerExtras(
+            extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config},
+            # The corrupt-snapshot respawn is EXPECTED to fail within
+            # milliseconds (the child exits rc!=0 before serving), so the
+            # production 2 s cooldown only pads the 60 s combined verify
+            # budget; 0.1 s keeps the seconds-based spacing contract alive.
+            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.1),
+        )
 
         catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
         # First start with a NO catalog on disk: the child discovers the fake
@@ -557,7 +566,15 @@ def test_absent_or_corrupt_snapshot_fails_closed(tmp_path: Path) -> None:
                 time.sleep(0.1)
             assert catalog_path.exists(), "first start must publish parent_catalog.json"
 
-            # Corrupt the authoritative disk file AFTER the first start: the
+            # The corrupt-snapshot respawn is EXPECTED to fail within
+            # milliseconds (the child exits rc!=0 before serving), so paying
+            # the default 20 s preflight here only pads the 60 s combined
+            # verify budget. 5 s keeps the import-time invariant
+            # (preflight * share > _PROBE_SAFETY_S) true while bounding the
+            # failure wait. The first start above already ran at the default.
+            monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "5000")
+
+            # Corrupt AFTER the first start: the
             # reader treats malformed JSON as absent (fail-closed contract),
             # so the next spawn must NOT get a usable catalog.
             catalog_path.write_text("{not valid json", encoding="utf-8")
