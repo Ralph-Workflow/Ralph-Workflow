@@ -203,7 +203,12 @@ def test_no_raw_flag_control_flow_in_pipeline() -> None:
     for source in Path("ralph/pipeline/").rglob("*.py"):
         if source.name == "_git_operation_authority.py":
             continue
-        text = source.read_text(encoding="utf-8")
+        # Cheap bytes pre-filter: decode only files mentioning the flags, so
+        # the 1s per-test timeout holds under shard load.
+        raw = source.read_bytes()
+        if b"resolving_merge" not in raw and b"resolving_rebase" not in raw:
+            continue
+        text = raw.decode(encoding="utf-8")
         for pattern in flagged_patterns:
             for match in re.finditer(pattern, text):
                 violations.append(

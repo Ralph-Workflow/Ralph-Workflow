@@ -176,6 +176,11 @@ _IO_ALLOWLIST: set[str] = {
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",
     "test_git_wrapper",
+    # Legacy-restart acceptance test (scenario 8) seeds raw legacy checkpoint
+    # + record bytes into the tmp_git_repo fixture dir so the production
+    # resume read must parse and migrate them; same tmp_git_repo-writes
+    # pattern as the two entries above.
+    "test_legacy_restart_acceptance",
     # Helper backend classes: write_text is a method on a custom backend
     # object (MemoryBackend subclass), not a Path.write_text() call.
     # The audit tool's AST heuristic cannot distinguish these.

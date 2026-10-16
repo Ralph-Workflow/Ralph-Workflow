@@ -188,4 +188,5 @@ class _FakeSpawnIdGetter:
 def _restore_spawn_id(spawn_id: str) -> None:
     """Restore the module-level spawn ID (only for test cleanup)."""
     import ralph.mcp.server._start_stage_tracker as m
+
     m._spawn_id = spawn_id

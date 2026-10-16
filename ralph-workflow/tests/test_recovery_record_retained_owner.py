@@ -30,7 +30,12 @@ def test_no_model_copy_writers_outside_allowed_sites() -> None:
     for path in sorted(RALPH_PIPELINE.rglob("*.py")):
         if path.name in ALLOWED_MODEL_COPY_SITES:
             continue
-        text = path.read_text(encoding="utf-8")
+        # Cheap bytes pre-filter: decode only files that can match, so the
+        # 1s per-test timeout holds under shard load.
+        raw = path.read_bytes()
+        if b"recovery_record_retained" not in raw or b"model_copy" not in raw:
+            continue
+        text = raw.decode(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
             if "recovery_record_retained" in line and "model_copy" in line and "update=" in line:
                 offenders.append(f"{path}:{lineno}: {line.strip()}")
@@ -41,9 +46,10 @@ def test_constructor_true_sites_carry_typed_reason() -> None:
     for path in sorted(RALPH_PIPELINE.rglob("*.py")):
         if path.name in {"rebase_state.py", "run_loop.py"}:
             continue
-        text = path.read_text(encoding="utf-8")
-        if "recovery_record_retained=True" not in text:
+        raw = path.read_bytes()
+        if b"recovery_record_retained=True" not in raw:
             continue
+        text = raw.decode(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
             if "recovery_record_retained=True" in line:
                 window = "\n".join(text.splitlines()[max(0, lineno - 3) : lineno + 3])

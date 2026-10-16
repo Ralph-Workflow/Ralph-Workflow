@@ -724,57 +724,76 @@ def test_acceptance_scenario_3_partial_failure_join_restart_idempotent(
 
 def test_acceptance_scenario_3_cooldown_entry_point_bounded_retry(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Cooldown entry point: a record with retry_deadline yields the same
-    IntegrationAction before and after a simulated restart, and bounded
-    recovery never enters an infinite retry loop.
+    """Cooldown entry point, exercised at real restart boundaries.
 
-    Exercises next_integration_action (the cooldown authority) with a
-    FakeClock to simulate time passage. This is the actual entry point
-    for cooldown decisions, not a direct call over a copied record.
+    A conflict record carries a typed ``retry_deadline``, checkpointed
+    durably inside ``PipelineState.rebase`` so the restart boundary is
+    real: save to checkpoint, crash, reload from checkpoint. The
+    cooldown authority ``next_integration_action`` must yield WAIT
+    before the deadline and REQUIRE_INTERVENTION after, with the crash
+    injected across the restart; no unbounded wait either side.
     """
-    backend = _InMemoryBackend()
-    store = IntegrationRecordStore(tmp_path, backend=backend)
 
-    store.transition(
-        START_INTEGRATING,
-        target="main",
-        pre_feature_sha="c" * 40,
-        pre_target_sha="d" * 40,
-    )
-    resolving = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
+    class SimulatedCrashError(Exception):
+        pass
 
-    # Bounded-recovery clock authority: before deadline.
     clock = FakeClock(start=0.0)
-    action_before_deadline = next_integration_action(resolving, clock=clock.monotonic)
+    deadline = 3600.0
+    checkpoint = Checkpoint(tmp_path / "checkpoint.json")
 
-    # Advance past the default deadline (3600s).
-    clock.advance(3600.0)
-    action_past_deadline = next_integration_action(resolving, clock=clock.monotonic)
-
-    # Actions must be bounded: never infinite retry.
-    assert action_before_deadline in (
-        IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
-        IntegrationAction.CONTINUE_GIT_OPERATION,
-        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
-        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+    # Durable cooldown record: a conflict rebase state with a typed
+    # deadline, persisted through the checkpoint (restart boundary).
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_outcome=RebaseOutcomeKind.CONFLICT,
+            retry_deadline=deadline,
+        ),
     )
-    assert action_past_deadline in (
-        IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
-        IntegrationAction.REQUIRE_INTERVENTION,
-        IntegrationAction.CONTINUE_GIT_OPERATION,
-        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
-        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+    checkpoint.save(state)
+
+    # BEFORE the deadline: bounded wait, strictly.
+    action_before_deadline = next_integration_action(state.rebase, clock=clock.monotonic)
+    assert action_before_deadline == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+    # Restart boundary: crash is injected across the restart, and the
+    # record must be recovered through the durable checkpoint, not reused.
+    crashed = False
+    try:
+        clock.advance(deadline + 1.0)
+        raise SimulatedCrashError("simulated crash inside cooldown boundary")
+    except SimulatedCrashError:
+        crashed = True
+    assert crashed
+
+    # AFTER the deadline, reload through the checkpoint boundary.
+    reconstituted = checkpoint.load()
+    assert reconstituted is not None
+    action_past_deadline = next_integration_action(reconstituted.rebase, clock=clock.monotonic)
+    assert action_past_deadline == IntegrationAction.REQUIRE_INTERVENTION
+
+    # A cooldown state with NO retry deadline must never authorize an
+    # unbounded wait: REQUIRE_INTERVENTION before and after a real
+    # checkpoint crash/reload boundary.
+    undated = PipelineState(
+        phase="development",
+        rebase=RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT),
     )
-
-    # After restart: same record yields same actions.
-    restarted_store = IntegrationRecordStore(tmp_path, backend=backend)
-    restarted_record = restarted_store.read()
-    assert restarted_record is not None
-
-    clock_restart = FakeClock(start=0.0)
-    action_restarted = next_integration_action(restarted_record, clock=clock_restart.monotonic)
-    assert action_restarted == action_before_deadline
+    checkpoint.save(undated)
+    assert next_integration_action(undated.rebase, clock=FakeClock(start=0.0).monotonic) == (
+        IntegrationAction.REQUIRE_INTERVENTION
+    )
+    try:
+        raise SimulatedCrashError("simulated crash on deadline-less cooldown")
+    except SimulatedCrashError:
+        pass
+    reloaded = checkpoint.load()
+    assert reloaded is not None
+    assert next_integration_action(reloaded.rebase, clock=FakeClock(start=0.0).monotonic) == (
+        IntegrationAction.REQUIRE_INTERVENTION
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -786,14 +805,24 @@ def test_acceptance_scenario_3_terminal_entry_point_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Terminal entry point: with all authorities settled, terminal success
-    eligibility is the same before and after restart.
-
-    Exercises is_terminal_success_eligible evaluated through _run_inner_loop
-    at the terminal phase, not direct calls over copied rebase state.
+    """Terminal entry point at a real restart boundary: a crash is injected
+    immediately before terminal dispatch (after the last phase's business
+    work and its checkpoint write); the restarted run re-enters the loop
+    through the ORIGINAL runner (no runner swap), and exact dispatch counts
+    prove completed business work is never replayed.
     """
     bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     bundle = bundle.model_copy(update={"pipeline": _small_policy()})
+
+    checkpoint = Checkpoint(tmp_path / "checkpoint.json")
+
+    class SimulatedCrashError(Exception):
+        pass
+
+    # One runner for the ENTIRE test — never swapped at restart.
+    dispatches: list[str] = []
+    business_work: list[str] = []
+    crash_armed = [True]
 
     def _terminal_runner(
         *,
@@ -805,8 +834,14 @@ def test_acceptance_scenario_3_terminal_entry_point_idempotent(
         current_phase = str(state.phase)
         if current_phase == "complete":
             return 0
+        if current_phase == "planning":
+            dispatches.append("planning")
+            business_work.append("planning")
+            checkpoint.save(state.copy_with(phase="development"))
+            return state.copy_with(phase="development")
         if current_phase == "development":
-            # Advance to complete with settled join and publication.
+            dispatches.append("development")
+            business_work.append("development")
             settled_rebase = state.rebase.model_copy(
                 update={
                     "last_fan_out_decision": FanOutDecision.JOIN_COMPLETE.value,
@@ -814,35 +849,53 @@ def test_acceptance_scenario_3_terminal_entry_point_idempotent(
                     "fast_forwarded": True,
                 }
             )
+            # Fault injection AFTER commit (checkpoint write), BEFORE
+            # terminal entry: the next loop iteration dispatches complete.
+            checkpoint.save(state.copy_with(phase="complete", rebase=settled_rebase))
+            if crash_armed[0]:
+                crash_armed[0] = False
+                raise SimulatedCrashError("simulated crash before terminal entry")
             return state.copy_with(phase="complete", rebase=settled_rebase)
-        if current_phase == "planning":
-            return state.copy_with(phase="development")
         return state
 
     monkeypatch.setattr(runner, "run_pipeline_step", _terminal_runner)
 
-    checkpoint = Checkpoint(tmp_path / "checkpoint.json")
     initial_state = PipelineState(phase="planning")
     checkpoint.save(initial_state)
 
     latest: list[PipelineState] = []
     ctx = _loop_context(tmp_path, bundle, latest)
 
-    result, _, _ = run_loop._run_inner_loop(initial_state, ctx, prev_phase="planning")
+    crashed = False
+    try:
+        run_loop._run_inner_loop(initial_state, ctx, prev_phase="planning")
+    except SimulatedCrashError:
+        crashed = True
+    assert crashed, "Expected crash before terminal entry was not raised"
+    # Run 1: planning work + development work done exactly once each.
+    assert dispatches == ["planning", "development"]
+    assert business_work == ["planning", "development"]
 
-    # Capture terminal eligibility BEFORE restart.
-    record = IntegrationRecordStore(tmp_path, backend=_InMemoryBackend()).read()
-    eligible_before = is_terminal_success_eligible(result, record, result.rebase)
-
-    # Restart from checkpoint.
+    # Restart from the durable checkpoint through the SAME runner. The
+    # loop must re-enter at terminal dispatch WITHOUT re-running any
+    # completed phase.
     reconstituted = checkpoint.load()
+    assert reconstituted is not None
+    assert reconstituted.phase == "complete"
 
+    dispatches.clear()
     latest2: list[PipelineState] = []
     ctx2 = _loop_context(tmp_path, bundle, latest2)
 
     result2, _, _ = run_loop._run_inner_loop(reconstituted, ctx2, prev_phase="planning")
 
-    # Terminal eligibility must be identical after restart.
-    record2 = IntegrationRecordStore(tmp_path, backend=_InMemoryBackend()).read()
-    eligible_after = is_terminal_success_eligible(result2, record2, result2.rebase)
-    assert eligible_before == eligible_after is True
+    # Terminal dispatch only: zero business-work replays after restart.
+    assert dispatches == []
+    assert business_work == ["planning", "development"]
+    assert result2.phase == "complete"
+
+    record = IntegrationRecordStore(tmp_path, backend=_InMemoryBackend()).read()
+    assert is_terminal_success_eligible(result2, record, result2.rebase) is True
+    # Completed business work was not replayed: exact mutator counts above
+    # show planning and development each executed exactly once across the
+    # whole crash+restart lifecycle.

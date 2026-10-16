@@ -45,8 +45,12 @@ from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
-from ralph.pipeline._integration_action import RebaseOutcomeKind, next_integration_action
-from ralph.pipeline._pipeline_state_machine import decide_phase_transition
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    RebaseOutcomeKind,
+    next_integration_action,
+)
+from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
@@ -1863,6 +1867,9 @@ def _start_phase_telemetry(
     return role, drain, PhaseTimer.start(state.phase)
 
 
+_KNOWN_INTEGRATION_ACTIONS: frozenset[IntegrationAction] = frozenset(IntegrationAction)
+
+
 def _apply_step_integration_outcome(
     next_state: PipelineState,
     workspace_scope: WorkspaceScope,
@@ -1874,17 +1881,47 @@ def _apply_step_integration_outcome(
     reconciled_rebase = _reconcile_rebase_if_live_resolved(workspace_scope, auto_integrate_outcome)
     record = read_record(workspace_scope.root)
     if record is not None or reconciled_rebase.recovery_record_retained:
-        # The typed authority still computes the step decision; the reducer
-        # is the single last_decision writer and re-persists it on the next
-        # reduce. Behavior is unchanged: the decision is derived, only the
-        # direct write is gone.
-        next_integration_action(record)
-        decide_phase_transition(
+        action = next_integration_action(record)
+        decision = decide_phase_transition(
             next_state,
             policy_bundle.pipeline,
             integration_record=record,
             rebase_state=reconciled_rebase,
         )
+        # Consume the typed decisions instead of discarding them. The
+        # reducer stays the single last_decision writer; here the runner
+        # only acts on the decision by surfacing intervention or blocking
+        # the operator display state, and it fails closed on the closed
+        # vocabularies (UNKNOWN action / unrecognized decision) rather
+        # than inventing behavior.
+        if action is IntegrationAction.REQUIRE_INTERVENTION or (
+            record is not None and record.diagnostic_intervention_required
+        ):
+            reconciled_rebase = reconciled_rebase.model_copy(
+                update={"operation_display_state": "intervention_required"}
+            )
+        elif action not in _KNOWN_INTEGRATION_ACTIONS:
+            raise ValueError(f"Unknown integration action: {action!r}")
+        if decision not in (
+            PhaseDecision.CONTINUE_PHASE,
+            PhaseDecision.ADVANCE_PHASE,
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            PhaseDecision.REPORT_TERMINAL_SUCCESS,
+            PhaseDecision.REPORT_TERMINAL_FAILURE,
+            PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+        ):  # pragma: no cover - enum exhaustiveness guard
+            raise ValueError(f"Unknown phase decision: {decision!r}")
+        if (
+            decision
+            in (
+                PhaseDecision.BLOCK_FOR_RECOVERY,
+                PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+            )
+            and reconciled_rebase.operation_display_state != "intervention_required"
+        ):
+            reconciled_rebase = reconciled_rebase.model_copy(
+                update={"operation_display_state": "waiting"}
+            )
     return next_state.copy_with(rebase=reconciled_rebase)
 
 
@@ -1898,17 +1935,27 @@ def _handle_blocked_dispatch_recovery(
     if not isinstance(exc, IntegrationDispatchBlockedError):
         return recovered_state
     record = read_record(workspace_scope.root)
-    # The typed authority still computes the blocking decision; the reducer
-    # is the single last_decision writer and re-persists it on the next
-    # reduce. Behavior is unchanged: the decision is derived, only the
-    # direct write is gone.
-    next_integration_action(record)
-    decide_phase_transition(
+    action = next_integration_action(record)
+    decision = decide_phase_transition(
         timed_state,
         pipeline_policy,
         integration_record=record,
         rebase_state=timed_state.rebase,
     )
+    # Consume the typed decisions: only a genuinely blocking/intervention
+    # verdict retains the recovery record; an authoritative terminal-success
+    # verdict means the dispatch block is stale and recovery retention would
+    # fabricate an obligation the authorities do not support. Unknown
+    # vocabulary values fail closed to intervention retention.
+    if decision is PhaseDecision.REPORT_TERMINAL_SUCCESS and action not in (
+        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+        IntegrationAction.CONTINUE_GIT_OPERATION,
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+        IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+        IntegrationAction.LAND_TARGET,
+        IntegrationAction.REQUIRE_INTERVENTION,
+    ):
+        return recovered_state
     return recovered_state.copy_with(
         rebase=recovered_state.rebase.set_recovery_record_retained(
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK

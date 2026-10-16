@@ -53,8 +53,13 @@ def test_complete_commit_threads_extra_fields() -> None:
     assert completion.record.reintegrate_pending is False
 
 
+_STRAY_LITERAL = b'phase="integrated"'
+
+
 def _has_stray_literal(rel: str) -> bool:
-    return 'phase="integrated"' in REPO.joinpath(rel).read_text(encoding="utf-8")
+    # Bytes scan avoids decoding ~1500 source files; the 1s per-test timeout
+    # must hold even under full shard load.
+    return _STRAY_LITERAL in REPO.joinpath(rel).read_bytes()
 
 
 def test_no_stray_phase_integrated_literals() -> None:

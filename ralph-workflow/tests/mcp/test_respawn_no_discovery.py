@@ -50,9 +50,7 @@ def _make_counting_factory(
 def test_respawn_with_cached_catalog_makes_zero_discovery_calls() -> None:
     counter: list[int] = []
     factory = _make_counting_factory(counter)
-    server = UpstreamMcpServer(
-        name="remote", transport="http", url="http://unused.example/mcp"
-    )
+    server = UpstreamMcpServer(name="remote", transport="http", url="http://unused.example/mcp")
     initial = UpstreamRegistry.build([server], client_factory=factory)
     initial_count = len(counter)
     assert initial_count == 1
@@ -67,9 +65,7 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls() -> None:
 def test_respawn_factory_never_called_for_cached_servers() -> None:
     counter: list[int] = []
     factory = _make_counting_factory(counter)
-    server = UpstreamMcpServer(
-        name="remote", transport="http", url="http://unused.example/mcp"
-    )
+    server = UpstreamMcpServer(name="remote", transport="http", url="http://unused.example/mcp")
     catalog = {
         server.name: [
             UpstreamTool(name="alpha", description="seeded", input_schema={"type": "object"})
@@ -81,9 +77,7 @@ def test_respawn_factory_never_called_for_cached_servers() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_respawn_via_tool_catalog_serves_one_tool() -> None:
-    server = UpstreamMcpServer(
-        name="remote", transport="http", url="http://unused.example/mcp"
-    )
+    server = UpstreamMcpServer(name="remote", transport="http", url="http://unused.example/mcp")
     catalog = {
         server.name: [
             UpstreamTool(name="alpha", description="seeded", input_schema={"type": "object"})

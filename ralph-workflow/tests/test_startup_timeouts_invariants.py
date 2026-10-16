@@ -163,6 +163,7 @@ class TestProbeSafetyConstantExistence:
     def test_probe_safety_s_is_exported(self) -> None:
         # The brief requires _PROBE_SAFETY_S as a consumable constant
         from ralph.mcp.protocol._startup_timeouts import _PROBE_SAFETY_S
+
         assert _PROBE_SAFETY_S == 2.0
 
     def test_probe_safety_s_is_float(self) -> None:

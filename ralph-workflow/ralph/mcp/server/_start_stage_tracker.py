@@ -84,7 +84,7 @@ def record(root: Path, stage: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # ``O_TRUNC`` is required so a stale label from the same spawn's
     # prior stage does not survive a fast respawn within the same run.
-    fd = os.open(  # filesystem-write-ok: small per-bridge startup-stage file, lifecycle-bounded
+    fd = os.open(  # resource-lifecycle-ok: small per-bridge startup-stage file, lifecycle-bounded by try/finally close  # filesystem-write-ok: per-spawn stage label requires O_TRUNC-on-fd so a stale same-spawn label never survives a fast respawn — the canonical idempotent_write primitives do not expose O_TRUNC semantics
         path,
         os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
         0o644,
@@ -93,7 +93,7 @@ def record(root: Path, stage: str) -> None:
         os.write(fd, stage.encode("ascii"))
         # Flush + fsync so the kernel cannot reorder a subsequent
         # SIGKILL before the bytes hit disk.
-        os.fsync(  # filesystem-write-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk
+        os.fsync(  # resource-lifecycle-ok: atomic-replace boundary — durability barrier so SIGKILL cannot lose the stage label before disk  # filesystem-write-ok: durability barrier for the per-spawn stage label — fd-level fsync before close so the supervisor preflight read cannot miss the stage across a child SIGKILL
             fd
         )
     finally:

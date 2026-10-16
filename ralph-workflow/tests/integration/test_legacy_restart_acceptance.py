@@ -1,30 +1,36 @@
 """Acceptance Scenario 8: legacy representation migration on restart.
 
-Write a contradicting legacy checkpoint + integration record pair to
-disk (checkpoint claims ``development``, the legacy record claims
-``integrating`` with repository-global ``ls-files`` evidence), then
-restart via the public parse/load paths. Migration must resolve to
-exactly one authoritative state -- explicit
-``RAISE_DIAGNOSTIC_INTERVENTION`` for the legacy global-evidence
-record -- and never merge contradictory truths heuristically.
+Seed a contradicting legacy checkpoint + integration record pair as RAW
+disk bytes (checkpoint claims ``development``, the legacy record claims
+``integrating`` with legacy evidence keys), then restart through the
+production startup/recovery path — the same ``Checkpoint.load`` resume
+read and the same ``read_record`` recovery preamble
+(``recover_incomplete_integration``) that ``run_loop`` startup uses.
+Migration must resolve to exactly one authoritative state — explicit
+intervention with business dispatch blocked for the legacy
+repository-global ``ls-files`` record — and never merge contradictory
+truths heuristically.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
-from ralph.pipeline.auto_integrate_record import read_record, record_path
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline.auto_integrate_record import read_record
+from ralph.pipeline.auto_integrate_recovery import (
+    recover_incomplete_integration,
+    recovery_retained_record,
+)
 from ralph.pipeline.checkpoint import Checkpoint
-from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.reducer import reduce
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.workspace.scope import WorkspaceScope
 
-_VALID_PHASES = frozenset({"integrating", "integrated"})
+if TYPE_CHECKING:
+    from ralph.pipeline.rebase_state import RebaseState
 
 #: Legacy record payload: phase claims an in-flight integration while the
 #: checkpoint below claims development, and the diagnostic evidence carries
@@ -53,148 +59,130 @@ _LEGACY_DICT_EVIDENCE_PAYLOAD: dict[str, object] = {
     },
 }
 
+_CONFIG = UnifiedConfig.model_validate(
+    {
+        "general": {
+            "auto_integrate_target": "main",
+            "auto_integrate_remote_enabled": False,
+        }
+    }
+)
 
-def _policy() -> PipelinePolicy:
-    return PipelinePolicy(
-        phases={
-            "development": PhaseDefinition(
-                drain="development",
-                transitions=PhaseTransition(
-                    on_success="complete",
-                    on_loopback="development",
-                ),
-            ),
-        },
-        entry_phase="development",
-        terminal_phase="complete",
+
+def _seed_raw_legacy_pair(
+    root: Path,
+    payload: dict[str, object],
+    *,
+    checkpoint_payload: dict[str, object] | None = None,
+) -> None:
+    """Write raw legacy checkpoint + record bytes directly under ``root``.
+
+    Bypasses ``Checkpoint.save`` and ``write_record`` so the production
+    resume read (``Checkpoint.load``) and the recovery preamble
+    (``read_record`` inside ``recover_incomplete_integration``) must
+    parse and migrate the legacy bytes on restart, exactly as a real
+    process restart does.
+    """
+    agent_dir = root / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "checkpoint.json").write_text(
+        json.dumps(checkpoint_payload or {"phase": "development"}), encoding="utf-8"
+    )
+    (agent_dir / "auto_integrate_in_progress.json").write_text(
+        json.dumps(payload), encoding="utf-8"
     )
 
 
-def _write_raw_legacy_record(tmp_path: Path, payload: dict[str, object]) -> None:
-    """Write raw legacy record bytes directly to disk — no pre-migration.
+def _restart_via_production_recovery(root: Path) -> tuple[RebaseState, Path]:
+    """Restart via the production startup/recovery seam.
 
-    Bypasses write_record so the public read_record boundary must parse
-    and migrate the legacy bytes on restart, exercising the full
-    parse_record_payload codepath that the production startup uses.
+    Loads the pipeline checkpoint through the same resume path
+    ``run._load_configuration`` uses and runs the same recovery preamble
+    ``run_loop._run_auto_integrate_recovery_preamble`` runs before the
+    dispatch loop.
     """
-    path = record_path(tmp_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-
-def _write_contradicting_legacy_pair(tmp_path: Path, payload: dict[str, object]) -> Path:
-    """Persist a legacy checkpoint claiming ``development`` alongside a
-    legacy integration record claiming ``integrating``.
-
-    Both artifacts live under the isolated ``tmp_path`` storage so the
-    restart below reads exactly what was written — no repo-global paths,
-    no unused backends.
-
-    The record is written as raw legacy JSON so read_record (the public
-    startup/recovery boundary) must parse and migrate it on restart.
-    """
-    checkpoint_path = tmp_path / "checkpoint.json"
-    checkpoint = Checkpoint(checkpoint_path)
-    checkpoint.save(PipelineState(phase="development"))
-
-    _write_raw_legacy_record(tmp_path, payload)
-    return checkpoint_path
-
-
-def test_legacy_restart_intervention_record_is_single_authority(tmp_path: Path) -> None:
-    """Contradicting legacy pair with global evidence resolves to explicit
-    intervention; the record wins over the checkpoint's ``development``."""
-    checkpoint_path = _write_contradicting_legacy_pair(tmp_path, _LEGACY_INTERVENTION_PAYLOAD)
-
-    # Restart: reload checkpoint and record through public load paths.
-    checkpoint = Checkpoint(checkpoint_path)
-    reloaded = checkpoint.load()
+    checkpoint_path = root / ".agent" / "checkpoint.json"
+    reloaded = Checkpoint(checkpoint_path).load()
     assert reloaded is not None
     assert reloaded.phase == "development"
 
-    persisted = read_record(tmp_path)
-    assert persisted is not None
-    # (a) Migration lands on exactly one closed phase value -- no merged
-    # hybrid truth between checkpoint and record.
-    assert persisted.phase in _VALID_PHASES
+    recovered = recover_incomplete_integration(WorkspaceScope(root), config=_CONFIG)
+    assert recovered is not None
+    return recovered, checkpoint_path
+
+
+def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Path) -> None:
+    """Contradicting legacy pair with global evidence resolves to explicit
+    intervention through the production recovery path; the record wins over
+    the checkpoint's ``development`` and blocks business dispatch."""
+    _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_INTERVENTION_PAYLOAD)
+
+    recovered, _ = _restart_via_production_recovery(tmp_git_repo)
+
+    # (a) Recovery retained the durable record: exactly one authoritative
+    # state, no merged hybrid truth between checkpoint and record.
+    assert recovery_retained_record(recovered) is True
+
     # The legacy repository-global evidence forces explicit intervention,
-    # never a heuristic merge that would drop the fingerprint.
-    assert persisted.diagnostic_intervention_required is True
-
-    policy = _policy()
-    state = PipelineState(phase=reloaded.phase, rebase=RebaseState())
-    new_state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=persisted)
-
-    # (b) The reducer is the single writer for last_decision: it equals the
-    # decide_phase_transition output computed over the resulting state.
-    decision = decide_phase_transition(
-        new_state,
-        policy,
-        integration_record=persisted,
-        rebase_state=new_state.rebase,
-    )
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
-    assert new_state.rebase.last_decision == decision.value
-
-
-def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_path: Path) -> None:
-    """Contradicting legacy pair with dictionary evidence migrates cleanly;
-    the record still blocks recovery as the single authority."""
-    checkpoint_path = _write_contradicting_legacy_pair(tmp_path, _LEGACY_DICT_EVIDENCE_PAYLOAD)
-
-    checkpoint = Checkpoint(checkpoint_path)
-    reloaded = checkpoint.load()
-    assert reloaded is not None
-
-    persisted = read_record(tmp_path)
+    # never a heuristic merge that would drop the fingerprint. The raw
+    # ``ls-files`` key is preserved for the operator.
+    persisted = read_record(tmp_git_repo)
     assert persisted is not None
-    assert persisted.phase in _VALID_PHASES
+    assert persisted.phase == "integrating"
+    assert persisted.diagnostic_intervention_required is True
+    assert ("ls-files", "some_tracked_files") in persisted.diagnostic_evidence
+
+    # (b) No business dispatch: the authoritative verdict over the recovery
+    # outcome blocks ordinary phase dispatch while the record is retained.
+    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
+    assert verdict.dispatch_allowed is False
+
+
+def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Path) -> None:
+    """Contradicting legacy pair with dictionary evidence migrates cleanly
+    through the production recovery path; the record still blocks recovery
+    and business dispatch as the single authority."""
+    _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_DICT_EVIDENCE_PAYLOAD)
+
+    recovered, _ = _restart_via_production_recovery(tmp_git_repo)
+
+    persisted = read_record(tmp_git_repo)
+    assert persisted is not None
+    assert persisted.phase == "integrating"
     assert not persisted.diagnostic_intervention_required
     evidence = dict(persisted.diagnostic_evidence)
     assert evidence.get("unstaged_work") == "unstaged diff"
     assert evidence.get("commit_controls") == "controls data"
 
-    policy = _policy()
-    state = PipelineState(phase=reloaded.phase, rebase=RebaseState())
-    new_state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=persisted)
-
-    decision = decide_phase_transition(
-        new_state,
-        policy,
-        integration_record=persisted,
-        rebase_state=new_state.rebase,
-    )
-    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
-    assert new_state.rebase.last_decision == decision.value
+    # The record is still the single recovery authority: it is retained and
+    # ordinary dispatch stays blocked until recovery finishes.
+    assert recovery_retained_record(recovered) is True
+    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
+    assert verdict.dispatch_allowed is False
 
 
-def test_policy_defaults_bundle_consistent(tmp_path: Path) -> None:
-    """The default policy bundle loads and the decision authority stays pure
-    over the migrated record regardless of pre-seeded last_decision."""
+def test_policy_defaults_bundle_consistent(tmp_git_repo: Path) -> None:
+    """The default policy bundle loads and a stale pre-seeded
+    ``last_decision`` in the legacy checkpoint does not survive the
+    production restart: the recovery preamble recomputes the authoritative
+    decision from the retained record."""
     bundle = load_policy(Path(__file__).parents[2] / "ralph" / "policy" / "defaults")
     assert bundle.pipeline is not None
 
-    _write_contradicting_legacy_pair(tmp_path, _LEGACY_INTERVENTION_PAYLOAD)
-    persisted = read_record(tmp_path)
-    assert persisted is not None
+    _seed_raw_legacy_pair(
+        tmp_git_repo,
+        _LEGACY_INTERVENTION_PAYLOAD,
+        checkpoint_payload={
+            "phase": "development",
+            "rebase": {"last_decision": "continue_phase"},
+        },
+    )
+    recovered, _ = _restart_via_production_recovery(tmp_git_repo)
 
-    policy = bundle.pipeline
-    poisoned = PipelineState(
-        phase="development",
-        rebase=RebaseState().model_copy(
-            update={"last_decision": PhaseDecision.CONTINUE_PHASE.value}
-        ),
-    )
-    new_state, _ = reduce(
-        poisoned, PipelineEvent.AGENT_SUCCESS, policy, integration_record=persisted
-    )
-    decision = decide_phase_transition(
-        new_state,
-        policy,
-        integration_record=persisted,
-        rebase_state=new_state.rebase,
-    )
     # A stale pre-seeded last_decision must not survive the restart: the
-    # reducer recomputes from current authority outputs only.
-    assert new_state.rebase.last_decision == decision.value
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    # recovery outcome recomputes from current authority outputs only.
+    assert recovered.last_decision != "continue_phase"
+    assert recovered.last_decision == "block_for_recovery"
+    assert recovery_retained_record(recovered) is True
+    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
+    assert verdict.dispatch_allowed is False

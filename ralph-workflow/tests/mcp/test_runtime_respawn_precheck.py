@@ -107,12 +107,15 @@ def test_respawn_without_catalog_raises_before_discovery() -> None:
     counter: list[int] = []
     servers = [_make_upstream_server("remote")]
 
-    with patch(
-        "ralph.mcp.server.runtime.load_upstream_mcp_servers",
-        return_value=servers,
-    ), patch(
-        "ralph.mcp.upstream.registry.make_upstream_client",
-        _make_client_factory(counter),
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
     ):
         from ralph.mcp.server.runtime import build_standalone_http_server
 
@@ -191,15 +194,19 @@ def test_respawn_with_catalog_uses_build_from_tool_catalog() -> None:
     servers = [_make_upstream_server("remote")]
     catalog_tool = UpstreamTool(name="alpha", description="d")
     catalog: dict[str, list[UpstreamTool]] = {"remote": [catalog_tool]}
-    with patch(
-        "ralph.mcp.server.runtime.load_upstream_mcp_servers",
-        return_value=servers,
-    ), patch(
-        "ralph.mcp.server.runtime.load_upstream_tool_catalog",
-        return_value=catalog,
-    ), patch(
-        "ralph.mcp.upstream.registry.make_upstream_client",
-        _make_client_factory(counter),
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_tool_catalog",
+            return_value=catalog,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
     ):
         from ralph.mcp.server.runtime import build_standalone_http_server
 

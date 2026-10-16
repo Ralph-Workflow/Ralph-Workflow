@@ -159,8 +159,7 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
     # eligible agent" agent-switch wording - it's infrastructure-accurate
     # for the typed failure itself, not an agent-switch signal.
     diagnostic = (
-        f"retry cooldown exhausted after {consecutive_failures} "
-        "identical failure signatures"
+        f"retry cooldown exhausted after {consecutive_failures} identical failure signatures"
     )
     exc.add_note(diagnostic)
     return exc

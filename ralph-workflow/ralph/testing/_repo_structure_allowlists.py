@@ -290,6 +290,24 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         # scatter the focal evidence checks across files with no
         # testable boundary, so the existing grouping is intentional.
         "tests/test_multimodal_evidence.py",
+        # wt-16: MCP respawn health-event module. ``RestartReason`` (enum)
+        # and ``RestartDecision`` (frozen outcome record) are one typed
+        # outcome family for the respawn supervisor: the enum names why a
+        # restart was decided, the record carries the decision to the
+        # preflight bridge. Splitting them would force the supervisor and
+        # the event emitter to import each other across modules.
+        "ralph/mcp/server/_mcp_health_event.py",
+        # wt-16: MCP discovery preflight budget suite. The constant-pinning
+        # class and the aggregate-enforcement class are one feature family
+        # (probe-budget accounting); co-locating them keeps the budget
+        # constant and its enforcement semantics in one readable file.
+        "tests/mcp/test_discovery_aggregate_budget.py",
+        # wt-16: startup-timeout invariant suite. The four Test* classes
+        # pin independent invariants (import-time, probe-timeout defaults,
+        # undersized preflight, safety constant) of the same
+        # ``_startup_timeouts`` module; each class is one invariant and
+        # they share the module-under-test seam.
+        "tests/test_startup_timeouts_invariants.py",
     }
 )
 
@@ -1444,6 +1462,27 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.project_policy.validators",
             ("_validate_existing_policy_file",),
         ),
+        # wt-16: the invariant suites pin the exact private constants the
+        # production modules define (``_PROBE_SAFETY_S`` export contract,
+        # ``_EVENTS`` health-event ledger). The assertions are the
+        # regression contract; importing the public package would not
+        # expose these names, and re-exporting them for tests would widen
+        # the production API surface for test convenience only.
+        (
+            "tests/mcp/test_discovery_aggregate_budget.py",
+            "ralph.mcp.protocol._startup_timeouts",
+            ("_PROBE_SAFETY_S",),
+        ),
+        (
+            "tests/mcp/test_preflight_error_carries_stage_and_elapsed.py",
+            "ralph.mcp.server._mcp_health_event",
+            ("_EVENTS",),
+        ),
+        (
+            "tests/test_startup_timeouts_invariants.py",
+            "ralph.mcp.protocol._startup_timeouts",
+            ("_PROBE_SAFETY_S",),
+        ),
     }
 )
 
@@ -1455,7 +1494,15 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # retry classification) where each branch short-circuits to a
         # typed outcome; flattening the branches would obscure the
         # typed control flow.
-        ("ralph/agents/invoke/_direct_mcp_recovery.py", 274),
+        ("ralph/agents/invoke/_direct_mcp_recovery.py", 282),
+        # wt-16: ``_start_stage_tracker`` uses a process-lifetime
+        # module-level ``_spawn_id`` UUID that ``reset_spawn_id`` and
+        # ``record`` must mutate in place; the alternative (a
+        # class-based wrapper) would couple every reader/writer across
+        # the bridge to a shared object and break the supervisor's
+        # preflight read path. PLW0603 (global-statement) is the ruff
+        # diagnostic that names this exception explicitly.
+        ("ralph/mcp/server/_start_stage_tracker.py", 50),
         # wt-14: ``_validate_decision_contract`` returns one branch per
         # analysis-decision artifact type; the function is the shared
         # contract used by planning / development / policy / review

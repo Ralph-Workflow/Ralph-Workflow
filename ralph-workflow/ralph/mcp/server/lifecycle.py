@@ -481,9 +481,7 @@ class RestartAwareMcpBridge:
             log_tail = self._read_mcp_log_tail()
             _record_restart_decision(
                 reason=(
-                    RestartReason.PROCESS_EXITED
-                    if not probe_failed
-                    else RestartReason.PROBE_FAILED
+                    RestartReason.PROCESS_EXITED if not probe_failed else RestartReason.PROBE_FAILED
                 ),
                 exit_status=self._inner.process.poll() if process_exited else None,
                 probe_duration_s=probe_duration_s if probe_failed else None,

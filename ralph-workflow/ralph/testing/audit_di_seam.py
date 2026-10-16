@@ -106,8 +106,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # MCP_INHERITED_FD_ENV (parent-owned listening FD) and MCP_RESPAWN_ENV
     # (respawn sentinel) to adopt the inherited socket and short-circuit
     # upstream discovery. Same composition-root contract as 199/242 above.
-    "mcp/server/runtime.py:365",
-    "mcp/server/runtime.py:389",
+    "mcp/server/runtime.py:367",
+    "mcp/server/runtime.py:391",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

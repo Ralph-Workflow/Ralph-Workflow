@@ -221,6 +221,12 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # those module-level scalars in-place via `global`, which ruff
     # flags as PLW0603.
     ("_terminal_bg_query", "PLW0603"),
+    # _start_stage_tracker.py: per-spawn identity is a process-lifetime
+    # scalar (UUID4) that ``reset_spawn_id`` and ``record`` must mutate
+    # in place; the alternative (a class-based wrapper) would couple
+    # every reader/writer across the bridge to a shared object and
+    # break the supervisor's preflight read path.
+    ("_start_stage_tracker", "PLW0603"),
     # wt-024 memory-perf: the bounded-accumulator-ok marker must live
     # on the same physical line as the assignment so the
     # audit_resource_lifecycle AST marker scan finds it. When the

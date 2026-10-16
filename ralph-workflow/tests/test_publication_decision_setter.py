@@ -38,9 +38,12 @@ def _writer_sites() -> list[str]:
     for path in sorted(RALPH_ROOT.rglob("*.py")):
         if path.name == "rebase_state.py":
             continue
-        source = path.read_text(encoding="utf-8")
-        if "last_publication_decision" not in source:
+        # Cheap bytes pre-filter: decode + parse only files that mention the
+        # field at all, so the 1s per-test timeout holds under shard load.
+        raw = path.read_bytes()
+        if b"last_publication_decision" not in raw:
             continue
+        source = raw.decode(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, ast.keyword) and node.arg == "last_publication_decision":
