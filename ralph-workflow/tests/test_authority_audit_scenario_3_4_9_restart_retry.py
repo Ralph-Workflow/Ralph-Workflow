@@ -222,9 +222,7 @@ def test_unreadable_evidence_dispatch_blocked_visible_intervention(
     state = PipelineState(phase="development", rebase=outcome)
     loaded = record_file.read_bytes()  # confirm bytes untouched
     assert loaded == original_bytes
-    decision = decide_phase_transition(
-        state, None, integration_record=None, rebase_state=outcome
-    )
+    decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
     assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
 
 
@@ -242,39 +240,59 @@ def test_exhausted_recovery_no_replenishment_after_restart(
     cap = 5
     # Make tmp_path a real git repository so the recovery boundary
     # can run end-to-end; the test is about the counter, not git.
-    assert subprocess.run(
-        ("git", "init", "-b", "main"),
-        cwd=tmp_path,
-        capture_output=True,
-        check=False,
-        env={**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@x",
-             "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@x"},
-    ).returncode == 0
-    assert subprocess.run(
-        ("git", "config", "user.name", "T"),
-        cwd=tmp_path,
-        capture_output=True,
-        check=False,
-    ).returncode == 0
-    assert subprocess.run(
-        ("git", "config", "user.email", "t@x"),
-        cwd=tmp_path,
-        capture_output=True,
-        check=False,
-    ).returncode == 0
+    assert (
+        subprocess.run(
+            ("git", "init", "-b", "main"),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+            env={
+                **os.environ,
+                "GIT_AUTHOR_NAME": "T",
+                "GIT_AUTHOR_EMAIL": "t@x",
+                "GIT_COMMITTER_NAME": "T",
+                "GIT_COMMITTER_EMAIL": "t@x",
+            },
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "config", "user.name", "T"),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "config", "user.email", "t@x"),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
     (tmp_path / "shared.txt").write_text("base\n", encoding="utf-8")
-    assert subprocess.run(
-        ("git", "add", "shared.txt"),
-        cwd=tmp_path,
-        capture_output=True,
-        check=False,
-    ).returncode == 0
-    assert subprocess.run(
-        ("git", "commit", "-m", "init"),
-        cwd=tmp_path,
-        capture_output=True,
-        check=False,
-    ).returncode == 0
+    assert (
+        subprocess.run(
+            ("git", "add", "shared.txt"),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "commit", "-m", "init"),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
     _write_seeded_record(
         tmp_path,
         extra={

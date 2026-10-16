@@ -110,11 +110,7 @@ def _queued_connection_served_after_respawn(bridge: object, endpoint: str) -> st
         assert bridge.restart_count == 1, "restart_count must be 1 after first respawn"
 
         # SAME socket receives a valid HTTP response.
-        request = (
-            b"GET /mcp HTTP/1.1\r\n"
-            b"Host: 127.0.0.1\r\n"
-            b"Connection: close\r\n\r\n"
-        )
+        request = b"GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
         queued_sock.sendall(request)
         response = b""
         deadline = time.monotonic() + 10.0

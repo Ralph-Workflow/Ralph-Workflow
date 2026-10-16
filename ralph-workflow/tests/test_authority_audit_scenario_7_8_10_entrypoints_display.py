@@ -77,9 +77,7 @@ def test_entry_points_agree_on_unreadable_record(tmp_path: Path) -> None:
 
     # Phase boundary.
     state = PipelineState(phase="development", rebase=outcome)
-    decision = decide_phase_transition(
-        state, None, integration_record=None, rebase_state=outcome
-    )
+    decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
     assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
 
 

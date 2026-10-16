@@ -109,9 +109,10 @@ def _continue_target_reconciliation(
         continued = _continue_target_record(
             owner, root, record, config, conflict_resolver, rebase_stop_resolver
         )
-        if isinstance(continued, str) or branch_sha(
-            owner, record.target
-        ) != continued.integrated_feature_sha:
+        if (
+            isinstance(continued, str)
+            or branch_sha(owner, record.target) != continued.integrated_feature_sha
+        ):
             return _retained(
                 record,
                 continued
@@ -154,15 +155,10 @@ def _apply_release_or_refuse(root: Path, record: IntegrationRecord) -> RebaseSta
     except RecordUnreadableError:
         return RebaseState(
             last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-            last_reason=(
-                "durable integration record unreadable at release; "
-                "intervention required"
-            ),
+            last_reason=("durable integration record unreadable at release; intervention required"),
             last_target=record.target,
             recovery_record_retained=True,
-            recovery_record_retained_reason=(
-                StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-            ),
+            recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
         )
     return None
 

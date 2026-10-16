@@ -674,23 +674,17 @@ def _complete_or_intervene(
             diagnostic_ownership=None,
         )
     except RecordBusyError:
-        logger.warning(
-            "Release busy; record bytes preserved for bounded retry"
-        )
+        logger.warning("Release busy; record bytes preserved for bounded retry")
         return False
     except RecordUnreadableError:
-        logger.critical(
-            "Release refused: durable record unreadable; intervention required"
-        )
+        logger.critical("Release refused: durable record unreadable; intervention required")
         return _pre_pass_intervention(
             root,
             record,
             backend,
             "release refusal: durable record unreadable; intervention required",
         )
-    logger.info(
-        "Positive operation-completion proof verified; released diagnostic evidence"
-    )
+    logger.info("Positive operation-completion proof verified; released diagnostic evidence")
     return True
 
 

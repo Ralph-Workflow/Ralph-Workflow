@@ -81,7 +81,10 @@ def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
         ready_event = threading.Event()
 
         def run_server() -> None:
-            run_standalone_server(tmp_path, ready_event=ready_event)
+            # Port 0 lets the kernel pick a free port: pytest-xdist runs
+            # multiple shards in parallel, and a fixed port would make two
+            # shards race on the same bind (Address already in use).
+            run_standalone_server(tmp_path, ready_event=ready_event, port=0)
 
         server_thread = threading.Thread(target=run_server, name="mcp-test-server")
         server_thread.start()

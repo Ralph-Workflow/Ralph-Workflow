@@ -570,9 +570,7 @@ def _continue_fast_forward_from_record(
     return _land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
 
 
-def _read_outcome_or_skip(
-    root: Path, backend: FileBackend
-) -> RebaseState | None:
+def _read_outcome_or_skip(root: Path, backend: FileBackend) -> RebaseState | None:
     """Read the durable record outcome; map UNREADABLE to a typed intervention state.
 
     Returns ``None`` when the outcome is PRESENT or ABSENT (the
@@ -658,14 +656,11 @@ def _maybe_release_diagnostic(
             return RebaseState(
                 last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
                 last_reason=(
-                    "durable integration record unreadable at release; "
-                    "intervention required"
+                    "durable integration record unreadable at release; intervention required"
                 ),
                 last_target=record.target,
                 recovery_record_retained=True,
-                recovery_record_retained_reason=(
-                    StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
-                ),
+                recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
             )
         # Re-read after release; the on-disk state is the source of truth.
         updated = read_record_outcome(root, backend=backend)
@@ -707,9 +702,7 @@ def recover_incomplete_integration(
         early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
         if early is not None:
             return early
-        record = _maybe_release_diagnostic(
-            Path(workspace_scope.root), workspace_scope, backend
-        )
+        record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
         if isinstance(record, RebaseState):
             return record
         return _recover_incomplete_integration_owned(
