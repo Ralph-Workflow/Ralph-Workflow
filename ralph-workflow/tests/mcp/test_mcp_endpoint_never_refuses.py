@@ -88,6 +88,54 @@ def _wait_until_child_exits(process: ProcessLike, deadline: float) -> int | None
     return process.poll()
 
 
+def _queued_connection_served_after_respawn(bridge: object, endpoint: str) -> str:
+    """Open a socket while the child is dead, respawn, and assert the SAME socket
+    receives a valid HTTP response from the respawned child (which inherits the
+    bridge listening socket). Returns the received status line."""
+    # A REAL connection is established now (child is dead; the kernel
+    # backlog absorbs it because the bridge-owned socket stays LISTEN) and
+    # is KEPT OPEN across the respawn.  After the respawned child inherits
+    # the listening socket and accepts, this SAME socket must receive a
+    # valid HTTP response — that is the queued-connection-served invariant.
+    port = _extract_port(endpoint)
+    queued_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    queued_sock.settimeout(5.0)
+    try:
+        queued_sock.connect(("127.0.0.1", port))  # must not raise ECONNREFUSED
+
+        # check_health_and_restart_if_needed() restarts synchronously while
+        # ``queued_sock`` is still open and un-accepted by any child.
+        restarted = bridge.check_health_and_restart_if_needed()
+        assert restarted is True, "check_health_and_restart_if_needed must restart a dead child"
+        assert bridge.restart_count == 1, "restart_count must be 1 after first respawn"
+
+        # SAME socket receives a valid HTTP response.
+        request = (
+            b"GET /mcp HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        queued_sock.sendall(request)
+        response = b""
+        deadline = time.monotonic() + 10.0
+        while b"\r\n" not in response and time.monotonic() < deadline:
+            try:
+                chunk = queued_sock.recv(4096)
+            except TimeoutError:
+                continue
+            if not chunk:
+                break
+            response += chunk
+        status_line = response.split(b"\r\n", 1)[0].decode(errors="replace")
+        assert status_line.startswith("HTTP/1."), (
+            f"the socket queued before respawn must be served by the respawned "
+            f"child; got {response!r} on {endpoint}"
+        )
+    finally:
+        queued_sock.close()
+    return status_line
+
+
 @pytest.mark.timeout_seconds(35)
 def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
     """ECONNREFUSED is impossible during a real bridge respawn because the
@@ -139,68 +187,25 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         finally:
             foreign.close()
 
-        # --- 5. ECONNREFUSED never occurs during the respawn window -------------
+        # --- 5. ECONNREFUSED never occurs during the respawn window ------------
         endpoint = bridge.endpoint_uri()
         port = _extract_port(endpoint)
-        conn_refused_seen = False
-        connect_attempts = 0
-
-        def try_connect() -> bool:
-            """Return True if connect succeeds (child ready or backlogged), False on ECONNREFUSED."""
-            nonlocal conn_refused_seen, connect_attempts
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.5)
-            try:
-                connect_attempts += 1
-                sock.connect(("127.0.0.1", port))
-                return True  # queued by kernel or already serving
-            except OSError as exc:
-                if exc.errno == errno.ECONNREFUSED:
-                    conn_refused_seen = True
-                    return False
-                raise  # other error
-            finally:
-                sock.close()
-
-        # Immediately after kill: connection must NOT be refused.
-        # The kernel queues the connection because the socket stays in LISTEN state.
-        conn_succeeded = try_connect()
-        assert conn_succeeded, (
-            "connect() after kill must succeed (kernel queues it); "
-            "ECONNREFUSED is structurally impossible on a bridge-owned inherited socket"
-        )
-        assert not conn_refused_seen, (
-            "ECONNREFUSED must never occur on a bridge-owned inherited socket"
-        )
-
-        # --- 6. trigger real respawn ------------------------------------------
-        # check_health_and_restart_if_needed() restarts synchronously:
-        #   - detects process_exited=True
-        #   - increments restart_count
-        #   - calls _restart_fn() → _spawn_mcp_process() with preflight
-        #   - preflight waits for new child to respond
-        #   - returns True
-        restarted = bridge.check_health_and_restart_if_needed()
-        assert restarted is True, "check_health_and_restart_if_needed must restart a dead child"
-        assert bridge.restart_count == 1, "restart_count must be 1 after first respawn"
-
-        # --- 7. endpoint serves real HTTP after respawn ------------------------
-        deadline = time.monotonic() + 10.0
-        http_ok = _poll_endpoint(endpoint, deadline)
-        assert http_ok, (
-            f"endpoint {endpoint} must answer after respawn; "
-            "child may still be starting — increase preflight timeout if this is a flake"
-        )
+        _queued_connection_served_after_respawn(bridge, endpoint)
 
         # --- 8. child is alive again -------------------------------------------
         assert bridge.process.poll() is None, "child must be alive after successful respawn"
 
         # --- 9. final ECONNREFUSED check ----------------------------------------
         # After respawn: ECONNREFUSED must still be impossible
-        conn_refused_seen = False
-        conn_succeeded = try_connect()
-        assert conn_succeeded, "connect after respawn must succeed; ECONNREFUSED must be impossible"
-        assert not conn_refused_seen
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.settimeout(1.0)
+        try:
+            probe.connect(("127.0.0.1", port))
+        except OSError as exc:
+            if exc.errno == errno.ECONNREFUSED:
+                pytest.fail("ECONNREFUSED after respawn must be impossible")
+        finally:
+            probe.close()
 
     finally:
         bridge.shutdown()

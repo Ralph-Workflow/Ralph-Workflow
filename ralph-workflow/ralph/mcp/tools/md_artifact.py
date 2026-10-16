@@ -191,6 +191,16 @@ def handle_edit_md_artifact(
             return _stale_draft_result(artifact_type, expected_hash, current_hash)
 
     label = f".{artifact_type}.draft.md"
+    cap = md_draft_character_cap(get_spec(artifact_type))
+    # Reject edits whose replacement alone must breach the cap before paying
+    # the edit engine's cost; aggregate check below still covers multi-edit cases.
+    draft_len = len(draft)
+    for index, edit in enumerate(edits):
+        if draft_len - len(edit.old_text) + len(edit.new_text) > cap:
+            raise InvalidParamsError(
+                f"Edit {index}: replacement would exceed the draft character cap "
+                f"({cap}); the existing draft is unchanged"
+            )
     ambiguous_edits = _ambiguous_edits(draft, edits)
     outcome = apply_text_edits(draft, edits, label=label)
     if isinstance(outcome, RejectedTextEdits):
@@ -202,7 +212,6 @@ def handle_edit_md_artifact(
     unstageable = _unstageable_plan_result(artifact_type, outcome.content)
     if unstageable is not None:
         return unstageable
-    cap = md_draft_character_cap(get_spec(artifact_type))
     if len(outcome.content) > cap:
         raise InvalidParamsError(
             f"edited draft for {artifact_type!r} would exceed its character cap "
