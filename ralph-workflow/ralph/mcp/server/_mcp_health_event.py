@@ -11,18 +11,21 @@ verdicts the supervisor emitted (the original R3/R4 sink).
 Durability: the sink is mirrored to a JSONL file when one is configured
 via :func:`set_durable_sink_path`. Each decision is appended as a single
 JSON line so an operator can read the last N decisions without any
-in-memory access to the running process. The file is lifecycle-bounded
-(an operator clears it when a new bridge starts) and rewritten atomically
-on every append. When no sink path is set, the bounded in-memory deque
-is the only store and the historical log is reported as
-``reason="unavailable"`` on read — the supervisor records this fact
-explicitly so the operator can tell "no log was found" from "log was
-captured and is empty".
+in-memory access to the running process. Evidence is retained across bridge
+shutdown — :func:`configure_bridge_sink` assigns each bridge a unique file
+and never deletes or overwrites another bridge's evidence. The bounded
+in-memory deque remains capped at 64 entries (oldest evicted on overflow).
+When no sink path is set, the deque is the only store and the historical
+log is reported as ``reason="unavailable"`` on read — the supervisor records
+this fact explicitly so the operator can tell "no log was found" from
+"log was captured and is empty".
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import threading
 from collections import deque
 from dataclasses import dataclass
@@ -245,10 +248,48 @@ def clear_durable_sink(path: Path | None = None) -> None:
         pass
 
 
+def configure_bridge_sink(root: Path, bridge_id: str) -> Path:
+    """Configure a unique durable sink for a specific bridge.
+
+    Assigns ``bridge_id`` a unique file at
+    ``root / ".agent" / f"mcp-health-events-{safe_id}.jsonl"`` where
+    ``safe_id`` is the ``bridge_id`` with any character not in
+    ``[A-Za-z0-9_-]`` replaced by the first 16 hex digits of its SHA-256
+    hash (so every bridge id maps to a valid filename). Sets the global
+    sink path to this file and returns it. No file is created eagerly;
+    the parent directory is created on first write by
+    :func:`record_restart_decision`. This function does NOT clear or delete
+    any existing sink file — evidence written by a previous bridge is
+    preserved.
+
+    Parameters
+    ----------
+    root : Path
+        Root directory that will contain the ``.agent`` subdirectory.
+    bridge_id : str
+        Unique identifier for the bridge. Non-safe characters trigger
+        the hash fallback but never cause an error.
+
+    Returns
+    -------
+    Path
+        The configured sink path. Use ``read_durable_sink(path=...)``
+        to read it back independently of the global singleton.
+    """
+    if re.fullmatch(r"[A-Za-z0-9_-]+", bridge_id):
+        safe_id = bridge_id
+    else:
+        safe_id = hashlib.sha256(bridge_id.encode("utf-8")).hexdigest()[:16]
+    sink_path = root / ".agent" / f"mcp-health-events-{safe_id}.jsonl"
+    set_durable_sink_path(sink_path)
+    return sink_path
+
+
 __all__ = [
     "RestartDecision",
     "RestartReason",
     "clear_durable_sink",
+    "configure_bridge_sink",
     "get_durable_sink_path",
     "get_restart_decisions",
     "read_durable_sink",

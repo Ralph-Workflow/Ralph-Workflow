@@ -10,6 +10,7 @@ import ralph.mcp.server._mcp_health_event as m
 from ralph.mcp.server._mcp_health_event import (
     RestartReason,
     clear_durable_sink,
+    configure_bridge_sink,
     get_durable_sink_path,
     get_restart_decisions,
     read_durable_sink,
@@ -362,3 +363,78 @@ def test_read_durable_sink_returns_empty_when_no_file(
         assert result == ()
     finally:
         set_durable_sink_path(orig)
+
+
+# ---------------------------------------------------------------------------
+# configure_bridge_sink — per-bridge ownership and evidence retention
+# ---------------------------------------------------------------------------
+
+
+def test_two_bridges_retain_separate_sinks(tmp_path: Path) -> None:
+    """Two bridges each own a distinct sink file; neither overwrites the other."""
+    root = tmp_path
+
+    # Bridge A records a PROCESS_EXITED decision.
+    path_a = configure_bridge_sink(root, "bridge-a")
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=42,
+        log_tail=("line1", "line2"),
+        stage="ready_to_serve",
+    )
+
+    # Bridge B records a PROBE_FAILED decision in its own sink.
+    path_b = configure_bridge_sink(root, "bridge-b")
+    record_restart_decision(
+        reason=RestartReason.PROBE_FAILED,
+        probe_duration_s=1.5,
+        stage="registry_built",
+    )
+
+    # Both files exist and are distinct.
+    assert path_a != path_b
+    assert path_a.exists()
+    assert path_b.exists()
+
+    # Each file contains exactly its own decision.
+    records_a = read_durable_sink(path=path_a)
+    records_b = read_durable_sink(path=path_b)
+    assert len(records_a) == 1
+    assert len(records_b) == 1
+    assert records_a[0]["reason"] == "process_exited"
+    assert records_a[0]["exit_status"] == 42
+    assert records_b[0]["reason"] == "probe_failed"
+    assert records_b[0]["probe_duration_s"] == 1.5
+
+
+def test_sink_survives_shutdown_semantics(tmp_path: Path) -> None:
+    """Evidence persists after recording; a new bridge does not delete prior evidence."""
+    root = tmp_path
+
+    # Configure and record.
+    path_a = configure_bridge_sink(root, "bridge-x")
+    record_restart_decision(
+        reason=RestartReason.PROCESS_EXITED,
+        exit_status=99,
+        log_tail=("startup",),
+        stage="env_loaded",
+    )
+
+    # The file is persisted and readable.
+    assert path_a.exists()
+    records = read_durable_sink(path=path_a)
+    assert len(records) == 1
+    assert records[0]["exit_status"] == 99
+
+    # A new bridge configuring its own sink does NOT delete bridge-x's file.
+    path_b = configure_bridge_sink(root, "bridge-y")
+    assert path_b != path_a
+    assert path_a.exists(), "bridge-x evidence must survive bridge-y configuration"
+    # path_b has no record written yet, so it does not exist — that is correct
+    # (the file is created lazily on first record_restart_decision call).
+    assert not path_b.exists()
+
+    # bridge-x's original record is still intact.
+    records_x = read_durable_sink(path=path_a)
+    assert len(records_x) == 1
+    assert records_x[0]["exit_status"] == 99

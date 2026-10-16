@@ -115,6 +115,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_respawn_no_discovery.py",
     "tests/mcp/test_mcp_server_startup_stages_observable.py",
     "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py",
+    "tests/mcp/test_mcp_stage_attribution_real_child.py",
     "tests/mcp/test_restart_aware_bridge_failed_restart_fn.py",
     "tests/mcp/test_restart_aware_bridge_policy_cooldown.py",
     # wt-16 WU-4: additional respawn regression gates

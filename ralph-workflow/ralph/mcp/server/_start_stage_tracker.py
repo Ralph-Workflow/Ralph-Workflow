@@ -59,7 +59,7 @@ def reset_spawn_id() -> None:
     _spawn_id = str(uuid.uuid4())
 
 
-def stage_file_path(root: Path) -> Path:
+def stage_file_path(root: Path, *, spawn_id: str | None = None) -> Path:
     """Return the absolute path to the stage file for the current spawn.
 
     The path embeds the current spawn identity so two children on the
@@ -67,8 +67,16 @@ def stage_file_path(root: Path) -> Path:
     the workspace because it is per-bridge and must be removed when the
     bridge is rebuilt; an operator can inspect it on a wedged run
     without strace.
+
+    Args:
+        root: Workspace root for the MCP server.
+        spawn_id: Optional explicit spawn identity. When ``None`` the
+            module-global identity is used (correct for the child itself).
+            Callers that know the parent's assigned ID can pass it
+            directly to attribute a stage file to a specific child.
     """
-    return root / f"{_STAGE_FILE_NAME_COMPONENT}.{_get_spawn_id()}"
+    sid = spawn_id if spawn_id is not None else _get_spawn_id()
+    return root / f"{_STAGE_FILE_NAME_COMPONENT}.{sid}"
 
 
 def record(root: Path, stage: str) -> None:
@@ -100,7 +108,7 @@ def record(root: Path, stage: str) -> None:
         os.close(fd)
 
 
-def read_last_stage(root: Path) -> str | None:
+def read_last_stage(root: Path, *, spawn_id: str | None = None) -> str | None:
     """Return the last stage label written by the current spawn, or ``None``.
 
     ``None`` is returned when the file is absent (the child was
@@ -112,8 +120,15 @@ def read_last_stage(root: Path) -> str | None:
     Because the path includes the spawn identity, reading a file written
     by a *different* spawn returns ``None`` — the predecessor's stage file
     is unreachable by the current spawn's path.
+
+    Args:
+        root: Workspace root for the MCP server.
+        spawn_id: Optional explicit spawn identity. When ``None`` the
+            module-global identity is used. Pass the parent's assigned
+            ID to read a specific child's stage file from the parent
+            process.
     """
-    path = stage_file_path(root)
+    path = stage_file_path(root, spawn_id=spawn_id)
     try:
         return path.read_text(encoding="ascii").strip() or None
     except (FileNotFoundError, IsADirectoryError, PermissionError, OSError):

@@ -22,6 +22,22 @@ import pytest
 from ralph.testing import audit_kwargs_forwarding
 from ralph.testing.audit_kwargs_forwarding import AuditParseError
 
+# Session-scoped cache: keyed by (resolved-path-id, roots-tuple).
+# The resolved Path is hashable and stable for the session.
+_audit_cache: dict[
+    tuple[int, tuple[str, ...]], tuple[list[audit_kwargs_forwarding.Violation], int]
+] = {}
+
+
+def _cached_audit_tree(
+    package_root: Path, roots: tuple[str, ...]
+) -> tuple[list[audit_kwargs_forwarding.Violation], int]:
+    key = (id(package_root.resolve()), roots)
+    if key not in _audit_cache:
+        _audit_cache[key] = audit_kwargs_forwarding.audit_tree(package_root, roots)
+    return _audit_cache[key]
+
+
 pytestmark = pytest.mark.subprocess_e2e
 
 _EXPECTED_PACKAGE_ROOTS = ("ralph", "tests")
@@ -250,7 +266,7 @@ def test_live_tree_has_no_duplicate_keyword_forwarding() -> None:
     """The standing regression gate over both the package and its tests."""
     package_root = _package_root()
 
-    violations, scanned = audit_kwargs_forwarding.audit_tree(package_root)
+    violations, scanned = _cached_audit_tree(package_root, audit_kwargs_forwarding.DEFAULT_ROOTS)
 
     assert scanned > 0, f"audit scanned nothing under {package_root}; root resolution is wrong"
     assert violations == [], "\n".join(str(item) for item in violations)

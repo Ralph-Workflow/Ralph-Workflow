@@ -97,6 +97,18 @@ if TYPE_CHECKING:
     from ralph.config.mcp_models import McpConfig
 
 
+def _log_and_record_stage(workspace_root: Path, name: str) -> None:
+    """Emit one flushed ``logger.info`` line and write it to the stage file.
+
+    R4-LOGS: every startup stage is logged as a flushed ``logger.info``
+    line AND recorded to the stage-tracker file the supervisor reads on
+    preflight failure. The two actions are always coupled so the operator
+    has both the real-time stream and the on-disk record.
+    """
+    logger.info("ralph-mcp startup: stage={stage}", stage=name)
+    _record_stage(workspace_root, name)
+
+
 @dataclass(frozen=True)
 class McpServerExtras:
     """Optional DI parameters for building standalone MCP servers.
@@ -210,10 +222,11 @@ def build_standalone_http_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
-    # R4: record stages at the ACTUAL work boundaries, not after
-    # ``build`` returns. A hang inside ``build`` must leave the last
-    # stage visible to the supervisor.
-    _record_stage(workspace_root, "config_loaded")
+    # R4-LOGS: every stage is flushed to logger.info AND written to the
+    # stage file so the supervisor can read the child's last stage on
+    # preflight failure. ``config_loaded`` is the first boundary — any
+    # hang before here is a load-time defect, not a startup-stage defect.
+    _log_and_record_stage(workspace_root, "config_loaded")
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
     # The production loader defaults to ``os.environ``; ``env_map`` remains
@@ -259,10 +272,13 @@ def build_standalone_http_server(
         )
     else:
         upstream_reg = None
-    # R4: per-server timings for upstream_catalog_or_discovery_done.
-    # ``ready_to_serve`` is recorded inside ``server.run()`` via
-    # the ``on_ready`` callback so it lands when the socket is
-    # actually accepting connections, not before.
+    # R4-LOGS: upstream_catalog_or_discovery_done is ALWAYS logged and
+    # recorded — even when there are zero upstreams, the stage marks
+    # the boundary after which Ralph tools are registered. The n_servers
+    # detail line is kept as an extra emit when upstreams exist.
+    # ``ready_to_serve`` is recorded inside ``server.run()`` via the
+    # ``on_ready`` callback so it lands when the socket is actually
+    # accepting connections, not before.
     if upstream_reg is not None and upstream_servers:
         n_proxied = len(list(upstream_reg.tool_definitions()))
         n_servers = len(upstream_servers)
@@ -272,7 +288,7 @@ def build_standalone_http_server(
             k=n_servers,
             m=n_proxied,
         )
-    _record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    _log_and_record_stage(workspace_root, "upstream_catalog_or_discovery_done")
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,
@@ -300,9 +316,9 @@ def build_standalone_http_server(
             activity_relay_sender.emit if activity_relay_sender is not None else None
         ),
     )
-    # R4: ``registry_built`` is recorded AFTER the McpServer wrapper
-    # exists, right before we hand control to ``server.run()``.
-    _record_stage(workspace_root, "registry_built")
+    # R4-LOGS: ``registry_built`` is recorded AFTER the McpServer
+    # wrapper exists, right before we hand control to ``server.run()``.
+    _log_and_record_stage(workspace_root, "registry_built")
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
 
@@ -358,8 +374,7 @@ def run_standalone_server(
         raise ValueError(f"Unsupported transport: {transport}")
 
     def _stage(name: str) -> None:
-        logger.info("ralph-mcp startup: stage={stage}", stage=name)
-        _record_stage(workspace_root, name)
+        _log_and_record_stage(workspace_root, name)
 
     _stage("env_loaded")
 

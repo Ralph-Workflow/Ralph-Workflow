@@ -25,6 +25,21 @@ import pytest
 
 from ralph.testing import audit_opts_key_drift
 
+# Session-scoped cache: keyed by (resolved-path-id, roots-tuple).
+_audit_cache: dict[
+    tuple[int, tuple[str, ...]], tuple[list[audit_opts_key_drift.Violation], int]
+] = {}
+
+
+def _cached_audit_tree(
+    package_root: Path, roots: tuple[str, ...]
+) -> tuple[list[audit_opts_key_drift.Violation], int]:
+    key = (id(package_root.resolve()), roots)
+    if key not in _audit_cache:
+        _audit_cache[key] = audit_opts_key_drift.audit_tree(package_root, roots)
+    return _audit_cache[key]
+
+
 pytestmark = pytest.mark.subprocess_e2e
 
 
@@ -176,7 +191,7 @@ def test_live_tree_has_no_silently_dropped_keys() -> None:
     """The standing regression gate over the shipped package."""
     package_root = Path(audit_opts_key_drift.__file__).resolve().parents[2]
 
-    violations, scanned = audit_opts_key_drift.audit_tree(package_root)
+    violations, scanned = _cached_audit_tree(package_root, audit_opts_key_drift.DEFAULT_ROOTS)
 
     assert scanned > 0, f"audit indexed nothing under {package_root}; root resolution is wrong"
     assert violations == [], "\n".join(str(item) for item in violations)

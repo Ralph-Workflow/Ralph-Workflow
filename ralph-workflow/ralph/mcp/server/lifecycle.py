@@ -46,10 +46,13 @@ from ralph.mcp.server._http_tools_list import (
     _http_tools_list_names,
 )
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
-from ralph.mcp.server._mcp_health_event import RestartReason
-from ralph.mcp.server._mcp_health_event import clear_durable_sink as _clear_durable_sink
+from ralph.mcp.server._mcp_health_event import (
+    RestartReason,
+)
+from ralph.mcp.server._mcp_health_event import (
+    configure_bridge_sink as _configure_bridge_sink,
+)
 from ralph.mcp.server._mcp_health_event import record_restart_decision as _record_restart_decision
-from ralph.mcp.server._mcp_health_event import set_durable_sink_path as _set_durable_sink_path
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
@@ -248,6 +251,10 @@ class RestartAwareMcpBridge:
         # class) so existing RestartAwareMcpBridge(...) call sites
         # stay backward-compatible.
         self._listening_socket: socket.socket | None = None
+        # R3-durability: the path to this bridge's unique health-event
+        # sink file. Set by start_mcp_server; never cleared on shutdown
+        # so evidence is retained after bridge shutdown for incident triage.
+        self._durable_sink_path: Path | None = None
 
     @property
     def run_id(self) -> str:
@@ -311,11 +318,9 @@ class RestartAwareMcpBridge:
             with contextlib.suppress(OSError):
                 listening_socket.close()
             self._listening_socket = None
-        # Best-effort removal of the lifecycle-bounded durable sink.
-        # The sink is workspace-local so it is cleared here (not in
-        # the parent start_mcp_server) to match the stated contract:
-        # "a new bridge starts with an empty incident log".
-        _clear_durable_sink()
+        # R3-durability: the durable health-event sink is per-bridge and
+        # never deleted on shutdown. Each bridge owns a unique file so
+        # evidence is retained after shutdown for incident triage.
 
     def _cooldown_after_failure(self) -> None:
         """Sleep for the policy cooldown, driven by an injectable clock.
@@ -511,6 +516,8 @@ class RestartAwareMcpBridge:
                     f"MCP restart attempt {attempt_index}/"
                     f"{self._restart_policy.max_restarts} failed: {restart_exc}",
                     restart_count=self._restart_count,
+                    last_stage=cast("str | None", getattr(restart_exc, "last_stage", None)),
+                    elapsed_s=cast("float | None", getattr(restart_exc, "elapsed_s", None)),
                 ) from restart_exc
             self._consecutive_probe_failures = 0
             logger.info(
@@ -581,6 +588,8 @@ class RestartAwareMcpBridge:
                     f"MCP tool-registry-reset attempt {attempt_index}/"
                     f"{_TOOL_REGISTRY_MAX_RESETS} failed: {restart_exc}",
                     restart_count=self._restart_count,
+                    last_stage=cast("str | None", getattr(restart_exc, "last_stage", None)),
+                    elapsed_s=cast("float | None", getattr(restart_exc, "elapsed_s", None)),
                 ) from restart_exc
             # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
             # alias is present in the post-respawn tools/list
@@ -864,15 +873,10 @@ def start_mcp_server(
     # close it deterministically (R1 invariant: the port stays ours
     # until bridge shutdown, never released early).
     bridge._listening_socket = listening_socket
-    # Configure the durable JSONL sink for restart decisions.
-    # The path is workspace-local (<workspace>/.agent/<name>) so it is
-    # bounded by the bridge lifecycle.  Cleared first so a fresh bridge
-    # starts with an empty incident log; set to None first so the clear
-    # targets the old path if a prior configure landed elsewhere.
-    _set_durable_sink_path(None)
-    _clear_durable_sink()
-    durable_sink = root.joinpath(".agent", _DURABLE_SINK_FILENAME)
-    _set_durable_sink_path(durable_sink)
+    # R3-durability: each bridge owns a unique health-event sink file.
+    # The path is persisted on the bridge object so shutdown does not
+    # delete it (evidence is retained across shutdown for incident triage).
+    bridge._durable_sink_path = _configure_bridge_sink(root, uuid.uuid4().hex[:12])
     return bridge
 
 
@@ -933,7 +937,7 @@ def _spawn_mcp_process(
         # Without this, both sides would compute a different import-time
         # UUID and ``read_last_stage`` would always return ``None`` from
         # the parent's perspective.
-        env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
+        stage_id = env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
         if tool_catalog_env:
             # The catalog has been materialised by the caller as a
             # single env-var value (the production
@@ -975,10 +979,12 @@ def _spawn_mcp_process(
         # connection, never the reason the child never got as far as listening.
         bridge.shutdown()
         diagnostic = _startup_diagnostic_suffix(root, log_offset)
-        # R4: surface the last visible startup stage from the
+        # R4-XPROC: surface the last visible startup stage from the
         # child-written stage file so the operator can attribute
-        # the failure to a specific named stage.
-        last_stage: str | None = _read_start_stage(root)
+        # the failure to a specific named stage. The parent's
+        # ``stage_id`` is used so we read the SAME file the child
+        # wrote (not the parent's own import-time module-global UUID).
+        last_stage: str | None = _read_start_stage(root, spawn_id=stage_id)
         last_stage_str: str = last_stage if last_stage is not None else "last_stage_unknown"
         elapsed_s = time.monotonic() - spawn_start
         if returncode is not None:
