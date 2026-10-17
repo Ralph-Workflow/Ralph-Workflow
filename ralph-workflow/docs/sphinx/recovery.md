@@ -405,7 +405,10 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
   scoped to the operation worktree via `OperationEvidenceCollector`. Observations capture
   worktree-private `HEAD`, worktree root path, index entries for resolving paths,
   and worktree-private rebase/merge control files (`MERGE_HEAD`, `REBASE_HEAD`). Marker
-  SHA reachability is queried via `git cat-file -e <sha>`.
+  SHA reachability is queried via `git cat-file -e <sha>`. The collector never
+  invokes `git for-each-ref` or reads the full per-worktree index; the boundary
+  raises a fail-closed `RuntimeError` if a future contributor reintroduces a
+  repository-global key — see [ADR-0010](../architecture/adr-0010-post-fix-source-of-truth.md).
 - **Fail-closed completion pre-pass**: Before any diagnostic agent is invoked,
   `_run_completion_pre_pass` verifies marker object reachability and evaluates the
   four-condition positive completion proof (commit ancestry, operation ownership, clean index/tree,

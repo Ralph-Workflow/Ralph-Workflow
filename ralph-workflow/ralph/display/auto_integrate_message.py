@@ -192,6 +192,20 @@ _ACTION_TO_DISPLAY_STATE: dict[str, OperationDisplayState] = {
 }
 
 
+#: Closed-vocab evidence-diagnosis verbs that project to
+#: ``OperationDisplayState.EVIDENCE_DIAGNOSIS``. Only the typed
+#: ``is_diagnosis`` flag (raised by the authority on a verified
+#: diagnosis) or one of these exact tokens is allowed to flip the
+#: operator surface to the EVIDENCE_DIAGNOSIS label. Substring
+#: matching on arbitrary prose is forbidden (invariant 13).
+_DIAGNOSIS_ACTION_VERBS: frozenset[str] = frozenset(
+    {
+        "diagnosing",
+        "evidence_diagnosis",
+    }
+)
+
+
 def integration_action_to_operation_display_state(
     action: object,
     *,
@@ -205,7 +219,14 @@ def integration_action_to_operation_display_state(
         return None
     raw = action.value if isinstance(action, StrEnum) else str(action)
     norm = raw.strip().lower()
-    if is_diagnosis or "diagnos" in norm or "evidence" in norm:
+    # Closed-vocab evidence-diagnosis tokens only; substring matching on
+    # arbitrary prose is forbidden (invariant 13: prose cannot drive the
+    # operator surface). The "is_diagnosis" flag is the typed call from
+    # the authority; the lookup uses the same closed set as the rest of
+    # the action vocabulary.
+    if is_diagnosis:
+        return OperationDisplayState.EVIDENCE_DIAGNOSIS
+    if norm in _DIAGNOSIS_ACTION_VERBS:
         return OperationDisplayState.EVIDENCE_DIAGNOSIS
     return _ACTION_TO_DISPLAY_STATE.get(norm)
 

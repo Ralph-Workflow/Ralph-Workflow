@@ -669,3 +669,96 @@ def test_integrating_record_empty_sha_blocks_at_all_six_seams(tmp_path: Path) ->
     for seam, decision in seam_decisions.items():
         assert decision == PhaseDecision.BLOCK_FOR_RECOVERY, (seam, decision)
     assert len(set(seam_decisions.values())) == 1
+
+
+# ---------------------------------------------------------------------------
+# PARALLEL-7: explicit matrix fixtures covering the 6 entry points
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    (
+        "scenario",
+        "record_kwargs",
+        "rebase_kwargs",
+    ),
+    [
+        (
+            "active_integration_blocks",
+            {"diagnostic_intervention_required": False},
+            {},
+        ),
+        (
+            "active_integration_with_recovered_shallow",
+            {"diagnostic_intervention_required": False},
+            {"recovery_record_retained": True},
+        ),
+    ],
+)
+def test_entry_point_matrix_six_seams_agree(
+    tmp_path: Path,
+    scenario: str,
+    record_kwargs: dict[str, object],
+    rebase_kwargs: dict[str, object],
+) -> None:
+    """Every public entry point must agree on the typed decision.
+
+    For every (state, record, rebase) triple where the durable record
+    and the rebase state both say ``BLOCK_FOR_RECOVERY``, the same
+    typed answer must come out of: startup, phase boundary, commit,
+    cooldown, parallel join, and terminal handling. The fixture table
+    mirrors the audit tables produced by PARALLEL-1/2/3 so any new
+    typed authority surface in the runner / run_loop / recovery layers
+    must surface as a failure here.
+    """
+    (tmp_path / ".git").mkdir()
+    # The matrix tests with a real record on disk; the startup
+    # inspection depends on the integration-resolution verdict, which
+    # requires a record to be in the durable store.
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        engine="git-merge",
+        owning_worktree=str(tmp_path),
+        **record_kwargs,
+    ).with_transition(START_INTEGRATING)
+    write_record(tmp_path, record)
+
+    policy = _policy()
+    shared_rebase = RebaseState(**rebase_kwargs)
+    shared_state = PipelineState(phase="development", rebase=shared_rebase)
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+
+    decision_startup = _eval_startup_inspection(
+        tmp_path, shared_rebase, shared_state, policy, record
+    )
+    decision_phase_boundary, ctx = _eval_phase_boundary_run_loop(
+        tmp_path, shared_state, policy, record, bundle
+    )
+    decision_commit = _eval_commit_handling(tmp_path, shared_state, bundle)
+    decision_cooldown = _eval_cooldown_recovery(tmp_path, shared_state, ctx)
+    decision_parallel_join = _eval_parallel_join(tmp_path, shared_state, shared_rebase, bundle)
+    decision_terminal = _eval_terminal_handling(tmp_path, shared_rebase, policy, record)
+
+    seam_decisions = {
+        "startup": decision_startup,
+        "phase_boundary": decision_phase_boundary,
+        "commit": decision_commit,
+        "cooldown": decision_cooldown,
+        "parallel_join": decision_parallel_join,
+        "terminal": decision_terminal,
+    }
+
+    # Every entry point must agree on the typed decision. The
+    # active-integration cases all flow to BLOCK_FOR_RECOVERY: that
+    # is the audit-table assertion the existing matrix test makes.
+    for seam, decision in seam_decisions.items():
+        assert decision == PhaseDecision.BLOCK_FOR_RECOVERY, (
+            scenario,
+            seam,
+            decision,
+        )
+    assert len(set(seam_decisions.values())) == 1, (scenario, seam_decisions)

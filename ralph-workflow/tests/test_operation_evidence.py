@@ -11,7 +11,8 @@ forbidden).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -25,9 +26,6 @@ from ralph.pipeline.operation_evidence import (
     SubprocessOperationEvidenceCollector,
     ownership_fingerprint,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _record(**overrides: object) -> IntegrationRecord:
@@ -400,3 +398,68 @@ def test_subprocess_collector_evaluate_returns_verdict(
     # 4. Unreadable in observed -> UNKNOWN
     unreadable_obs = (OperationFact(kind="head", value="unreadable"),)
     assert collector.evaluate(repo, record, unreadable_obs) == EvidenceVerdict.UNKNOWN
+
+
+def test_subprocess_collector_guard_rejects_forbidden_kind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The snapshot boundary raises ``RuntimeError`` on a forbidden kind.
+
+    Belt-and-braces: even if a future contributor slips a
+    repository-global key (``for-each-ref`` / ``ls-files``) past the
+    helper that produces a fact, the boundary check raises fail-closed
+    instead of returning a poisoned tuple that the loader would later
+    refuse with a less informative ``RecordUnreadableError``.
+    """
+    repo = _mock_git(monkeypatch, tmp_path / "repo")
+    record = _record()
+
+    # Patch a low-level helper that contributes OperationFact values to
+    # the snapshot. The guard at the end of ``snapshot()`` rejects the
+    # forbidden key.
+    from ralph.pipeline import operation_evidence as op_ev_module
+
+    def _poisoned_state_files(_root: Path) -> tuple[object, ...]:
+        return (OperationFact(kind="for-each-ref", value="forbidden"),)
+
+    monkeypatch.setattr(
+        op_ev_module,
+        "_read_rebase_state_files",
+        _poisoned_state_files,
+    )
+    with pytest.raises(RuntimeError, match="forbidden kind"):
+        SubprocessOperationEvidenceCollector().snapshot(repo, record)
+
+
+def test_subprocess_collector_guard_accepts_only_closed_vocabulary() -> None:
+    """The closed-vocabulary helper accepts allowed kinds and rejects forbidden ones.
+
+    The closed vocabulary is exposed via the module's public
+    ``_CLOSED_OPERATION_FACT_KINDS`` frozenset (tested through
+    ``getattr`` to keep the public surface unchanged). For each
+    allowed kind the snapshot boundary accepts the fact; for each
+    forbidden kind a monkey-patched helper triggers the
+    ``RuntimeError`` belt-and-braces check.
+    """
+    import ralph.pipeline.operation_evidence as op_ev
+
+    closed = op_ev._CLOSED_OPERATION_FACT_KINDS
+    assert isinstance(closed, frozenset)
+
+    allowed = (
+        "head",
+        "worktree_path",
+        "index_scope",
+        "rebase_state_files",
+        "merge_state_files",
+        "ownership_fingerprint",
+        "unstaged_work",
+        "commit_controls",
+        "merge_object_resolvable",
+        "rebase_object_resolvable",
+    )
+    forbidden = ("for-each-ref", "ls-files", "logs/HEAD", "unknown_kind")
+    for kind in allowed:
+        assert kind in closed, kind
+    for kind in forbidden:
+        assert kind not in closed, kind

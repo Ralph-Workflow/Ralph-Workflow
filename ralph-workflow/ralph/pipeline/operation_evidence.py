@@ -101,6 +101,32 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     return hashlib.sha256(stable.model_dump_json().encode()).hexdigest()
 
 
+#: Closed vocabulary of kinds the operation-scoped collector is allowed
+#: to emit. Any kind outside this set is rejected by the snapshot
+#: boundary so a future contributor cannot silently reintroduce a
+#: repository-global key (the production bug the architecture fix
+#: eliminated).
+_CLOSED_OPERATION_FACT_KINDS: frozenset[str] = frozenset(
+    {
+        _KIND_HEAD,
+        _KIND_WORKTREE_PATH,
+        _KIND_INDEX_SCOPE,
+        _KIND_REBASE_STATE,
+        _KIND_MERGE_STATE,
+        _KIND_OWNERSHIP,
+        _KIND_UNSTAGED_WORK,
+        _KIND_COMMIT_CONTROLS,
+        _KIND_MERGE_OBJECT_RESOLVABLE,
+        _KIND_REBASE_OBJECT_RESOLVABLE,
+    }
+)
+
+
+def _is_closed_kind(kind: str) -> bool:
+    """Return True if ``kind`` is one of the allowed operation-scoped kinds."""
+    return kind in _CLOSED_OPERATION_FACT_KINDS
+
+
 def _hash_text(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -170,6 +196,18 @@ class SubprocessOperationEvidenceCollector:
             facts.append(_read_unstaged_work(root))
             facts.append(_read_commit_controls(root, self._backend))
         facts.extend(_read_reachability_facts(root, record, observed))
+        # Belt-and-braces: the collector is the only writer of operation-
+        # scoped evidence, and only the closed ``_KIND_*`` set is allowed.
+        # A future contributor cannot reintroduce a repository-global key
+        # without a fail-closed RuntimeError; the legacy loader already
+        # refuses records carrying ``_LEGACY_GLOBAL_EVIDENCE_KEYS`` so
+        # the same surface cannot be reintroduced on either side.
+        for fact in facts:
+            if not _is_closed_kind(fact.kind):
+                raise RuntimeError(
+                    f"OperationEvidenceCollector emitted forbidden kind {fact.kind!r}; "
+                    "only the closed _KIND_* set is allowed."
+                )
         return tuple(facts)
 
     def evaluate(

@@ -606,7 +606,7 @@ def _integration_alert_for_state(state: PipelineState) -> str | None:
     rebase = state.rebase
     if (
         rebase.is_intervention_required
-        or rebase.last_decision == "report_intervention_required"
+        or rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
         or rebase.operation_display_state == "intervention_required"
     ):
         return "diagnostic intervention required — manual recovery needed"

@@ -206,5 +206,54 @@ def test_resolution_status_projects_to_distinct_labels() -> None:
     )
 
 
+def test_integration_action_display_state_uses_closed_vocabulary() -> None:
+    """Residual prose substring matching is gone; only typed inputs flip the label.
+
+    Invariant 13: prose cannot drive the operator surface. A free-form
+    string that happens to contain the substring ``"diagnos"`` or
+    ``"evidence"`` no longer flips the projection; only a typed
+    ``is_diagnosis`` flag or one of the closed diagnosis tokens does.
+    """
+    from ralph.display.auto_integrate_message import (
+        OperationDisplayState,
+        integration_action_to_operation_display_state,
+    )
+
+    # The two closed-vocab evidence-diagnosis tokens still flip the label.
+    assert (
+        integration_action_to_operation_display_state("diagnosing")
+        is OperationDisplayState.EVIDENCE_DIAGNOSIS
+    )
+    assert (
+        integration_action_to_operation_display_state("evidence_diagnosis")
+        is OperationDisplayState.EVIDENCE_DIAGNOSIS
+    )
+
+    # The ``is_diagnosis`` flag is the typed authority path: it must
+    # flip the label regardless of the action verb.
+    assert (
+        integration_action_to_operation_display_state("anything_arbitrary", is_diagnosis=True)
+        is OperationDisplayState.EVIDENCE_DIAGNOSIS
+    )
+
+    # Prose substrings that previously flipped the label no longer do.
+    assert integration_action_to_operation_display_state("diagnostic evidence pending") is None
+    assert integration_action_to_operation_display_state("evidence collection in progress") is None
+    # Same for substring-only matches that never had closed-vocab
+    # support: they must not match anything now.
+    assert integration_action_to_operation_display_state("diagnos") is None
+
+    # The closed-vocab action verbs continue to project to the
+    # correct state.
+    assert (
+        integration_action_to_operation_display_state("conflict_resolution")
+        is OperationDisplayState.CONFLICT_RESOLUTION
+    )
+    assert (
+        integration_action_to_operation_display_state("land_target")
+        is OperationDisplayState.LANDING
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

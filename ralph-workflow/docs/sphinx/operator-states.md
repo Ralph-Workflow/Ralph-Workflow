@@ -87,6 +87,19 @@ The full lifecycle — failure categorization, checkpoints, evidence
 retention, and the recovery loop these states project — is documented in
 [Recovery](recovery.md).
 
+### Post-fix closure
+
+The two residual prose-comparison sites (the `last_decision` string
+compare in `run_loop._integration_alert_for_state` and the
+`"diagnos" in norm or "evidence" in norm` substring heuristic in
+`display/auto_integrate_message`) are closed in
+[ADR-0010](../architecture/adr-0010-post-fix-source-of-truth.md).
+The same ADR records the defensive `RuntimeError` boundary on
+`SubprocessOperationEvidenceCollector.snapshot()` and the public
+matrix-extension regression coverage. The operator surface is now
+strictly typed: every label you see in the activity line comes
+from a closed enum and an `is_diagnosis` flag, never from prose.
+
 ### Documentation review note
 
 - **What changed:** The closed-ownership section names all three setters, the 10 display plus 1 fan-out migration, and the two distinct crash-recovery reflog contracts.

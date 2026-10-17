@@ -382,3 +382,77 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
         assert reloaded.diagnostic_intervention_required is True
         assert fresh_invoked == [], "no renewed diagnostic invocation after restart"
         record = reloaded
+
+
+def test_kill_at_cap_does_not_replenish_after_restart(tmp_path: Path) -> None:
+    """Scenario 9 (kill-at-cap): a deliberate SIGKILL at attempt == cap.
+
+    The first post-restart handoff must emit
+    ``RAISE_DIAGNOSTIC_INTERVENTION`` (no new agent invocation, no
+    budget replenishment). The runtime is freshly created, exercising
+    the actual restart path.
+    """
+    cap = DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    # Seed a record already at the cap with a retained intervention
+    # flag, then SIGKILL (simulated by simply reloading from disk and
+    # constructing a fresh runtime) and re-enter the handoff.
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        resolving_rebase=True,
+        merge_commit_repair_attempts=cap,
+        diagnostic_intervention_required=True,
+        repair_cap_reason="diagnostic repair exhausted (kill-at-cap fixture)",
+    )
+    IntegrationRecordStore(tmp_path).write(record)
+
+    invoked: list[str] = []
+    collector = InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+    )
+
+    def invoke(agent: str, _prompt: Path) -> bool:
+        invoked.append(agent)
+        return False
+
+    # Restart = freshly created runtime over the same durable record.
+    reloaded = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
+    assert reloaded.merge_commit_repair_attempts == cap
+    assert reloaded.diagnostic_intervention_required is True
+
+    # The first post-restart handoff must NOT replenish the budget and
+    # must NOT invoke a diagnostic agent. The action authority over
+    # the reloaded record is REQUIRE_INTERVENTION, so
+    # ``decide_phase_transition`` must report the intervention.
+    assert next_integration_action(reloaded) is IntegrationAction.REQUIRE_INTERVENTION
+    rebase_state = RebaseState(last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED)
+    state = PipelineState(phase="development", rebase=rebase_state)
+    assert (
+        decide_phase_transition(state, None, integration_record=None, rebase_state=rebase_state)
+        is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    )
+
+    # The handoff itself refuses: the existing cap is honoured, no
+    # renewed invocation, no budget mutation.
+    assert not handoff_integration_diagnostic(
+        root=tmp_path,
+        record=reloaded,
+        failure="receipt unreadable after kill-at-cap",
+        agents=("agent-a", "agent-b"),
+        invoke=invoke,
+        collector=collector,
+    )
+    after = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
+    assert after.merge_commit_repair_attempts == cap, (
+        "kill-at-cap must never replenish the attempt budget"
+    )
+    assert after.diagnostic_intervention_required is True
+    assert invoked == [], "no renewed diagnostic invocation after kill-at-cap"
+
+    # Restart again: the persisted cap is the same; the type system
+    # refuses both ordinary dispatch and a fresh diagnostic.
+    reloaded_again = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
+    assert reloaded_again.merge_commit_repair_attempts == cap
+    assert next_integration_action(reloaded_again) is IntegrationAction.REQUIRE_INTERVENTION

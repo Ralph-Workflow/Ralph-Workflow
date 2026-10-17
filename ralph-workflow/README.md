@@ -74,6 +74,20 @@ keep the older refuse-and-retry behavior. See the
 [configuration reference](docs/sphinx/configuration.md#auto-integration) for
 all six settings.
 
+### Architecture: one source of truth per domain fact
+
+Every lifecycle fact in Ralph Workflow has exactly one authoritative
+owner and one transition authority. Pipeline progression is owned
+by `ralph/pipeline/_pipeline_state_machine.py`; integration
+progression by `ralph/pipeline/_integration_action.py`; terminal
+eligibility by `ralph/pipeline/_terminal_authority.py`; operation-
+scoped evidence by `ralph/pipeline/operation_evidence.py`. The
+post-fix closure (residual prose-comparison removal, defensive
+collector guard, public-boundary matrix) is recorded in
+[ADR-0010](docs/architecture/adr-0010-post-fix-source-of-truth.md),
+building on
+[ADR-0009](docs/architecture/adr-0009-pipeline-source-of-truth-ownership.md).
+
 ## Supported agents
 
 Nine built-in agents ship with Ralph Workflow:
