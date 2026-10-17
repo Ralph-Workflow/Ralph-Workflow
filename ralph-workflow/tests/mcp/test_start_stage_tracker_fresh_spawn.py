@@ -51,7 +51,7 @@ class _SpySpawnId:
 
 def test_record_and_read_last_stage_round_trip(tmp_path: Path) -> None:
     """``record`` then ``read_last_stage`` returns the same label."""
-    stage = RUNTIME_STAGES[3]
+    stage = RUNTIME_STAGES[4]
     record(tmp_path, stage)
     assert read_last_stage(tmp_path) == stage
 
@@ -59,7 +59,7 @@ def test_record_and_read_last_stage_round_trip(tmp_path: Path) -> None:
 def test_record_overwrites_prior_stage_for_same_spawn(tmp_path: Path) -> None:
     """Two ``record`` calls leave only the last stage."""
     record(tmp_path, RUNTIME_STAGES[0])
-    record(tmp_path, RUNTIME_STAGES[2])
+    record(tmp_path, RUNTIME_STAGES[3])
     record(tmp_path, RUNTIME_STAGES[-1])
     assert read_last_stage(tmp_path) == RUNTIME_STAGES[-1]
 
@@ -108,8 +108,8 @@ def test_reset_spawn_id_produces_new_spawn_unreadable_by_old_spawn(
 ) -> None:
     """Calling ``reset_spawn_id()`` makes the old file unreachable."""
     # Spawn A records its final stage.
-    record(tmp_path, RUNTIME_STAGES[2])
-    assert read_last_stage(tmp_path) == RUNTIME_STAGES[2]
+    record(tmp_path, RUNTIME_STAGES[3])
+    assert read_last_stage(tmp_path) == RUNTIME_STAGES[3]
 
     old_path = stage_file_path(tmp_path)
     assert old_path.exists()
@@ -148,7 +148,7 @@ def test_record_creates_parent_directories(tmp_path: Path) -> None:
 
 def test_record_is_flushed_before_return(tmp_path: Path) -> None:
     """After ``record()`` returns, the stage is on disk (not buffered)."""
-    stage = RUNTIME_STAGES[4]
+    stage = RUNTIME_STAGES[5]
     record(tmp_path, stage)
 
     # Re-open the file raw — no stdlib buffering — and read its content.
@@ -209,10 +209,10 @@ def test_record_replaces_file_atomically_identity_preserved(tmp_path: Path) -> N
     # No temp siblings left behind after a successful record.
     siblings = [p for p in path.parent.iterdir() if p.name.endswith(".tmp")]
     assert siblings == []
-    record(tmp_path, RUNTIME_STAGES[2])
+    record(tmp_path, RUNTIME_STAGES[3])
     # The final file is the complete new label, never blank or truncated.
-    assert path.read_text(encoding="ascii") == RUNTIME_STAGES[2]
-    assert path.stat().st_size == len(RUNTIME_STAGES[2])
+    assert path.read_text(encoding="ascii") == RUNTIME_STAGES[3]
+    assert path.stat().st_size == len(RUNTIME_STAGES[3])
 
 
 def test_record_mid_write_failure_leaves_previous_stage_intact(
@@ -224,7 +224,7 @@ def test_record_mid_write_failure_leaves_previous_stage_intact(
     with patch("ralph.mcp.server._start_stage_tracker.os.replace") as replace_mock:
         replace_mock.side_effect = OSError("simulated mid-write failure")
         try:
-            record(tmp_path, RUNTIME_STAGES[4])
+            record(tmp_path, RUNTIME_STAGES[5])
         except OSError as exc:
             assert "simulated mid-write failure" in str(exc)
         else:

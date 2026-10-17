@@ -13,10 +13,12 @@ injectable clock to verify timing behaviour deterministically without
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from loguru import logger as loguru_logger
 
 from ralph.mcp.protocol._startup_timeouts import (
     mcp_discovery_budget_from_env,
@@ -612,3 +614,154 @@ class TestAggregateVsPerStageEnvelope:
                 budget_s=mod._REGISTRY_BUILD_BUDGET_S,
             )
         assert exc_info.value.last_stage == "upstream_catalog_or_discovery_done"
+
+
+class _RaisingClient:
+    """Fake client that raises UpstreamCallError after advancing the shared clock."""
+
+    def __init__(
+        self,
+        server: UpstreamMcpServer,
+        counter: list[int],
+        probe_duration: float,
+        time_advancer: Callable[[float], None],
+    ) -> None:
+        self._server = server
+        self._counter = counter
+        self._probe_duration = probe_duration
+        self._time_advancer = time_advancer
+
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+        self._time_advancer(self._probe_duration)
+        self._counter.append(1)
+        from ralph.mcp.upstream.models import UpstreamCallError
+
+        raise UpstreamCallError(f"fake connection refused to {self._server.name}")
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        return {}
+
+
+class TestProbeOutcomeStructuredLogging:
+    """R4: both failure paths record elapsed_ms and server identity via structured logs.
+
+    Loguru writes directly to stderr, so these tests use an in-memory StringIO
+    sink that loguru outputs into; we then parse the captured text for the
+    expected structured fields.
+    """
+
+    def test_failed_probe_records_elapsed_and_server_identity(self) -> None:
+        """Warn-and-skip branch logs outcome=skipped reason=UpstreamCallError
+        with the measured elapsed time and server name."""
+        clock = _FakeMonotonic()
+        servers = _make_servers("failing-server")
+        counter: list[int] = []
+
+        def raising_factory(server: UpstreamMcpServer) -> _RaisingClient:
+            # Advance clock by 5s before raising: probe_elapsed_ms ≈ 5000.0
+            return _RaisingClient(server, counter, probe_duration=5.0, time_advancer=clock.advance)
+
+        # Capture loguru output to an in-memory sink
+        sink = io.StringIO()
+        handler_id = loguru_logger.add(sink, format="{message}", level="WARNING")
+        try:
+            registry = UpstreamRegistry.build(
+                servers,
+                client_factory=cast(
+                    "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                    raising_factory,
+                ),
+                on_unreachable="warn_and_skip",
+                _monotonic=clock,
+            )
+        finally:
+            loguru_logger.remove(handler_id)
+
+        # Registry is empty (server was skipped)
+        assert registry.tool_definitions() == []
+
+        # Parse the captured log output
+        captured = sink.getvalue()
+        assert "ralph-mcp upstream probe:" in captured
+        assert "server=failing-server" in captured
+        assert "outcome=skipped" in captured
+        assert "reason=UpstreamCallError" in captured
+        # Elapsed time should be approximately 5000.0 ms (5s * 1000)
+        assert "elapsed_ms=5000.0" in captured
+
+    def test_strict_failed_probe_records_elapsed_and_server_identity(self) -> None:
+        """Strict-raise branch logs outcome=strict_failure BEFORE raising
+        UpstreamValidationError, with the same elapsed time and server name fields."""
+        from ralph.mcp.upstream.validation import UpstreamValidationError
+
+        clock = _FakeMonotonic()
+        servers = _make_servers("strict-failing-server")
+        counter: list[int] = []
+
+        def raising_factory(server: UpstreamMcpServer) -> _RaisingClient:
+            return _RaisingClient(server, counter, probe_duration=3.0, time_advancer=clock.advance)
+
+        sink = io.StringIO()
+        handler_id = loguru_logger.add(sink, format="{message}", level="ERROR")
+        try:
+            with pytest.raises(UpstreamValidationError):
+                UpstreamRegistry.build(
+                    servers,
+                    client_factory=cast(
+                        "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                        raising_factory,
+                    ),
+                    on_unreachable="raise",
+                    _monotonic=clock,
+                )
+        finally:
+            loguru_logger.remove(handler_id)
+
+        # Structured ERROR was emitted BEFORE the raise
+        captured = sink.getvalue()
+        assert "ralph-mcp upstream probe:" in captured
+        assert "server=strict-failing-server" in captured
+        assert "outcome=strict_failure" in captured
+        assert "reason=UpstreamCallError" in captured
+        assert "elapsed_ms=3000.0" in captured
+
+    def test_budget_exhausted_skip_records_server_identity(self) -> None:
+        """When the aggregate budget is exhausted before a server is reached,
+        the skipped server's structured log carries outcome=skipped
+        reason=budget_exhausted with that server's identity."""
+        counter: list[int] = []
+
+        def fake_clock() -> float:
+            # First call: deadline = 0 + 28 = 28.0
+            # Second+ calls: 28 - 29 = -1 → exhausted (budget hits before any probe)
+            counter.append(1)
+            if len(counter) == 1:
+                return 0.0  # deadline calculation
+            return 29.0  # remaining ≤ 0 → budget exhausted
+
+        servers = _make_servers("reached-server", "skipped-server")
+
+        sink = io.StringIO()
+        handler_id = loguru_logger.add(sink, format="{message}", level="WARNING")
+        try:
+            registry = UpstreamRegistry.build(
+                servers,
+                client_factory=cast(
+                    "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                    lambda server: _TimeAdvancingClient(server, [], 0.0, lambda _: None),
+                ),
+                on_unreachable="warn_and_skip",
+                _monotonic=fake_clock,
+            )
+        finally:
+            loguru_logger.remove(handler_id)
+
+        # Both servers skipped due to exhausted budget (no probe ran at all)
+        assert len(registry.tool_definitions()) == 0
+
+        captured = sink.getvalue()
+        # The second server's structured skip line must be present
+        assert "server=skipped-server" in captured
+        assert "outcome=skipped" in captured
+        assert "reason=budget_exhausted" in captured
+        assert "elapsed_ms=0.0" in captured

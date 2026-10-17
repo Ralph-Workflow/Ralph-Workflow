@@ -39,6 +39,24 @@ _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
 
 
+def _log_probe_outcome(
+    server_name: str,
+    server_kind: str,
+    elapsed_ms: float,
+    outcome: str,
+    reason: str,
+) -> None:
+    """Log a structured probe outcome line (no env-value or secret leakage)."""
+    msg = (
+        f"ralph-mcp upstream probe: server={server_name} "
+        f"elapsed_ms={elapsed_ms:.1f} outcome={outcome} reason={reason}"
+    )
+    if outcome == "strict_failure":
+        logger.error(msg)
+    else:
+        logger.warning(msg)
+
+
 class UpstreamRegistry:
     """Aggregates tools from multiple upstream MCP servers under stable proxy aliases."""
 
@@ -107,11 +125,25 @@ class UpstreamRegistry:
                     "custom MCP server" if server.origin == "custom" else "upstream MCP server"
                 )
                 if on_unreachable == "raise":
+                    _log_probe_outcome(
+                        server.name,
+                        server_kind,
+                        elapsed_ms=0.0,
+                        outcome="strict_failure",
+                        reason="budget_exhausted",
+                    )
                     raise UpstreamValidationError(
                         f"{server_kind} '{server.name}' is unreachable: aggregate "
                         f"discovery budget ({discovery_budget_seconds:.1f}s) "
                         f"exhausted before reaching this server."
                     )
+                _log_probe_outcome(
+                    server.name,
+                    server_kind,
+                    elapsed_ms=0.0,
+                    outcome="skipped",
+                    reason="budget_exhausted",
+                )
                 logger.warning(
                     "Skipping {} {}: aggregate discovery budget ({:.1f}s) exhausted "
                     "before reaching this server.",
@@ -130,16 +162,31 @@ class UpstreamRegistry:
                 # which upstream consumed the discovery budget.
                 probe_start = _clock()
                 tools = client.list_tools(timeout_s=remaining)
-                probe_elapsed_ms = (_clock() - probe_start) * 1000.0
             except UpstreamCallError as exc:
+                probe_elapsed_ms = (_clock() - probe_start) * 1000.0
+                exc_class_name = type(exc).__name__
                 if on_unreachable == "raise":
+                    _log_probe_outcome(
+                        server.name,
+                        server_kind,
+                        probe_elapsed_ms,
+                        "strict_failure",
+                        exc_class_name,
+                    )
                     env_key_repr = f" env_keys={sorted(server.env.keys())}" if server.env else ""
                     raise UpstreamValidationError(
                         f"{server_kind} '{server.name}'{env_key_repr} is unreachable: {exc}"
                     ) from exc
-                logger.warning("Skipping {} {}: {}", server_kind, server.name, exc)
+                _log_probe_outcome(
+                    server.name,
+                    server_kind,
+                    probe_elapsed_ms,
+                    "skipped",
+                    exc_class_name,
+                )
                 continue
             else:
+                probe_elapsed_ms = (_clock() - probe_start) * 1000.0
                 logger.info(
                     "ralph-mcp upstream probe: server={name} elapsed_ms={ms:.1f} n_tools={n}",
                     name=server.name,

@@ -1,4 +1,9 @@
-"""Startup timeout budgets for the MCP server and its upstream discovery.
+"""Startup timeout budgets for the MCP server subprocess and its parent-owned listening socket.
+
+R1 (parent-owned socket): the child serves on a socket the parent bound and handed off via
+``MCP_INHERITED_FD_ENV``; the child never rebinds. The pre-serve path below is bounded by
+construction so a hung filesystem or slow config cannot starve the readiness budget before the
+socket is adopted.
 
 Two budgets are nested, and the nesting is the whole point:
 
@@ -7,7 +12,7 @@ Two budgets are nested, and the nesting is the whole point:
   HTTP endpoint;
 - the PROBE budget (``mcp_upstream_probe_timeout_from_env``) is how long ONE
   upstream MCP server gets to answer ``tools/list`` while that subprocess is
-  still starting up -- upstream discovery runs BEFORE the port is bound.
+  still starting up.
 
 They used to be equal (30s each). A single stalled upstream therefore consumed
 the entire readiness window, so the parent killed the child mid-probe: the child
@@ -18,19 +23,26 @@ fail loudly and say which upstream stalled.
 
 Stage vocabulary tracked by :func:`record_stage_elapsed`:
 
-- ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_BUDGET_S``;
-- ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery
-  finished; bounded by ``_REGISTRY_BUILD_BUDGET_S``;
+- ``env_loaded`` — environment loaded; no budget (instant);
+- ``session_ready`` — session initialised; no budget (instant);
+- ``config_loading`` — config being loaded; bounded by ``mcp_pre_serve_budget_from_env`` (NEW);
+- ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_CUMULATIVE_S``
+  (per-stage individual upper bound ``_CONFIG_LOAD_BUDGET_S``);
+- ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery finished;
+  bounded by ``mcp_discovery_budget_from_env``;
+- ``registry_built`` — registry built; bounded by ``mcp_registry_built_budget_from_env``
+  (per-stage individual upper bound ``_REGISTRY_BUILD_BUDGET_S``);
 - ``ready_to_serve`` — the port is bound and the server answers requests;
-  bounded by ``_READY_TO_SERVE_BUDGET_S``.
+  bounded by ``mcp_whole_startup_budget_from_env`` (per-stage individual upper bound
+  ``_READY_TO_SERVE_BUDGET_S``).
 
-The aggregate spawn-to-``tools/list`` bound is the discovery budget
-(``mcp_discovery_budget_from_env`` = preflight - ``_PROBE_SAFETY_S``) and is
-NOT the sum of the per-stage budgets: it is enforced by the shared monotonic
-deadline consumed across all probes (see ``UpstreamRegistry.build``), bounded
-above by the preflight timeout. The per-stage budgets below are individual
-upper bounds on how long ONE stage may take; they do not add up to the
-aggregate.
+The whole-startup envelope is ``mcp_whole_startup_budget_from_env``, which is the SUM of the
+per-stage cumulative budgets (config + discovery + registry_built + ready_to_serve). The
+aggregate is enforced by the parent's preflight timeout (``mcp_preflight_timeout_from_env``),
+which is the only construction-enforced upper bound; the per-stage budgets are individual
+envelopes, not the aggregate. Distinguishing "numerical envelope" (a number, not independently
+enforced) from "operational enforcement" (the parent's preflight timeout, enforced by the
+supervisor).
 
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
@@ -49,6 +61,10 @@ from ralph.mcp.protocol.env import (
     MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
+
+# Env var for the pre-serve budget. Follows the same pattern as the other
+# timeout env vars so operators can lower it to force-fail a slow dev setup.
+_MCP_PRE_SERVE_TIMEOUT_MS_ENV = "RALPH_MCP_PRE_SERVE_TIMEOUT_MS"
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -117,6 +133,7 @@ _UPSTREAM_CALL_TIMEOUT_SECONDS = 30.0
 # per-stage envelopes, not an aggregate: the aggregate spawn-to-tools/list
 # bound is the discovery budget enforced by the shared deadline, NOT the sum
 # of these.
+_PRE_SERVE_BUDGET_S: float = 1.0
 _CONFIG_LOAD_BUDGET_S: float = 1.0
 _REGISTRY_BUILD_BUDGET_S: float = 0.4
 _READY_TO_SERVE_BUDGET_S: float = 0.4
@@ -193,6 +210,21 @@ def mcp_upstream_probe_timeout_seconds(env: Mapping[str, str] | None = None) -> 
     """Return :func:`mcp_upstream_probe_timeout_from_env` as seconds for ``timeout=``."""
 
     return mcp_upstream_probe_timeout_from_env(env).total_seconds()
+
+
+def mcp_pre_serve_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
+    """Return the bounded pre-serve wall-clock budget (default 1.0 s, env-overridable).
+
+    ``RALPH_MCP_PRE_SERVE_TIMEOUT_MS`` lowers the budget explicitly. A blocked
+    pre-serve path (hung ``stat()``, ``read_text()``, or ``tomllib.load()``)
+    raises ``McpServerError(last_stage="config_loading")`` before the parent's
+    preflight timeout fires.
+    """
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, _MCP_PRE_SERVE_TIMEOUT_MS_ENV)
+    if requested is not None:
+        return requested
+    return timedelta(seconds=_PRE_SERVE_BUDGET_S)
 
 
 def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
@@ -335,6 +367,7 @@ if not (mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET
 __all__ = [
     "_CONFIG_LOAD_BUDGET_S",
     "_CONFIG_LOAD_CUMULATIVE_S",
+    "_PRE_SERVE_BUDGET_S",
     "_PROBE_SAFETY_S",
     "_READY_TO_SERVE_BUDGET_S",
     "_READY_TO_SERVE_CUMULATIVE_S",
@@ -342,6 +375,7 @@ __all__ = [
     "_REGISTRY_BUILT_CUMULATIVE_S",
     "_WHOLE_STARTUP_BUDGET_S",
     "mcp_discovery_budget_from_env",
+    "mcp_pre_serve_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_registry_built_budget_from_env",
     "mcp_registry_read_timeout_from_env",

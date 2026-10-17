@@ -157,13 +157,19 @@ def read_last_stage(root: Path, *, spawn_id: str | None = None) -> str | None:
         return None
 
 
-# Closed vocabulary of the six flushed startup stages the child logs.
+# Closed vocabulary of the seven flushed startup stages the child logs.
 # Listed here so the test that asserts the contract can compare
 # against this tuple without redefining it; the production runtime
-# logs them in the same order.
+# logs them in the same order. ``config_loading`` is the boundary that
+# fires BEFORE the bounded pre-serve executor (allowed_roots, FsWorkspace,
+# load_mcp_config) and ``config_loaded`` is the boundary that fires
+# AFTER the bounded pre-serve executor returns successfully — a hung
+# filesystem surfaces ``last_stage="config_loading"`` on preflight failure
+# instead of a generic 30 s timeout.
 RUNTIME_STAGES: tuple[str, ...] = (
     "env_loaded",
     "session_ready",
+    "config_loading",
     "config_loaded",
     "upstream_catalog_or_discovery_done",
     "registry_built",

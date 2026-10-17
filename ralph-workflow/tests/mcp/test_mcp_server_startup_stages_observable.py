@@ -7,7 +7,7 @@ immediately read the stage file and captured log lines. The server thread
 is not joined — it is left running and the test subprocess exits cleanly
 after assertions, taking the thread with it.
 
-The six stages in ``RUNTIME_STAGES`` form a closed vocabulary; every
+The seven stages in ``RUNTIME_STAGES`` form a closed vocabulary; every
 stage after the first is guaranteed to be recorded only after the
 previous one completes (the runtime uses a synchronous single-threaded
 composition, so there are no async ordering ambiguities).
@@ -55,14 +55,17 @@ def _loguru_sink() -> Iterator[None]:
     loguru_logger.remove(handler_id)
 
 
-def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
-    """Each of the six RUNTIME_STAGES emits a flushed logger.info line AND a stage-file record.
+def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
+    """Each of the seven RUNTIME_STAGES emits a flushed logger.info line AND a stage-file record.
 
     The stages are recorded in strict order by the synchronous startup path:
-    ``env_loaded``, ``session_ready``, ``config_loaded``,
+    ``env_loaded``, ``session_ready``, ``config_loading``, ``config_loaded``,
     ``upstream_catalog_or_discovery_done``, ``registry_built``, ``ready_to_serve``.
-    ``ready_to_serve`` is recorded inside the ``on_ready`` callback that fires
-    when the server socket is actually listening (immediately after ``ready_event`` is set).
+    ``config_loading`` is the boundary that fires BEFORE the bounded pre-serve
+    executor (allowed_roots, FsWorkspace, load_mcp_config); ``config_loaded``
+    fires AFTER. ``ready_to_serve`` is recorded inside the ``on_ready`` callback
+    that fires when the server socket is actually listening (immediately after
+    ``ready_event`` is set).
     """
     # Build a session file so ``session_from_env`` succeeds without a real agent.
     session = AgentSession(
@@ -141,12 +144,13 @@ def test_stage_file_absent_before_run(tmp_path: Path) -> None:
     assert not sp.exists()
 
 
-def test_closed_stage_vocabulary_is_six() -> None:
-    """The RUNTIME_STAGES tuple has exactly six entries in the documented order."""
-    assert len(RUNTIME_STAGES) == 6
+def test_closed_stage_vocabulary_is_seven() -> None:
+    """The RUNTIME_STAGES tuple has exactly seven entries in the documented order."""
+    assert len(RUNTIME_STAGES) == 7
     assert RUNTIME_STAGES == (
         "env_loaded",
         "session_ready",
+        "config_loading",
         "config_loaded",
         "upstream_catalog_or_discovery_done",
         "registry_built",

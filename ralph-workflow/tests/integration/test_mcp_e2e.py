@@ -215,7 +215,14 @@ def test_unreachable_upstream_emits_warning_and_server_starts() -> None:
     log_output = "\n".join(captured)
     assert WEB_SEARCH_TOOL in tool_names
     assert not any(name.startswith("ralph_upstream__fake_stdio__") for name in tool_names)
-    assert "Skipping upstream MCP server fake_stdio" in log_output
+    # R4: failed-probe diagnostic uses the new structured format
+    # (server name + elapsed_ms + outcome=skipped + reason=UpstreamCallError)
+    # and never the raw exception message (which may carry env values).
+    assert (
+        "ralph-mcp upstream probe: server=fake_stdio" in log_output
+        and "outcome=skipped" in log_output
+        and "reason=UpstreamCallError" in log_output
+    )
 
 
 def test_secret_never_in_e2e_logs() -> None:

@@ -33,6 +33,7 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import os
 import socket
 import threading
@@ -56,6 +57,7 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_CUMULATIVE_S,
     mcp_discovery_budget_from_env,
+    mcp_pre_serve_budget_from_env,
     mcp_registry_built_budget_from_env,
     mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
@@ -339,6 +341,74 @@ def _poll_registry_build_gate(
         time.sleep(0.02)
 
 
+def _poll_bounded_pre_serve(
+    *,
+    workspace_root: Path,
+    effective_session: McpSession,
+    workspace: FsWorkspace | None,
+    extras: McpServerExtras,
+    env_map: Mapping[str, str],
+    t0: float,
+) -> tuple[FsWorkspace, McpConfig]:
+    """Run the pre-serve critical path with a wall-clock deadline.
+
+    Executes allowed_roots access, FsWorkspace construction, and load_mcp_config
+    inside a ThreadPoolExecutor worker thread and raises McpServerError
+    (last_stage="config_loading") if the budget is exceeded.  Event.wait()
+    (which releases the GIL) is used in test doubles so the timeout fires;
+    path.open("rb") on a FIFO holds the GIL and cannot be interrupted.
+    """
+    pre_serve_budget = mcp_pre_serve_budget_from_env(env_map)
+    t_start = _clock()
+
+    def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
+        # allowed_roots access triggers FileBackedSession._load() which
+        # does blocking stat() + read_text() on the session file.
+        allowed_roots = cast(
+            "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
+        )  # cast-policy: seam: structural boundary
+        ws = (
+            workspace
+            if workspace is not None
+            else (
+                extras.workspace
+                if extras.workspace is not None
+                else FsWorkspace(
+                    workspace_root, allowed_roots=allowed_roots if allowed_roots else None
+                )
+            )
+        )
+        cfg = (
+            extras.mcp_config
+            if extras.mcp_config is not None
+            else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
+        )
+        return (ws, cfg)
+
+    ex: concurrent.futures.ThreadPoolExecutor | None = None
+    try:
+        # ThreadPoolExecutor (not bare daemon Thread) is required by the
+        # resource-lifecycle audit; max_workers=1 serialises all blocking
+        # operations so the budget covers the whole sequence.
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(_do_pre_serve)
+        return future.result(timeout=pre_serve_budget.total_seconds())
+    except concurrent.futures.TimeoutError:
+        elapsed = _clock() - t_start
+        raise McpServerError(
+            f"pre-serve critical path timed out after {elapsed:.3f}s "
+            f"(budget={pre_serve_budget.total_seconds():.3f}s)",
+            last_stage="config_loading",
+            elapsed_s=elapsed,
+            restart_count=0,
+        ) from None
+    except Exception:
+        raise
+    finally:
+        if ex is not None:
+            ex.shutdown(wait=False)  # do not accumulate executor threads across calls
+
+
 def build_standalone_http_server(
     workspace_root: Path,
     *,
@@ -385,34 +455,29 @@ def build_standalone_http_server(
     # ``session_from_env``, which applies it to both the file-backed and
     # the JSON shape; the minted fallback above gets it from
     # ``standalone_session_identity``. Nothing is needed here.
-    allowed_roots = cast(
-        "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    effective_workspace = (
-        workspace
-        if workspace is not None
-        else _extras.workspace
-        if _extras.workspace is not None
-        else FsWorkspace(
-            workspace_root,
-            allowed_roots=allowed_roots if allowed_roots else None,
-        )
+
+    # R2: bound the synchronous pre-serve critical path (allowed_roots access,
+    # FsWorkspace construction, load_mcp_config). A hung filesystem (NFS,
+    # container, sandboxed mount) would otherwise block the child indefinitely.
+    # Record config_loading BEFORE the bounded block so the stage file captures
+    # where the child was when the budget fires. ThreadPoolExecutor (not bare
+    # daemon Thread) is required by the resource-lifecycle audit.
+    _log_and_record_stage(workspace_root, "config_loading")
+    effective_workspace, mcp_cfg = _poll_bounded_pre_serve(
+        workspace_root=workspace_root,
+        effective_session=effective_session,
+        workspace=workspace,
+        extras=_extras,
+        env_map=env_map,
+        t0=t0,
     )
-    mcp_cfg = (
-        _extras.mcp_config
-        if _extras.mcp_config is not None
-        else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
-    )
-    # R4-LOGS: every stage is flushed to logger.info AND written to the
-    # stage file so the supervisor can read the child's last stage on
-    # preflight failure. ``config_loaded`` is the first boundary — any
-    # hang before here is a load-time defect, not a startup-stage defect.
     _log_and_record_stage(workspace_root, "config_loaded")
     record_stage_elapsed(
         "config_loaded",
         _clock() - t0,
         budget_s=_CONFIG_LOAD_CUMULATIVE_S,
     )
+
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
     # The production loader defaults to ``os.environ``; ``env_map`` remains
