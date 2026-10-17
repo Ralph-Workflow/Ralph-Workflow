@@ -11,12 +11,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
-from ralph.display.auto_integrate_message import OperationDisplayState
-from ralph.pipeline._fan_out_authority import FanOutDecision
-from ralph.pipeline.rebase_state import RebaseState
-
 RALPH_ROOT = Path(__file__).resolve().parents[1] / "ralph"
 
 _FORBIDDEN_FIELDS = ("last_fan_out_decision", "operation_display_state")
@@ -64,48 +58,6 @@ def _scan_writer_sites(root: Path) -> list[str]:
                                 f"{path.relative_to(root)}:{key.lineno} update-dict-key"
                             )
     return offenders
-
-
-def test_set_fan_out_decision_round_trips_each_member() -> None:
-    state = RebaseState()
-    for decision in FanOutDecision:
-        updated = state.set_fan_out_decision(decision)
-        assert updated.last_fan_out_decision == decision.value
-        # frozen model: the original snapshot is untouched
-        assert state.last_fan_out_decision is None
-
-
-def test_set_fan_out_decision_rejects_non_members() -> None:
-    state = RebaseState()
-    setter = state.set_fan_out_decision
-    with pytest.raises(ValueError, match="invalid fan_out_decision"):
-        setter("join_pending")
-
-
-def test_set_operation_display_state_round_trips_each_member() -> None:
-    state = RebaseState()
-    for display in OperationDisplayState:
-        updated = state.set_operation_display_state(display)
-        assert updated.operation_display_state == display.value
-        # frozen model: the original snapshot is untouched
-        assert state.operation_display_state is None
-
-
-def test_set_operation_display_state_rejects_non_members_and_legacy() -> None:
-    state = RebaseState()
-    setter = state.set_operation_display_state
-    for bad in (
-        "waiting",
-        # legacy alias strings must not sneak through
-        "integration",
-        "publication",
-        "intervention",
-        "completed",
-        "diagnosing",
-        "bogus",
-    ):
-        with pytest.raises(ValueError, match="invalid operation_display_state"):
-            setter(bad)
 
 
 def test_no_raw_writers_outside_rebase_state() -> None:

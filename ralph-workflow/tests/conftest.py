@@ -210,7 +210,7 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
     *same* style string then reuses the stale cached value instead of
     resolving fresh for its own console, producing escape codes for the
     wrong colour depth -- this was measured to make
-    ``tests/test_display_generated_scenes.py::test_generated_scene_colours_every_named_semantic_category``
+    ``tests/display/test_generated_scene_renderer.py::test_generated_scene_colours_every_named_semantic_category``
     fail only when it runs after that status-bar test in the same process
     (confirmed by bisection), never in isolation. A real Ralph process only
     ever constructs one Console at one colour depth for its entire

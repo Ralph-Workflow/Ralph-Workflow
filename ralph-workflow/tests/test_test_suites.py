@@ -81,7 +81,9 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # the parametrization fan-out, so the slowest general shard and
     # the E2E shard both fit inside the 60-second combined budget
     # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
-    "tests/test_display_generated_scenes.py",
+    "tests/display/test_generated_scene_catalog.py",
+    "tests/display/test_generated_scene_renderer.py",
+    "tests/display/test_generated_scene_salience.py",
     # wt-03-fix-bug (S): the linked-worktree regression test for the
     # diagnostic-evidence collector. The collector's architectural
     # fix is the prohibition of repository-global reads; this test

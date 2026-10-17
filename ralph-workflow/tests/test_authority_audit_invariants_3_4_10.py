@@ -36,13 +36,35 @@ def test_record_absence_does_not_authorize_completion() -> None:
     assert next_integration_action(None, proof=True) is IntegrationAction.COMPLETE_WITH_PROOF
 
 
-def test_clean_worktree_does_not_prove_landing() -> None:
-    """Inv-4: an integrating record with a pending reintegration must not land."""
+def test_clean_worktree_observation_does_not_allow_landing() -> None:
+    """Inv-4: a clean-worktree observation (all blocking flags False) is insufficient
+    for LAND_TARGET; phase must be 'integrated' and authority proof must be present.
+
+    The clean-worktree proof is the absence of resolving_rebase / resolving_merge /
+    reintegrate_pending / rebase_continue_pending / merge_commit_pending. Even when
+    all those flags are False and phase='integrating', is_integrating=True triggers
+    REINTEGRATE_AGAINST_TARGET — the worktree is not yet landed because the
+    fast-forward has not been applied.
+    """
     record = _integrating_record()
-    record = record.model_copy(update={"reintegrate_pending": True})
+    # All clean-worktree flags set to False; the worktree is observably clean.
+    # phase='integrating' means is_integrating=True, which routes to REINTEGRATE.
+    record = record.model_copy(
+        update={
+            "reintegrate_pending": False,
+            "resolving_rebase": False,
+            "resolving_merge": False,
+            "rebase_continue_pending": False,
+            "merge_commit_pending": False,
+        }
+    )
     action = next_integration_action(record)
-    assert action is IntegrationAction.REINTEGRATE_AGAINST_TARGET
     assert action is not IntegrationAction.LAND_TARGET
+    assert action is IntegrationAction.REINTEGRATE_AGAINST_TARGET
+
+    # Sanity: COMPLETE_WITH_PROOF also requires authority proof; clean worktree
+    # without the proof bit is insufficient for completion.
+    assert next_integration_action(record, proof=True) is not IntegrationAction.LAND_TARGET
 
 
 def test_unknown_outcome_routes_to_intervention() -> None:

@@ -176,6 +176,12 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_rung4_self_resume.py",
     # linked-worktree diagnostic isolation regression (real-git subprocess_e2e suite, required e2e registry)
     "test_integration_diagnostic_worktree_isolation.py",
+    "test_auto_integrate_recovery_git_state_reflog.py",
+    # G8 reflog contract proof: real-git worktree-private reflog read
+    # requires a live ``git`` subprocess to populate ``<git-dir>/logs/HEAD``
+    # with a checkout history the function can parse. The file is
+    # excluded from the default make-test budget by its subprocess_e2e
+    # marker and joins the real-git recovery sibling suite.
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
     # Patches ``os.killpg`` via monkeypatch to record what production teardown
     # would have signalled; no real subprocess or signal is delivered. The

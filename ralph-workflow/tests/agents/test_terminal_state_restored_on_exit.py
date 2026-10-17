@@ -21,8 +21,8 @@ from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-_TEST_CEILING_SECONDS = 30.0
-_CHILD_EXIT_CEILING_SECONDS = 15.0
+_TEST_CEILING_SECONDS = 12.0
+_CHILD_EXIT_CEILING_SECONDS = 5.0
 _DRAIN_CEILING_SECONDS = 5.0
 _DRAIN_POLL_SECONDS = 0.05
 _READ_CHUNK_BYTES = 4096

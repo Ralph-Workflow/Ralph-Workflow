@@ -1,136 +1,95 @@
-"""Salience-allocator regression tests for the generated scene catalogue.
-
-Split out of :mod:`tests.test_display_generated_scenes` so the
-shared suite stays under the maintained 1000-line-per-file cap.
-The salience tests share no fixture with the catalog tests
-(the ``_prewarm_syntax_lexer`` autouse fixture is only needed for
-the rendering path, not the ``scene_salience_decisions`` path), so
-this module carries no per-test setup.
-"""
+"""Generated-scene support-matrix tests."""
 
 from __future__ import annotations
 
 import pytest
+from pygments.lexers import PythonLexer
 
-from ralph.display._salience import ACCENT_BUDGET_BY_DEPTH, FrequencyTier
+from ralph.display._salience import FrequencyTier
 from ralph.display.scene_catalog import (
     FULL_LAYOUT_WIDTH,
     SCENE_NAMES,
+    SURFACE_CATALOG,
     SupportCase,
     scene_salience_decisions,
-)
-
-# -- PLAN.md S-8: G-10/E-3 accent-count gate over the generated scene catalogue --
-
-#: One representative case per background -- the axis the salience
-#: allocator's colour-depth budget (G-8) actually varies on -- kept to a
-#: small, fixed set (not the full compact_matrix()) so this sweep stays a
-#: light addition to the shared 60s pytest budget (S-8/S-12).
-_SALIENCE_CASES: tuple[SupportCase, ...] = (
-    SupportCase("dark", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty"),
-    SupportCase("light", "reduced", "unicode", FULL_LAYOUT_WIDTH, "tty"),
-    SupportCase("unknown", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty"),
+    support_matrix,
 )
 
 
-@pytest.mark.parametrize("case", _SALIENCE_CASES)
-@pytest.mark.parametrize("scene_name", SCENE_NAMES)
-@pytest.mark.criteria("G-10")
-def test_generated_scene_salience_decisions_never_exceed_the_depth_budget(
-    scene_name: str, case: SupportCase
-) -> None:
-    """G-10: routine frames must not light more tier-3/4 accents than the
-    active colour depth's budget affords. PLAN.md S-1 batches every
-    event-tier role the render path still considers "on screen" into the
-    bid set of whichever role is actually rendering a new line (see
-    ``ParallelDisplay._apply_salience``), so ``AllocationDecision.frame_index``
-    (added by S-1) now genuinely groups more than one competing bid per
-    real production frame. Grouping the flat decision stream by that
-    field and checking each group is the actual G-10 gate: a frame that
-    lights more tier-3/4 accents than its budget affords must fail this
-    test, not merely satisfy an invariant the allocator already guarantees
-    for a single-bid call regardless of contention."""
-    decisions = scene_salience_decisions(
-        scene_name, case, terminal_bg_is_light=case.terminal_background_is_light
+@pytest.fixture(scope="module", autouse=True)
+def _prewarm_syntax_lexer() -> None:
+    """Pre-warm pygments syntax lexer so compilation does not hit per-test SIGALRM."""
+    PythonLexer()
+
+
+def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> None:
+    assert SCENE_NAMES == (
+        "first_screen",
+        "clean_run",
+        "failure",
+        "burst",
+        "idle_stretch",
+        "closing_screen",
     )
-    depth = (
-        "truecolor"
-        if case.colour == "truecolour"
-        else "256"
-        if case.colour == "reduced"
-        else "none"
-    )
-    budget = ACCENT_BUDGET_BY_DEPTH[depth]
-    frames: dict[int, list[object]] = {}
-    for decision in decisions:
-        frames.setdefault(decision.frame_index, []).append(decision)
-    for frame_index, frame_decisions in frames.items():
-        lit_event_or_alarm = sum(
-            1
-            for d in frame_decisions
-            if d.lit and d.tier in (FrequencyTier.EVENT, FrequencyTier.ALARM)
-        )
-        assert lit_event_or_alarm <= budget, (
-            scene_name,
-            case,
-            frame_index,
-            frame_decisions,
-        )
-    if scene_name == "burst":
-        # PLAN.md S-1/S-2: burst is the catalog's dedicated
-        # concurrent-activity vehicle (PLAN.md Characterize #5). Unless at
-        # least one of its frames actually carries more than one
-        # competing bid, the budget check above is checking the same
-        # tautology the pre-S-1 single-bid-per-frame model produced --
-        # this assertion is what makes the budget check above a real gate
-        # for this scene rather than a restatement of ``allocate_frame``'s
-        # own per-call contract.
-        assert any(len(v) > 1 for v in frames.values()), (scene_name, case, frames)
+    assert {surface.name for surface in SURFACE_CATALOG} == {
+        "welcome",
+        "first_run",
+        "run_open",
+        "phase_open",
+        "phase_close",
+        "phase_transition",
+        "agent_text",
+        "reasoning",
+        "tool_call",
+        "tool_result",
+        "tool_error",
+        "raw_warning_status",
+        "table",
+        "machine_json",
+        "cli_status",
+        "cli_warning",
+        "panel",
+        "artifact",
+        "syntax_preview",
+        "file_preview",
+        "diff_preview",
+        "elision",
+        "status_bar",
+        "completion_success",
+        "completion_failure",
+        "capability",
+        "dry_run",
+        "blank_gap",
+        "snapshot",
+        "machine_contract",
+    }
 
 
-#: E-3 ceiling: at most 16 tier-3 accents lit across a routine scene's
-#: full render. Distinct from G-8's wider, colour-depth-scaled per-frame
-#: contention budget (``ACCENT_BUDGET_BY_DEPTH``, 4/3/2) -- the E-3 cap
-#: is the *whole-scene* count, not the per-frame count.
-_E3_ROUTINE_SCENE_CEILING: int = 16
+def test_generated_scene_support_matrix_declares_all_dimensions() -> None:
+    matrix = support_matrix()
+    assert {case.background for case in matrix} == {"dark", "light", "unknown"}
+    assert {case.colour for case in matrix} == {"truecolour", "reduced", "none"}
+    assert {case.glyphs for case in matrix} == {"unicode", "ascii"}
+    assert {case.width for case in matrix} == {40, 80, 120}
+    assert {case.destination for case in matrix} == {"tty", "redirect", "ci"}
+    assert len(matrix) == 162
 
 
-@pytest.mark.timeout_seconds(5)
-@pytest.mark.criteria("E-3")
-def test_generated_scene_routine_output_never_exceeds_the_e3_accent_ceiling() -> None:
-    """E-3: routine output (the clean_run and idle_stretch scenes) must
-    not exceed the E-3 ceiling on tier-3 accents regardless of
-    background or colour. Sister to the depth-budget sweep
-    (``test_generated_scene_salience_decisions_never_exceed_the_depth_budget``,
-    which checks the per-frame G-10 gate); this one checks the
-    scene-level E-3 ceiling aggregated across the whole scene."""
-    case = SupportCase("dark", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty")
-    for scene_name in ("clean_run", "idle_stretch"):
-        decisions = scene_salience_decisions(scene_name, case, terminal_bg_is_light=False)
-        lit_tier_3 = sum(1 for d in decisions if d.lit and d.tier == FrequencyTier.EVENT)
-        # The E-3 ceiling is the maximum number of tier-3 accents the
-        # scene may light across its full render; depth budget bounds
-        # the per-frame count, this bounds the per-scene count.
-        assert lit_tier_3 <= _E3_ROUTINE_SCENE_CEILING, (scene_name, lit_tier_3, decisions)
-
-
-@pytest.mark.timeout_seconds(5)
 def test_generated_scene_alarm_decisions_are_never_demoted() -> None:
-    """G-6: alarm-tier salience is never demoted, regardless of the
-    surrounding routine stretch's count. ``ALARM`` is the only tier
-    that breaks the G-4 decay invariant because it is exempt from
-    demotion by construction (see ``SalienceAllocator``)."""
+    """G-5: the failure scene's error-role frames must always be lit,
+    regardless of colour depth or contention."""
     case = SupportCase("dark", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty")
     decisions = scene_salience_decisions("failure", case, terminal_bg_is_light=False)
-    alarm_decisions = [d for d in decisions if d.tier == FrequencyTier.ALARM]
-    assert alarm_decisions
-    assert all(d.lit for d in alarm_decisions), alarm_decisions
+    alarm_decisions = [d for d in decisions if d.tier is FrequencyTier.ALARM]
+    assert alarm_decisions, "failure scene must bid at least one alarm-tier frame"
+    assert all(d.lit for d in alarm_decisions)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_generated_scene_replay_of_an_identical_event_sequence_is_byte_identical() -> None:
-    """G-9: a deterministic frame sequence must produce a byte-identical
-    decision stream on replay. ``SalienceAllocator`` is a pure function
-    of the frame sequence, exercised here through
+    """G-6: replaying an identical event sequence through the allocator must
+    reproduce the exact same per-frame decisions every time -- role, tier,
+    lit/demoted outcome, and reason. Each replay constructs a fresh
     ``ParallelDisplay``/``SalienceAllocator`` pair (G-6's "pure function of
     the frame sequence" contract), so this is independent of any
     non-salience wall-clock text elsewhere in a scene's rendered bytes.

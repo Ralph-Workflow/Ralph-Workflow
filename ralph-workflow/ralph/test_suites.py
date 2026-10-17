@@ -201,10 +201,13 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
     # wt-15-policy (U1): the parametrized display module was previously
-    # 460 tests and wall-clock bottleneck; optimized down to representative
-    # matrix (100 tests total, ~2.7s execution) and retained here so the
-    # scene rendering contracts stay verified on the default make test profile.
-    "tests/test_display_generated_scenes.py",
+    # 460 tests and wall-clock bottleneck; split into three coherent files
+    # (catalog/surface, renderer/output, salience/idle-burst) to keep each
+    # under the audit's 1000-line cap. All three files must remain on the
+    # default make-test profile so the scene rendering contracts cannot rot.
+    "tests/display/test_generated_scene_catalog.py",
+    "tests/display/test_generated_scene_renderer.py",
+    "tests/display/test_generated_scene_salience.py",
     # wt-03-fix-bug (S): the linked-worktree regression test for the
     # diagnostic-evidence collector. Real-git, in-budget, must run
     # on the default ``make test`` profile so the architecture's
@@ -321,7 +324,9 @@ def _required_e2e_xdist_workers() -> str:
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
-    "tests/test_display_generated_scenes.py": 100,
+    "tests/display/test_generated_scene_catalog.py": 45,
+    "tests/display/test_generated_scene_renderer.py": 40,
+    "tests/display/test_generated_scene_salience.py": 15,
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 76,

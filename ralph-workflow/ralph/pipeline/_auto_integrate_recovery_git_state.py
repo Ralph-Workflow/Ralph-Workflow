@@ -23,6 +23,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ralph.git.merge import is_ancestor
 from ralph.git.subprocess_runner import run_git
 
 __all__ = [
@@ -207,8 +208,13 @@ def detached_branch_name(root: Path) -> str | None:
         # operation's own worktree. This is a crash-recovery seam, NOT
         # diagnostic evidence; it is a DISTINCT contract from the commondir
         # branch reflog read in _integration_continuation (see comment there).
+        #
+        # Format: %H (commit hash) + null + %gs (reflog subject).  Each entry
+        # is "<sha>\x00<subject>", entries separated by newlines.  %gD (reflog
+        # selector, e.g. "HEAD@{0}") contains NO subject text -- that is why
+        # %gs (subject) is required here.
         result = run_git(
-            ("reflog", "--format=%gD", "-n", "1"),
+            ("reflog", "--format=%H%x00%gs", "-n", "50"),
             cwd=root,
             label="recovery:head-reflog",
         )
@@ -216,16 +222,66 @@ def detached_branch_name(root: Path) -> str | None:
         return None
     if result.returncode != 0:
         return None
-    line = result.stdout.strip()
-    parts_after_to_count = 2
-    for marker in ("checkout: moving from ", "switch branch to "):
-        idx = line.find(marker)
-        if idx == -1:
+
+    # Parse each entry: "<sha>\x00<subject>"
+    # The reflog is ordered most-recent-first.  We scan until we hit the first
+    # checkout/switch entry -- that entry is the one that put us in the detached
+    # state.  Its "to" field tells us where we went.  If that field is a SHA
+    # (git checkout <sha>), we explicitly left the branch context and there is
+    # no branch to recover to.  If it is a branch name, validate and return it.
+    for line in result.stdout.splitlines():
+        if "\x00" not in line:
             continue
-        rest = line[idx + len(marker) :]
-        parts = rest.split(" to ")
-        if len(parts) == parts_after_to_count:
-            return parts[1].strip() or None
+        _sha, subject = line.split("\x00", 1)
+
+        # Extract destination from checkout/switch subject
+        candidate: str | None = None
+        for marker in ("checkout: moving from ", "switch branch to "):
+            idx = subject.find(marker)
+            if idx == -1:
+                continue
+            rest = subject[idx + len(marker) :]
+            parts = rest.split(" to ", 1)
+            # Two halves: "<source> to <destination>"; 1-half means malformed
+            source_dest: tuple[str, str] = ("", "")  # typing hint to avoid PLR2004
+            if len(parts) == len(source_dest):
+                candidate = parts[1].strip() or None
+                break
+
+        if not candidate:
+            continue
+
+        # This is the first checkout entry we encountered.
+        # If the destination is a SHA (not a branch name), the user explicitly
+        # checked out a commit and left the branch context -- no branch to
+        # recover to.
+        branch_check = run_git(
+            ("show-ref", "--verify", f"refs/heads/{candidate}"),
+            cwd=root,
+            label="recovery:branch-verify",
+        )
+        if branch_check.returncode != 0:
+            # Destination is a SHA, not a branch name -- explicit detached
+            # checkout.  Do not look at earlier entries; return None.
+            return None
+
+        # Candidate must be an existing local branch in this worktree
+        tip_check = run_git(
+            ("rev-parse", "--verify", f"refs/heads/{candidate}"),
+            cwd=root,
+            label="recovery:branch-tip",
+        )
+        if tip_check.returncode != 0:
+            continue
+        candidate_tip = tip_check.stdout.strip()
+
+        # Candidate tip must be an ancestor of current HEAD (branch is at or
+        # behind the detached HEAD -- safe to re-attach without data loss)
+        if not is_ancestor(root, candidate_tip, "HEAD"):
+            continue
+
+        return candidate
+
     return None
 
 
