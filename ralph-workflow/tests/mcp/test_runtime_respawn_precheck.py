@@ -25,7 +25,11 @@ import pytest
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.runtime import McpServerExtras
 from ralph.mcp.upstream.client import HttpUpstreamClient, JsonRpcCaller
-from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.config import (
+    UPSTREAM_MCP_TOOL_CATALOG_ENV,
+    UpstreamMcpServer,
+    serialize_upstream_tool_catalog,
+)
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
@@ -201,17 +205,16 @@ def test_respawn_with_catalog_uses_build_from_tool_catalog() -> None:
             return_value=servers,
         ),
         patch(
-            "ralph.mcp.server.runtime.load_upstream_tool_catalog",
-            return_value=catalog,
-        ),
-        patch(
             "ralph.mcp.upstream.registry.make_upstream_client",
             _make_client_factory(counter),
         ),
     ):
         from ralph.mcp.server.runtime import build_standalone_http_server
 
-        env: dict[str, str] = {"RALPH_MCP_RESPAWN": "1"}
+        env: dict[str, str] = {
+            "RALPH_MCP_RESPAWN": "1",
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: serialize_upstream_tool_catalog(catalog),
+        }
         build_standalone_http_server(
             workspace_root=Path("/tmp"),
             extras=McpServerExtras(
@@ -361,3 +364,222 @@ def test_first_start_failure_removes_published_file(tmp_path: Path) -> None:
 
     assert not catalog_file.exists()
     assert isinstance(exc_info.value, McpServerError)
+
+
+# ---------------------------------------------------------------------------
+# R2 regression: presence-aware catalog detection
+# ---------------------------------------------------------------------------
+
+
+def test_respawn_with_present_empty_catalog_no_discovery() -> None:
+    """RALPH_MCP_RESPAWN=1 with UPSTREAM_MCP_TOOL_CATALOG='{}' (present-but-empty)
+    must NOT raise; the catalog is present and authoritative, so the child
+    must NOT probe upstreams (zero list_tools calls)."""
+    counter: list[int] = []
+    servers = [_make_upstream_server("remote")]
+
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        env: dict[str, str] = {
+            "RALPH_MCP_RESPAWN": "1",
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: "{}",
+        }
+        # Must not raise: catalog is present (env var is SET), even if empty.
+        build_standalone_http_server(
+            workspace_root=Path("/tmp"),
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env=env,
+        )
+
+    # The present-empty catalog "{}" means "remote" has zero tools in the
+    # parent snapshot; the filter drops "remote" and upstream_servers becomes
+    # empty. Zero network I/O is the invariant.
+    assert counter == [], "list_tools must not be called when catalog is present"
+
+
+def test_respawn_with_present_empty_server_list_in_catalog_no_discovery() -> None:
+    """RALPH_MCP_RESPAWN=1 with UPSTREAM_MCP_TOOL_CATALOG='{"remote":[]}'
+    (present with empty tool list) must NOT raise; "remote" is dropped from
+    upstream_servers because its tool list is empty, so no probe occurs."""
+    counter: list[int] = []
+    servers = [_make_upstream_server("remote")]
+
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        env: dict[str, str] = {
+            "RALPH_MCP_RESPAWN": "1",
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: '{"remote":[]}',
+        }
+        build_standalone_http_server(
+            workspace_root=Path("/tmp"),
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env=env,
+        )
+
+    assert counter == [], (
+        "remote server has zero tools in parent snapshot; "
+        "it must be filtered and no probe must occur"
+    )
+
+
+def test_respawn_with_present_partial_catalog_drops_unlisted_server() -> None:
+    """RALPH_MCP_RESPAWN=1 with UPSTREAM_MCP_TOOL_CATALOG='{"other":[...]}'
+    must use build_from_tool_catalog for "other" and drop "remote" (not in
+    catalog); zero list_tools calls."""
+    counter: list[int] = []
+    servers = [
+        _make_upstream_server("remote"),
+        _make_upstream_server("other"),
+    ]
+    catalog_tool = UpstreamTool(name="alpha", description="d")
+    catalog = {"other": [catalog_tool]}
+
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        env: dict[str, str] = {
+            "RALPH_MCP_RESPAWN": "1",
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: serialize_upstream_tool_catalog(catalog),
+        }
+        build_standalone_http_server(
+            workspace_root=Path("/tmp"),
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env=env,
+        )
+
+    # "remote" is not in catalog, so it is filtered out.
+    # "other" is in catalog, so build_from_tool_catalog handles it with zero I/O.
+    assert counter == [], (
+        "build_from_tool_catalog must not call list_tools; "
+        "'remote' must be dropped because it is absent from the catalog"
+    )
+
+
+def test_respawn_with_present_corrupt_catalog_raises() -> None:
+    """RALPH_MCP_RESPAWN=1 with malformed UPSTREAM_MCP_TOOL_CATALOG value
+    must raise McpServerError with last_stage='parent_catalog_load'
+    (fail-closed: malformed env value is a contract violation)."""
+    servers = [_make_upstream_server("remote")]
+
+    with patch(
+        "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+        return_value=servers,
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        env: dict[str, str] = {
+            "RALPH_MCP_RESPAWN": "1",
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: "{not valid json",
+        }
+        with pytest.raises(McpServerError) as exc_info:
+            build_standalone_http_server(
+                workspace_root=Path("/tmp"),
+                extras=McpServerExtras(
+                    session=_make_session(),
+                    upstream_registry=None,
+                    mcp_config=_make_mcp_config(),
+                ),
+                env=env,
+            )
+
+    # The loader raises with last_stage="parent_catalog_load", which
+    # propagates before the respawn precheck can run.
+    assert exc_info.value.last_stage == "parent_catalog_load"
+
+
+def test_first_start_with_present_empty_catalog_skips_discovery(tmp_path: Path) -> None:
+    """First start (no RESPAWN) with UPSTREAM_MCP_TOOL_CATALOG='{}' (present-empty)
+    must NOT probe upstreams. The parent has an authoritative empty snapshot
+    (even on a first start the env var can be set by the test seam), so the
+    filter drops every server and the catalog-only path runs with
+    upstream_reg=None. No list_tools calls, no parent_catalog.json published.
+    Production first starts never have the env var set, but the contract
+    must hold for any caller that does: presence-aware filtering is a runtime
+    invariant, not a respawn-only one.
+    """
+    counter: list[int] = []
+    servers = [_make_upstream_server("remote")]
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    with (
+        patch(
+            "ralph.mcp.server.runtime.load_upstream_mcp_servers",
+            return_value=servers,
+        ),
+        patch(
+            "ralph.mcp.upstream.registry.make_upstream_client",
+            _make_client_factory(counter),
+        ),
+    ):
+        from ralph.mcp.server.runtime import build_standalone_http_server
+
+        # First start: no RALPH_MCP_RESPAWN, but the catalog env var IS set
+        # to an empty mapping. The filter drops "remote" because the catalog
+        # is empty; the catalog-only path runs with upstream_reg=None.
+        env: dict[str, str] = {
+            UPSTREAM_MCP_TOOL_CATALOG_ENV: "{}",
+        }
+        build_standalone_http_server(
+            workspace_root=workspace,
+            extras=McpServerExtras(
+                session=_make_session(),
+                upstream_registry=None,
+                mcp_config=_make_mcp_config(),
+            ),
+            env=env,
+        )
+
+    # Zero list_tools calls: the present-empty catalog is authoritative.
+    assert counter == [], (
+        "present-empty catalog must short-circuit discovery; "
+        "list_tools must not be called when the parent has an authoritative empty snapshot"
+    )
+    # No parent_catalog.json published: the catalog-only path skips the
+    # first-start publish call site.
+    catalog_file = workspace / ".agent" / "mcp" / "parent_catalog.json"
+    assert not catalog_file.exists(), (
+        "present-empty catalog must not publish parent_catalog.json; "
+        "the catalog-only path does not run UpstreamRegistry.build()"
+    )

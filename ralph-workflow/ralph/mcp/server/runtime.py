@@ -520,11 +520,29 @@ def build_standalone_http_server(
     # The production loader defaults to ``os.environ``; ``env_map`` remains
     # the explicit source for the adjacent cached-catalog lookup below.
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    tool_catalog = load_upstream_tool_catalog(env_map.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
-    if tool_catalog:
+    # R2: presence-aware catalog load. The env var is the canonical
+    # presence signal: SET (even if the value is "{}") means the parent
+    # has an authoritative snapshot and the child MUST NOT probe upstreams;
+    # UNSET means the catalog is absent and the child must discover. The
+    # 3-state contract (absent / present-empty / present-with-tools) is
+    # defined in ralph/mcp/upstream/tool_catalog_cache.py:UpstreamToolCatalogSnapshot
+    # and materialized at the parent end by apply_tool_catalog_env.
+    catalog_raw = env_map.get(UPSTREAM_MCP_TOOL_CATALOG_ENV)
+    catalog_present = catalog_raw is not None
+    if catalog_present:
+        # load_upstream_tool_catalog is fail-closed: malformed JSON or
+        # non-mapping payload raises McpServerError, which propagates up.
+        tool_catalog = load_upstream_tool_catalog(catalog_raw)
+        # Filter configured upstreams to those with at least one tool in
+        # the catalog. A present-empty catalog ("{}" or {"remote":[]})
+        # filters every server out, which is the documented
+        # "I have an authoritative empty snapshot" case: the child serves
+        # built-ins with upstream_reg=None below.
         upstream_servers = tuple(
             server for server in upstream_servers if server.name in tool_catalog
         )
+    else:
+        tool_catalog = {}
     # R2 respawn invariant: a child started with ``RALPH_MCP_RESPAWN=1``
     # must NOT probe upstreams. The parent owns the catalog and hands
     # it via ``UPSTREAM_MCP_TOOL_CATALOG_ENV``; a respawn that cannot
@@ -534,7 +552,7 @@ def build_standalone_http_server(
     # BEFORE any preflight and BEFORE any UpstreamRegistry.build() call,
     # so the supervisor never sees a half-bound child.
     is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
-    if is_respawn and upstream_servers and not tool_catalog:
+    if is_respawn and upstream_servers and not catalog_present:
         _log_and_record_stage(workspace_root, "respawn_precheck")
         raise McpServerError(
             "MCP respawn missing tool catalog (RALPH_MCP_RESPAWN=1 set but no "
@@ -546,7 +564,13 @@ def build_standalone_http_server(
 
     if _extras.upstream_registry is not None:
         upstream_reg = _extras.upstream_registry
-    elif upstream_servers and tool_catalog:
+    elif upstream_servers and catalog_present:
+        # Parent has an authoritative snapshot (even if empty). Use the
+        # catalog-only path; ``build_from_tool_catalog`` returns an empty
+        # registry when ``tool_catalog`` is empty, so a present-empty
+        # snapshot correctly drops every server without ever reaching
+        # ``UpstreamRegistry.build()`` (which would burn the readiness
+        # budget on a network probe the parent already settled).
         upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
     elif upstream_servers:
         # RALPH_MCP_STRICT ... works.
