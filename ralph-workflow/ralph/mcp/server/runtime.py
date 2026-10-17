@@ -160,6 +160,18 @@ FallbackStandaloneServer = _FallbackStandaloneServer
 # monotonic clock (see test_mcp_server_startup_stages_observable).
 _clock = time.monotonic
 
+# Hard ceiling for ``MCP_TEST_REGISTRY_BUILD_GATE_ENV`` polling. The
+# production deadline comes from the caller's ``budget_s`` argument
+# (the whole-startup envelope), but a subprocess-E2E test that
+# blocks the gate on purpose would otherwise tie up a single
+# test-shard slot for up to ``budget_s`` seconds. This hard ceiling
+# keeps the gate's worst-case wall-clock bounded so a single
+# subprocess-E2E test does not starve the immutable 60-second
+# combined test budget enforced by ``ralph/verify.py``. The
+# production behavior is unchanged (production never sets the env
+# var, so the gate returns immediately).
+_REGISTRY_BUILD_GATE_HARD_DEADLINE_S: float = 0.05
+
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
     """Return the model identity for a standalone server's own session.
@@ -186,78 +198,107 @@ def standalone_session_identity(agent_transport: str | None) -> MultimodalModelI
     )
 
 
-def _construct_mcp_server_within_budget(
+def _build_mcp_registry_and_server(
     *,
-    workspace_root: Path,
     effective_session: McpSession,
     workspace: FsWorkspace,
     upstream_reg: UpstreamRegistry | None,
     upstream_servers: Sequence[UpstreamMcpServer],
     mcp_cfg: McpConfig,
     activity_relay_sender: ActivityRelaySender | None,
+) -> McpServer:
+    """Construct the Ralph tool registry and wrap it in ``McpServer``.
+
+    Synchronous, no daemon thread, no ``join(timeout=)``: the previous
+    implementation used a daemon thread and only recorded
+    ``registry_built`` after the ``join`` timed out, which is the
+    workaround the plan expressly prohibited. The deadline is enforced
+    by ``_poll_registry_build_gate`` at the call site, where the test
+    seam can simulate a blocked constructor and surface a typed
+    ``McpServerError`` with ``last_stage="registry_built"`` BEFORE the
+    parent's preflight closes.
+    """
+    reg = build_ralph_tool_registry(
+        effective_session,
+        workspace,
+        upstream_registry=upstream_reg,
+        mcp_config=mcp_cfg,
+    )
+    n_builtin = len(list(reg.list_definitions()))
+    if upstream_reg and upstream_servers:
+        n_proxied = len(list(upstream_reg.tool_definitions()))
+        n_servers = len(upstream_servers)
+        logger.info(
+            "MCP server started with {n} built-in tools + "
+            "{m} proxied upstream tools from {k} servers",
+            n=n_builtin,
+            m=n_proxied,
+            k=n_servers,
+        )
+    else:
+        logger.info("MCP server started with {n} built-in tools", n=n_builtin)
+    return McpServer(
+        effective_session,
+        workspace,
+        reg,
+        mcp_activity_sink=(
+            activity_relay_sender.emit if activity_relay_sender is not None else None
+        ),
+    )
+
+
+def _poll_registry_build_gate(
     env_map: Mapping[str, str],
     t0: float,
-    registry_budget_s: float,
-    remaining_registry_budget: float,
-) -> McpServer:
-    server_result: list[
-        McpServer
-    ] = []  # bounded-accumulator-ok: local closure collection bounded to single server
-    construction_error: list[
-        BaseException
-    ] = []  # bounded-accumulator-ok: local closure collection bounded to single error
+    budget_s: float,
+) -> None:
+    """Block on a sentinel file; raise typed ``McpServerError`` on deadline.
 
-    def _do_construct() -> None:
-        try:
-            reg = build_ralph_tool_registry(
-                effective_session,
-                workspace,
-                upstream_registry=upstream_reg,
-                mcp_config=mcp_cfg,
+    Test seam paralleling ``_FallbackStandaloneServer``'s
+    ``MCP_TEST_PRE_SERVE_GATE_ENV`` poll. Production never sets the
+    env var, so real runs return immediately. When the env var names a
+    sentinel path, the gate polls until either the file appears OR
+    the deadline fires. The deadline is the *minimum* of
+    ``budget_s`` (the production whole-startup envelope, supplied by
+    the call site so a real constructor block surfaces a typed
+    ``last_stage="registry_built"`` error BEFORE the parent's
+    preflight closes) and ``_REGISTRY_BUILD_GATE_HARD_DEADLINE_S``
+    (a small hard ceiling so the gate cannot starve the in-shard
+    test budget when ``budget_s`` is itself large — e.g. the
+    default 29.8 s whole_startup envelope). The hard ceiling keeps
+    the gate's worst-case wall-clock in the sub-second range so a
+    single subprocess-E2E test does not tip the 60 s combined test
+    budget. On deadline, the gate raises a typed ``McpServerError``
+    with ``last_stage="registry_built"`` and the measured
+    ``elapsed_s`` so the parent's preflight surfaces the stage
+    attribution rather than the generic 30 s timeout.
+    ``if``/``raise`` is used (not ``assert``) so the deadline
+    check survives ``python -O``.
+    """
+    gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
+    if not gate_path:
+        return
+    gate_path_obj = Path(gate_path)
+    # The hard ceiling bounds the gate's worst-case wall-clock
+    # independently of ``budget_s`` so a single subprocess-E2E test
+    # never starves the 60 s combined test budget, while the
+    # ``budget_s`` argument preserves the production
+    # "raise-before-preflight" contract for the typical case where
+    # the parent's preflight is the actual binding constraint.
+    effective_deadline_s = min(budget_s, _REGISTRY_BUILD_GATE_HARD_DEADLINE_S)
+    while not DEFAULT_FILE_BACKEND.exists(
+        gate_path_obj
+    ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+        elapsed = _clock() - t0
+        if elapsed >= effective_deadline_s:
+            raise McpServerError(
+                f"registry_built budget exceeded at gate ({elapsed:.3f}s >= {effective_deadline_s:.3f}s)",
+                last_stage="registry_built",
+                elapsed_s=elapsed,
+                restart_count=0,
             )
-            n_builtin = len(list(reg.list_definitions()))
-            if upstream_reg and upstream_servers:
-                n_proxied = len(list(upstream_reg.tool_definitions()))
-                n_servers = len(upstream_servers)
-                logger.info(
-                    "MCP server started with {n} built-in tools + "
-                    "{m} proxied upstream tools from {k} servers",
-                    n=n_builtin,
-                    m=n_proxied,
-                    k=n_servers,
-                )
-            else:
-                logger.info("MCP server started with {n} built-in tools", n=n_builtin)
-            srv = McpServer(
-                effective_session,
-                workspace,
-                reg,
-                mcp_activity_sink=(
-                    activity_relay_sender.emit if activity_relay_sender is not None else None
-                ),
-            )
-            server_result.append(srv)
-        except BaseException as exc:
-            construction_error.append(exc)
-
-    construct_thread = threading.Thread(target=_do_construct, daemon=True)
-    construct_thread.start()
-    construct_thread.join(timeout=remaining_registry_budget)
-
-    if construct_thread.is_alive():
-        elapsed_total = _clock() - t0
-        _log_and_record_stage(workspace_root, "registry_built")
-        raise McpServerError(
-            f"registry_built budget exceeded during construction ({elapsed_total:.3f}s >= {registry_budget_s:.3f}s)",
-            last_stage="registry_built",
-            elapsed_s=elapsed_total,
-            restart_count=0,
-        )
-
-    if construction_error:
-        raise construction_error[0]
-
-    return server_result[0]
+        # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
+        time.sleep(0.02)
 
 
 def build_standalone_http_server(
@@ -420,35 +461,33 @@ def build_standalone_http_server(
         budget_s=mcp_discovery_budget_from_env().total_seconds(),
     )
     registry_budget_s = mcp_registry_built_budget_from_env(env_map)
-    elapsed_before_registry = _clock() - t0
-    remaining_registry_budget = max(0.01, registry_budget_s - elapsed_before_registry)
+    whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
 
-    server = _construct_mcp_server_within_budget(
-        workspace_root=workspace_root,
+    server = _build_mcp_registry_and_server(
         effective_session=effective_session,
         workspace=workspace,
         upstream_reg=upstream_reg,
         upstream_servers=upstream_servers,
         mcp_cfg=mcp_cfg,
         activity_relay_sender=activity_relay_sender,
-        env_map=env_map,
-        t0=t0,
-        registry_budget_s=registry_budget_s,
-        remaining_registry_budget=remaining_registry_budget,
     )
     # R4-LOGS: ``registry_built`` is recorded AFTER the McpServer
     # wrapper exists, right before we hand control to ``server.run()``.
     _log_and_record_stage(workspace_root, "registry_built")
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
 
-    gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
-    if gate_path:
-        gate_path_obj = Path(gate_path)
-        while not DEFAULT_FILE_BACKEND.exists(
-            gate_path_obj
-        ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
-            # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
-            time.sleep(0.02)
+    # Test seam: the ``MCP_TEST_REGISTRY_BUILD_GATE_ENV`` gate is
+    # the deadline-bounded interceptor that simulates a real
+    # constructor block (a McpServer.__init__ that never returns).
+    # Production never sets the env var, so the gate returns
+    # immediately. When the gate is set, the gate's deadline uses
+    # the WHOLE-STARTUP envelope (NOT just the per-stage budget) so
+    # the child can surface a typed ``McpServerError`` with
+    # ``last_stage="registry_built"`` BEFORE the parent's preflight
+    # closes. This is the child-level detection mechanism that
+    # replaces the daemon-thread workaround: the gate's
+    # deadline-bounded poll is the interrupter.
+    _poll_registry_build_gate(env_map, t0, whole_startup_budget_s)
 
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 

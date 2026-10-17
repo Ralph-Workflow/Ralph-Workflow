@@ -74,7 +74,7 @@ def _make_deps(signal: _PortSignal) -> LifecycleDeps:
     )
 
 
-@pytest.mark.timeout_seconds(40)
+@pytest.mark.timeout_seconds(15)
 def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
     """When the child is held at registry_built, preflight times out and surfaces
     a typed McpServerError with last_stage=registry_built and elapsed_s within
@@ -83,6 +83,14 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
     workspace = lifecycle.FsWorkspace(tmp_path)
     # Do NOT create the sentinel file: the child blocks indefinitely at the gate.
     sentinel = tmp_path / "registry_build_gate"
+    # 5s preflight is the minimum that satisfies the import-time
+    # invariant: preflight * _PROBE_BUDGET_SHARE must STRICTLY exceed
+    # _PROBE_SAFETY_S (2s). 4s yields 2.0s ceiling which fails the
+    # ``<= _PROBE_SAFETY_S`` check. 5s yields 2.5s ceiling.
+    # The child reaches the gate in well under 1s, the gate's
+    # hard deadline is 0.5s, and the parent fires at 5s. Test
+    # wall-clock: ~0.7s (gate fires first, child exits, parent
+    # surfaces the typed error).
     preflight_timeout_ms = 5000
     extras = McpServerExtras(
         extra_env={
@@ -111,12 +119,12 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
     try:
         # Wait for the bridge to own the listening socket (child has reached
         # registry_built and is blocked at the gate).
-        assert signal.port_ready.wait(timeout=30.0), (
+        assert signal.port_ready.wait(timeout=10.0), (
             "bridge never reserved its listening socket — child may have crashed"
         )
 
         # Wait for start_mcp_server to raise (child-side budget exceeded or preflight fails).
-        assert done.wait(timeout=30.0), "start_mcp_server did not raise within 30s window"
+        assert done.wait(timeout=10.0), "start_mcp_server did not raise within 10s window"
 
         # The child's stage file must say "registry_built".
         stage_label = ""
