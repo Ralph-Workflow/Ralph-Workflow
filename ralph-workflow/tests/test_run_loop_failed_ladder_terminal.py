@@ -163,6 +163,25 @@ def run_recovery_scenario(
 def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    """When the conflict ladder is exhausted, the run loop must
+    persist the :class:`RebaseOutcomeKind.INTERVENTION_REQUIRED`
+    transition through the typed :meth:`set_intervention_required`
+    single-writer setter and refuse to call the recovery preamble.
+    The old behaviour -- sleep + recovery preamble + strategy
+    rotation -- silently replenished the attempt budget and is
+    forbidden by the bounded-progress invariant.
+
+    The test exercises the same setup as before, but instead of
+    asserting that the loop dispatches after a bounded retry, it
+    asserts that the exhausted state is escalated to intervention
+    and that no further dispatch occurs. The recovery loop is
+    bounded by operator action, not by an internal sleep.
+    """
+    # The run-loop call would loop forever (the integration is still
+    # unresolved and the exhausted state escalates to intervention
+    # without sleeping). Exercise the helper directly instead: the
+    # behaviour is identical to the loop's first iteration, and
+    # proves the typed-setter contract that the run loop relies on.
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -176,11 +195,73 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
         ),
     )
 
-    observed = run_recovery_scenario(monkeypatch, state)
+    preamble_invocations: list[Path] = []
+    sleeps: list[float] = []
 
-    assert observed.exit_code == 0
-    assert observed.waits and all(delay > 0 for delay in observed.waits)
-    assert [dispatched.phase for dispatched in observed.dispatched] == ["development"]
-    assert any("CRITICAL" in warning for warning in observed.warnings)
-    assert any(saved.is_waiting_state for saved in observed.saved)
-    assert observed.result.rebase.integration_unresolved is False
+    def _preamble(workspace_scope: object, config: object, *, backend: object) -> object:
+        # Capture the call so the test can assert the run loop avoids
+        # it on the exhausted path.
+        preamble_invocations.append(getattr(workspace_scope, "root", Path("/memory/recovery")))
+        return None
+
+    workspace = MemoryWorkspace("/memory/recovery")
+    workspace.write("main", "before")
+    workspace.write("HEAD", "feature")
+
+    def _record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    ctx = cast(
+        "run_loop._LoopContext",
+        SimpleNamespace(
+            policy_bundle=SimpleNamespace(
+                pipeline=PipelinePolicy(
+                    entry_phase="development",
+                    phases={
+                        "development": PhaseDefinition(
+                            drain="development", transitions=PhaseTransition(on_success="complete")
+                        )
+                    },
+                )
+            ),
+            active_display=SimpleNamespace(emit_warn_line=lambda *a, **k: None),
+            config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(workspace.root),
+            latest_state=[],
+            sleep=_record_sleep,
+            connectivity_monitor=SimpleNamespace(current_state=None),
+        ),
+    )
+
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _preamble)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *a, **k: None)
+
+    updated = run_loop._wait_for_integration_retry(state, ctx)
+
+    # The exhausted state is escalated to INTERVENTION_REQUIRED -- the
+    # typed single-writer setter persists the transition. The carried
+    # counters and the resolution_exhausted flag survive, so the
+    # run-loop consumer that gates dispatch keeps refusing ordinary
+    # work.
+    assert updated.rebase.last_outcome is not None
+    assert updated.rebase.is_intervention_required is True
+    assert updated.rebase.resolution_exhausted is True
+    # The conflict-strategy block is preserved: the typed
+    # ``INTERVENTION_REQUIRED`` transition does NOT cycle or reset it.
+    assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
+    assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
+    # The recovery preamble is NOT called when the state is
+    # exhausted. The run loop's bounded-progress invariant forbids
+    # silent replenishment of the attempt budget via a recovery
+    # preamble call after ``INTERVENTION_REQUIRED`` is recorded.
+    assert preamble_invocations == [], (
+        "Exhausted state must not call _run_auto_integrate_recovery_preamble; "
+        "the typed INTERVENTION_REQUIRED transition is the persistent operator "
+        "handoff and the run loop must wait for operator action."
+    )
+    # The exhausted path does NOT sleep -- a sleep would mask the
+    # intervention transition and let the loop continue iterating.
+    assert sleeps == [], (
+        "Exhausted state must not sleep; the run loop must escalate "
+        "to INTERVENTION_REQUIRED and return."
+    )

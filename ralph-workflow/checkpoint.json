@@ -47,6 +47,7 @@
     "conflict_strategy_index": 0,
     "conflict_strategies_tried": [],
     "unresolved_integration_carried": false,
+    "last_planning_obstruction": null,
     "last_decision": null,
     "last_publication_decision": null,
     "last_fan_out_decision": null,

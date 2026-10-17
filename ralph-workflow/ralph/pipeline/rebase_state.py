@@ -341,6 +341,15 @@ class RebaseState(RalphBaseModel):
     # ``ralph.pipeline.auto_integrate_resolution_state``.
     unresolved_integration_carried: bool = False
 
+    # Typed planning obstruction kind set by the planning producer (see
+    # :mod:`ralph.pipeline._planning_obstruction`) and consumed by the
+    # run loop's :func:`_route_planning_commit`. ``None`` for legacy
+    # checkpoints; the consumer treats ``None`` as
+    # :attr:`PlanningObstructionKind.NONE` (no routing). Closed
+    # vocabulary, so no caller may write this field with anything other
+    # than a :class:`PlanningObstructionKind` member.
+    last_planning_obstruction: str | None = None
+
     # --- Lifecycle authority fields (ADR-0007) ---------------------------
     # All four fields are defaulted so legacy checkpoints load unchanged.
     # They are the single persisted surface for the seven typed authorities
@@ -486,9 +495,23 @@ class RebaseState(RalphBaseModel):
         ``float`` (monotonic seconds) or ``None`` to clear the
         deadline. The reducer and the budget module both call this
         setter instead of writing the field through ``model_copy``.
+
+        Non-finite values (``NaN``, positive/negative infinity) are
+        rejected because the action authority compares the deadline
+        against an injected clock with ``>=`` -- ``NaN`` and ``-inf``
+        would otherwise masquerade as a future deadline and authorise
+        a bounded wait for a deadline that cannot actually be
+        bounded. ``True``/``False`` are rejected because ``bool`` is
+        a subclass of ``int`` and would otherwise pass the type
+        check.
         """
-        if value is not None and not isinstance(value, (int, float)):
-            raise ValueError(f"invalid retry_deadline: {value!r}")
+        if value is not None:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"invalid retry_deadline: {value!r}")
+            import math
+
+            if not math.isfinite(float(value)):
+                raise ValueError(f"non-finite retry_deadline: {value!r}")
         return self.model_copy(update={"retry_deadline": value})
 
     def record_consecutive_conflicts(self, value: int) -> Self:

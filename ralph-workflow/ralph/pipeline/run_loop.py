@@ -1790,21 +1790,31 @@ def _reconcile_dispatch_state(state: PipelineState) -> PipelineState:
 def _route_planning_commit(state: PipelineState, ctx: _LoopContext) -> PipelineState:
     """Route dirty completed work through policy cleanup and commit phases."""
     from ralph.git.operations import has_uncommitted_changes
+    from ralph.pipeline._planning_obstruction import (
+        PlanningObstructionKind,
+        identify_planning_obstruction,
+    )
     from ralph.pipeline.progress import advance_phase
 
-    reason = (state.rebase.last_reason or "").lower()
-    obstruction = any(
-        text in reason
-        for text in (
-            "local changes would be overwritten",
-            "local changes to the following files would be overwritten",
-            "untracked files would be overwritten",
-            "untracked working tree files would be overwritten",
-            "staged uncommitted work blocks integration",
-        )
-    )
+    # The planning-obstruction kind is the single authority: it is
+    # produced by the planning producer (see ``_planning_obstruction``)
+    # and persisted on ``state.rebase.last_planning_obstruction``.
+    # Reading it here means the run loop no longer parses free-form
+    # reason text. The kind may ALSO be derived from ``last_reason``
+    # via the helper, but ONLY as a fallback for legacy checkpoints
+    # that predate the typed field -- the helper is the single
+    # allowed prose-to-kind translator and the run loop itself never
+    # parses prose.
+    kind_str = state.rebase.last_planning_obstruction
+    if kind_str:
+        try:
+            obstruction_kind = PlanningObstructionKind(kind_str)
+        except ValueError:
+            obstruction_kind = PlanningObstructionKind.NONE
+    else:
+        obstruction_kind = identify_planning_obstruction(state.rebase.last_reason or "")
     if (
-        not obstruction
+        obstruction_kind is PlanningObstructionKind.NONE
         or not inspect_integration_resolution(
             ctx.workspace_scope.root, state.rebase
         ).dispatch_allowed
@@ -2114,7 +2124,7 @@ def _handle_retained_integration(
     return state, (state, prev_phase, 0)
 
 
-def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router: each return is one distinct lifecycle decision (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked).
+def _block_unresolved_integration(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
@@ -2132,38 +2142,7 @@ def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router:
         IntegrationResolutionVerdict,
     )
 
-    record = read_record(ctx.workspace_scope.root)
-    # Fail-closed read outcome: BUSY maps to the existing bounded-retry
-    # decision exactly as _integration_action._conflict_action decides it
-    # (wait only on a valid, unexpired deadline; REQUIRE_INTERVENTION when
-    # absent, invalid, unreadable, or expired). UNREADABLE keeps the
-    # retained/intervention path: the record must not silently vanish.
-    read_outcome = read_record_outcome(ctx.workspace_scope.root)
-    if read_outcome.disposition is RecordReadOutcomeDisposition.BUSY:
-        busy_deadline = read_outcome.busy_deadline
-        bounded = (
-            isinstance(busy_deadline, (int, float))
-            and not isinstance(busy_deadline, bool)
-            and time.monotonic() < busy_deadline
-        )
-        if not bounded:
-            emit_integration_warn_line(
-                ctx.active_display,
-                "CRITICAL: durable integration record busy past its bounded retry deadline; "
-                "dispatch blocked",
-            )
-            state = state.copy_with(
-                rebase=state.rebase.set_operation_display_state(
-                    OperationDisplayState.INTERVENTION_REQUIRED
-                )
-            )
-            return state, prev_phase, 1
-        # Unexpired busy window: bounded retry. Preserve the wait decision by
-        # keeping the record absent for the intervention check below; the
-        # retained-integration seam owns the bounded wait.
-        record = None
-    elif read_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-        record = None
+    record, state = _resolve_record_for_block(state, ctx)
     # The reducer is the single last_decision writer; the typed authority
     # derives the blocking decision from current evidence and the next
     # reduce re-persists it.
@@ -2210,6 +2189,47 @@ def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router:
     _announce_blocked_dispatch(ctx, post)
     _announce_deferred_startup_integration(ctx, state.rebase)
     return state, prev_phase, 1
+
+
+def _resolve_record_for_block(
+    state: PipelineState, ctx: _LoopContext
+) -> tuple[object, PipelineState]:
+    """Resolve the integration record and the read outcome in one seam.
+
+    Fail-closed read outcome: BUSY maps to the existing bounded-retry
+    decision exactly as _integration_action._conflict_action decides it
+    (wait only on a valid, unexpired deadline; REQUIRE_INTERVENTION when
+    absent, invalid, unreadable, or expired). UNREADABLE keeps the
+    retained/intervention path: the record must not silently vanish.
+    """
+    record = read_record(ctx.workspace_scope.root)
+    read_outcome = read_record_outcome(ctx.workspace_scope.root)
+    if read_outcome.disposition is RecordReadOutcomeDisposition.BUSY:
+        busy_deadline = read_outcome.busy_deadline
+        bounded = (
+            isinstance(busy_deadline, (int, float))
+            and not isinstance(busy_deadline, bool)
+            and time.monotonic() < busy_deadline
+        )
+        if not bounded:
+            emit_integration_warn_line(
+                ctx.active_display,
+                "CRITICAL: durable integration record busy past its bounded retry deadline; "
+                "dispatch blocked",
+            )
+            updated = state.copy_with(
+                rebase=state.rebase.set_operation_display_state(
+                    OperationDisplayState.INTERVENTION_REQUIRED
+                )
+            )
+            return None, updated
+        # Unexpired busy window: bounded retry. Preserve the wait decision by
+        # keeping the record absent for the intervention check below; the
+        # retained-integration seam owns the bounded wait.
+        return None, state
+    if read_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        return None, state
+    return record, state
 
 
 def _post_recovery_verdict(
@@ -2325,37 +2345,45 @@ def _wait_for_integration_retry(
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
-    from ralph.pipeline.auto_integrate_resolution_state import CONFLICT_RESOLUTION_STRATEGIES
-
     rebase = state.rebase
-    index = rebase.conflict_strategy_index
-    if rebase.resolution_exhausted or rebase.consecutive_conflicts >= (
-        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-    ):
-        next_index = (index + 1) % len(CONFLICT_RESOLUTION_STRATEGIES)
-        trail = (
-            *rebase.conflict_strategies_tried,
-            f"{CONFLICT_RESOLUTION_STRATEGIES[index % len(CONFLICT_RESOLUTION_STRATEGIES)]}: {rebase.last_reason}",
-        )
-        # Rotate the strategy ladder through the typed single-writer
-        # setters. The forbidden fields can be projected from a
-        # constructed source via ``project_conflict_strategy_from``;
-        # the consecutive counter goes through its own setter.
-        rebase = rebase.record_consecutive_conflicts(0)
-        rebase = rebase.project_conflict_strategy_from(
-            RebaseState(
-                conflict_strategy_index=next_index,
-                conflict_strategies_tried=trail[-len(CONFLICT_RESOLUTION_STRATEGIES) :],
-                resolution_exhausted=False,
-                resolution_exhaustion_reason=None,
-            )
-        )
     detail = rebase.last_reason or "target synchronization remains unproven"
     alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
     logger.critical("{}", alarm)
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, alarm)
     rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+
+    # When the resolver is exhausted or the consecutive-conflict cap
+    # is reached, escalate to the persistent INTERVENTION_REQUIRED
+    # transition through the typed single-writer setter. The previous
+    # behaviour rotated the strategy ladder modulo
+    # ``len(CONFLICT_RESOLUTION_STRATEGIES)``, reset the consecutive
+    # counter to 0, slept, and re-ran the recovery preamble -- a
+    # silent replenishment of the attempt budget that violated
+    # bounded-progress and let unbounded rotation hide a real
+    # exhaustion. The new behaviour: persist
+    # ``INTERVENTION_REQUIRED`` once, retain the carried counters and
+    # resolution_exhausted flag across the checkpoint save, and
+    # refuse to call the recovery preamble.
+    if rebase.resolution_exhausted or rebase.consecutive_conflicts >= (
+        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    ):
+        # The reason must be the ORIGINAL failure detail, not a
+        # concatenation of the previous ``last_reason`` (which would
+        # grow without bound across repeated calls). Use ``detail``
+        # which is the bare human-readable reason computed above.
+        rebase = rebase.set_intervention_required(detail)
+        state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
+            WaitReason.EXHAUSTED_RETRY, None
+        )
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        # Deliberately do NOT sleep and do NOT call
+        # ``_run_auto_integrate_recovery_preamble``: the
+        # ``INTERVENTION_REQUIRED`` transition is a persistent
+        # wait-for-operator state, not a fresh attempt.
+        return state.clear_waiting()
+
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
