@@ -89,9 +89,29 @@ class UpstreamRegistry:
             # Check aggregate budget deadline before probing each server.
             remaining = deadline - _clock()
             if remaining <= 0:
+                # R2 strict-fail-closed: an exhausted aggregate discovery
+                # budget must NOT silently return an incomplete registry
+                # when the caller asked us to fail closed. Warn-and-skip
+                # is the right default for the agent-upstream branch
+                # (those servers are best-effort and owned by the agent
+                # runtime), but ``on_unreachable="raise"`` -- which the
+                # runtime passes whenever ``RALPH_MCP_STRICT`` is on --
+                # is the contract that the operator expected a strict
+                # first start to enforce. The same probe that would
+                # raise ``UpstreamValidationError`` for an unreachable
+                # server must raise it here too: the registry that
+                # ``build`` returns is partial, and a partial registry
+                # is a runtime hazard (a child that binds a tool it
+                # cannot serve when probed downstream).
                 server_kind = (
                     "custom MCP server" if server.origin == "custom" else "upstream MCP server"
                 )
+                if on_unreachable == "raise":
+                    raise UpstreamValidationError(
+                        f"{server_kind} '{server.name}' is unreachable: aggregate "
+                        f"discovery budget ({discovery_budget_seconds:.1f}s) "
+                        f"exhausted before reaching this server."
+                    )
                 logger.warning(
                     "Skipping {} {}: aggregate discovery budget ({:.1f}s) exhausted "
                     "before reaching this server.",

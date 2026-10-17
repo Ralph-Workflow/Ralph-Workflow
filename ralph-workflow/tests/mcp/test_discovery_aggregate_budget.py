@@ -446,6 +446,146 @@ class TestHardBoundTimeoutEnforcement:
         assert len(registry.tool_definitions()) == 2
 
 
+class TestStrictModeFailsClosedOnBudgetExhaustion:
+    """R2 strict-fail-closed: exhausted aggregate budget raises, never silently
+    returns an incomplete registry. The previous bug returned an empty
+    registry under strict mode and the runtime happily bound it as if every
+    server were unreachable. The new contract: a strict caller asking for
+    fail-closed gets fail-closed.
+    """
+
+    def test_strict_mode_raises_when_budget_exhausted_before_first_server(
+        self,
+    ) -> None:
+        """Under ``on_unreachable='raise'`` the registry must raise a typed
+        ``UpstreamValidationError`` when the aggregate deadline expires
+        before any server is probed, instead of returning an empty
+        registry that the runtime would happily bind.
+        """
+        from ralph.mcp.upstream.validation import UpstreamValidationError
+
+        # Fake clock: first call (deadline calc) returns 0.0, second call
+        # (per-server remaining check) returns 29.0, well past the 28s
+        # aggregate budget. The factory must NOT be invoked.
+        call_count = [0]
+
+        def fake_clock() -> float:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 0.0  # deadline = 0.0 + 28 = 28.0
+            return 29.0  # remaining = 28.0 - 29.0 = -1.0
+
+        factory_calls: list[str] = []
+
+        def make_client(
+            server: UpstreamMcpServer,
+        ) -> HttpUpstreamClient | StdioUpstreamClient:
+            factory_calls.append(server.name)
+            raise AssertionError("client must not be constructed when the deadline has expired")
+
+        servers = [
+            UpstreamMcpServer(
+                name="strict-server",
+                transport="http",
+                url="http://strict.example/mcp",
+                origin="custom",
+            )
+        ]
+
+        with pytest.raises(UpstreamValidationError) as exc_info:
+            UpstreamRegistry.build(
+                servers,
+                client_factory=make_client,
+                on_unreachable="raise",
+                _monotonic=fake_clock,
+            )
+        assert "aggregate discovery budget" in str(exc_info.value)
+        assert "strict-server" in str(exc_info.value)
+        assert factory_calls == []
+        assert call_count[0] == 2
+
+    def test_warn_and_skip_mode_still_skips_on_budget_exhaustion(self) -> None:
+        """The non-strict ``warn_and_skip`` branch keeps its legacy behavior:
+        an exhausted budget logs and skips the server, returning whatever
+        registry was already built. This guards the agent-upstream branch
+        in the runtime, which depends on warn-and-skip to tolerate slow
+        third-party servers without aborting the session.
+        """
+        call_count = [0]
+
+        def fake_clock() -> float:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 0.0
+            return 29.0
+
+        factory_calls: list[str] = []
+
+        def make_client(
+            server: UpstreamMcpServer,
+        ) -> HttpUpstreamClient | StdioUpstreamClient:
+            factory_calls.append(server.name)
+            raise AssertionError("client must not be constructed when the deadline has expired")
+
+        servers = [
+            UpstreamMcpServer(
+                name="soft-server",
+                transport="http",
+                url="http://soft.example/mcp",
+                origin="agent_upstream",
+            )
+        ]
+
+        registry = UpstreamRegistry.build(
+            servers,
+            client_factory=make_client,
+            on_unreachable="warn_and_skip",
+            _monotonic=fake_clock,
+        )
+
+        # Empty registry: budget exhausted before probe, warn-and-skip
+        # branch did NOT raise.
+        assert registry.tool_definitions() == []
+        assert factory_calls == []
+
+    def test_strict_mode_partial_success_then_budget_exhausted_raises(
+        self,
+    ) -> None:
+        """A strict caller whose first probe succeeded and second was
+        skipped due to budget exhaustion must still raise. The first
+        server's tools are not enough; the contract is that the registry
+        is either complete or the build fails.
+        """
+        from ralph.mcp.upstream.validation import UpstreamValidationError
+
+        clock = _FakeMonotonic()
+        counter: list[int] = []
+
+        def slow_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
+            # 15s per probe: 1st probe clock=15 (remaining=13), 2nd probe
+            # clock=30 (remaining=-2), 3rd server hits the exhausted branch.
+            return _TimeAdvancingClient(
+                server, counter, probe_duration=15.0, time_advancer=clock.advance
+            )
+
+        servers = _make_servers("ok-1", "ok-2", "too-slow")
+
+        with pytest.raises(UpstreamValidationError) as exc_info:
+            UpstreamRegistry.build(
+                servers,
+                client_factory=cast(
+                    "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                    slow_factory,
+                ),
+                on_unreachable="raise",
+                _monotonic=clock,
+            )
+        assert "aggregate discovery budget" in str(exc_info.value)
+        assert "too-slow" in str(exc_info.value)
+        # First two probes ran; third hit the exhausted branch.
+        assert len(counter) == 2
+
+
 class TestAggregateVsPerStageEnvelope:
     """WU-C2: the aggregate bound is the shared deadline, not a sum of stage budgets."""
 
