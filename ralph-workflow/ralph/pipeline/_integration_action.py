@@ -10,12 +10,8 @@ from __future__ import annotations
 
 import time
 from enum import StrEnum
-from typing import TYPE_CHECKING, cast
 
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
-
-if TYPE_CHECKING:
-    from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
 
 class IntegrationAction(StrEnum):
@@ -80,8 +76,11 @@ def _check_prepared_merge_tree(record: object) -> IntegrationAction | None:
         GitOperationKind,
         classify_git_operation,
     )
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
-    kind = classify_git_operation(cast("IntegrationRecord", record))
+    if not isinstance(record, IntegrationRecord):
+        return None
+    kind = classify_git_operation(record)
     if kind is GitOperationKind.AWAITING_MERGE_COMMIT:
         return IntegrationAction.CONTINUE_GIT_OPERATION
     return None

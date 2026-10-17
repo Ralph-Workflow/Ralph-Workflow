@@ -117,6 +117,12 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCom
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
     if branch is None or head is None:
         return None
+    # Distinct reflog contract #1 (commondir reflog): this reads
+    # commondir/logs/refs/heads/<branch> -- one row of a multi-part legacy
+    # rebase completion proof, combined with branch, HEAD, the rebase-finish
+    # subject, and ancestry. This is a crash-recovery seam, NOT diagnostic
+    # evidence; do not reuse it for the worktree-private logs/HEAD seam
+    # (see _auto_integrate_recovery_git_state.detached_branch_name).
     history = run_git(
         ("reflog", "show", "--format=%H%x00%gs", "-2", branch),
         cwd=root,

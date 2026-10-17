@@ -233,3 +233,66 @@ def test_remote_sync_status_enum() -> None:
     assert RemoteSyncStatus.PUSHED.value == "pushed"
     assert REMOTE_PUSHED == RemoteSyncStatus.PUSHED
     assert isinstance(RemoteSyncStatus.NO_REMOTE, str)
+
+
+def test_set_fan_out_decision_round_trip() -> None:
+    """Every FanOutDecision member is accepted and round-trips to .value."""
+    from ralph.pipeline._fan_out_authority import FanOutDecision
+
+    state = RebaseState()
+    for decision in FanOutDecision:
+        updated = state.set_fan_out_decision(decision)
+        assert updated.last_fan_out_decision == decision.value
+        assert updated.last_fan_out_decision == str(decision)
+        # frozen model: the original snapshot is untouched
+        assert state.last_fan_out_decision is None
+
+
+def test_set_fan_out_decision_rejects_invalid() -> None:
+    """Strings, foreign enums, and None are rejected with ValueError."""
+    from enum import StrEnum
+
+    from ralph.pipeline._fan_out_authority import FanOutDecision
+
+    class Foreign(StrEnum):
+        JOIN_PENDING = "join_pending"
+
+    state = RebaseState()
+    setter = state.set_fan_out_decision
+    for bad in ("join_pending", "bogus", Foreign.JOIN_PENDING, None):
+        with pytest.raises(ValueError, match="invalid fan_out_decision"):
+            setter(bad)
+    assert FanOutDecision("join_pending")  # sanity: valid vocab stays usable
+
+
+LEGACY_OPERATION_DISPLAY_ALIASES = [
+    "integration",
+    "publication",
+    "intervention",
+    "completed",
+    "diagnosing",
+]
+
+
+def test_set_operation_display_state_round_trip() -> None:
+    """Every OperationDisplayState member is accepted and round-trips to .value."""
+    state = RebaseState()
+    for display in OperationDisplayState:
+        updated = state.set_operation_display_state(display)
+        assert updated.operation_display_state == display.value
+        # frozen model: the original snapshot is untouched
+        assert state.operation_display_state is None
+
+
+def test_set_operation_display_state_rejects_invalid_and_legacy() -> None:
+    """Strings (including legacy aliases), foreign enums, None rejected."""
+    from enum import StrEnum
+
+    class Foreign(StrEnum):
+        WAITING = "waiting"
+
+    state = RebaseState()
+    setter = state.set_operation_display_state
+    for bad in ("waiting", "bogus", *LEGACY_OPERATION_DISPLAY_ALIASES, Foreign.WAITING, None):
+        with pytest.raises(ValueError, match="invalid operation_display_state"):
+            setter(bad)

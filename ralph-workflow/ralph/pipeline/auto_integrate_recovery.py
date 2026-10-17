@@ -63,6 +63,7 @@ from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
     next_integration_action,
 )
+from ralph.pipeline._integration_diagnostic import _busy_refusal_state
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
@@ -138,8 +139,7 @@ def busy_refusal_outcome(
     missing, malformed, or expired deadline yields
     ``REQUIRE_INTERVENTION``. Used by the release-refusal BUSY sites.
     """
-    state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, retry_deadline=retry_deadline)
-    return next_integration_action(state, clock=clock)
+    return next_integration_action(_busy_refusal_state(retry_deadline), clock=clock)
 
 
 def _clear_legacy_checkpoint(workspace_root: Path) -> None:

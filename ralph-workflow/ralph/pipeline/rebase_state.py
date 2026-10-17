@@ -15,6 +15,9 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from typing import Self
 
+    from ralph.display.auto_integrate_message import OperationDisplayState
+    from ralph.pipeline._fan_out_authority import FanOutDecision
+
 _FROZEN = ConfigDict(frozen=True)
 HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
 _LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
@@ -437,6 +440,35 @@ class RebaseState(RalphBaseModel):
         if not isinstance(value, PublicationDecision):
             raise ValueError(f"invalid publication decision: {value!r}")
         return self.model_copy(update={"last_publication_decision": value.value})
+
+    def set_fan_out_decision(self, value: FanOutDecision) -> Self:
+        """Record the fan-out authority's typed decision.
+
+        Single writer of :attr:`last_fan_out_decision`;
+        ``value`` must belong to the closed
+        :class:`FanOutDecision` vocabulary.
+        """
+        # Lazy import: _fan_out_authority imports PipelineState, which
+        # imports this module.
+        from ralph.pipeline._fan_out_authority import FanOutDecision
+
+        if not isinstance(value, FanOutDecision):
+            raise ValueError(f"invalid fan_out_decision: {value!r}")
+        return self.model_copy(update={"last_fan_out_decision": value.value})
+
+    def set_operation_display_state(self, value: OperationDisplayState) -> Self:
+        """Record the operator display state.
+
+        Single writer of :attr:`operation_display_state`;
+        ``value`` must belong to the closed
+        :class:`OperationDisplayState` vocabulary (legacy alias
+        strings are rejected).
+        """
+        from ralph.display.auto_integrate_message import OperationDisplayState
+
+        if not isinstance(value, OperationDisplayState):
+            raise ValueError(f"invalid operation_display_state: {value!r}")
+        return self.model_copy(update={"operation_display_state": value.value})
 
     def clear_recovery_record_retained(self) -> Self:
         """Clear the retained-record fact and its typed reason together."""

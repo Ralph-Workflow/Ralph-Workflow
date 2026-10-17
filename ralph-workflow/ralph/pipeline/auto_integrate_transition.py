@@ -192,6 +192,7 @@ ACCEPT_REPAIR_EDITS = Transition(
         "repair_commit_controls": "repair_commit_controls",
         "repair_original_tree": "repair_original_tree",
     },
+    from_state_guard=_is_integrating,
 )
 
 RESUME_REPAIR = Transition(
@@ -201,6 +202,7 @@ RESUME_REPAIR = Transition(
         "repair_pending_paths": "repair_pending_paths",
         "repair_commit_controls": "repair_commit_controls",
     },
+    from_state_guard=_is_integrating,
 )
 
 HOLD_DIAGNOSTIC_EVIDENCE = Transition(

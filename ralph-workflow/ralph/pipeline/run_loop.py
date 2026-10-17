@@ -19,6 +19,7 @@ import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.artifact_reader import plan_artifact_path
+from ralph.display.auto_integrate_message import OperationDisplayState
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
@@ -2039,9 +2040,8 @@ def _persist_unreadable_intervention(
                 "durable integration record unreadable; intervention required"
                 + (f" ({unreadable_reason})" if unreadable_reason else "")
             ),
-            "operation_display_state": "intervention_required",
         }
-    )
+    ).set_operation_display_state(OperationDisplayState.INTERVENTION_REQUIRED)
     ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=updated)]
     _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
 
@@ -2104,14 +2104,10 @@ def _handle_retained_integration(
         )
         _save_recovered_rebase_checkpoint(state, ctx)
     state = state.copy_with(
-        rebase=state.rebase.model_copy(
-            update={
-                "operation_display_state": (
-                    "intervention_required"
-                    if state.rebase.is_intervention_required
-                    else "evidence_diagnosis"
-                )
-            }
+        rebase=state.rebase.set_operation_display_state(
+            OperationDisplayState.INTERVENTION_REQUIRED
+            if state.rebase.is_intervention_required
+            else OperationDisplayState.EVIDENCE_DIAGNOSIS
         )
     )
     _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
@@ -2157,8 +2153,8 @@ def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router:
                 "dispatch blocked",
             )
             state = state.copy_with(
-                rebase=state.rebase.model_copy(
-                    update={"operation_display_state": "intervention_required"}
+                rebase=state.rebase.set_operation_display_state(
+                    OperationDisplayState.INTERVENTION_REQUIRED
                 )
             )
             return state, prev_phase, 1
@@ -2180,8 +2176,8 @@ def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router:
             "CRITICAL: diagnostic intervention required; dispatch blocked",
         )
         state = state.copy_with(
-            rebase=state.rebase.model_copy(
-                update={"operation_display_state": "intervention_required"}
+            rebase=state.rebase.set_operation_display_state(
+                OperationDisplayState.INTERVENTION_REQUIRED
             )
         )
         return state, prev_phase, 1
@@ -2355,7 +2351,7 @@ def _wait_for_integration_retry(
     logger.critical("{}", alarm)
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, alarm)
-    rebase = rebase.model_copy(update={"operation_display_state": "waiting"})
+    rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
@@ -2398,7 +2394,7 @@ def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineS
 
         if is_all_unavailable:
             state = state.copy_with(
-                rebase=state.rebase.model_copy(update={"operation_display_state": "waiting"}),
+                rebase=state.rebase.set_operation_display_state(OperationDisplayState.WAITING),
                 last_retry_delay_ms=0,
             )
         else:
@@ -3123,7 +3119,7 @@ def _execute_with_cleanup(
                 # The reducer re-persists last_decision from the typed
                 # authority on the next reduce; no direct write here.
                 state = state.copy_with(
-                    rebase=state.rebase.model_copy(update={"operation_display_state": "terminal"})
+                    rebase=state.rebase.set_operation_display_state(OperationDisplayState.TERMINAL)
                 )
                 loop_ctx.latest_state[:] = [state]
                 try:
@@ -3138,7 +3134,7 @@ def _execute_with_cleanup(
                 # The reducer re-persists last_decision from the typed
                 # authority on the next reduce; no direct write here.
                 state = state.copy_with(
-                    rebase=state.rebase.model_copy(update={"operation_display_state": "terminal"})
+                    rebase=state.rebase.set_operation_display_state(OperationDisplayState.TERMINAL)
                 )
                 loop_ctx.latest_state[:] = [state]
                 emit_activity_line(

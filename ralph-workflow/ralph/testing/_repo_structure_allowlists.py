@@ -1710,7 +1710,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # busy exhausted / unreadable / intervention / retained /
         # post-recovery clear / blocked). audit_lint_bypass already
         # authorises ``run_loop.PLR0911`` for the same fan-out.
-        ("ralph/pipeline/run_loop.py", 2121),
+        ("ralph/pipeline/run_loop.py", 2117),
         ("ralph/pipeline/runner.py", 224),
         ("ralph/pro_support/heartbeat.py", 82),
         ("ralph/prompts/materialize.py", 142),

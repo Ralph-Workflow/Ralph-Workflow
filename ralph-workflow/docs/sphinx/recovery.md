@@ -444,11 +444,41 @@ both are now closed:
   release site:
   - `BUSY` refusals map to a typed retained-skip outcome so the bounded
     retry owner (`RebaseState.retry_deadline` per
-    `_integration_action.py:_conflict_action:111-141`) decides
+    `_integration_action._conflict_action`) decides
     `WAIT_FOR_BOUNDED_RETRY` vs `REQUIRE_INTERVENTION`.
   - `UNREADABLE` refusals map to `DIAGNOSTIC_INTERVENTION_REQUIRED` with
     `recovery_record_retained=True` and bytes preserved on disk. The
     release path NEVER erases UNREADABLE bytes.
+
+### Recovery boundaries
+
+Two Git reflog reads exist on the crash-recovery path. They are
+different contracts
+(see [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)):
+
+- `_integration_continuation.py` reads `git reflog show -2 <branch>`
+  from `commondir/logs/refs/heads/<branch>`. That row is one part of a
+  multi-part legacy rebase completion proof, together with branch,
+  HEAD, the rebase-finish subject, and ancestry. It answers whether
+  the legacy rebase sequence finished across a crash. It is crash
+  recovery, not diagnostic evidence.
+- `_auto_integrate_recovery_git_state.py` `detached_branch_name` reads
+  the worktree-private git-dir `logs/HEAD` (not the commondir). It
+  reconstructs the branch name from detached-HEAD residue. That is a
+  different contract from the completion proof above, and it is crash
+  recovery, not diagnostic evidence. The read is pinned to the
+  operation's own worktree.
+
+Both seams are operation-scoped: neither read can be invalidated by an
+unrelated worktree's branch advance.
+
+The decision fields those recoveries project are written only by
+`set_publication_decision`, `set_fan_out_decision`, and
+`set_operation_display_state`. Raw `model_copy` writers of fan-out
+(1 site) and operation display (10 sites) were migrated onto the
+setters. The field-by-authority inventory is the writer table in
+ADR-0009, next to the authority, reader, projection, transition,
+restart, UNKNOWN, and blocking columns.
 
 ## OperationDisplayState taxonomy
 
@@ -476,9 +506,9 @@ For an operator-facing summary of these states alongside the seven
 
 ### Documentation review note
 
-- **What changed:** Added the integration lifecycle authority model, single source of truth rules, the 8-category OperationDisplayState taxonomy, typed IntegrationAction and RebaseOutcomeKind definitions, and the fail-closed completion pre-pass.
+- **What changed:** The recovery-boundaries section now states the two crash-recovery reflog contracts separately, and points at the ADR-0009 writer inventory (10 display sites and 1 fan-out site) without copying the table.
 - **Why here:** `recovery.md` is the canonical reference for workflow recovery, failure categorization, checkpoints, and intervention states.
-- **What stayed elsewhere:** Low-level transition tables and protocol implementations remain in ADR-0007, ADR-0008, and code docstrings.
-- **Duplication:** High-level concepts are explained once here for operators without duplicating code-level schemas.
-- **Clearer route:** Operators can clearly understand why runs enter intervention (diagnostic repair exhausted → operator intervention) or evidence diagnosis, and distinguish Git conflict resolution from diagnostic verification.
+- **What stayed elsewhere:** The domain matrix, setter signatures, and eight-column inventory remain in ADR-0009. Display-state meanings remain on the pipeline-states page.
+- **Duplication:** This page names the two contracts and the three setters. It does not repeat the writer table or the per-state operator notes.
+- **Clearer route:** An operator can tell a shared-branch completion proof apart from worktree-private branch reconstruction, then open ADR-0009 for the writer inventory.
 

@@ -54,13 +54,13 @@ The following table documents the complete 8-field architectural contract for ev
 |---|---|---|---|---|---|---|---|
 | **Phase Progression** | `_pipeline_state_machine` (`PhaseDecision`); waiting entry via `PipelineState.set_waiting` | `run_loop._run_inner_loop`, `runner._apply_step_integration_outcome` | `run_loop`, `runner`, CLI commands | `PipelineState.current_phase`, `PipelineState.wait_reason`, status bar | `CONTINUE_PHASE` &rarr; `ADVANCE_PHASE` &rarr; `REPORT_TERMINAL_SUCCESS` / `BLOCK_FOR_RECOVERY`; waits recorded via `set_waiting` with closed `WaitReason` vocabulary (`ALL_AGENTS_UNAVAILABLE`, `EXHAUSTED_RETRY`, `COOLDOWN`); `PhaseDecision` closed vocabulary: `CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`, `REPORT_TERMINAL_FAILURE`, `REPORT_INTERVENTION_REQUIRED` | Reconstituted from checkpoint; resume at current phase | `UNKNOWN` phase raises validation error; halts run loop | Unfinished phase, retained recovery, or unresolved integration blocks terminal success |
 | **Integration Obligation** | `IntegrationRecordStore` (`IntegrationRecord`) | `store.transition()` (`START_INTEGRATING`, `PROMOTE_TO_INTEGRATED`, `CLEAR`) | `recover_incomplete_integration`, `inspect_integration_resolution`, `runner` | `is_integrated`, `reintegrate_pending`, `owning_worktree` | `START_INTEGRATING` &rarr; `MARK_RESOLVING_*` &rarr; `PROMOTE_TO_INTEGRATED` &rarr; `CLEAR` | Atomic `.agent/integration_record.json` reloaded; crash before/after is idempotent | Corrupt or invalid JSON yields `UNREADABLE` (typed `RecordReadOutcome.UNREADABLE` with reason `corrupt_json` / `unsupported_schema` / `backend_read_failure`); `clear_record` and `transition` refuse mutation on `UNREADABLE` and raise `RecordUnreadableError` &rarr; `REQUIRE_INTERVENTION` | Presence of un-cleared record blocks normal phase dispatch and terminal success |
-| **Integration Action** | `_integration_action` (`IntegrationAction`); promotion applied exclusively by `commit_completion` — the `complete_commit()` authority at `ralph/pipeline/_commit_completion_authority.py:28` — whose result is applied by the reducer via `IntegrationRecord.with_transition` `PROMOTE_TO_INTEGRATED` | Pure function `next_integration_action()`; production callers: `ralph/pipeline/auto_integrate.py:710` and `ralph/pipeline/_integration_continuation.py:137` among others; reducer applies the resulting record | `run_loop`, `runner`, `prepare_commit_integration`, `recover_incomplete_integration` | Operator logs, dispatch decisions | Closed 8-enum transitions (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`, `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`, `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`) | Recomputed from durable record and `RebaseState` on startup | Unrecognized outcome or unreadable evidence &rarr; `REQUIRE_INTERVENTION` | Any action other than `COMPLETE_WITH_PROOF` blocks terminal success |
+| **Integration Action** | `_integration_action` (`IntegrationAction`); promotion applied exclusively by `commit_completion` — the `complete_commit()` authority at `ralph/pipeline/_commit_completion_authority.py:28` — whose result is applied by the reducer via `IntegrationRecord.with_transition` `PROMOTE_TO_INTEGRATED` | Pure function `next_integration_action()`; production callers include `run_loop`, `runner`, `auto_integrate_recovery`, and `_integration_diagnostic`; `_integration_continuation._legacy_completed_rebase` applies `complete_commit` instead | `run_loop`, `runner`, `prepare_commit_integration`, `recover_incomplete_integration` | Operator logs, dispatch decisions | Closed 8-enum transitions (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`, `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`, `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`) | Recomputed from durable record and `RebaseState` on startup | Unrecognized outcome or unreadable evidence &rarr; `REQUIRE_INTERVENTION` | Any action other than `COMPLETE_WITH_PROOF` blocks terminal success |
 | **Resolution Outcome** | `RebaseState` (`last_outcome: RebaseOutcomeKind`); publication decision via `RebaseState.set_publication_decision(value: PublicationDecision)`; Git-state classification via `classify_git_operation(record) -> GitOperationKind` and `is_in_active_resolution_state(record)` (both in `ralph/pipeline/_git_operation_authority.py`); `GitOperationKind`: `RESOLVING_REBASE`, `RESOLVING_MERGE`, `AWAITING_CONTINUE`, `AWAITING_MERGE_COMMIT`, `NONE`; live-git probes combined with record flags remain observations at the caller (e.g. `_integration_continuation.py`) | Seam handlers in `auto_integrate_*.py`, `conflict_resolution/driver.py` | `next_integration_action`, `inspect_integration_resolution`, `classify_git_operation`, `is_in_active_resolution_state`, display | `last_action` (backward-compat property), `last_publication_decision`, `is_landing()` | 19 closed verbs (`REBASED`, `MERGED`, `FAST_FORWARDED`, `CONFLICT`, `INTERVENTION_REQUIRED`, etc.); publication decisions constrained to the closed `PublicationDecision` enum | Loaded from checkpoint `rebase` dictionary via `from_legacy_payload` | `RebaseOutcomeKind.UNKNOWN` and `GitOperationKind.NONE` on unreadable evidence route to `REQUIRE_INTERVENTION` | Non-terminal outcome or `INTERVENTION_REQUIRED` blocks dispatch and terminal success |
 | **Resolution Failure Cause** | `RebaseState` / `IntegrationRecord` (`ResolutionFailureCause`) | `auto_integrate_budget_seam.py`, `merge.py`, `driver.py` | `_integration_diagnostic.py`, failure classification, logs | Human-readable diagnostic summaries | Typed enum: `NONE`, `AGENT_FAILURE`, `UNRESOLVED_CONFLICT`, `CONTEXT_FAILURE` | Serialized in record and checkpoint; defaults to `NONE` | Unmapped causes default to `ResolutionFailureCause.NONE` | Causes requiring intervention halt automatic resolution |
-| **Landing & Remote Publication** | `_publication_state_machine` & `auto_integrate_remote_sync` | `push_target_after_landing`, `auto_integrate_ff` | `is_terminal_success_eligible`, `run_loop` | `last_publication_decision`, `last_remote_sync`, `last_push` | `PUBLISH_NOW` &rarr; `REMOTE_PUSHED` / `publish_deferred_remote` / `PUBLICATION_TERMINAL` | Landing (`fast_forwarded`) preserved; publication deferred if offline | Remote timeout/unreachable &rarr; `publish_deferred_remote` (does NOT revert landing) | Pending publication requirement blocks terminal success |
-| **Parallel Worker Fan-Out** | `_fan_out_authority` (`FanOutDecision`) | `handle_worker_*` event handlers | `reducer`, `run_loop`, `_integrate_after_fan_out` | `WorkerStatus`, `RebaseState.last_fan_out_decision` | `JOIN_PENDING` &rarr; `JOIN_COMPLETE` / `JOIN_PARTIAL_FAILURE` / `JOIN_BLOCKED` | Rebuilt from `worker_states` in checkpoint; running workers reset to pending | Unknown worker status &rarr; `JOIN_BLOCKED` | `JOIN_PENDING` or `JOIN_BLOCKED` blocks reducer and terminal success |
+| **Landing & Remote Publication** | `_publication_state_machine` & `auto_integrate_remote_sync` | `RebaseState.set_publication_decision` (callers `push_target_after_landing`, `auto_integrate_ff`) | `is_terminal_success_eligible`, `run_loop` | `last_publication_decision`, `last_remote_sync`, `last_push` | `PUBLISH_NOW` &rarr; `REMOTE_PUSHED` / `publish_deferred_remote` / `PUBLICATION_TERMINAL` | Landing (`fast_forwarded`) preserved; publication deferred if offline | Remote timeout/unreachable &rarr; `publish_deferred_remote` (does NOT revert landing) | Pending publication requirement blocks terminal success |
+| **Parallel Worker Fan-Out** | `_fan_out_authority` (`FanOutDecision`) | `RebaseState.set_fan_out_decision` (the one former raw `model_copy` site in `_fan_out_authority.py`) | `reducer`, `run_loop`, `_integrate_after_fan_out` | `WorkerStatus`, `RebaseState.last_fan_out_decision` | `JOIN_PENDING` &rarr; `JOIN_COMPLETE` / `JOIN_PARTIAL_FAILURE` / `JOIN_BLOCKED` | Rebuilt from `worker_states` in checkpoint; running workers reset to pending | Unknown worker status &rarr; `JOIN_BLOCKED` | `JOIN_PENDING` or `JOIN_BLOCKED` blocks reducer and terminal success |
 | **Retry & Conflict Budget** | `RetryProgressGuard` & `apply_conflict_budget` | Guard `.record()`, `apply_conflict_budget()` | Conflict driver, run loop, backoff wait | `streak`, `consecutive_conflicts`, `retry_deadline` | Streak increments to cap &rarr; `is_exhausted = True` &rarr; `REQUIRE_INTERVENTION` | `RetryProgressGuard` snapshot persisted in `PipelineState.progress_guard` and `AgentChainState.progress_guard` atomically in checkpoint; restored via `from_dict` | Malformed or contradictory snapshots fail closed to intervention | Exhausted budget blocks automatic retry and requires operator intervention |
-| **Operator Surface Display** | `OperationDisplayState` taxonomy | Computed projection from `RebaseState.operation_display_state` | Rich console, status bar, event streams | 8 display labels (`INTEGRATING`, `LANDING`, `PUBLISHING`, `WAITING`, etc.) | Derived synchronously from `last_outcome` and `last_decision` | Re-projected immediately upon state load | Unknown state falls back to safe generic indicator | Pure display projection; never gates or mutates pipeline dispatch |
+| **Operator Surface Display** | `OperationDisplayState` taxonomy | `RebaseState.set_operation_display_state` (10 former raw `model_copy` sites in `run_loop.py` and `runner.py`) | Rich console, status bar, event streams | 8 display labels (`INTEGRATING`, `LANDING`, `PUBLISHING`, `WAITING`, etc.) | Derived synchronously from `last_outcome` and `last_decision` | Re-projected immediately upon state load | Unknown state falls back to safe generic indicator | Pure display projection; never gates or mutates pipeline dispatch |
 
 ## Landed Refinements (2026 update)
 
@@ -105,9 +105,59 @@ The operator surface exposes exactly seven integration display labels — `confl
 The loader and the three sibling release sites now flow through the closed transition table and the typed record store, closing the two real bypasses that let one lifecycle fact disagree with another:
 
 - **Loader intervention bypass** — `_migrate_payload_evidence` no longer authors `diagnostic_intervention_required=True` via `dict(**data_raw, ...)`. The legacy global-evidence case returns a transient marker; `parse_record_payload` constructs a bare `IntegrationRecord.model_validate(...)` and applies `RAISE_DIAGNOSTIC_INTERVENTION` through the closed transition table. The intervention flag's only path to flip is the transition table.
-- **Recovery release bypass** — the three sibling release sites (`auto_integrate_recovery.py:627-686`, `_integration_diagnostic.py:687-712`, `_remote_reconcile_recovery.py:77-98` and `_apply_release_or_refuse` at `:167-200`) now route `RELEASE_DIAGNOSTIC_EVIDENCE` through `IntegrationRecordStore.transition` (via `apply_record_transition`). Each site catches `RecordBusyError` (mapped to a typed retained-skip outcome so the bounded retry owner — `RebaseState.retry_deadline` per `_integration_action.py:_conflict_action:111-141` — decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION) and `RecordUnreadableError` (mapped to `DIAGNOSTIC_INTERVENTION_REQUIRED` with `recovery_record_retained=True` and bytes preserved on disk). The release path NEVER erases UNREADABLE bytes.
+- **Recovery release bypass** — the three sibling release sites (`auto_integrate_recovery`, `_integration_diagnostic._complete_or_intervene`, and `_remote_reconcile_recovery._apply_release_or_refuse`) now route `RELEASE_DIAGNOSTIC_EVIDENCE` through `IntegrationRecordStore.transition` (via `apply_record_transition`). Each site catches `RecordBusyError` (mapped to a typed retained-skip outcome so the bounded retry owner — `RebaseState.retry_deadline` per `_integration_action._conflict_action` — decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION) and `RecordUnreadableError` (mapped to `DIAGNOSTIC_INTERVENTION_REQUIRED` with `recovery_record_retained=True` and bytes preserved on disk). The release path NEVER erases UNREADABLE bytes.
 
 Both refinements are public-boundary: `tests/test_integration_record_closed_transition_loader.py` and `tests/test_recovery_release_uses_record_store.py` exercise the seam without AST walks.
+
+## Recovery boundaries
+
+Two Git reflog reads exist on the crash-recovery path. They are
+distinct contracts and must not be treated as one seam:
+
+1. **Legacy rebase completion proof.** `_integration_continuation.py`
+   (`_legacy_completed_rebase`, the `git reflog show -2 <branch>`
+   read) reads `commondir/logs/refs/heads/<branch>`. That row is one
+   part of a multi-part proof together with branch, HEAD, the
+   rebase-finish subject, and ancestry. It answers whether the legacy
+   rebase sequence finished across a crash. This is crash recovery,
+   not diagnostic evidence.
+2. **Detached-HEAD branch reconstruction.**
+   `_auto_integrate_recovery_git_state.py` `detached_branch_name`
+   (the `git reflog --format=%gD -n 1` read) reads the worktree-private
+   `<git-dir>/logs/HEAD`, not the commondir. It reconstructs the branch
+   name from detached-HEAD residue. This is a different contract from
+   the completion proof above, and it is crash recovery, not diagnostic
+   evidence. `cwd=root` pins the read to the operation's own worktree.
+
+Both seams are operation-scoped: neither read can be invalidated by an
+unrelated worktree's branch advance.
+
+## Writer inventory
+
+Every `RebaseState` decision-field writer is a typed setter. Raw
+`model_copy` writers of fan-out and operation display were migrated:
+10 operation-display sites (`run_loop.py` and `runner.py`) and 1
+fan-out site (`_fan_out_authority.py`).
+
+| Decision field | Single writer (signature) | Owning authority |
+|---|---|---|
+| `last_publication_decision` | `RebaseState.set_publication_decision(value: PublicationDecision) -> Self` | `_publication_state_machine.next_publication_action` |
+| `last_fan_out_decision` | `RebaseState.set_fan_out_decision(value: FanOutDecision) -> Self` | `_fan_out_authority.fan_out_decision` |
+| `operation_display_state` | `RebaseState.set_operation_display_state(value: OperationDisplayState) -> Self` | Display projection of the authoritative lifecycle state (see `docs/sphinx/operator-states.md`) |
+
+`set_publication_decision` is the publication writer.
+`set_fan_out_decision` and `set_operation_display_state` are the
+setters that replaced the raw `model_copy` writes counted above.
+Ad-hoc `model_copy(update=...)` on these fields is forbidden
+(Decision §1 / §3).
+
+### Documentation review note
+
+- **What changed:** Named the domain-matrix writer column for the three `RebaseState` setters, recorded the two crash-recovery reflog contracts, and counted the migrated display and fan-out sites separately.
+- **Why here:** ADR-0009 is the ownership record for authorities, writers, readers, projections, transitions, restart, UNKNOWN, and blocking.
+- **What stayed elsewhere:** Operator wording lives on the pipeline-states and recovery pages; those pages point here instead of copying the table.
+- **Duplication:** Seam file locations are stated once in this section; the operator pages keep the contract distinction without a second inventory table.
+- **Clearer route:** A reader can separate the shared-branch completion proof from worktree-private branch reconstruction, and can grep the three setter names.
 
 ## Dependency Injection Boundaries
 

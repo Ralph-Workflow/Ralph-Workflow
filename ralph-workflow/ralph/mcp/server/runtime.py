@@ -566,11 +566,14 @@ def run_standalone_server(
     agent_transport: str | None = None,
     ready_event: Event | None = None,
     stop_event: Event | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> None:
     """Run the standalone Ralph MCP server over HTTP.
 
     ``transport`` is the MCP wire transport; ``agent_transport`` names
-    the agent CLI being served.
+    the agent CLI being served. ``env`` is the composition-root
+    environment map for the inherited listening FD and the respawn
+    sentinel. When omitted, the process environment is that map.
 
     R4: every startup stage is logged as a flushed ``logger.info``
     line AND recorded to a stage-tracker file the supervisor reads
@@ -584,6 +587,7 @@ def run_standalone_server(
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
+    env_map = os.environ if env is None else env
     t0 = _clock()
 
     def _stage(name: str) -> None:
@@ -607,7 +611,7 @@ def run_standalone_server(
     # re-binding, so a client that connects during a respawn queues
     # in the kernel backlog instead of being refused.
     parent_socket: socket.socket | None = None
-    inherited_fd_raw = os.environ.get(MCP_INHERITED_FD_ENV, "")
+    inherited_fd_raw = env_map.get(MCP_INHERITED_FD_ENV, "")
     if inherited_fd_raw.isdigit():
         try:
             parent_socket = socket.socket(
@@ -631,7 +635,7 @@ def run_standalone_server(
     # parent hands us, never from a live probe — a respawn has no
     # network budget. First start keeps the existing path so
     # discovery still happens once.
-    is_respawn = os.environ.get(MCP_RESPAWN_ENV) == "1"
+    is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
     server = build_standalone_http_server(
         workspace_root,
         host=host,
@@ -639,6 +643,7 @@ def run_standalone_server(
         extras=McpServerExtras(session=session),
         agent_transport=agent_transport,
         activity_relay_sender=relay_sender,
+        env=env_map,
         parent_socket=parent_socket,
         t0=t0,
     )

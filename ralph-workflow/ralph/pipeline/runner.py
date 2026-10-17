@@ -21,7 +21,10 @@ from loguru import logger
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
-from ralph.display.auto_integrate_message import format_auto_integrate_message
+from ralph.display.auto_integrate_message import (
+    OperationDisplayState,
+    format_auto_integrate_message,
+)
 from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -1898,8 +1901,8 @@ def _apply_step_integration_outcome(
         if action is IntegrationAction.REQUIRE_INTERVENTION or (
             record is not None and record.diagnostic_intervention_required
         ):
-            reconciled_rebase = reconciled_rebase.model_copy(
-                update={"operation_display_state": "intervention_required"}
+            reconciled_rebase = reconciled_rebase.set_operation_display_state(
+                OperationDisplayState.INTERVENTION_REQUIRED
             )
         elif action not in _KNOWN_INTEGRATION_ACTIONS:
             raise ValueError(f"Unknown integration action: {action!r}")
@@ -1920,8 +1923,8 @@ def _apply_step_integration_outcome(
             )
             and reconciled_rebase.operation_display_state != "intervention_required"
         ):
-            reconciled_rebase = reconciled_rebase.model_copy(
-                update={"operation_display_state": "waiting"}
+            reconciled_rebase = reconciled_rebase.set_operation_display_state(
+                OperationDisplayState.WAITING
             )
     return next_state.copy_with(rebase=reconciled_rebase)
 

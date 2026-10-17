@@ -8,7 +8,16 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop, runner
+from ralph.pipeline._fan_out_authority import FanOutDecision, fan_out_decision
+from ralph.pipeline._integration_action import (
+    IntegrationAction,
+    next_integration_action,
+)
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
+from ralph.pipeline._publication_state_machine import (
+    PublicationDecision,
+    next_publication_action,
+)
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import (
     AUTO_INTEGRATE_RECORD_FILENAME,
@@ -351,6 +360,15 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
             False,
         ),
         (
+            "integrating_record_empty_sha",
+            True,
+            False,
+            {},
+            "development",
+            PhaseDecision.BLOCK_FOR_RECOVERY,
+            False,
+        ),
+        (
             "terminal_phase_eligible",
             False,
             False,
@@ -578,3 +596,76 @@ def test_unreadable_record_startup_reports_intervention(
         rebase_state=st_recovery,
     )
     assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+
+
+def test_integrating_record_empty_sha_blocks_at_all_six_seams(tmp_path: Path) -> None:
+    """Inv-7: an unresolved integrating record blocks every public workflow seam.
+
+    ``complete_commit`` is not called here. Terminal eligibility is the
+    combination decision; a workerless ``JOIN_COMPLETE`` is not success.
+    """
+    (tmp_path / ".git").mkdir()
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        engine="git-merge",
+        owning_worktree=str(tmp_path),
+        integrated_feature_sha=None,
+    ).with_transition(START_INTEGRATING)
+    assert record.integrated_feature_sha is None
+    write_record(tmp_path, record)
+
+    policy = _policy()
+    shared_rebase = RebaseState()
+    shared_state = PipelineState(phase="development", rebase=shared_rebase)
+    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    bundle = bundle.model_copy(update={"pipeline": policy})
+
+    assert (
+        decide_phase_transition(
+            shared_state, policy, integration_record=record, rebase_state=shared_rebase
+        )
+        == PhaseDecision.BLOCK_FOR_RECOVERY
+    )
+    assert is_terminal_success_eligible(shared_state, record, shared_rebase) is False
+    action = next_integration_action(record)
+    assert action is not IntegrationAction.COMPLETE_WITH_PROOF
+    assert action in (
+        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+        IntegrationAction.REQUIRE_INTERVENTION,
+    )
+    assert (
+        next_publication_action(
+            shared_rebase,
+            record=record,
+            remote_unavailable=False,
+            configured_remote="origin",
+        )
+        == PublicationDecision.PUBLICATION_PENDING
+    )
+    assert fan_out_decision(shared_state) == FanOutDecision.JOIN_COMPLETE
+
+    decision_startup = _eval_startup_inspection(
+        tmp_path, shared_rebase, shared_state, policy, record
+    )
+    decision_phase_boundary, ctx = _eval_phase_boundary_run_loop(
+        tmp_path, shared_state, policy, record, bundle
+    )
+    decision_commit = _eval_commit_handling(tmp_path, shared_state, bundle)
+    decision_cooldown = _eval_cooldown_recovery(tmp_path, shared_state, ctx)
+    decision_parallel_join = _eval_parallel_join(tmp_path, shared_state, shared_rebase, bundle)
+    decision_terminal = _eval_terminal_handling(tmp_path, shared_rebase, policy, record)
+    seam_decisions = {
+        "startup": decision_startup,
+        "phase_boundary": decision_phase_boundary,
+        "commit": decision_commit,
+        "cooldown": decision_cooldown,
+        "parallel_join": decision_parallel_join,
+        "terminal": decision_terminal,
+    }
+    for seam, decision in seam_decisions.items():
+        assert decision == PhaseDecision.BLOCK_FOR_RECOVERY, (seam, decision)
+    assert len(set(seam_decisions.values())) == 1

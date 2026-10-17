@@ -44,6 +44,58 @@ registration  →  parser  →  strategy  →  CommandBuilder
    `name.removeprefix('pi/')` so multi-segment `provider/id` patterns
    round-trip intact.
 
+## Pipeline source-of-truth ownership
+
+Every pipeline decision fact has exactly one authority, and every durable
+state change has exactly one writer:
+
+- **Decision authorities** (each a pure function returning a typed
+  decision): `decide_phase_transition`
+  (`ralph.pipeline._pipeline_state_machine`), `next_integration_action`
+  (`ralph.pipeline._integration_action`), `next_publication_action`
+  (`ralph.pipeline._publication_state_machine`), `fan_out_decision`
+  (`ralph.pipeline._fan_out_authority`), `classify_git_operation`
+  (`ralph.pipeline._git_operation_authority`), `complete_commit`
+  (`ralph.pipeline._commit_completion_authority`), and
+  `is_terminal_success_eligible` (`ralph.pipeline._terminal_authority`).
+- **Single durable writer**: `IntegrationRecord.with_transition`
+  (`ralph.pipeline.auto_integrate_record`) is the only path that mutates
+  the durable integration record; ad-hoc `model_copy(update=...)` on
+  record-bearing state is forbidden.
+- **Decision-field writers**: `set_publication_decision`,
+  `set_fan_out_decision`, and `set_operation_display_state` are the
+  writers of `last_publication_decision`, `last_fan_out_decision`, and
+  `operation_display_state`. Raw `model_copy` writers of fan-out (1
+  site) and operation display (10 sites) were migrated onto those
+  setters.
+- **Recovery boundaries**: crash recovery uses two reflog seams with
+  different contracts. One reads the shared branch reflog
+  (`commondir/logs/refs/heads/<branch>`, via `git reflog show -2`) as
+  one row of a legacy rebase completion proof. The other reads the
+  worktree-private git-dir `logs/HEAD` inside `detached_branch_name`
+  to reconstruct the branch from detached-HEAD residue. Neither seam
+  is diagnostic evidence.
+
+The domain inventory — authority, writer, readers, projection, valid
+transitions, restart behavior, `UNKNOWN` representation, and dispatch
+or terminal blockers — is the matrix in
+[ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md).
+The canonical ownership ADRs are
+[ADR-0007](../architecture/adr-0007-integration-source-of-truth.md),
+[ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md),
+and [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)
+(including its recovery boundaries and writer inventory). The canonical
+operator pages are [Pipeline states](../sphinx/operator-states.md) and
+[Recovery](../sphinx/recovery.md).
+
+### Documentation review note
+
+- **What changed:** The ownership section now names the three `RebaseState` setters, the 10 display plus 1 fan-out migration, the eight-column domain inventory, and the two crash-recovery reflog contracts.
+- **Why here:** This page is the agent-facing map next to the stack overview; the matrix and seam detail stay in ADR-0009.
+- **What stayed elsewhere:** State meanings stay on the pipeline-states page; recovery procedure stays on the recovery page.
+- **Duplication:** This section names the contracts and links onward. It does not copy the writer table or the operator state list.
+- **Clearer route:** From the stack overview, the next click is ADR-0009 for the inventory, or the operator pages for states and recovery.
+
 ## Registration
 
 The single canonical entry point for adding, updating, or removing an agent is

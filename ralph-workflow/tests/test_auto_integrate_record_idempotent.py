@@ -178,6 +178,32 @@ def test_promote_to_integrated_requires_integrating_phase() -> None:
         )
 
 
+def test_accept_repair_edits_rejects_integrated_phase() -> None:
+    """``ACCEPT_REPAIR_EDITS`` rejects records whose phase is not ``integrating``."""
+    from ralph.pipeline.auto_integrate_record import ACCEPT_REPAIR_EDITS
+
+    integrated = _record().model_copy(update={"phase": "integrated"})
+    with pytest.raises(ValueError, match="is not legal from phase"):
+        integrated.with_transition(
+            ACCEPT_REPAIR_EDITS,
+            repair_pending_diff="x",
+            repair_pending_paths=(),
+        )
+
+
+def test_resume_repair_rejects_integrated_phase() -> None:
+    """``RESUME_REPAIR`` rejects records whose phase is not ``integrating``."""
+    from ralph.pipeline.auto_integrate_record import RESUME_REPAIR
+
+    integrated = _record().model_copy(update={"phase": "integrated"})
+    with pytest.raises(ValueError, match="is not legal from phase"):
+        integrated.with_transition(
+            RESUME_REPAIR,
+            repair_pending_diff="x",
+            repair_pending_paths=(),
+        )
+
+
 def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
     """A legacy on-disk record without the new fields loads with defaults."""
     from ralph.pipeline.auto_integrate_record import (

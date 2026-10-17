@@ -44,6 +44,21 @@ calling a typed decision function. There is no fallback authority:
   outcomes; UNREADABLE refusals are mapped to intervention with
   bytes preserved on disk. The release path NEVER erases
   ownership evidence.
+- Decision-field writers on `RebaseState` are exclusively the typed
+  setters: `set_publication_decision` (single writer of
+  `last_publication_decision`), `set_fan_out_decision` (single writer of
+  `last_fan_out_decision`), and `set_operation_display_state` (single
+  writer of `operation_display_state`). Grepping the codebase for these
+  setters confirms there are no raw `model_copy` writers of these
+  fields left after the audit. The migration covered 10
+  operation-display sites and 1 fan-out site (see
+  [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)).
+- Crash recovery uses two reflog boundaries with different contracts.
+  One reads the shared branch reflog as one row of a legacy rebase
+  completion proof. The other, `detached_branch_name`, reads the
+  worktree-private git-dir `logs/HEAD` to reconstruct the branch from
+  detached-HEAD residue. Neither is diagnostic evidence. The contracts
+  are in [Recovery](recovery.md#recovery-boundaries).
 - The run loop, the diagnostic path, and the publication state
   machine all consult the same authority — they never infer
   progression from prose, from worktree cleanliness, or from
@@ -71,3 +86,11 @@ onto exactly one of these seven labels:
 The full lifecycle — failure categorization, checkpoints, evidence
 retention, and the recovery loop these states project — is documented in
 [Recovery](recovery.md).
+
+### Documentation review note
+
+- **What changed:** The closed-ownership section names all three setters, the 10 display plus 1 fan-out migration, and the two distinct crash-recovery reflog contracts.
+- **Why here:** This is the operator reference for what the activity line means and which writer owns each displayed decision.
+- **What stayed elsewhere:** The domain matrix and setter signatures stay in ADR-0009. Seam locations stay on the recovery page.
+- **Duplication:** This page keeps one-line state notes and points at Recovery for the reflog contracts.
+- **Clearer route:** An operator can match a displayed state to its setter, then open Recovery for how a crash is reconstructed.

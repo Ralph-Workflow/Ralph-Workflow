@@ -199,6 +199,14 @@ def detached_branch_name(root: Path) -> str | None:
     the residue.
     """
     try:
+        # Distinct reflog contract #2 (worktree-private reflog): this reads
+        # the worktree-private <git-dir>/logs/HEAD -- NOT the commondir; in a
+        # worktree `git rev-parse --git-path logs/HEAD` resolves to
+        # .git/worktrees/<name>/logs/HEAD. It reconstructs the original branch
+        # name from detached-HEAD residue, and cwd=root pins it to the
+        # operation's own worktree. This is a crash-recovery seam, NOT
+        # diagnostic evidence; it is a DISTINCT contract from the commondir
+        # branch reflog read in _integration_continuation (see comment there).
         result = run_git(
             ("reflog", "--format=%gD", "-n", "1"),
             cwd=root,

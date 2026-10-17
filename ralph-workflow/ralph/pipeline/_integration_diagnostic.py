@@ -555,14 +555,32 @@ def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
     return True, "index and tree verified"
 
 
+def _has_phase_proof(record: IntegrationRecord) -> bool:
+    return record.phase == "integrated" or (
+        record.phase == "integrating" and bool(record.integrated_feature_sha)
+    )
+
+
+def _busy_refusal_state(retry_deadline: float | None) -> RebaseState:
+    """Transient scratch state for busy_refusal_outcome.
+
+    Returned state is consumed by ``next_integration_action`` and never
+    persisted. Note: the legacy checkpoint-retention site in
+    auto_integrate_recovery.py (~line 191) intentionally keeps extra
+    identity kwargs and is NOT migrated.
+    """
+    return RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        retry_deadline=retry_deadline,
+    )
+
+
 def _check_atomic_transition_proof(
     record: IntegrationRecord,
     root: Path | None = None,
     collector: OperationEvidenceCollector | None = None,
 ) -> tuple[bool, str]:
-    has_valid_phase = record.phase in ("integrated",) or (
-        record.phase in ("integrating",) and bool(record.integrated_feature_sha)
-    )
+    has_valid_phase = _has_phase_proof(record)
     if not has_valid_phase:
         return False, f"record.phase is '{record.phase}', expected 'integrated'"
     effective_root = (
@@ -609,8 +627,7 @@ def busy_refusal_outcome(
     ``next_integration_action`` authority (its conflict branch), so the
     semantics live in exactly one place.
     """
-    state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, retry_deadline=retry_deadline)
-    return next_integration_action(state, clock=clock)
+    return next_integration_action(_busy_refusal_state(retry_deadline), clock=clock)
 
 
 def _pre_pass_intervention(

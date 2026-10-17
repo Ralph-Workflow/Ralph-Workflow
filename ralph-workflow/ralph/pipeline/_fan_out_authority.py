@@ -30,8 +30,8 @@ class FanOutDecision(StrEnum):
 
 
 def _with_fan_out_decision(state: PipelineState) -> PipelineState:
-    decision = fan_out_decision(state).value
-    rebase = state.rebase.model_copy(update={"last_fan_out_decision": decision})
+    decision = fan_out_decision(state)
+    rebase = state.rebase.set_fan_out_decision(decision)
     return state.copy_with(rebase=rebase)
 
 
