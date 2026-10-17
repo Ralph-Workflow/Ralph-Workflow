@@ -13,13 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import pytest
-
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 
 if TYPE_CHECKING:
+    import pytest
 
     from ralph.pipeline.auto_integrate_ff import RemoteClient
     from ralph.pipeline.rebase_state import RebaseState
@@ -58,9 +57,7 @@ class _RecordingRemoteClient:
         timeout_seconds: float = 0.0,
     ) -> _remote_push_module.PushResult:
         self.pushed.append((remote, target))
-        return _remote_push_module.PushResult(
-            _remote_push_module.PushStatus.PUSHED, remote, target
-        )
+        return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, target)
 
 
 class _UnreachableRemoteClient:
@@ -136,24 +133,31 @@ def test_unreachable_then_reachable_auto_pushes(
     unreachable = _UnreachableRemoteClient()
     config = UnifiedConfig()
     state_1 = remote_sync.reconcile_remote_publication(
-        config, tmp_path, "main", remote="origin", remote_client=cast("RemoteClient", unreachable),
+        config,
+        tmp_path,
+        "main",
+        remote="origin",
+        remote_client=cast("RemoteClient", unreachable),
     )
     assert state_1.last_remote_sync == "origin unreachable"
     assert unreachable.pushed == []
 
     # The remote recovers.
     reachable = _RecordingRemoteClient(remote_sha="new-remote-sha")
+
     # The new client returns a remote SHA different from local; stub
     # ``is_ancestor`` to claim the local is strictly ahead so the
     # push branch fires.
-    def _stub_is_ancestor_recover(
-        _root: Path, ancestor: str, descendant: str
-    ) -> bool:
+    def _stub_is_ancestor_recover(_root: Path, ancestor: str, descendant: str) -> bool:
         return ancestor == "new-remote-sha" and descendant == "local-sha"
 
     monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor_recover)
     remote_sync.reconcile_remote_publication(
-        config, tmp_path, "main", remote="origin", remote_client=cast("RemoteClient", reachable),
+        config,
+        tmp_path,
+        "main",
+        remote="origin",
+        remote_client=cast("RemoteClient", reachable),
     )
     # On the recovery tick, the reconciler pushes.
     assert reachable.pushed == [("origin", "main")]
@@ -226,9 +230,7 @@ def test_local_ahead_triggers_push(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     # branch fires when ``is_ancestor(remote_sha, local_sha)`` is True
     # -- the remote is an ancestor of the local, meaning local is
     # strictly ahead.
-    def _stub_is_ancestor(
-        _root: Path, ancestor: str, descendant: str
-    ) -> bool:
+    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
         return ancestor == "remote-behind-sha" and descendant == "local-sha-different"
 
     monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
@@ -260,9 +262,7 @@ def test_killed_between_landing_and_push_recovery_publishes(
     # module load time; the test patches the names in the
     # reconciler's namespace directly.
 
-    def _stub_is_ancestor(
-        _root: Path, ancestor: str, descendant: str
-    ) -> bool:
+    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
         # Local is strictly ahead of remote.
         return ancestor == "stale-remote-sha" and descendant == "local-stale-sha"
 

@@ -650,9 +650,21 @@ def _safe_int_from_raw(raw: object) -> int:
         return 0
     if isinstance(raw, bool):
         return int(raw)
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return int(raw)
+        except ValueError:
+            return 0
+    return _safe_int_from_float(raw) if isinstance(raw, float) else 0
+
+
+def _safe_int_from_float(raw: float) -> int:
+    """Coerce a float to ``int`` with explicit overflow/value handling."""
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except (ValueError, OverflowError):
         return 0
 
 

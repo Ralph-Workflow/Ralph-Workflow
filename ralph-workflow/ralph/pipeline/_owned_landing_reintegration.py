@@ -51,7 +51,9 @@ def reintegrate_owned_landing(
     completed = _completed_owned_action(root, retained)
     if completed is not None:
         write_record(root, completed.record)
-        from ralph.pipeline.auto_integrate_recovery import _continue_fast_forward_from_record
+        from ralph.pipeline.auto_integrate_recovery_record import (
+            _continue_fast_forward_from_record,
+        )
 
         return _continue_fast_forward_from_record(
             root,
@@ -126,7 +128,7 @@ def _resume_owned_operation(
         )
     resumed = record.with_transition(transition, **kwargs)
     write_record(root, resumed)
-    from ralph.pipeline.auto_integrate_recovery import _recover_pending_merge
+    from ralph.pipeline.auto_integrate_recovery_record import _recover_pending_merge
 
     return _recover_pending_merge(root, resumed, config, conflict_resolver, rebase_stop_resolver)
 

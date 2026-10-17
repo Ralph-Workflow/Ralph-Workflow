@@ -101,3 +101,97 @@ def test_bridge_failed_restart_propagates_typed_error() -> None:
         bridge.check_health_and_restart_if_needed()
     assert isinstance(excinfo.value, lifecycle.McpServerError)
     assert excinfo.value.restart_count == 1
+
+
+def test_bridge_reset_tool_registry_shared_restart_budget_exhaustion() -> None:
+    """Secondary 1 / Finding 2: reset_tool_registry shares the restart budget.
+
+    Constructs a bridge with max_restarts=1 and an always-failing restart_fn.
+    The first reset call fails and increments restart_count to 1.
+    The second call detects that the shared restart budget is exhausted,
+    raises McpServerError with the real count (1), and does not invoke restart_fn again.
+    """
+    attempts: list[int] = []
+    inner = _make_inner(poll_result=1)
+
+    def failing_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        attempts.append(len(attempts) + 1)
+        raise RuntimeError("synthetic restart failure")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=failing_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
+        run_id="test-run",
+    )
+
+    with pytest.raises(lifecycle.McpServerError) as exc1:
+        bridge.reset_tool_registry()
+    assert exc1.value.restart_count == 1
+    assert "MCP tool-registry-reset attempt 1/3 failed" in str(exc1.value)
+    assert attempts == [1]
+
+    with pytest.raises(lifecycle.McpServerError) as exc2:
+        bridge.reset_tool_registry()
+    assert exc2.value.restart_count == 1
+    msg2 = str(exc2.value)
+    assert "restart budget exhausted" in msg2
+    assert "current=1" in msg2
+    assert "max=1" in msg2
+    # No extra spawn attempt occurred
+    assert attempts == [1]
+
+    # Health check also trips budget exhaustion immediately
+    with pytest.raises(lifecycle.McpServerError) as exc3:
+        bridge.check_health_and_restart_if_needed()
+    assert exc3.value.restart_count == 1
+    assert "restart budget exhausted" in str(exc3.value)
+    assert attempts == [1]
+
+
+def test_bridge_mixed_health_and_reset_shared_accounting() -> None:
+    """Health restarts and tool-registry resets share the restart budget."""
+    attempts: list[int] = []
+    inner = _make_inner(poll_result=1)
+
+    def failing_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        attempts.append(len(attempts) + 1)
+        raise RuntimeError("synthetic restart failure")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=failing_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
+        run_id="test-run",
+    )
+
+    # 1. First health restart fails -> restart_count becomes 1
+    with pytest.raises(lifecycle.McpServerError) as exc1:
+        bridge.check_health_and_restart_if_needed()
+    assert exc1.value.restart_count == 1
+    assert bridge.restart_count == 1
+    assert bridge.tool_registry_resets == 0
+    assert attempts == [1]
+
+    # 2. Reset tool registry fails -> restart_count becomes 2, tool_registry_resets becomes 1
+    with pytest.raises(lifecycle.McpServerError) as exc2:
+        bridge.reset_tool_registry()
+    assert exc2.value.restart_count == 2
+    assert bridge.restart_count == 2
+    assert bridge.tool_registry_resets == 1
+    assert attempts == [1, 2]
+
+    # 3. Third call (health or reset): max_restarts (2) reached -> raises budget exhausted
+    with pytest.raises(lifecycle.McpServerError) as exc3:
+        bridge.reset_tool_registry()
+    assert exc3.value.restart_count == 2
+    assert "restart budget exhausted" in str(exc3.value)
+    assert "current=2" in str(exc3.value)
+    assert "max=2" in str(exc3.value)
+    assert attempts == [1, 2]
+
+    with pytest.raises(lifecycle.McpServerError) as exc4:
+        bridge.check_health_and_restart_if_needed()
+    assert exc4.value.restart_count == 2
+    assert "restart budget exhausted" in str(exc4.value)
+    assert attempts == [1, 2]

@@ -45,10 +45,10 @@ from ralph.pipeline._integration_action import (
     next_integration_action,
 )
 from ralph.pipeline._integration_diagnostic import (
-    diagnostic_evidence_verdict,
+    EVIDENCE_LEASE_SECONDS as _EVIDENCE_LEASE_SECONDS,
 )
 from ralph.pipeline._integration_diagnostic import (
-    EVIDENCE_LEASE_SECONDS as _EVIDENCE_LEASE_SECONDS,
+    diagnostic_evidence_verdict,
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
@@ -61,11 +61,8 @@ from ralph.pipeline.auto_integrate_record_store import IntegrationRecordStore
 from ralph.pipeline.checkpoint import Checkpoint
 from ralph.pipeline.operation_evidence import (
     identity_fingerprint,
-    ownership_fingerprint,
 )
-from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
 from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
-from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus

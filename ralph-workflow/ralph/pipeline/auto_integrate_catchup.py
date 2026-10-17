@@ -246,15 +246,15 @@ def _close_repo(repo: Repo | None) -> None:
 
 
 def attempt_catchup_fast_forward(
-    config: UnifiedConfig,
+    config: UnifiedConfig | None,
     root: Path,
     *,
     remote_client: RemoteClient | None = None,
 ) -> str:
     """One catch-up probe: fast-forward the checkout onto the target if free."""
-    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
-    if not (isinstance(enabled_raw, bool) and enabled_raw):
+    if not _catchup_enabled(config):
         return CATCHUP_DISABLED
+    assert config is not None
     current = _current_branch_name(root)
     if current is None:
         return CATCHUP_NOT_ON_BRANCH
@@ -278,6 +278,14 @@ def attempt_catchup_fast_forward(
             else CATCHUP_ON_TARGET
         )
     return _fast_forward_if_strictly_behind(root, target, current)
+
+
+def _catchup_enabled(config: UnifiedConfig | None) -> bool:
+    """Return True when catch-up is enabled by the supplied config (or absent)."""
+    if config is None:
+        return False
+    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    return isinstance(enabled_raw, bool) and enabled_raw
 
 
 def _synchronize_remote_target(

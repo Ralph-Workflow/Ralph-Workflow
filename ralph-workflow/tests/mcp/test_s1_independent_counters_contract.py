@@ -126,14 +126,11 @@ def test_check_health_path_increments_restart_count_before_attempt_and_typed_err
 def test_reset_tool_registry_path_increments_tool_registry_resets_before_attempt_and_typed_error_carries_real_count() -> (
     None
 ):
-    """S1: tool_registry_resets advances BEFORE _restart_fn is called.
+    """S1: tool_registry_resets and restart_count advance BEFORE _restart_fn is called.
 
     Each call to reset_tool_registry increments _tool_registry_resets
-    before invoking _restart_fn. When _restart_fn raises, the
-    McpServerError carries tool_registry_resets == _TOOL_REGISTRY_MAX_RESETS.
-
-    Critical independent-counter property: restart_count stays at 0
-    throughout all tool-registry-reset attempts.
+    and shares accounting with _restart_count before invoking _restart_fn.
+    When _restart_fn raises, the McpServerError carries the real restart_count.
     """
     bridge = _make_bridge()
 
@@ -148,12 +145,13 @@ def test_reset_tool_registry_path_increments_tool_registry_resets_before_attempt
     for i in range(1, max_resets + 1):
         with pytest.raises(McpServerError) as exc:
             bridge.reset_tool_registry()
-        # Error carries the real reset count
-        assert exc.value.restart_count == 0, (
-            "restart_count must stay 0 — independent counter design"
+        # Error carries the real restart count
+        assert exc.value.restart_count == i, (
+            f"restart_count must be {i} — shared counter accounting"
         )
-        # Before the next iteration the counter is i
+        # Before the next iteration the counters are i
         assert bridge.tool_registry_resets == i
+        assert bridge.restart_count == i
 
     # One more call: cap exhausted, _restart_fn is NOT called
     with pytest.raises(McpServerError) as exc_cap:
@@ -162,6 +160,6 @@ def test_reset_tool_registry_path_increments_tool_registry_resets_before_attempt
     assert "tool-registry-reset exhausted" in msg
     assert str(max_resets) in msg  # cap value visible
 
-    # restart_count never advanced — independent-counter design verified
-    assert bridge.restart_count == 0
+    # Counters advanced to cap — shared counter design verified
+    assert bridge.restart_count == max_resets
     assert bridge.tool_registry_resets == max_resets

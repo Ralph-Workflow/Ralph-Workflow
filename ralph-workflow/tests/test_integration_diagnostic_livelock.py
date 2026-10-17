@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from ralph.pipeline import _integration_diagnostic as diagnostic
+import ralph.pipeline._integration_diagnostic as diagnostic
 from ralph.pipeline._integration_diagnostic import DIAGNOSTIC_REPAIR_ATTEMPT_CAP
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,

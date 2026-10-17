@@ -35,7 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -128,7 +128,7 @@ def identity_fingerprint(record: IntegrationRecord) -> str:
     snapshot/reset never invalidates the lease.
     """
     payload: dict[str, object] = {
-        field: getattr(record, field) for field in _IDENTITY_FINGERPRINT_FIELDS
+        field: cast("object", getattr(record, field)) for field in _IDENTITY_FINGERPRINT_FIELDS
     }
     encoded = json.dumps(
         payload,

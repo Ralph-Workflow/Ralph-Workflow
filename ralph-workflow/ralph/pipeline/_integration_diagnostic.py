@@ -491,9 +491,7 @@ def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, 
     return _check_parent_match(root, record)
 
 
-def _check_ownership_proof(  # noqa: PLR0911 - lease/state branch table
-    root: Path, record: IntegrationRecord
-) -> tuple[bool, str]:
+def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
     if not record.owning_worktree or not record.owning_worktree.strip():
         return False, "record.owning_worktree is missing or empty"
     try:
@@ -511,9 +509,7 @@ def _check_ownership_proof(  # noqa: PLR0911 - lease/state branch table
     # passes the proof even if Ralph's legitimate actions have moved
     # ``HEAD`` or updated the index.
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    if fingerprint is None or held_at is None:
-        return False, "diagnostic_ownership does not match ownership_fingerprint"
-    if fingerprint != identity_fingerprint(record):
+    if fingerprint is None or held_at is None or fingerprint != identity_fingerprint(record):
         return False, "diagnostic_ownership does not match ownership_fingerprint"
     return True, "ownership verified"
 

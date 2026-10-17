@@ -124,9 +124,7 @@ def boundary_freshness_outcome(
         return record_when_stale(
             _record_skip(reason="no commits beyond target", target=target), refresh
         )
-    if not already_current:
-        return pending
-    return None
+    return pending
 
 
 def target_is_ahead(root: Path, target_sha: str | None) -> bool:

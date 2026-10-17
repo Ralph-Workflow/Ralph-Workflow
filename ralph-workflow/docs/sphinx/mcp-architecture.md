@@ -125,6 +125,18 @@ incident is triaged from; every restart decision now lands in
 exit status, probe duration, and the last ten child log lines so the
 classification has direct evidence instead of a loguru scrape.
 
+### Startup serving bound and platform contract
+
+The MCP server startup path establishes an enforceable bound on elapsed time from child process spawn to answering JSON-RPC requests on the listening socket:
+
+1. **Parent-owned listening socket (R1):** The parent bridge binds and listens on the endpoint socket at initialization, passing the listening file descriptor to the child process via `MCP_INHERITED_FD_ENV`. The child adopts the socket without rebinding. Connecting clients never receive `ECONNREFUSED` during startup or respawn windows; connections wait in the kernel backlog until the child serves.
+2. **Deterministic pre-serve path (R2):**
+   - **Respawn with catalog:** When respawned, the child receives `UPSTREAM_MCP_TOOL_CATALOG_ENV` and performs zero network discovery, reconstructing its upstream registry entirely in-memory.
+   - **First-start discovery budget:** Upstream MCP probes are bounded in aggregate by `mcp_discovery_budget_from_env()`, clamped strictly below `mcp_preflight_timeout_from_env()`.
+3. **Platform and operating assumptions:**
+   - The serving bound guarantees that under healthy host conditions (accessible local filesystem for session/config reads, non-starved CPU, sufficient memory), the child begins processing requests within `mcp_whole_startup_budget_from_env()`, which is strictly smaller than the parent preflight deadline (`mcp_preflight_timeout_from_env()`).
+   - Under catastrophic host-level contention or an unresponsive filesystem that stalls synchronous disk I/O, the parent supervisor fails closed at the preflight deadline (`mcp_preflight_timeout_from_env()`), terminates the unresponsive child, and records the last reached stage in the durable health sink (`RestartReason.PROBE_FAILED` or `RestartReason.PROCESS_EXITED`).
+
 ## Standalone entry point
 
 `ralph.mcp.server.__main__` provides a standalone `ralph-mcp` entry point that starts the MCP server outside of a full pipeline run. This is useful for debugging tool calls or connecting an agent manually during development.

@@ -18,7 +18,7 @@ from ralph.pipeline._recovery_fast_forward_landing import (
 )
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
 from ralph.pipeline.auto_integrate_record import clear_record as _clear_record
-from ralph.pipeline.auto_integrate_recovery import (
+from ralph.pipeline.auto_integrate_recovery_legacy import (
     _reclaim_unowned_stale_rebase,
 )
 

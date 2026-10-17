@@ -621,12 +621,15 @@ class RestartAwareMcpBridge:
 
         This is a separate counter from ``_restart_count`` so the
         orchestrator can distinguish a tool-registry rebuild from a
-        crash restart. The cap is ``_TOOL_REGISTRY_MAX_RESETS``.
+        crash restart, while also charging against the shared
+        ``_restart_count`` and obeying ``_restart_policy.max_restarts``.
+        The reset cap is ``_TOOL_REGISTRY_MAX_RESETS``.
 
         Raises:
-            McpServerError: when the cap is exhausted. The message
-                contains the substring ``'tool-registry-reset exhausted'``
-                so the orchestrator can branch on it.
+            McpServerError: when the reset cap or shared restart budget
+                is exhausted. The message contains the substring
+                ``'tool-registry-reset exhausted'`` or
+                ``'restart budget exhausted'``.
         """
         with self._lock:
             if self._tool_registry_resets >= _TOOL_REGISTRY_MAX_RESETS:
@@ -636,11 +639,17 @@ class RestartAwareMcpBridge:
                     f"after {self._tool_registry_resets} reset(s)",
                     restart_count=self._restart_count,
                 )
+            if self._restart_count >= self._restart_policy.max_restarts:
+                raise McpServerError(
+                    "MCP server restart budget exhausted "
+                    f"(current={self._restart_count}, "
+                    f"max={self._restart_policy.max_restarts})",
+                    restart_count=self._restart_count,
+                )
             # S1: increment FIRST so a raise from _restart_fn is
-            # reflected in the count. The original code (close,
-            # restart, increment) was the parallel of the same
-            # defect in check_health_and_restart_if_needed.
+            # reflected in the counts.
             self._tool_registry_resets += 1
+            self._restart_count += 1
             attempt_index = self._tool_registry_resets
             logger.info(
                 "Resetting MCP tool registry ({}/{}); endpoint={}",

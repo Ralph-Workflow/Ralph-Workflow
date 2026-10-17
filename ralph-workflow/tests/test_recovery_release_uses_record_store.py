@@ -55,7 +55,6 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
 from ralph.pipeline.operation_evidence import (
     identity_fingerprint,
-    ownership_fingerprint,
 )
 from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
@@ -301,9 +300,7 @@ class TestDiagnosticCompletionRefusals:
         import time
 
         record = record.model_copy(
-            update={
-                "diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"
-            }
+            update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
         )
         before = _write_present_record(tmp_git_repo, record)
         return tmp_git_repo, tmp_git_repo / RECORD_FILE, before

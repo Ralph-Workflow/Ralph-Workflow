@@ -327,10 +327,7 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
         # The load-time clamp rewrites the on-disk value to cap - 1
         # when the bumped value reaches the cap.
         if expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-            assert (
-                saved.merge_commit_repair_attempts
-                == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
-            ), (
+            assert saved.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1, (
                 f"attempt counter should be clamped to cap-1, got "
                 f"{saved.merge_commit_repair_attempts}"
             )
@@ -351,10 +348,7 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     # (c) Simulated restart: reload from disk and confirm exhausted state.
     after_restart = read_record(root)
     assert after_restart is not None
-    assert (
-        after_restart.merge_commit_repair_attempts
-        == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
-    )
+    assert after_restart.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
     assert after_restart.diagnostic_intervention_required is True
 
     # (d) A further call after restart does NOT enter the diagnostic repair path

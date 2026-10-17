@@ -82,13 +82,13 @@ def test_reset_cap_raises_with_distinct_substring() -> None:
     assert str(bridge.tool_registry_resets) in msg
 
 
-def test_tool_registry_reset_does_not_increment_restart_count() -> None:
-    """The two counters are independent. A tool-registry reset must
-    not be confused with a crash restart for diagnostic purposes."""
+def test_tool_registry_reset_increments_shared_restart_count() -> None:
+    """Reset respawns share accounting with restart_count so the overall
+    restart budget is honored."""
     bridge = _make_bridge()
     bridge.reset_tool_registry()
     assert bridge.tool_registry_resets == 1
-    assert bridge.restart_count == 0
+    assert bridge.restart_count == 1
 
 
 def test_tool_registry_reset_preserves_endpoint_uri() -> None:

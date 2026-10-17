@@ -59,18 +59,6 @@ def _make_deps(
     return default_deps.__replace__(preflight=noop_preflight, spawn_process=real_spawn_process)
 
 
-def _poll_endpoint(endpoint: str, deadline: float) -> bool:
-    """Return True when ``endpoint`` answers a TCP connection before ``deadline``."""
-    port = _extract_port(endpoint)
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-                return True
-        except OSError:
-            time.sleep(0.1)
-    return False
-
-
 def _extract_port(endpoint: str) -> int:
     """Parse the port number from an endpoint URL such as ``http://127.0.0.1:43199/mcp``."""
     # 'http://127.0.0.1:43199/mcp' -> '127.0.0.1:43199' -> '43199'
