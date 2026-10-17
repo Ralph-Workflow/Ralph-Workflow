@@ -44,7 +44,12 @@ from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
     next_integration_action,
 )
-from ralph.pipeline._integration_diagnostic import diagnostic_evidence_verdict
+from ralph.pipeline._integration_diagnostic import (
+    diagnostic_evidence_verdict,
+)
+from ralph.pipeline._integration_diagnostic import (
+    EVIDENCE_LEASE_SECONDS as _EVIDENCE_LEASE_SECONDS,
+)
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import (
@@ -54,7 +59,10 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_record_store import IntegrationRecordStore
 from ralph.pipeline.checkpoint import Checkpoint
-from ralph.pipeline.operation_evidence import ownership_fingerprint
+from ralph.pipeline.operation_evidence import (
+    identity_fingerprint,
+    ownership_fingerprint,
+)
 from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
 from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
 from ralph.pipeline.operation_fact import OperationFact
@@ -255,15 +263,18 @@ def test_acceptance_scenario_3_last_decision_projection_not_input(
 def test_acceptance_scenario_3_unknown_evidence_unknown_verdict_persists(
     tmp_path: Path,
 ) -> None:
-    """UNKNOWN evidence: an unreadable observation routes the diagnostic
-    verdict to UNKNOWN -- never silently to UNCHANGED -- and a restart with
-    the same evidence produces the same verdict (idempotent authority over
+    """UNKNOWN lease: an expired lease routes the diagnostic verdict to
+    UNKNOWN -- never silently to UNCHANGED -- and a restart with the
+    same lease produces the same verdict (idempotent authority over
     indeterminate inputs).
 
-    Exercises diagnose_retained_integration through the durable
-    IntegrationRecordStore boundary, not direct diagnostic_evidence_verdict
-    calls over copied records.
+    The diagnostic no longer compares the evidence snapshot; the
+    ``<fingerprint>:<held_at>`` lease in ``diagnostic_ownership`` is
+    the sole release authority. An expired lease (held_at far in
+    the past) is the UNKNOWN input.
     """
+    import time
+
     backend = _InMemoryBackend()
     store = IntegrationRecordStore(tmp_path, backend=backend)
 
@@ -275,27 +286,22 @@ def test_acceptance_scenario_3_unknown_evidence_unknown_verdict_persists(
     )
     rec = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
 
-    fingerprint = ownership_fingerprint(rec)
-    unreadable_facts = (
-        OperationFact(kind="head", value="unreadable"),
-        OperationFact(kind="worktree_path", value="unreadable"),
-    )
+    fingerprint = identity_fingerprint(rec)
+    expired_held_at = time.time() - (_EVIDENCE_LEASE_SECONDS + 100.0)
     rec = store.transition(
         HOLD_DIAGNOSTIC_EVIDENCE,
-        diagnostic_evidence=tuple(f.to_evidence_tuple() for f in unreadable_facts),
-        diagnostic_ownership=fingerprint,
+        diagnostic_evidence=(),
+        diagnostic_ownership=f"{fingerprint}:{expired_held_at}",
     )
 
-    collector = InMemoryOperationEvidenceCollector(facts=unreadable_facts)
-    verdict = diagnostic_evidence_verdict(tmp_path, rec, collector=collector)
+    verdict = diagnostic_evidence_verdict(tmp_path, rec)
     assert verdict == EvidenceVerdict.UNKNOWN
 
-    # Restart: fresh collector over the same persisted evidence.
+    # Restart: fresh verdict over the same persisted record.
     persisted = store.read()
     assert persisted == rec
 
-    restart_collector = InMemoryOperationEvidenceCollector(facts=unreadable_facts)
-    restart_verdict = diagnostic_evidence_verdict(tmp_path, persisted, collector=restart_collector)
+    restart_verdict = diagnostic_evidence_verdict(tmp_path, persisted)
     assert restart_verdict == EvidenceVerdict.UNKNOWN
 
     # UNKNOWN must also block dispatch (never proceed on indeterminate input).

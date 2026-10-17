@@ -606,16 +606,92 @@ def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, obje
     return {**data_raw, "last_failure_cause": ResolutionFailureCause.NONE}
 
 
+#: Default load-time clamp target for the diagnostic repair-attempt
+#: counter. ``parse_record_payload`` rewrites any loaded value above
+#: ``cap - 1`` down to ``cap - 1`` so the diagnostic check
+#: (``record.merge_commit_repair_attempts >= cap``) evaluates to False
+#: and the record proceeds to automated recovery. The runtime cap
+#: (``_bump_attempt`` in :mod:`ralph.pipeline._integration_diagnostic`)
+#: is the authoritative source; this constant is mirrored here to
+#: avoid an import cycle. Both constants MUST stay in sync; tests
+#: in :mod:`tests.test_integration_diagnostic_livelock` enforce it.
+_LOAD_TIME_DIAGNOSTIC_COUNTER_CAP: int = 5
+
+
+def _clamp_loaded_attempt_counters(data_raw: dict[str, object]) -> dict[str, object]:
+    """Clamp pre-existing over-cap attempt counters on a loaded payload.
+
+    The diagnostic check at
+    :mod:`ralph.pipeline._integration_diagnostic` is
+    ``record.merge_commit_repair_attempts >= cap`` (inclusive ``>=``),
+    so a value clamped to ``cap`` itself would still satisfy the gate
+    and re-trigger intervention. Clamping to ``cap - 1`` ensures the
+    next run's gate evaluates to False (``4 >= 5`` is False) and the
+    record proceeds to automated recovery. The clamp is a load-time
+    coercion only; the runtime ``_bump_attempt`` writes a real
+    ``>= cap`` value through the closed
+    :data:`BUMP_DIAGNOSTIC_ATTEMPT` transition when it detects
+    exhaustion, and that value is preserved on the next read (the
+    clamp never re-runs on a value that is already < cap).
+    """
+    raw = data_raw.get("merge_commit_repair_attempts", 0)
+    loaded = _safe_int_from_raw(raw)
+    if loaded >= _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP:
+        return {
+            **data_raw,
+            "merge_commit_repair_attempts": _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP - 1,
+        }
+    return data_raw
+
+
+def _safe_int_from_raw(raw: object) -> int:
+    """Best-effort coercion of an on-disk counter to ``int``."""
+    if raw is None:
+        return 0
+    if isinstance(raw, bool):
+        return int(raw)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_lease(ownership: str | None) -> tuple[str | None, float | None]:
+    """Parse a ``<fingerprint>:<held_at_unix>`` lease string.
+
+    Returns ``(fingerprint, held_at)`` for a well-formed lease, or
+    ``(None, None)`` for ``None``, an empty string, or any value
+    without a single ``:`` separator (the legacy single-string
+    fingerprint form, or any malformed input). The diagnostic path
+    treats the ``(None, None)`` outcome as an expired/unparseable
+    lease and fails open to auto-release.
+    """
+    if not isinstance(ownership, str) or not ownership:
+        return None, None
+    if ":" not in ownership:
+        return None, None
+    fingerprint, _, held_at_str = ownership.partition(":")
+    if not fingerprint or not held_at_str:
+        return None, None
+    try:
+        held_at = float(held_at_str)
+    except (TypeError, ValueError):
+        return None, None
+    return fingerprint, held_at
+
+
 def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
     """Migrate legacy diagnostic evidence keys in payload; return None on parse error.
 
-    Returns the migrated dict, with ``diagnostic_intervention_required``
-    and ``repair_cap_reason`` left UNTOUCHED for the legacy global
-    evidence case: :func:`parse_record_payload` then constructs a bare
-    :class:`IntegrationRecord` and routes through the
-    :data:`RAISE_DIAGNOSTIC_INTERVENTION` transition (the closed
-    transition table is the single authority for flipping the
-    intervention flag). No dict-spread bypass remains in this helper.
+    For the legacy global evidence case (``for-each-ref`` /
+    ``ls-files``), returns the payload with ``diagnostic_evidence``
+    set to an empty tuple so the loaded record carries no live
+    comparison; the durable identity (``target``, SHAs,
+    ``operation_kind``) is preserved, and the diagnostic path
+    re-derives state from Git on the next seam. Surfacing
+    intervention from the loader was the production livelock: the
+    diagnostic could not re-verify the evidence and refused to
+    proceed.
     """
     raw_evidence = data_raw.get("diagnostic_evidence")
     if raw_evidence is None:
@@ -627,11 +703,15 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
     if sequence is None:
         return None
     if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
-        # Global-evidence legacy key triggers intervention via the
-        # closed transition table in parse_record_payload; here we
-        # only signal the case through a marker key the caller reads
-        # after the model_validate + with_transition path.
-        return {**data_raw, "_global_evidence_intervention_marker": True}
+        # Legacy repository-global evidence keys (for-each-ref,
+        # ls-files) cannot be re-verified by the new collector. The
+        # loader drops them silently and lets the diagnostic path
+        # re-derive state from Git; surfacing intervention here
+        # produced the production livelock (the diagnostic could not
+        # re-verify and refused to proceed). The dropped evidence is
+        # still visible in the original on-disk bytes; the durable
+        # identity (target, SHAs, operation_kind) is preserved.
+        return {**data_raw, "diagnostic_evidence": ()}
     migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
     if drop_marker is not None:
         existing_reason = data_raw.get("repair_cap_reason")
@@ -659,13 +739,11 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     becomes ``<kind>:<path>``; the branch reflog and ``logs/HEAD``
     are dropped with a ``repair_cap_reason`` marker. A legacy
     record that still carries the repository-global
-    ``for-each-ref`` / ``ls-files`` keys is rejected as
-    intervention-required -- the new collector would not be able
-    to re-verify them, and silently clearing the evidence would
-    lose the operator-visible fingerprint. The intervention flag
-    is set through the closed :data:`RAISE_DIAGNOSTIC_INTERVENTION`
-    transition; the loader never authors the flag via a bare
-    ``dict(**data_raw, ...)``.
+    ``for-each-ref`` / ``ls-files`` keys is loaded normally with
+    ``diagnostic_evidence=()``; the dropped evidence is still
+    visible in the original on-disk bytes (preserved by the
+    closed transition table on the durable record), and the
+    diagnostic path re-derives state from Git on the next seam.
     """
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
@@ -673,24 +751,24 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None
-    # The intervention marker is a transient signal (stripped before
-    # model_validate); the loader reaches the closed transition table
-    # to flip the intervention flag instead of dict-spread authoring it.
-    intervention_marker = bool(migrated.pop("_global_evidence_intervention_marker", False))
+    # Load-time counter clamp: pre-existing over-cap values (e.g. 200/541
+    # from stuck records cited in the symptoms) are coerced to
+    # ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1`` so the diagnostic check
+    # (``record.merge_commit_repair_attempts >= cap``) evaluates to
+    # False and the record proceeds to automated recovery. The bound
+    # is ``cap - 1`` because the diagnostic check is an inclusive
+    # ``>=``: clamping to ``cap`` itself would still satisfy the
+    # gate and re-trigger intervention. The clamp is a load-time
+    # coercion only: a value that the runtime ``_bump_attempt``
+    # writes through the closed ``BUMP_DIAGNOSTIC_ATTEMPT``
+    # transition is already below the gate until the bump crosses
+    # it, so the clamp never re-runs on a runtime-bumped value.
     with_cause = _coerce_payload_failure_cause(migrated)
+    with_cause = _clamp_loaded_attempt_counters(with_cause)
     try:
         record = IntegrationRecord.model_validate(with_cause)
     except Exception:
         return None
-    if intervention_marker:
-        record = record.with_transition(
-            RAISE_DIAGNOSTIC_INTERVENTION,
-            diagnostic_intervention_required=True,
-            repair_cap_reason=(
-                "legacy repository-global evidence observation present; "
-                "operator intervention required"
-            ),
-        )
     return record
 
 

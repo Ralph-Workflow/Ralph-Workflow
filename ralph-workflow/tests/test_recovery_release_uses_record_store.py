@@ -53,7 +53,10 @@ from ralph.pipeline.auto_integrate_recovery import (
     busy_refusal_outcome as recovery_busy_refusal_outcome,
 )
 from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
-from ralph.pipeline.operation_evidence import ownership_fingerprint
+from ralph.pipeline.operation_evidence import (
+    identity_fingerprint,
+    ownership_fingerprint,
+)
 from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 from ralph.workspace.scope import WorkspaceScope
@@ -136,17 +139,25 @@ class _UnchangedCollector(InMemoryOperationEvidenceCollector):
 
 
 def _verified_record(owning_worktree: str | None = None) -> IntegrationRecord:
-    """A PRESENT integrating record whose evidence verdict is UNCHANGED."""
+    """A PRESENT integrating record whose lease is valid (verdict UNCHANGED)."""
+    import time
+
     record = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="a" * 40,
         pre_target_sha="b" * 40,
-        diagnostic_evidence=(("head", "integrated"),),
+        diagnostic_evidence=(),
         diagnostic_ownership=None,
         owning_worktree=owning_worktree,
     )
-    return record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    held = time.time()
+    return record.model_copy(
+        update={
+            "diagnostic_evidence": (("head", "integrated"),),
+            "diagnostic_ownership": f"{identity_fingerprint(record)}:{held}",
+        }
+    )
 
 
 def _write_present_record(tmp_path: Path, record: IntegrationRecord | None = None) -> bytes:
@@ -285,7 +296,15 @@ class TestDiagnosticCompletionRefusals:
         head = run_git(("rev-parse", "HEAD"), cwd=tmp_git_repo, label="test:head").stdout.strip()
         record = _verified_record(owning_worktree=str(tmp_git_repo))
         record = record.model_copy(update={"integrated_feature_sha": head, "pre_target_sha": head})
-        record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+        # The lease format is ``<fingerprint>:<held_at>``; use the
+        # new format so the proof's ownership check parses it.
+        import time
+
+        record = record.model_copy(
+            update={
+                "diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"
+            }
+        )
         before = _write_present_record(tmp_git_repo, record)
         return tmp_git_repo, tmp_git_repo / RECORD_FILE, before
 

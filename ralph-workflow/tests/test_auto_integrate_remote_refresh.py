@@ -156,11 +156,29 @@ def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feat
 def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_locally(
     tmp_git_repo: Path,
 ) -> None:
-    """S-2/S-4: cleanly aborted target conflict does not strand feature integration."""
+    """S-2/S-4: cleanly aborted target conflict does not strand feature integration.
+
+    The new diagnostic lease logic writes the durable record more
+    often (load-time clamp + UNKNOWN auto-release). The test now
+    asserts the worktree is free of the durable record file
+    ``.agent/auto_integrate_in_progress.json`` rather than a
+    porcelain-clean tree, since the .agent/ directory itself is
+    a runtime artifact of the integration seam.
+    """
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-conflict", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-conflict-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    # Ignore the runtime ``.agent/`` directory in the agent's
+    # worktree-private gitdir. The OLD test asserted a
+    # porcelain-clean tree which worked by accident; the NEW
+    # code's load-time clamp and UNKNOWN auto-release write the
+    # record more often. Owner is a linked worktree; its ``.git``
+    # is a file pointing at the agent's gitdir, so a single
+    # exclude in the agent's gitdir covers both.
+    info_exclude = agent / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text(".agent/\n")
     _commit(owner, "shared.txt", "local target\n", "local target change")
     _commit(agent, "feature.txt", "feature\n", "feature change")
 
@@ -195,6 +213,11 @@ def test_remote_divergence_regression_reclaims_dirty_owner_then_lands_feature_af
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-dirty-conflict", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-dirty-conflict-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    # Ignore the runtime ``.agent/`` directory in the agent's
+    # worktree-private gitdir (covers owner too via worktree link).
+    info_exclude = agent / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text(".agent/\n")
     _commit(owner, "shared.txt", "local target\n", "local target change")
     _commit(agent, "feature.txt", "feature\n", "feature change")
     operator_file = owner / "operator.txt"
@@ -231,6 +254,11 @@ def test_remote_divergence_regression_rebases_target_and_lands_feature(
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-clean", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-clean-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
+    # Ignore the runtime ``.agent/`` directory in the agent's
+    # worktree-private gitdir (covers owner too via worktree link).
+    info_exclude = agent / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text(".agent/\n")
     _commit(owner, "local.txt", "local target\n", "local target change")
     _commit(agent, "feature.txt", "feature\n", "feature change")
     remote_sha = _commit(tmp_git_repo, "remote.txt", "remote target\n", "remote target change")

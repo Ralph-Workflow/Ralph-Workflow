@@ -514,6 +514,35 @@ class AutoIntegrateCatchupWorker:
                 tick_exc,
             )
             return
+        # Post-tick publication: a tick that pulled a remote refresh
+        # but was UNREACHABLE on a prior tick now becomes a successful
+        # push when the remote recovers. The reconciler reads from
+        # disk (ref comparison) on every call, so a
+        # REMOTE_PULL_FAILED state from the previous tick is naturally
+        # retried on this tick. AC8.
+        if (
+            outcome == CATCHUP_FAST_FORWARDED
+            and self._config is not None
+            and self._remote_client is not None
+        ):
+            try:
+                from ralph.pipeline.auto_integrate_remote_sync import (
+                    reconcile_remote_publication,
+                )
+
+                target = resolve_integration_target(self._config, self._root)
+                if target is not None:
+                    reconcile_remote_publication(
+                        self._config,
+                        self._root,
+                        target,
+                        remote_client=self._remote_client,
+                    )
+            except Exception as tick_exc:
+                logger.warning(
+                    "auto_integrate catch-up publication tick failed: {}",
+                    tick_exc,
+                )
         # Skips are deliberately UNLOGGED (quiet-probe contract): the
         # tick fires every 30 seconds for the whole run and a per-tick
         # skip line (even at debug level) is pure noise in the log

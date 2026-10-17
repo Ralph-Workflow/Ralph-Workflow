@@ -15,6 +15,7 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
+from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import (
     PublicationDecision,
@@ -897,6 +898,191 @@ def _attempt_reconcile_and_push(
     )
 
 
+# ----- Reconciler: ref-comparison-driven publication --------------------
+
+
+def _observe_remote_target_sha(
+    repo_root: Path,
+    target: str,
+    *,
+    remote: str,
+    remote_client: RemoteClient | None = None,
+) -> str | None:
+    """Observe the remote-tracking ref SHA without raising.
+
+    Returns ``None`` for any failure (unreachable remote, missing
+    branch, transient network error). The caller interprets ``None``
+    as "remote observation failed" and routes to
+    :data:`REMOTE_PULL_FAILED`.
+    """
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    try:
+        if hasattr(client, "observe_remote_sha"):
+            return client.observe_remote_sha(repo_root, target, remote=remote)
+        # Fallback: read the reflog entry directly.
+        from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
+
+        return observe_remote_target_sha(repo_root, remote, target)
+    except Exception:
+        return None
+
+
+def reconcile_remote_publication(  # noqa: PLR0911 - ref-comparison branch table
+    config: UnifiedConfig | None,
+    repo_root: Path,
+    target: str,
+    *,
+    remote: str | None = None,
+    remote_client: RemoteClient | None = None,
+    source_state: RebaseState | None = None,
+) -> RebaseState:
+    """Reconcile local ``<target>`` with ``<remote>/<target>`` by ref comparison.
+
+    Single publication entry point. The function consults the
+    configured ``remote`` (``auto_integrate_remote`` in policy, or
+    the default ``origin``), compares the local and remote SHAs, and
+    dispatches to the existing helpers:
+
+    * ``local == remote`` -- no-op; the refs already converge.
+    * ``remote is an ancestor of local`` -- push via
+      :func:`push_target_after_landing`. The remote's
+      ``NON_FAST_FORWARD`` rejection is the only freshness proof that
+      matters: ``_freshness_publication_action`` no longer gates this
+      path.
+    * ``local is an ancestor of remote`` -- pull/catch up and recurse.
+    * diverged -- :func:`reconcile_after_rejected_push`.
+
+    Fail-closed: any remote-side failure returns a ``RebaseState``
+    with ``last_remote_sync=REMOTE_PULL_FAILED`` so the next seam
+    retries (AC8). Never raises; never reverts a local landing.
+
+    Args:
+        source_state: The caller's pre-reconcile :class:`RebaseState`.
+            When provided, the returned ``RebaseState`` carries the
+            caller's ``fast_forwarded`` flag and other durable signals
+            (``last_target``, ``last_outcome``) so the post-landing
+            seam can preserve the headline "did the local land"
+            signal even when the publication did not reach the
+            remote. ``None`` (the startup-seam path) constructs a
+            fresh state with the default ``fast_forwarded=False``;
+            the no-op convergence branch sets it to ``True``.
+    """
+    chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
+    # Build the base record for the push path: carry the caller's
+    # ``fast_forwarded`` so the post-landing seam can rely on it.
+    base_state: RebaseState
+    if source_state is not None:
+        base_state = source_state.model_copy(
+            update={
+                "last_target": target,
+                "last_remote": chosen_remote,
+                "freshness_verdict": "verified",
+            }
+        )
+    else:
+        base_state = RebaseState(
+            last_outcome=RebaseOutcomeKind.SKIPPED,
+            last_target=target,
+            last_remote=chosen_remote,
+            fast_forwarded=False,
+            freshness_verdict="verified",
+        )
+    try:
+        local_sha = branch_sha(repo_root, target)
+    except Exception as exc:
+        return base_state.model_copy(
+            update={
+                "last_remote_sync": REMOTE_PULL_FAILED,
+                "last_reason": f"local target SHA unreadable; recovery will retry: {exc}",
+            }
+        )
+    if local_sha is None:
+        return base_state.model_copy(
+            update={
+                "last_remote_sync": REMOTE_PULL_FAILED,
+                "last_reason": "local target branch unreadable; recovery will retry",
+            }
+        )
+    remote_sha = _observe_remote_target_sha(
+        repo_root, target, remote=chosen_remote, remote_client=remote_client
+    )
+    if remote_sha is None:
+        return base_state.model_copy(
+            update={
+                "last_remote_sync": REMOTE_REMOTE_UNREACHABLE,
+                "last_refresh": REFRESH_UNREACHABLE,
+                "last_reason": "remote unreachable; recovery will retry",
+            }
+        )
+    if local_sha == remote_sha:
+        return base_state.model_copy(
+            update={
+                "last_remote_sync": REMOTE_ALREADY_CURRENT,
+                "fast_forwarded": True,
+                "last_reason": "local and remote already converge",
+            }
+        )
+    local_ahead: bool
+    try:
+        local_ahead = is_ancestor(repo_root, remote_sha, local_sha)
+    except Exception:
+        local_ahead = False
+    try:
+        remote_ahead = is_ancestor(repo_root, local_sha, remote_sha)
+    except Exception:
+        remote_ahead = False
+    if local_ahead and not remote_ahead:
+        # Local is strictly ahead: push. The push itself is the
+        # freshness proof; the freshness state machine is no longer
+        # consulted on the publication path. Set ``fast_forwarded=True``
+        # on the push record so the publication state machine does
+        # not gate the push on the missing fast-forward signal.
+        return push_target_after_landing(
+            config,
+            repo_root,
+            target,
+            base_state.model_copy(update={"fast_forwarded": True}),
+            remote=chosen_remote,
+            remote_client=remote_client,
+        )
+    if remote_ahead and not local_ahead:
+        # Remote is strictly ahead: catch up and recurse.
+        from ralph.pipeline.auto_integrate_catchup import (
+            attempt_catchup_fast_forward,
+        )
+
+        catchup_outcome = attempt_catchup_fast_forward(
+            config,
+            repo_root,
+            remote_client=remote_client,
+        )
+        if catchup_outcome == "fast-forwarded":
+            return reconcile_remote_publication(
+                config,
+                repo_root,
+                target,
+                remote=chosen_remote,
+                remote_client=remote_client,
+                source_state=base_state,
+            )
+        return base_state.model_copy(
+            update={
+                "last_remote_sync": REMOTE_PULL_FAILED,
+                "last_refresh": REFRESH_UNREACHABLE,
+                "last_reason": "remote ahead but local catch-up refused; recovery will retry",
+            }
+        )
+    # Diverged: reintegrate then push.
+    return reconcile_after_rejected_push(
+        config,
+        repo_root,
+        target,
+        base_state,
+        remote=chosen_remote,
+        remote_client=remote_client,
+    )
+
+
 # ----- State helpers ---------------------------------------------------
 
 
@@ -947,6 +1133,7 @@ __all__ = [
     "push_single_remote",
     "push_target_after_landing",
     "reconcile_after_rejected_push",
+    "reconcile_remote_publication",
     "remote_sync_enabled",
     "remote_target_name",
 ]

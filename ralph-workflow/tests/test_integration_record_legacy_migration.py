@@ -119,10 +119,16 @@ def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
     assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
 
-def test_public_checkpoint_reload_global_evidence_sets_intervention(
+def test_public_checkpoint_reload_global_evidence_loads_cleanly(
     tmp_path: Path,
 ) -> None:
-    """Legacy repository-global evidence (for-each-ref / ls-files) raises intervention."""
+    """Legacy repository-global evidence (for-each-ref / ls-files) loads cleanly.
+
+    The new diagnostic path drops the legacy global key silently
+    and re-derives state from Git. Surfacing intervention here was
+    the production livelock: the diagnostic could not re-verify
+    and refused to proceed.
+    """
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -140,18 +146,9 @@ def test_public_checkpoint_reload_global_evidence_sets_intervention(
 
     loaded = read_record(tmp_path)
     assert loaded is not None
-    assert loaded.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (loaded.repair_cap_reason or "")
-
-    policy = _policy()
-    state = PipelineState(phase="development", rebase=RebaseState())
-    decision = decide_phase_transition(
-        state,
-        policy,
-        integration_record=loaded,
-        rebase_state=state.rebase,
-    )
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert loaded.diagnostic_intervention_required is False
+    # The dropped legacy key is no longer carried as live evidence.
+    assert ("for-each-ref", "deadbeef") not in dict(loaded.diagnostic_evidence)
 
 
 @pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)

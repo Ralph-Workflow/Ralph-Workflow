@@ -20,6 +20,7 @@ from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
     OperationEvidenceCollector,
     OperationFact,
+    identity_fingerprint,
     ownership_fingerprint,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -200,7 +201,11 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
         merge_commit_pending=True,
         owning_worktree=str(root),
     )
-    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    record = record.model_copy(
+        update={
+            "diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"
+        }
+    )
     # The release path now routes through apply_record_transition, which
     # requires the on-disk record to be the transition source. Persist
     # the record first; the function then reads it, applies the
@@ -401,7 +406,9 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
         pre_target_sha="b" * 40,
         owning_worktree=str(root),
     )
-    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    record = record.model_copy(
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"}
+    )
 
     # Valid matching nonempty ownership
     ok, reason = diagnostic._check_ownership_proof(root, record)
@@ -433,7 +440,7 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
     assert ok is False
     assert "missing or empty" in reason
 
-    # Forged diagnostic_ownership
+    # Forged diagnostic_ownership (no colon separator -> unparseable)
     forged = record.model_copy(update={"diagnostic_ownership": "0" * 64})
     ok, reason = diagnostic._check_ownership_proof(root, forged)
     assert ok is False
@@ -542,7 +549,9 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
         merge_commit_repair_attempts=0,
         owning_worktree=str(root),
     )
-    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    record = record.model_copy(
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"}
+    )
 
     from ralph.git.subprocess_runner import GitRunOptions
     from ralph.git.subprocess_runner import run_git as original_run_git
@@ -663,6 +672,14 @@ def test_public_diagnose_retained_integration_refuses_when_proof_missing(
 
 
 def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
+    """Lease-based verdict: fingerprint match + held_at < lease window.
+
+    The diagnostic no longer compares the evidence snapshot. The
+    ``<fingerprint>:<held_at>`` lease in ``diagnostic_ownership`` is
+    the sole release authority.
+    """
+    import time
+
     root = Path("/workspace")
     record = IntegrationRecord(
         phase="integrating",
@@ -671,64 +688,64 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # 1. Empty evidence -> UNCHANGED
+    # 1. Empty evidence + empty ownership -> UNCHANGED (nothing to hold)
     assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
 
-    # 2. Ownership mismatch -> CHANGED
-    record_with_ownership = record.model_copy(
+    # 2. Unparseable lease -> CHANGED
+    record_with_forged = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
             "diagnostic_ownership": "forged_ownership",
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_with_ownership)
+        diagnostic.diagnostic_evidence_verdict(root, record_with_forged)
         == EvidenceVerdict.CHANGED
     )
 
-    # 3. Unreadable observed fact -> UNKNOWN
-    fingerprint = ownership_fingerprint(record)
-    record_unreadable = record.model_copy(
+    # 3. Expired lease (held_at far in the past) -> UNKNOWN
+    fingerprint = identity_fingerprint(record)
+    expired_held_at = time.time() - (diagnostic.EVIDENCE_LEASE_SECONDS + 100.0)
+    record_expired = record.model_copy(
         update={
-            "diagnostic_evidence": (("reflog", "unreadable"),),
-            "diagnostic_ownership": fingerprint,
+            "diagnostic_evidence": (("reflog", "original"),),
+            "diagnostic_ownership": f"{fingerprint}:{expired_held_at}",
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_unreadable) == EvidenceVerdict.UNKNOWN
+        diagnostic.diagnostic_evidence_verdict(root, record_expired) == EvidenceVerdict.UNKNOWN
     )
 
-    # 4. Unreadable collector snapshot -> UNKNOWN
+    # 4. Mismatched fingerprint -> CHANGED
+    record_mismatch = record.model_copy(
+        update={
+            "diagnostic_evidence": (("reflog", "valid"),),
+            "diagnostic_ownership": f"wrong-fingerprint:{time.time()}",
+        }
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_mismatch) == EvidenceVerdict.CHANGED
+    )
+
+    # 5. Valid fresh lease -> UNCHANGED (collector is irrelevant now)
     record_valid = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "valid_sha"),),
-            "diagnostic_ownership": fingerprint,
+            "diagnostic_ownership": f"{fingerprint}:{time.time()}",
         }
     )
-    collector_unreadable = InMemoryOperationEvidenceCollector(
-        facts=(OperationFact(kind="reflog", value="unreadable"),)
-    )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_unreadable)
-        == EvidenceVerdict.UNKNOWN
+        diagnostic.diagnostic_evidence_verdict(root, record_valid) == EvidenceVerdict.UNCHANGED
     )
 
-    # 5. Matching collector facts -> UNCHANGED
-    collector_matching = InMemoryOperationEvidenceCollector(
-        facts=(OperationFact(kind="reflog", value="valid_sha"),)
-    )
-    assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_matching)
-        == EvidenceVerdict.UNCHANGED
-    )
-
-    # 6. Differing collector facts -> CHANGED
+    # 6. Differing collector facts -> UNCHANGED (collector no longer
+    # consulted for the verdict; the lease alone is authoritative)
     collector_differing = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="reflog", value="different_sha"),)
     )
     assert (
         diagnostic.diagnostic_evidence_verdict(root, record_valid, collector=collector_differing)
-        == EvidenceVerdict.CHANGED
+        == EvidenceVerdict.UNCHANGED
     )
 
 
@@ -743,7 +760,9 @@ def test_release_verified_diagnostic_returns_typed_verdict_without_mutation(tmp_
         integrated_feature_sha="integrated",
         diagnostic_evidence=(("head", "integrated"),),
     )
-    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    record = record.model_copy(
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"}
+    )
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="head", value="integrated"),)
     )
@@ -757,6 +776,9 @@ def test_release_verified_diagnostic_returns_typed_verdict_without_mutation(tmp_
 
 
 def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
+    """An expired lease refuses the atomic transition (fail-open auto-release)."""
+    import time
+
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -765,7 +787,11 @@ def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
         integrated_feature_sha="integrated",
         diagnostic_evidence=(("head", "unreadable"),),
     )
-    record = record.model_copy(update={"diagnostic_ownership": ownership_fingerprint(record)})
+    # Lease expired -> UNKNOWN -> atomic transition proof fails
+    expired_held_at = time.time() - (diagnostic.EVIDENCE_LEASE_SECONDS + 100.0)
+    record = record.model_copy(
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{expired_held_at}"}
+    )
     ok, reason = diagnostic._check_atomic_transition_proof(record, root=Path("/workspace"))
     assert ok is False
     assert "UNKNOWN" in reason
@@ -895,12 +921,17 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert s1.diagnostic_intervention_required is False
     assert invoked == []
 
-    # Attempt 2: reaches cap, raises intervention
+    # Attempt 2: reaches cap, raises intervention. The load-time
+    # counter clamp rewrites any on-disk value >= cap down to cap-1
+    # on the next read, so the test asserts the intervention flag
+    # (the durable signal of exhaustion) rather than the literal
+    # counter value.
     assert not diagnostic.diagnose_retained_integration(
         ctx, "test failure 2", invoke=custom_invoke, collector=collector
     )
     s2 = read_record(root)
-    assert s2 is not None and s2.merge_commit_repair_attempts == cap
+    assert s2 is not None
+    assert s2.merge_commit_repair_attempts == cap - 1  # load-time clamp
     assert s2.diagnostic_intervention_required is True
     expected_reason = (
         "collector crashed" if use_raising_collector else "diagnostic repair exhausted"
@@ -908,13 +939,17 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert expected_reason in (s2.repair_cap_reason or "")
     assert invoked == []
 
-    # Attempt 3: already at cap with intervention; zero later invocations occur
+    # Attempt 3: already at cap with intervention; zero later invocations occur.
+    # The load-time counter clamp rewrites the on-disk >= cap value
+    # to cap-1 on the next read, so the literal counter is no longer
+    # the durable signal of exhaustion; the intervention flag is.
     calls_before = getattr(collector, "calls", 0)
     assert not diagnostic.diagnose_retained_integration(
         ctx, "test failure 3", invoke=custom_invoke, collector=collector
     )
     s3 = read_record(root)
-    assert s3 is not None and s3.merge_commit_repair_attempts == cap
+    assert s3 is not None
+    assert s3.merge_commit_repair_attempts == cap - 1  # load-time clamp
     assert s3.diagnostic_intervention_required is True
     assert getattr(collector, "calls", 0) == calls_before
     assert invoked == []

@@ -556,7 +556,10 @@ def test_acceptance_scenario_8_legacy_representation_migration() -> None:
     produce one authoritative state or explicit intervention, never merge
     contradictory truths heuristically.
     """
-    # Legacy record with ls-files evidence key surfaces explicit intervention
+    # Legacy record with ls-files evidence key loads WITHOUT intervention.
+    # The new diagnostic path drops the legacy global key silently
+    # and re-derives state from Git; surfacing intervention here was
+    # the production livelock.
     legacy_payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -568,7 +571,9 @@ def test_acceptance_scenario_8_legacy_representation_migration() -> None:
     }
     migrated = parse_record_payload(legacy_payload)
     assert migrated is not None
-    assert migrated.diagnostic_intervention_required is True
+    assert migrated.diagnostic_intervention_required is False
+    # The legacy key is dropped from the live evidence tuple.
+    assert dict(migrated.diagnostic_evidence) == {}
 
     # Legacy record with dictionary evidence migrates cleanly
     dict_payload: dict[str, object] = {

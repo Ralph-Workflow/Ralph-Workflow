@@ -14,7 +14,7 @@ from loguru import logger
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
 from ralph.pipeline.auto_integrate_context import record_refresh
-from ralph.pipeline.auto_integrate_ff import fast_forward_target, maybe_push_target
+from ralph.pipeline.auto_integrate_ff import fast_forward_target
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_record import clear_record as _clear_record
 from ralph.pipeline.auto_integrate_recovery_terminal import (
@@ -24,6 +24,7 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     delete_rebase_backup_refs as _delete_rebase_backup_refs,
 )
+from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -155,11 +156,11 @@ def _land_and_reconcile(
         )
         _clear_record(workspace_root)
         return record_refresh(
-            maybe_push_target(
+            reconcile_remote_publication(
                 config,
                 workspace_root,
                 record.target,
-                RebaseState(
+                source_state=RebaseState(
                     last_outcome=RebaseOutcomeKind.RECOVERED,
                     last_reason=None,
                     last_target=record.target,

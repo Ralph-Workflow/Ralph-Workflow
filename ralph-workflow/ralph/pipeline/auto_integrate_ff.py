@@ -146,33 +146,29 @@ def retry_pending_remote_publish(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     remote_client: RemoteClient | None = None,
 ) -> RebaseState | None:
-    """Retry any typed failed remote publication at a later clean seam."""
-    from ralph.git.remote_push import PushStatus
+    """Retry pending remote publication at a later clean seam.
+
+    The new reconciler is the sole publication owner: this shim
+    simply forwards. The OLD ``last_push_status in {None, PUSHED,
+    CREATED}`` filter is gone -- a ``None`` value no longer hides a
+    pending publish because the reconciler reads from disk (ref
+    comparison) on every call. The boundary seam that calls this
+    function continues to receive a ``RebaseState | None`` for
+    backward compatibility.
+    """
     from ralph.pipeline.auto_integrate_remote_sync import (
-        push_target_after_landing,
-        reconcile_after_rejected_push,
+        reconcile_remote_publication,
         remote_sync_enabled,
     )
 
-    if not remote_sync_enabled(config) or record.last_push_status in {
-        None,
-        PushStatus.PUSHED.value,
-        PushStatus.CREATED.value,
-    }:
+    if not remote_sync_enabled(config):
         return None
-    retried = push_target_after_landing(
-        config, repo_root, target, record, remote_client=remote_client
+    return reconcile_remote_publication(
+        config,
+        repo_root,
+        target,
+        remote_client=remote_client,
     )
-    if retried.last_push_status == PushStatus.NON_FAST_FORWARD.value:
-        return reconcile_after_rejected_push(
-            config,
-            repo_root,
-            target,
-            retried,
-            rebase_stop_resolver=rebase_stop_resolver,
-            remote_client=remote_client,
-        )
-    return retried
 
 
 def fast_forward_target(

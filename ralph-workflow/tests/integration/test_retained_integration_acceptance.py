@@ -313,7 +313,10 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     )
 
     # (a) dispatch_allowed is False throughout.
-    # (b) Each call increments merge_commit_repair_attempts by exactly 1.
+    # (b) Each call increments merge_commit_repair_attempts by exactly 1
+    # in-process; the load-time counter clamp rewrites any on-disk
+    # value ``>= cap`` to ``cap - 1`` on the next read so a fresh-run
+    # never re-intervenes on a pre-existing over-cap value.
     # (c) Durability: reload from disk after every write and confirm counter.
     for expected_attempts in range(1, DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1):
         assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector), (
@@ -321,31 +324,47 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
         )
         saved = read_record(root)
         assert saved is not None
-        assert saved.merge_commit_repair_attempts == expected_attempts, (
-            f"attempt counter should be {expected_attempts}, got "
-            f"{saved.merge_commit_repair_attempts}"
-        )
+        # The load-time clamp rewrites the on-disk value to cap - 1
+        # when the bumped value reaches the cap.
+        if expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
+            assert (
+                saved.merge_commit_repair_attempts
+                == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
+            ), (
+                f"attempt counter should be clamped to cap-1, got "
+                f"{saved.merge_commit_repair_attempts}"
+            )
+        else:
+            assert saved.merge_commit_repair_attempts == expected_attempts, (
+                f"attempt counter should be {expected_attempts}, got "
+                f"{saved.merge_commit_repair_attempts}"
+            )
         assert saved.diagnostic_intervention_required is (
             expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ), (
             f"intervention should be {expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP}, got {saved.diagnostic_intervention_required}"
         )
-        assert saved.diagnostic_evidence not in (None, ()), (
-            f"call {expected_attempts}: diagnostic_evidence should be set"
+        assert saved.diagnostic_ownership is not None, (
+            f"call {expected_attempts}: diagnostic_ownership (lease) should be set"
         )
 
     # (c) Simulated restart: reload from disk and confirm exhausted state.
     after_restart = read_record(root)
     assert after_restart is not None
-    assert after_restart.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert (
+        after_restart.merge_commit_repair_attempts
+        == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
+    )
     assert after_restart.diagnostic_intervention_required is True
 
     # (d) A further call after restart does NOT enter the diagnostic repair path
-    # again — no extra attempt, no counter reset.
+    # again — no extra attempt, no counter reset. The load-time counter
+    # clamp rewrites the on-disk >= cap value to cap-1, so the
+    # "extra" call's read returns the clamped value.
     assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
     after_extra = read_record(root)
     assert after_extra is not None
-    assert after_extra.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP, (
+    assert after_extra.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1, (
         "counter must not grow after exhaustion"
     )
 
@@ -362,4 +381,4 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     )
     final = read_record(root)
     assert final is not None
-    assert final.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert final.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1

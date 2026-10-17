@@ -131,8 +131,14 @@ def test_state_models_re_exports_resolution_failure_cause() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_record_ls_files_surfaces_explicit_intervention() -> None:
-    """Legacy records carrying ls-files evidence key require operator intervention."""
+def test_legacy_record_ls_files_loads_without_intervention() -> None:
+    """Legacy records carrying ls-files evidence key load without intervention.
+
+    The new diagnostic path drops the legacy global evidence key
+    silently and re-derives state from Git. Surfacing intervention
+    here was the production livelock: the diagnostic could not
+    re-verify the evidence and refused to proceed.
+    """
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -144,14 +150,13 @@ def test_legacy_record_ls_files_surfaces_explicit_intervention() -> None:
     }
     record = parse_record_payload(payload)
     assert record is not None
-    assert record.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence observation present" in (
-        record.repair_cap_reason or ""
-    )
+    assert record.diagnostic_intervention_required is False
+    # The dropped legacy key is no longer carried as live evidence.
+    assert dict(record.diagnostic_evidence) == {}
 
 
-def test_legacy_record_prefixed_ls_files_surfaces_intervention() -> None:
-    """Legacy records carrying ls-files:stage require operator intervention."""
+def test_legacy_record_prefixed_ls_files_loads_without_intervention() -> None:
+    """Legacy records carrying ls-files:stage load without intervention."""
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -163,7 +168,7 @@ def test_legacy_record_prefixed_ls_files_surfaces_intervention() -> None:
     }
     record = parse_record_payload(payload)
     assert record is not None
-    assert record.diagnostic_intervention_required is True
+    assert record.diagnostic_intervention_required is False
 
 
 def test_legacy_record_dict_format_evidence_loads_cleanly() -> None:

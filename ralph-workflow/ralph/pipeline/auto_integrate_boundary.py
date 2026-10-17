@@ -24,13 +24,16 @@ from ralph.pipeline._auto_integrate_config import (
 )
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_context import record_refresh, record_when_stale
-from ralph.pipeline.auto_integrate_ff import retry_pending_remote_publish
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_remote_sync import (
-    REMOTE_PUSH_REJECTED,
+    REMOTE_PULL_FAILED,
+    REMOTE_REMOTE_UNREACHABLE,
     pull_and_reconcile_target,
     remote_sync_enabled,
+)
+from ralph.pipeline.auto_integrate_remote_sync import (
+    reconcile_remote_publication as _reconcile_remote_publication,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
@@ -88,12 +91,29 @@ def boundary_freshness_outcome(
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
     if branch_sha(root, target) != get_head_sha(root):
         return None
-    pending = retry_pending_remote_publish(
-        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
-    )
-    if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
-        if pending is not None:
-            return pending
+    # The phase-boundary seam runs the reconciler on every clean
+    # boundary (not just when an in-memory flag is set). The OLD
+    # ``last_push_status in {None, PUSHED, CREATED}`` filter is
+    # gone: terminal state is now detected by the reconciler's
+    # own ``local_sha == remote_sha`` short-circuit, not by an
+    # in-memory status. The boundary returns ``None`` when the
+    # ref comparison shows the local is already current (no
+    # push needed) or the remote is unreachable (defer to the
+    # next seam); a successful push returns the reconciler's
+    # ``pending`` so the caller can observe the publication.
+    pending = _reconcile_remote_publication(config, root, target)
+    last_remote_sync_now = pending.last_remote_sync
+    already_current = last_remote_sync_now == "already current"
+    is_transient_failure = last_remote_sync_now in {
+        REMOTE_PULL_FAILED,
+        REMOTE_REMOTE_UNREACHABLE,
+        "pull failed",
+        "origin unreachable",
+    }
+    if already_current or is_transient_failure:
+        # No push needed (or no push possible right now); the
+        # boundary is silent when there are no commits to
+        # publish. The next seam retries transient failures.
         if remote_record is not None:
             return remote_record.model_copy(
                 update={
@@ -104,6 +124,8 @@ def boundary_freshness_outcome(
         return record_when_stale(
             _record_skip(reason="no commits beyond target", target=target), refresh
         )
+    if not already_current:
+        return pending
     return None
 
 

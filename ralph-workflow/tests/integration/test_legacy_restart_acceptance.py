@@ -112,9 +112,11 @@ def _restart_via_production_recovery(root: Path) -> tuple[RebaseState, Path]:
 
 
 def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Path) -> None:
-    """Contradicting legacy pair with global evidence resolves to explicit
-    intervention through the production recovery path; the record wins over
-    the checkpoint's ``development`` and blocks business dispatch."""
+    """Contradicting legacy pair with global evidence loads cleanly; the
+    new diagnostic path drops the legacy global key silently and
+    re-derives state from Git. The record wins over the checkpoint's
+    ``development`` and blocks business dispatch (a separate gate
+    from the dropped intervention)."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_INTERVENTION_PAYLOAD)
 
     recovered, _ = _restart_via_production_recovery(tmp_git_repo)
@@ -123,14 +125,13 @@ def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Pa
     # state, no merged hybrid truth between checkpoint and record.
     assert recovery_retained_record(recovered) is True
 
-    # The legacy repository-global evidence forces explicit intervention,
-    # never a heuristic merge that would drop the fingerprint. The raw
-    # ``ls-files`` key is preserved for the operator.
+    # The legacy repository-global evidence is dropped silently; the
+    # diagnostic path re-derives state from Git on the next seam.
     persisted = read_record(tmp_git_repo)
     assert persisted is not None
     assert persisted.phase == "integrating"
-    assert persisted.diagnostic_intervention_required is True
-    assert ("ls-files", "some_tracked_files") in persisted.diagnostic_evidence
+    assert persisted.diagnostic_intervention_required is False
+    assert ("ls-files", "some_tracked_files") not in persisted.diagnostic_evidence
 
     # (b) No business dispatch: the authoritative verdict over the recovery
     # outcome blocks ordinary phase dispatch while the record is retained.

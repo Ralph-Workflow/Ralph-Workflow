@@ -57,16 +57,18 @@ def test_legacy_global_evidence_loader_raises_through_transition_table(
 ) -> None:
     """Public entry point: ``read_record`` on a legacy global-evidence record.
 
-    Asserts the loaded record carries ``diagnostic_intervention_required=True``
-    AND ``repair_cap_reason`` containing "legacy repository-global evidence".
-    Public-seam only (durable state on disk + the model's public attribute
-    surface).
+    The new diagnostic path drops the legacy global evidence key
+    silently and re-derives state from Git; surfacing intervention
+    here was the production livelock. The test now pins the
+    contract: legacy keys load with no intervention and no
+    held evidence.
     """
     _write_legacy_record(tmp_path, _global_evidence_payload())
     loaded = read_record(tmp_path)
     assert loaded is not None
-    assert loaded.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (loaded.repair_cap_reason or "")
+    assert loaded.diagnostic_intervention_required is False
+    # The legacy key is dropped from the live evidence tuple.
+    assert dict(loaded.diagnostic_evidence) == {}
 
 
 def test_legacy_failure_cause_coercer_preserves_typed_default() -> None:

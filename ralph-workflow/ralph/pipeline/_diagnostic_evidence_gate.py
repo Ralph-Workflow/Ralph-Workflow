@@ -2,10 +2,8 @@
 
 from ralph.pipeline.operation_evidence import EvidenceVerdict
 
-EVIDENCE_CHANGED_REASON = (
-    "diagnostic evidence changed; original evidence must be restored before recovery"
-)
-EVIDENCE_UNREADABLE_REASON = "diagnostic evidence unreadable; recovery retained"
+EVIDENCE_CHANGED_REASON = "diagnostic evidence lease unparseable; manual recovery required"
+EVIDENCE_UNREADABLE_REASON = "diagnostic evidence lease expired; re-deriving from Git"
 
 
 def diagnostic_evidence_gate_reason(verdict: EvidenceVerdict) -> str:

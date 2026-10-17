@@ -23,6 +23,7 @@ from ralph.git.rebase.rebase_checkpoint import (
 )
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_dir_lock_paths as _common_dir_lock_paths,
 )
@@ -76,9 +77,6 @@ from ralph.pipeline._recovery_fast_forward_landing import (
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
-)
-from ralph.pipeline.auto_integrate_ff import (
-    maybe_push_target,
 )
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_MERGE,
@@ -547,16 +545,20 @@ def _continue_fast_forward_from_record(
             refresh,
         )
     if branch_sha(workspace_root, record.target) == feature_sha:
-        # Already landed (another run / operator). Route through the push
-        # hook so an interrupted prior run can still publish the target to
-        # its configured remote without changing the local landing.
+        # Already landed (another run / operator). Route through the
+        # reconciler so an interrupted prior run can still publish the
+        # target to its configured remote without changing the local
+        # landing. The reconciler compares local and remote SHAs and
+        # only pushes when the remote is missing the landed commit.
         _clear_record(workspace_root)
+        from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
+
         return record_refresh(
-            maybe_push_target(
+            reconcile_remote_publication(
                 config,
                 workspace_root,
                 record.target,
-                RebaseState(
+                source_state=RebaseState(
                     last_outcome=RebaseOutcomeKind.RECOVERED,
                     last_reason="already fast-forwarded",
                     last_target=record.target,
@@ -624,7 +626,7 @@ def _read_outcome_or_skip(root: Path, backend: FileBackend) -> RebaseState | Non
     return None
 
 
-def _maybe_release_diagnostic(
+def _maybe_release_diagnostic(  # noqa: PLR0911 - verdict branch table
     root: Path,
     workspace_scope: WorkspaceScope,
     backend: FileBackend,
@@ -642,17 +644,21 @@ def _maybe_release_diagnostic(
     record = outcome.record
     if (
         record is None
-        or not record.diagnostic_evidence
+        or (
+            not record.diagnostic_evidence
+            and not record.diagnostic_ownership
+        )
         or record.operation_kind == "target_reconcile"
     ):
         return record
     from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
-    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+    from ralph.pipeline._integration_diagnostic import (
+        _operation_root_for,
+        release_verified_diagnostic,
+    )
     from ralph.pipeline.operation_evidence import EvidenceVerdict
 
-    verdict = release_verified_diagnostic(
-        Path(record.owning_worktree or workspace_scope.root), record
-    )
+    verdict = release_verified_diagnostic(_operation_root_for(record, workspace_scope.root), record)
     if verdict == EvidenceVerdict.UNCHANGED:
         try:
             apply_record_transition(
@@ -689,7 +695,44 @@ def _maybe_release_diagnostic(
         # Re-read after release; the on-disk state is the source of truth.
         updated = read_record_outcome(root, backend=backend)
         return updated.record
-    if verdict in (EvidenceVerdict.CHANGED, EvidenceVerdict.UNKNOWN):
+    if verdict == EvidenceVerdict.UNKNOWN:
+        # Expired or unparseable lease: fail-open to auto-release. The
+        # diagnostic re-derives state from Git on the next seam. A
+        # SIGKILL between HOLD and RELEASE no longer blocks the next
+        # run; a stuck record with a stale lease is auto-released
+        # without operator action.
+        try:
+            apply_record_transition(
+                root,
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                backend=backend,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+            )
+        except RecordBusyError:
+            return _record_skip(
+                reason="integration record busy; recovery will retry",
+                target=record.target,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+                record_retained=True,
+            )
+        except RecordUnreadableError:
+            return RebaseState(
+                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_reason=(
+                    "durable integration record unreadable at release; intervention required"
+                ),
+                last_target=record.target,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
+            )
+        updated = read_record_outcome(root, backend=backend)
+        return updated.record
+    if verdict == EvidenceVerdict.CHANGED:
+        # Unparseable or fingerprint-mismatched lease: the durable
+        # identity was rewritten by a different worktree, not by
+        # Ralph's legitimate actions. The only path to operator
+        # escalation.
         return _record_skip(
             reason=diagnostic_evidence_gate_reason(verdict),
             target=record.target,
@@ -729,6 +772,20 @@ def recover_incomplete_integration(
         record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
         if isinstance(record, RebaseState):
             return record
+        # Startup seam: if a previous run landed locally but never
+        # pushed, the reconciler catches up on this start. The
+        # publication outcome is annotated on the durable record and
+        # on the recovery's RebaseState return; the next stage
+        # consumes it like any other landing.
+        from ralph.pipeline.auto_integrate_remote_sync import (
+            reconcile_remote_publication,
+            remote_sync_enabled,
+        )
+
+        if config is not None and remote_sync_enabled(config):
+            target_obj = _configured_target(config)
+            if isinstance(target_obj, str) and target_obj:
+                reconcile_remote_publication(config, Path(workspace_scope.root), target_obj)
         return _recover_incomplete_integration_owned(
             workspace_scope,
             config=config,

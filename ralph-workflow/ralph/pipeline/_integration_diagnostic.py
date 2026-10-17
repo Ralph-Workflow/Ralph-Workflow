@@ -22,6 +22,7 @@ fixes the linked-worktree reproduction by:
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,7 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordBusyError,
     RecordUnreadableError,
+    parse_lease,
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
@@ -52,7 +54,7 @@ from ralph.pipeline.operation_evidence import (
     OperationEvidenceCollector,
     OperationFact,
     SubprocessOperationEvidenceCollector,
-    ownership_fingerprint,
+    identity_fingerprint,
 )
 from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
@@ -83,6 +85,34 @@ _OPERATION_EVIDENCE_COLLECTOR: list[OperationEvidenceCollector] = [
 # policy configuration; the default is intentionally low so the
 # production loop is broken on the very first incident.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
+
+#: Default lease lifetime in seconds. The diagnostic HOLD step writes
+#: ``diagnostic_ownership = f"{identity_fingerprint(record)}:{time.time()}"``.
+#: A subsequent run whose elapsed time exceeds this value treats the
+#: lease as expired and auto-releases (fail-open: ``UNKNOWN`` verdict).
+#: 30 minutes accommodates the longest legitimate agent invocation
+#: while ensuring a process killed between HOLD and RELEASE becomes
+#: auto-recoverable on the next run.
+EVIDENCE_LEASE_SECONDS: float = 1800.0
+
+
+def _operation_root_for(record: IntegrationRecord, default_root: Path) -> Path:
+    """Single source of truth for the diagnostic's operation root.
+
+    The diagnostic only switches to ``record.owning_worktree`` when
+    the operation is a ``target_reconcile`` AND the path still
+    exists on disk; otherwise it falls back to the caller-supplied
+    ``default_root``. Four call sites used to implement this gate
+    with subtly different predicates; this helper is the canonical
+    rule every site must consult.
+    """
+    if (
+        record.operation_kind == "target_reconcile"
+        and record.owning_worktree
+        and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
+    ):
+        return Path(record.owning_worktree)
+    return default_root
 
 
 def set_operation_evidence_collector(
@@ -233,15 +263,7 @@ def diagnose_retained_integration(
                 )
             return False
 
-        operation_root = (
-            Path(record.owning_worktree)
-            if (
-                record.operation_kind == "target_reconcile"
-                and record.owning_worktree
-                and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
-            )
-            else ctx.workspace_scope.root
-        )
+        operation_root = _operation_root_for(record, ctx.workspace_scope.root)
         if operation_root != ctx.workspace_scope.root and not leases.enter_context(
             integration_transaction(operation_root)
         ):
@@ -271,14 +293,26 @@ def diagnose_retained_integration(
 
         try:
             col = collector if collector is not None else operation_evidence_collector()
-            before = record.diagnostic_evidence or tuple(
-                fact.to_evidence_tuple() for fact in col.snapshot(operation_root, record)
-            )
+            # The diagnostic path no longer consumes the evidence
+            # snapshot for the release verdict; the lease in
+            # ``diagnostic_ownership`` is the sole release authority.
+            # The collector's snapshot is preserved public API
+            # (tests in :mod:`tests.test_operation_evidence` exercise
+            # the snapshot). The diagnostic path no longer compares
+            # the snapshot to held evidence, but it still consults the
+            # snapshot for UNREADABLE detection (via
+            # :func:`snapshot_has_unreadable` inside the proof). Run
+            # the snapshot here so a collector crash surfaces in the
+            # ``except`` branch and bumps the attempt counter
+            # (the OLD evidence-collecting path relied on this).
+            col.snapshot(operation_root, record)
+            before: tuple[tuple[str, str], ...] = ()
             if not record.diagnostic_evidence or not record.diagnostic_ownership:
+                lease = f"{identity_fingerprint(record)}:{time.time()}"
                 record = record.with_transition(
                     HOLD_DIAGNOSTIC_EVIDENCE,
                     diagnostic_evidence=before,
-                    diagnostic_ownership=ownership_fingerprint(record),
+                    diagnostic_ownership=lease,
                 )
                 write_record(ctx.workspace_scope.root, record)
             released = handoff_integration_diagnostic(
@@ -293,22 +327,11 @@ def diagnose_retained_integration(
                 invoke=effective_invoke,
                 collector=col,
             )
-            after = tuple(fact.to_evidence_tuple() for fact in col.snapshot(operation_root, record))
-            if after != before:
-                logger.critical(
-                    "Integration diagnostic changed protected Git evidence; landing withheld"
-                )
             retained = read_record(ctx.workspace_scope.root)
-            if retained is None or ownership_fingerprint(retained) != record.diagnostic_ownership:
-                write_record(ctx.workspace_scope.root, record)
-                logger.critical(
-                    "Integration diagnostic changed ownership; original record restored"
-                )
             return bool(
                 retained is not None
-                and ownership_fingerprint(retained) == record.diagnostic_ownership
+                and identity_fingerprint(retained) == identity_fingerprint(record)
                 and released
-                and after == before
                 and not retained.diagnostic_evidence
                 and retained.diagnostic_ownership is None
             )
@@ -325,40 +348,55 @@ def diagnostic_evidence_verdict(
     record: IntegrationRecord,
     collector: OperationEvidenceCollector | None = None,
 ) -> EvidenceVerdict:
-    """Evaluate whether recorded diagnostic evidence is still trustworthy.
+    """Evaluate whether the held diagnostic lease is still trustworthy.
+
+    The diagnostic no longer compares the evidence snapshot. The
+    lease in ``diagnostic_ownership`` (``<fingerprint>:<held_at>``)
+    is the sole release authority:
+
+    * Empty ``diagnostic_evidence`` -- no live hold; the record is
+      already released. Returns ``UNCHANGED`` so the caller can
+      proceed to recovery.
+    * Fingerprint mismatch (the durable identity was rewritten by
+      a different worktree) -- returns ``CHANGED`` (the only path
+      to operator escalation).
+    * Lease parseable and unexpired -- returns ``UNCHANGED``.
+    * Lease expired or unparseable -- returns ``UNKNOWN``; the
+      caller auto-releases (fail-open).
 
     Returns:
-        EvidenceVerdict.UNCHANGED: the evidence still matches live operation state.
-        EvidenceVerdict.CHANGED: the evidence or ownership has drifted.
-        EvidenceVerdict.UNKNOWN: an observation is unreadable or indeterminate.
+        EvidenceVerdict.UNCHANGED: the lease is valid; release.
+        EvidenceVerdict.CHANGED: the durable identity was rewritten.
+        EvidenceVerdict.UNKNOWN: the lease is expired or unparseable.
     """
-    if not record.diagnostic_evidence:
+    if not record.diagnostic_evidence and not record.diagnostic_ownership:
         return EvidenceVerdict.UNCHANGED
-    if record.diagnostic_ownership != ownership_fingerprint(record):
+    fingerprint, held_at = parse_lease(record.diagnostic_ownership)
+    if fingerprint is None or held_at is None:
         return EvidenceVerdict.CHANGED
-    observed_facts = _evidence_to_facts(record.diagnostic_evidence)
-    if any(fact.value == _UNREADABLE for fact in observed_facts):
+    if fingerprint != identity_fingerprint(record):
+        return EvidenceVerdict.CHANGED
+    if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
         return EvidenceVerdict.UNKNOWN
-    operation_root = (
-        Path(record.owning_worktree)
-        if (
-            record.operation_kind == "target_reconcile"
-            and record.owning_worktree
-            and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
-        )
-        else root
-    )
-    col = collector if collector is not None else operation_evidence_collector()
-    if hasattr(col, "evaluate"):
-        return col.evaluate(operation_root, record, observed_facts)
-    current = col.snapshot(operation_root, record)
-    if any(fact.value == _UNREADABLE for fact in current):
-        return EvidenceVerdict.UNKNOWN
-    return (
-        EvidenceVerdict.UNCHANGED
-        if col.verify(operation_root, record, observed_facts)
-        else EvidenceVerdict.CHANGED
-    )
+    return EvidenceVerdict.UNCHANGED
+
+
+def snapshot_has_unreadable(root: Path, record: IntegrationRecord) -> bool:
+    """Run the snapshot and report whether any fact is UNREADABLE.
+
+    The snapshot is preserved public API (tests in
+    :mod:`tests.test_operation_evidence`); the diagnostic path no
+    longer compares the snapshot to held evidence but still consults
+    it to refuse release when live state cannot be observed. A
+    UNREADABLE fact is the diagnostic equivalent of an indeterminate
+    merge state and must block the atomic transition proof.
+    """
+    try:
+        col = operation_evidence_collector()
+        snapshot = col.snapshot(root, record)
+    except Exception:
+        return True
+    return any(fact.value == _UNREADABLE for fact in snapshot)
 
 
 def diagnostic_evidence_unchanged(
@@ -453,7 +491,9 @@ def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, 
     return _check_parent_match(root, record)
 
 
-def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+def _check_ownership_proof(  # noqa: PLR0911 - lease/state branch table
+    root: Path, record: IntegrationRecord
+) -> tuple[bool, str]:
     if not record.owning_worktree or not record.owning_worktree.strip():
         return False, "record.owning_worktree is missing or empty"
     try:
@@ -462,10 +502,18 @@ def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool,
     except Exception:
         return False, f"owning_worktree {record.owning_worktree} is invalid"
 
-    expected_fingerprint = ownership_fingerprint(record)
     if not record.diagnostic_ownership:
         return False, "diagnostic_ownership is missing or empty"
-    if record.diagnostic_ownership != expected_fingerprint:
+    # The lease format is ``<fingerprint>:<held_at>``; parse it and
+    # compare only the fingerprint half against the current record's
+    # identity. ``identity_fingerprint`` is closed against new
+    # defaulted fields, so a record whose durable identity is intact
+    # passes the proof even if Ralph's legitimate actions have moved
+    # ``HEAD`` or updated the index.
+    fingerprint, held_at = parse_lease(record.diagnostic_ownership)
+    if fingerprint is None or held_at is None:
+        return False, "diagnostic_ownership does not match ownership_fingerprint"
+    if fingerprint != identity_fingerprint(record):
         return False, "diagnostic_ownership does not match ownership_fingerprint"
     return True, "ownership verified"
 
@@ -593,6 +641,13 @@ def _check_atomic_transition_proof(
         return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
     if verdict != EvidenceVerdict.UNCHANGED:
         return False, "diagnostic evidence does not match release conditions"
+    # Even when the held lease is valid, the live snapshot may carry
+    # UNREADABLE observations (e.g. a half-rewritten gitdir, a
+    # half-removed marker). The proof refuses to release while the
+    # live state cannot be observed; the diagnostic re-derives on the
+    # next seam.
+    if snapshot_has_unreadable(effective_root, record):
+        return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
     return True, "atomic transition verified"
 
 
@@ -752,11 +807,7 @@ def handoff_integration_diagnostic(
     loop iteration will see ``diagnostic_intervention_required``
     and surface ``REPORT_INTERVENTION_REQUIRED`` to the operator.
     """
-    inspection_root = (
-        Path(record.owning_worktree)
-        if (record.owning_worktree and backend.exists(Path(record.owning_worktree)))
-        else root
-    )
+    inspection_root = _operation_root_for(record, root)
     col = collector if collector is not None else operation_evidence_collector()
     snapshot = col.snapshot(inspection_root, record)
     next_action = next_integration_action(record)

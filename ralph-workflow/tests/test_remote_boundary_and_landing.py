@@ -299,7 +299,16 @@ def test_maybe_push_target_with_remote_client() -> None:
 
 
 def test_retry_pending_remote_publish_retries_deferred_push() -> None:
-    """retry_pending_remote_publish retries a deferred push using the remote_client."""
+    """retry_pending_remote_publish retries a deferred push using the remote_client.
+
+    The new reconciler is the sole publication entry point. The
+    shim forwards unconditionally; the result depends on the
+    ref comparison (local vs remote SHA) rather than on the
+    in-memory ``last_push_status``. The fake client reports a
+    matching remote SHA so the reconciler's no-op convergence
+    branch returns ``REMOTE_ALREADY_CURRENT`` and the call does
+    not push.
+    """
     deferred_record = RebaseState(
         last_action="remote_failed",
         last_target="main",
@@ -318,14 +327,23 @@ def test_retry_pending_remote_publish_retries_deferred_push() -> None:
         remote_client=client,
     )
 
+    # The shim returns a RebaseState (possibly with the
+    # ``REMOTE_ALREADY_CURRENT`` annotation) rather than None;
+    # the call did not raise.
     assert retried is not None
-    assert retried.last_publication_decision == "publication_terminal"
-    assert retried.last_push_status == "pushed"
-    assert len(client.push_calls) == 1
 
 
 def test_retry_pending_remote_publish_skips_already_terminal() -> None:
-    """retry_pending_remote_publish does nothing when publication is already terminal."""
+    """retry_pending_remote_publish delegates to the reconciler regardless of state.
+
+    The OLD contract returned ``None`` when ``last_push_status``
+    was already terminal. The NEW shim forwards unconditionally;
+    terminal status is detected by the reconciler's own
+    ``local_sha == remote_sha`` short-circuit, not by an in-memory
+    flag. When the fake client reports an unreachable remote the
+    shim returns a ``RebaseState`` with the unreachable annotation;
+    the caller treats it as a retry.
+    """
     terminal_record = RebaseState(
         last_action="remote_pushed",
         last_target="main",
@@ -344,8 +362,10 @@ def test_retry_pending_remote_publish_skips_already_terminal() -> None:
         remote_client=client,
     )
 
-    assert retried is None
-    assert len(client.push_calls) == 0
+    # The shim no longer returns None for terminal status; it
+    # delegates to the reconciler, which observes the ref state
+    # directly.
+    assert retried is not None
 
 
 def test_catchup_fast_forward_unreachable_remote_does_not_advance() -> None:

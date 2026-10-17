@@ -33,6 +33,7 @@ The collector EXCLUDES:
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -88,17 +89,54 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     record's identity fields, which is what the diagnostic
     re-read check is meant to detect.
     """
-    stable = record.model_copy(
-        update={
-            "diagnostic_evidence": (),
-            "diagnostic_ownership": None,
-            "merge_commit_repair_attempts": 0,
-            "repair_last_error": None,
-            "diagnostic_intervention_required": False,
-            "repair_cap_reason": None,
-        }
+    return identity_fingerprint(record)
+
+
+#: Closed set of identity fields used by :func:`identity_fingerprint`.
+#: Adding a new defaulted field to :class:`IntegrationRecord` MUST NOT
+#: extend this tuple; the fingerprint is structurally isolated from
+#: record-schema changes. Each field's role in the durable identity is
+#: documented inline.
+_IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
+    "phase",
+    "target",
+    "pre_feature_sha",
+    "pre_target_sha",
+    "integrated_feature_sha",
+    "operation_kind",
+    "owning_worktree",
+    "initiating_feature_sha",
+    "reintegrate_pending",
+)
+
+
+def identity_fingerprint(record: IntegrationRecord) -> str:
+    """SHA-256 fingerprint over the record's CLOSED identity field set.
+
+    The fingerprint is the durable evidence the record's *identity*
+    (target, pre-integration SHAs, operation kind, owning worktree)
+    has not been changed underneath the diagnostic path. The set of
+    fields is closed: a future contributor who adds a new defaulted
+    field to :class:`IntegrationRecord` cannot change the fingerprint,
+    because the new field is not in :data:`_IDENTITY_FINGERPRINT_FIELDS`.
+
+    The diagnostic path uses the fingerprint as the lease identifier:
+    a record whose ``diagnostic_ownership`` carries an equal
+    fingerprint is held by the same durable identity. State that
+    Ralph itself mutates (HEAD, the index, reflog, the worktree path)
+    is NOT in the fingerprint, so a legitimate fast-forward or
+    snapshot/reset never invalidates the lease.
+    """
+    payload: dict[str, object] = {
+        field: getattr(record, field) for field in _IDENTITY_FINGERPRINT_FIELDS
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
     )
-    return hashlib.sha256(stable.model_dump_json().encode()).hexdigest()
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 #: Closed vocabulary of kinds the operation-scoped collector is allowed

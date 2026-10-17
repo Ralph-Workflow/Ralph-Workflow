@@ -88,10 +88,10 @@ def test_legacy_checkpoint_migration_yields_one_authoritative_state(
 
     Authoritative starting state: a record JSON file containing
     ``diagnostic_evidence: [["for-each-ref", "deadbeef"]]``.
-    Expected typed state:
-    ``IntegrationRecord.diagnostic_intervention_required is True``,
-    ``IntegrationRecord.repair_cap_reason`` contains "legacy
-    repository-global evidence".
+    Expected typed state (new contract): the legacy global key is
+    dropped silently; the loaded record carries no held evidence and
+    ``diagnostic_intervention_required is False`` so the diagnostic
+    can re-derive state from Git on the next seam.
     """
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
@@ -107,8 +107,9 @@ def test_legacy_checkpoint_migration_yields_one_authoritative_state(
 
     loaded = read_record(tmp_path)
     assert loaded is not None
-    assert loaded.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (loaded.repair_cap_reason or "")
+    assert loaded.diagnostic_intervention_required is False
+    # The dropped legacy key is no longer carried as live evidence.
+    assert ("for-each-ref", "deadbeef") not in dict(loaded.diagnostic_evidence)
 
 
 def test_operator_surface_distinguishes_seven_labels() -> None:

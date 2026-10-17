@@ -537,7 +537,15 @@ def _install_recovery_seams(
     )
     monkeypatch.setattr(landing, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root, _ref: None)
-    monkeypatch.setattr(landing, "maybe_push_target", lambda _config, _root, _target, state: state)
+    # The new single publication entry point: ``reconcile_remote_publication``
+    # replaces the legacy ``maybe_push_target`` in
+    # ``_recovery_fast_forward_landing``. Tests that needed to stub
+    # the latter now stub the new symbol on the same module.
+    monkeypatch.setattr(
+        landing,
+        "reconcile_remote_publication",
+        lambda _config, _root, _target, **_kw: _kw.get("source_state"),
+    )
     return events
 
 

@@ -3063,7 +3063,9 @@ def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) 
     target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
     if target is None:
         return state
-    remote = state.rebase.last_remote or "origin"
+    from ralph.pipeline.auto_integrate_remote_sync import remote_target_name
+
+    remote = remote_target_name(ctx.config)
     reason = state.rebase.last_reason or state.rebase.last_push or pending_status
     return state.copy_with(
         rebase=state.rebase.model_copy(

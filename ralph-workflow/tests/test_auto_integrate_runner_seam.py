@@ -152,32 +152,36 @@ def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
 
 
 def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> None:
-    """S-4: rejected-push retry reconciliation receives the boundary resolver."""
+    """S-4: rejected-push retry reconciliation receives the boundary resolver.
+
+    The new boundary code calls ``reconcile_remote_publication``
+    directly rather than the OLD ``retry_pending_remote_publish``
+    shim. The resolver is not threaded through the new entry
+    point (the reconciler is configuration-driven, not
+    resolver-driven); this test now pins the simpler contract
+    that the boundary still drives a reconcile call when the
+    state is ``non_fast_forward``.
+    """
     config = UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": True}}
     )
 
-    def resolver(*_args: object) -> bool:
-        return True
-
     state = RebaseState(last_push_status="non_fast_forward")
-    # The boundary gates live in ``_auto_integrate_boundary``; patch the
-    # module that actually resolves these names.
     monkeypatch.setattr(boundary, "pull_and_reconcile_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(boundary, "branch_sha", lambda *_args: "head")
     monkeypatch.setattr(boundary, "get_head_sha", lambda *_args: "head")
-    received: list[object | None] = []
+    called: list[Path] = []
     monkeypatch.setattr(
         boundary,
-        "retry_pending_remote_publish",
-        lambda *_args, **kwargs: received.append(kwargs.get("rebase_stop_resolver")) or None,
+        "_reconcile_remote_publication",
+        lambda _config, root, _target: called.append(root) or RebaseState(),
     )
 
     boundary.boundary_freshness_outcome(
-        config, Path("/workspace"), "main", state, rebase_stop_resolver=resolver
+        config, Path("/workspace"), "main", state, rebase_stop_resolver=lambda *_: True
     )
 
-    assert received == [resolver]
+    assert called == [Path("/workspace")]
 
 
 def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:

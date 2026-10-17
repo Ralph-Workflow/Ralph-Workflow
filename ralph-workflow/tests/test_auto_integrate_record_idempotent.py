@@ -226,8 +226,14 @@ def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
     assert dict(parsed.diagnostic_evidence).get("unstaged_work") == "old-key"
 
 
-def test_legacy_record_with_for_each_ref_surfaces_intervention() -> None:
-    """A legacy record carrying ``for-each-ref`` is intervention-required."""
+def test_legacy_record_with_for_each_ref_loads_without_intervention() -> None:
+    """A legacy record carrying ``for-each-ref`` loads without intervention.
+
+    The legacy global evidence key is dropped at load time so the
+    diagnostic path can re-derive state from Git; surfacing
+    intervention here was the production livelock (the diagnostic
+    could not re-verify and refused to proceed).
+    """
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -239,8 +245,9 @@ def test_legacy_record_with_for_each_ref_surfaces_intervention() -> None:
     }
     parsed = parse_record_payload(legacy)
     assert parsed is not None
-    assert parsed.diagnostic_intervention_required is True
-    assert "legacy repository-global evidence" in (parsed.repair_cap_reason or "")
+    assert parsed.diagnostic_intervention_required is False
+    # The dropped legacy key is no longer carried as live evidence.
+    assert dict(parsed.diagnostic_evidence) == {}
 
 
 def test_legacy_record_with_branch_reflog_drops_observation() -> None:

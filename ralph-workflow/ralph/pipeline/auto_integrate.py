@@ -53,7 +53,6 @@ from ralph.pipeline.auto_integrate_context import (
 from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forward_target
 from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
-    maybe_push_target,
 )
 from ralph.pipeline.auto_integrate_outcome import (
     record_rebase_outcome as _record_rebase_outcome,
@@ -94,6 +93,7 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     RemoteSyncStatus,
     pull_and_reconcile_target,
     reconcile_after_rejected_push,
+    reconcile_remote_publication,
     remote_sync_enabled,
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
@@ -796,11 +796,16 @@ def _integrate_once_owned(
         # is scrubbed here. A clean-success state carries no reason.
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
-            # Opt-in configured-remote push. It runs only after the local
-            # fast-forward landed, so remote failure cannot undo local success.
-            # The fail-open helper records its summary without changing this
-            # landing result; disabled sync leaves legacy checkpoints clean.
-            record = maybe_push_target(config, root, target, record)
+            # Single publication entry point: the reconciler compares
+            # local and remote SHAs, pushes when local is ahead, catches
+            # up when remote is ahead, and reintegrates on divergence.
+            # A non-fast-forward inside the reconciler is handled by
+            # ``reconcile_after_rejected_push``; the post-landing seam
+            # simply forwards the result. The caller's
+            # ``fast_forwarded`` is carried through ``source_state``
+            # so the headline "did the local land" signal survives the
+            # publication round-trip.
+            record = reconcile_remote_publication(config, root, target, source_state=record)
             if record.last_push_status == "non_fast_forward":
                 # A non-fast-forward push is a remote race, not a failed local
                 # landing. Re-integrate the feature after reconciling the target
