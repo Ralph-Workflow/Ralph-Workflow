@@ -206,6 +206,12 @@ _IO_ALLOWLIST: set[str] = {
     # mocking the boundary would defeat the purpose. Mirrors
     # mock_multimodal_agent.py's real-wire dispatch.
     "mock_agy_v1_1_13",
+    # Startup-diagnostics tests: the LifecycleDeps contract requires a
+    # real listening socket (reserve_listening_socket returns
+    # (host, port, socket.socket)); a kernel-assigned loopback bind on
+    # port 0 is the production dependency shape under test. Mocking the
+    # boundary would break the tuple type the production code asserts.
+    "test_mcp_server_startup_diagnostics",
 }
 
 # --- Narrow, read-only exemption ------------------------------------------

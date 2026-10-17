@@ -75,27 +75,44 @@ def test_timing_safety_margin_is_positive() -> None:
 
 
 def test_env_var_member_added_to_mcp_env_var() -> None:
-    """REQUEST_TIMEOUT_MS is the last enum member of McpEnvVar."""
+    """REQUEST_TIMEOUT_MS is present and the full supported set is exact."""
     assert hasattr(McpEnvVar, "REQUEST_TIMEOUT_MS")
     assert McpEnvVar.REQUEST_TIMEOUT_MS == "RALPH_MCP_REQUEST_TIMEOUT_MS"
     members = list(McpEnvVar)
-    assert len(members) == 25, f"expected 25 members, got {len(members)}"
-    # REQUEST_TIMEOUT_MS is the last of the original 20 members;
-    # the bridge-owns-listening-socket work added two more
-    # (INHERITED_FD and RESPAWN), the per-spawn stage attribution
-    # work added STAGE_ID, and the slow-startup backlog test seams
-    # added TEST_PRE_SERVE_GATE and TEST_REGISTRY_BUILD_GATE — the
-    # count now reflects all five. The canonical ordering is the
-    # addition order; REQUEST_TIMEOUT_MS is still present and
-    # discoverable.
-    assert McpEnvVar.REQUEST_TIMEOUT_MS in members
-    assert members[-1] in (
+    # Assert the exact supported set instead of a stale cardinality: the
+    # enum accretes members per feature (REQUEST_TIMEOUT_MS, then
+    # INHERITED_FD/RESPAWN, STAGE_ID, TEST_PRE_SERVE_GATE, and most
+    # recently TEST_REGISTRY_BUILD_GATE), so an exact-set assertion
+    # catches both additions and removals without a magic count.
+    assert set(members) == {
+        McpEnvVar.ENDPOINT,
+        McpEnvVar.RUN_ID,
+        McpEnvVar.AGENT_LABEL_SCOPE,
+        McpEnvVar.SESSION,
+        McpEnvVar.SESSION_FILE,
+        McpEnvVar.PREFLIGHT_TIMEOUT_MS,
+        McpEnvVar.UPSTREAM_PROBE_TIMEOUT_MS,
+        McpEnvVar.SUPERVISION_INTERVAL_MS,
+        McpEnvVar.PROBE_TIMEOUT_MS,
+        McpEnvVar.WORKER_ARTIFACT_DIR,
+        McpEnvVar.WORKER_ID,
+        McpEnvVar.WORKER_NAMESPACE,
+        McpEnvVar.PARALLEL_WORKER_MANIFEST,
+        McpEnvVar.MAX_SESSION_SECONDS,
+        McpEnvVar.CYCLE_WARN_EPOCH,
+        McpEnvVar.CYCLE_DEADLINE_EPOCH,
+        McpEnvVar.DEV_WARN_EPOCH,
+        McpEnvVar.DEV_DEADLINE_EPOCH,
+        McpEnvVar.OWNER_PID,
+        McpEnvVar.REQUEST_TIMEOUT_MS,
+        McpEnvVar.INHERITED_FD,
         McpEnvVar.RESPAWN,
         McpEnvVar.STAGE_ID,
-        McpEnvVar.REQUEST_TIMEOUT_MS,
         McpEnvVar.TEST_PRE_SERVE_GATE,
         McpEnvVar.TEST_REGISTRY_BUILD_GATE,
-    )
+    }
+    # REQUEST_TIMEOUT_MS remains present and discoverable.
+    assert McpEnvVar.REQUEST_TIMEOUT_MS in members
 
 
 def test_module_level_constant_added() -> None:

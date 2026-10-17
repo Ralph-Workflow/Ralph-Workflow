@@ -12,6 +12,8 @@ appended after the spawn began, so a restart never replays a previous crash).
 
 from __future__ import annotations
 
+import socket
+from collections.abc import Iterator
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,7 @@ from ralph.mcp.server.lifecycle import (
     SpawnProcess,
     mcp_server_log_path,
 )
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,18 +37,7 @@ if TYPE_CHECKING:
 _CHILD_DIAGNOSTIC = "UpstreamValidationError: custom MCP server 'docs-mcp' is unreachable"
 
 
-class _FakeListeningSocket:
-    """Dependency-injected stand-in for the parent-owned listening socket.
-
-    The startup-diagnostic tests exercise the preflight-failure reporting
-    contract, not kernel socket mechanics, so no real network I/O is needed.
-    """
-
-    def fileno(self) -> int:
-        return 3
-
-    def close(self) -> None:
-        return None
+_created_sockets: list[socket.socket] = []
 
 
 class _LiveProcess:
@@ -79,8 +71,13 @@ def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
         del required_tools, timeout
         raise PreflightError(f"failed to connect to MCP endpoint {endpoint}: [Errno 61] refused")
 
-    def fake_reserve_listening_socket() -> tuple[str, int, _FakeListeningSocket]:
-        return "127.0.0.1", 49152, _FakeListeningSocket()
+    def fake_reserve_listening_socket() -> tuple[str, int, socket.socket]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _created_sockets.append(sock)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        addr: tuple[str, int] = sock.getsockname()[:2]
+        return addr[0], addr[1], sock
 
     return lifecycle.LifecycleDeps(
         reserve_listening_socket=fake_reserve_listening_socket,
@@ -90,6 +87,14 @@ def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
         preflight=fake_preflight,
         preflight_timeout=lambda: timedelta(seconds=5),
     )
+
+
+@pytest.fixture(autouse=True)
+def _close_created_sockets() -> Iterator[None]:
+    yield
+    for sock in _created_sockets:
+        sock.close()
+    _created_sockets.clear()
 
 
 def _session() -> AgentSession:
@@ -119,9 +124,7 @@ def test_startup_failure_reports_the_child_diagnostic_output(tmp_path: Path) -> 
         return _LiveProcess()
 
     with pytest.raises(McpServerError) as excinfo:
-        lifecycle.start_mcp_server(
-            _session(), lifecycle.FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn)
-        )
+        lifecycle.start_mcp_server(_session(), FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn))
 
     assert _CHILD_DIAGNOSTIC in str(excinfo.value)
 
@@ -146,9 +149,7 @@ def test_startup_failure_omits_output_written_before_this_spawn(tmp_path: Path) 
         return _LiveProcess()
 
     with pytest.raises(McpServerError) as excinfo:
-        lifecycle.start_mcp_server(
-            _session(), lifecycle.FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn)
-        )
+        lifecycle.start_mcp_server(_session(), FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn))
 
     message = str(excinfo.value)
     assert _CHILD_DIAGNOSTIC in message
@@ -168,8 +169,6 @@ def test_startup_failure_without_child_output_still_reports_the_endpoint(tmp_pat
         return _LiveProcess()
 
     with pytest.raises(McpServerError) as excinfo:
-        lifecycle.start_mcp_server(
-            _session(), lifecycle.FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn)
-        )
+        lifecycle.start_mcp_server(_session(), FsWorkspace(tmp_path), deps=_deps(tmp_path, spawn))
 
     assert "did not become ready" in str(excinfo.value)
