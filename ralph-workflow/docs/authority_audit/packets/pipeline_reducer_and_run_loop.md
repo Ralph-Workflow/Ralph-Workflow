@@ -62,3 +62,33 @@ authoritative ownership surface.
   blocks terminal success (`_terminal_authority.py:44`).
 - A non-complete fan-out decision (not `JOIN_COMPLETE`) blocks
   terminal success (`_terminal_authority.py:45`).
+
+## Typed `FailureCategory` seam (2026)
+
+The reducer's `_enter_failed_recovery` and `_handle_agent_failure`
+(`reducer.py:598, 641`) accept an optional keyword-only
+`failure_category: FailureCategory | None = None` parameter and
+branch on `FailureCategory.INTEGRATION` (`reducer.py:609, 619`)
+instead of the prose prefix
+`"integration conflict requires resolution:"`. The producer
+`runner._integration_conflict_failure`
+(`runner.py:1064-1074`) already passes the typed
+`FailureCategory.INTEGRATION` on `PhaseFailureEvent`; the reducer
+now consumes it through the typed seam. No string fallback is
+permitted: when `failure_category is None` the reducer does NOT
+advance the conflict-strategy ladder. The bounded-advancement
+writer of the strategy block is
+`RebaseState.advance_conflict_strategy(reason: str) -> Self`
+(`rebase_state.py:559`).
+
+## Planning-obstruction typed seam (2026)
+
+The run loop's `_route_planning_commit` (`run_loop.py:1790-1805`)
+reads the closed `PlanningObstructionKind` member from
+`state.rebase.last_planning_obstruction` (`rebase_state.py:351`)
+instead of `any(text in reason for text in (...5 strings...))`.
+The closed vocabulary lives in
+`ralph/pipeline/_planning_obstruction.py`; the single producer
+`identify_planning_obstruction(reason)` is the only allowed
+prose-substring scan on the planning-seam reason. Downstream
+callers read only the typed kind.

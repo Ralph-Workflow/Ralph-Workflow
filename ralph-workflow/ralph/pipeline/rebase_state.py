@@ -587,6 +587,46 @@ class RebaseState(RalphBaseModel):
             }
         )
 
+    def clear_conflict_strategy(self) -> Self:
+        """Reset the conflict-strategy block to its default values.
+
+        Single writer of the reset-to-default transition for the
+        same four fields owned by
+        :meth:`advance_conflict_strategy` and
+        :meth:`project_conflict_strategy_from`. Used by
+        :func:`reconcile_stale_unresolved_state` to release
+        persisted conflict evidence after a clean live inspection.
+        Two typed setters writing the same field are not a
+        multi-writer violation: they are distinct transitions
+        (advance / project / clear) over the same field, and every
+        other module reaches the field only through them.
+        """
+        return self.model_copy(
+            update={
+                "conflict_strategy_index": 0,
+                "conflict_strategies_tried": (),
+                "resolution_exhausted": False,
+                "resolution_exhaustion_reason": None,
+            }
+        )
+
+    def clear_resolution_exhausted(self) -> Self:
+        """Reset only the ``resolution_exhausted`` flag pair.
+
+        Single writer of the reset transition for the two
+        exhaustion fields when the strategy index and tried list
+        must be preserved. Used by
+        :func:`reconcile_stale_unresolved_state` to release
+        latched exhausted flags without losing the operator's
+        strategy history.
+        """
+        return self.model_copy(
+            update={
+                "resolution_exhausted": False,
+                "resolution_exhaustion_reason": None,
+            }
+        )
+
     def set_intervention_required(self, reason: str, *, diagnostic: bool = False) -> Self:
         """Record a persistent INTERVENTION_REQUIRED transition.
 

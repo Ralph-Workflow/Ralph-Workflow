@@ -62,3 +62,60 @@ replay queue (`auto_integrate_transition.py:152`) and is consumed by
   `_conflict_action` retry deadline check; an expired or missing
   `retry_deadline` maps to `REQUIRE_INTERVENTION`
   (`_integration_action.py:111-141`).
+
+## Conflict-strategy and intervention typed setters (2026)
+
+The conflict-strategy / deadline / intervention decision fields on
+`RebaseState` are owned by seven typed setters
+(`rebase_state.py:491-622`):
+
+- `set_retry_deadline(value: float | None) -> Self` -- single writer
+  of `retry_deadline`; rejects non-finite values.
+- `record_consecutive_conflicts(value: int) -> Self` -- single writer
+  of `consecutive_conflicts`; clamped to
+  `MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` inside the setter.
+- `advance_conflict_strategy(reason: str) -> Self` -- bounded
+  advancement of `conflict_strategy_index`,
+  `conflict_strategies_tried`, `resolution_exhausted`,
+  `resolution_exhaustion_reason`. The strategy-cycling modulo
+  `(index + 1) % len(CONFLICT_RESOLUTION_STRATEGIES)` is gone;
+  `_wait_for_integration_retry` calls `set_intervention_required`
+  on the exhaustion path instead.
+- `project_conflict_strategy_from(source: RebaseState) -> Self` --
+  exact one-way projection of the same four fields; used by
+  `_merge_strategy_onto_outcome` (`runner.py:1002-1011`).
+- `clear_conflict_strategy() -> Self` -- reset of all four
+  strategy fields to defaults; used by
+  `reconcile_stale_unresolved_state`
+  (`auto_integrate_resolution_state.py`) when the strategy block
+  is stale or never started.
+- `clear_resolution_exhausted() -> Self` -- reset of only the
+  exhaustion flag pair, preserving the strategy index and tried
+  list.
+- `set_intervention_required(reason: str, *, diagnostic: bool = False) -> Self` --
+  single writer of the persistent
+  `INTERVENTION_REQUIRED` / `DIAGNOSTIC_INTERVENTION_REQUIRED`
+  transition (`last_outcome` + `last_reason`). The exhaustion
+  path no longer calls `_run_auto_integrate_recovery_preamble`
+  after `set_intervention_required`; the run-loop consumer
+  (`_maybe_auto_integrate`) checks `rebase.is_intervention_required`
+  and refuses to dispatch ordinary work.
+
+Ad-hoc `model_copy(update=...)` on any of these decision fields
+outside the seven setter bodies is forbidden
+(`tests/test_no_superseded_paths_typed_setter_contract.py`).
+
+## Attempt-fault trust boundary (2026)
+
+`ralph/pipeline/conflict_resolution/attempt_fault.py::classify_attempt_fault`
+authorizes `AttemptFault.AGENT_HEALTHY` only for an exact match
+`text.lower() == "healthy"` (line 154). Arbitrary agent output
+containing `"healthy"` as a substring (e.g. `"unhealthy
+environment"`, `"agent is healthy enough"`) classifies to
+`AttemptFault.AGENT_EXITED`, not `AGENT_HEALTHY`. The two
+remaining closed-vocabulary scans at `attempt_fault.py:115` (the
+named token `SUPERVISION_INFRASTRUCTURE_FAILURE`) and
+`attempt_fault.py:154` (`any(k in lowered for k in (...))` against
+`ResolutionTerminationReason` enum member identifiers) remain
+allowed because they consult a closed vocabulary, not free-form
+prose.

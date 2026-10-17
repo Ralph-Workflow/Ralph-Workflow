@@ -59,22 +59,27 @@ def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
     ):
         return state
     clear_strategy = state.resolution_exhausted or state.conflict_strategy_index == 0
-    update: dict[str, object] = {
-        "last_outcome": None
-        if state.last_outcome == RebaseOutcomeKind.CONFLICT
-        else state.last_outcome,
-        "unresolved_integration_carried": False,
-        "resolution_exhausted": False,
-        "resolution_exhaustion_reason": None,
-        "integration_retry_attempt": 0,
-        "legacy_checkpoint_blocked": False,
-    }
+    # Conflict-strategy fields are owned by typed setters:
+    # ``clear_conflict_strategy`` resets all four when the strategy
+    # block is stale or never started; ``clear_resolution_exhausted``
+    # resets just the exhaustion flag pair while preserving the
+    # operator's strategy history. Non-strategy fields are reset
+    # through a single literal-Dict ``model_copy`` (they are not in
+    # the audit's DECISION_FIELDS set).
     if clear_strategy:
-        update.update(
-            conflict_strategy_index=0,
-            conflict_strategies_tried=(),
-        )
-    cleared = state.model_copy(update=update)
+        cleared_strategy = state.clear_conflict_strategy()
+    else:
+        cleared_strategy = state.clear_resolution_exhausted()
+    cleared = cleared_strategy.model_copy(
+        update={
+            "last_outcome": None
+            if state.last_outcome == RebaseOutcomeKind.CONFLICT
+            else state.last_outcome,
+            "unresolved_integration_carried": False,
+            "integration_retry_attempt": 0,
+            "legacy_checkpoint_blocked": False,
+        }
+    )
     if cleared.recovery_record_retained:
         return cleared.clear_recovery_record_retained()
     return cleared

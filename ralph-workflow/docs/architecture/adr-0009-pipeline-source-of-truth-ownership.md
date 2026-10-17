@@ -146,27 +146,116 @@ unrelated worktree's branch advance.
 Every `RebaseState` decision-field writer is a typed setter. Raw
 `model_copy` writers of fan-out and operation display were migrated:
 10 operation-display sites (`run_loop.py` and `runner.py`) and 1
-fan-out site (`_fan_out_authority.py`).
+fan-out site (`_fan_out_authority.py`). The conflict-strategy /
+deadline / intervention fields are owned by a second wave of typed
+setters added in 2026 to close the live raw `model_copy` writers
+discovered at `reducer.py:610-617`,
+`auto_integrate_conflict_budget.py:257-312`,
+`run_loop.py:2339-2347`, `runner.py:1002-1011`, and
+`auto_integrate_resolution_state.py:77`. The reducer branches on
+the typed `FailureCategory.INTEGRATION` field of `PhaseFailureEvent`
+(consumed via an optional `failure_category` parameter on
+`_enter_failed_recovery` and `_handle_agent_failure`); the prose
+prefix `"integration conflict requires resolution:"` is no longer
+consulted by the reducer.
 
 | Decision field | Single writer (signature) | Owning authority |
 |---|---|---|
 | `last_publication_decision` | `RebaseState.set_publication_decision(value: PublicationDecision) -> Self` | `_publication_state_machine.next_publication_action` |
 | `last_fan_out_decision` | `RebaseState.set_fan_out_decision(value: FanOutDecision) -> Self` | `_fan_out_authority.fan_out_decision` |
 | `operation_display_state` | `RebaseState.set_operation_display_state(value: OperationDisplayState) -> Self` | Display projection of the authoritative lifecycle state (see `docs/sphinx/operator-states.md`) |
+| `retry_deadline` | `RebaseState.set_retry_deadline(value: float \| None) -> Self` | `apply_conflict_budget` and `_wait_for_integration_retry` via the typed `FailureCategory.INTEGRATION` seam |
+| `consecutive_conflicts` | `RebaseState.record_consecutive_conflicts(value: int) -> Self` (clamped to `MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` inside the setter) | `apply_conflict_budget` CONFLICT branch only |
+| `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (bounded advancement) | `RebaseState.advance_conflict_strategy(reason: str) -> Self` | `_enter_failed_recovery` / `_handle_agent_failure` when `failure_category is FailureCategory.INTEGRATION` |
+| `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (exact one-way projection) | `RebaseState.project_conflict_strategy_from(source: RebaseState) -> Self` | `_merge_strategy_onto_outcome` (replaces the raw writer at `runner.py:1002-1011`) |
+| `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (reset to defaults) | `RebaseState.clear_conflict_strategy() -> Self` | `reconcile_stale_unresolved_state` when the strategy block is stale or never started |
+| `resolution_exhausted`, `resolution_exhaustion_reason` (exhaustion-only reset, preserves strategy index and tried list) | `RebaseState.clear_resolution_exhausted() -> Self` | `reconcile_stale_unresolved_state` when the exhausted flag must be released without losing operator history |
+| `last_outcome`, `last_reason` (persistent `INTERVENTION_REQUIRED` / `DIAGNOSTIC_INTERVENTION_REQUIRED` transition) | `RebaseState.set_intervention_required(reason: str, *, diagnostic: bool = False) -> Self` | `_wait_for_integration_retry` on the exhaustion path (replaces the strategy-cycling modulo behaviour) |
+| `last_planning_obstruction` | assigned by `auto_integrate_planning.record_conflict` to one of the closed `PlanningObstructionKind` members; the single producer is `identify_planning_obstruction` in `ralph/pipeline/_planning_obstruction.py` | `_route_planning_commit` reads only the typed kind from `state.rebase.last_planning_obstruction` (replaces the five-string `any(text in reason)` scan) |
 
 `set_publication_decision` is the publication writer.
 `set_fan_out_decision` and `set_operation_display_state` are the
 setters that replaced the raw `model_copy` writes counted above.
-Ad-hoc `model_copy(update=...)` on these fields is forbidden
-(Decision §1 / §3).
+`set_retry_deadline`, `record_consecutive_conflicts`,
+`advance_conflict_strategy`, `project_conflict_strategy_from`,
+`clear_conflict_strategy`, `clear_resolution_exhausted`, and
+`set_intervention_required` are the conflict-strategy and
+intervention setters that replaced the live raw writers in
+`reducer.py`, `auto_integrate_conflict_budget.py`, `run_loop.py`,
+`runner.py`, and `auto_integrate_resolution_state.py`.
+
+Ad-hoc `model_copy(update=...)` on any of the 11 fields named in
+this table is forbidden (Decision §1 / §3). The audit that enforces
+this is `tests/test_no_superseded_paths_typed_setter_contract.py`
+(method-body-scoped allowlist of the 7 setter bodies plus
+variable-backed `update=<Name|Call|Subscript>` detection); the
+broader raw-writer audit on the four pre-existing fields lives in
+`tests/test_rebase_state_setters_owner.py`. Both audits are part of
+`make verify`.
+
+### Typed `FailureCategory` seam on the reducer
+
+The reducer used to branch on the prose prefix
+`"integration conflict requires resolution:"` at
+`reducer.py:603` and `:626` to decide whether to advance the
+conflict-strategy ladder and which retry delay to set. The producer
+`runner._integration_conflict_failure` already passed
+`failure_category=FailureCategory.INTEGRATION` to
+`PhaseFailureEvent`; the reducer now consumes that typed field
+through the optional keyword-only `failure_category: FailureCategory
+| None = None` parameter on `_enter_failed_recovery` and
+`_handle_agent_failure`. The substring branches are deleted; no
+string fallback is permitted (when `failure_category is None` the
+reducer does NOT advance the conflict-strategy ladder).
+
+### Planning-obstruction typed seam
+
+The run loop's `_route_planning_commit` used to derive the
+obstruction flag from `any(text in reason for text in (...5
+strings...))` at `run_loop.py:1797`. The five substrings now live
+in a closed `PlanningObstructionKind` StrEnum
+(`NONE`, `LOCAL_OVERWRITE`, `UNTRACKED_OVERWRITE`,
+`STAGED_BLOCKS_INTEGRATION`) in
+`ralph/pipeline/_planning_obstruction.py`. The single producer
+`identify_planning_obstruction(reason)` translates the free-form
+reason into a kind; the run loop reads only the typed kind from
+`state.rebase.last_planning_obstruction`. The helper is the only
+allowed prose-substring scan on the planning-seam reason.
+
+### Attempt-fault trust boundary
+
+`ralph/pipeline/conflict_resolution/attempt_fault.py::classify_attempt_fault`
+used to authorize `AttemptFault.AGENT_HEALTHY` for any text
+containing the substring `"healthy"`, including misleading prose
+such as `"unhealthy environment"` or `"agent is healthy enough"`.
+The trust boundary is now an exact match:
+`text.lower() == "healthy"` (line 154). Arbitrary agent output
+containing `"healthy"` as a substring classifies to
+`AttemptFault.AGENT_EXITED`, not `AGENT_HEALTHY`. The two
+remaining closed-vocabulary scans at
+`attempt_fault.py:115` (the named token
+`SUPERVISION_INFRASTRUCTURE_FAILURE`) and
+`attempt_fault.py:154` (`any(k in lowered for k in (...))` against
+`ResolutionTerminationReason` enum member identifiers) remain
+allowed because they consult a closed vocabulary, not free-form
+prose.
 
 ### Documentation review note
 
-- **What changed:** Named the domain-matrix writer column for the three `RebaseState` setters, recorded the two crash-recovery reflog contracts, and counted the migrated display and fan-out sites separately.
+- **What changed:** Added 7 typed setters to the writer inventory
+  (`set_retry_deadline`, `record_consecutive_conflicts`,
+  `advance_conflict_strategy`, `project_conflict_strategy_from`,
+  `clear_conflict_strategy`, `clear_resolution_exhausted`,
+  `set_intervention_required`), plus the closed
+  `PlanningObstructionKind` vocabulary, the `last_planning_obstruction`
+  state field, the typed `FailureCategory.INTEGRATION` seam on the
+  reducer, and the `attempt_fault.py:154` exact-match trust boundary.
+  The forbidden-fields sentence is updated to name the 11
+  enforced fields.
 - **Why here:** ADR-0009 is the ownership record for authorities, writers, readers, projections, transitions, restart, UNKNOWN, and blocking.
 - **What stayed elsewhere:** Operator wording lives on the pipeline-states and recovery pages; those pages point here instead of copying the table.
 - **Duplication:** Seam file locations are stated once in this section; the operator pages keep the contract distinction without a second inventory table.
-- **Clearer route:** A reader can separate the shared-branch completion proof from worktree-private branch reconstruction, and can grep the three setter names.
+- **Clearer route:** A reader can separate the shared-branch completion proof from worktree-private branch reconstruction, can grep the seven new setter names, and can verify the closed `PlanningObstructionKind` vocabulary against `_planning_obstruction.py`.
 
 ## Dependency Injection Boundaries
 
