@@ -217,7 +217,8 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
     # and would tip a single-file shard past the 60 s combined
     # budget even when every other shard finishes inside it. Moving
-    # them to the E2E shard gives the eight in-shard xdist workers
+    # them to the E2E shard gives the four in-shard xdist workers
+    # (the host-invariant ``_REQUIRED_E2E_SHARD_XDIST_WORKERS`` cap)
     # enough headroom to absorb the scan, and keeps the regression
     # gates on the default ``make test`` profile so the silent-key
     # drop cannot rot. They are marked ``subprocess_e2e`` so the
@@ -295,6 +296,15 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
+#: Number of slowest tests reported by ``pytest --durations=N`` on each
+#: shard. The runner always passes this flag so when a shard is killed
+#: by the 60s combined budget, the captured stdout still names the
+#: heaviest tests in that shard. The flag adds a sub-second timing
+#: pass after the slowest call is recorded; the overhead is bounded
+#: by the maintained test-suite size and is negligible relative to
+#: the wall-clock saving it produces on the next bottleneck hunt.
+#: Set to ``0`` to disable (no slowest-test reporting).
+_PYTEST_DURATIONS_REPORT: int = 10
 
 
 # Required real-git files use a dedicated shard with four xdist workers.
@@ -581,6 +591,7 @@ def _shard_command(
         marker_expression,
         "--basetemp",
         str(basetemp),
+        *(("--durations", str(_PYTEST_DURATIONS_REPORT)) if _PYTEST_DURATIONS_REPORT > 0 else ()),
     )
 
 
@@ -962,9 +973,25 @@ def _terminate_and_reap(
     deadline: float,
     monotonic: Callable[[], float],
 ) -> tuple[tuple[str, str], ...]:
+    # Each ``process.terminate`` is wrapped so a raise on one process
+    # (e.g. a foreign exception from a real process manager when its
+    # descendant accounting trips) cannot skip the rest of the live
+    # shard pool. The original failure is observed (a stderr line)
+    # while every still-running shard is still reaped; the budget
+    # tracker in ``ralph/verify.py`` charges this drain, so
+    # short-cutting one terminate call leaks the rest of the
+    # process group and inflates wall-clock on a busy host.
     for process in processes:
         if process.poll() is None:
-            process.terminate(grace_period_s=0.0)
+            try:
+                process.terminate(grace_period_s=0.0)
+            except Exception as exc:
+                # Best-effort reap: a foreign raise from a real process
+                # manager cannot skip the rest of the live shard pool.
+                print(
+                    f"warning: shard terminate raised {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
     outputs = []
     for process in processes:
         remaining = min(

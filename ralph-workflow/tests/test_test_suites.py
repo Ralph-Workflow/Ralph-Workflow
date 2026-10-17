@@ -925,3 +925,52 @@ def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_an
 
 def test_durations_profile_constant_added_to_focused_profiles() -> None:
     assert "durations" in test_suites_module._FOCUSED_PROFILES
+
+
+def test_terminate_and_reap_continues_when_one_process_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """S-5: one shard's terminate raising must not skip the rest.
+
+    A foreign exception from a real process manager (e.g. when its
+    descendant accounting trips) cannot leak the rest of the shard
+    pool. The runner logs a warning and continues termination
+    + reaping of the remaining processes.
+    """
+    monkeypatch.setenv("PYTEST_WORKERS", "3")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    clock = _FakeClock()
+    raising = _FakeShardProcess(
+        [None], terminate_raises=OSError("simulated process manager failure")
+    )
+    sibling_a = _FakeShardProcess([None])
+    sibling_b = _FakeShardProcess([None])
+    processes = [raising, sibling_a, sibling_b]
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=5.0,
+        spawner=_StubSpawner(processes),
+        file_discoverer=lambda _cwd: (
+            "tests/test_alpha.py",
+            "tests/test_bravo.py",
+            "tests/test_charlie.py",
+        ),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    assert exit_code == 124
+    # All three processes must be reaped. The raising one is still
+    # reaped via its ``communicate``; the other two were terminated
+    # first then reaped. Skipping the rest of the pool would have
+    # left two ``reaped == False`` (and the leak would have
+    # inflated the budget drain on a busy host).
+    assert all(process.reaped for process in processes)
+    assert sibling_a.terminated
+    assert sibling_b.terminated
+    captured = capsys.readouterr()
+    assert "shard terminate raised OSError" in captured.err

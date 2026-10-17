@@ -31,6 +31,7 @@ class _FakeShardProcess:
         stderr: bytes = b"",
         communicate_times_out: bool = False,
         on_communicate: Callable[[], None] | None = None,
+        terminate_raises: BaseException | None = None,
     ) -> None:
         self._returncodes = list(returncodes)
         self._last_returncode: int | None = None
@@ -38,6 +39,7 @@ class _FakeShardProcess:
         self._stderr = stderr
         self._communicate_times_out = communicate_times_out
         self._on_communicate = on_communicate
+        self._terminate_raises = terminate_raises
         self.terminated = False
         self.reaped = False
         self.orphans_cleaned = False
@@ -62,6 +64,8 @@ class _FakeShardProcess:
 
     def terminate(self, grace_period_s: float | None = None) -> None:
         del grace_period_s
+        if self._terminate_raises is not None:
+            raise self._terminate_raises
         self.terminated = True
         self._last_returncode = -15
 
