@@ -23,7 +23,6 @@ from pathlib import Path
 
 from loguru import logger
 
-from ralph.git.merge import is_ancestor
 from ralph.git.subprocess_runner import run_git
 
 __all__ = [
@@ -189,6 +188,81 @@ def detached_head_no_state(root: Path, git_dir: Path) -> bool:
     return result.returncode != 0
 
 
+def _resolve_reflog_candidate(root: Path, candidate: str) -> str | None:
+    """Verify a reflog-derived branch candidate against the exact-tip invariant.
+
+    Returns the candidate when:
+    - ``refs/heads/<candidate>`` exists (show-ref exits 0);
+    - the branch tip rev-parses to a non-empty OID;
+    - ``git rev-parse HEAD`` succeeds and the candidate's tip EQUALS detached
+      HEAD exactly (no ``is_ancestor`` relaxation, no fall-through to older
+      reflog entries).
+
+    Returns ``None`` on any failed observation.  A failed show-ref means the
+    destination was a SHA (explicit detached checkout) and is fail-closed;
+    a failed tip/head rev-parse or a non-equal tip is also fail-closed.
+    """
+    branch_check = run_git(
+        ("show-ref", "--verify", f"refs/heads/{candidate}"),
+        cwd=root,
+        label="recovery:branch-verify",
+    )
+    if branch_check.returncode != 0:
+        return None
+    tip_check = run_git(
+        ("rev-parse", "--verify", f"refs/heads/{candidate}"),
+        cwd=root,
+        label="recovery:branch-tip",
+    )
+    if tip_check.returncode != 0:
+        return None
+    candidate_tip = tip_check.stdout.strip()
+    head_check = run_git(
+        ("rev-parse", "--verify", "HEAD"),
+        cwd=root,
+        label="recovery:head-rev-parse",
+    )
+    if head_check.returncode != 0:
+        return None
+    detached_head_oid = head_check.stdout.strip()
+    if candidate_tip != detached_head_oid:
+        return None
+    return candidate
+
+
+def _reflog_observation_unknown(*, line: str) -> str | None:
+    """Extract the destination branch name from one reflog line, or ``None``.
+
+    Returns the candidate branch name if the line is a checkout/switch
+    entry whose destination field is a non-empty string.  Returns
+    ``None`` for lines without a checkout/switch marker, with malformed
+    "from/to" halves, or whose destination is empty.
+
+    A SHA destination (the typical ``checkout: moving from <branch> to
+    <sha>`` shape) parses as a non-empty string and is verified by
+    :func:`_resolve_reflog_candidate` -- ``show-ref --verify`` rejects
+    it, so the recovery returns ``None`` (fail-closed).  A failed
+    verification is also fail-closed at the reflog-entry level: the
+    caller stops scanning after the first checkout/switch entry whose
+    observation is unknown or invalid.
+    """
+    if "\x00" not in line:
+        return None
+    _sha, subject = line.split("\x00", 1)
+    for marker in ("checkout: moving from ", "switch branch to "):
+        idx = subject.find(marker)
+        if idx == -1:
+            continue
+        rest = subject[idx + len(marker) :]
+        parts = rest.split(" to ", 1)
+        # Two halves: "<source> to <destination>"; 1-half means malformed
+        source_dest: tuple[str, str] = ("", "")  # typing hint to avoid PLR2004
+        if len(parts) == len(source_dest):
+            candidate = parts[1].strip() or None
+            return candidate
+    return None
+
+
 def detached_branch_name(root: Path) -> str | None:
     """Return the original branch name from the reflog when detached.
 
@@ -223,65 +297,33 @@ def detached_branch_name(root: Path) -> str | None:
     if result.returncode != 0:
         return None
 
-    # Parse each entry: "<sha>\x00<subject>"
-    # The reflog is ordered most-recent-first.  We scan until we hit the first
-    # checkout/switch entry -- that entry is the one that put us in the detached
-    # state.  Its "to" field tells us where we went.  If that field is a SHA
-    # (git checkout <sha>), we explicitly left the branch context and there is
-    # no branch to recover to.  If it is a branch name, validate and return it.
+    # Parse each entry: "<sha>\x00<subject>".  The reflog is ordered
+    # most-recent-first.  We scan until we hit the first checkout/switch entry
+    # -- that entry is the one that put us in the detached state, so it is the
+    # only authoritative observation: if its "to" field is a SHA, the user
+    # explicitly left the branch context and there is no branch to recover to;
+    # if it is a branch name, the candidate must be exact-equivalent to
+    # detached HEAD -- the symbolic-ref-only reattachment at
+    # :func:`reattach_head_to_branch` preserves the work only when the branch
+    # tip already points at detached HEAD (any other branch tip would silently
+    # lose the detached commits).  Fail-closed: a single failed observation
+    # returns ``None`` and never falls through to an older reflog entry.
     for line in result.stdout.splitlines():
-        if "\x00" not in line:
-            continue
-        _sha, subject = line.split("\x00", 1)
-
-        # Extract destination from checkout/switch subject
-        candidate: str | None = None
-        for marker in ("checkout: moving from ", "switch branch to "):
-            idx = subject.find(marker)
-            if idx == -1:
-                continue
-            rest = subject[idx + len(marker) :]
-            parts = rest.split(" to ", 1)
-            # Two halves: "<source> to <destination>"; 1-half means malformed
-            source_dest: tuple[str, str] = ("", "")  # typing hint to avoid PLR2004
-            if len(parts) == len(source_dest):
-                candidate = parts[1].strip() or None
-                break
-
-        if not candidate:
+        # Skip non-checkout lines (commits, merges, cherry-picks) --
+        # the recovery is keyed on a checkout/switch entry that put
+        # the user in the detached state.  Older non-checkout entries
+        # before the first checkout observation are also ignored.
+        candidate = _reflog_observation_unknown(line=line)
+        if candidate is None:
             continue
 
-        # This is the first checkout entry we encountered.
-        # If the destination is a SHA (not a branch name), the user explicitly
-        # checked out a commit and left the branch context -- no branch to
-        # recover to.
-        branch_check = run_git(
-            ("show-ref", "--verify", f"refs/heads/{candidate}"),
-            cwd=root,
-            label="recovery:branch-verify",
-        )
-        if branch_check.returncode != 0:
-            # Destination is a SHA, not a branch name -- explicit detached
-            # checkout.  Do not look at earlier entries; return None.
-            return None
-
-        # Candidate must be an existing local branch in this worktree
-        tip_check = run_git(
-            ("rev-parse", "--verify", f"refs/heads/{candidate}"),
-            cwd=root,
-            label="recovery:branch-tip",
-        )
-        if tip_check.returncode != 0:
-            continue
-        candidate_tip = tip_check.stdout.strip()
-
-        # Candidate tip must be an ancestor of current HEAD (branch is at or
-        # behind the detached HEAD -- safe to re-attach without data loss)
-        if not is_ancestor(root, candidate_tip, "HEAD"):
-            continue
-
-        return candidate
-
+        # This is the first checkout/switch entry we encountered.
+        # ``_resolve_reflog_candidate`` enforces the exact-tip invariant
+        # and returns ``None`` on any failed observation (SHA destination,
+        # unreadable branch, mismatched tip).  Either outcome is
+        # fail-closed for THIS reflog entry -- do not fall through to
+        # older entries; return immediately.
+        return _resolve_reflog_candidate(root, candidate)
     return None
 
 

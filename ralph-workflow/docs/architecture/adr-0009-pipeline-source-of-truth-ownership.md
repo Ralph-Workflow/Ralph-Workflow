@@ -123,11 +123,20 @@ distinct contracts and must not be treated as one seam:
    not diagnostic evidence.
 2. **Detached-HEAD branch reconstruction.**
    `_auto_integrate_recovery_git_state.py` `detached_branch_name`
-   (the `git reflog --format=%gD -n 1` read) reads the worktree-private
-   `<git-dir>/logs/HEAD`, not the commondir. It reconstructs the branch
-   name from detached-HEAD residue. This is a different contract from
-   the completion proof above, and it is crash recovery, not diagnostic
-   evidence. `cwd=root` pins the read to the operation's own worktree.
+   (the `git reflog --format=%H%x00%gs -n 50` read at line 214 of
+   `detached_branch_name`) reads the worktree-private
+   `<git-dir>/logs/HEAD`, not the commondir. The format string emits
+   the commit hash (`%H`) followed by a NUL byte and the reflog
+   subject (`%gs`); each entry is `<sha>\x00<subject>`. The bounded
+   `-n 50` window keeps the read finite. The seam reconstructs the
+   branch name from detached-HEAD residue, scans the entries
+   newest-first, and returns the **first** checkout/switch entry
+   whose destination is an existing local branch whose tip EQUALS
+   detached HEAD exactly (no `is_ancestor` fall-through, no fall-
+   through to older reflog entries on failed observation — fail-
+   closed). This is a different contract from the completion proof
+   above, and it is crash recovery, not diagnostic evidence.
+   `cwd=root` pins the read to the operation's own worktree.
 
 Both seams are operation-scoped: neither read can be invalidated by an
 unrelated worktree's branch advance.

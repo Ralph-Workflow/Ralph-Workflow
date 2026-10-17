@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_end_to_end.py",
+    # wt-03-fix-bug (WU-R1): detached-HEAD recovery uses the
+    # worktree-private reflog to reconstruct the original branch.
+    # The fail-closed exact-tip invariant must stay on the default
+    # ``make test`` profile so the permissive-ancestor /
+    # fall-through-to-older-entry regression cannot rot silently.
+    "tests/test_auto_integrate_recovery_git_state_reflog.py",
     "tests/test_integration_obstruction_real_git.py",
     "tests/test_pending_merge_commit_recovery.py",
     "tests/test_pending_merge_repair_real_git.py",
@@ -594,7 +600,13 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     ]
     marker_flag = general_command.index("-m", general_command.index("pytest") + 1)
     assert general_command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
-    assert "-n" not in exclusive_command
+    # The exclusive subprocess E2E shard uses 4 in-shard xdist workers
+    # (see ``_EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS``) so the
+    # eight real-PTY regressions can run concurrently and fit inside
+    # the 60s combined subprocess profile budget.
+    assert "-n" in exclusive_command
+    exclusive_xdist_index = exclusive_command.index("-n")
+    assert exclusive_command[exclusive_xdist_index + 1] == "4"
 
 
 @pytest.mark.parametrize(

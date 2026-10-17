@@ -26,6 +26,12 @@ from tests._test_test_suites_helpers import (
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_end_to_end.py",
+    # wt-03-fix-bug (WU-R1): detached-HEAD recovery uses the
+    # worktree-private reflog to reconstruct the original branch.
+    # The fail-closed exact-tip invariant must stay on the default
+    # ``make test`` profile so the permissive-ancestor /
+    # fall-through-to-older-entry regression cannot rot silently.
+    "tests/test_auto_integrate_recovery_git_state_reflog.py",
     "tests/test_integration_obstruction_real_git.py",
     "tests/test_pending_merge_commit_recovery.py",
     "tests/test_pending_merge_repair_real_git.py",
@@ -815,7 +821,13 @@ def test_subprocess_e2e_regression_runs_pty_after_general_shards_once_without_xd
     assert general_reap_order == [2, 2]
     assert "-n" in spawner.calls[0][0]
     assert "-n" in spawner.calls[1][0]
-    assert "-n" not in spawner.calls[2][0]
+    # The exclusive subprocess E2E shard uses 4 in-shard xdist workers
+    # (see ``_EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS``) so the
+    # eight real-PTY regressions can run concurrently and fit inside
+    # the 60s combined subprocess profile budget.
+    assert "-n" in spawner.calls[2][0]
+    exclusive_xdist_index = spawner.calls[2][0].index("-n")
+    assert spawner.calls[2][0][exclusive_xdist_index + 1] == "4"
     assert captured.out.index("general one output") < captured.out.index("exclusive output")
     assert captured.out.index("general two output") < captured.out.index("exclusive output")
     assert all(

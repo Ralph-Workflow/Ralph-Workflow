@@ -123,6 +123,11 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # One real-git landing journey retains the external Git boundary proof;
     # decision and recovery variants run in the opt-in subprocess profile.
     "tests/test_auto_integrate_end_to_end.py",
+    # wt-03 WU-R1: detached-HEAD recovery uses the worktree-private reflog
+    # to reconstruct the original branch. The fail-closed exact-tip invariant
+    # must stay on the default ``make test`` profile so the
+    # permissive-ancestor / fall-through-to-older-entry regression cannot rot.
+    "tests/test_auto_integrate_recovery_git_state_reflog.py",
     # Every merge-refusal shape (untracked / uncommitted obstructions) must
     # end with the branch containing its target -- the guard against
     # planning on a stale branch. Real git, so it is registered here.
@@ -322,6 +327,25 @@ def _required_e2e_xdist_workers() -> str:
 
 
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()
+
+
+def _exclusive_subprocess_e2e_xdist_workers() -> str:
+    """Return the in-shard xdist count for the exclusive subprocess-E2E shard.
+
+    The exclusive subprocess-E2E file (``test_terminal_state_restored_on_exit.py``)
+    contains eight real-PTY regressions, each spawning a fresh Python child
+    that imports the ralf package (~1.5s of import time per child).  Without
+    in-shard parallelism the file needs ~13s of wall clock, which exceeds
+    the 60s combined budget once the general subprocess shards finish
+    (~55s on the maintained host).  Four in-shard xdist workers cut the
+    file to ~7s while preserving every behavioral assertion -- the PTY
+    and termios state is per-test, so concurrent tests are safe.  The cap
+    matches ``_MAX_XDIST_WORKERS_PER_SHARD`` and is host-invariant.
+    """
+    return "4"
+
+
+_EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS = _exclusive_subprocess_e2e_xdist_workers()
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/display/test_generated_scene_catalog.py": 45,
@@ -1385,6 +1409,18 @@ def run_test_suites(
             return general_result
         if not required_e2e_shard or run_required_concurrently:
             return general_result
+        # The exclusive subprocess-E2E shard contains eight real-PTY
+        # regressions that each spawn a fresh Python child importing the
+        # ralf package (~1.5s of import time per child).  Four in-shard
+        # xdist workers cut the wall clock from ~13s to ~7s, keeping
+        # the combined subprocess profile inside the 60s budget.  The
+        # other profiles do not use this fallback (the auto-integrate
+        # E2E shard runs concurrently with the general shards via
+        # ``run_required_concurrently``).
+        if subprocess_e2e_only:
+            xdist_workers_for_required = _EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS
+        else:
+            xdist_workers_for_required = _xdist_workers_per_shard()
         return _run_shards(
             (required_e2e_shard,),
             cwd=cwd,
@@ -1396,7 +1432,7 @@ def run_test_suites(
             monotonic=monotonic,
             wait=wait,
             marker_expression=marker_expression,
-            xdist_workers=required_e2e_shard_xdist_workers or _xdist_workers_per_shard(),
+            xdist_workers=xdist_workers_for_required,
             successful_returncodes=successful_returncodes,
             empty_selection_returncode=empty_selection_returncode,
         )
