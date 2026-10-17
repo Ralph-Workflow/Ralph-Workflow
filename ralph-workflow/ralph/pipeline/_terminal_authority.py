@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline._fan_out_authority import FanOutDecision
+from ralph.pipeline._fan_out_authority import FanOutDecision, fan_out_decision
 from ralph.pipeline._publication_state_machine import PublicationDecision
 
 if TYPE_CHECKING:
@@ -32,17 +32,32 @@ def is_terminal_success_eligible(
 
     The function is the single authority for the "may the run
     loop report terminal success?" question.
+
+    The cached ``last_fan_out_decision`` projection on the rebase state
+    is trusted only when the loaded ``state`` agrees with the canonical
+    ``fan_out_decision(state)`` recomputation. An absent or stale cached
+    projection never gates a success report: unfinished workers must
+    block. When no state is supplied (legacy callers), an absent cached
+    projection keeps the historical fail-open behavior.
     """
-    del state
     pub = rebase_state.last_publication_decision
-    fan_out = rebase_state.last_fan_out_decision
+    cached_fan_out = rebase_state.last_fan_out_decision
+    if state is None:
+        live_fan_out = cached_fan_out
+    else:
+        canonical = fan_out_decision(state)
+        live_fan_out = (
+            canonical
+            if cached_fan_out is None or cached_fan_out == canonical
+            else FanOutDecision.JOIN_BLOCKED
+        )
     return not (
         integration_record is not None
         or rebase_state.integration_unresolved is True
         or rebase_state.recovery_record_retained is True
         or rebase_state.is_intervention_required is True
         or (pub is not None and pub != PublicationDecision.PUBLICATION_TERMINAL)
-        or (fan_out is not None and fan_out != FanOutDecision.JOIN_COMPLETE)
+        or (live_fan_out is not None and live_fan_out != FanOutDecision.JOIN_COMPLETE)
     )
 
 

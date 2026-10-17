@@ -15,7 +15,7 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 def _state(phase: str = "plan") -> SimpleNamespace:
-    return SimpleNamespace(phase=phase, previous_phase=None)
+    return SimpleNamespace(phase=phase, previous_phase=None, worker_states={})
 
 
 def _policy_with(
@@ -138,6 +138,20 @@ def test_is_terminal_success_eligible_returns_true_when_all_clear() -> None:
         last_fan_out_decision="join_complete",
     )
     assert is_terminal_success_eligible(_state("done"), None, rebase_state) is True
+
+
+def test_decide_blocks_terminal_success_when_worker_states_contradict_cached_join() -> None:
+    """A stale join_complete cache with live RUNNING workers must not yield terminal success."""
+    state = _state("done")
+    state.worker_states = {"unit-1": SimpleNamespace(unit_id="unit-1", status="running")}
+    record = None
+    rebase_state = RebaseState(
+        last_publication_decision="publication_terminal",
+        last_fan_out_decision="join_complete",
+    )
+    from ralph.pipeline._terminal_authority import is_terminal_success_eligible as eligible
+
+    assert eligible(state, record, rebase_state) is False
 
 
 def test_phase_decision_enum_has_six_values() -> None:

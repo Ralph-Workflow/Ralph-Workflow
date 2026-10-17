@@ -12,8 +12,6 @@ appended after the spawn began, so a restart never replays a previous crash).
 
 from __future__ import annotations
 
-import socket
-from collections.abc import Iterator
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -34,15 +32,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _CHILD_DIAGNOSTIC = "UpstreamValidationError: custom MCP server 'docs-mcp' is unreachable"
-_OPENED_LISTENING_SOCKETS: list[socket.socket] = []
 
 
-@pytest.fixture(autouse=True)
-def _close_opened_listening_sockets() -> Iterator[None]:
-    """Close every listening socket the deps helper opened during the test."""
-    yield
-    while _OPENED_LISTENING_SOCKETS:
-        _OPENED_LISTENING_SOCKETS.pop().close()
+class _FakeListeningSocket:
+    """Dependency-injected stand-in for the parent-owned listening socket.
+
+    The startup-diagnostic tests exercise the preflight-failure reporting
+    contract, not kernel socket mechanics, so no real network I/O is needed.
+    """
+
+    def fileno(self) -> int:
+        return 3
+
+    def close(self) -> None:
+        return None
 
 
 class _LiveProcess:
@@ -76,23 +79,8 @@ def _deps(tmp_path: Path, spawn: SpawnProcess) -> lifecycle.LifecycleDeps:
         del required_tools, timeout
         raise PreflightError(f"failed to connect to MCP endpoint {endpoint}: [Errno 61] refused")
 
-    def fake_reserve_listening_socket() -> tuple[str, int, socket.socket]:
-        # Alias the module so the call is not the audited name ``socket.socket``.
-        # tests/test_mcp_lifecycle.py uses the same accepted pattern.
-        import socket as _listening
-
-        sock = _listening.socket(_listening.AF_INET, _listening.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", 0))
-            sock.listen(128)
-            bound_port = sock.getsockname()[1]
-            if not isinstance(bound_port, int):
-                raise TypeError(f"kernel-assigned port must be int, got {bound_port!r}")
-        except BaseException:
-            sock.close()
-            raise
-        _OPENED_LISTENING_SOCKETS.append(sock)
-        return "127.0.0.1", bound_port, sock
+    def fake_reserve_listening_socket() -> tuple[str, int, _FakeListeningSocket]:
+        return "127.0.0.1", 49152, _FakeListeningSocket()
 
     return lifecycle.LifecycleDeps(
         reserve_listening_socket=fake_reserve_listening_socket,

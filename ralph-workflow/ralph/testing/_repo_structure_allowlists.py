@@ -331,6 +331,16 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
 
 _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = frozenset(
     {
+        # wt-03 respawn-no-discovery suite reuses the production bounded
+        # tools/list HTTP reader (the same seam the respawn alias check
+        # calls) so the fake-upstream assertions measure the real read,
+        # not a test-local copy; a public re-export would duplicate the
+        # helper just to assert against it.
+        (
+            "tests/mcp/test_respawn_no_discovery.py",
+            "ralph.mcp.server._http_tools_list",
+            ("_http_tools_list_names",),
+        ),
         (
             "tests/integration/test_process_zombie_cleanup.py",
             "ralph.process.manager",

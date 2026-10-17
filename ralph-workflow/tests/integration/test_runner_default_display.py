@@ -192,9 +192,11 @@ def test_default_run_propagates_display_subscriber(
     # Short-circuit immediately: enter -> exit by going straight to complete.
     state = MagicMock()
     state.phase = "complete"
-    # Terminal-success eligibility compares real decision values on the
-    # rebase state, so the fake state carries a default (idle) RebaseState.
+    # Terminal-success eligibility recomputes the canonical fan-out
+    # decision from the loaded state, so the fake state carries a real
+    # (idle, join-complete) RebaseState and an empty worker_states map.
     state.rebase = RebaseState()
+    state.worker_states = {}
     monkeypatch.setattr(
         runner_module,
         "determine_effect_from_policy",
