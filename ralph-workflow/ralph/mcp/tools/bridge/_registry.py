@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.mcp.protocol._startup_timeouts import _REGISTRY_BUILD_BUDGET_S
 from ralph.mcp.protocol.capability_mapping import McpCapability
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 from ralph.mcp.tools.bridge._specs_explore import explore_specs
@@ -39,16 +43,67 @@ def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     return tuple(specs)
 
 
+_clock = time.monotonic
+
+
 class _ReadableWorkspace(Protocol):
     """Minimal workspace contract needed for policy-gated tool exposure."""
 
     def read(self, path: str) -> str: ...
 
 
-def _capture_policy_is_resolved(workspace: object) -> bool:
+def _read_workspace_policy(
+    workspace: object,
+    *,
+    timeout_s: float,
+    t0: float | None = None,
+) -> str:
+    """Read design system policy with a strict, fail-closed timeout bound."""
+    if not hasattr(workspace, "read"):
+        raise AttributeError("Workspace object has no 'read' method")
+    readable = cast("_ReadableWorkspace", workspace)
+
+    result: list[str] = []
+    error: list[BaseException] = []
+    done = threading.Event()
+
+    def _worker() -> None:
+        try:
+            result.append(readable.read(DESIGN_SYSTEM_POLICY_RELPATH))
+        except BaseException as exc:
+            error.append(exc)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_worker, daemon=True, name="ralph-policy-reader")
+    thread.start()
+    if not done.wait(timeout=timeout_s):
+        elapsed = (_clock() - t0) if t0 is not None else timeout_s
+        raise McpServerError(
+            f"workspace policy read exceeded budget ({elapsed:.3f}s >= {timeout_s:.3f}s)",
+            restart_count=0,
+            last_stage="registry_built",
+            elapsed_s=elapsed,
+        )
+    if error:
+        raise error[0]
+    return result[0]
+
+
+def _capture_policy_is_resolved(
+    workspace: object,
+    *,
+    timeout_s: float | None = None,
+    t0: float | None = None,
+) -> bool:
     """Return whether this workspace declares a complete capture matrix."""
+    effective_timeout_s = timeout_s if timeout_s is not None else _REGISTRY_BUILD_BUDGET_S
     try:
-        policy_markdown = cast("_ReadableWorkspace", workspace).read(DESIGN_SYSTEM_POLICY_RELPATH)
+        policy_markdown = _read_workspace_policy(
+            workspace,
+            timeout_s=effective_timeout_s,
+            t0=t0,
+        )
         parse_policy_facts(policy_markdown, target="_capture_policy_probe")
     except (AttributeError, OSError, TypeError, ValueError):
         return False
@@ -78,6 +133,9 @@ def build_ralph_tool_registry(
     *,
     upstream_registry: UpstreamRegistry | None = None,
     mcp_config: McpConfig | None = None,
+    t0: float | None = None,
+    budget_s: float | None = None,
+    timeout_s: float | None = None,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
     mcp_config_cls = cast(
@@ -85,7 +143,20 @@ def build_ralph_tool_registry(
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
-    capture_policy_is_resolved = _capture_policy_is_resolved(workspace)
+    capture_policy_is_resolved = _capture_policy_is_resolved(
+        workspace,
+        timeout_s=timeout_s,
+        t0=t0,
+    )
+    if t0 is not None and budget_s is not None:
+        elapsed = _clock() - t0
+        if elapsed > budget_s:
+            raise McpServerError(
+                f"registry_built budget exceeded during tool registry build ({elapsed:.3f}s > {budget_s:.3f}s)",
+                restart_count=0,
+                last_stage="registry_built",
+                elapsed_s=elapsed,
+            )
     for spec in tool_specs(mcp_cfg):
         is_websearch = (
             spec.module_name == "ralph.mcp.tools.websearch"

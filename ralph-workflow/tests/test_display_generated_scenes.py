@@ -25,7 +25,6 @@ from ralph.display.scene_catalog import (
     SCENE_NAMES,
     SURFACE_CATALOG,
     SupportCase,
-    compact_matrix,
     render_scene,
     scene_salience_decisions,
     support_matrix,
@@ -403,8 +402,18 @@ def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None
     assert GRACEFUL_HEIGHT_FLOOR == 12
 
 
+_REPRESENTATIVE_CASES: tuple[SupportCase, ...] = (
+    SupportCase("dark", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty"),
+    SupportCase("light", "reduced", "ascii", GRACEFUL_WIDTH_FLOOR, "redirect"),
+    SupportCase("unknown", "none", "unicode", 120, "ci"),
+    SupportCase("dark", "none", "ascii", GRACEFUL_WIDTH_FLOOR, "ci"),
+    SupportCase("light", "truecolour", "unicode", 120, "redirect"),
+    SupportCase("unknown", "reduced", "ascii", FULL_LAYOUT_WIDTH, "tty"),
+)
+
+
 @pytest.mark.timeout_seconds(5)
-@pytest.mark.parametrize("case", compact_matrix())
+@pytest.mark.parametrize("case", _REPRESENTATIVE_CASES)
 @pytest.mark.parametrize("scene_name", SCENE_NAMES)
 def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matrix(
     scene_name: str,

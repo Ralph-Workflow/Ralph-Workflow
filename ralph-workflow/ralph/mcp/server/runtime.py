@@ -57,6 +57,7 @@ from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_CUMULATIVE_S,
     mcp_discovery_budget_from_env,
     mcp_registry_built_budget_from_env,
+    mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
     record_stage_elapsed,
 )
@@ -152,6 +153,7 @@ class McpServerExtras:
     session: McpSession | None = None
     upstream_registry: UpstreamRegistry | None = None
     mcp_config: McpConfig | None = None
+    workspace: FsWorkspace | None = None
 
 
 FallbackStandaloneServer = _FallbackStandaloneServer
@@ -231,12 +233,23 @@ def _build_mcp_registry_and_server(
     ``last_stage="registry_built"`` from the stage file the caller
     wrote before invoking this function.
     """
+    registry_budget_s = mcp_registry_built_budget_from_env(env_map)
+    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
+
+    remaining_budget_s = max(0.0, registry_budget_s - (_clock() - t0))
+    read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
+    effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
+
     reg = build_ralph_tool_registry(
         effective_session,
         workspace,
         upstream_registry=upstream_reg,
         mcp_config=mcp_cfg,
+        t0=t0,
+        budget_s=registry_budget_s,
+        timeout_s=effective_read_timeout_s,
     )
+    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
     n_builtin = len(list(reg.list_definitions()))
     if upstream_reg and upstream_servers:
         n_proxied = len(list(upstream_reg.tool_definitions()))
@@ -331,6 +344,7 @@ def build_standalone_http_server(
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
+    workspace: FsWorkspace | None = None,
     extras: McpServerExtras | None = None,
     agent_transport: str | None = None,
     activity_relay_sender: ActivityRelaySender | None = None,
@@ -374,9 +388,15 @@ def build_standalone_http_server(
     allowed_roots = cast(
         "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    workspace = FsWorkspace(
-        workspace_root,
-        allowed_roots=allowed_roots if allowed_roots else None,
+    effective_workspace = (
+        workspace
+        if workspace is not None
+        else _extras.workspace
+        if _extras.workspace is not None
+        else FsWorkspace(
+            workspace_root,
+            allowed_roots=allowed_roots if allowed_roots else None,
+        )
     )
     mcp_cfg = (
         _extras.mcp_config
@@ -499,7 +519,7 @@ def build_standalone_http_server(
 
     server = _build_mcp_registry_and_server(
         effective_session=effective_session,
-        workspace=workspace,
+        workspace=effective_workspace,
         upstream_reg=upstream_reg,
         upstream_servers=upstream_servers,
         mcp_cfg=mcp_cfg,

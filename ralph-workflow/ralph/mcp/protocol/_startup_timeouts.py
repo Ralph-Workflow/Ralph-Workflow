@@ -299,6 +299,17 @@ def mcp_registry_built_budget_from_env(
     )
 
 
+def mcp_registry_read_timeout_from_env(
+    env: Mapping[str, str] | None = None,
+) -> float:
+    """Return the bounded per-workspace-read timeout for registry construction."""
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, "RALPH_MCP_REGISTRY_READ_TIMEOUT_MS")
+    if requested is not None:
+        return requested.total_seconds()
+    return _REGISTRY_BUILD_BUDGET_S
+
+
 def mcp_whole_startup_budget_from_env(
     env: Mapping[str, str] | None = None,
 ) -> float:
@@ -333,6 +344,7 @@ __all__ = [
     "mcp_discovery_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_registry_built_budget_from_env",
+    "mcp_registry_read_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_seconds",
     "mcp_whole_startup_budget_from_env",

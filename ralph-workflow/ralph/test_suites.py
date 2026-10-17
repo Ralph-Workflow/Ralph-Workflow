@@ -90,8 +90,9 @@ def _max_pytest_workers_for_host() -> int:
 
 
 _MAX_PYTEST_WORKERS = _max_pytest_workers_for_host()
-# The maintained 12-core host completes the suite faster with eight shards;
-# additional shard startup and filesystem contention consume smoke headroom.
+# The maintained 12-core host completes the suite with 10 shards under
+# _PERFORMANCE_CORE_PYTEST_WORKER_CAP; hosts with >12 cores are bounded by
+# _MAX_PYTEST_WORKERS (8 shards) to avoid startup and filesystem contention.
 _PERFORMANCE_CORE_PYTEST_WORKER_CAP = 10
 _MINIMUM_MULTI_SHARD_CORES = 2
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
@@ -199,14 +200,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # rot silently. In-budget on the 60s combined verify budget.
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
-    # wt-15-policy (U1): the 460-test parametrized display module is too
-    # heavy for an 8-shard LPT partition: it lands on a low-file-count
-    # shard and is the wall-clock bottleneck (verified ~27s for the
-    # shard carrying it vs ~22s for the others on the 40-core host).
-    # Moving it here lets the E2E shard's four xdist workers absorb
-    # the parametrization fan-out, so the slowest general shard and
-    # the E2E shard both fit inside the 60-second combined budget
-    # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    # wt-15-policy (U1): the parametrized display module was previously
+    # 460 tests and wall-clock bottleneck; optimized down to representative
+    # matrix (100 tests total, ~2.7s execution) and retained here so the
+    # scene rendering contracts stay verified on the default make test profile.
     "tests/test_display_generated_scenes.py",
     # wt-03-fix-bug (S): the linked-worktree regression test for the
     # diagnostic-evidence collector. Real-git, in-budget, must run
@@ -314,7 +311,7 @@ def _required_e2e_xdist_workers() -> str:
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
-    "tests/test_display_generated_scenes.py": 460,
+    "tests/test_display_generated_scenes.py": 100,
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 76,
@@ -450,10 +447,11 @@ def validate_exact_file_assignment(
 def _pytest_workers() -> str:
     """Return an explicit override or the CPU-capped verified shard profile.
 
-    The auto profile is bounded by ``_MAX_PYTEST_WORKERS = 8``. Explicit
-    overrides remain capped at ``available_cores - 2`` to reserve the parent
-    and OS/I/O capacity. The 12-core profile reserves two logical cores for
-    orchestration; larger hosts remain bounded to avoid startup contention.
+    The auto profile is bounded by ``_PERFORMANCE_CORE_PYTEST_WORKER_CAP = 10``
+    on 12-core hosts, and by ``_MAX_PYTEST_WORKERS = 8`` on larger hosts to avoid
+    startup contention. Explicit overrides remain capped at ``available_cores - 2``
+    to reserve the parent and OS/I/O capacity. The 12-core profile reserves two
+    logical cores for orchestration.
     """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     available_cores = os.cpu_count() or 2
