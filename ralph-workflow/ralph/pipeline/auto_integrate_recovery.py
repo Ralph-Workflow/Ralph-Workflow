@@ -161,28 +161,39 @@ def recover_incomplete_integration(
                 retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
+        # Startup seam: if a previous run landed locally but never
+        # pushed, the reconciler catches up on this start. The
+        # publication outcome is annotated on the durable record and
+        # on the recovery's RebaseState return; the next stage
+        # consumes it like any other landing.
+        startup_publication: RebaseState | None = None
+        if config is not None and remote_sync_enabled(config):
+            target_obj = _configured_target(config)
+            if isinstance(target_obj, str) and target_obj:
+                startup_publication = reconcile_remote_publication(
+                    config, Path(workspace_scope.root), target_obj
+                )
+
         early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
         if early is not None:
             return early
         record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
         if isinstance(record, RebaseState):
             return record
-        # Startup seam: if a previous run landed locally but never
-        # pushed, the reconciler catches up on this start. The
-        # publication outcome is annotated on the durable record and
-        # on the recovery's RebaseState return; the next stage
-        # consumes it like any other landing.
-        if config is not None and remote_sync_enabled(config):
-            target_obj = _configured_target(config)
-            if isinstance(target_obj, str) and target_obj:
-                reconcile_remote_publication(config, Path(workspace_scope.root), target_obj)
-        return _recover_incomplete_integration_owned(
+        recovered = _recover_incomplete_integration_owned(
             workspace_scope,
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             backend=backend,
         )
+        if (
+            recovered is None
+            and startup_publication is not None
+            and startup_publication.last_push_status == "pushed"
+        ):
+            return startup_publication
+        return recovered
 
 
 def _recover_incomplete_integration_owned(

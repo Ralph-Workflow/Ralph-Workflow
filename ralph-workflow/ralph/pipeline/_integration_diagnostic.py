@@ -305,7 +305,6 @@ def diagnose_retained_integration(
             # the snapshot here so a collector crash surfaces in the
             # ``except`` branch and bumps the attempt counter
             # (the OLD evidence-collecting path relied on this).
-            col.snapshot(operation_root, record)
             before: tuple[tuple[str, str], ...] = ()
             if not record.diagnostic_evidence or not record.diagnostic_ownership:
                 lease = f"{identity_fingerprint(record)}:{time.time()}"
@@ -315,6 +314,7 @@ def diagnose_retained_integration(
                     diagnostic_ownership=lease,
                 )
                 write_record(ctx.workspace_scope.root, record)
+            col.snapshot(operation_root, record)
             released = handoff_integration_diagnostic(
                 root=ctx.workspace_scope.root,
                 record=record,
@@ -373,7 +373,24 @@ def diagnostic_evidence_verdict(
         return EvidenceVerdict.UNCHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
     if fingerprint is None or held_at is None:
-        return EvidenceVerdict.CHANGED
+        # Unparseable lease (legacy single-string fingerprint, or
+        # any malformed input). The on-disk evidence is no longer
+        # authoritative; treat as expired (UNKNOWN) so the caller
+        # auto-releases. CHANGED is reserved for the case where
+        # the durable identity fingerprint was actually rewritten
+        # by a different worktree.
+        #
+        # Special case: legacy records migrated to the new
+        # key space carry migrated evidence but no lease (the
+        # pre-lease Ralph versions never wrote a lease string).
+        # In that case the evidence is not a live diagnostic
+        # hold; it is a migrated observation. Return UNCHANGED
+        # so the caller preserves the migrated evidence and
+        # does not auto-release (which would wipe the migrated
+        # keys).
+        if record.diagnostic_evidence and not record.diagnostic_ownership:
+            return EvidenceVerdict.UNCHANGED
+        return EvidenceVerdict.UNKNOWN
     if fingerprint != identity_fingerprint(record):
         return EvidenceVerdict.CHANGED
     if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
@@ -491,7 +508,7 @@ def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, 
     return _check_parent_match(root, record)
 
 
-def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+def _check_worktree_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
     if not record.owning_worktree or not record.owning_worktree.strip():
         return False, "record.owning_worktree is missing or empty"
     try:
@@ -499,15 +516,15 @@ def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool,
             return False, f"owning_worktree {record.owning_worktree} does not match {root}"
     except Exception:
         return False, f"owning_worktree {record.owning_worktree} is invalid"
+    return True, "worktree matches"
 
+
+def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    ok, reason = _check_worktree_match(root, record)
+    if not ok:
+        return False, reason
     if not record.diagnostic_ownership:
         return False, "diagnostic_ownership is missing or empty"
-    # The lease format is ``<fingerprint>:<held_at>``; parse it and
-    # compare only the fingerprint half against the current record's
-    # identity. ``identity_fingerprint`` is closed against new
-    # defaulted fields, so a record whose durable identity is intact
-    # passes the proof even if Ralph's legitimate actions have moved
-    # ``HEAD`` or updated the index.
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
     if fingerprint is None or held_at is None or fingerprint != identity_fingerprint(record):
         return False, "diagnostic_ownership does not match ownership_fingerprint"

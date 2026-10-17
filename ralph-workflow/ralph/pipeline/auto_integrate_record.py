@@ -697,33 +697,48 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
 
     For the legacy global evidence case (``for-each-ref`` /
     ``ls-files``), returns the payload with ``diagnostic_evidence``
-    set to an empty tuple so the loaded record carries no live
-    comparison; the durable identity (``target``, SHAs,
-    ``operation_kind``) is preserved, and the diagnostic path
-    re-derives state from Git on the next seam. Surfacing
-    intervention from the loader was the production livelock: the
-    diagnostic could not re-verify the evidence and refused to
-    proceed.
+    set to an empty tuple AND any persisted intervention flag
+    cleared, so the loaded record carries no live comparison and
+    no operator-only dispatch action; the durable identity
+    (``target``, SHAs, ``operation_kind``) is preserved, and the
+    diagnostic path re-derives state from Git on the next seam.
+    Surfacing intervention from the loader was the production
+    livelock: the diagnostic could not re-verify the evidence and
+    refused to proceed.
+
+    The ``diagnostic_intervention_required`` flag is also cleared
+    when the ``diagnostic_ownership`` is not parseable as a lease
+    (legacy single-string fingerprint form, or any malformed
+    input) -- the old operator-only flag was set against an
+    unrecognised ownership string and is no longer authoritative.
     """
     raw_evidence = data_raw.get("diagnostic_evidence")
+    sequence: tuple[tuple[str, str], ...]
+    if raw_evidence is None:
+        sequence = ()
+    else:
+        try:
+            sequence = _parse_raw_evidence_pairs(raw_evidence) or ()
+        except Exception:
+            return None
+    if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
+        return _clear_legacy_ownership_and_intervention({**data_raw, "diagnostic_evidence": ()})
     if raw_evidence is None:
         return data_raw
-    try:
-        sequence = _parse_raw_evidence_pairs(raw_evidence)
-    except Exception:
-        sequence = None
-    if sequence is None:
-        return None
-    if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
-        # Legacy repository-global evidence keys (for-each-ref,
-        # ls-files) cannot be re-verified by the new collector. The
-        # loader drops them silently and lets the diagnostic path
-        # re-derive state from Git; surfacing intervention here
-        # produced the production livelock (the diagnostic could not
-        # re-verify and refused to proceed). The dropped evidence is
-        # still visible in the original on-disk bytes; the durable
-        # identity (target, SHAs, operation_kind) is preserved.
-        return {**data_raw, "diagnostic_evidence": ()}
+    return _apply_evidence_migration(data_raw, sequence)
+
+
+def _apply_evidence_migration(
+    data_raw: dict[str, object],
+    sequence: tuple[tuple[str, str], ...],
+) -> dict[str, object]:
+    """Apply the legacy key-space migration to ``data_raw``.
+
+    Helper split from :func:`_migrate_payload_evidence` to keep
+    that function's return-statement count under the ruff
+    ``PLR0911`` cap. Returns the migrated payload (or ``data_raw``
+    unchanged when no migration is needed).
+    """
     migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
     if drop_marker is not None:
         existing_reason = data_raw.get("repair_cap_reason")
@@ -735,6 +750,33 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
     if migrated_evidence != sequence:
         return {**data_raw, "diagnostic_evidence": migrated_evidence}
     return data_raw
+
+
+def _clear_legacy_ownership_and_intervention(
+    data_raw: dict[str, object],
+) -> dict[str, object]:
+    """Clear a non-lease ``diagnostic_ownership`` and stale intervention flag.
+
+    Used by :func:`_migrate_payload_evidence` for the legacy
+    global-evidence case so the post-migration record is in a
+    clean state: a non-lease ownership string is replaced with
+    ``None`` (the new lease-based diagnostic is the sole
+    authority) and a persisted ``diagnostic_intervention_required``
+    from a pre-lease Ralph version is cleared so the next run can
+    auto-recover rather than block dispatch.
+    """
+    result = dict(data_raw)
+    ownership_raw = result.get("diagnostic_ownership")
+    if (
+        isinstance(ownership_raw, str)
+        and ownership_raw
+        and parse_lease(ownership_raw) == (None, None)
+    ) or (ownership_raw is not None and not isinstance(ownership_raw, str)):
+        result["diagnostic_ownership"] = None
+        result["diagnostic_evidence"] = ()
+    if result.get("diagnostic_intervention_required") is True:
+        result["diagnostic_intervention_required"] = False
+    return result
 
 
 def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:

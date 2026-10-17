@@ -130,13 +130,14 @@ def identity_fingerprint(record: IntegrationRecord) -> str:
     payload: dict[str, object] = {
         field: cast("object", getattr(record, field)) for field in _IDENTITY_FINGERPRINT_FIELDS
     }
-    encoded = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    )
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 #: Closed vocabulary of kinds the operation-scoped collector is allowed

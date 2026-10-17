@@ -1,17 +1,18 @@
-"""Fail-open remote freshness, reconciliation, publication, and retries.
+"""Publication-side remote synchronization and post-landing push hooks.
 
-Configured remotes are checked by default; absent or unreachable remotes record
-local-fleet or degraded provenance without interrupting local integration.
+Owns the single public entry point
+(:func:`reconcile_remote_publication`) that reconciles local and
+remote target pointers after an integration lands, along with the
+ref-comparison helpers and the public outcome vocabulary.
 
-This module is the slim orchestrator. The reusable pieces live next door:
-
-* :mod:`ralph.pipeline.auto_integrate_remote_client` -- the
-  :class:`_DefaultRemoteClient` and shared instance, the
-  :class:`_RemotePullThrottle`, the remote-tracking-SHA reader, and
-  the pull-side :func:`pull_and_reconcile_target` entry point plus
-  its refresh-label dispatcher.
-* :mod:`ralph.pipeline.auto_integrate_remote_push` -- the push hook
-  (:func:`push_single_remote`, :func:`push_target_after_landing`),
+Helper modules:
+* :mod:`ralph.pipeline.auto_integrate_remote_constants`: shared timeout,
+  interval, and outcome-string constants.
+* :mod:`ralph.pipeline.auto_integrate_remote_client`: the production
+  :class:`_DefaultRemoteClient`, the per-(root, remote, target) pull
+  throttle, and the pull-side entry point
+  (:func:`pull_and_reconcile_target`).
+* :mod:`ralph.pipeline.auto_integrate_remote_push`: the push helpers,
   the per-attempt :class:`_PushOutcome` record and cycle body
   (:func:`reconcile_after_rejected_push`), the typed-outcome
   projection helpers, the remote-SHA observer, and the canonical
@@ -31,6 +32,21 @@ from loguru import logger
 from ralph.git import remote_push as _remote_push_module
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._remote_default_client import (
+    _DEFAULT_REMOTE_CLIENT,
+    _DefaultRemoteClient,
+)
+from ralph.pipeline._remote_pull_throttle import (
+    _REMOTE_PULL_THROTTLE,
+    _RemotePullThrottle,
+)
+from ralph.pipeline._remote_pull_throttle import (
+    throttle_allows_pull as _throttle_allows_pull,
+)
+from ralph.pipeline._remote_rejected_push import (
+    _PushOutcome,
+    reconcile_after_rejected_push,
+)
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
@@ -40,11 +56,8 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
 )
 from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_remote_client import (
-    _REMOTE_PULL_THROTTLE,
     _dispatch_pull_outcome,
     _fast_forward_local_target_to_remote,
-    _RemotePullThrottle,
-    _throttle_allows_pull,
     pull_and_reconcile_target,
 )
 from ralph.pipeline.auto_integrate_remote_constants import (
@@ -73,11 +86,19 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     resolver_attempt_limit,
 )
 from ralph.pipeline.auto_integrate_remote_push import (
+    _post_push_publication_decision,
+    _remote_sync_status,
     push_single_remote,
     push_target_after_landing,
-    reconcile_after_rejected_push,
 )
 from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_DIVERGED,
+    REFRESH_LOCAL_AHEAD,
+    REFRESH_LOCAL_FLEET,
+    REFRESH_NO_LOCAL_BRANCH,
+    REFRESH_NO_REMOTE,
+    REFRESH_NO_REMOTE_BRANCH,
+    REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
@@ -107,13 +128,18 @@ __all__ = [
     "REMOTE_REMOTE_UNREACHABLE",
     "REMOTE_SYNC_INTERVAL_SECONDS",
     "REMOTE_TIMEOUT",
+    "_DEFAULT_REMOTE_CLIENT",
     "_REMOTE_PULL_THROTTLE",
     "RemoteClient",
     "RemoteSyncStatus",
+    "_DefaultRemoteClient",
+    "_PushOutcome",
     "_RemotePullThrottle",
     "_dispatch_pull_outcome",
     "_fast_forward_local_target_to_remote",
+    "_post_push_publication_decision",
     "_remote_push_module",
+    "_remote_sync_status",
     "_throttle_allows_pull",
     "apply_conflict_budget",
     "finish_conflict_attempt",
@@ -134,6 +160,54 @@ __all__ = [
 
 
 # ----- Reconciler: ref-comparison-driven publication --------------------
+
+
+def _observe_remote_target_sha(
+    repo_root: Path,
+    target: str,
+    *,
+    remote: str,
+    remote_client: RemoteClient | None = None,
+) -> tuple[str | None, str]:
+    """Observe the remote-tracking ref SHA and refresh status without raising.
+
+    The remote-tracking ref is refreshed first so the comparison
+    is not made against a stale cache. Returns ``(None, status)`` for
+    any failure (unreachable remote, missing branch, transient
+    network error).
+    """
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    try:
+        refresh = client.refresh_target(
+            repo_root,
+            target,
+            timeout_seconds=FETCH_TIMEOUT_SECONDS,
+            remote=remote,
+        )
+        if refresh == REFRESH_NO_REMOTE_BRANCH:
+            return None, REFRESH_NO_REMOTE_BRANCH
+        if refresh not in (
+            REFRESH_LOCAL_FLEET,
+            REFRESH_LOCAL_AHEAD,
+            REFRESH_DIVERGED,
+            REFRESH_NO_REMOTE,
+            REFRESH_NO_LOCAL_BRANCH,
+            REFRESH_ORIGIN_AHEAD,
+            "refreshed",
+            "already current",
+        ):
+            return None, refresh
+        observed: str | None = None
+        if hasattr(client, "observe_remote_sha"):
+            observed = client.observe_remote_sha(repo_root, target, remote=remote)
+        else:
+            from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
+
+            observed = observe_remote_target_sha(repo_root, remote, target)
+        return observed, refresh
+    except Exception as exc:
+        logger.debug("auto_integrate: remote observation failed: {}", exc)
+        return None, REFRESH_UNREACHABLE
 
 
 def _record_publication_failure(
@@ -194,7 +268,7 @@ def _dispatch_ref_comparison(
         # consulted on the publication path. Set ``fast_forwarded=True``
         # on the push record so the publication state machine does
         # not gate the push on the missing fast-forward signal.
-        return push_target_after_landing(
+        pushed = push_target_after_landing(
             config,
             repo_root,
             target,
@@ -202,12 +276,29 @@ def _dispatch_ref_comparison(
             remote=chosen_remote,
             remote_client=remote_client,
         )
+        if pushed.last_push_status == _remote_push_module.PushStatus.NON_FAST_FORWARD.value:
+            return reconcile_after_rejected_push(
+                config,
+                repo_root,
+                target,
+                pushed,
+                remote=chosen_remote,
+                remote_client=remote_client,
+            )
+        return pushed
     if remote_ahead and not local_ahead:
         # Remote is strictly ahead: catch up and recurse.
         from ralph.pipeline.auto_integrate_catchup import (
             attempt_catchup_fast_forward,
         )
 
+        if config is None:
+            return _record_publication_failure(
+                base_state,
+                last_remote_sync=REMOTE_PULL_FAILED,
+                last_refresh=REFRESH_UNREACHABLE,
+                last_reason="config missing for catchup; recovery will retry",
+            )
         catchup_outcome = attempt_catchup_fast_forward(
             config,
             repo_root,
@@ -321,17 +412,35 @@ def reconcile_remote_publication(
             last_remote_sync=REMOTE_PULL_FAILED,
             last_reason="local target branch unreadable; recovery will retry",
         )
-    from ralph.pipeline.auto_integrate_remote_push import _observe_remote_target_sha
-
-    remote_sha = _observe_remote_target_sha(
-        repo_root, target, remote=chosen_remote, remote_client=remote_client
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    remote_sha, refresh = _observe_remote_target_sha(
+        repo_root, target, remote=chosen_remote, remote_client=client
     )
+    if refresh == REFRESH_NO_REMOTE_BRANCH:
+        pushed = push_target_after_landing(
+            config,
+            repo_root,
+            target,
+            base_state.model_copy(update={"fast_forwarded": True}),
+            remote=chosen_remote,
+            remote_client=client,
+        )
+        if pushed.last_push_status == _remote_push_module.PushStatus.NON_FAST_FORWARD.value:
+            return reconcile_after_rejected_push(
+                config,
+                repo_root,
+                target,
+                pushed,
+                remote=chosen_remote,
+                remote_client=client,
+            )
+        return pushed
     if remote_sha is None:
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
-            last_refresh=REFRESH_UNREACHABLE,
-            last_reason="remote unreachable; recovery will retry",
+            last_refresh=refresh,
+            last_reason=f"remote unreachable ({refresh}); recovery will retry",
         )
     if local_sha == remote_sha:
         return _record_publication_failure(
@@ -348,7 +457,7 @@ def reconcile_remote_publication(
         local_sha=local_sha,
         remote_sha=remote_sha,
         base_state=base_state,
-        remote_client=remote_client,
+        remote_client=client,
     )
 
 

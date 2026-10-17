@@ -2,26 +2,30 @@
 
 Each test pins one acceptance criterion (AC5-AC9) from
 ``PLAN.md``. The tests are black-box: they drive the public
-``reconcile_remote_publication`` entry point with in-memory fakes
-and assert on the resulting ``RebaseState`` and on a recorded
-``call_log`` so the implementation cannot regress to fire-once
-publication or ``origin``/``main`` defaults.
+``reconcile_remote_publication`` and worker entry points with
+in-memory fakes and assert on the resulting ``RebaseState``,
+concrete push calls, and ref convergence so the implementation
+cannot regress to fire-once publication or ``origin``/``main`` defaults.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
     from ralph.pipeline.auto_integrate_ff import RemoteClient
-    from ralph.pipeline.rebase_state import RebaseState
 
 
 class _RecordingRemoteClient:
@@ -65,8 +69,10 @@ class _UnreachableRemoteClient:
 
     def __init__(self) -> None:
         self.pushed: list[tuple[str, str]] = []
+        self.observed: list[tuple[str, str, str]] = []
 
     def observe_remote_sha(self, repo_root: Path, target: str, *, remote: str) -> str | None:
+        self.observed.append((remote, target, str(repo_root)))
         return None  # unreachable: no SHA
 
     def refresh_target(
@@ -93,150 +99,191 @@ class _UnreachableRemoteClient:
         )
 
 
-def test_non_default_target_remote_converges(tmp_path: Path) -> None:
+def test_non_default_target_remote_converges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC5: target=release + remote=tacos converge; no origin/main literal.
 
     Uses the in-memory client to record every observed/pushed call.
-    The recorded calls MUST use ``tacos`` (not ``origin``) and the
-    caller-supplied target ``release``. The reconciler never reads
-    ``origin`` or ``main`` defaults.
+    The recorded calls MUST non-trivially use ``tacos`` (not ``origin``)
+    and the caller-supplied target ``release`` (not ``main``). The
+    reconciler never reads ``origin`` or ``main`` defaults.
     """
-    client = _RecordingRemoteClient(remote_sha="tacos-release-sha")
+    client = _RecordingRemoteClient(remote_sha="tacos-release-remote-sha")
     config = UnifiedConfig()
-    # The test asserts the configured remote is the source of truth;
-    # we override the policy by passing an explicit ``remote`` so the
-    # test is self-contained.
-    remote_sync.reconcile_remote_publication(
+    monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "tacos-release-local-sha")
+    monkeypatch.setattr(
+        remote_sync,
+        "is_ancestor",
+        lambda _r, a, d: a == "tacos-release-remote-sha" and d == "tacos-release-local-sha",
+    )
+
+    state = remote_sync.reconcile_remote_publication(
         config,
         tmp_path,
         "release",
         remote="tacos",
         remote_client=cast("RemoteClient", client),
     )
-    # The remote/target names propagate to the recorded observations
-    # and the published push.
-    assert all(remote == "tacos" for remote, _, _ in client.observed)
-    assert all(remote == "tacos" for remote, _ in client.pushed)
+
+    # 1. Non-vacuous execution: observations and push actually happened
+    assert len(client.observed) > 0
+    assert len(client.pushed) > 0
+
+    # 2. Exact configured remote/target pairing throughout
+    assert all(remote == "tacos" and target == "release" for remote, target, _ in client.observed)
+    assert client.pushed == [("tacos", "release")]
+    assert state.last_remote == "tacos"
+    assert state.last_target == "release"
+
+    # 3. No fallback leakage of origin or main
+    assert "origin" not in str(client.observed)
+    assert "origin" not in str(client.pushed)
+    assert "main" not in str(client.observed)
+    assert "main" not in str(client.pushed)
+
+
+def test_throttle_deferred_probe_still_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC6: a fresh land pushes even when the fetch probe was throttle-suppressed.
+
+    The reconciler MUST attempt the push when the local SHA is strictly ahead
+    of the remote, regardless of probe freshness or previous in-memory state.
+    After push, calling again with matching ref reports already current.
+    """
+    client = _RecordingRemoteClient(remote_sha="remote-sha-1")
+    monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "local-sha-2")
+
+    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
+        return ancestor == "remote-sha-1" and descendant == "local-sha-2"
+
+    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
+
+    config = UnifiedConfig()
+    state = remote_sync.reconcile_remote_publication(
+        config,
+        tmp_path,
+        "main",
+        remote="origin",
+        remote_client=cast("RemoteClient", client),
+    )
+    assert client.pushed == [("origin", "main")]
+    assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+    assert state.last_push_status == "pushed"
+
+    # Convergence proof: next reconcile when remote matches local reports convergence
+    client.remote_sha = "local-sha-2"
+    converged_state = remote_sync.reconcile_remote_publication(
+        config,
+        tmp_path,
+        "main",
+        remote="origin",
+        remote_client=cast("RemoteClient", client),
+    )
+    assert converged_state.last_remote_sync == remote_sync.REMOTE_ALREADY_CURRENT
+    assert converged_state.fast_forwarded is True
+    # No second push was needed
+    assert len(client.pushed) == 1
+
+
+def test_killed_between_landing_and_push_recovery_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC7: a state with local ahead of remote still pushes on next startup in a worktree.
+
+    Simulates a process killed between local landing and push (the integration
+    record was cleared or not retained). On the next startup,
+    ``recover_incomplete_integration`` runs its startup publication seam
+    and converges local onto remote.
+    """
+    client = _RecordingRemoteClient(remote_sha="stale-remote-sha")
+    monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "landed-local-sha")
+
+    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
+        return ancestor == "stale-remote-sha" and descendant == "landed-local-sha"
+
+    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
+
+    config = UnifiedConfig()
+    scope = WorkspaceScope(tmp_path)
+
+    # Patch remote_sync._DEFAULT_REMOTE_CLIENT so recover_incomplete_integration uses client
+    monkeypatch.setattr(remote_sync, "_DEFAULT_REMOTE_CLIENT", client)
+
+    outcome = recover_incomplete_integration(scope, config=config)
+    assert client.pushed == [("origin", "main")]
+    assert outcome is not None
+    assert outcome.last_push_status == "pushed"
 
 
 def test_unreachable_then_reachable_auto_pushes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC8: a REMOTE_PULL_FAILED state auto-pushes when the remote recovers.
+    """AC8: worker tick with unreachable remote retries and pushes on recovery.
 
-    Tick 1: the remote is UNREACHABLE; the reconciler returns
-    ``REMOTE_REMOTE_UNREACHABLE`` and does not push.
-    Tick 2: the same call now reports a remote SHA; the reconciler
-    pushes and returns ``REMOTE_PUSHED``.
+    Exercises ``AutoIntegrateCatchupWorker`` directly with production defaults:
+    Tick 1: the remote is UNREACHABLE; the worker runs without error and does not push.
+    Tick 2: the remote recovers; the worker's post-tick reconciler pushes.
     """
     monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "local-sha")
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_catchup.resolve_integration_target",
+        lambda _c, _r: "main",
+    )
+
     unreachable = _UnreachableRemoteClient()
     config = UnifiedConfig()
-    state_1 = remote_sync.reconcile_remote_publication(
+    worker = AutoIntegrateCatchupWorker(
         config,
         tmp_path,
-        "main",
-        remote="origin",
         remote_client=cast("RemoteClient", unreachable),
+        tick=lambda: "up-to-date",
     )
-    assert state_1.last_remote_sync == "origin unreachable"
+    # Tick 1: unreachable
+    worker._tick_once()
     assert unreachable.pushed == []
 
-    # The remote recovers.
-    reachable = _RecordingRemoteClient(remote_sha="new-remote-sha")
+    # Remote recovers
+    reachable = _RecordingRemoteClient(remote_sha="old-remote-sha")
 
-    # The new client returns a remote SHA different from local; stub
-    # ``is_ancestor`` to claim the local is strictly ahead so the
-    # push branch fires.
-    def _stub_is_ancestor_recover(_root: Path, ancestor: str, descendant: str) -> bool:
-        return ancestor == "new-remote-sha" and descendant == "local-sha"
+    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
+        return ancestor == "old-remote-sha" and descendant == "local-sha"
 
-    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor_recover)
-    remote_sync.reconcile_remote_publication(
-        config,
-        tmp_path,
-        "main",
-        remote="origin",
-        remote_client=cast("RemoteClient", reachable),
-    )
-    # On the recovery tick, the reconciler pushes.
+    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
+    worker._remote_client = cast("RemoteClient", reachable)
+
+    # Tick 2: reachable -> auto pushes
+    worker._tick_once()
     assert reachable.pushed == [("origin", "main")]
 
 
 def test_concurrent_remote_advance_calls_reconcile_helper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC9: a concurrent remote advance routes through ``reconcile_after_rejected_push``.
+    """AC9: concurrent remote advance triggers fetch -> divergence reconciliation -> push.
 
-    When the local and remote SHAs have diverged, the reconciler
-    must dispatch to ``reconcile_after_rejected_push`` (the
-    bounded-retry reconcile loop). The test stubs that helper to
-    assert the dispatch.
+    When local and remote have both advanced independently, ref comparison
+    detects divergence and dispatches to ``reconcile_after_rejected_push``,
+    which fetches and pushes the converged state.
     """
     client = _RecordingRemoteClient(remote_sha="diverged-remote-sha")
-    # Stub is_ancestor to claim both local_ahead and remote_ahead are
-    # False. The reconciler imports ``is_ancestor`` and ``branch_sha``
-    # at module load time; the test patches the names in the
-    # reconciler's namespace directly.
     monkeypatch.setattr(remote_sync, "is_ancestor", lambda *_a, **_kw: False)
-    # Also stub ``branch_sha`` so the reconciler can read the local
-    # SHA without invoking git on a non-repo path.
     monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "local-sha")
-    captured: dict[str, object] = {}
 
-    def _fake_reconcile(
-        config: object,
-        repo_root: Path,
-        target: str,
-        state: RebaseState,
-        *,
-        remote: str | None = None,
-        remote_client: RemoteClient | None = None,
-    ) -> RebaseState:
-        captured["config"] = config
-        captured["repo_root"] = repo_root
-        captured["target"] = target
-        captured["remote"] = remote
-        return state.model_copy(update={"last_remote_sync": "push reconciled"})
+    from ralph.pipeline.auto_integrate_remote_reconcile import ReconciliationOutcome
 
-    monkeypatch.setattr(remote_sync, "reconcile_after_rejected_push", _fake_reconcile)
-    remote_sync.reconcile_remote_publication(
-        UnifiedConfig(),
-        tmp_path,
-        "main",
-        remote="tacos",
-        remote_client=cast("RemoteClient", client),
+    # Mock reconcile_target_onto_remote to succeed
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_reconcile.reconcile_target_onto_remote",
+        lambda *args, **kwargs: ReconciliationOutcome(
+            reconciled=True,
+            reason="reconciled successfully",
+            cleanly_aborted=False,
+        ),
     )
-    assert captured.get("target") == "main"
-    assert captured.get("remote") == "tacos"
 
-
-def test_local_ahead_triggers_push(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC6: a fresh land pushes even when the configured remote is fresh.
-
-    The reconciler is fire-once from the OLD design's perspective:
-    it MUST attempt the push when the local SHA is strictly ahead
-    of the remote, regardless of ``last_push_status`` or any other
-    in-memory state.
-    """
-    client = _RecordingRemoteClient(remote_sha="remote-behind-sha")
-    # The reconciler imports ``is_ancestor`` and ``branch_sha`` at
-    # module load time; the test patches the names in the
-    # reconciler's namespace directly.
-
-    # ``is_ancestor(root, ancestor, descendant)``: claim the local
-    # branch is the ancestor of the remote-tracking ref (i.e. local
-    # is strictly behind) so the test is invalid. The local-ahead
-    # branch fires when ``is_ancestor(remote_sha, local_sha)`` is True
-    # -- the remote is an ancestor of the local, meaning local is
-    # strictly ahead.
-    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
-        return ancestor == "remote-behind-sha" and descendant == "local-sha-different"
-
-    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
-    # Stub ``branch_sha`` so the reconciler can read the local SHA.
-    monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "local-sha-different")
-    remote_sync.reconcile_remote_publication(
+    state = remote_sync.reconcile_remote_publication(
         UnifiedConfig(),
         tmp_path,
         "main",
@@ -244,36 +291,5 @@ def test_local_ahead_triggers_push(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         remote_client=cast("RemoteClient", client),
     )
     assert client.pushed == [("origin", "main")]
-
-
-def test_killed_between_landing_and_push_recovery_publishes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """AC7: a state with local ahead of remote still pushes on the next call.
-
-    The reconciler is the single publication entry point. The
-    ``last_push_status`` field is no longer consulted; the next
-    call observes the divergence via the ref comparison and pushes
-    immediately.
-    """
-    client = _RecordingRemoteClient(remote_sha="stale-remote-sha")
-    # Local and remote differ; local is ahead.
-    # The reconciler imports ``is_ancestor`` and ``branch_sha`` at
-    # module load time; the test patches the names in the
-    # reconciler's namespace directly.
-
-    def _stub_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
-        # Local is strictly ahead of remote.
-        return ancestor == "stale-remote-sha" and descendant == "local-stale-sha"
-
-    monkeypatch.setattr(remote_sync, "is_ancestor", _stub_is_ancestor)
-    # Stub ``branch_sha`` so the reconciler can read the local SHA.
-    monkeypatch.setattr(remote_sync, "branch_sha", lambda _r, _t: "local-stale-sha")
-    remote_sync.reconcile_remote_publication(
-        UnifiedConfig(),
-        tmp_path,
-        "main",
-        remote="origin",
-        remote_client=cast("RemoteClient", client),
-    )
-    assert client.pushed == [("origin", "main")]
+    assert state.last_push_status == "pushed"
+    assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED

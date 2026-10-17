@@ -522,16 +522,26 @@ class AutoIntegrateCatchupWorker:
                 tick_exc,
             )
             return
-        # Post-tick publication: a tick that pulled a remote refresh
-        # but was UNREACHABLE on a prior tick now becomes a successful
-        # push when the remote recovers. The reconciler reads from
-        # disk (ref comparison) on every call, so a
-        # REMOTE_PULL_FAILED state from the previous tick is naturally
-        # retried on this tick. AC8.
+        # Post-tick publication: the reconciler is called on every
+        # tick that is NOT a quiet skip so a prior
+        # REMOTE_PULL_FAILED state from an unreachable remote
+        # becomes a successful push on the next tick when the
+        # remote recovers. The reconciler reads from disk (ref
+        # comparison) on every call, so the prior failure is
+        # naturally retried. The reconciler is also called when no
+        # remote_client was injected (the production default) -- it
+        # constructs the default client internally; AC8 is
+        # unreachable through the production worker if this guard
+        # requires an injected client.
         if (
-            outcome == CATCHUP_FAST_FORWARDED
-            and self._config is not None
-            and self._remote_client is not None
+            self._config is not None
+            and outcome is not None
+            and outcome
+            not in {
+                CATCHUP_DISABLED,
+                CATCHUP_NO_TARGET,
+                CATCHUP_NOT_ON_BRANCH,
+            }
         ):
             try:
                 from ralph.pipeline.auto_integrate_remote_sync import (
