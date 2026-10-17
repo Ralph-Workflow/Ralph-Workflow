@@ -254,62 +254,59 @@ def apply_conflict_budget(
         effective_deadline = _read_clock_seconds(clock) + float(cooldown_seconds)
 
     if record.fast_forwarded:
-        return record.model_copy(
+        updated = record.record_consecutive_conflicts(0).set_retry_deadline(None)
+        return updated.model_copy(
             update={
-                "consecutive_conflicts": 0,
                 "last_conflict_feature_sha": None,
                 "last_conflict_target_sha": None,
                 "last_conflict_paths": (),
                 "last_conflict_stage_oids": (),
                 "last_conflict_scope": "",
                 "last_conflict_strategy_index": 0,
-                "retry_deadline": None,
             }
         )
     if record.last_outcome != RebaseOutcomeKind.CONFLICT:
-        return record.model_copy(
+        deadline_value = (
+            effective_deadline
+            if effective_deadline is not None
+            else (
+                record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline
+            )
+        )
+        updated = record.record_consecutive_conflicts(carried).set_retry_deadline(deadline_value)
+        return updated.model_copy(
             update={
-                "consecutive_conflicts": carried,
                 "last_conflict_feature_sha": prior.last_conflict_feature_sha,
                 "last_conflict_target_sha": prior.last_conflict_target_sha,
                 "last_conflict_paths": prior.last_conflict_paths,
                 "last_conflict_stage_oids": prior.last_conflict_stage_oids,
                 "last_conflict_scope": prior.last_conflict_scope,
                 "last_conflict_strategy_index": prior.last_conflict_strategy_index,
-                "retry_deadline": (
-                    effective_deadline
-                    if effective_deadline is not None
-                    else (
-                        record.retry_deadline
-                        if record.retry_deadline is not None
-                        else prior.retry_deadline
-                    )
-                ),
             }
         )
 
+    deadline_value = (
+        effective_deadline
+        if effective_deadline is not None
+        else (record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline)
+    )
+    updated = record.record_consecutive_conflicts(min(attempts, carried + 1)).set_retry_deadline(
+        deadline_value
+    )
     update: dict[str, object] = {
-        "consecutive_conflicts": min(attempts, carried + 1),
         "last_conflict_feature_sha": identity.feature_sha,
         "last_conflict_target_sha": identity.target_sha,
         "last_conflict_paths": identity.conflicted_paths,
         "last_conflict_stage_oids": identity.stage_oids,
         "last_conflict_scope": identity.scope,
         "last_conflict_strategy_index": prior.conflict_strategy_index,
-        "retry_deadline": (
-            effective_deadline
-            if effective_deadline is not None
-            else (
-                record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline
-            )
-        ),
     }
     if resolver_suppressed:
         update["last_reason"] = (
             f"conflict resolution budget exhausted for '{target}' after "
             f"{min(carried, attempts)} unresolved attempts; escalating to the next resolution strategy"
         )
-    return record.model_copy(update=update)
+    return updated.model_copy(update=update)
 
 
 _MAX_ACTIVE_CONFLICT_ATTEMPTS = 64

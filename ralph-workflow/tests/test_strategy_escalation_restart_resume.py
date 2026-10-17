@@ -24,6 +24,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
+from ralph.recovery.classifier import FailureCategory
 
 
 def _policy() -> PipelinePolicy:
@@ -83,7 +84,12 @@ def test_strategy_escalation_resumes_at_recorded_rung_after_restart(tmp_path: Pa
     reason = "integration conflict requires resolution: a.py"
     next_state, _ = reduce(
         loaded,
-        PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+        PhaseFailureEvent(
+            phase="development",
+            reason=reason,
+            recoverable=False,
+            failure_category=FailureCategory.INTEGRATION,
+        ),
         _policy(),
     )
 
@@ -114,6 +120,7 @@ def test_strategy_escalation_resume_persists_the_new_rung(tmp_path: Path) -> Non
             phase="development",
             reason="integration conflict requires resolution: a.py",
             recoverable=False,
+            failure_category=FailureCategory.INTEGRATION,
         ),
         _policy(),
     )

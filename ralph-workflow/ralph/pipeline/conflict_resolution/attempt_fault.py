@@ -151,7 +151,7 @@ def classify_attempt_fault(evidence: object = None) -> AttemptFault:
         return _REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
 
     text = str(evidence).strip()
-    if not text or "healthy" in text.lower():
+    if not text or text.lower() == "healthy":
         return AttemptFault.AGENT_HEALTHY
 
     try:

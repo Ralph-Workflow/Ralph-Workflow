@@ -8,6 +8,7 @@ from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
+from ralph.recovery.classifier import FailureCategory
 from tests.test_run_loop_failed_ladder_terminal import run_recovery_scenario
 
 if TYPE_CHECKING:
@@ -45,7 +46,12 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
     for _ in range(4):
         state, _ = reduce(
             state,
-            PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+            PhaseFailureEvent(
+                phase="development",
+                reason=reason,
+                recoverable=False,
+                failure_category=FailureCategory.INTEGRATION,
+            ),
             policy,
         )
 

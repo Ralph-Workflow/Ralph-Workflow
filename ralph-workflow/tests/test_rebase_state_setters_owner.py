@@ -13,7 +13,16 @@ from pathlib import Path
 
 RALPH_ROOT = Path(__file__).resolve().parents[1] / "ralph"
 
-_FORBIDDEN_FIELDS = ("last_fan_out_decision", "operation_display_state")
+_FORBIDDEN_FIELDS = (
+    "last_fan_out_decision",
+    "operation_display_state",
+    "retry_deadline",
+    "conflict_strategy_index",
+    "conflict_strategies_tried",
+    "consecutive_conflicts",
+    "resolution_exhausted",
+    "resolution_exhaustion_reason",
+)
 _AUTHORITATIVE_FILE = "rebase_state.py"
 
 
@@ -63,8 +72,7 @@ def _scan_writer_sites(root: Path) -> list[str]:
 def test_no_raw_writers_outside_rebase_state() -> None:
     offenders = _scan_writer_sites(RALPH_ROOT)
     assert offenders == [], (
-        f"raw last_fan_out_decision / operation_display_state writers "
-        f"outside {_AUTHORITATIVE_FILE}: {offenders}"
+        f"raw forbidden-field writers outside {_AUTHORITATIVE_FILE}: {offenders}"
     )
 
 

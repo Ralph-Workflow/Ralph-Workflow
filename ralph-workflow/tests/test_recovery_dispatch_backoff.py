@@ -6,6 +6,7 @@ from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
+from ralph.recovery.classifier import FailureCategory
 
 
 def _policy() -> PipelinePolicy:
@@ -36,6 +37,7 @@ def test_conflict_strategy_retry_uses_bounded_exponential_backoff() -> None:
             phase="development",
             reason="integration conflict requires resolution: unresolved shared.txt",
             recoverable=False,
+            failure_category=FailureCategory.INTEGRATION,
         ),
         _policy(),
     )

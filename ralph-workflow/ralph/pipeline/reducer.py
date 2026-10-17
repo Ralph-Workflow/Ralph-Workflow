@@ -53,7 +53,6 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
-from ralph.pipeline.auto_integrate_resolution_state import CONFLICT_RESOLUTION_STRATEGIES
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
@@ -88,6 +87,7 @@ from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
+from ralph.recovery.failure_category import FailureCategory
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -246,7 +246,11 @@ def _reduce_phase_failure(
             )
         return _restore_work_units(state, new_state), effects
     return _handle_phase_failure(
-        state, event, policy=pipeline_policy, routing_timing=routing_timing
+        state,
+        event,
+        policy=pipeline_policy,
+        routing_timing=routing_timing,
+        failure_category=event.failure_category,
     )
 
 
@@ -590,6 +594,8 @@ def _enter_failed_recovery(
     state: PipelineState,
     reason: str,
     policy: PipelinePolicy | None = None,
+    *,
+    failure_category: FailureCategory | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Transition to the policy-declared terminal failure route."""
     target = _terminal_failure_route(policy)
@@ -600,30 +606,17 @@ def _enter_failed_recovery(
     )
     rebase = state.rebase
     retry_delay_ms = 0
-    if "integration conflict requires resolution:" in reason:
-        index: int = rebase.conflict_strategy_index
-        tried = rebase.conflict_strategies_tried
-        if index < len(CONFLICT_RESOLUTION_STRATEGIES):
-            tried = (*tried, f"{CONFLICT_RESOLUTION_STRATEGIES[index]}: {reason}")
-            index += 1
-        exhausted = index >= len(CONFLICT_RESOLUTION_STRATEGIES)
-        rebase = rebase.model_copy(
-            update={
-                "conflict_strategy_index": index,
-                "conflict_strategies_tried": tried,
-                "resolution_exhausted": exhausted,
-                "resolution_exhaustion_reason": "; ".join(tried) if exhausted else None,
-            }
-        )
-        if not exhausted:
-            retry_delay_ms = min(1000 * (1 << index), 10_000)
+    if failure_category is FailureCategory.INTEGRATION:
+        rebase = rebase.advance_conflict_strategy(reason)
+        if not rebase.resolution_exhausted:
+            retry_delay_ms = min(1000 * (1 << rebase.conflict_strategy_index), 10_000)
     new_state = progress.advance_phase(state, target, policy=policy).copy_with(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
         rebase=rebase,
         last_retry_delay_ms=retry_delay_ms,
     )
-    if "integration conflict requires resolution:" in reason:
+    if failure_category is FailureCategory.INTEGRATION:
         resume_phase = state.phase if target != state.phase else state.previous_phase
         new_state = new_state.copy_with(
             phase=resume_phase or policy.entry_phase,
@@ -645,6 +638,7 @@ def _handle_phase_failure(
     policy: PipelinePolicy | None = None,
     *,
     routing_timing: RoutingTiming | None = None,
+    failure_category: FailureCategory | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle PhaseFailureEvent from phase handlers.
 
@@ -683,7 +677,12 @@ def _handle_phase_failure(
                     skip_same_agent_retries=True,
                 )
             )
-        return _handle_agent_failure(state_with_error, policy=policy, routing_timing=routing_timing)
+        return _handle_agent_failure(
+            state_with_error,
+            policy=policy,
+            routing_timing=routing_timing,
+            failure_category=event.failure_category,
+        )
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
     if policy is not None:
@@ -710,7 +709,9 @@ def _handle_phase_failure(
                 last_error=failure_message,
             )
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
-    return _enter_failed_recovery(state, failure_message, policy=policy)
+    return _enter_failed_recovery(
+        state, failure_message, policy=policy, failure_category=failure_category
+    )
 
 
 def _handle_agent_success(
@@ -871,6 +872,7 @@ def _handle_agent_failure(
     routing_timing: RoutingTiming | None = None,
     *,
     recovery: RecoveryController | None = None,
+    failure_category: FailureCategory | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
@@ -942,7 +944,7 @@ def _handle_agent_failure(
             f"{chain.retries} retries across {len(chain.agents)} agents"
         ),
     )
-    return _enter_failed_recovery(state, failure_reason, policy)
+    return _enter_failed_recovery(state, failure_reason, policy, failure_category=failure_category)
 
 
 def _handle_skip_same_agent_retries(

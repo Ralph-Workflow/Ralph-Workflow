@@ -433,7 +433,12 @@ class TestPhaseFailureEvent:
 
         first, effects = _reduce(
             state,
-            PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+            PhaseFailureEvent(
+                phase="development",
+                reason=reason,
+                recoverable=False,
+                failure_category=FailureCategory.INTEGRATION,
+            ),
             _basic_pipeline_policy(),
         )
 
@@ -458,7 +463,12 @@ class TestPhaseFailureEvent:
         for _ in range(3):
             current, effects = _reduce(
                 current,
-                PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+                PhaseFailureEvent(
+                    phase="development",
+                    reason=reason,
+                    recoverable=False,
+                    failure_category=FailureCategory.INTEGRATION,
+                ),
                 _basic_pipeline_policy(),
             )
 
@@ -496,7 +506,12 @@ class TestPhaseFailureEvent:
 
         advanced, _ = _reduce(
             state,
-            PhaseFailureEvent(phase="development", reason=reason, recoverable=False),
+            PhaseFailureEvent(
+                phase="development",
+                reason=reason,
+                recoverable=False,
+                failure_category=FailureCategory.INTEGRATION,
+            ),
             _basic_pipeline_policy(),
         )
         restored = RebaseState.model_validate(advanced.rebase.model_dump(mode="json"))

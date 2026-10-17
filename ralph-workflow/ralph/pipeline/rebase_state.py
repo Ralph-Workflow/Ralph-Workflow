@@ -479,6 +479,109 @@ class RebaseState(RalphBaseModel):
             }
         )
 
+    def set_retry_deadline(self, value: float | None) -> Self:
+        """Record the typed persistent retry deadline.
+
+        Single writer of :attr:`retry_deadline`; ``value`` must be
+        ``float`` (monotonic seconds) or ``None`` to clear the
+        deadline. The reducer and the budget module both call this
+        setter instead of writing the field through ``model_copy``.
+        """
+        if value is not None and not isinstance(value, (int, float)):
+            raise ValueError(f"invalid retry_deadline: {value!r}")
+        return self.model_copy(update={"retry_deadline": value})
+
+    def record_consecutive_conflicts(self, value: int) -> Self:
+        """Record the bounded consecutive-conflict counter.
+
+        Single writer of :attr:`consecutive_conflicts`; ``value`` is
+        clamped to ``[0, MAX_CONSECUTIVE_RESOLVER_ATTEMPTS]`` so a
+        caller that hands in a stale or oversized count cannot push
+        the ladder past the configured cap. ``None`` is treated as 0.
+        """
+        # Lazy import: auto_integrate_conflict_budget imports
+        # ``RebaseState`` only under ``TYPE_CHECKING``, but importing
+        # the constant eagerly here would force a real import cycle
+        # through ``rebase_state`` -> ``auto_integrate_conflict_budget``
+        # -> ``rebase_state`` at module load. Doing it inside the
+        # function body keeps the import graph clean.
+        from ralph.pipeline.auto_integrate_conflict_budget import (
+            MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        )
+
+        coerced = 0 if value is None else int(value)
+        clamped = max(0, min(coerced, MAX_CONSECUTIVE_RESOLVER_ATTEMPTS))
+        return self.model_copy(update={"consecutive_conflicts": clamped})
+
+    def advance_conflict_strategy(self, reason: str) -> Self:
+        """Advance the durable conflict-resolution ladder by one rung.
+
+        Single writer of :attr:`conflict_strategy_index`,
+        :attr:`conflict_strategies_tried`,
+        :attr:`resolution_exhausted`, and
+        :attr:`resolution_exhaustion_reason`. Appends the current
+        strategy with the supplied ``reason`` to the tried list,
+        increments the index modulo
+        :data:`CONFLICT_RESOLUTION_STRATEGIES`, and sets
+        ``resolution_exhausted=True`` once the cap is reached. The
+        exhaustion reason is the joined history of every tried
+        strategy.
+        """
+        from ralph.pipeline.auto_integrate_resolution_state import (
+            CONFLICT_RESOLUTION_STRATEGIES,
+        )
+
+        n = len(CONFLICT_RESOLUTION_STRATEGIES)
+        index = self.conflict_strategy_index
+        tried = self.conflict_strategies_tried
+        if index < n:
+            tried = (*tried, f"{CONFLICT_RESOLUTION_STRATEGIES[index]}: {reason}")
+            index += 1
+        exhausted = index >= n
+        return self.model_copy(
+            update={
+                "conflict_strategy_index": index,
+                "conflict_strategies_tried": tried,
+                "resolution_exhausted": exhausted,
+                "resolution_exhaustion_reason": "; ".join(tried) if exhausted else None,
+            }
+        )
+
+    def project_conflict_strategy_from(self, source: RebaseState) -> Self:
+        """Project the conflict-strategy block one-way from ``source``.
+
+        Exact one-way projection of exactly four fields: index,
+        tried, exhausted, exhausted-reason. Used to copy a typed
+        prior's strategy block onto a new record without re-deriving
+        it from prose.
+        """
+        return self.model_copy(
+            update={
+                "conflict_strategy_index": source.conflict_strategy_index,
+                "conflict_strategies_tried": source.conflict_strategies_tried,
+                "resolution_exhausted": source.resolution_exhausted,
+                "resolution_exhaustion_reason": source.resolution_exhaustion_reason,
+            }
+        )
+
+    def set_intervention_required(self, reason: str, *, diagnostic: bool = False) -> Self:
+        """Record a persistent INTERVENTION_REQUIRED transition.
+
+        Single writer of the persistent
+        :attr:`last_outcome` /
+        :attr:`last_reason` transition that signals operator
+        intervention. ``diagnostic=True`` records the
+        ``DIAGNOSTIC_INTERVENTION_REQUIRED`` variant for evidence
+        diagnosis flows; the default is plain
+        ``INTERVENTION_REQUIRED``.
+        """
+        outcome = (
+            RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+            if diagnostic
+            else RebaseOutcomeKind.INTERVENTION_REQUIRED
+        )
+        return self.model_copy(update={"last_outcome": outcome, "last_reason": reason})
+
     def is_terminal_action(self) -> bool:
         """Whether the last outcome kind is terminal."""
         return self.last_outcome is not None and self.last_outcome.is_terminal()

@@ -154,9 +154,9 @@ def charge_failed_attempt(
     the conflict-resolution recovery flow's cooldown and fallover instead.
     """
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
-    return skip.model_copy(
+    updated = skip.record_consecutive_conflicts(carried)
+    return updated.model_copy(
         update={
-            "consecutive_conflicts": carried,
             "last_conflict_feature_sha": identity.feature_sha,
             "last_conflict_target_sha": identity.target_sha,
             "last_conflict_paths": identity.conflicted_paths,

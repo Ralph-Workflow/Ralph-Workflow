@@ -73,6 +73,7 @@ _PATCHED_RUN_MODULE_ATTRS: tuple[str, ...] = (
     "print_dry_run",
     "_execute_pipeline",
     "run_parallel_worker_from_manifest",
+    "_maybe_enter_process_view",
 )
 _ORIGINAL_RUN_MODULE_ATTRS: dict[str, object] = {
     name: getattr(run_module, name) for name in _PATCHED_RUN_MODULE_ATTRS

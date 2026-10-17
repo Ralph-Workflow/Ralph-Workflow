@@ -2337,14 +2337,18 @@ def _wait_for_integration_retry(
             *rebase.conflict_strategies_tried,
             f"{CONFLICT_RESOLUTION_STRATEGIES[index % len(CONFLICT_RESOLUTION_STRATEGIES)]}: {rebase.last_reason}",
         )
-        rebase = rebase.model_copy(
-            update={
-                "conflict_strategy_index": next_index,
-                "conflict_strategies_tried": trail[-len(CONFLICT_RESOLUTION_STRATEGIES) :],
-                "consecutive_conflicts": 0,
-                "resolution_exhausted": False,
-                "resolution_exhaustion_reason": None,
-            }
+        # Rotate the strategy ladder through the typed single-writer
+        # setters. The forbidden fields can be projected from a
+        # constructed source via ``project_conflict_strategy_from``;
+        # the consecutive counter goes through its own setter.
+        rebase = rebase.record_consecutive_conflicts(0)
+        rebase = rebase.project_conflict_strategy_from(
+            RebaseState(
+                conflict_strategy_index=next_index,
+                conflict_strategies_tried=trail[-len(CONFLICT_RESOLUTION_STRATEGIES) :],
+                resolution_exhausted=False,
+                resolution_exhaustion_reason=None,
+            )
         )
     detail = rebase.last_reason or "target synchronization remains unproven"
     alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
