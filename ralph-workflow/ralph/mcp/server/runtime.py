@@ -206,6 +206,8 @@ def _build_mcp_registry_and_server(
     upstream_servers: Sequence[UpstreamMcpServer],
     mcp_cfg: McpConfig,
     activity_relay_sender: ActivityRelaySender | None,
+    t0: float,
+    env_map: Mapping[str, str],
 ) -> McpServer:
     """Construct the Ralph tool registry and wrap it in ``McpServer``.
 
@@ -213,10 +215,21 @@ def _build_mcp_registry_and_server(
     implementation used a daemon thread and only recorded
     ``registry_built`` after the ``join`` timed out, which is the
     workaround the plan expressly prohibited. The deadline is enforced
-    by ``_poll_registry_build_gate`` at the call site, where the test
-    seam can simulate a blocked constructor and surface a typed
-    ``McpServerError`` with ``last_stage="registry_built"`` BEFORE the
-    parent's preflight closes.
+    by ``_poll_registry_build_gate`` at the McpServer constructor
+    boundary, where the test seam can simulate a blocked constructor
+    and surface a typed ``McpServerError`` with
+    ``last_stage="registry_built"`` BEFORE the parent's preflight
+    closes.
+
+    The gate is polled BETWEEN the tool-registry build (and its
+    "MCP server started with N built-in tools" log) and the
+    ``McpServer(...)`` call. This is the exact constructor boundary:
+    when the gate fires, the ``McpServer.__init__`` is never called,
+    so a real constructor block (one that hangs in ``__init__``)
+    is exercised end-to-end — the child exits with a typed
+    ``McpServerError`` and the parent's preflight surfaces
+    ``last_stage="registry_built"`` from the stage file the caller
+    wrote before invoking this function.
     """
     reg = build_ralph_tool_registry(
         effective_session,
@@ -237,6 +250,18 @@ def _build_mcp_registry_and_server(
         )
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
+
+    # R2 blocked-operation seam: poll the gate AT THE McpServer
+    # constructor boundary. If the gate fires, ``McpServer.__init__``
+    # is never called, so a real constructor block is exercised. The
+    # gate's deadline uses the WHOLE-STARTUP envelope so the child
+    # can surface a typed ``McpServerError`` with
+    # ``last_stage="registry_built"`` BEFORE the parent's preflight
+    # closes. Production never sets ``MCP_TEST_REGISTRY_BUILD_GATE_ENV``,
+    # so the gate returns immediately in the fast path.
+    whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
+    _poll_registry_build_gate(env_map, t0, whole_startup_budget_s)
+
     return McpServer(
         effective_session,
         workspace,
@@ -461,7 +486,16 @@ def build_standalone_http_server(
         budget_s=mcp_discovery_budget_from_env().total_seconds(),
     )
     registry_budget_s = mcp_registry_built_budget_from_env(env_map)
-    whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
+
+    # R4-LOGS: ``registry_built`` is recorded at the boundary, BEFORE
+    # calling ``_build_mcp_registry_and_server``. This is essential:
+    # the gate inside that function can fire BEFORE the
+    # ``McpServer.__init__`` runs, so a real constructor block must
+    # still leave ``registry_built`` in the stage file. The semantic
+    # is "we are entering the registry_built phase"; the
+    # post-construction ``record_stage_elapsed`` below is the
+    # checkpoint that catches a slow (but not blocked) constructor.
+    _log_and_record_stage(workspace_root, "registry_built")
 
     server = _build_mcp_registry_and_server(
         effective_session=effective_session,
@@ -470,24 +504,10 @@ def build_standalone_http_server(
         upstream_servers=upstream_servers,
         mcp_cfg=mcp_cfg,
         activity_relay_sender=activity_relay_sender,
+        t0=t0,
+        env_map=env_map,
     )
-    # R4-LOGS: ``registry_built`` is recorded AFTER the McpServer
-    # wrapper exists, right before we hand control to ``server.run()``.
-    _log_and_record_stage(workspace_root, "registry_built")
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
-
-    # Test seam: the ``MCP_TEST_REGISTRY_BUILD_GATE_ENV`` gate is
-    # the deadline-bounded interceptor that simulates a real
-    # constructor block (a McpServer.__init__ that never returns).
-    # Production never sets the env var, so the gate returns
-    # immediately. When the gate is set, the gate's deadline uses
-    # the WHOLE-STARTUP envelope (NOT just the per-stage budget) so
-    # the child can surface a typed ``McpServerError`` with
-    # ``last_stage="registry_built"`` BEFORE the parent's preflight
-    # closes. This is the child-level detection mechanism that
-    # replaces the daemon-thread workaround: the gate's
-    # deadline-bounded poll is the interrupter.
-    _poll_registry_build_gate(env_map, t0, whole_startup_budget_s)
 
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 

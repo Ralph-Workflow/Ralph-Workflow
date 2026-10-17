@@ -143,6 +143,45 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
             f"expected 'registry_built' in child server log ({log_path}), got:\n{log_content}"
         )
 
+        # CONSTRUCTOR-BLOCK PROOF: the ``registry_built`` stage must be
+        # recorded BEFORE the ``MCP server started with`` log. This is the
+        # structural invariant that proves the gate is at the McpServer
+        # constructor boundary, not after it:
+        #
+        # - New design: ``registry_built`` stage is recorded at the
+        #   boundary (in ``build_standalone_http_server``), then the
+        #   function is called, which emits the ``MCP server started
+        #   with`` log BEFORE the gate. Order: registry_built first.
+        # - Old design (gate after the function returned): the function
+        #   emitted the ``MCP server started with`` log FIRST, then the
+        #   ``registry_built`` stage was recorded. Order:
+        #   ``MCP server started with`` first, registry_built second.
+        #
+        # The old design's order is exactly inverted; this assertion
+        # fails on the old design and passes on the new design.
+        registry_built_marker = "ralph-mcp startup: stage=registry_built"
+        mcp_started_marker = "MCP server started with"
+        registry_built_pos = log_content.find(registry_built_marker)
+        mcp_started_pos = log_content.find(mcp_started_marker)
+        assert registry_built_pos != -1, (
+            f"expected {registry_built_marker!r} in child log, got:\n{log_content}"
+        )
+        assert mcp_started_pos != -1, (
+            f"expected {mcp_started_marker!r} in child log (proves the tool "
+            f"registry was built BEFORE the gate fired at the constructor "
+            f"boundary), got:\n{log_content}"
+        )
+        assert registry_built_pos < mcp_started_pos, (
+            f"expected {registry_built_marker!r} to appear BEFORE "
+            f"{mcp_started_marker!r} in child log (proves the "
+            f"``registry_built`` stage is recorded at the boundary BEFORE "
+            f"the McpServer constructor is called, and the gate fires at "
+            f"the constructor boundary, not after). Got "
+            f"registry_built at position {registry_built_pos}, "
+            f"MCP server started with at position {mcp_started_pos}.\n"
+            f"Full log:\n{log_content}"
+        )
+
         # Assert the surfaced error is a typed McpServerError with the
         # correct stage and timing.
         assert result, "start_mcp_server returned without raising"
