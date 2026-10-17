@@ -213,6 +213,11 @@ def test_direct_standalone_server_protects_secret_before_session_read(
 ) -> None:
     calls: list[str] = []
 
+    # The unit test calls ``run_standalone_server`` with no bridge
+    # parent, so the inherited-FD env var must be cleared to keep
+    # the test hermetic against ambient env from sibling tests.
+    monkeypatch.delenv("RALPH_MCP_INHERITED_FD", raising=False)
+
     monkeypatch.setattr(
         server_runtime,
         "protect_broker_secret",

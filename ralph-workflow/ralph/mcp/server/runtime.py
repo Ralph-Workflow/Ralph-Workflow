@@ -36,6 +36,7 @@ import argparse
 import concurrent.futures
 import os
 import socket
+import stat
 import threading
 import time
 import uuid
@@ -175,6 +176,42 @@ _clock = time.monotonic
 # production behavior is unchanged (production never sets the env
 # var, so the gate returns immediately).
 _REGISTRY_BUILD_GATE_HARD_DEADLINE_S: float = 0.05
+
+
+def _validate_inherited_fd(fd_int: int, env_name: str = MCP_INHERITED_FD_ENV) -> bool:
+    """Return True if ``fd_int`` refers to a live, socket-typed FD.
+
+    Defensive guard: a stale ``fd_inherit_failed`` value in the env
+    (e.g. ``fd 8`` set by a prior test or sibling process) crashes
+    ``socket.socket(fileno=fd_int)`` with ``ENOTSOCK`` (errno 88).
+    We must NOT raise from here: the standalone server is a unit
+    caller's path with no bridge parent, so an unparseable env value
+    means the test/process simply never wired the inherited FD
+    through. The right behavior is to log a warning and serve on the
+    default port (the bridge's later respawn will rebind anyway).
+    The check is a cheap ``os.fstat`` that confirms the FD's file
+    type is ``S_IFSOCK``; a permission-denied fstat is the only
+    failure mode and is treated the same as "not a socket".
+    """
+    try:
+        st_mode = os.fstat(fd_int).st_mode
+    except OSError as exc:
+        logger.warning(
+            "inherited_fd_skipped: env=%r fd=%r reason=%s",
+            env_name,
+            fd_int,
+            exc,
+        )
+        return False
+    if not stat.S_ISSOCK(st_mode):
+        logger.warning(
+            "inherited_fd_skipped: env=%r fd=%r reason=%s",
+            env_name,
+            fd_int,
+            f"not a socket (st_mode=0o{st_mode:o})",
+        )
+        return False
+    return True
 
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
@@ -678,23 +715,31 @@ def run_standalone_server(
     parent_socket: socket.socket | None = None
     inherited_fd_raw = env_map.get(MCP_INHERITED_FD_ENV, "")
     if inherited_fd_raw.isdigit():
-        try:
-            parent_socket = socket.socket(
-                socket.AF_INET,
-                socket.SOCK_STREAM,
-                fileno=int(inherited_fd_raw),
-            )
-        except (OSError, ValueError) as exc:
-            # Inherited-FD handoff failed (parent closed it, FD
-            # number wrong, etc.). Surface as McpServerError so the
-            # supervisor records the precise stage and the operator
-            # sees ``last_stage="fd_inherit_failed"``.
-            raise McpServerError(
-                f"failed to adopt inherited listening FD "
-                f"({inherited_fd_raw!r}) from parent bridge: {exc}",
-                restart_count=0,
-                last_stage="fd_inherit_failed",
-            ) from exc
+        inherited_fd_int = int(inherited_fd_raw)
+        if _validate_inherited_fd(inherited_fd_int):
+            try:
+                parent_socket = socket.socket(
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    fileno=inherited_fd_int,
+                )
+            except (OSError, ValueError) as exc:
+                # FD validated as a socket above but became invalid
+                # between the fstat and the wrap (rare race against
+                # a sibling closing it). Surface as McpServerError so
+                # the supervisor records the precise stage and the
+                # operator sees ``last_stage="fd_inherit_failed"``.
+                raise McpServerError(
+                    f"failed to adopt inherited listening FD "
+                    f"({inherited_fd_raw!r}) from parent bridge: {exc}",
+                    restart_count=0,
+                    last_stage="fd_inherit_failed",
+                ) from exc
+        # If validation failed, the env var was set but the FD is
+        # not actually a live socket (e.g. unit tests that never
+        # went through the bridge). Fall through and let
+        # ``_StandaloneHttpServer`` bind its own port; the bridge
+        # respawn will rebind to the inherited FD on the next spawn.
     # R2: a respawn runs with ``MCP_RESPAWN_ENV=1`` set. The
     # upstream registry must come from the cached tool catalog the
     # parent hands us, never from a live probe — a respawn has no
