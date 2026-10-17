@@ -14,11 +14,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.prompts.template_context import TemplateContext
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXAMPLE = _REPO_ROOT / "ralph/mcp/artifacts/format_docs/examples/planning_analysis_decision.md"
 _FORMAT_DOC = _REPO_ROOT / "ralph/mcp/artifacts/format_docs/planning_analysis_decision.md"
+_TEMPLATE = _REPO_ROOT / "ralph/prompts/templates/planning_analysis.jinja"
 
 
 def test_planning_analysis_examples_model_unit_properties() -> None:
@@ -37,7 +36,7 @@ def test_planning_analysis_examples_drop_the_shared_contract_unit() -> None:
     texts = [
         _EXAMPLE.read_text(encoding="utf-8"),
         _FORMAT_DOC.read_text(encoding="utf-8"),
-        TemplateContext.default().registry.get_template("planning_analysis"),
+        _TEMPLATE.read_text(encoding="utf-8"),
     ]
     for text in texts:
         assert "shared-contract unit" not in text

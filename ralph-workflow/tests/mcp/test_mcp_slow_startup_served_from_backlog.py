@@ -16,6 +16,7 @@ impossible because the bridge owns the listening socket from the start.
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import threading
 import time
@@ -76,7 +77,11 @@ def _make_deps(signal: _PortSignal) -> LifecycleDeps:
 
 
 def _stage_files(workspace: Path) -> list[Path]:
-    return sorted((workspace / ".agent").glob(_STAGE_FILE_GLOB))
+    return [
+        p
+        for p in sorted((workspace / ".agent").glob(_STAGE_FILE_GLOB))
+        if not p.name.endswith(".tmp")
+    ]
 
 
 def _http_request(host: str, port: int) -> bytes:
@@ -97,6 +102,18 @@ def _read_response_head(sock: socket.socket, timeout_s: float) -> str:
             break
         response += chunk
     return response.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+
+
+def _read_last_stage_label(workspace: Path, deadline: float) -> str:
+    while time.monotonic() < deadline:
+        stages = _stage_files(workspace)
+        if stages:
+            with contextlib.suppress(OSError):
+                label = stages[-1].read_text(encoding="utf-8").strip()
+                if label:
+                    return label
+        time.sleep(0.02)
+    return ""
 
 
 @pytest.mark.timeout_seconds(60)
@@ -135,13 +152,8 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
         # Proof 1 (child-side, passive): the child's own stage file must exist
         # by now and must NOT yet say ready_to_serve — the child is held
         # before the serving boundary.
-        deadline = time.monotonic() + 15.0
-        stages = _stage_files(tmp_path)
-        while not stages and time.monotonic() < deadline:
-            time.sleep(0.05)
-            stages = _stage_files(tmp_path)
-        assert stages, "child never wrote a startup stage file"
-        stage_label = stages[-1].read_text(encoding="utf-8").strip()
+        stage_label = _read_last_stage_label(tmp_path, time.monotonic() + 15.0)
+        assert stage_label, "child never wrote a startup stage file"
         assert stage_label != "ready_to_serve", (
             f"child reached {stage_label!r} before the gate was released"
         )

@@ -209,14 +209,6 @@ def _construct_mcp_server_within_budget(
 
     def _do_construct() -> None:
         try:
-            gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
-            if gate_path:
-                gate_path_obj = Path(gate_path)
-                while not DEFAULT_FILE_BACKEND.exists(
-                    gate_path_obj
-                ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
-                    # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
-                    time.sleep(0.02)
             reg = build_ralph_tool_registry(
                 effective_session,
                 workspace,
@@ -355,6 +347,7 @@ def build_standalone_http_server(
     # so the supervisor never sees a half-bound child.
     is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
     if is_respawn and upstream_servers and not tool_catalog:
+        _log_and_record_stage(workspace_root, "respawn_precheck")
         raise McpServerError(
             "MCP respawn missing tool catalog (RALPH_MCP_RESPAWN=1 set but no "
             "UPSTREAM_MCP_TOOL_CATALOG_ENV); refusing to probe upstreams during "
@@ -429,8 +422,6 @@ def build_standalone_http_server(
     registry_budget_s = mcp_registry_built_budget_from_env(env_map)
     elapsed_before_registry = _clock() - t0
     remaining_registry_budget = max(0.01, registry_budget_s - elapsed_before_registry)
-    if env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV):
-        remaining_registry_budget = min(0.5, remaining_registry_budget)
 
     server = _construct_mcp_server_within_budget(
         workspace_root=workspace_root,
@@ -449,6 +440,16 @@ def build_standalone_http_server(
     # wrapper exists, right before we hand control to ``server.run()``.
     _log_and_record_stage(workspace_root, "registry_built")
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
+
+    gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
+    if gate_path:
+        gate_path_obj = Path(gate_path)
+        while not DEFAULT_FILE_BACKEND.exists(
+            gate_path_obj
+        ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+            # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
+            time.sleep(0.02)
+
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
 
@@ -485,6 +486,7 @@ def run_standalone_server(
     port: int = DEFAULT_PORT,
     agent_transport: str | None = None,
     ready_event: Event | None = None,
+    stop_event: Event | None = None,
 ) -> None:
     """Run the standalone Ralph MCP server over HTTP.
 
@@ -577,11 +579,19 @@ def run_standalone_server(
         record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=ready_budget_s)
         _stage("ready_to_serve")
 
-    server.run(
-        transport=DEFAULT_TRANSPORT,
-        ready_event=ready_event,
-        on_ready=_record_ready_to_serve,
-    )
+    if stop_event is not None:
+        server.run(
+            transport=DEFAULT_TRANSPORT,
+            ready_event=ready_event,
+            stop_event=stop_event,
+            on_ready=_record_ready_to_serve,
+        )
+    else:
+        server.run(
+            transport=DEFAULT_TRANSPORT,
+            ready_event=ready_event,
+            on_ready=_record_ready_to_serve,
+        )
 
 
 def _agent_transport_choices() -> list[str]:

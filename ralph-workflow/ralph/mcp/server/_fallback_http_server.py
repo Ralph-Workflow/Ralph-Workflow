@@ -69,7 +69,8 @@ class _FallbackHttpServer(ThreadingHTTPServer):
         self.shutdown_event = Event()
 
     def shutdown(self) -> None:
-        self.shutdown_event.set()
+        if hasattr(self, "shutdown_event"):
+            self.shutdown_event.set()
         super().shutdown()
 
     def handle_error(
@@ -83,7 +84,8 @@ class _FallbackHttpServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
     def server_close(self) -> None:
-        self.shutdown_event.set()
+        if hasattr(self, "shutdown_event"):
+            self.shutdown_event.set()
         super().server_close()
 
 

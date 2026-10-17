@@ -148,12 +148,12 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
         assert exc.elapsed_s is not None, "elapsed_s must not be None"
         assert exc.elapsed_s > 0, f"elapsed_s must be > 0, got {exc.elapsed_s}"
 
-        # The parent's preflight fires at 5s (not the 30s default) plus bounded cleanup overhead.
+        # The parent's preflight fires strictly before the preflight timeout.
         preflight_timeout_s = preflight_timeout_ms / 1000.0
-        assert exc.elapsed_s < preflight_timeout_s + 5.0, (
+        assert exc.elapsed_s < preflight_timeout_s, (
             f"elapsed_s ({exc.elapsed_s:.3f}s) must be < "
-            f"configured preflight deadline + 5s ({preflight_timeout_s + 5.0:.3f}s); "
-            "proves child failed fast within its configured budget rather than waiting for 30s default"
+            f"configured preflight deadline ({preflight_timeout_s:.3f}s); "
+            "proves child failed fast within its configured budget rather than waiting for preflight timeout"
         )
     finally:
         # Clean up: touch the sentinel so the child can exit if it is still alive.

@@ -178,6 +178,8 @@ class TestInjectedDisplayContextIsHonored:
         snap.auto_integrate_remote_sync = None
         snap.auto_integrate_remote = None
         snap.auto_integrate_freshness_verdict = None
+        snap.last_activity_line = None
+        snap.waiting_status_line = None
 
         group = render_completion_summary_group(
             snap,
@@ -220,6 +222,8 @@ class TestInjectedDisplayContextIsHonored:
         snap.auto_integrate_remote_sync = None
         snap.auto_integrate_remote = None
         snap.auto_integrate_freshness_verdict = None
+        snap.last_activity_line = None
+        snap.waiting_status_line = None
 
         group = render_completion_summary_group(
             snap,

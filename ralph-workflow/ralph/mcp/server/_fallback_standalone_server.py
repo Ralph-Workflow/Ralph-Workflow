@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 from threading import Event
@@ -75,6 +76,7 @@ class _FallbackStandaloneServer:
         transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
         *,
         ready_event: Event | None = None,
+        stop_event: Event | None = None,
         on_ready: Callable[[], None] | None = None,
     ) -> None:
         if transport != DEFAULT_TRANSPORT:
@@ -98,6 +100,14 @@ class _FallbackStandaloneServer:
         httpd.health_probe_fn = None
         httpd.metrics = None
         self._httpd = httpd
+        if stop_event is not None:
+
+            def _stop_watcher() -> None:
+                stop_event.wait()  # mcp-timeout-ok: daemon thread waiting for explicit stop signal
+                httpd.shutdown()
+
+            stop_thread = threading.Thread(target=_stop_watcher, daemon=True)
+            stop_thread.start()
         # Subprocess-E2E test seam (R1 "slow startup still becomes ready"
         # invariant): when the env names a sentinel file, block here — the
         # server object exists but nothing has accepted a connection yet —
@@ -149,14 +159,14 @@ class _FallbackStandaloneServer:
         # blocks). This ensures the banner and the stage file both
         # reflect "server is accepting connections", not "server
         # has been constructed but not started".
-        if ready_event is not None:
-            ready_event.set()
         if on_ready is not None:
             # The parent records the ready_to_serve stage file at the
             # actual serving boundary, not when ``build_standalone_http_server``
             # returns. Without this hook the stage would land BEFORE
             # the socket is actually accepting connections.
             on_ready()
+        if ready_event is not None:
+            ready_event.set()
         print(f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}")
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)

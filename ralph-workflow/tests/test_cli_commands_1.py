@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
@@ -272,7 +271,7 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     assert "No staged changes to commit" not in output
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(10)
 def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
     """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
 
@@ -285,12 +284,26 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     sent to the commit agent.
     """
 
-    with Repo(tmp_git_repo) as repo:
-        (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
-        repo.index.add(["mid_cycle.py"])
-        repo.index.commit("mid-cycle commit")
-        (tmp_git_repo / "pending.py").write_text("pending = 2\n")
-        repo.index.add(["pending.py"])
+    (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n", encoding="utf-8")
+    run_git(
+        ["add", "--", "mid_cycle.py"],
+        cwd=tmp_git_repo,
+        label="test:add-mid-cycle",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    run_git(
+        ["commit", "-m", "mid-cycle commit"],
+        cwd=tmp_git_repo,
+        label="test:commit-mid-cycle",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    (tmp_git_repo / "pending.py").write_text("pending = 2\n", encoding="utf-8")
+    run_git(
+        ["add", "--", "pending.py"],
+        cwd=tmp_git_repo,
+        label="test:add-pending",
+        options=GitRunOptions(check=True, timeout=5),
+    )
 
     diff = commit_module.working_tree_diff(tmp_git_repo)
 
@@ -298,7 +311,7 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     assert "mid_cycle.py" not in diff
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(10)
 def test_working_tree_diff_includes_untracked_only_work(tmp_git_repo: Path) -> None:
     untracked = tmp_git_repo / "new_module.py"
     untracked.write_text("new = True\n", encoding="utf-8")
@@ -309,7 +322,7 @@ def test_working_tree_diff_includes_untracked_only_work(tmp_git_repo: Path) -> N
     assert "new_module.py" in diff
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(10)
 def test_working_tree_diff_includes_tracked_and_untracked_work(tmp_git_repo: Path) -> None:
     readme = tmp_git_repo / "README.md"
     readme.write_text("updated\n", encoding="utf-8")

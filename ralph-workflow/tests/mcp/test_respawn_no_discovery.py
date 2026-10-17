@@ -620,6 +620,7 @@ def test_absent_or_corrupt_snapshot_fails_closed(
             # stage before the typed raise, so assert on the contract, not
             # the stage attribution.
             assert "refusing to probe upstreams during respawn" in str(exc_info.value)
+            assert exc_info.value.last_stage == "respawn_precheck"
             assert exc_info.value.restart_count == 1
             assert bridge.restart_count == 1
         finally:

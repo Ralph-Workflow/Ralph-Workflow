@@ -27,6 +27,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
+from ralph.mcp.protocol._startup_timeouts import mcp_whole_startup_budget_from_env
 from ralph.mcp.protocol.env import (
     MCP_INHERITED_FD_ENV,
     MCP_OWNER_PID_ENV,
@@ -76,7 +77,7 @@ from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_mana
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from socket import socket as _socket_type
 
     from ralph.mcp.protocol.startup import SessionLike, WorkspaceLike
@@ -977,6 +978,109 @@ def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
     return f"\nMCP server output ({mcp_server_log_path(root)}):\n{diagnostic}"
 
 
+def _await_mcp_startup_or_failure(
+    bridge: StandaloneMcpProcess,
+    *,
+    deps: LifecycleDeps,
+    endpoint: str,
+    visible_tools: list[str],
+    port: int,
+    env: Mapping[str, str],
+    spawn_start: float,
+    root: Path,
+    log_offset: int,
+    stage_id: str,
+) -> None:
+    """Observe preflight and child process termination under an absolute startup deadline."""
+    preflight_timeout_td = deps.preflight_timeout()
+    preflight_timeout_s = preflight_timeout_td.total_seconds()
+    try:
+        whole_startup_s = mcp_whole_startup_budget_from_env(env)
+    except Exception:
+        whole_startup_s = preflight_timeout_s
+    startup_deadline_s = min(preflight_timeout_s, whole_startup_s)
+    if startup_deadline_s >= preflight_timeout_s:
+        startup_deadline_s = max(0.1, preflight_timeout_s - 0.5)
+
+    preflight_error: list[Exception] = []
+    preflight_done = threading.Event()
+
+    def _run_preflight() -> None:
+        try:
+            deps.preflight(endpoint, visible_tools, preflight_timeout_td)
+        except Exception as exc:
+            preflight_error.append(exc)
+        finally:
+            preflight_done.set()
+
+    preflight_thread = threading.Thread(
+        target=_run_preflight,
+        name=f"mcp-preflight-{port}",
+        daemon=True,
+    )
+    preflight_thread.start()
+
+    early_exit_rc: int | None = None
+    deadline_exceeded = False
+    poll_interval = 0.02
+
+    while True:
+        if preflight_done.wait(timeout=poll_interval):
+            break
+        rc = bridge.process.poll()
+        if rc is not None:
+            early_exit_rc = rc
+            break
+        if (time.monotonic() - spawn_start) >= startup_deadline_s:
+            deadline_exceeded = True
+            break
+
+    elapsed_s = time.monotonic() - spawn_start
+
+    if early_exit_rc is None and not deadline_exceeded and not preflight_error:
+        return
+
+    returncode = bridge.process.poll()
+    bridge.shutdown()
+    diagnostic = _startup_diagnostic_suffix(root, log_offset)
+    last_stage: str | None = _read_start_stage(root, spawn_id=stage_id)
+    last_stage_str: str = last_stage if last_stage is not None else "last_stage_unknown"
+
+    if early_exit_rc is not None or returncode is not None:
+        effective_rc = early_exit_rc if early_exit_rc is not None else returncode
+        cause = preflight_error[0] if preflight_error else None
+        err = McpServerError(
+            f"MCP server process exited before endpoint {endpoint} became ready "
+            f"(rc={effective_rc}){diagnostic}",
+            restart_count=0,
+            last_stage=last_stage_str,
+            elapsed_s=elapsed_s,
+        )
+        if cause is not None:
+            raise err from cause
+        raise err
+
+    if deadline_exceeded:
+        cause = preflight_error[0] if preflight_error else None
+        err = McpServerError(
+            f"MCP server startup exceeded deadline of {startup_deadline_s:.3f}s "
+            f"before endpoint {endpoint} became ready{diagnostic}",
+            restart_count=0,
+            last_stage=last_stage_str,
+            elapsed_s=elapsed_s,
+        )
+        if cause is not None:
+            raise err from cause
+        raise err
+
+    raise McpServerError(
+        f"MCP server endpoint {endpoint} did not become ready: {preflight_error[0]}{diagnostic}",
+        restart_count=0,
+        last_stage=last_stage_str,
+        elapsed_s=elapsed_s,
+    ) from preflight_error[0]
+
+
 def _spawn_mcp_process(
     root: Path,
     session: SessionLike,
@@ -1057,41 +1161,18 @@ def _spawn_mcp_process(
             session_file.unlink(missing_ok=True)
         raise
 
-    try:
-        deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())
-    except Exception as exc:
-        returncode = process.poll()
-        # Shut down FIRST so the child's own output is flushed and reaped, then
-        # read what it wrote. Without this the error named only the refused
-        # connection, never the reason the child never got as far as listening.
-        bridge.shutdown()
-        diagnostic = _startup_diagnostic_suffix(root, log_offset)
-        # R4-XPROC: surface the last visible startup stage from the
-        # child-written stage file so the operator can attribute
-        # the failure to a specific named stage. The parent's
-        # ``stage_id`` is used so we read the SAME file the child
-        # wrote (not the parent's own import-time module-global UUID).
-        last_stage: str | None = _read_start_stage(root, spawn_id=stage_id)
-        last_stage_str: str = last_stage if last_stage is not None else "last_stage_unknown"
-        elapsed_s = time.monotonic() - spawn_start
-        if returncode is not None:
-            raise McpServerError(
-                f"MCP server process exited before endpoint {endpoint} became ready "
-                f"(rc={returncode}){diagnostic}",
-                restart_count=0,
-                last_stage=last_stage_str,
-                elapsed_s=elapsed_s,
-            ) from exc
-        # A live-but-unready process is the same failure class as an exited
-        # one, so it must surface as McpServerError too. Re-raising the raw
-        # preflight error escaped the supervisor's handler and killed the
-        # supervisor thread, leaving the run with nothing probing the server.
-        raise McpServerError(
-            f"MCP server endpoint {endpoint} did not become ready: {exc}{diagnostic}",
-            restart_count=0,
-            last_stage=last_stage_str,
-            elapsed_s=elapsed_s,
-        ) from exc
+    _await_mcp_startup_or_failure(
+        bridge,
+        deps=deps,
+        endpoint=endpoint,
+        visible_tools=_visible_tools,
+        port=port,
+        env=env,
+        spawn_start=spawn_start,
+        root=root,
+        log_offset=log_offset,
+        stage_id=stage_id,
+    )
 
     return bridge
 

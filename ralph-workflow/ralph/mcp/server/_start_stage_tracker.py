@@ -95,7 +95,7 @@ def record(root: Path, stage: str) -> None:
     # os.replace stays on one filesystem. Mode 0o644 for operator reads.
     fd, tmp_name = (
         tempfile.mkstemp(  # filesystem-write-ok: temp sibling immediately atomically replaced via os.replace — the only durable artifact is the final stage file
-            dir=path.parent, prefix=f"{path.name}.", suffix=".tmp"
+            dir=path.parent, prefix=f".tmp.{path.name}.", suffix=".tmp"
         )
     )
     tmp_path = Path(tmp_name)

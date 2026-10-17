@@ -576,6 +576,7 @@ def _patch_run_pipeline_collaborators(
     monkeypatch_target.print_dry_run = fake_print_dry_run
     monkeypatch_target._execute_pipeline = fake_execute_pipeline
     monkeypatch_target.run_parallel_worker_from_manifest = fake_run_parallel_worker
+    monkeypatch_target._maybe_enter_process_view = lambda _stack: None
 
     stubs["load_configuration"] = fake_load_configuration
     stubs["run_preflight_checks"] = fake_run_preflight_checks

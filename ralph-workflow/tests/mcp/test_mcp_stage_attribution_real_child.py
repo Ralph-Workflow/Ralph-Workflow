@@ -11,19 +11,28 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._start_stage_tracker import (
     read_last_stage,
     stage_file_path,
 )
 from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.workspace.fs import FsWorkspace
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 def test_real_child_stage_file_attributed_via_explicit_spawn_id(
@@ -108,34 +117,84 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
 
 
 def test_mcp_server_error_last_stage_carries_child_stage(tmp_path: Path) -> None:
-    """When a child dies early, the McpServerError.last_stage names the child's last stage.
-
-    This is the integration-level proof: we simulate the lifecycle's
-    preflight-failure path by constructing the same error the lifecycle
-    would raise after ``_read_last_stage(root, spawn_id=stage_id)`` returns
-    the child's stage.
-    """
-    spawn_id = str(uuid.uuid4())
-    stage_name = "upstream_catalog_or_discovery_done"
-
-    # Write the stage file directly using the same path logic as record().
-    # (record() uses the module-global _spawn_id which is set from the env
-    # in the real child; here we write with the explicit spawn_id directly.)
-    sp = stage_file_path(tmp_path, spawn_id=spawn_id)
-    sp.parent.mkdir(parents=True, exist_ok=True)
-    sp.write_text(stage_name, encoding="ascii")
-
-    last_stage = read_last_stage(tmp_path, spawn_id=spawn_id)
-    assert last_stage == stage_name
-
-    # The lifecycle constructs the error with last_stage from the stage file.
-    err = McpServerError(
-        "MCP server endpoint http://127.0.0.1:0/mcp did not become ready: "
-        "preflight connection refused",
-        restart_count=0,
-        last_stage=last_stage,
-        elapsed_s=1.23,
+    """When a real child is killed during startup, McpServerError carries the child's last stage."""
+    sentinel = tmp_path / "never_created_sentinel.txt"
+    extras = McpServerExtras(
+        extra_env={MCP_TEST_PRE_SERVE_GATE_ENV: str(sentinel)},
     )
-    assert err.last_stage == stage_name
-    assert err.elapsed_s == 1.23
-    assert err.restart_count == 0
+    session = AgentSession(
+        session_id="test-kill-session",
+        run_id="test-run",
+        drain="test",
+        capabilities=set(),
+    )
+    workspace = FsWorkspace(tmp_path)
+
+    spawned_procs: list[lifecycle.ProcessLike] = []
+    real_deps = lifecycle._default_lifecycle_deps()
+
+    def tracking_spawn(*args: Any, **kwargs: Any) -> lifecycle.ProcessLike:
+        proc = real_deps.spawn_process(*args, **kwargs)
+        spawned_procs.append(proc)
+        return proc
+
+    deps = replace(real_deps, spawn_process=tracking_spawn)
+
+    error_box: list[McpServerError] = []
+    done_event = threading.Event()
+
+    def _start() -> None:
+        try:
+            lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
+        except McpServerError as err:
+            error_box.append(err)
+        finally:
+            done_event.set()
+
+    worker = threading.Thread(target=_start, daemon=True)
+    worker.start()
+
+    try:
+        # Wait for child to be spawned and reach registry_built stage
+        deadline = time.monotonic() + 10.0
+        stage_found = False
+        while time.monotonic() < deadline:
+            stage_files = sorted((tmp_path / ".agent").glob(".ralph_mcp_start_stage.*"))
+            if stage_files:
+                content = stage_files[-1].read_text(encoding="utf-8").strip()
+                if content == "registry_built":
+                    stage_found = True
+                    break
+            time.sleep(0.02)
+        assert stage_found, "child never reached registry_built stage within 10s"
+        assert spawned_procs, "no process was spawned"
+
+        # Kill the child with SIGKILL while it is held at registry_built
+        child_proc = spawned_procs[0]
+        child_proc.kill()
+
+        assert done_event.wait(timeout=5.0), "start_mcp_server did not raise after child kill"
+        assert error_box, "no McpServerError captured"
+        exc = error_box[0]
+
+        assert exc.last_stage == "registry_built", (
+            f"expected last_stage=registry_built, got {exc.last_stage!r}"
+        )
+        assert exc.elapsed_s is not None and exc.elapsed_s > 0, (
+            f"invalid elapsed_s: {exc.elapsed_s}"
+        )
+        assert exc.restart_count == 0
+
+        # Assert stage file on disk
+        stage_files = sorted((tmp_path / ".agent").glob(".ralph_mcp_start_stage.*"))
+        assert stage_files, "stage file missing"
+        assert stage_files[-1].read_text(encoding="utf-8").strip() == "registry_built"
+
+        # Assert child log on disk
+        log_path = lifecycle.mcp_server_log_path(tmp_path)
+        assert log_path.exists(), f"log path {log_path} does not exist"
+        log_text = log_path.read_text(encoding="utf-8")
+        assert "registry_built" in log_text, f"'registry_built' not found in log: {log_text}"
+    finally:
+        sentinel.touch()
+        worker.join(timeout=5.0)

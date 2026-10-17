@@ -1,8 +1,10 @@
 """Tests for the single commit-completion authority (WU-G5)."""
 
 import ast
-from concurrent.futures import ThreadPoolExecutor
+import os
 from pathlib import Path
+
+import pytest
 
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -56,25 +58,34 @@ def test_complete_commit_threads_extra_fields() -> None:
 _STRAY_LITERAL = b'phase="integrated"'
 
 
-def _has_stray_literal(rel: str) -> bool:
-    # Bytes scan avoids decoding ~1500 source files; the 1s per-test timeout
-    # must hold even under full shard load.
-    return _STRAY_LITERAL in REPO.joinpath(rel).read_bytes()
+def _scan_for_stray(dir_path: str, repo_str: str, offenders: list[str]) -> None:
+    try:
+        entries = os.scandir(dir_path)
+    except OSError:
+        return
+    with entries:
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.name != "__pycache__":
+                        _scan_for_stray(entry.path, repo_str, offenders)
+                elif entry.name.endswith(".py") and entry.is_file(follow_symlinks=False):
+                    content = Path(entry.path).read_bytes()
+                    if _STRAY_LITERAL in content:
+                        rel_path = os.path.relpath(entry.path, repo_str).replace(os.sep, "/")
+                        if rel_path not in _ALLOWED_PHASE_INTEGRATED:
+                            offenders.append(rel_path)
+            except OSError:
+                continue
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_stray_phase_integrated_literals() -> None:
-    candidates = [
-        path.relative_to(REPO).as_posix()
-        for path in sorted(REPO.joinpath("ralph").rglob("*.py"))
-        if path.relative_to(REPO).as_posix() not in _ALLOWED_PHASE_INTEGRATED
-    ]
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        offenders = [
-            rel
-            for rel, hit in zip(candidates, pool.map(_has_stray_literal, candidates), strict=True)
-            if hit
-        ]
-    assert offenders == []
+    ralph_dir = str(REPO / "ralph")
+    repo_str = str(REPO)
+    offenders: list[str] = []
+    _scan_for_stray(ralph_dir, repo_str, offenders)
+    assert sorted(offenders) == []
 
 
 def test_return_sites_route_through_authority() -> None:

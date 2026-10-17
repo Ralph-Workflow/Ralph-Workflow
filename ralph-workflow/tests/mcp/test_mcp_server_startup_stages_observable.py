@@ -16,7 +16,6 @@ composition, so there are no async ordering ambiguities).
 from __future__ import annotations
 
 import threading
-import time as time_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -82,26 +81,33 @@ def test_all_six_stages_logged_and_recorded(tmp_path: Path) -> None:
         os.environ["RALPH_MCP_SESSION_FILE"] = str(session_file)
 
         ready_event = threading.Event()
+        stop_event = threading.Event()
 
         def run_server() -> None:
             # Port 0 lets the kernel pick a free port: pytest-xdist runs
             # multiple shards in parallel, and a fixed port would make two
             # shards race on the same bind (Address already in use).
-            run_standalone_server(tmp_path, ready_event=ready_event, port=0)
+            run_standalone_server(
+                tmp_path,
+                ready_event=ready_event,
+                stop_event=stop_event,
+                port=0,
+            )
 
-        server_thread = threading.Thread(target=run_server, name="mcp-test-server")
+        server_thread = threading.Thread(
+            target=run_server,
+            name="mcp-test-server",
+            daemon=True,
+        )
         server_thread.start()
 
         try:
-            # Wait for the server to signal it is listening, then give
-            # ``on_ready`` a moment to fire and record ``ready_to_serve``.
+            # Wait for the server to signal it is listening. on_ready has already fired.
             assert ready_event.wait(timeout=10.0), "server did not signal ready within 10s"
-            # Brief grace period for on_ready → _record_ready_to_serve to execute.
-            time_module.sleep(0.3)
         finally:
-            # Do NOT join the server thread — it blocks in server.run() forever.
-            # The test subprocess exits after assertions and takes the thread with it.
-            pass
+            stop_event.set()
+            server_thread.join(timeout=5.0)
+            assert not server_thread.is_alive(), "server thread did not shut down cleanly"
 
     finally:
         if old_session_file is not None:
