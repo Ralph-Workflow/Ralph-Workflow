@@ -90,6 +90,31 @@ The MCP server lifecycle is managed by three modules:
 
 The server is started before the agent subprocess is spawned and stopped after the agent exits.
 
+### Restart-decision durability
+
+`RestartAwareMcpBridge.check_health_and_restart_if_needed` records every
+restart decision to a per-bridge JSONL sink so an incident triage can
+classify a runaway restart loop without parsing loguru output. The sink
+is configured once per bridge by `start_mcp_server` and survives
+shutdown, so evidence from a previous bridge is never overwritten by a
+fresh one.
+
+| Field | Source | Meaning |
+|---|---|---|
+| Sink path | `<workspace>/.agent/mcp-health-events-<bridge-id>.jsonl` | One file per bridge; `bridge-id` is the 12-hex-char value assigned in `start_mcp_server` (`ralph.mcp.server._mcp_health_event:configure_bridge_sink`). |
+| `reason` | `RestartReason.value` | `"process_exited"` when the child died; `"probe_failed"` when `_PROBE_FAILURES_BEFORE_RESTART` consecutive probes missed while the child was still alive. |
+| `exit_status` | `process.poll()` | Raw process exit code, present only when `reason == "process_exited"`. |
+| `probe_duration_s` | wall-clock from probe start | Duration of the failed probe, present only when `reason == "probe_failed"`. |
+| `log_tail` | last 10 lines of the child server log | `null` when the log was unavailable at decision time; an empty list when the log was captured but empty. |
+| `stage` | `"process_exited"` or `"probe_failed"` | Free-form label the supervisor was on at decision time. |
+
+The enum lives at `ralph.mcp.server._mcp_health_event:RestartReason`
+(`PROCESS_EXITED`, `PROBE_FAILED`); the sink writer is
+`record_restart_decision(...)` and the reader is
+`read_durable_sink(path=...)`. When a future incident triggers a
+respawn, classify the trigger from this file first; the previous bridge
+record is what `RestartReason` should map to.
+
 ## Standalone entry point
 
 `ralph.mcp.server.__main__` provides a standalone `ralph-mcp` entry point that starts the MCP server outside of a full pipeline run. This is useful for debugging tool calls or connecting an agent manually during development.
