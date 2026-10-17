@@ -2172,10 +2172,9 @@ def _block_unresolved_integration(  # noqa: PLR0911 -- decision-complete router:
     # derives the blocking decision from current evidence and the next
     # reduce re-persists it.
     record_action = next_integration_action(record)
-    if record is not None and (
-        record.diagnostic_intervention_required
-        or record_action == IntegrationAction.REQUIRE_INTERVENTION
-    ):
+    # The typed authority maps diagnostic_intervention_required=True to
+    # REQUIRE_INTERVENTION itself; no direct checkpoint-field read.
+    if record is not None and record_action == IntegrationAction.REQUIRE_INTERVENTION:
         emit_integration_warn_line(
             ctx.active_display,
             "CRITICAL: diagnostic intervention required; dispatch blocked",
