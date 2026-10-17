@@ -28,6 +28,7 @@ from ralph.mcp.protocol._startup_timeouts import (
     _MAX_UPSTREAMS_AT_DEFAULTS,
     _PROBE_BUDGET_SHARE,
     _PROBE_SAFETY_S,
+    mcp_discovery_budget_from_env,
     mcp_preflight_timeout_from_env,
     mcp_upstream_probe_timeout_from_env,
     mcp_upstream_probe_timeout_seconds,
@@ -185,12 +186,26 @@ class TestPerStageBudgets:
         from ralph.mcp.protocol import _startup_timeouts as mod
 
         assert mod._CONFIG_LOAD_BUDGET_S == 1.0
-        assert mod._REGISTRY_BUILD_BUDGET_S == 1.0
+        assert mod._REGISTRY_BUILD_BUDGET_S == 0.4
+        assert mod._READY_TO_SERVE_BUDGET_S == 0.4
+        # Whole-startup envelope must stay strictly below the preflight timeout.
+        preflight = mcp_preflight_timeout_from_env({}).total_seconds()
+        discovery = mcp_discovery_budget_from_env({}).total_seconds()
+        whole = (
+            mod._CONFIG_LOAD_BUDGET_S
+            + discovery
+            + mod._REGISTRY_BUILD_BUDGET_S
+            + mod._READY_TO_SERVE_BUDGET_S
+        )
+        assert whole < preflight, (
+            f"whole-startup envelope {whole:.3f}s must be < preflight {preflight:.3f}s"
+        )
         # Both constants and the stage vocabulary must be in the docstring.
         doc = mod.__doc__ or ""
         for needle in (
             "_CONFIG_LOAD_BUDGET_S",
             "_REGISTRY_BUILD_BUDGET_S",
+            "_READY_TO_SERVE_BUDGET_S",
             "config_loaded",
             "upstream_catalog_or_discovery_done",
             "ready_to_serve",

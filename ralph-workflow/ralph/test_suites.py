@@ -246,6 +246,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_discovery_aggregate_budget.py",
     "tests/mcp/test_start_stage_tracker_fresh_spawn.py",
     "tests/mcp/test_preflight_error_carries_stage_and_elapsed.py",
+    # wt-16 WU-R2-ENVELOPE: whole-startup budget envelope — child blocked at
+    # registry_built surfaces typed McpServerError with last_stage and elapsed_s
+    "tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py",
     # wt-16 (WU-B follow-up): both files shell out to real git in tmp_path
     # repos and now carry the ``subprocess_e2e`` module marker (enforced by
     # the process-audit AST exemption), so they MUST be registered here to

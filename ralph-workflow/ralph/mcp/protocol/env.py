@@ -63,6 +63,11 @@ class McpEnvVar(StrEnum):
     # kernel backlog and served on the same connection afterwards.
     # Production never sets this variable.
     TEST_PRE_SERVE_GATE = "RALPH_MCP_TEST_PRE_SERVE_GATE"
+    # Subprocess-E2E test seam: path to a sentinel file. When set,
+    # the runtime blocks at the ``registry_built`` checkpoint until the
+    # sentinel file appears, mirroring the ``TEST_PRE_SERVE_GATE`` pattern
+    # but at an earlier stage boundary. Production never sets this variable.
+    TEST_REGISTRY_BUILD_GATE = "RALPH_MCP_TEST_REGISTRY_BUILD_GATE"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -89,3 +94,4 @@ MCP_INHERITED_FD_ENV = McpEnvVar.INHERITED_FD
 MCP_RESPAWN_ENV = McpEnvVar.RESPAWN
 MCP_STAGE_ID_ENV = McpEnvVar.STAGE_ID
 MCP_TEST_PRE_SERVE_GATE_ENV = McpEnvVar.TEST_PRE_SERVE_GATE
+MCP_TEST_REGISTRY_BUILD_GATE_ENV = McpEnvVar.TEST_REGISTRY_BUILD_GATE

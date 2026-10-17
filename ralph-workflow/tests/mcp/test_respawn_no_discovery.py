@@ -16,6 +16,7 @@ import socket
 import threading
 import time
 import urllib.parse
+import urllib.request
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -264,16 +265,49 @@ def _upstream_config_json(port: int) -> str:
     return json.dumps(config, separators=(",", ":"))
 
 
-def _endpoint_serves_fake_tool(endpoint: str) -> bool:
-    """True when tools/list on the endpoint includes the fake upstream tool.
-
-    Uses the same bounded HTTP reader the respawn alias check uses, so a
-    large tools/list body is not truncated to a single 64KiB recv.
-    """
-    from ralph.mcp.server._http_tools_list import _http_tools_list_names
-
+def _fetch_endpoint_tool_names(endpoint: str, *, timeout: float = 5.0) -> list[str]:
+    request_payload: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "method": "tools/list",
+        "id": "1",
+        "params": {},
+    }
+    body = json.dumps(request_payload).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        raw = response.read(1024 * 1024).decode("utf-8", errors="replace")
+    if not raw:
+        return []
+    data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]
+    payload_str = data_lines[0] if data_lines else raw
     try:
-        names = _http_tools_list_names(endpoint, timeout=5.0)
+        payload = json.loads(payload_str)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return []
+    tools = result.get("tools")
+    if not isinstance(tools, list):
+        return []
+    return [
+        entry["name"]
+        for entry in tools
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    ]
+
+
+def _endpoint_serves_fake_tool(endpoint: str) -> bool:
+    """True when tools/list on the endpoint includes the fake upstream tool."""
+    try:
+        names = _fetch_endpoint_tool_names(endpoint, timeout=5.0)
     except OSError:
         return False
     return any("fake-upstream-tool" in name for name in names)
@@ -517,9 +551,7 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
 
             # The respawned child is alive and serves the fake tool.
             assert bridge.process.poll() is None, "respawned child must be alive"
-            from ralph.mcp.server._http_tools_list import _http_tools_list_names
-
-            served = _http_tools_list_names(endpoint, timeout=5.0)
+            served = _fetch_endpoint_tool_names(endpoint, timeout=5.0)
             assert any("fake-upstream-tool" in name for name in served), served[:30]
 
         finally:

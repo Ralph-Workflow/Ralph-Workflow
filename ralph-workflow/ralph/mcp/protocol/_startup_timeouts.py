@@ -21,7 +21,8 @@ Stage vocabulary tracked by :func:`record_stage_elapsed`:
 - ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_BUDGET_S``;
 - ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery
   finished; bounded by ``_REGISTRY_BUILD_BUDGET_S``;
-- ``ready_to_serve`` — the port is bound and the server answers requests.
+- ``ready_to_serve`` — the port is bound and the server answers requests;
+  bounded by ``_READY_TO_SERVE_BUDGET_S``.
 
 The aggregate spawn-to-``tools/list`` bound is the discovery budget
 (``mcp_discovery_budget_from_env`` = preflight - ``_PROBE_SAFETY_S``) and is
@@ -117,7 +118,8 @@ _UPSTREAM_CALL_TIMEOUT_SECONDS = 30.0
 # bound is the discovery budget enforced by the shared deadline, NOT the sum
 # of these.
 _CONFIG_LOAD_BUDGET_S: float = 1.0
-_REGISTRY_BUILD_BUDGET_S: float = 1.0
+_REGISTRY_BUILD_BUDGET_S: float = 0.4
+_READY_TO_SERVE_BUDGET_S: float = 0.4
 
 
 def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
@@ -286,10 +288,34 @@ if not (
     )
 
 
+_CONFIG_LOAD_CUMULATIVE_S: float = _CONFIG_LOAD_BUDGET_S
+_REGISTRY_BUILT_CUMULATIVE_S: float = (
+    _CONFIG_LOAD_BUDGET_S
+    + mcp_discovery_budget_from_env().total_seconds()
+    + _REGISTRY_BUILD_BUDGET_S
+)
+_WHOLE_STARTUP_BUDGET_S: float = _REGISTRY_BUILT_CUMULATIVE_S + _READY_TO_SERVE_BUDGET_S
+_READY_TO_SERVE_CUMULATIVE_S: float = _WHOLE_STARTUP_BUDGET_S
+
+if not (mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET_S):
+    raise RuntimeError(
+        f"import-time invariant violated: sum of per-stage startup budgets "
+        f"({_WHOLE_STARTUP_BUDGET_S:.3f}s) must be < "
+        f"mcp_preflight_timeout_from_env() "
+        f"({mcp_preflight_timeout_from_env().total_seconds():.3f}s). "
+        f"Lower one of the per-stage constants or raise RALPH_MCP_PREFLIGHT_TIMEOUT_MS."
+    )
+
+
 __all__ = [
     "_CONFIG_LOAD_BUDGET_S",
+    "_CONFIG_LOAD_CUMULATIVE_S",
     "_PROBE_SAFETY_S",
+    "_READY_TO_SERVE_BUDGET_S",
+    "_READY_TO_SERVE_CUMULATIVE_S",
     "_REGISTRY_BUILD_BUDGET_S",
+    "_REGISTRY_BUILT_CUMULATIVE_S",
+    "_WHOLE_STARTUP_BUDGET_S",
     "mcp_discovery_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",

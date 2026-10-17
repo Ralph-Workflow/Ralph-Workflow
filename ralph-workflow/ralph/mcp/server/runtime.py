@@ -48,17 +48,25 @@ from loguru import logger
 from ralph import __version__
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.artifacts._path_file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
 )
 from ralph.mcp.protocol._startup_timeouts import (
-    _CONFIG_LOAD_BUDGET_S,
+    _CONFIG_LOAD_CUMULATIVE_S,
+    _READY_TO_SERVE_CUMULATIVE_S,
+    _REGISTRY_BUILT_CUMULATIVE_S,
     mcp_discovery_budget_from_env,
     record_stage_elapsed,
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
-from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV, MCP_OWNER_PID_ENV, MCP_RESPAWN_ENV
+from ralph.mcp.protocol.env import (
+    MCP_INHERITED_FD_ENV,
+    MCP_OWNER_PID_ENV,
+    MCP_RESPAWN_ENV,
+    MCP_TEST_REGISTRY_BUILD_GATE_ENV,
+)
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server._activity_relay_sender import (
     ActivityRelaySender,
@@ -241,7 +249,7 @@ def build_standalone_http_server(
     record_stage_elapsed(
         "config_loaded",
         _clock() - t0,
-        budget_s=_CONFIG_LOAD_BUDGET_S,
+        budget_s=_CONFIG_LOAD_CUMULATIVE_S,
     )
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
@@ -364,6 +372,30 @@ def build_standalone_http_server(
     # R4-LOGS: ``registry_built`` is recorded AFTER the McpServer
     # wrapper exists, right before we hand control to ``server.run()``.
     _log_and_record_stage(workspace_root, "registry_built")
+    # Test-only gate: block at registry_built until a sentinel file exists.
+    # Mirrors the pre-serve gate in _fallback_standalone_server. The deadline
+    # is intentionally much larger than the parent's preflight timeout (30s
+    # default) so the parent preflight always wins the race and the surfaced
+    # ``McpServerError`` carries the parent's preflight-timeout envelope, not
+    # a child-side gate self-timeout.
+    gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
+    if gate_path:
+        gate_path_obj = Path(gate_path)
+        # 5x the typical preflight timeout, plus a large floor.
+        deadline = time.monotonic() + 300.0
+        while not DEFAULT_FILE_BACKEND.exists(
+            gate_path_obj
+        ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+            if time.monotonic() >= deadline:
+                raise McpServerError(
+                    f"registry_built gate timed out after 300s waiting for {gate_path}",
+                    last_stage="registry_built",
+                    elapsed_s=time.monotonic() - t0,
+                    restart_count=0,
+                )
+            # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
+            time.sleep(0.05)
+    record_stage_elapsed("registry_built", _clock() - t0, budget_s=_REGISTRY_BUILT_CUMULATIVE_S)
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
 
@@ -417,6 +449,8 @@ def run_standalone_server(
     """
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
+
+    t0 = _clock()
 
     def _stage(name: str) -> None:
         _log_and_record_stage(workspace_root, name)
@@ -484,6 +518,7 @@ def run_standalone_server(
     # starts, not before. The stage file is the authoritative
     # marker the supervisor reads on preflight failure.
     def _record_ready_to_serve() -> None:
+        record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=_READY_TO_SERVE_CUMULATIVE_S)
         _stage("ready_to_serve")
 
     server.run(

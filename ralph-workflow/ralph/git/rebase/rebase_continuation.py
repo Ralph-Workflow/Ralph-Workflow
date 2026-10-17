@@ -48,10 +48,10 @@ _MAX_EMPTY_SKIP_ATTEMPTS: int = 20
 
 def _git_env() -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("GIT_EDITOR", ":")
-    env.setdefault("EDITOR", ":")
-    env.setdefault("VISUAL", ":")
-    env.setdefault("GIT_SEQUENCE_EDITOR", ":")
+    env["GIT_EDITOR"] = ":"
+    env["EDITOR"] = ":"
+    env["VISUAL"] = ":"
+    env["GIT_SEQUENCE_EDITOR"] = ":"
     return env
 
 
