@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import time
 from enum import StrEnum
+from typing import TYPE_CHECKING, cast
 
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+
+if TYPE_CHECKING:
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
 
 class IntegrationAction(StrEnum):
@@ -68,6 +72,21 @@ def _check_intervention(record: object) -> IntegrationAction | None:
     return None
 
 
+def _check_prepared_merge_tree(record: object) -> IntegrationAction | None:
+    """Prepared merge tree with no armed flags still owns an in-flight merge."""
+    if _safe_attr(record, "merge_commit_tree") is None:
+        return None
+    from ralph.pipeline._git_operation_authority import (
+        GitOperationKind,
+        classify_git_operation,
+    )
+
+    kind = classify_git_operation(cast("IntegrationRecord", record))
+    if kind is GitOperationKind.AWAITING_MERGE_COMMIT:
+        return IntegrationAction.CONTINUE_GIT_OPERATION
+    return None
+
+
 def _check_active_or_pending(record: object) -> IntegrationAction | None:
     """Check active operations and pending continuations or reintegrations."""
     if (
@@ -80,6 +99,9 @@ def _check_active_or_pending(record: object) -> IntegrationAction | None:
         or _safe_attr(record, "resolving_merge") is True
     ):
         return IntegrationAction.RESOLVE_ACTIVE_OPERATION
+    prepared = _check_prepared_merge_tree(record)
+    if prepared is not None:
+        return prepared
     if (
         _safe_attr(record, "reintegrate_pending") is True
         or _safe_attr(record, "target_moved") is True
@@ -87,9 +109,11 @@ def _check_active_or_pending(record: object) -> IntegrationAction | None:
         return IntegrationAction.REINTEGRATE_AGAINST_TARGET
     if _safe_attr(record, "landing_pending") is True or _safe_attr(record, "is_integrated") is True:
         return IntegrationAction.LAND_TARGET
-    if _safe_attr(record, "is_integrating") is True:
-        return IntegrationAction.REINTEGRATE_AGAINST_TARGET
-    return None
+    return (
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET
+        if _safe_attr(record, "is_integrating") is True
+        else None
+    )
 
 
 def _current_time(clock: object) -> float | None:

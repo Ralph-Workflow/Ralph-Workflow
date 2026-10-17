@@ -63,6 +63,18 @@ def test_integration_action_continue_over_resolve_when_overlap() -> None:
     assert next_integration_action(record) == IntegrationAction.CONTINUE_GIT_OPERATION
 
 
+def test_integration_action_merge_tree_only_yields_continue_git_operation() -> None:
+    """Prepared merge tree with no pending flags routes to continuation."""
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="abc111",
+        pre_target_sha="def222",
+        merge_commit_tree="tree999",
+    )
+    assert next_integration_action(record) == IntegrationAction.CONTINUE_GIT_OPERATION
+
+
 def test_integration_action_reintegrate_against_target() -> None:
     """Record in integrating phase or with reintegrate_pending yields REINTEGRATE_AGAINST_TARGET."""
     record = IntegrationRecord(

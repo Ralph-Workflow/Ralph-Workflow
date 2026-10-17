@@ -774,10 +774,7 @@ def _recover_pending_merge(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if (
-        next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
-        and record.merge_commit_tree is None
-    ):
+    if next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET:
         return _recover_unresolved_integrating(
             root,
             record,
