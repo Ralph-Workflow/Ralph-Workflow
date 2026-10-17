@@ -188,20 +188,28 @@ def detached_head_no_state(root: Path, git_dir: Path) -> bool:
     return result.returncode != 0
 
 
-def _resolve_reflog_candidate(root: Path, candidate: str) -> str | None:
+def _resolve_reflog_candidate(root: Path, candidate: str | None) -> str | None:
     """Verify a reflog-derived branch candidate against the exact-tip invariant.
 
     Returns the candidate when:
+    - the candidate is a non-empty string;
     - ``refs/heads/<candidate>`` exists (show-ref exits 0);
     - the branch tip rev-parses to a non-empty OID;
-    - ``git rev-parse HEAD`` succeeds and the candidate's tip EQUALS detached
-      HEAD exactly (no ``is_ancestor`` relaxation, no fall-through to older
-      reflog entries).
+    - ``git rev-parse HEAD`` succeeds AND produces a non-empty OID AND the
+      candidate's tip EQUALS detached HEAD exactly (no ``is_ancestor``
+      relaxation, no fall-through to older reflog entries, no empty-string
+      equal-empty-string fall-through).
 
     Returns ``None`` on any failed observation.  A failed show-ref means the
     destination was a SHA (explicit detached checkout) and is fail-closed;
-    a failed tip/head rev-parse or a non-equal tip is also fail-closed.
+    a failed tip/head rev-parse, an empty rev-parse stdout, a missing
+    candidate, or a non-equal tip is also fail-closed.  An empty
+    rev-parse stdout is treated as UNKNOWN (not as a successful zero-OID
+    observation) so a successful-empty rev-parse cannot authorize a
+    reattachment via the ``"" == ""`` equality path.
     """
+    if not candidate:
+        return None
     branch_check = run_git(
         ("show-ref", "--verify", f"refs/heads/{candidate}"),
         cwd=root,
@@ -214,7 +222,10 @@ def _resolve_reflog_candidate(root: Path, candidate: str) -> str | None:
         cwd=root,
         label="recovery:branch-tip",
     )
-    if tip_check.returncode != 0:
+    # Empty rev-parse stdout is UNKNOWN: refuse to use it as proof that
+    # two observations match (the ``"" == ""`` trap that previously
+    # authorized reattachment on two missing observations).
+    if tip_check.returncode != 0 or not tip_check.stdout.strip():
         return None
     candidate_tip = tip_check.stdout.strip()
     head_check = run_git(
@@ -222,7 +233,7 @@ def _resolve_reflog_candidate(root: Path, candidate: str) -> str | None:
         cwd=root,
         label="recovery:head-rev-parse",
     )
-    if head_check.returncode != 0:
+    if head_check.returncode != 0 or not head_check.stdout.strip():
         return None
     detached_head_oid = head_check.stdout.strip()
     if candidate_tip != detached_head_oid:
@@ -230,25 +241,38 @@ def _resolve_reflog_candidate(root: Path, candidate: str) -> str | None:
     return candidate
 
 
-def _reflog_observation_unknown(*, line: str) -> str | None:
-    """Extract the destination branch name from one reflog line, or ``None``.
+def _is_checkout_or_switch_subject(subject: str) -> bool:
+    """True if a reflog subject is a checkout or switch action.
 
-    Returns the candidate branch name if the line is a checkout/switch
-    entry whose destination field is a non-empty string.  Returns
-    ``None`` for lines without a checkout/switch marker, with malformed
-    "from/to" halves, or whose destination is empty.
-
-    A SHA destination (the typical ``checkout: moving from <branch> to
-    <sha>`` shape) parses as a non-empty string and is verified by
-    :func:`_resolve_reflog_candidate` -- ``show-ref --verify`` rejects
-    it, so the recovery returns ``None`` (fail-closed).  A failed
-    verification is also fail-closed at the reflog-entry level: the
-    caller stops scanning after the first checkout/switch entry whose
-    observation is unknown or invalid.
+    This is the first-pass classifier used by :func:`detached_branch_name`.
+    The subject is the right-hand side of a ``"<sha>\\x00<subject>"`` reflog
+    line.  A line that is not a checkout or switch (commit, merge, cherry-
+    pick, reset, etc.) returns ``False`` and the caller continues scanning
+    older entries.
     """
-    if "\x00" not in line:
-        return None
-    _sha, subject = line.split("\x00", 1)
+    return ("checkout: moving from " in subject) or ("switch branch to " in subject)
+
+
+def _parse_checkout_destination(subject: str) -> str | None:
+    """Return the destination of a checkout/switch subject, or ``None``.
+
+    A well-formed ``checkout: moving from <src> to <dest>`` (or
+    ``switch branch to <dest>``) subject returns ``<dest>`` stripped of
+    surrounding whitespace.  Returns ``None`` for any of:
+
+    * a subject that is not a checkout/switch (caller should have filtered
+      with :func:`_is_checkout_or_switch_subject` first);
+    * a checkout/switch subject without a `` to `` separator (malformed
+      half-line, e.g. ``checkout: moving from main`` with no destination);
+    * a subject whose destination is empty or whitespace-only (e.g.
+      ``checkout: moving from main to ``).
+
+    The two failure modes (irrelevant entry vs. malformed entry) are
+    intentionally distinguished: the caller's recovery contract is to
+    STOP scanning on the first checkout/switch entry regardless of
+    validity, so a malformed newest entry must return ``None`` and
+    trigger fail-closed.
+    """
     for marker in ("checkout: moving from ", "switch branch to "):
         idx = subject.find(marker)
         if idx == -1:
@@ -257,9 +281,9 @@ def _reflog_observation_unknown(*, line: str) -> str | None:
         parts = rest.split(" to ", 1)
         # Two halves: "<source> to <destination>"; 1-half means malformed
         source_dest: tuple[str, str] = ("", "")  # typing hint to avoid PLR2004
-        if len(parts) == len(source_dest):
-            candidate = parts[1].strip() or None
-            return candidate
+        if len(parts) != len(source_dest):
+            return None
+        return parts[1].strip() or None
     return None
 
 
@@ -308,21 +332,32 @@ def detached_branch_name(root: Path) -> str | None:
     # tip already points at detached HEAD (any other branch tip would silently
     # lose the detached commits).  Fail-closed: a single failed observation
     # returns ``None`` and never falls through to an older reflog entry.
+    #
+    # The two-step classifier (is_checkout_or_switch_subject followed by
+    # parse_checkout_destination) intentionally separates "irrelevant entry"
+    # (commit/merge/cherry-pick -- continue scanning) from "malformed
+    # checkout entry" (no " to " separator or empty destination -- fail
+    # closed and DO NOT scan older entries).  An earlier implementation
+    # conflated these cases by returning None for both, which let a
+    # malformed newest entry be skipped in favor of an older valid one.
     for line in result.stdout.splitlines():
-        # Skip non-checkout lines (commits, merges, cherry-picks) --
-        # the recovery is keyed on a checkout/switch entry that put
-        # the user in the detached state.  Older non-checkout entries
-        # before the first checkout observation are also ignored.
-        candidate = _reflog_observation_unknown(line=line)
-        if candidate is None:
+        if "\x00" not in line:
+            continue
+        _sha, subject = line.split("\x00", 1)
+        # Skip non-checkout lines (commits, merges, cherry-picks).
+        if not _is_checkout_or_switch_subject(subject):
             continue
 
-        # This is the first checkout/switch entry we encountered.
-        # ``_resolve_reflog_candidate`` enforces the exact-tip invariant
-        # and returns ``None`` on any failed observation (SHA destination,
-        # unreadable branch, mismatched tip).  Either outcome is
-        # fail-closed for THIS reflog entry -- do not fall through to
-        # older entries; return immediately.
+        # This is the first checkout/switch entry we encountered.  The
+        # entry's destination is either a valid non-empty string, a SHA
+        # (which ``_resolve_reflog_candidate`` rejects via show-ref), an
+        # empty string, or a malformed half-line with no " to " separator.
+        # Each of those outcomes is fail-closed: the resolver returns
+        # ``None`` for SHA/empty/malformed and never falls through to
+        # older reflog entries.  This is the invariant-10 ownership
+        # boundary -- UNKNOWN observations must not authorize a branch
+        # selection.
+        candidate = _parse_checkout_destination(subject)
         return _resolve_reflog_candidate(root, candidate)
     return None
 
