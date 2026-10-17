@@ -75,34 +75,18 @@ _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
 _DEFAULT_PYTEST_WORKERS = "auto"
 # Hard cap on the number of plain-pytest shards; raising this cap does NOT
 # raise the combined 60-second budget tracked upstream in
-# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. On the maintained 40-core
-# host, 16 plain shards keep concurrent pytest startup, collection, and
-# filesystem work below the per-test watchdog contention threshold while
-# leaving enough headroom for the 14 s smoke step on a 60 s combined
-# budget -- the 8-shard cap the smaller 12-core host documents measured
-# the slowest shard at ~50 s on the grown E2E set and exhausted the
-# budget before the smoke step could complete. 16 shards trims the
-# slowest shard to ~42 s on the same host without tripping the 1.0 s
-# per-test SIGALRM cap on any test in the maintained suite.
-#
-# wt-16 WU-DIAG-AND-REPAIR: the cap is HOST-DEPENDENT, not a hard 8
-# for every host. The 40-core maintained host documents 16 shards as
-# the right number; capping at 8 means every shard on the 40-core
-# maintained host runs ~2x the work the maintainer profiled, and the
-# 60s combined budget is exhausted on the grown E2E set. The cap is
-# sized per host class so the 12-core heterogeneous host keeps 8
-# (where 16 would oversubscribe the 12 logical cores) and the 40-core
-# host gets 16. The 60s combined budget tracked by
+# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. The 8-shard cap is the
+# verified-only size that keeps the maintained 40-core host's full
+# selected suite inside the immutable 60 s combined budget while
+# preserving exact-once selection; any larger value exhausts the budget
+# on the grown E2E set. The 60s combined budget tracked by
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`` is preserved; this is
-# a runner-architecture change, not a budget-constant change.
+# a runner-architecture choice, not a budget-constant change.
 _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 
 
 def _max_pytest_workers_for_host() -> int:
-    available_cores = os.cpu_count() or 2
-    if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES:
-        return 8
-    return 16
+    return 8
 
 
 _MAX_PYTEST_WORKERS = _max_pytest_workers_for_host()
@@ -216,10 +200,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
     # wt-15-policy (U1): the 460-test parametrized display module is too
-    # heavy for a 16-shard LPT partition: it lands on a low-file-count
+    # heavy for an 8-shard LPT partition: it lands on a low-file-count
     # shard and is the wall-clock bottleneck (verified ~27s for the
     # shard carrying it vs ~22s for the others on the 40-core host).
-    # Moving it here lets the E2E shard's eight xdist workers absorb
+    # Moving it here lets the E2E shard's four xdist workers absorb
     # the parametrization fan-out, so the slowest general shard and
     # the E2E shard both fit inside the 60-second combined budget
     # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
@@ -314,51 +298,17 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # partition whose slowest shard exceeded the 50 s make-test step.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
-# Required real-git files use a dedicated shard with eight xdist workers.
-# Each test owns a ``tmp_path``; eight workers on a 40-core host trim
-# the measured wall clock well under the 50 s make-test budget headroom
-# that the budget-tracked smoke step depends on. The 4-worker value it
-# replaced cut the original 9.25 s to 4.46 s on a smaller E2E selection;
-# the 12x-grown E2E set now spends ~50 s at 4 workers and the gate
-# exhausts its 60 s combined budget before the smoke step completes. 8
-# workers halves the E2E shard wall clock without raising any test or
-# suite timeout, leaving enough headroom for the 14 s smoke step on the
-# maintained 40-core host under typical load. (wt-15-policy: the
-# earlier 12-worker bump was profiled optimal for the 40-core
-# maintained host but intermittently exceeded the 60 s combined budget
-# on the smaller 12-core host because the in-shard 12 xdist workers
-# competed with the 8 general pytest processes for CPU bandwidth; the
-# 8-worker value matches the general shard count so the E2E shard's
-# in-shard fan-out does not oversubscribe the host.) The worker
-# count is a runner-architecture change, not a budget-constant
-# change, and the cumulative tracker in ralph/verify.py is preserved.
-# wt-03-fix-bug: reduced from 8 to 4 to reduce total concurrent
-# process count (6 general + 4 E2E = 10 total vs prior 8+8=16)
+
+
+# Required real-git files use a dedicated shard with four xdist workers.
+# wt-03-fix-bug: the cap is host-invariant: 4 workers on every host
+# keep the total concurrent process count at 12 (8 general + 4 E2E)
 # under high host load; E2E tests take ~1.25x longer per-worker but
 # reduced contention lets general shards complete faster, keeping
-# combined wall-clock inside the 60 s budget.
-#
-# wt-16 WU-DIAG-AND-REPAIR: the maintained-host profile above documents
-# that 8 workers halves the E2E shard wall clock without raising any
-# test or suite timeout, leaving enough headroom for the 14 s smoke
-# step on the maintained 40-core host under typical load. The 4-worker
-# value the wt-03 reduction chose cannot keep the grown E2E set
-# (40+ real-subprocess MCP files including
-# ``test_runtime_blocked_registry_built_surfaces_typed_error``) under
-# 50 s wall-clock on the 40-core host. The host-class-aware cap on
-# ``_MAX_PYTEST_WORKERS`` already gives the 40-core host 16 plain
-# shards; matching the E2E shard's in-shard xdist to 8 keeps the E2E
-# shard's per-worker count equal to the general shard count so the
-# 40-core host's combined fan-out stays balanced. The 12-core
-# heterogeneous host keeps 4 (where 8 would oversubscribe the 12
-# logical cores). The 60s combined budget tracked by
-# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`` is preserved; this is
-# a runner-architecture change, not a budget-constant change.
+# combined wall-clock inside the 60 s budget. The cumulative 60 s
+# budget in ``ralph/verify.py`` is preserved.
 def _required_e2e_xdist_workers() -> str:
-    available_cores = os.cpu_count() or 2
-    if available_cores <= _HETEROGENEOUS_CORE_HOST_MAX_CORES:
-        return "4"
-    return "8"
+    return "4"
 
 
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()
@@ -527,8 +477,8 @@ def _xdist_workers_per_shard() -> str:
     """Return the in-shard xdist worker count, or ``"0"`` to disable xdist.
 
     The default is ``"0"`` (plain pytest per shard), which on the maintained
-    32-core CI profile keeps the slowest shard well under the 60-second
-    combined budget because the shard-saturated 16-shard fan-out already
+    8-shard CI profile keeps the slowest shard well under the 60-second
+    combined budget because the shard-saturated 8-shard fan-out already
     uses one pytest process per shard and adding in-shard xdist workers
     trades parallel IO for pytest-coordination overhead. Operators
     on hosts with idle cores beyond the shard cap (e.g. 64-core CI), or
