@@ -288,13 +288,27 @@ if not (
     )
 
 
+def mcp_registry_built_budget_from_env(
+    env: Mapping[str, str] | None = None,
+) -> float:
+    """Return the cumulative budget ceiling up through the registry_built stage."""
+    return (
+        _CONFIG_LOAD_BUDGET_S
+        + mcp_discovery_budget_from_env(env).total_seconds()
+        + _REGISTRY_BUILD_BUDGET_S
+    )
+
+
+def mcp_whole_startup_budget_from_env(
+    env: Mapping[str, str] | None = None,
+) -> float:
+    """Return the whole startup envelope budget ceiling across all startup stages."""
+    return mcp_registry_built_budget_from_env(env) + _READY_TO_SERVE_BUDGET_S
+
+
 _CONFIG_LOAD_CUMULATIVE_S: float = _CONFIG_LOAD_BUDGET_S
-_REGISTRY_BUILT_CUMULATIVE_S: float = (
-    _CONFIG_LOAD_BUDGET_S
-    + mcp_discovery_budget_from_env().total_seconds()
-    + _REGISTRY_BUILD_BUDGET_S
-)
-_WHOLE_STARTUP_BUDGET_S: float = _REGISTRY_BUILT_CUMULATIVE_S + _READY_TO_SERVE_BUDGET_S
+_REGISTRY_BUILT_CUMULATIVE_S: float = mcp_registry_built_budget_from_env()
+_WHOLE_STARTUP_BUDGET_S: float = mcp_whole_startup_budget_from_env()
 _READY_TO_SERVE_CUMULATIVE_S: float = _WHOLE_STARTUP_BUDGET_S
 
 if not (mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET_S):
@@ -318,7 +332,9 @@ __all__ = [
     "_WHOLE_STARTUP_BUDGET_S",
     "mcp_discovery_budget_from_env",
     "mcp_preflight_timeout_from_env",
+    "mcp_registry_built_budget_from_env",
     "mcp_upstream_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_seconds",
+    "mcp_whole_startup_budget_from_env",
     "upstream_call_timeout_seconds",
 ]

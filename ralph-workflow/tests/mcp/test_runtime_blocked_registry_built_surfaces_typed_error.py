@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import socket
 import threading
-import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -24,7 +23,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.mcp.protocol._startup_timeouts import mcp_preflight_timeout_from_env
 from ralph.mcp.protocol.env import MCP_TEST_REGISTRY_BUILD_GATE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -85,7 +83,13 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
     workspace = lifecycle.FsWorkspace(tmp_path)
     # Do NOT create the sentinel file: the child blocks indefinitely at the gate.
     sentinel = tmp_path / "registry_build_gate"
-    extras = McpServerExtras(extra_env={MCP_TEST_REGISTRY_BUILD_GATE_ENV: str(sentinel)})
+    preflight_timeout_ms = 5000
+    extras = McpServerExtras(
+        extra_env={
+            MCP_TEST_REGISTRY_BUILD_GATE_ENV: str(sentinel),
+            "RALPH_MCP_PREFLIGHT_TIMEOUT_MS": str(preflight_timeout_ms),
+        }
+    )
 
     signal = _PortSignal()
     deps = _make_deps(signal)
@@ -111,24 +115,24 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
             "bridge never reserved its listening socket — child may have crashed"
         )
 
-        # The child's stage file must say "registry_built" (it wrote this before
-        # blocking at the gate).
-        deadline = time.monotonic() + 15.0
+        # Wait for start_mcp_server to raise (child-side budget exceeded or preflight fails).
+        assert done.wait(timeout=30.0), "start_mcp_server did not raise within 30s window"
+
+        # The child's stage file must say "registry_built".
         stage_label = ""
-        while time.monotonic() < deadline:
-            stages = sorted((tmp_path / ".agent").glob(".ralph_mcp_start_stage.*"))
-            if stages:
-                stage_label = stages[-1].read_text(encoding="utf-8").strip()
-                if stage_label == "registry_built":
-                    break
-            time.sleep(0.05)
+        stages = sorted((tmp_path / ".agent").glob(".ralph_mcp_start_stage.*"))
+        if stages:
+            stage_label = stages[-1].read_text(encoding="utf-8").strip()
         assert stage_label == "registry_built", (
-            f"expected child to be blocked at registry_built, got {stage_label!r}"
+            f"expected child stage file to record registry_built, got {stage_label!r}"
         )
 
-        # Wait for start_mcp_server to raise (preflight times out).
-        assert done.wait(timeout=30.0), (
-            "start_mcp_server did not raise within 30s window"
+        # The child's live server log must also record the registry_built stage.
+        log_path = lifecycle.mcp_server_log_path(tmp_path)
+        assert log_path.exists(), f"child server log does not exist at {log_path}"
+        log_content = log_path.read_text(encoding="utf-8")
+        assert "registry_built" in log_content, (
+            f"expected 'registry_built' in child server log ({log_path}), got:\n{log_content}"
         )
 
         # Assert the surfaced error is a typed McpServerError with the
@@ -143,18 +147,13 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
         )
         assert exc.elapsed_s is not None, "elapsed_s must not be None"
         assert exc.elapsed_s > 0, f"elapsed_s must be > 0, got {exc.elapsed_s}"
-        # The parent's ``elapsed_s`` is the wall-clock from spawn to error
-        # raise and includes the preflight timeout (30s) plus child-shutdown
-        # and stage-file-read overhead. It MUST stay below
-        # preflight_timeout + 30s cleanup overhead (proves the preflight
-        # actually fired first; a runaway ``elapsed_s`` would mean the
-        # child was hanging past the parent's preflight window and the
-        # supervisor was no longer enforcing it).
-        preflight_timeout = mcp_preflight_timeout_from_env().total_seconds()
-        assert exc.elapsed_s < preflight_timeout + 30.0, (
+
+        # The parent's preflight fires at 5s (not the 30s default) plus bounded cleanup overhead.
+        preflight_timeout_s = preflight_timeout_ms / 1000.0
+        assert exc.elapsed_s < preflight_timeout_s + 5.0, (
             f"elapsed_s ({exc.elapsed_s:.3f}s) must be < "
-            f"preflight_timeout+30s ({preflight_timeout + 30.0:.3f}s); "
-            "a runaway value means the parent preflight window did not fire"
+            f"configured preflight deadline + 5s ({preflight_timeout_s + 5.0:.3f}s); "
+            "proves child failed fast within its configured budget rather than waiting for 30s default"
         )
     finally:
         # Clean up: touch the sentinel so the child can exit if it is still alive.

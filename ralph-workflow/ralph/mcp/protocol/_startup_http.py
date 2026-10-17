@@ -254,21 +254,46 @@ def preflight_http_attempt(
         tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
         ensure_required_tools(required_tools, tools)
         return
-    post_fn = post_with_session_fn or post_http_jsonrpc_with_session
-    initialize_response, session_id = post_fn(endpoint, target, initialize_request())
+    post_timeout_s = min(0.5, max(0.001, remaining.total_seconds()))
+
+    def _timeout_post(
+        url: str,
+        *,
+        json: JsonRpcResponse,
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        return _default_http_post(
+            url, json=json, headers=headers, timeout=min(timeout, post_timeout_s)
+        )
+
+    def _call_post(
+        ep: str | HttpEndpointTarget,
+        tgt_or_pld: HttpEndpointTarget | JsonRpcResponse,
+        pld: JsonRpcResponse | None = None,
+        *,
+        sid: str | None = None,
+    ) -> tuple[JsonRpcResponse, str | None]:
+        if post_with_session_fn is not None:
+            return post_with_session_fn(ep, tgt_or_pld, pld, session_id=sid)
+        return post_http_jsonrpc_with_session(
+            ep, tgt_or_pld, pld, session_id=sid, post_fn=_timeout_post
+        )
+
+    initialize_response, session_id = _call_post(endpoint, target, initialize_request())
     ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
     if not session_id:
         raise PermanentPreflightError("HTTP MCP initialize missing mcp-session-id header")
-    notification_response, session_id = post_fn(
+    notification_response, session_id = _call_post(
         endpoint,
         target,
         initialized_notification(),
-        session_id=session_id,
+        sid=session_id,
     )
     ensure_no_preflight_error(
         "HTTP MCP notifications/initialized", notification_response.get("error")
     )
-    tools_response, _ = post_fn(endpoint, target, tools_list_request(), session_id=session_id)
+    tools_response, _ = _call_post(endpoint, target, tools_list_request(), sid=session_id)
     ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
     tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
     ensure_required_tools(required_tools, tools)

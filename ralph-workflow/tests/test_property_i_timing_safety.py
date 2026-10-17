@@ -79,14 +79,14 @@ def test_env_var_member_added_to_mcp_env_var() -> None:
     assert hasattr(McpEnvVar, "REQUEST_TIMEOUT_MS")
     assert McpEnvVar.REQUEST_TIMEOUT_MS == "RALPH_MCP_REQUEST_TIMEOUT_MS"
     members = list(McpEnvVar)
-    assert len(members) == 24, f"expected 24 members, got {len(members)}"
+    assert len(members) == 25, f"expected 25 members, got {len(members)}"
     # REQUEST_TIMEOUT_MS is the last of the original 20 members;
     # the bridge-owns-listening-socket work added two more
     # (INHERITED_FD and RESPAWN), the per-spawn stage attribution
-    # work added STAGE_ID, and the slow-startup backlog test seam
-    # added TEST_PRE_SERVE_GATE — the count now reflects all four.
-    # The canonical ordering is the addition
-    # order; REQUEST_TIMEOUT_MS is still present and
+    # work added STAGE_ID, and the slow-startup backlog test seams
+    # added TEST_PRE_SERVE_GATE and TEST_REGISTRY_BUILD_GATE — the
+    # count now reflects all five. The canonical ordering is the
+    # addition order; REQUEST_TIMEOUT_MS is still present and
     # discoverable.
     assert McpEnvVar.REQUEST_TIMEOUT_MS in members
     assert members[-1] in (
@@ -94,6 +94,7 @@ def test_env_var_member_added_to_mcp_env_var() -> None:
         McpEnvVar.STAGE_ID,
         McpEnvVar.REQUEST_TIMEOUT_MS,
         McpEnvVar.TEST_PRE_SERVE_GATE,
+        McpEnvVar.TEST_REGISTRY_BUILD_GATE,
     )
 
 

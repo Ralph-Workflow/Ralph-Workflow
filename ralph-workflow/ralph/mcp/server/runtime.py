@@ -55,9 +55,9 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_CUMULATIVE_S,
-    _READY_TO_SERVE_CUMULATIVE_S,
-    _REGISTRY_BUILT_CUMULATIVE_S,
     mcp_discovery_budget_from_env,
+    mcp_registry_built_budget_from_env,
+    mcp_whole_startup_budget_from_env,
     record_stage_elapsed,
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
@@ -186,6 +186,88 @@ def standalone_session_identity(agent_transport: str | None) -> MultimodalModelI
     )
 
 
+def _construct_mcp_server_within_budget(
+    *,
+    workspace_root: Path,
+    effective_session: McpSession,
+    workspace: FsWorkspace,
+    upstream_reg: UpstreamRegistry | None,
+    upstream_servers: Sequence[UpstreamMcpServer],
+    mcp_cfg: McpConfig,
+    activity_relay_sender: ActivityRelaySender | None,
+    env_map: Mapping[str, str],
+    t0: float,
+    registry_budget_s: float,
+    remaining_registry_budget: float,
+) -> McpServer:
+    server_result: list[
+        McpServer
+    ] = []  # bounded-accumulator-ok: local closure collection bounded to single server
+    construction_error: list[
+        BaseException
+    ] = []  # bounded-accumulator-ok: local closure collection bounded to single error
+
+    def _do_construct() -> None:
+        try:
+            gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
+            if gate_path:
+                gate_path_obj = Path(gate_path)
+                while not DEFAULT_FILE_BACKEND.exists(
+                    gate_path_obj
+                ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+                    # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
+                    time.sleep(0.02)
+            reg = build_ralph_tool_registry(
+                effective_session,
+                workspace,
+                upstream_registry=upstream_reg,
+                mcp_config=mcp_cfg,
+            )
+            n_builtin = len(list(reg.list_definitions()))
+            if upstream_reg and upstream_servers:
+                n_proxied = len(list(upstream_reg.tool_definitions()))
+                n_servers = len(upstream_servers)
+                logger.info(
+                    "MCP server started with {n} built-in tools + "
+                    "{m} proxied upstream tools from {k} servers",
+                    n=n_builtin,
+                    m=n_proxied,
+                    k=n_servers,
+                )
+            else:
+                logger.info("MCP server started with {n} built-in tools", n=n_builtin)
+            srv = McpServer(
+                effective_session,
+                workspace,
+                reg,
+                mcp_activity_sink=(
+                    activity_relay_sender.emit if activity_relay_sender is not None else None
+                ),
+            )
+            server_result.append(srv)
+        except BaseException as exc:
+            construction_error.append(exc)
+
+    construct_thread = threading.Thread(target=_do_construct, daemon=True)
+    construct_thread.start()
+    construct_thread.join(timeout=remaining_registry_budget)
+
+    if construct_thread.is_alive():
+        elapsed_total = _clock() - t0
+        _log_and_record_stage(workspace_root, "registry_built")
+        raise McpServerError(
+            f"registry_built budget exceeded during construction ({elapsed_total:.3f}s >= {registry_budget_s:.3f}s)",
+            last_stage="registry_built",
+            elapsed_s=elapsed_total,
+            restart_count=0,
+        )
+
+    if construction_error:
+        raise construction_error[0]
+
+    return server_result[0]
+
+
 def build_standalone_http_server(
     workspace_root: Path,
     *,
@@ -196,6 +278,7 @@ def build_standalone_http_server(
     activity_relay_sender: ActivityRelaySender | None = None,
     env: Mapping[str, str] | None = None,
     parent_socket: socket.socket | None = None,
+    t0: float | None = None,
 ) -> _StandaloneHttpServer:
     """Build a standalone HTTP MCP server backed by the Ralph tool registry.
 
@@ -217,7 +300,8 @@ def build_standalone_http_server(
     """
     _extras = extras or McpServerExtras()
     env_map = os.environ if env is None else env
-    t0 = _clock()
+    if t0 is None:
+        t0 = _clock()
     effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
@@ -342,60 +426,29 @@ def build_standalone_http_server(
         _clock() - t0,
         budget_s=mcp_discovery_budget_from_env().total_seconds(),
     )
-    registry = build_ralph_tool_registry(
-        effective_session,
-        workspace,
-        upstream_registry=upstream_reg,
-        mcp_config=mcp_cfg,
-    )
-    n_builtin = len(list(registry.list_definitions()))
-    if upstream_reg and upstream_servers:
-        n_proxied = len(list(upstream_reg.tool_definitions()))
-        n_servers = len(upstream_servers)
-        logger.info(
-            "MCP server started with {n} built-in tools + "
-            "{m} proxied upstream tools from {k} servers",
-            n=n_builtin,
-            m=n_proxied,
-            k=n_servers,
-        )
-    else:
-        logger.info("MCP server started with {n} built-in tools", n=n_builtin)
-    server = McpServer(
-        effective_session,
-        workspace,
-        registry,
-        mcp_activity_sink=(
-            activity_relay_sender.emit if activity_relay_sender is not None else None
-        ),
+    registry_budget_s = mcp_registry_built_budget_from_env(env_map)
+    elapsed_before_registry = _clock() - t0
+    remaining_registry_budget = max(0.01, registry_budget_s - elapsed_before_registry)
+    if env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV):
+        remaining_registry_budget = min(0.5, remaining_registry_budget)
+
+    server = _construct_mcp_server_within_budget(
+        workspace_root=workspace_root,
+        effective_session=effective_session,
+        workspace=workspace,
+        upstream_reg=upstream_reg,
+        upstream_servers=upstream_servers,
+        mcp_cfg=mcp_cfg,
+        activity_relay_sender=activity_relay_sender,
+        env_map=env_map,
+        t0=t0,
+        registry_budget_s=registry_budget_s,
+        remaining_registry_budget=remaining_registry_budget,
     )
     # R4-LOGS: ``registry_built`` is recorded AFTER the McpServer
     # wrapper exists, right before we hand control to ``server.run()``.
     _log_and_record_stage(workspace_root, "registry_built")
-    # Test-only gate: block at registry_built until a sentinel file exists.
-    # Mirrors the pre-serve gate in _fallback_standalone_server. The deadline
-    # is intentionally much larger than the parent's preflight timeout (30s
-    # default) so the parent preflight always wins the race and the surfaced
-    # ``McpServerError`` carries the parent's preflight-timeout envelope, not
-    # a child-side gate self-timeout.
-    gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
-    if gate_path:
-        gate_path_obj = Path(gate_path)
-        # 5x the typical preflight timeout, plus a large floor.
-        deadline = time.monotonic() + 300.0
-        while not DEFAULT_FILE_BACKEND.exists(
-            gate_path_obj
-        ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
-            if time.monotonic() >= deadline:
-                raise McpServerError(
-                    f"registry_built gate timed out after 300s waiting for {gate_path}",
-                    last_stage="registry_built",
-                    elapsed_s=time.monotonic() - t0,
-                    restart_count=0,
-                )
-            # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
-            time.sleep(0.05)
-    record_stage_elapsed("registry_built", _clock() - t0, budget_s=_REGISTRY_BUILT_CUMULATIVE_S)
+    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
 
@@ -506,6 +559,7 @@ def run_standalone_server(
         agent_transport=agent_transport,
         activity_relay_sender=relay_sender,
         parent_socket=parent_socket,
+        t0=t0,
     )
     if is_respawn:
         logger.info(
@@ -513,12 +567,14 @@ def run_standalone_server(
             "registry built from cached tool catalog)"
         )
 
+    ready_budget_s = mcp_whole_startup_budget_from_env()
+
     # R4: record ready_to_serve and emit the banner INSIDE
     # ``server.run()`` so the banner fires when serving actually
     # starts, not before. The stage file is the authoritative
     # marker the supervisor reads on preflight failure.
     def _record_ready_to_serve() -> None:
-        record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=_READY_TO_SERVE_CUMULATIVE_S)
+        record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=ready_budget_s)
         _stage("ready_to_serve")
 
     server.run(

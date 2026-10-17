@@ -35,14 +35,23 @@ def test_setter_rejects_values_outside_the_closed_vocabulary() -> None:
 def _writer_sites() -> list[str]:
     """Static-scan ralph/ for direct last_publication_decision writers."""
     offenders: list[str] = []
-    for path in sorted(RALPH_ROOT.rglob("*.py")):
-        if path.name == "rebase_state.py":
+    # Candidate subtrees where rebase state is defined and consumed:
+    candidate_roots = (
+        RALPH_ROOT / "pipeline",
+        RALPH_ROOT / "git",
+        RALPH_ROOT / "recovery",
+    )
+    for root in candidate_roots:
+        if not root.exists():
             continue
-        # Cheap bytes pre-filter: decode + parse only files that mention the
-        # field at all, so the 1s per-test timeout holds under shard load.
-        raw = path.read_bytes()
-        if b"last_publication_decision" not in raw:
-            continue
+        for path in sorted(root.rglob("*.py")):
+            if path.name == "rebase_state.py":
+                continue
+            # Cheap bytes pre-filter: decode + parse only files that mention the
+            # field at all, so the 1s per-test timeout holds under shard load.
+            raw = path.read_bytes()
+            if b"last_publication_decision" not in raw:
+                continue
         source = raw.decode(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):

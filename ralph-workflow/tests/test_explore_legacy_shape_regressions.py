@@ -208,54 +208,47 @@ class TestMutationFreshnessWithRealHandle:
 class TestListDirectoryLegacyShape:
     """AC-09 backward compatibility for ``handle_list_directory``."""
 
-    def test_default_preserves_legacy_text_with_handle(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            result = handle_list_directory(session, _make_listing_ws(), {"path": "."})
-            assert result.is_error is False
-            text = result.content[0].text
-            # Legacy shape: "Directory: ." header + entry list.
-            assert text.startswith("Directory: .")
-            assert "foo.py" in text
+    def test_default_preserves_legacy_text_with_handle(self, explore_handle: object) -> None:
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        result = handle_list_directory(session, _make_listing_ws(), {"path": "."})
+        assert result.is_error is False
+        text = result.content[0].text
+        # Legacy shape: "Directory: ." header + entry list.
+        assert text.startswith("Directory: .")
+        assert "foo.py" in text
 
     def test_default_recursive_preserves_legacy_text_with_handle(
         self,
+        explore_handle: object,
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            ws = MagicMock()
-            ws.list_dir.return_value = []
-            ws.is_dir.return_value = False
-            result = handle_list_directory(session, ws, {"path": ".", "recursive": True})
-            assert result.is_error is False
-            text = result.content[0].text
-            assert text.startswith("Directory (recursive): .")
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        ws = MagicMock()
+        ws.list_dir.return_value = []
+        ws.is_dir.return_value = False
+        result = handle_list_directory(session, ws, {"path": ".", "recursive": True})
+        assert result.is_error is False
+        text = result.content[0].text
+        assert text.startswith("Directory (recursive): .")
 
     def test_use_index_never_returns_legacy_text_for_every_view(
         self,
+        explore_handle: object,
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            for view in ("raw", "compact", "ranked", "outline"):
-                result = handle_list_directory(
-                    session,
-                    _make_listing_ws(),
-                    {"path": ".", "view": view, "use_index": "never"},
-                )
-                assert result.is_error is False
-                text = result.content[0].text
-                assert text.startswith("Directory: ."), (
-                    f"use_index=never with view={view} returned non-legacy text: {text!r}"
-                )
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        for view in ("raw", "compact", "ranked", "outline"):
+            result = handle_list_directory(
+                session,
+                _make_listing_ws(),
+                {"path": ".", "view": view, "use_index": "never"},
+            )
+            assert result.is_error is False
+            text = result.content[0].text
+            assert text.startswith("Directory: ."), (
+                f"use_index=never with view={view} returned non-legacy text: {text!r}"
+            )
 
     def test_use_index_always_without_handle_fails_closed(self) -> None:
         result = handle_list_directory(
