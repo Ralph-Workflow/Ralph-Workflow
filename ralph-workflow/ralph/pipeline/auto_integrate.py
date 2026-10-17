@@ -106,6 +106,10 @@ from ralph.pipeline.auto_integrate_terminal import (
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.rebase_state import StartupRetentionReason
 
+_random = (
+    random.Random()
+)  # module-local RNG: thread-safe jitter without mutating global random state
+
 _MERGE_INSTEAD_STRATEGY_INDEX = 2
 
 if TYPE_CHECKING:
@@ -129,7 +133,7 @@ def auto_integrate_after_commit(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
+    jitter: Callable[[], float] = _random.random,
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and surfacing terminal-state violations."""
     # An unresolved integration must not SKIP this seam: this seam is the
@@ -231,7 +235,7 @@ def auto_integrate_on_phase_transition(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
+    jitter: Callable[[], float] = _random.random,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
     # Same rule as the commit seam: an unresolved integration must not
@@ -261,7 +265,7 @@ def _auto_integrate_on_phase_transition_inner(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
+    jitter: Callable[[], float] = _random.random,
 ) -> RebaseState | None:
     try:
         root = Path(workspace_scope.root)
@@ -332,7 +336,7 @@ def _auto_integrate_after_commit_inner(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
+    jitter: Callable[[], float] = _random.random,
 ) -> RebaseState | None:
     """Resolve context, integrate, and retry bounded fast-forward races."""
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
