@@ -698,11 +698,14 @@ class RestartAwareMcpBridge:
 
         When the inner process is a MagicMock (e.g. in unit tests
         that do not exercise the HTTP path), the method logs a
-        debug line and returns without raising. The wire-level
-        regression test in
-        ``test_mcp_bridge_alias_verify_after_respawn.py`` uses a
-        real ``FallbackStandaloneServer`` so the actual HTTP path
-        is exercised.
+        debug line and returns without raising. The error path
+        is pinned by
+        ``tests/test_live_tool_unavailable_recovery.py::test_bridge_reset_tool_registry_fails_closed_when_alias_probe_fails``,
+        which drives ``reset_tool_registry()`` with a
+        monkeypatched ``_http_tools_list_names`` raising
+        ``TimeoutError`` and asserts the resulting
+        ``McpServerError`` matches the ``'alias verify probe
+        failed after respawn'`` substring.
 
         The HTTP round-trip is bounded by
         ``_RESPAWN_ALIAS_VERIFY_TIMEOUT_S`` so a wedged inner
