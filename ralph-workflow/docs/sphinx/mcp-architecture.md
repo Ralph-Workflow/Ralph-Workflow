@@ -115,6 +115,16 @@ The enum lives at `ralph.mcp.server._mcp_health_event:RestartReason`
 respawn, classify the trigger from this file first; the previous bridge
 record is what `RestartReason` should map to.
 
+For the 2026-10 ECONNREFUSED incident the per-bridge sink was not yet
+durable enough to retain the run's restart decisions, so the trigger
+class for that respawn (`RestartReason.PROCESS_EXITED` vs
+`RestartReason.PROBE_FAILED`) cannot be determined from retained
+evidence. The sink described above is the durable artifact the next
+incident is triaged from; every restart decision now lands in
+`<workspace>/.agent/mcp-health-events-<bridge-id>.jsonl` with the
+exit status, probe duration, and the last ten child log lines so the
+classification has direct evidence instead of a loguru scrape.
+
 ## Standalone entry point
 
 `ralph.mcp.server.__main__` provides a standalone `ralph-mcp` entry point that starts the MCP server outside of a full pipeline run. This is useful for debugging tool calls or connecting an agent manually during development.
