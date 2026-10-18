@@ -2,7 +2,6 @@
 
 import threading
 
-import ralph.agents.invoke._watch_capacity as _watch_capacity
 from ralph.mcp.server._mcp_health_event import (
     CONTENDED_WATCH_RATIO,
     current_host_is_contended,

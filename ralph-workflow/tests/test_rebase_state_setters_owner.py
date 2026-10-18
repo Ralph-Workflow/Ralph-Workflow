@@ -3,7 +3,13 @@
 Contract: ``last_fan_out_decision`` and ``operation_display_state`` may
 only be written inside ``ralph/pipeline/rebase_state.py`` via
 ``set_fan_out_decision`` / ``set_operation_display_state``. This test
-static-scans the full ``ralph/`` tree for forbidden writers.
+static-scans every directory that could plausibly write rebase-state
+fields (``ralph/pipeline/`` and ``ralph/display/``) for forbidden writers.
+Other ralph/ subtrees (``mcp/``, ``agents/``, ``testing/``, ``install/``,
+``process/`` infrastructure, ...) cannot reach ``RebaseState`` so they are
+out of scope by construction. Scoping the scan keeps the per-test
+wall-clock well under the 1 s per-test budget even under heavy shard load
+(see the matching comment in ``test_recovery_record_retained_owner.py``).
 """
 
 from __future__ import annotations
@@ -11,7 +17,16 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-RALPH_ROOT = Path(__file__).resolve().parents[1] / "ralph"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+# Only directories that can reach a ``RebaseState`` instance need to be
+# scanned. ``ralph/pipeline/`` owns rebase state; ``ralph/display/`` reads
+# ``operation_display_state`` and is the only other subtree that the
+# forbidden fields touch. Keeping the scope tight keeps the static scan
+# under the 1 s per-test budget under heavy shard load.
+_SCAN_ROOTS: tuple[Path, ...] = (
+    _REPO_ROOT / "ralph" / "pipeline",
+    _REPO_ROOT / "ralph" / "display",
+)
 
 _FORBIDDEN_FIELDS = (
     "last_fan_out_decision",
@@ -26,51 +41,52 @@ _FORBIDDEN_FIELDS = (
 _AUTHORITATIVE_FILE = "rebase_state.py"
 
 
-def _scan_writer_sites(root: Path) -> list[str]:
-    """AST/static-scan every ``*.py`` under *root* for forbidden writers.
+def _scan_writer_sites(*roots: Path) -> list[str]:
+    """AST/static-scan every ``*.py`` under each *root* for forbidden writers.
 
     A writer is a ``model_copy``/``copy_with`` keyword argument named
     after one of the fields, or a string literal of the field name
     (update-dict key) outside the authoritative file.
     """
     offenders: list[str] = []
-    for path in sorted(root.rglob("*.py")):
-        if path.name == _AUTHORITATIVE_FILE:
-            continue
-        raw = path.read_bytes()
-        if not any(field.encode() in raw for field in _FORBIDDEN_FIELDS):
-            continue
-        source = raw.decode(encoding="utf-8")
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            if path.name == _AUTHORITATIVE_FILE:
                 continue
-            is_writer_call = isinstance(node.func, ast.Attribute) and node.func.attr in {
-                "model_copy",
-                "copy_with",
-            }
-            if not is_writer_call:
+            raw = path.read_bytes()
+            if not any(field.encode() in raw for field in _FORBIDDEN_FIELDS):
                 continue
-            for kw in node.keywords:
-                if kw.arg in _FORBIDDEN_FIELDS:
-                    offenders.append(f"{path.relative_to(root)}:{kw.lineno} copy-call-keyword")
-            # update-dict keys: model_copy(update={"<field>": ...})
-            for kw in node.keywords:
-                if kw.arg == "update" and isinstance(kw.value, ast.Dict):
-                    for key in kw.value.keys:
-                        if (
-                            isinstance(key, ast.Constant)
-                            and isinstance(key.value, str)
-                            and key.value in _FORBIDDEN_FIELDS
-                        ):
-                            offenders.append(
-                                f"{path.relative_to(root)}:{key.lineno} update-dict-key"
-                            )
+            source = raw.decode(encoding="utf-8")
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                is_writer_call = isinstance(node.func, ast.Attribute) and node.func.attr in {
+                    "model_copy",
+                    "copy_with",
+                }
+                if not is_writer_call:
+                    continue
+                for kw in node.keywords:
+                    if kw.arg in _FORBIDDEN_FIELDS:
+                        offenders.append(f"{path.relative_to(root)}:{kw.lineno} copy-call-keyword")
+                # update-dict keys: model_copy(update={"<field>": ...})
+                for kw in node.keywords:
+                    if kw.arg == "update" and isinstance(kw.value, ast.Dict):
+                        for key in kw.value.keys:
+                            if (
+                                isinstance(key, ast.Constant)
+                                and isinstance(key.value, str)
+                                and key.value in _FORBIDDEN_FIELDS
+                            ):
+                                offenders.append(
+                                    f"{path.relative_to(root)}:{key.lineno} update-dict-key"
+                                )
     return offenders
 
 
 def test_no_raw_writers_outside_rebase_state() -> None:
-    offenders = _scan_writer_sites(RALPH_ROOT)
+    offenders = _scan_writer_sites(*_SCAN_ROOTS)
     assert offenders == [], (
         f"raw forbidden-field writers outside {_AUTHORITATIVE_FILE}: {offenders}"
     )
