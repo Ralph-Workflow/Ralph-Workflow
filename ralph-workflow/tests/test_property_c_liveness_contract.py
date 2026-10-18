@@ -226,6 +226,10 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
         def poll(self) -> int | None:  # alive
             return None
 
+        @property
+        def pid(self) -> int:
+            return 1
+
     class _FakeInner:
         def __init__(self) -> None:
             self.process = _FakeProcess()

@@ -133,13 +133,18 @@ def _handle_completed_probe(
     seen_aliases: dict[str, tuple[str, str]],
     proxied_tools: list[ProxiedTool],
     clients: dict[str, _AnyUpstreamClient],
-    discarded_late_servers: list[str],
     logged_servers: set[str],
 ) -> None:
     logged_servers.add(server.name)
     # Late-result rejection: genuine probe completed, but budget expired while in flight.
     if not isinstance(error, _BudgetExhaustedError) and clock() > deadline:
-        discarded_late_servers.append(server.name)
+        _log_probe_outcome(
+            server.name,
+            server_kind,
+            probe_elapsed_ms,
+            "skipped",
+            "budget_exhausted",
+        )
         return
 
     if isinstance(error, _BudgetExhaustedError):
@@ -359,7 +364,6 @@ class UpstreamRegistry:
         seen_aliases: dict[str, tuple[str, str]] = {}
         proxied_tools: list[ProxiedTool] = []
         clients: dict[str, _AnyUpstreamClient] = {}
-        discarded_late_servers: list[str] = []
         logged_servers: set[str] = set()
 
         max_workers = min(_MAX_PROBE_WORKERS, len(servers_list))
@@ -444,7 +448,6 @@ class UpstreamRegistry:
                     seen_aliases=seen_aliases,
                     proxied_tools=proxied_tools,
                     clients=clients,
-                    discarded_late_servers=discarded_late_servers,
                     logged_servers=logged_servers,
                 )
         finally:

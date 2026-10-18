@@ -321,18 +321,35 @@ if not (0.0 < CONTENDED_WATCH_RATIO < 1.0):
     raise RuntimeError(f"CONTENDED_WATCH_RATIO must be in (0.0, 1.0) (got {CONTENDED_WATCH_RATIO})")
 
 
-def record_host_contention_signal(reason: str) -> None:
-    """Append (now, reason) to the contention-signal deque."""
-    _HOST_CONTENTION_SIGNALS.append((time.monotonic(), reason))
+def record_host_contention_signal(
+    reason: str,
+    *,
+    _now: Callable[[], float] | None = None,
+) -> None:
+    """Append (now, reason) to the contention-signal deque.
+
+    ``_now`` is a private test seam: when provided, it replaces
+    ``time.monotonic`` for timestamp generation. Production callers
+    omit it and the default ``time.monotonic`` is used.
+    """
+    now_fn: Callable[[], float] = _now if _now is not None else time.monotonic
+    _HOST_CONTENTION_SIGNALS.append((now_fn(), reason))
 
 
-def pop_recent_host_contention_signals(window_s: float) -> tuple[tuple[float, str], ...]:
+def pop_recent_host_contention_signals(
+    window_s: float,
+    *,
+    _now: Callable[[], float] | None = None,
+) -> tuple[tuple[float, str], ...]:
     """Return all signals whose timestamp is within ``window_s`` of now.
 
     Signals are NOT removed — the deque is bounded at 64 entries. The
     bridge consults the WINDOW, not the deque length.
+
+    ``_now`` is a private test seam: when provided, it replaces
+    ``time.monotonic`` as the reference for window computation.
     """
-    now = time.monotonic()
+    now = (_now if _now is not None else time.monotonic)()
     return tuple((ts, reason) for ts, reason in _HOST_CONTENTION_SIGNALS if now - ts <= window_s)
 
 

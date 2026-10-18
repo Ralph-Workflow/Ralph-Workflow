@@ -310,6 +310,13 @@ class RestartAwareMcpBridge:
         # (_TOOL_REGISTRY_MAX_RESETS) is independent of the MCP restart
         # policy's max_restarts. See _tool_registry_resets property.
         self._tool_registry_resets = 0
+        # Bridge identity counter: increments on every reset_tool_registry
+        # and on every successful _perform_restart. The producer result
+        # in check_health_and_restart_if_needed is anchored to
+        # (self._inner.process.pid, self._bridge_generation) so a stale
+        # probe can be discarded if the bridge changed while the
+        # producer ran outside the lock.
+        self._bridge_generation = 0
         self._lock = threading.Lock()
         # Workspace root used to locate the child MCP server log for the
         # durable restart-decision evidence.  Stored on the bridge so the
@@ -575,6 +582,10 @@ class RestartAwareMcpBridge:
                 last_stage=_restart_error_fields(restart_exc)[0],
                 elapsed_s=_restart_error_fields(restart_exc)[1],
             ) from restart_exc
+        # Bump generation on every successful restart so a stale probe
+        # captured against the prior inner is discarded by
+        # _handle_failed_probe_under_lock.
+        self._bridge_generation += 1
         self._consecutive_probe_failures = 0
         self._consecutive_probe_failures_deferred = 0
         logger.info(
@@ -589,9 +600,25 @@ class RestartAwareMcpBridge:
         *,
         fresh_b_signal: bool,
         probe_duration_s: float | None,
+        probed_pid: int,
+        probed_generation: int,
     ) -> bool:
-        """Handle contention and failure accounting after a failed probe under lock."""
+        """Handle contention and failure accounting after a failed probe under lock.
+
+        ``probed_pid`` and ``probed_generation`` are the bridge identity
+        captured under the lock BEFORE the contention producer ran. If
+        either changed while the producer was off the lock, the B-signal
+        we hold belongs to a different bridge state and is discarded
+        without touching any counter.
+        """
         with self._lock:
+            if (
+                self._inner.process.pid != probed_pid
+                or self._bridge_generation != probed_generation
+            ):
+                logger.debug("stale probe result discarded: bridge changed while producer ran")
+                return False
+
             if self._inner.process.poll() is not None:
                 return self._perform_restart(process_exited=True, probe_duration_s=None)
 
@@ -657,6 +684,15 @@ class RestartAwareMcpBridge:
                 self._consecutive_probe_failures_deferred = 0
                 return False
 
+            # Capture the probed bridge identity BEFORE releasing the
+            # lock. The producer below runs OFF the lock; while it
+            # runs, the main thread may call reset_tool_registry or a
+            # concurrent probe may succeed and reset counters. The
+            # helper revalidates this identity under the lock and
+            # discards the result if the bridge changed.
+            probed_pid = self._inner.process.pid
+            probed_generation = self._bridge_generation
+
         # Probe failed: lock is RELEASED before calling producer()
         producer = self._contention_signal_producer or current_host_is_contended
         try:
@@ -667,6 +703,8 @@ class RestartAwareMcpBridge:
         return self._handle_failed_probe_under_lock(
             fresh_b_signal=fresh_b_signal,
             probe_duration_s=probe_duration_s,
+            probed_pid=probed_pid,
+            probed_generation=probed_generation,
         )
 
     def reset_tool_registry(self) -> None:
@@ -691,6 +729,11 @@ class RestartAwareMcpBridge:
                 ``'restart budget exhausted'``.
         """
         with self._lock:
+            # Bump the bridge generation FIRST so any in-flight stale
+            # probe result (captured against the previous inner) is
+            # discarded by _handle_failed_probe_under_lock even if the
+            # reset later fails.
+            self._bridge_generation += 1
             if self._tool_registry_resets >= _TOOL_REGISTRY_MAX_RESETS:
                 raise McpServerError(
                     "MCP tool-registry-reset exhausted "

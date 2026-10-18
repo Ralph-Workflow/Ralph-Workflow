@@ -27,12 +27,14 @@ and ``_monotonic``) keep the test hermetic.
 from __future__ import annotations
 
 import concurrent.futures
+import io
 import os
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from loguru import logger as loguru_logger
 
 from ralph.mcp.protocol._startup_timeouts import (
     mcp_discovery_budget_from_env,
@@ -622,3 +624,57 @@ def test_all_late_successful_completion_discarded() -> None:
     # Both probes succeeded, but landed after deadline -> all discarded as late results.
     # Registry must contain no late tools!
     assert registry.tool_definitions() == []
+
+
+def test_late_successful_probe_logs_diagnostic() -> None:
+    """Genuine late completions emit a structured outcome=skipped diagnostic.
+
+    Two workers, each advancing the shared clock by 30.0s (well past the
+    28.0s default discovery deadline), complete their probes after the
+    shared deadline has expired. The late-result branch in
+    ``_handle_completed_probe`` fires for each completion and emits a
+    structured ``outcome=skipped reason=budget_exhausted`` line via
+    ``_log_probe_outcome`` (with the worker-computed ``probe_elapsed_ms``,
+    not the budget-exhausted sentinel's 0.0). The old code returned
+    silently after appending to the unused ``discarded_late_servers``
+    list and emitted nothing; this test pins the diagnostic back in
+    place while still asserting the late-result-rejection invariant.
+    """
+    clock = _FakeMonotonic()
+    servers = _make_servers("late-1", "late-2")
+
+    sink = io.StringIO()
+    handler_id = loguru_logger.add(sink, format="{message}", level="WARNING")
+    try:
+        registry = UpstreamRegistry.build(
+            servers,
+            client_factory=cast(
+                "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                lambda s: _LateSuccessfulClient(s, clock.advance, 30.0),
+            ),
+            on_unreachable="warn_and_skip",
+            _monotonic=clock,
+        )
+    finally:
+        loguru_logger.remove(handler_id)
+
+    # Late results are still rejected: the registry contains no late tools.
+    assert registry.tool_definitions() == []
+
+    # The structured outcome log line is emitted for the late probe.
+    # The worker's probe_elapsed_ms is 30.0s (the advance the fake applies
+    # per call), formatted as 30000.0 by ``_log_probe_outcome``'s
+    # ``elapsed_ms={elapsed_ms:.1f}`` formatter. Asserting the exact
+    # value keeps the old code (which logged nothing) from passing via
+    # the budget-exhausted path's ``elapsed_ms=0.0`` line.
+    log_text = sink.getvalue()
+    assert "ralph-mcp upstream probe: server=late-1" in log_text, (
+        f"missing late-1 diagnostic; captured: {log_text!r}"
+    )
+    assert "outcome=skipped" in log_text, f"missing outcome=skipped; captured: {log_text!r}"
+    assert "reason=budget_exhausted" in log_text, (
+        f"missing reason=budget_exhausted; captured: {log_text!r}"
+    )
+    assert "elapsed_ms=30000.0" in log_text, (
+        f"missing worker-computed elapsed_ms=30000.0; captured: {log_text!r}"
+    )

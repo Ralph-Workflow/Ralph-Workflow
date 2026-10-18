@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING
 
 import pytest
+from loguru import logger
 
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_health_event import (
@@ -243,3 +244,71 @@ def test_lock_released_during_contention_producer_call() -> None:
 
     assert other_thread_acquired_lock.is_set() is True
     assert not supervisor_thread.is_alive()
+
+
+# 8. Off-lock B-signal race: stale probe result discarded when bridge changed
+def test_stale_probe_result_discarded_after_reset() -> None:
+    """Supervisor's stale B-signal is discarded if the bridge changed.
+
+    While the contention producer runs OFF the lock, the main thread
+    calls reset_tool_registry. The reset bumps the bridge generation
+    and swaps self._inner. When the producer returns, the supervisor
+    revalidates the probed identity under the lock, finds a mismatch,
+    and discards the stale B-signal without touching any counter.
+    """
+    log_records: list[str] = []
+    sink_id = logger.add(lambda msg: log_records.append(str(msg)), level="DEBUG")
+
+    producer_entered = threading.Event()
+    release_producer = threading.Event()
+
+    def blocking_producer() -> bool:
+        producer_entered.set()
+        release_producer.wait(timeout=5.0)
+        return True
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        raise RuntimeError("probe failed")
+
+    bridge = _make_bridge(failing_probe, contention_producer=blocking_producer)
+
+    supervisor_thread = threading.Thread(
+        target=bridge.check_health_and_restart_if_needed,
+        daemon=True,
+    )
+    supervisor_thread.start()
+
+    try:
+        assert producer_entered.wait(timeout=2.0) is True
+
+        # While the producer is blocked OFF the lock, the main thread
+        # calls reset_tool_registry. The reset bumps _bridge_generation
+        # BEFORE any other step and swaps self._inner. The post-respawn
+        # alias verify makes an HTTP request to a non-existent endpoint
+        # and raises McpServerError; the generation bump has already
+        # happened, which is what the discard check needs.
+        initial_generation = bridge._bridge_generation
+        with pytest.raises(lifecycle.McpServerError):
+            bridge.reset_tool_registry()
+        assert bridge._bridge_generation == initial_generation + 1
+
+        restart_count_after_reset = bridge._restart_count
+
+        release_producer.set()
+        supervisor_thread.join(timeout=2.0)
+        assert not supervisor_thread.is_alive()
+
+        # The supervisor's stale probe result was discarded: no counter
+        # was advanced by the supervisor's call. The deferred counter
+        # stays at zero (it would be 1 if the stale B-signal had been
+        # applied to the new inner).
+        assert bridge._restart_count == restart_count_after_reset
+        assert bridge._consecutive_probe_failures_deferred == 0
+        assert bridge._consecutive_probe_failures == 0
+
+        # The discard debug line was logged.
+        assert any("stale probe result discarded" in record for record in log_records), (
+            f"Expected discard debug line in {log_records!r}"
+        )
+    finally:
+        logger.remove(sink_id)
