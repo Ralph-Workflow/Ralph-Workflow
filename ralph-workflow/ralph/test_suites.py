@@ -232,16 +232,16 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # the full shipped tree. They are slow under a single pytest
     # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
     # and would tip a single-file shard past the 60 s combined
-    # budget even when every other shard finishes inside it. They
-    # were previously moved to the E2E shard to share four
-    # in-shard xdist workers, but the cumulative test budget is
-    # still saturated on the maintained host; the audit assertions
-    # themselves run via the dedicated ``audit_opts_key_drift`` /
-    # ``audit_kwargs_forwarding`` verify steps (NOT budget-tracked),
-    # so removing them from this registry keeps default profile
-    # coverage while reclaiming slow-shard wall-clock. They remain
-    # discoverable via ``make test-subprocess-e2e`` because each
-    # has module-level ``pytestmark = subprocess_e2e``.
+    # budget even when every other shard finishes inside it. Moving
+    # them to the E2E shard gives the four in-shard xdist workers
+    # (the host-invariant ``_REQUIRED_E2E_SHARD_XDIST_WORKERS`` cap)
+    # enough headroom to absorb the scan, and keeps the regression
+    # gates on the default ``make test`` profile so the silent-key
+    # drop cannot rot. They are marked ``subprocess_e2e`` so the
+    # test-policy audit treats the real-tree scan as an external
+    # boundary rather than a black-box test seam.
+    "tests/test_audit_opts_key_drift.py",
+    "tests/test_audit_kwargs_forwarding.py",
     # wt-03-fix-bug (U4a): real-git regression pinning acceptance
     # scenarios 1 (linked worktree) and 2 (target movement) on the
     # public-boundary decision surface. Real-git, in-budget, must
@@ -253,11 +253,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_reserved_socket_held_across_respawn.py",
     "tests/mcp/test_mcp_endpoint_never_refuses.py",
     "tests/mcp/test_mcp_slow_startup_served_from_backlog.py",
-    # test_respawn_no_discovery.py is dropped from the default
-    # registry: its real-subprocess startup is slow on the heaviest
-    # xdist worker and tips the slowest shard over the 60-second
-    # combined budget; it still runs under ``make test-subprocess-e2e``
-    # via module-level ``pytestmark = subprocess_e2e``.
+    "tests/mcp/test_respawn_no_discovery.py",
     "tests/mcp/test_mcp_server_startup_stages_observable.py",
     "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py",
     "tests/mcp/test_mcp_stage_attribution_real_child.py",
@@ -295,16 +291,8 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # and fail-closed-FD regressions cannot rot silently — discovery
     # excludes them and the cumulative 60s combined test budget
     # loses its only real-child proof.
-    # test_whole_startup_budget_production.py and
-    # test_inherited_fd_invalid_fails_closed.py are dropped from the
-    # default registry: their wall-clock subprocess cost was the
-    # single largest contributor to the slowest shard on the
-    # maintained host; the budget envelope they observe is fully
-    # covered by the dedicated ``audit_mcp_timeout`` verify step
-    # (NOT budget-tracked) and the BUDGET envelope regression in
-    # tests/test_audit_mcp.py. They remain runnable via
-    # ``make test-subprocess-e2e`` (function-level
-    # ``@pytest.mark.subprocess_e2e`` tests).
+    "tests/mcp/test_whole_startup_budget_production.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
     # wt-16 WU-1: bounded catalog publish black-box regression —
     # real child with a FIFO at ``.agent/mcp/parent_catalog.json.tmp``
     # must exit with the distinct catalog overrun exit code while
@@ -312,15 +300,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # kernel backlog. subprocess_e2e because it crosses a real
     # process boundary; on the default make-test profile so the
     # R2 R2 R2-envelope cannot rot silently.
-    #
-    # WU-Budget (wt-18): the bounded-publish FIFO regression is
-    # dropped from this registry and moved to the opt-in
-    # ``make test-subprocess-e2e`` profile. Its real-child startup
-    # dominated the slowest xdist worker on the maintained host
-    # and pushed the cumulative test budget past the 60-second
-    # ABSOLUTE cap. It still exercises the bounded publish helper
-    # end-to-end when the operator invokes
-    # ``make test-subprocess-e2e``.
+    "tests/mcp/test_bounded_catalog_publish.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

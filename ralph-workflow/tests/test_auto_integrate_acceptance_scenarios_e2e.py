@@ -16,6 +16,7 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
+from typing import TextIO
 
 import pytest
 
@@ -568,12 +569,17 @@ _SUBPROCESS_SCRIPT = """
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline import run_loop
+from ralph.pipeline.auto_integrate_remote_sync import (
+    RemoteSyncStatus,
+    reconcile_remote_publication,
+)
 from ralph.pipeline.rebase_state import RebaseOutcomeKind
+from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
 root = Path(sys.argv[1])
@@ -599,6 +605,13 @@ local_sha = subprocess.run(
     ["git", "-C", str(root), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
 ).stdout.strip()
 
+parent_sha = subprocess.run(
+    ["git", "-C", str(root), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True
+).stdout.strip()
+if local_sha == parent_sha:
+    sys.stderr.write("LOCAL_NOT_AHEAD\\n")
+    sys.exit(6)
+
 config = UnifiedConfig.model_validate({
     "general": {
         "auto_integrate_enabled": True,
@@ -609,23 +622,52 @@ config = UnifiedConfig.model_validate({
     }
 })
 
-state1 = recover_incomplete_integration(WorkspaceScope(root), config=config)
-if state1 is not None and state1.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED:
+# Initial publication attempt against unreachable remote
+state1 = reconcile_remote_publication(config, root, target, remote=remote)
+if state1.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED:
     sys.stderr.write(f"UNEXPECTED_PUBLISHED_EARLY:{local_sha}\\n")
     sys.exit(2)
 
+if state1.last_remote_sync not in (
+    RemoteSyncStatus.REMOTE_UNREACHABLE,
+    "origin unreachable",
+    "unreachable",
+):
+    sys.stderr.write(f"UNEXPECTED_SYNC_STATUS:{state1.last_remote_sync}\\n")
+    sys.exit(3)
+
+if state1.last_outcome != RebaseOutcomeKind.SKIPPED:
+    sys.stderr.write(f"UNEXPECTED_OUTCOME:{state1.last_outcome}\\n")
+    sys.exit(4)
+
+if "unreachable" not in (state1.last_reason or ""):
+    sys.stderr.write(f"UNEXPECTED_REASON:{state1.last_reason}\\n")
+    sys.exit(5)
+
 sys.stdout.write(f"DEFERRED:{local_sha}\\n")
 sys.stdout.flush()
+
+signal = sys.stdin.readline().strip()
+if signal != "RESTORED":
+    sys.stderr.write(f"UNEXPECTED_SIGNAL:{signal}\\n")
+    sys.exit(7)
 
 if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
     sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
     sys.exit(0)
 
-# Sleep for production retry interval (_wait_for_integration_retry's 5.0s)
-time.sleep(5)
-
-state2 = recover_incomplete_integration(WorkspaceScope(root), config=config)
-if state2 is not None and state2.last_outcome in (
+# Invoke the real runner retry path: run_loop._wait_for_integration_retry
+pipeline_state = PipelineState(phase="development", rebase=state1)
+ctx = SimpleNamespace(
+    config=config,
+    workspace_scope=WorkspaceScope(root),
+    latest_state=[],
+    sleep=lambda _s: None,
+    active_display=None,
+    _session_handoff_dispatched=False,
+)
+retried_state = run_loop._wait_for_integration_retry(pipeline_state, ctx)
+if retried_state.rebase is not None and retried_state.rebase.last_outcome in (
     RebaseOutcomeKind.REMOTE_PUSHED,
     RebaseOutcomeKind.FAST_FORWARDED,
 ):
@@ -633,9 +675,22 @@ if state2 is not None and state2.last_outcome in (
     sys.stdout.flush()
     sys.exit(0)
 else:
-    sys.stderr.write(f"FAILED_SECOND_ITERATION:{state2}\\n")
+    sys.stderr.write(f"FAILED_RETRY:{retried_state}\\n")
     sys.exit(1)
 """
+
+
+def _read_line_bounded(stream: TextIO, timeout: float = 15.0) -> str:
+    """Read a single line from a text stream within bounded timeout."""
+    import select
+
+    rlist, _, _ = select.select([stream], [], [], timeout)
+    if not rlist:
+        raise TimeoutError(f"Timed out waiting for line from subprocess after {timeout}s")
+    line = stream.readline()
+    if not line:
+        raise EOFError("Subprocess stream closed unexpectedly")
+    return line
 
 
 @pytest.mark.subprocess_e2e
@@ -665,6 +720,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     proc = subprocess.Popen(
         [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), str(unreachable_bare)],
         env=env,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -672,30 +728,16 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
 
     try:
         assert proc.stdout is not None
-        deferred_line = proc.stdout.readline().strip()
+        assert proc.stdin is not None
+        deferred_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
         assert deferred_line.startswith("DEFERRED:"), (
             f"Expected DEFERRED: prefix, got: {deferred_line}"
         )
         local_sha = deferred_line.split(":", 1)[1]
         assert len(local_sha) == 40
 
-        if skip_second:
-            _out, err = proc.communicate(timeout=15)
-            assert proc.returncode == 0
-            assert "SKIPPED_SECOND_ITERATION" in err
-            # Negative control proof: bare is never pushed to without retry
-            assert not bare.exists() or (
-                subprocess.run(
-                    ["git", "-C", str(bare), "rev-parse", "release"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                ).stdout.strip()
-                != local_sha
-            )
-            return
-
-        # Bring remote bare online and seed it with parent commit
+        # Both variants create and seed the identical configured tacos/release remote
+        # after the initial unreachable observation.
         subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
         subprocess.run(
             ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
@@ -714,7 +756,28 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
             capture_output=True,
         )
 
-        published_line = proc.stdout.readline().strip()
+        # Notify subprocess that remote is restored
+        proc.stdin.write("RESTORED\n")
+        proc.stdin.flush()
+
+        if skip_second:
+            _out, err = proc.communicate(timeout=15)
+            assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
+            assert "SKIPPED_SECOND_ITERATION" in err
+            # Negative control proof: bare was initialized and seeded with seed_sha,
+            # but because retry was disabled, the remote ref remains at seed_sha and
+            # diverges from local_sha.
+            bare_sha = subprocess.run(
+                ["git", "-C", str(bare), "rev-parse", "release"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            assert bare_sha == seed_sha
+            assert bare_sha != local_sha
+            return
+
+        published_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
         assert published_line == f"PUBLISHED:{local_sha}", (
             f"Expected PUBLISHED:{local_sha}, got: {published_line}"
         )

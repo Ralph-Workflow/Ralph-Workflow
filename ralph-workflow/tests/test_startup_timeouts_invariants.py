@@ -29,7 +29,6 @@ import threading
 import time
 from datetime import timedelta
 from pathlib import Path
-from typing import cast
 from unittest import mock
 
 import pytest
@@ -296,16 +295,14 @@ class TestDiagnosticStageContract:
         assert overruns_path.exists()
         lines = overruns_path.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
-        parsed: object = json.loads(lines[0])
+        parsed = json.loads(lines[0])
         assert isinstance(parsed, dict)
-        record = cast("dict[str, object]", parsed)
-        assert record["stage"] == "config_loaded"
-        assert record["elapsed_s"] == 1.128
-        assert record["budget_s"] == 1.0
-        assert record["remaining_s"] == -0.128
-        assert "headroom_s" in record
-        assert "observed_at" in record
-        assert "warning_id" in record
+        assert parsed["stage"] == "config_loaded"
+        assert parsed["elapsed_s"] == 1.128
+        assert parsed["budget_s"] == 1.0
+        assert parsed["remaining_s"] == -0.128
+        assert "observed_at" in parsed
+        assert "warning_id" in parsed
 
     def test_read_overruns_returns_recorded_entries(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

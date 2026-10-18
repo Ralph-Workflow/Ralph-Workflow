@@ -54,15 +54,6 @@ def _unused_pid() -> int:
     return candidate
 
 
-def _make_index_lock_error(lock_path: Path) -> GitCommandError:
-    return GitCommandError(
-        ["git", "add", "-A"],
-        128,
-        stderr=f"fatal: Unable to create '{lock_path}': File exists.\n\n"
-        "Another git process seems to be running in this repository",
-    )
-
-
 FULL_SHA_LENGTH = 40
 INITIAL_OCCURRENCE_COUNT = 1
 DEFAULT_BRANCHES = {"main", "master"}

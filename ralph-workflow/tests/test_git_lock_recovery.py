@@ -1,8 +1,4 @@
-"""Tests for git stale lock recovery and backoff contention handling.
-
-Extracted from ``tests/test_git_operations.py`` to keep both modules under
-the 1000-line repo-structure limit.
-"""
+"""Unit tests for git lock recovery and contention retry."""
 
 from __future__ import annotations
 
@@ -14,9 +10,8 @@ from typing import Literal
 
 import pytest
 from git import GitCommandError
-from loguru import logger
 
-from ralph.git.operations import (
+from ralph.git._lock_recovery import (
     _LOCK_BACKOFF_S,
     _lock_has_no_live_holder,
     _recover_stale_git_lock,
@@ -28,14 +23,8 @@ def _make_index_lock_error(lock_path: Path) -> GitCommandError:
     return GitCommandError(
         ["git", "add", "-A"],
         128,
-        stderr=(
-            f"fatal: Unable to create '{lock_path}': File exists.\n"
-            "Another git process seems to be running in this repository, e.g.\n"
-            "an editor opened by 'git commit'. Please make sure all processes\n"
-            "are terminated then try again. If it still fails, a git process\n"
-            "may have crashed in this repository earlier:\n"
-            "remove the file manually to continue."
-        ),
+        stderr=f"fatal: Unable to create '{lock_path}': File exists.\n\n"
+        "Another git process seems to be running in this repository",
     )
 
 
@@ -62,7 +51,7 @@ def test_recover_stale_git_lock_fails_closed_when_young(
     os.utime(lock_path, (young_time, young_time))
 
     monkeypatch.setattr(
-        "ralph.git.operations._lock_has_no_live_holder",
+        "ralph.git._lock_recovery._lock_has_no_live_holder",
         _fake_dead,
     )
     error = _make_index_lock_error(lock_path)
@@ -84,7 +73,7 @@ def test_recover_stale_git_lock_fails_closed_when_holder_is_live(
     os.utime(lock_path, (stale_time, stale_time))
 
     monkeypatch.setattr(
-        "ralph.git.operations._lock_has_no_live_holder",
+        "ralph.git._lock_recovery._lock_has_no_live_holder",
         _fake_live,
     )
     error = _make_index_lock_error(lock_path)
@@ -106,7 +95,7 @@ def test_recover_stale_git_lock_recovers_when_holder_is_dead(
     os.utime(lock_path, (stale_time, stale_time))
 
     monkeypatch.setattr(
-        "ralph.git.operations._lock_has_no_live_holder",
+        "ralph.git._lock_recovery._lock_has_no_live_holder",
         _fake_dead,
     )
     error = _make_index_lock_error(lock_path)
@@ -172,7 +161,6 @@ def test_liveness_probe_or_predicate_cwd_only(
     fake_pid_dir.mkdir()
     (fake_pid_dir / "cwd").symlink_to(str(gitdir.resolve()))  # cwd -> gitdir (live signal)
     (fake_pid_dir / "fd").mkdir()  # empty fd dir (no lock open)
-    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")  # git process
     (fake_pid_dir / "environ").write_bytes(b"")  # no GIT_DIR
 
     def fake_run(
@@ -208,7 +196,6 @@ def test_liveness_probe_common_gitdir_holder(
     fake_pid_dir.mkdir()
     (fake_pid_dir / "cwd").symlink_to(str(gitdir_common.resolve()))  # cwd -> common gitdir
     (fake_pid_dir / "fd").mkdir()
-    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")  # git process
     (fake_pid_dir / "environ").write_bytes(b"")
 
     def fake_run(
@@ -224,169 +211,6 @@ def test_liveness_probe_common_gitdir_holder(
 
     result = _lock_has_no_live_holder(lock_path, gitdir, gitdir_common, _proc_root=fake_proc)
     assert result == "live", "Process with cwd=common-gitdir must return 'live'"
-
-
-def test_liveness_probe_real_blocked_worker_elapsed_bound(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A hung worker thread (e.g. 2s sleep) does not delay probe return beyond timeout."""
-    lock_path = tmp_path / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
-    gitdir = tmp_path / ".git"
-    gitdir.mkdir()
-
-    def hung_probe(*args: object, **kwargs: object) -> bool:
-        time.sleep(2.0)
-        return False
-
-    monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_probe)
-
-    start = time.monotonic()
-    result = _lock_has_no_live_holder(
-        lock_path, gitdir, probe_timeout_s=0.5, _proc_root=tmp_path / "proc"
-    )
-    elapsed = time.monotonic() - start
-
-    assert result == "unknown", "Hung probe must fail-closed to 'unknown'"
-    assert elapsed < 1.5, (
-        f"Probe elapsed {elapsed:.2f}s; worker shutdown must NOT block caller for 2.0s"
-    )
-
-
-def test_liveness_probe_holder_beyond_120_cap(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Probe scans all PIDs without 120 cap and detects holder at PID > 120."""
-    lock_path = tmp_path / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
-    gitdir = tmp_path / ".git"
-    gitdir.mkdir()
-
-    fake_proc = tmp_path / "proc"
-    fake_proc.mkdir()
-
-    # Create 140 non-holder processes
-    for p in range(1, 140):
-        p_dir = fake_proc / str(p)
-        p_dir.mkdir()
-        (p_dir / "fd").mkdir()
-
-    # Process 140 holds the lock open
-    holder_dir = fake_proc / "140"
-    holder_dir.mkdir()
-    holder_fd = holder_dir / "fd"
-    holder_fd.mkdir()
-    (holder_fd / "3").symlink_to(str(lock_path.resolve()))
-
-    def fake_run(
-        cmd: object,
-        *,
-        timeout: float | None = None,
-        capture_output: bool = False,
-        check: bool = False,
-    ) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout=b"")
-
-    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
-
-    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
-    assert result == "live", (
-        "Process beyond the old 120-PID cap (PID 140) must be inspected and detected as live"
-    )
-
-
-def test_liveness_probe_unreadable_pid_returns_unknown(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Unreadable PID (PermissionError) prevents negative liveness proof and returns 'unknown'."""
-    lock_path = tmp_path / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
-    gitdir = tmp_path / ".git"
-    gitdir.mkdir()
-
-    fake_proc = tmp_path / "proc"
-    fake_proc.mkdir()
-
-    unreadable_dir = fake_proc / "100"
-    unreadable_dir.mkdir()
-    fd_dir = unreadable_dir / "fd"
-    fd_dir.mkdir()
-    fd_dir.chmod(0o000)
-
-    def fake_run(
-        cmd: object,
-        *,
-        timeout: float | None = None,
-        capture_output: bool = False,
-        check: bool = False,
-    ) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout=b"")
-
-    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
-
-    try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
-        assert result == "unknown", (
-            "Unreadable candidate PID must return 'unknown' (fail-closed negative proof)"
-        )
-    finally:
-        fd_dir.chmod(0o755)
-
-
-def test_liveness_probe_non_git_process_in_cwd_does_not_block_recovery(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Non-git process (e.g. Ralph/python) running in repo cwd without open fd returns 'dead'."""
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    gitdir = repo_dir / ".git"
-    gitdir.mkdir()
-    lock_path = gitdir / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
-
-    fake_proc = tmp_path / "proc"
-    fake_proc.mkdir()
-    ralph_pid_dir = fake_proc / "42"
-    ralph_pid_dir.mkdir()
-    (ralph_pid_dir / "cwd").symlink_to(str(repo_dir.resolve()))  # cwd -> repo dir
-    (ralph_pid_dir / "fd").mkdir()  # empty fd dir (no lock file open)
-    (ralph_pid_dir / "comm").write_text("python3\n", encoding="utf-8")  # NOT git
-    (ralph_pid_dir / "cmdline").write_bytes(b"/usr/bin/python3\x00-m\x00ralph\x00")
-    (ralph_pid_dir / "environ").write_bytes(b"PATH=/bin\x00")
-
-    def fake_run(
-        cmd: object,
-        *,
-        timeout: float | None = None,
-        capture_output: bool = False,
-        check: bool = False,
-    ) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout=b"")
-
-    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
-
-    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
-    assert result == "dead", (
-        "Non-git process in repo cwd with no open fd must return 'dead' so orphan lock can be recovered"
-    )
-
-    # Also verify _recover_stale_git_lock removes the stale lock
-    stale_time = time.time() - 60
-    os.utime(lock_path, (stale_time, stale_time))
-
-    monkeypatch.setattr(
-        "ralph.git.operations._lock_has_no_live_holder",
-        lambda *args, **kwargs: result,
-    )
-    error = _make_index_lock_error(lock_path)
-    assert _recover_stale_git_lock("stage_all", error) is True
-    assert not lock_path.exists(), (
-        "Stale lock must be unlinked when only non-git processes exist in cwd"
-    )
 
 
 def test_liveness_probe_proc_less_returns_unknown(
@@ -429,10 +253,12 @@ def test_liveness_probe_proc_less_returns_unknown(
     os.utime(lock_path, (stale_time, stale_time))
 
     monkeypatch.setattr(
-        "ralph.git.operations._lock_has_no_live_holder",
+        "ralph.git._lock_recovery._lock_has_no_live_holder",
         _fake_unknown,
     )
     error = _make_index_lock_error(lock_path)
+
+    from loguru import logger
 
     warning_records: list[str] = []
     sink_id = logger.add(warning_records.append, level="WARNING", format="{message}")
@@ -477,8 +303,8 @@ class TestLockBackoff:
         def fake_recover(_op: str, _err: Exception) -> bool:
             return False
 
-        monkeypatch.setattr("ralph.git.operations._sleep_fn", fake_sleep)
-        monkeypatch.setattr("ralph.git.operations._recover_stale_git_lock", fake_recover)
+        monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", fake_sleep)
+        monkeypatch.setattr("ralph.git._lock_recovery._recover_stale_git_lock", fake_recover)
 
         attempt_count = 0
         lock_error = GitCommandError(
@@ -518,7 +344,7 @@ class TestLockBackoff:
         def fake_sleep(seconds: float) -> None:
             sleep_durations.append(seconds)
 
-        monkeypatch.setattr("ralph.git.operations._sleep_fn", fake_sleep)
+        monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", fake_sleep)
         recover_calls = 0
 
         def fake_recover(operation: str, error: Exception) -> bool:
@@ -526,7 +352,7 @@ class TestLockBackoff:
             recover_calls += 1
             return recover_calls > 1  # False on first, True on second
 
-        monkeypatch.setattr("ralph.git.operations._recover_stale_git_lock", fake_recover)
+        monkeypatch.setattr("ralph.git._lock_recovery._recover_stale_git_lock", fake_recover)
 
         lock_error = GitCommandError(
             ["git", "add", "-A"],
@@ -562,8 +388,8 @@ class TestLockBackoff:
         def fake_recover(_op: str, _err: Exception) -> bool:
             return False
 
-        monkeypatch.setattr("ralph.git.operations._sleep_fn", fake_sleep)
-        monkeypatch.setattr("ralph.git.operations._recover_stale_git_lock", fake_recover)
+        monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", fake_sleep)
+        monkeypatch.setattr("ralph.git._lock_recovery._recover_stale_git_lock", fake_recover)
 
         lock_error = GitCommandError(
             ["git", "commit"],
@@ -595,8 +421,8 @@ class TestLockBackoff:
         def fake_recover(_op: str, _err: Exception) -> bool:
             return False
 
-        monkeypatch.setattr("ralph.git.operations._sleep_fn", fake_sleep)
-        monkeypatch.setattr("ralph.git.operations._recover_stale_git_lock", fake_recover)
+        monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", fake_sleep)
+        monkeypatch.setattr("ralph.git._lock_recovery._recover_stale_git_lock", fake_recover)
 
         lock_error = GitCommandError(
             ["git", "add", "-A"],

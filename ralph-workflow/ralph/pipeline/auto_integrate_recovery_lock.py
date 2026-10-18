@@ -23,10 +23,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from ralph.git.operations import (
+from ralph.git._lock_recovery import (
     _STALE_GIT_LOCK_AGE_SECONDS as _STALE_AGE,
 )
-from ralph.git.operations import (
+from ralph.git._lock_recovery import (
     _lock_has_no_live_holder as _liveness_probe,
 )
 
@@ -48,9 +48,11 @@ def _lock_holder_is_dead(
     in place (fail-closed).
     """
     path = Path(lock_path)
+    # filesystem-read-ok: inspect git lock existence directly before recovery
     if not path.exists():
         return True  # already gone
     try:
+        # filesystem-read-ok: inspect git lock mtime directly for staleness check
         age = time.time() - path.stat().st_mtime
     except OSError:
         return False

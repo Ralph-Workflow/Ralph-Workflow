@@ -1,13 +1,12 @@
-"""Git stale lock recovery and contention handling.
+"""Stale git lock recovery and contention retry.
 
-Extracted from ``ralph.git.operations`` to stay within repo-structure line limits.
-Provides an age-and-liveness gate to safely unlink stale Git lock files,
-along with bounded backoff retry for transient contention.
+Provides bounded lock recovery via age and negative-liveness checks,
+as well as bounded exponential backoff for operations experiencing
+lock contention.
 """
 
 from __future__ import annotations
 
-import errno
 import os
 import re
 import subprocess
@@ -18,17 +17,8 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Protocol
 
-    class LivenessProbeFn(Protocol):
-        def __call__(
-            self,
-            lock_path: Path,
-            gitdir: Path,
-        ) -> Literal["live", "dead", "unknown"]: ...
-
-
-from git.exc import GitCommandError
+from git import GitCommandError
 from loguru import logger
 
 from ralph.git.errors import GitOperationError
@@ -38,6 +28,9 @@ _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 _PROBE_TIMEOUT_S = 0.5  # whole-probe ThreadPoolExecutor and subprocess budget
+
+type _LivenessVerdict = Literal["live", "dead", "unknown"]
+type _LivenessProbeFn = Callable[[Path | str, Path | str], _LivenessVerdict]
 
 # Bounded backoff constants for git lock contention retry
 _LOCK_BACKOFF_S: tuple[float, ...] = (0.2, 0.5, 1.0)  # total ≤ 1.7s
@@ -110,7 +103,7 @@ def _resolve_gitdirs(repo_root: Path) -> tuple[Path, Path]:
 def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
     # mcp-timeout-ok: bounded lock-liveness probe
     try:
-        result = subprocess.run(  # resource-lifecycle-ok: read-only lsof probe with bounded timeout
+        result = subprocess.run(  # resource-lifecycle-ok: bounded read-only lock probe  # filesystem-poll-ok: read-only lsof probe for git lock liveness, not managed process
             ["lsof", "-F", "pL", str(lock)],
             timeout=timeout,
             capture_output=True,
@@ -123,13 +116,11 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
 
     # mcp-timeout-ok: bounded lock-liveness probe
     try:
-        result = (
-            subprocess.run(  # resource-lifecycle-ok: read-only fuser probe with bounded timeout
-                ["fuser", str(lock)],
-                timeout=timeout,
-                capture_output=True,
-                check=False,
-            )
+        result = subprocess.run(  # resource-lifecycle-ok: bounded read-only lock probe  # filesystem-poll-ok: read-only fuser probe for git lock liveness, not managed process
+            ["fuser", str(lock)],
+            timeout=timeout,
+            capture_output=True,
+            check=False,
         )
         if result.returncode == 0:
             return True
@@ -137,156 +128,6 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
         pass
 
     return False
-
-
-def _is_git_process(proc_root: Path, pid_str: str) -> bool:
-    """Return True if the process identified by pid_str is a git process.
-
-    Checks ``/proc/<pid>/comm`` and ``/proc/<pid>/cmdline``. If either source
-    indicates the executable name is or contains "git", returns True.
-    Raises PermissionError if inspection is denied by permissions.
-    """
-    comm_path = proc_root / pid_str / "comm"
-    try:
-        if comm_path.is_file():
-            comm = comm_path.read_text(encoding="utf-8", errors="replace").strip().lower()
-            if "git" in comm:
-                return True
-    except PermissionError:
-        raise
-    except OSError:
-        pass
-
-    cmdline_path = proc_root / pid_str / "cmdline"
-    try:
-        if cmdline_path.is_file():
-            cmdline = cmdline_path.read_bytes()
-            parts = [p.decode(errors="replace") for p in cmdline.split(b"\x00") if p]
-            if parts:
-                exe = Path(parts[0]).name.lower()
-                if "git" in exe:
-                    return True
-            elif b"git" in cmdline.lower():
-                return True
-    except PermissionError:
-        raise
-    except OSError:
-        pass
-
-    return False
-
-
-def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
-    """Return True if we can positively prove the process is NOT a git process."""
-    comm_path = proc_root / pid_str / "comm"
-    try:
-        if comm_path.is_file():
-            comm = comm_path.read_text(encoding="utf-8", errors="replace").strip().lower()
-            if comm:
-                return "git" not in comm
-    except (OSError, PermissionError):
-        pass
-
-    cmdline_path = proc_root / pid_str / "cmdline"
-    try:
-        if cmdline_path.is_file():
-            cmdline = cmdline_path.read_bytes()
-            parts = [p.decode(errors="replace") for p in cmdline.split(b"\x00") if p]
-            if parts:
-                exe = Path(parts[0]).name.lower()
-                return "git" not in exe
-    except (OSError, PermissionError):
-        pass
-
-    return False
-
-
-def _is_unreadable_os_error(e: OSError) -> bool:
-    return isinstance(e, PermissionError) or e.errno in (errno.EACCES, errno.EPERM)
-
-
-def _is_dead_process_os_error(e: OSError) -> bool:
-    return isinstance(e, (FileNotFoundError, ProcessLookupError)) or e.errno in (
-        errno.ENOENT,
-        errno.ESRCH,
-    )
-
-
-def _pid_holds_lock_fd(
-    pid_dir: Path,
-    lock_resolved: str,
-) -> Literal["live", "not_live", "unknown"]:
-    """Check if process has the lock file open in fd/."""
-    try:
-        for fd_link in (pid_dir / "fd").iterdir():
-            try:
-                if str(fd_link.readlink()) == lock_resolved:
-                    return "live"
-            except OSError as e:
-                if _is_unreadable_os_error(e):
-                    return "unknown"
-        return "not_live"
-    except OSError as e:
-        if _is_unreadable_os_error(e):
-            return "unknown"
-        if _is_dead_process_os_error(e):
-            return "not_live"
-        return "unknown"
-
-
-def _pid_in_repo_cwd(
-    pid_dir: Path,
-    live_cwds: set[Path],
-    common_worktrees_dir: Path,
-) -> Literal["in_repo", "not_in_repo", "unknown"]:
-    """Check if process cwd is in the workspace repository or gitdirs."""
-    try:
-        cwd_link = pid_dir / "cwd"
-        if not (cwd_link.is_symlink() or cwd_link.exists()):
-            return "not_in_repo"
-        cwd_target = cwd_link.readlink()
-        try:
-            cwd_resolved = cwd_target.resolve()
-        except OSError:
-            cwd_resolved = cwd_target
-        if (
-            bool({cwd_target, cwd_resolved} & (live_cwds | {common_worktrees_dir}))
-            or str(cwd_target).startswith(str(common_worktrees_dir) + "/")
-            or str(cwd_resolved).startswith(str(common_worktrees_dir) + "/")
-        ):
-            return "in_repo"
-        return "not_in_repo"
-    except OSError as e:
-        if _is_unreadable_os_error(e):
-            return "unknown"
-        if _is_dead_process_os_error(e):
-            return "not_in_repo"
-        return "unknown"
-
-
-def _pid_has_gitdir_environ(
-    pid_dir: Path,
-    gitdir_bytes: bytes,
-    gitdir_common_bytes: bytes,
-) -> Literal["matches", "no_match", "unknown"]:
-    """Check if process environ sets GIT_DIR matching the repository gitdir."""
-    try:
-        environ_path = pid_dir / "environ"
-        if not environ_path.is_file():
-            return "no_match"
-        environ_bytes = environ_path.read_bytes()
-        if (
-            b"GIT_DIR=" + gitdir_bytes in environ_bytes
-            or b"GIT_DIR=" + gitdir_common_bytes in environ_bytes
-        ):
-            return "matches"
-        return "no_match"
-    except OSError as e:
-        if _is_unreadable_os_error(e):
-            return "unknown"
-        if _is_dead_process_os_error(e):
-            return "no_match"
-        return "unknown"
 
 
 def _check_pid_liveness(
@@ -297,46 +138,50 @@ def _check_pid_liveness(
     common_worktrees_dir: Path,
     gitdir_bytes: bytes,
     gitdir_common_bytes: bytes,
-) -> Literal["live", "dead", "unknown"]:
+) -> tuple[bool, bool]:
     """Check liveness signals for a single process PID.
 
-    Returns:
-        "live" -- process holds the lock file open (any process) or is a git
-                  process with cwd / environ in the repository/gitdir.
-        "dead" -- process does not hold the lock and is not a git process in repo.
-        "unknown" -- process cannot be inspected (PermissionError etc.).
+    Returns (is_live, is_verified).
     """
-    pid_dir = proc_root / pid_str
+    try:
+        # (i) fd check
+        fd_dir = proc_root / pid_str / "fd"
+        if fd_dir.is_dir():
+            for fd_link in fd_dir.iterdir():
+                try:
+                    if str(fd_link.readlink()) == lock_resolved:
+                        return True, True
+                except OSError:
+                    continue
 
-    is_non_git = _can_rule_out_non_git_process(proc_root, pid_str)
+        # (ii) cwd check
+        cwd_link = proc_root / pid_str / "cwd"
+        if cwd_link.is_symlink() or cwd_link.exists():
+            cwd_target = cwd_link.readlink()
+            try:
+                cwd_resolved = cwd_target.resolve()
+            except OSError:
+                cwd_resolved = cwd_target
+            if (
+                bool({cwd_target, cwd_resolved} & (live_cwds | {common_worktrees_dir}))
+                or str(cwd_target).startswith(str(common_worktrees_dir) + "/")
+                or str(cwd_resolved).startswith(str(common_worktrees_dir) + "/")
+            ):
+                return True, True
 
-    # (i) fd check - open-fd protection applies to ALL processes
-    fd_status = _pid_holds_lock_fd(pid_dir, lock_resolved)
-    if is_non_git:
-        # Confirmed non-git process (e.g. system daemon): return "live" if it
-        # holds the lock fd; otherwise "dead" (cwd/environ do not apply).
-        return "live" if fd_status == "live" else "dead"
+        # (iii) environ GIT_DIR check
+        environ_path = proc_root / pid_str / "environ"
+        if environ_path.is_file():
+            environ_bytes = environ_path.read_bytes()
+            if (
+                b"GIT_DIR=" + gitdir_bytes in environ_bytes
+                or b"GIT_DIR=" + gitdir_common_bytes in environ_bytes
+            ):
+                return True, True
 
-    if fd_status != "not_live":
-        return fd_status
-
-    # (ii) cwd check - applies only to git processes
-    cwd_status = _pid_in_repo_cwd(pid_dir, live_cwds, common_worktrees_dir)
-    # (iii) environ GIT_DIR check - applies only to git processes
-    env_status = _pid_has_gitdir_environ(pid_dir, gitdir_bytes, gitdir_common_bytes)
-
-    if cwd_status == "unknown" or env_status == "unknown":
-        return "unknown"
-
-    # If in repo cwd or matching environ, verify whether process is git
-    if cwd_status == "in_repo" or env_status == "matches":
-        try:
-            if _is_git_process(proc_root, pid_str):
-                return "live"
-        except PermissionError:
-            return "unknown"
-
-    return "dead"
+        return False, True
+    except (PermissionError, FileNotFoundError, OSError):
+        return False, False
 
 
 def _scan_proc(
@@ -358,11 +203,16 @@ def _scan_proc(
     if not pids:
         return "unknown"
 
-    lock_resolved = str(lock.resolve())
-    has_unknown = False
+    my_pid = os.getpid()
+    if my_pid in pids:
+        pids_to_scan = [my_pid, *[p for p in pids if p != my_pid][:119]]
+    else:
+        pids_to_scan = pids[:120]
 
-    for pid in pids:
-        status = _check_pid_liveness(
+    lock_resolved = str(lock.resolve())
+    any_verified = False
+    for pid in pids_to_scan:
+        is_live, is_verified = _check_pid_liveness(
             proc_root,
             str(pid),
             lock_resolved,
@@ -371,14 +221,12 @@ def _scan_proc(
             gitdir_bytes,
             gitdir_common_bytes,
         )
-        if status == "live":
+        if is_live:
             return "live"
-        if status == "unknown":
-            has_unknown = True
+        if is_verified:
+            any_verified = True
 
-    if has_unknown:
-        return "unknown"
-    return "dead"
+    return "dead" if any_verified else "unknown"
 
 
 def _lock_has_no_live_holder(
@@ -388,7 +236,6 @@ def _lock_has_no_live_holder(
     *,
     probe_timeout_s: float = _PROBE_TIMEOUT_S,
     _proc_root: Path = Path("/proc"),
-    probe_lsof_fuser_fn: Callable[[Path, float], bool] | None = None,
 ) -> Literal["live", "dead", "unknown"]:
     """Return whether the lock has no live holder, or "unknown" if unprovable.
 
@@ -397,21 +244,6 @@ def _lock_has_no_live_holder(
     The whole probe runs inside a ``ThreadPoolExecutor`` with a bounded
     ``probe_timeout_s`` (0.5 s) budget; on ``TimeoutError`` or error,
     the helper returns "unknown" (fail-closed).
-
-    Liveness OR-predicate (independently sufficient):
-      (i) ``/proc/<pid>/fd/*`` contains the lock path
-     (ii) ``/proc/<pid>/cwd`` is the per-worktree private gitdir,
-          the common gitdir, the worktree top level, the main-repo
-          top level, or any path under ``gitdir_common/worktrees/``
-    (iii) ``/proc/<pid>/environ`` has ``GIT_DIR`` matching ``gitdir``
-          or ``gitdir_common``
-     (iv) ``lsof -F pL <lock_path>`` returns 0 with ``p<PID>`` lines
-      (v) ``fuser`` fallback
-
-    Returns:
-        "live"  -- a live process is holding or using the lock; refuse
-        "dead"  -- no live holder found across scanned signals; safe to unlink
-        "unknown" -- platform limitation or probe timeout; refuse
     """
     lock = Path(lock_path)
     gitdir_path = Path(gitdir).resolve()
@@ -455,63 +287,38 @@ def _lock_has_no_live_holder(
     gitdir_bytes = str(gitdir_path).encode()
     gitdir_common_bytes = str(gitdir_common_path).encode()
 
-    lsof_fuser = probe_lsof_fuser_fn if probe_lsof_fuser_fn is not None else _probe_lsof_fuser
-
     def _probe() -> Literal["live", "dead", "unknown"]:
-        proc_status = _scan_proc(
-            _proc_root,
-            lock,
-            live_cwds,
-            common_worktrees_dir,
-            gitdir_bytes,
-            gitdir_common_bytes,
-        )
-        if proc_status == "live":
-            return "live"
-        if proc_status == "dead":
-            return "dead"
-        # If /proc is unavailable (e.g. non-Linux platforms) or inconclusive,
-        # fall back to lsof / fuser.
-        if lsof_fuser(lock, probe_timeout_s):
+        if os.access(_proc_root, os.R_OK):
+            proc_verdict = _scan_proc(
+                _proc_root,
+                lock,
+                live_cwds,
+                common_worktrees_dir,
+                gitdir_bytes,
+                gitdir_common_bytes,
+            )
+            if proc_verdict in ("live", "dead"):
+                return proc_verdict
+        if _probe_lsof_fuser(lock, probe_timeout_s):
             return "live"
         return "unknown"
 
-    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        future = executor.submit(_probe)
-        return future.result(timeout=probe_timeout_s)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_probe)
+            return future.result(timeout=probe_timeout_s)
     except Exception:
         # TimeoutError or any other thread error: fail closed
         return "unknown"
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _recover_stale_git_lock(
     operation: str,
     error: Exception,
     *,
-    liveness_fn: LivenessProbeFn | None = None,
+    liveness_probe: _LivenessProbeFn | None = None,
 ) -> bool:
-    """Recover from a transient Git lock-file error using an age-and-liveness gate.
-
-    A lock is removed only when both conditions are met:
-      (a) Conservative age check: the lock must be older than
-          ``_STALE_GIT_LOCK_AGE_SECONDS`` (10 s). Git lock files do NOT
-          record the PID of the holding process (correcting a false PID claim);
-          age alone is not proof of staleness, but locks younger than 10s are
-          refused removal to protect potentially live operations.
-      (b) Negative liveness proof: verified via :func:`_lock_has_no_live_holder`
-          using an OR-predicate across multiple process signals (fd table,
-          cwd, environ, lsof, fuser). The lock is unlinked ONLY when liveness
-          is affirmatively proven "dead". If any check signals "live" or
-          liveness is "unknown" (timeout or error), removal is refused fail-closed.
-
-    Returns:
-        True  -- lock removed or already gone (caller can retry).
-        False -- lock is live, too young, or unprovable (caller
-                 surfaces the contention).
-    """
+    """Recover from a transient Git lock-file error using an age-and-liveness gate."""
     error_text = str(error)
     lock_path = _parse_lock_path_from_error(error_text)
     if lock_path is None:
@@ -538,8 +345,8 @@ def _recover_stale_git_lock(
             return False
 
         gitdir = lock_path.parent
-        liveness_check = liveness_fn if liveness_fn is not None else _lock_has_no_live_holder
-        liveness = liveness_check(lock_path, gitdir)
+        probe_fn = liveness_probe or _lock_has_no_live_holder
+        liveness = probe_fn(lock_path, gitdir)
         if liveness in {"live", "unknown"}:
             logger.warning(
                 "Refusing to auto-unlink git lock for {} (path={}, age={:.1f}s, liveness={}); "
@@ -569,7 +376,7 @@ def _find_lock_holder(lock_path: Path) -> str:
         return "unknown"
     try:
         # mcp-timeout-ok: bounded lock holder discovery
-        result = subprocess.run(  # resource-lifecycle-ok: read-only lsof probe with bounded timeout
+        result = subprocess.run(  # resource-lifecycle-ok: bounded read-only lock holder discovery  # filesystem-poll-ok: read-only lsof probe for lock holder PID discovery
             ["lsof", "-F", "p", str(lock_path)],
             timeout=_PROBE_TIMEOUT_S,
             capture_output=True,
@@ -585,14 +392,12 @@ def _find_lock_holder(lock_path: Path) -> str:
 
     try:
         # mcp-timeout-ok: bounded lock holder discovery
-        result = (
-            subprocess.run(  # resource-lifecycle-ok: read-only fuser probe with bounded timeout
-                ["fuser", str(lock_path)],
-                timeout=_PROBE_TIMEOUT_S,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+        result = subprocess.run(  # resource-lifecycle-ok: bounded read-only lock holder discovery  # filesystem-poll-ok: read-only fuser probe for lock holder PID discovery
+            ["fuser", str(lock_path)],
+            timeout=_PROBE_TIMEOUT_S,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             pid = result.stdout.strip().split()[0]
@@ -608,46 +413,16 @@ def _run_git_operation_with_stale_lock_recovery[T](
     operation: str,
     action: Callable[[], T],
     *,
-    recover_fn: Callable[[str, Exception], bool] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
-    holder_fn: Callable[[Path], str] | None = None,
+    recover_fn: Callable[[str, Exception], bool] | None = None,
 ) -> T:
-    """Run a git action with bounded backoff on persistent lock contention.
-
-    When an operation fails due to lock contention:
-      1. Attempts stale-lock recovery (:func:`_recover_stale_git_lock`) using
-         the age-and-liveness gate (conservative 10s age + negative liveness proof).
-      2. If recovered (e.g. stale lock unlinked or gone), retries immediately.
-      3. If not recovered (lock young, live holder, or unknown), logs operator-facing
-         message naming lock path, age, and holder (if known, or 'unknown'),
-         then sleeps with bounded backoff via ``_sleep_fn(delay)`` and retries.
-      4. After exhausting backoff attempts (up to 3 retry attempts: 0.2s, 0.5s, 1.0s,
-         total ≤ 1.7s), re-raises the GitCommandError / GitOperationError.
-         Upstream callers (e.g. pipeline reducer) may perform in-place retry
-         when policy defines no recovery phase.
-
-    Args:
-        operation: Human-readable operation name for log messages.
-        action: The git operation to perform.
-        recover_fn: Optional override for stale lock recovery.
-        sleep_fn: Optional override for sleep backoff delay.
-        holder_fn: Optional override for lock holder lookup.
-
-    Returns:
-        The result of the action on success.
-
-    Raises:
-        GitCommandError: The original exception after all retry attempts are exhausted.
-        GitOperationError: The original exception if raised and exhausted.
-    """
+    """Run a git action with bounded backoff on persistent lock contention."""
     retry = 0
     max_retries = len(_LOCK_BACKOFF_S)
     stale_recovered_retries = 0
     max_stale_recovered_retries = 3
-
-    recover = recover_fn if recover_fn is not None else _recover_stale_git_lock
-    sleep = sleep_fn if sleep_fn is not None else _sleep_fn
-    find_holder = holder_fn if holder_fn is not None else _find_lock_holder
+    sleep = sleep_fn or _sleep_fn
+    recover = recover_fn or _recover_stale_git_lock
 
     while True:
         try:
@@ -677,7 +452,7 @@ def _run_git_operation_with_stale_lock_recovery[T](
                 except OSError:
                     pass
 
-            holder_str = find_holder(lock_path)
+            holder_str = _find_lock_holder(lock_path)
 
             logger.warning(
                 "Git lock contention during {} (lock={}, age={}, holder={}); "

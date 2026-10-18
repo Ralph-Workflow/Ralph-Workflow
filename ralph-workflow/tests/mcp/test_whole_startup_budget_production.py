@@ -208,8 +208,8 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
     child_env[MCP_TEST_PRE_SERVE_GATE_ENV] = str(sentinel)
-    # Set preflight to 4500ms so whole startup budget is 4.3s (< 4.5s)
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4500"
+    # Set preflight to 4050ms so real startup deadline is 2.05s (4.05s - 2.0s safety)
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4050"
 
     proc = get_process_manager().spawn(
         [
@@ -247,9 +247,8 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
         client_sock = socket.create_connection((host, port), timeout=5.0)
         assert client_sock is not None
 
-        # Hold child until past the 4.3s cumulative startup budget
-        # We need elapsed time from spawn to exceed 4.3s
-        time.sleep(4.4)
+        # Hold child until past the 2.05s real startup deadline from t0
+        time.sleep(2.2)
 
         # Release the gate: child unblocks, attempts to serve, checks cumulative startup deadline
         sentinel.touch()
@@ -359,7 +358,7 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
     # deadline is exceeded, not when a 300 ms constant expires.
     # (Must exceed the import-time preflight minimum: 4001 ms.)
     pre_serve_budget_ms = "300"
-    preflight_timeout_ms = "5000"
+    preflight_timeout_ms = "4050"
 
     child_env = dict(os.environ)
     child_env["RALPH_MCP_SESSION_FILE"] = str(session_file)
@@ -414,7 +413,7 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
         # time out, the helper to log/flush, and the kernel to
         # reap the process. The preflight is 10s, so any
         # "exits in 5s" is well below it.
-        rc = proc.wait(timeout=8.0)
+        rc = proc.wait(timeout=10.0)
 
         # The child must exit non-zero with the distinct
         # SESSION_OVERRUN_EXIT_CODE (33). The previous

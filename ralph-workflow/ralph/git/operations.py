@@ -9,22 +9,22 @@ Operations that mutate git state run through
 contention (such as ``index.lock``, ``HEAD.lock``, or ``packed-refs.lock``),
 recovery uses an age-and-liveness gate:
 
-* Conservative 10s age threshold (``_STALE_GIT_LOCK_AGE_SECONDS``):
+- Conservative 10s age threshold (``_STALE_GIT_LOCK_AGE_SECONDS``):
   Git lock files do NOT record the PID of the holding process (correcting
   a false claim that Git writes holding PIDs into lock files). Because lock
   files cannot identify their holder by content, locks younger than 10s
   cannot be safely unlinked and are refused removal.
-* Negative liveness proof via OR predicate: verified across multiple
+- Negative liveness proof via OR predicate: verified across multiple
   independent process signals (proc fd table, proc cwd in worktree/gitdirs,
   proc environ GIT_DIR, lsof, and fuser). If any signal indicates a live
   process or liveness cannot be verified ("unknown"), removal is refused
   fail-closed.
-* Bounded 0.5s ThreadPoolExecutor probe: liveness checks run inside a worker
+- Bounded 0.5s ThreadPoolExecutor probe: liveness checks run inside a worker
   thread with a strict 0.5s timeout (``_PROBE_TIMEOUT_S``) to prevent
   unbounded hangs.
-* Bounded backoff: when a lock cannot be unlinked due to contention, retries
+- Bounded backoff: when a lock cannot be unlinked due to contention, retries
   with bounded backoff (0.2s, 0.5s, 1.0s; total ≤ 1.7s) before re-raising.
-* Reducer integration: persistent failures trigger in-place reducer retry
+- Reducer integration: persistent failures trigger in-place reducer retry
   when policy defines no recovery phase, preserving the validated commit message.
 """
 
@@ -33,9 +33,10 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import time
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,28 +45,13 @@ from git import Actor, InvalidGitRepositoryError, Repo
 from loguru import logger
 
 from ralph.git._lock_recovery import (
-    _PROBE_TIMEOUT_S,
+    _lock_has_no_live_holder,
 )
 from ralph.git._lock_recovery import (
-    _STALE_GIT_LOCK_AGE_SECONDS as _BASE_STALE_GIT_LOCK_AGE_SECONDS,
+    _recover_stale_git_lock as _lr_recover_stale_git_lock,
 )
 from ralph.git._lock_recovery import (
-    _find_lock_holder as _base_find_lock_holder,
-)
-from ralph.git._lock_recovery import (
-    _lock_has_no_live_holder as _base_lock_has_no_live_holder,
-)
-from ralph.git._lock_recovery import (
-    _probe_lsof_fuser as _base_probe_lsof_fuser,
-)
-from ralph.git._lock_recovery import (
-    _recover_stale_git_lock as _base_recover_stale_git_lock,
-)
-from ralph.git._lock_recovery import (
-    _run_git_operation_with_stale_lock_recovery as _base_run_git_operation_with_stale_lock_recovery,
-)
-from ralph.git._lock_recovery import (
-    _sleep_fn as _base_sleep_fn,
+    _run_git_operation_with_stale_lock_recovery as _lr_run_git_operation_with_stale_lock_recovery,
 )
 from ralph.git.commit_result import CommitCreationResult
 from ralph.git.errors import GitOperationError
@@ -75,6 +61,9 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
 
+# Seam for time.sleep — patch in tests to avoid real delays
+_sleep_fn: Callable[[float], None] = time.sleep
+
 
 def _close_repo(repo: Repo | None) -> None:
     close = cast("Callable[[], object] | None", getattr(repo, "close", None))
@@ -82,52 +71,19 @@ def _close_repo(repo: Repo | None) -> None:
         close()
 
 
-# Test seams overrideable via monkeypatch
-_STALE_GIT_LOCK_AGE_SECONDS: float = _BASE_STALE_GIT_LOCK_AGE_SECONDS
-_sleep_fn: Callable[[float], None] = _base_sleep_fn
-_probe_lsof_fuser: Callable[[Path, float], bool] = _base_probe_lsof_fuser
-_find_lock_holder: Callable[[Path], str] = _base_find_lock_holder
-
-
-def _lock_has_no_live_holder(
-    lock_path: Path | str,
-    gitdir: Path | str,
-    gitdir_common: Path | str | None = None,
-    *,
-    probe_timeout_s: float = _PROBE_TIMEOUT_S,
-    _proc_root: Path = Path("/proc"),
-) -> Literal["live", "dead", "unknown"]:
-    return _base_lock_has_no_live_holder(
-        lock_path,
-        gitdir,
-        gitdir_common,
-        probe_timeout_s=probe_timeout_s,
-        _proc_root=_proc_root,
-        probe_lsof_fuser_fn=_probe_lsof_fuser,
-    )
-
-
-def _recover_stale_git_lock(
-    operation: str,
-    error: Exception,
-) -> bool:
-    return _base_recover_stale_git_lock(
-        operation,
-        error,
-        liveness_fn=_lock_has_no_live_holder,
-    )
+def _recover_stale_git_lock(operation: str, error: Exception) -> bool:
+    return _lr_recover_stale_git_lock(operation, error, liveness_probe=_lock_has_no_live_holder)
 
 
 def _run_git_operation_with_stale_lock_recovery[T](
     operation: str,
     action: Callable[[], T],
 ) -> T:
-    return _base_run_git_operation_with_stale_lock_recovery(
+    return _lr_run_git_operation_with_stale_lock_recovery(
         operation,
         action,
-        recover_fn=_recover_stale_git_lock,
         sleep_fn=_sleep_fn,
-        holder_fn=_find_lock_holder,
+        recover_fn=_recover_stale_git_lock,
     )
 
 

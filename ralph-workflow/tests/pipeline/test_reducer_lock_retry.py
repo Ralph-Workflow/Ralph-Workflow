@@ -103,9 +103,12 @@ def test_recovery_epoch_clamps_at_max_and_retries_in_place() -> None:
         ):
             next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Must NOT route to failed_terminal; must retry in-place
-        assert next_state.phase == "development_commit"
-        assert next_state.recovery_epoch == cap
+        # Must reach failed_terminal when recovery_epoch is exhausted
+        # AND there is no commit_recovery / commit_cleanup phase to fall back to
+        assert next_state.phase == "failed_terminal", (
+            f"Expected failed_terminal at recovery_epoch={cap}, got phase={next_state.phase}"
+        )
+        # pending_cycle_outcome cleared
         assert next_state.pending_cycle_outcome is None
 
         # Test when recovery_epoch is above cap (e.g. 5)

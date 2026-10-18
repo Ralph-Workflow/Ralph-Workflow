@@ -58,9 +58,10 @@ from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_BUDGET_S,
     _READY_TO_SERVE_BUDGET_S,
     _REGISTRY_BUILD_BUDGET_S,
+    _check_real_startup_deadline,
     mcp_discovery_budget_from_env,
+    mcp_pre_serve_budget_from_env,
     mcp_preflight_timeout_from_env,
-    mcp_real_startup_deadline_from_env,
     mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
     record_stage_elapsed,
@@ -197,39 +198,6 @@ if not (mcp_whole_startup_budget_from_env() < mcp_preflight_timeout_from_env().t
     )
 
 
-def _check_real_startup_deadline(
-    stage: str,
-    t0: float,
-    env_map: Mapping[str, str] | None = None,
-) -> None:
-    """Enforce cumulative spawn-to-serving startup deadline at stage boundary.
-
-    Checks elapsed monotonic time from `t0` against the real startup envelope:
-    `mcp_preflight_timeout_from_env(env_map) - _PROBE_SAFETY_S` (default: 28.0s).
-    Raises typed `McpServerError` with `last_stage=stage` and `elapsed_s` when exceeded.
-    Uses `if`/`raise` (not `assert`) so the check survives `python -O`.
-    """
-    elapsed = _clock() - t0
-    real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
-    if elapsed > real_deadline_s:
-        raise McpServerError(
-            f"real startup deadline exceeded at stage {stage!r} "
-            f"({elapsed:.3f}s > {real_deadline_s:.3f}s)",
-            last_stage=stage,
-            elapsed_s=elapsed,
-            restart_count=0,
-        )
-
-
-def _check_cumulative_startup_deadline(
-    stage: str,
-    t0: float,
-    env_map: Mapping[str, str] | None = None,
-) -> None:
-    """Thin backward-compatibility alias delegating to _check_real_startup_deadline."""
-    _check_real_startup_deadline(stage, t0, env_map)
-
-
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
     """Return the model identity for a standalone server's own session.
 
@@ -290,9 +258,8 @@ def _build_mcp_registry_and_server(
     """
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_budget_s = max(0.0, real_deadline_s - (_clock() - t0))
-    effective_read_timeout_s = mcp_registry_read_timeout_from_env(
-        env_map, remaining_s=remaining_budget_s
-    )
+    read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
+    effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
 
     t_reg_build_start = _clock()
     reg = build_ralph_tool_registry(
@@ -367,16 +334,67 @@ def _poll_bounded_pre_serve(
     env_map: Mapping[str, str],
     t0: float,
 ) -> tuple[FsWorkspace, McpConfig]:
-    return _base_poll_bounded_pre_serve(
-        workspace_root=workspace_root,
-        effective_session=effective_session,
-        workspace=workspace,
-        extras=extras,
-        env_map=env_map,
-        t0=t0,
-        load_mcp_config_fn=load_mcp_config,
-        clock_fn=_clock,
-    )
+    """Run the pre-serve critical path with a wall-clock deadline.
+
+    Executes allowed_roots access, FsWorkspace construction, and load_mcp_config
+    inside a ThreadPoolExecutor worker thread and raises McpServerError
+    (last_stage="config_loading") if the budget is exceeded.  Event.wait()
+    (which releases the GIL) is used in test doubles so the timeout fires;
+    path.open("rb") on a FIFO holds the GIL and cannot be interrupted.
+    """
+    real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
+    remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
+    pre_serve_budget = mcp_pre_serve_budget_from_env(env_map)
+    effective_timeout_s = min(pre_serve_budget.total_seconds(), remaining_s)
+
+    def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
+        # allowed_roots access triggers FileBackedSession._load() which
+        # does blocking stat() + read_text() on the session file.
+        allowed_roots = cast(
+            "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
+        )  # cast-policy: seam: structural boundary
+        ws = (
+            workspace
+            if workspace is not None
+            else (
+                extras.workspace
+                if extras.workspace is not None
+                else FsWorkspace(
+                    workspace_root, allowed_roots=allowed_roots if allowed_roots else None
+                )
+            )
+        )
+        cfg = (
+            extras.mcp_config
+            if extras.mcp_config is not None
+            else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
+        )
+        return (ws, cfg)
+
+    ex: concurrent.futures.ThreadPoolExecutor | None = None
+    try:
+        # ThreadPoolExecutor (not bare daemon Thread) is required by the
+        # resource-lifecycle audit; max_workers=1 serialises all blocking
+        # operations so the budget covers the whole sequence.
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(_do_pre_serve)
+        return future.result(timeout=effective_timeout_s)
+    except concurrent.futures.TimeoutError:
+        # Worker is wedged on real I/O holding the GIL;
+        # ``shutdown(wait=False)`` cannot interrupt it (see ``_pre_serve_overrun``).
+        elapsed = _clock() - t0
+        fail_closed_pre_serve_overrun(  # never returns: ``os._exit``
+            workspace_root,
+            stage="config_loading",
+            elapsed_s=elapsed,
+            budget_s=effective_timeout_s,
+            exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
+        )
+    except Exception:
+        raise
+    finally:
+        if ex is not None:
+            ex.shutdown(wait=False)  # do not accumulate executor threads across calls
 
 
 def build_standalone_http_server(

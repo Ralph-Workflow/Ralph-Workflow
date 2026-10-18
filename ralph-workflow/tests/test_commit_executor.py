@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 from git import Actor, Repo
 
 from ralph.git.commit_result import CommitCreationResult
@@ -18,8 +18,7 @@ from ralph.pipeline.commit_executor import (
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _init_test_git_repo(repo_root: Path, branch: str = "main") -> Repo:
@@ -124,7 +123,9 @@ def test_detached_head_resolves_branch_from_env(
     assert repo.active_branch.name == "feature-env"
 
 
-def test_repairable_git_state_stale_index_lock_repaired_and_retried(tmp_path: Path) -> None:
+def test_repairable_git_state_stale_index_lock_repaired_and_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _init_test_git_repo(tmp_path, "main")
 
     work_file = tmp_path / "initial.txt"
@@ -133,10 +134,13 @@ def test_repairable_git_state_stale_index_lock_repaired_and_retried(tmp_path: Pa
     # Create stale index.lock with dead PID
     git_dir = tmp_path / ".git"
     index_lock = git_dir / "index.lock"
-    # Write PID that definitely does not exist (99999999) and set mtime > 10s old
+    # Write stale index.lock (older than 10s age gate)
     index_lock.write_text("99999999\n", encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(index_lock, (stale_time, stale_time))
+
+    # Mock liveness probe so lock is provably dead in isolated test environment
+    monkeypatch.setattr("ralph.git.operations._lock_has_no_live_holder", lambda *_a, **_kw: "dead")
 
     message_file = _create_commit_message_artifact(tmp_path, "feat: lock recovery")
 

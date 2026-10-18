@@ -496,7 +496,7 @@ if not (
 
 # Import-time invariant: the real startup deadline (preflight - probe-safety) must
 # be strictly positive and strictly less than the preflight timeout.
-_real_startup_deadline_s: float = mcp_real_startup_deadline_from_env()
+_real_startup_deadline_s: float = mcp_preflight_timeout_from_env().total_seconds() - _PROBE_SAFETY_S
 if not (0 < _real_startup_deadline_s < mcp_preflight_timeout_from_env().total_seconds()):
     raise RuntimeError(
         f"real startup deadline ({_real_startup_deadline_s}s) must be strictly "
