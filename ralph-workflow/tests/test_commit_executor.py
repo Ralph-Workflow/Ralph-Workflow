@@ -123,7 +123,6 @@ def test_detached_head_resolves_branch_from_env(
     assert repo.active_branch.name == "feature-env"
 
 
-@pytest.mark.timeout_seconds(15)
 def test_repairable_git_state_stale_index_lock_repaired_and_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

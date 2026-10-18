@@ -120,7 +120,7 @@ def test_cumulative_deadline_enforces_at_session_ready(tmp_path: Path) -> None:
     whole_budget = mcp_whole_startup_budget_from_env(env)
     past_budget = whole_budget + 1.0
 
-    ticks = iter((0.0, past_budget, past_budget * 2, past_budget * 3))
+    ticks = iter((0.0, 0.0, past_budget, past_budget * 2, past_budget * 3))
     with (
         patch.object(runtime_module, "_clock", lambda: next(ticks)),
         pytest.raises(McpServerError) as exc_info,
@@ -137,8 +137,7 @@ def test_cumulative_deadline_enforces_at_config_loading(tmp_path: Path) -> None:
     whole_budget = mcp_whole_startup_budget_from_env({})
     past_budget = whole_budget + 1.0
 
-    # First tick 0.0 (t0), second tick past_budget (at config_loading check)
-    ticks = iter((0.0, past_budget, past_budget * 2, past_budget * 3))
+    ticks = iter((0.0, 0.0, past_budget, past_budget * 2, past_budget * 3))
     session = AgentSession(
         session_id="test-session",
         run_id="test-run",
@@ -210,8 +209,9 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
     child_env[MCP_TEST_PRE_SERVE_GATE_ENV] = str(sentinel)
-    # Set preflight to 4050ms so real startup deadline is 2.05s (4.05s - 2.0s safety)
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4050"
+    # Set preflight to 4100ms so probe ceiling is 2050ms > 2000ms safety floor,
+    # giving a real startup deadline of 2.1s (4.1s - 2.0s probe safety floor).
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4100"
 
     proc = get_process_manager().spawn(
         [
@@ -249,7 +249,8 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
         client_sock = socket.create_connection((host, port), timeout=5.0)
         assert client_sock is not None
 
-        # Hold child until past the 2.05s real startup deadline from t0
+        # Hold child until past the 2.1s cumulative startup deadline
+        # (t0 is before registry_built, so 2.2s hold guarantees elapsed > 2.1s)
         time.sleep(2.2)
 
         # Release the gate: child unblocks, attempts to serve, checks cumulative startup deadline
@@ -352,15 +353,15 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
     addr: tuple[str, int] = parent_sock.getsockname()[:2]
     host, port = addr
 
-    # Shrunken preflight (5s) so the real deadline envelope
-    # (preflight - _PROBE_SAFETY_S = 3s) fires well below the
+    # Shrunken preflight (4100ms) so the real deadline envelope
+    # (preflight - _PROBE_SAFETY_S = 2.1s) fires well below the
     # parent's preflight. The new contract replaces the old
     # 300 ms per-stage pre-serve cap with the real remaining
     # deadline: a hung FIFO now fails closed when the real
     # deadline is exceeded, not when a 300 ms constant expires.
     # (Must exceed the import-time preflight minimum: 4001 ms.)
     pre_serve_budget_ms = "300"
-    preflight_timeout_ms = "4050"
+    preflight_timeout_ms = "4100"
 
     child_env = dict(os.environ)
     child_env["RALPH_MCP_SESSION_FILE"] = str(session_file)

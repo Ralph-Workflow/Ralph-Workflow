@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -68,6 +70,9 @@ _SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
     "secrets.yml",
     "credentials.json",
 )
+
+type _EnvGetter = Callable[[str], str | None]
+_DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
@@ -297,6 +302,12 @@ def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
         val = opts.get(key)
         if isinstance(val, str) and val.strip():
             yield val.strip()
+
+    raw_env_getter = opts.get("env_getter")
+    env_getter: _EnvGetter = raw_env_getter if callable(raw_env_getter) else _DEFAULT_ENV_GETTER
+    env_branch = env_getter("FEATURE_BRANCH")
+    if env_branch and env_branch.strip():
+        yield env_branch.strip()
 
     config = opts.get("config")
     if config is not None:

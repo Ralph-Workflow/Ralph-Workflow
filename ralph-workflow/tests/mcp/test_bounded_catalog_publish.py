@@ -213,8 +213,9 @@ def test_real_child_catalog_publish_fifo_fails_closed_with_typed_exit(
     # The preflight must be strictly greater than the whole startup
     # budget; the import-time invariant enforces this. With probe
     # timeout 200ms the whole budget is ~ 1.0 + 0.2 + 0.4 + 0.4 =
-    # 2.0s, so 5s preflight is comfortably above.
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4050"
+    # 2.0s, so 4100ms preflight is comfortably above and leaves
+    # real deadline = 4.1s - 2.0s = 2.1s.
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4100"
 
     # Use subprocess.Popen directly so we can drain stderr and
     # assert the typed error reaches the parent.

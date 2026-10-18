@@ -295,12 +295,13 @@ class TestDiagnosticStageContract:
         assert overruns_path.exists()
         lines = overruns_path.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
-        parsed = json.loads(lines[0])
+        parsed: dict[str, object] = json.loads(lines[0])
         assert isinstance(parsed, dict)
         assert parsed["stage"] == "config_loaded"
         assert parsed["elapsed_s"] == 1.128
         assert parsed["budget_s"] == 1.0
         assert parsed["remaining_s"] == -0.128
+        assert "headroom_s" in parsed
         assert "observed_at" in parsed
         assert "warning_id" in parsed
 

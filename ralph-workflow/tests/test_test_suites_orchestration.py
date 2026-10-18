@@ -158,16 +158,13 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # flush + line_buffering reconfigure wired in runtime.py and
     # _fallback_standalone_server.py. subprocess_e2e because it crosses
     # a real process boundary. On the default make-test profile so the
-    # banner regression cannot rot.
+    # wt-16: CLI-child banner visibility and bounded catalog publish/FD regressions.
     "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py",
-    # wt-16 WU-3 (followup): real-child subprocess regressions restored
-    # to the default ``make test`` profile (R1/R2 black-box evidence).
-    # All carry ``subprocess_e2e`` (real-child boundary) but bounded
-    # enough to stay inside the 60s combined budget alongside the
-    # existing general-suite shards.
+    # wt-16 WU-1 / Unit V: real-child startup budget, bounded catalog publish,
+    # and fail-closed inherited FD adoption regressions.
     "tests/mcp/test_whole_startup_budget_production.py",
-    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
     "tests/mcp/test_bounded_catalog_publish.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
 )
 
 
@@ -559,6 +556,30 @@ def test_required_auto_integrate_selection_accepts_complete_registry() -> None:
     )
 
 
+def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None:
+    """Real-child startup, bounded catalog publish, and inherited-FD fail-closed tests are selected in verification."""
+    target_files = (
+        "tests/mcp/test_whole_startup_budget_production.py",
+        "tests/mcp/test_bounded_catalog_publish.py",
+        "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
+    )
+    for path in target_files:
+        assert path in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    repo_root = Path(__file__).resolve().parent.parent
+    for path in target_files:
+        assert (repo_root / path).is_file(), f"{path} must exist on disk"
+    _selected, _marker, required_files, workers = test_suites_module._select_test_files(
+        cwd=repo_root,
+        file_discoverer=lambda _cwd: test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+        profile=None,
+        auto_integrate_e2e_only=False,
+        subprocess_e2e_only=False,
+    )
+    assert workers == test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS
+    for path in target_files:
+        assert path in required_files
+
+
 def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -655,6 +676,7 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
         ),
     ),
 )
+@pytest.mark.timeout_seconds(5)
 def test_run_test_suites_regression_profile_uses_exact_static_files_and_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

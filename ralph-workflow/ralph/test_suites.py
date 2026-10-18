@@ -281,26 +281,17 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # a real process boundary. On the default make-test profile so the
     # banner regression cannot rot.
     "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py",
-    # wt-16 WU-1: bounded catalog publication regression — both files
-    # carry the ``subprocess_e2e`` module marker because they cross a
-    # real process boundary (the FIFO-blocked ``os.open`` test must
-    # reach the bounded publish helper inside a real child, and the
-    # invalid-inherited-FD tests must prove the fail-closed
-    # ``McpServerError`` reaches the parent's pipe as a non-zero
-    # exit). On the default make-test profile so the bounded-publish
-    # and fail-closed-FD regressions cannot rot silently — discovery
-    # excludes them and the cumulative 60s combined test budget
-    # loses its only real-child proof.
+    # wt-16 WU-1 / Unit V: real-child startup budget, bounded catalog publish,
+    # and fail-closed inherited FD adoption regressions. These cross a real
+    # process boundary (the FIFO-blocked open/session tests must reach the
+    # fail-closed overrun helpers inside a real child, and the invalid-inherited-FD
+    # tests prove the typed McpServerError reaches the parent as a non-zero exit).
+    # Registered on the default profile in the dedicated E2E shard (4 xdist workers)
+    # so the fail-closed real-child proofs cannot rot silently and fit within the
+    # 60s immutable combined test budget.
     "tests/mcp/test_whole_startup_budget_production.py",
-    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
-    # wt-16 WU-1: bounded catalog publish black-box regression —
-    # real child with a FIFO at ``.agent/mcp/parent_catalog.json.tmp``
-    # must exit with the distinct catalog overrun exit code while
-    # the inherited socket keeps accepting connections in the
-    # kernel backlog. subprocess_e2e because it crosses a real
-    # process boundary; on the default make-test profile so the
-    # R2 R2 R2-envelope cannot rot silently.
     "tests/mcp/test_bounded_catalog_publish.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

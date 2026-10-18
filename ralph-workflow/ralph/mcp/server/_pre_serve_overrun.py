@@ -32,17 +32,20 @@ import contextlib
 import os
 import sys
 import threading
+import time
 from typing import TYPE_CHECKING, NoReturn
 
 from loguru import logger
 
 from ralph.mcp.protocol._startup_timeouts import (
     mcp_overrun_diagnostic_timeout_seconds,
+    mcp_real_startup_deadline_from_env,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._start_stage_tracker import record as _record_stage
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
 #: Distinct non-zero exit codes for the pre-serve overrun paths. Three
@@ -124,9 +127,95 @@ def fail_closed_pre_serve_overrun(
     os._exit(exit_code)
 
 
+def stage_overrun_exit_code(stage: str) -> int:
+    """Return the distinct overrun exit code associated with ``stage``."""
+    if stage == "session_ready":
+        return SESSION_OVERRUN_EXIT_CODE
+    if stage == "upstream_catalog_or_discovery_done":
+        return CATALOG_PUBLISH_OVERRUN_EXIT_CODE
+    return PRE_SERVE_OVERRUN_EXIT_CODE
+
+
+def log_and_record_stage(
+    workspace_root: Path,
+    name: str,
+    *,
+    t0: float | None = None,
+    env_map: Mapping[str, str] | None = None,
+    timeout_s: float | None = None,
+    clock_fn: Callable[[], float] | None = None,
+) -> None:
+    """Emit one flushed ``logger.info`` line and write it to the stage file.
+
+    R4-LOGS: every startup stage is logged as a flushed ``logger.info``
+    line AND recorded to the stage-tracker file the supervisor reads on
+    preflight failure. The two actions are always coupled so the operator
+    has both the real-time stream and the on-disk record.
+
+    Both logging and label persistence are bounded by the remaining real
+    startup deadline (``mcp_real_startup_deadline_from_env``). If the
+    stage write or logging stalls (e.g. hung filesystem, blocked FIFO),
+    the child fails closed via :func:`fail_closed_pre_serve_overrun`
+    strictly before preflight expires, leaving available safety headroom
+    for the supervisor to attribute the exit cleanly.
+    """
+    clk = clock_fn if clock_fn is not None else time.monotonic
+    eff_env = os.environ if env_map is None else env_map
+    eff_t0 = t0 if t0 is not None else clk()
+    real_deadline_s = mcp_real_startup_deadline_from_env(eff_env)
+    remaining_s = max(0.0, real_deadline_s - (clk() - eff_t0))
+    eff_timeout_s = timeout_s if timeout_s is not None else remaining_s
+    write_timeout_s = (
+        eff_timeout_s if eff_timeout_s > 0.0 else mcp_overrun_diagnostic_timeout_seconds(eff_env)
+    )
+
+    error: list[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            logger.info("ralph-mcp startup: stage={stage}", stage=name)
+            try:
+                _record_stage(workspace_root, name, timeout_s=write_timeout_s)
+            except TypeError:
+                _record_stage(workspace_root, name)
+        except BaseException as exc:
+            error.append(exc)
+
+    stage_thread = threading.Thread(
+        target=_worker,
+        name=f"ralph-mcp-stage-{name}",
+        daemon=True,
+    )
+    stage_thread.start()
+    stage_thread.join(timeout=max(0.0, write_timeout_s))
+    if stage_thread.is_alive():
+        elapsed = clk() - eff_t0
+        fail_closed_pre_serve_overrun(
+            workspace_root,
+            stage=name,
+            elapsed_s=elapsed,
+            budget_s=eff_timeout_s,
+            exit_code=stage_overrun_exit_code(name),
+        )
+    if error:
+        exc = error[0]
+        if isinstance(exc, TimeoutError):
+            elapsed = clk() - eff_t0
+            fail_closed_pre_serve_overrun(
+                workspace_root,
+                stage=name,
+                elapsed_s=elapsed,
+                budget_s=eff_timeout_s,
+                exit_code=stage_overrun_exit_code(name),
+            )
+        raise exc
+
+
 __all__ = [
     "CATALOG_PUBLISH_OVERRUN_EXIT_CODE",
     "PRE_SERVE_OVERRUN_EXIT_CODE",
     "SESSION_OVERRUN_EXIT_CODE",
     "fail_closed_pre_serve_overrun",
+    "log_and_record_stage",
+    "stage_overrun_exit_code",
 ]

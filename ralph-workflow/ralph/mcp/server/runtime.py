@@ -87,6 +87,9 @@ from ralph.mcp.server._pre_serve_overrun import (
     SESSION_OVERRUN_EXIT_CODE,
     fail_closed_pre_serve_overrun,
 )
+from ralph.mcp.server._pre_serve_overrun import (
+    log_and_record_stage as _log_and_record_stage,
+)
 from ralph.mcp.server._process_secrecy import (
     erase_broker_secret_environment,
     protect_broker_secret,
@@ -104,7 +107,6 @@ from ralph.mcp.server._runtime_polling import (
 )
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
-from ralph.mcp.server._start_stage_tracker import record as _record_stage
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.transport.common import mcp_config_as_upstreams, merge_mcp_toml_into_upstreams
@@ -125,18 +127,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, MutableMapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
-
-
-def _log_and_record_stage(workspace_root: Path, name: str) -> None:
-    """Emit one flushed ``logger.info`` line and write it to the stage file.
-
-    R4-LOGS: every startup stage is logged as a flushed ``logger.info``
-    line AND recorded to the stage-tracker file the supervisor reads on
-    preflight failure. The two actions are always coupled so the operator
-    has both the real-time stream and the on-disk record.
-    """
-    logger.info("ralph-mcp startup: stage={stage}", stage=name)
-    _record_stage(workspace_root, name)
 
 
 @dataclass(frozen=True)
@@ -450,8 +440,19 @@ def build_standalone_http_server(
     # Record config_loading BEFORE the bounded block so the stage file captures
     # where the child was when the budget fires. ThreadPoolExecutor (not bare
     # daemon Thread) is required by the resource-lifecycle audit.
-    _log_and_record_stage(workspace_root, "config_loading")
-    _check_real_startup_deadline("config_loading", t0, env_map)
+    t0_eff = t0 if t0 is not None else _clock()
+
+    def _stage(name: str) -> None:
+        _log_and_record_stage(
+            workspace_root,
+            name,
+            t0=t0_eff,
+            env_map=env_map,
+            clock_fn=_clock,
+        )
+
+    _stage("config_loading")
+    _check_real_startup_deadline("config_loading", t0_eff, env_map)
     t_stage_config = _clock()
     effective_workspace, mcp_cfg = _poll_bounded_pre_serve(
         workspace_root=workspace_root,
@@ -461,7 +462,7 @@ def build_standalone_http_server(
         env_map=env_map,
         t0=t0,
     )
-    _log_and_record_stage(workspace_root, "config_loaded")
+    _stage("config_loaded")
     record_stage_elapsed(
         "config_loaded",
         _clock() - t_stage_config,
@@ -510,11 +511,11 @@ def build_standalone_http_server(
     # so the supervisor never sees a half-bound child.
     is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
     if is_respawn and upstream_servers and not catalog_present:
-        _log_and_record_stage(workspace_root, "respawn_precheck")
+        _stage("respawn_precheck")
         raise McpServerError(
             "MCP respawn missing tool catalog (RALPH_MCP_RESPAWN=1 set but no "
             "UPSTREAM_MCP_TOOL_CATALOG_ENV); refusing to probe upstreams during "
-            f"respawn (servers={[s.name for s in upstream_servers]})",
+            "respawn (servers={[s.name for s in upstream_servers]})",
             restart_count=0,
             last_stage="respawn_precheck",
         )
@@ -577,7 +578,7 @@ def build_standalone_http_server(
             k=n_servers,
             m=n_proxied,
         )
-    _log_and_record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    _stage("upstream_catalog_or_discovery_done")
     record_stage_elapsed(
         "upstream_catalog_or_discovery_done",
         _clock() - t_stage_discovery,
@@ -596,7 +597,7 @@ def build_standalone_http_server(
     # post-construction ``record_stage_elapsed`` below is the
     # checkpoint that catches a slow (but not blocked) constructor.
     t_stage_reg = _clock()
-    _log_and_record_stage(workspace_root, "registry_built")
+    _stage("registry_built")
     _check_real_startup_deadline("registry_built", t0, env_map)
 
     server = _build_mcp_registry_and_server(
@@ -680,10 +681,15 @@ def run_standalone_server(
     t0 = _clock()
 
     def _stage(name: str) -> None:
-        _log_and_record_stage(workspace_root, name)
+        _log_and_record_stage(
+            workspace_root,
+            name,
+            t0=t0,
+            env_map=env_map,
+            clock_fn=_clock,
+        )
 
     _stage("env_loaded")
-    # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
     _check_real_startup_deadline("env_loaded", t0, env_map)
 
     # WU-B: switch the child's stdio to line-buffered so the listening

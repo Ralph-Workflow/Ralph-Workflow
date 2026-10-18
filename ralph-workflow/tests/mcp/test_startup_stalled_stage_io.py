@@ -416,3 +416,118 @@ def test_registry_read_slow_but_answers_succeeds(
     assert warned[0][2] == 0.4
     # And real startup deadline is NOT exceeded (1.5s <= 28.0s)
     _check_real_startup_deadline("registry_built", 0.0, {})
+
+
+def test_blocked_stage_recorder_fails_closed_before_preflight_with_headroom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blocked stage recorder causes child startup to fail closed before preflight with headroom."""
+    import ralph.mcp.server.runtime as runtime_mod
+
+    # Synchronize clocks to exact 0.0 so remaining_s math is exact
+    monkeypatch.setattr(runtime_mod, "_clock", lambda: 0.0)
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", lambda: 0.0)
+
+    captured_timeout: list[float] = []
+
+    def blocked_record(root: Path, stage: str, *, timeout_s: float | None = None) -> None:
+        if timeout_s is not None:
+            captured_timeout.append(timeout_s)
+        raise TimeoutError("Stage recorder wedged on stalled filesystem")
+
+    monkeypatch.setattr("ralph.mcp.server._pre_serve_overrun._record_stage", blocked_record)
+    monkeypatch.setattr(os, "_exit", _mock_exit)
+
+    default_preflight_s = 30.0
+    expected_deadline_s = default_preflight_s - _PROBE_SAFETY_S  # 28.0s
+
+    captured_exit: list[int] = []
+
+    def mock_fail_closed(
+        workspace_root: Path,
+        *,
+        stage: str,
+        elapsed_s: float,
+        budget_s: float,
+        exit_code: int,
+        diagnostic_timeout_s: float | None = None,
+    ) -> NoReturn:
+        captured_exit.append(exit_code)
+        raise _ExitInterceptedError(exit_code)
+
+    monkeypatch.setattr(
+        "ralph.mcp.server._pre_serve_overrun.fail_closed_pre_serve_overrun", mock_fail_closed
+    )
+
+    with pytest.raises(_ExitInterceptedError) as exc_info:
+        runtime_mod.run_standalone_server(tmp_path, env={})
+
+    assert exc_info.value.code == PRE_SERVE_OVERRUN_EXIT_CODE
+    assert captured_exit == [PRE_SERVE_OVERRUN_EXIT_CODE]
+    # Captured timeout must match preflight - _PROBE_SAFETY_S (28.0s at default)
+    assert len(captured_timeout) >= 1
+    assert captured_timeout[0] == expected_deadline_s
+    assert captured_timeout[0] < default_preflight_s
+    # Headroom before preflight must be at least _PROBE_SAFETY_S (2.0s)
+    available_headroom = default_preflight_s - captured_timeout[0]
+    assert available_headroom == _PROBE_SAFETY_S
+
+
+def test_slow_stage_recorder_succeeds_without_premature_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage recorder taking 1.5s succeeds without premature failure (within 28s deadline)."""
+    import ralph.mcp.server.runtime as runtime_mod
+    from ralph.mcp.server._start_stage_tracker import record as real_record
+
+    clock_val = 0.0
+
+    def fake_clock() -> float:
+        return clock_val
+
+    session = AgentSession(
+        session_id="test-session-slow-record",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+
+    def slow_record(root: Path, stage: str, *, timeout_s: float | None = None) -> None:
+        nonlocal clock_val
+        clock_val += 1.5  # Simulate 1.5s stage recording
+        real_record(root, stage)
+
+    def mock_session_from_env(
+        *,
+        declared_agent_transport: str | None = None,
+        workspace_root: Path | None = None,
+    ) -> AgentSession:
+        return session
+
+    class _MockServer:
+        def __init__(self) -> None:
+            self.run_called = False
+
+        def run(self, *args: object, **kwargs: object) -> None:
+            self.run_called = True
+
+    mock_server = _MockServer()
+
+    def mock_build(
+        workspace_root: Path,
+        *,
+        extras: McpServerExtras | None = None,
+        **kwargs: object,
+    ) -> _MockServer:
+        return mock_server
+
+    monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
+    monkeypatch.setattr("ralph.mcp.server._pre_serve_overrun._record_stage", slow_record)
+    monkeypatch.setattr(runtime_mod, "session_from_env", mock_session_from_env)
+    monkeypatch.setattr(runtime_mod, "build_standalone_http_server", mock_build)
+
+    # Must complete cleanly without premature failure
+    runtime_mod.run_standalone_server(tmp_path, env={})
+    assert mock_server.run_called is True
+    assert read_last_stage(tmp_path) == "session_ready"

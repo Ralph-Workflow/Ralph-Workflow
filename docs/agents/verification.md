@@ -202,10 +202,10 @@ Every blocking I/O operation under `ralph/mcp/` (as well as `ralph/git/` and `ra
 
 The MCP server startup architecture enforces a strict distinction between non-fatal stage diagnostics and the fatal process deadline:
 
-- **Diagnostic stage budgets:** Individual startup stages are tracked with stage budgets (e.g. `_PRE_SERVE_BUDGET_S`, `_CONFIG_LOAD_BUDGET_S`, `_REGISTRY_BUILD_BUDGET_S`, `_READY_TO_SERVE_BUDGET_S`). When a stage overruns its individual budget, `record_stage_elapsed` emits a structured WARNING log and appends a diagnostic entry to the sibling JSONL `.overruns` file (`<stage_file_path>.overruns`). Stage overruns are diagnostic warnings only; they do NOT raise exceptions or abort startup.
-- **Fatal startup deadline:** The only fatal check during startup is `_check_real_startup_deadline`, which evaluates cumulative elapsed time against the real deadline: `mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S` (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin). When cumulative time exceeds this deadline, it raises `McpServerError` so the child fails loudly before supervisor `SIGKILL`.
-- **Bounded pre-serve and exit paths:** Pre-serve operations and overrun diagnostic flushes execute within bounded timeouts (`mcp_pre_serve_budget_from_env()`, `mcp_overrun_diagnostic_timeout_from_env()`) so a stalled filesystem or blocked FIFO cannot delay process exit or hold inherited sockets past the preflight ceiling.
-- **Stale git lock recovery:** Git operations guard mutating calls with `_run_git_operation_with_stale_lock_recovery` using a conservative 10s age threshold and negative liveness proof (OR-predicate across proc fd, cwd, environ, lsof, fuser) inside a bounded 0.5s `ThreadPoolExecutor` probe. Contention retries with bounded exponential backoff (total ≤ 1.7s) before escalating to the reducer for in-place retry when policy defines no recovery phase.
+- **Diagnostic stage budgets:** Individual startup stages are tracked with stage budgets (e.g. `_PRE_SERVE_BUDGET_S`, `_CONFIG_LOAD_BUDGET_S`, `_REGISTRY_BUILD_BUDGET_S`, `_READY_TO_SERVE_BUDGET_S`). When a stage overruns its individual budget, `record_stage_elapsed` emits a structured WARNING log and appends a diagnostic entry to the sibling JSONL `.overruns` file (`<stage_file_path>.overruns`) including calculated `headroom_s` to the real deadline. Stage overruns are diagnostic warnings only; they do NOT raise exceptions or abort startup.
+- **Fatal startup deadline:** Fatal checks during startup evaluate cumulative elapsed time against the real startup deadline: `mcp_real_startup_deadline_from_env()` = `mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S` (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin). When cumulative elapsed time exceeds this deadline, `_check_real_startup_deadline` raises `McpServerError` (and pre-serve execution triggers `fail_closed_pre_serve_overrun`) so the child fails loudly before supervisor `SIGKILL`.
+- **Bounded pre-serve and exit paths:** Pre-serve operations (`run_pre_serve_bounded` in `ralph/mcp/server/_runtime_polling.py`) execute within the remaining real startup deadline (`mcp_real_startup_deadline_from_env() - elapsed`), allowing slow-but-successful pre-serve operations (such as session discovery and configuration parsing) to use available headroom rather than being prematurely truncated by an arbitrary sub-second constant. Overrun diagnostic flushes execute in a daemon thread bounded by `mcp_overrun_diagnostic_timeout_from_env()` (default 0.2s) so a stalled filesystem or blocked FIFO cannot delay process exit or hold inherited sockets past the preflight ceiling. The legacy `mcp_pre_serve_budget_from_env()` helper and `RALPH_MCP_PRE_SERVE_TIMEOUT_MS` environment variable remain available for diagnostic stage budgeting and compatibility, but do not truncate runtime execution.
+- **Stale git lock recovery and persistent reducer retry:** Git operations guard mutating calls with `_run_git_operation_with_stale_lock_recovery` using a conservative 10s age threshold and negative liveness proof (OR-predicate across proc fd, cwd, environ, lsof, fuser) inside a bounded 0.5s `ThreadPoolExecutor` probe. Contention retries with bounded exponential backoff (total ≤ 1.7s) before escalating to the reducer. When policy defines no automated recovery phase (`commit_recovery` or `commit_cleanup`), the reducer clamps `recovery_epoch` at `_MAX_COMMIT_RECOVERY_ATTEMPTS` and retries in-place, preserving the validated commit message at `effect.message_file` across passes rather than aborting to `failed_terminal`.
 
 ## Cross-links
 
@@ -220,17 +220,8 @@ If the change touches README, docs, START_HERE, the manual, or any public-doc ro
 
 ## Documentation Review Note
 
-- *What changed.* Checkout-install docs now name the `uv` >= 0.7.0 preflight,
-  POSIX/WSL boundary, serialized locked transaction, and authoritative offline
-  installer smoke.
-- *Why these surfaces own it.* `CONTRIBUTING.md` is the detailed installer
-  contract; the READMEs and operator manual route readers there, while this
-  verification guide records the focused smoke.
-- *What was left alone.* No CI, Make, test, or Windows-gate claim changed;
-  native Windows is documented only as a packaged-install path.
-- *How duplication was contained.* Rollback mechanics appear once in
-  `CONTRIBUTING.md`; public and operator pages keep concise prerequisites,
-  failure recovery, and links.
-- *Why the route is clearer.* A checkout user can now identify the supported
-  environment, fix a precise failing stage, and find the smoke that locks the
-  behavior without reading the implementation.
+- *What changed.* Reconciled MCP startup timeout and git lock recovery contracts with runtime behavior: documented that pre-serve operations enforce the remaining real startup deadline (`mcp_real_startup_deadline_from_env()`) rather than the legacy `mcp_pre_serve_budget_from_env()` knob; clarified diagnostic stage budgets and overrun records; documented negative liveness proof and bounded backoff for git lock contention; and documented persistent in-place reducer retry with `recovery_epoch` clamping when no recovery phase is defined.
+- *Why these surfaces own it.* `docs/agents/verification.md` is the authoritative contract for timeout budgets, audit gates, and lifecycle invariants enforced by `make verify`.
+- *What was left alone.* The core diagnostic-vs-deadline architecture, probe-safety margin (`_PROBE_SAFETY_S`), and fail-safe overrun diagnostic exit paths were preserved. The terminal-escape containment, test budget, and installer contracts above remain authoritative.
+- *How duplication was contained.* Code-level helper details remain in docstrings (`_startup_timeouts.py`, `reducer.py`); this verification guide records the architectural contracts and invariant guarantees.
+- *Why the route is clearer.* Agents and operators now understand the exact boundary between non-fatal stage diagnostics and fatal deadline enforcement without relying on misleading environment knobs, and understand how git lock recovery seamlessly coordinates with the reducer.

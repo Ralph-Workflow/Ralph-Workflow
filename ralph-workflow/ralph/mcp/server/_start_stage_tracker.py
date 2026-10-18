@@ -87,17 +87,7 @@ def stage_file_path(root: Path, *, spawn_id: str | None = None) -> Path:
     return root / f"{_STAGE_FILE_NAME_COMPONENT}.{sid}"
 
 
-def record(root: Path, stage: str) -> None:
-    """Atomically write ``stage`` to the per-spawn stage file.
-
-    The label is written to a temporary sibling file and then moved into
-    place with ``os.replace``, so a concurrent supervisor reader sees
-    either the complete previous label or the complete new label —
-    never a blank or truncated file (``os.replace`` is atomic on POSIX
-    and Windows). The temp file is fsynced before the rename and the
-    directory is fsynced after it, so a SIGKILL of the child after
-    ``record()`` returns leaves the latest label on disk.
-    """
+def _do_record(root: Path, stage: str) -> None:
     path = stage_file_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     # tempfile.mkstemp already sets O_EXCL; sibling of the final path so
@@ -137,6 +127,49 @@ def record(root: Path, stage: str) -> None:
         with contextlib.suppress(FileNotFoundError):
             tmp_path.unlink()  # filesystem-write-ok: cleanup of the transient .tmp sibling so a failed mid-write leaves no stale clutter
         raise
+
+
+def record(root: Path, stage: str, *, timeout_s: float | None = None) -> None:
+    """Atomically write ``stage`` to the per-spawn stage file.
+
+    The label is written to a temporary sibling file and then moved into
+    place with ``os.replace``, so a concurrent supervisor reader sees
+    either the complete previous label or the complete new label —
+    never a blank or truncated file (``os.replace`` is atomic on POSIX
+    and Windows). The temp file is fsynced before the rename and the
+    directory is fsynced after it, so a SIGKILL of the child after
+    ``record()`` returns leaves the latest label on disk.
+
+    When ``timeout_s`` is provided, the filesystem operations are bounded
+    by the specified timeout in a daemon worker thread so a stalled or wedged
+    filesystem cannot hang the caller indefinitely.
+    """
+    if timeout_s is None:
+        _do_record(root, stage)
+        return
+
+    if timeout_s <= 0.0:
+        raise TimeoutError(f"stage recording timed out (budget {timeout_s:.3f}s <= 0)")
+
+    error: list[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            _do_record(root, stage)
+        except BaseException as exc:
+            error.append(exc)
+
+    thread = threading.Thread(
+        target=_worker,
+        name="ralph-mcp-stage-record",
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=max(0.0, timeout_s))
+    if thread.is_alive():
+        raise TimeoutError(f"stage recording timed out after {timeout_s:.3f}s")
+    if error:
+        raise error[0]
 
 
 def read_last_stage(root: Path, *, spawn_id: str | None = None) -> str | None:

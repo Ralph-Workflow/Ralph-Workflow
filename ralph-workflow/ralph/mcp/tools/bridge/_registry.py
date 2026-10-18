@@ -114,13 +114,14 @@ def _capture_policy_is_resolved(
     clock_fn: Callable[[], float] | None = None,
 ) -> bool:
     """Return whether this workspace declares a complete capture matrix."""
+    clk = clock_fn if clock_fn is not None else _clock
     effective_timeout_s = timeout_s if timeout_s is not None else _REGISTRY_BUILD_BUDGET_S
     try:
         policy_markdown = _read_workspace_policy(
             workspace,
             timeout_s=effective_timeout_s,
             t0=t0,
-            clock_fn=clock_fn,
+            clock_fn=clk,
         )
         parse_policy_facts(policy_markdown, target="_capture_policy_probe")
     except (AttributeError, OSError, TypeError, ValueError):
@@ -157,6 +158,7 @@ def build_ralph_tool_registry(
     clock_fn: Callable[[], float] | None = None,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
+    clk = clock_fn if clock_fn is not None else _clock
     mcp_config_cls = cast(
         "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)

@@ -39,7 +39,11 @@ Stage vocabulary tracked by :func:`record_stage_elapsed`:
 
 - ``env_loaded`` — environment loaded; no budget (instant);
 - ``session_ready`` — session initialised; no budget (instant);
-- ``config_loading`` — config being loaded; bounded by ``mcp_pre_serve_budget_from_env`` (NEW);
+- ``config_loading`` — config being loaded; bounded operationally by the remaining real
+  startup deadline (:func:`mcp_real_startup_deadline_from_env`), allowing slow-but-successful
+  pre-serve operations to complete within the startup envelope. The legacy pre-serve
+  budget constant (:data:`_PRE_SERVE_BUDGET_S`, queryable via :func:`mcp_pre_serve_budget_from_env`)
+  is retained for diagnostic stage reporting and compatibility;
 - ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_CUMULATIVE_S``
   (per-stage individual upper bound ``_CONFIG_LOAD_BUDGET_S``);
 - ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery finished;
@@ -256,12 +260,19 @@ def mcp_upstream_probe_timeout_seconds(env: Mapping[str, str] | None = None) -> 
 
 
 def mcp_pre_serve_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    """Return the bounded pre-serve wall-clock budget (default 1.0 s, env-overridable).
+    """Return the diagnostic pre-serve stage budget (default 1.0 s, env-overridable).
 
-    ``RALPH_MCP_PRE_SERVE_TIMEOUT_MS`` lowers the budget explicitly. A blocked
-    pre-serve path (hung ``stat()``, ``read_text()``, or ``tomllib.load()``)
-    raises ``McpServerError(last_stage="config_loading")`` before the parent's
-    preflight timeout fires.
+    Historically, ``RALPH_MCP_PRE_SERVE_TIMEOUT_MS`` configured an individual timeout
+    for the pre-serve critical path. In the current runtime, pre-serve operations
+    (in :func:`ralph.mcp.server._runtime_polling.run_pre_serve_bounded`) are bounded
+    operationally by the remaining real startup deadline
+    (:func:`mcp_real_startup_deadline_from_env`), ensuring that slow pre-serve operations
+    can use available headroom without premature termination while still failing closed
+    before the preflight window expires.
+
+    This helper and the ``RALPH_MCP_PRE_SERVE_TIMEOUT_MS`` environment variable are
+    retained for diagnostic stage budgeting and backward compatibility; runtime enforcement
+    uses the remaining real deadline.
     """
     env_map = os.environ if env is None else env
     requested = _timeout_ms_from_env(env_map, _MCP_PRE_SERVE_TIMEOUT_MS_ENV)

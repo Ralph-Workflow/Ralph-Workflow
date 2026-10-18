@@ -1492,13 +1492,14 @@ def _recoverable_git_failure_default_target(
       - The failure is repairable (matches ``_is_repairable_git_failure``)
       - The policy defines neither ``commit_recovery`` nor ``commit_cleanup`` phase
         (i.e. ``_resolve_commit_recovery_phase`` returns ``None``)
-      - The ``recovery_epoch`` has not exceeded ``_MAX_COMMIT_RECOVERY_ATTEMPTS``
 
     When these hold, the reducer re-routes the cycle to the in-place phase so a
     fresh pass of ``commit_executor.execute_commit_effect`` re-reads the validated
     commit message from ``effect.message_file`` (which is preserved on disk when
-    the commit operation fails). When any condition fails, returns ``None`` and the
-    caller falls through to ``failed_terminal``.
+    the commit operation fails). Persistent lock contention retries in-place with
+    ``recovery_epoch`` clamped at ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than
+    aborting. When the failure is not repairable, returns ``None`` and the caller
+    falls through to ``failed_terminal``.
 
     The ``effect.message_file`` lifecycle:
       - ``commit_executor.execute_commit_effect`` writes the validated message to
@@ -1532,15 +1533,16 @@ def _handle_commit_failure(
     unmerged paths, conflict, repeated commit failure) is never an
     immediate terminal failure: Ralph owns the recovery path.
     1. If the policy defines a recovery phase (``commit_recovery`` or
-       ``commit_cleanup``), the reducer routes there.
+       ``commit_cleanup``), the reducer routes there. When ``recovery_epoch``
+       exceeds ``_MAX_COMMIT_RECOVERY_ATTEMPTS``, it is clamped at the cap
+       and routing still proceeds to automated recovery rather than terminating.
     2. If the policy defines no recovery phase, the reducer performs an in-place
        retry of the current commit phase (via :func:`_recoverable_git_failure_default_target`),
        preserving the validated commit message in ``effect.message_file`` across
-       attempts.
-    3. The bounded counter (``recovery_epoch``) protects against infinite loops:
-       only when no recovery phase is reachable AND the retry budget
-       (``_MAX_COMMIT_RECOVERY_ATTEMPTS``) is exhausted does the failure
-       escalate to ``failed_terminal``.
+       attempts and clamping ``recovery_epoch`` at ``_MAX_COMMIT_RECOVERY_ATTEMPTS``.
+    3. Escalation to ``failed_terminal`` occurs only when the commit failure is
+       non-repairable (or no recovery/in-place target exists), never merely because
+       the retry counter reached the cap on a repairable failure.
     """
     from ralph.pipeline.commit_executor import get_last_commit_error
 

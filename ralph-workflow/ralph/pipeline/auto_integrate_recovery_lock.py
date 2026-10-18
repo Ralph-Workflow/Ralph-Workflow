@@ -48,11 +48,11 @@ def _lock_holder_is_dead(
     in place (fail-closed).
     """
     path = Path(lock_path)
-    # filesystem-read-ok: inspect git lock existence directly before recovery
+    # filesystem-read-ok: probe git lock existence outside workspace
     if not path.exists():
         return True  # already gone
     try:
-        # filesystem-read-ok: inspect git lock mtime directly for staleness check
+        # filesystem-read-ok: git lock age determination via mtime stat probe
         age = time.time() - path.stat().st_mtime
     except OSError:
         return False

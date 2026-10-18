@@ -150,14 +150,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_unreadable_record_entry_points.py",
     # wt-16: CLI-child banner visibility and bounded catalog publish/FD regressions.
     "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py",
-    # wt-16 WU-3 (followup): real-child subprocess regressions restored
-    # to the default ``make test`` profile (R1/R2 black-box evidence).
-    # All carry ``subprocess_e2e`` (real-child boundary) but bounded
-    # enough to stay inside the 60s combined budget alongside the
-    # existing general-suite shards.
+    # wt-16 WU-1 / Unit V: real-child startup budget, bounded catalog publish,
+    # and fail-closed inherited FD adoption regressions.
     "tests/mcp/test_whole_startup_budget_production.py",
-    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
     "tests/mcp/test_bounded_catalog_publish.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",
