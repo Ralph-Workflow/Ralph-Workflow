@@ -430,54 +430,81 @@ def test_concurrent_remote_advance_with_configured_names(
     assert "main" not in str(client.pushed)
 
 
-def test_unreachable_remote_message_uses_configured_remote_name() -> None:
-    """AC5: the unreachable-remote message must use the configured remote name.
+def test_unreachable_remote_message_uses_configured_remote_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC5: the unreachable-remote signal carries the configured remote name.
 
-    The previous implementation hard-coded the ``origin unreachable``
-    suffix regardless of which remote was actually configured. With a
-    configured ``tacos`` remote, the user-facing summary now reads
-    ``push of release to tacos failed: tacos remote unreachable``
-    (configured-name-agnostic wording, no literal ``origin``).
+    With a configured ``tacos`` remote the durable record must carry
+    ``last_remote="tacos"`` / ``last_target="release"`` and the
+    ``last_reason`` field must mention the configured remote; no
+    literal ``origin`` may appear when ``origin`` is not configured.
+    With a configured ``origin`` remote the same fields record
+    ``origin`` (the configured-name fidelity contract).
     """
-    from ralph.git.remote_push import PushStatus
     from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
-    # 1. Configured ``tacos`` remote produces the configured-name-agnostic
-    # wording; the literal ``origin`` suffix no longer appears in the summary.
+    def _branch_sha(_root: Path, _target: str) -> str:
+        return "local-sha"
+
+    monkeypatch.setattr(remote_sync, "branch_sha", _branch_sha)
+
+    # 1. Configured ``tacos`` remote: the durable record carries
+    # ``tacos`` / ``release`` and the user-facing ``last_reason``
+    # mentions the configured remote; no literal ``origin`` appears.
+    tacos_config = UnifiedConfig(
+        general=GeneralConfig(
+            auto_integrate_enabled=True,
+            auto_integrate_target="release",
+            auto_integrate_remote="tacos",
+            auto_integrate_remote_enabled=True,
+        )
+    )
     unreachable_client = _RecordingRemoteClient(
         remote_sha=None,
         refresh_status=REFRESH_UNREACHABLE,
     )
     state = remote_sync.reconcile_remote_publication(
-        _build_config(),
+        tacos_config,
         tmp_path,
         "release",
         remote="tacos",
         remote_client=unreachable_client,
     )
     assert unreachable_client.pushed == []
-    assert state.last_push_status == PushStatus.UNREACHABLE
-    assert state.last_remote_sync is not None
-    assert "origin" not in state.last_remote_sync
-    assert "tacos" in state.last_remote_sync
-    assert "release" in state.last_remote_sync
+    assert state.last_remote_sync == remote_sync.REMOTE_REMOTE_UNREACHABLE
+    assert state.last_remote == "tacos"
+    assert state.last_target == "release"
+    assert state.last_reason is not None
+    assert "tacos" in state.last_reason
+    assert "origin" not in state.last_reason
 
-    # 2. Sanity: when the configured remote is ``origin``, the wording
-    # carries ``origin`` (not the hard-coded literal from the legacy
-    # implementation).
+    # 2. Configured ``origin`` remote: the durable record carries
+    # ``origin`` / ``main``; the legacy hard-coded ``origin``
+    # behaviour is no longer a default that overrides configuration.
+    origin_config = UnifiedConfig(
+        general=GeneralConfig(
+            auto_integrate_enabled=True,
+            auto_integrate_target="main",
+            auto_integrate_remote="origin",
+            auto_integrate_remote_enabled=True,
+        )
+    )
     origin_client = _RecordingRemoteClient(
         remote_sha=None,
         refresh_status=REFRESH_UNREACHABLE,
     )
     state_origin = remote_sync.reconcile_remote_publication(
-        _build_config(),
+        origin_config,
         tmp_path,
         "main",
         remote="origin",
         remote_client=origin_client,
     )
     assert origin_client.pushed == []
-    assert state_origin.last_push_status == PushStatus.UNREACHABLE
-    assert state_origin.last_remote_sync is not None
-    assert "origin unreachable" in state_origin.last_remote_sync
-    assert "main to origin" in state_origin.last_remote_sync
+    assert state_origin.last_remote_sync == remote_sync.REMOTE_REMOTE_UNREACHABLE
+    assert state_origin.last_remote == "origin"
+    assert state_origin.last_target == "main"
+    assert state_origin.last_reason is not None
+    assert "origin" in state_origin.last_reason

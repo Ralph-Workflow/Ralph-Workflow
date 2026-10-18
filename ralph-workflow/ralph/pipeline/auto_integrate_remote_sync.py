@@ -560,7 +560,7 @@ def reconcile_remote_publication(
             base_state,
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
             last_refresh=refresh,
-            last_reason=f"remote unreachable ({refresh}); recovery will retry",
+            last_reason=(f"remote {chosen_remote} unreachable; recovery will retry"),
         )
     if local_sha == remote_sha:
         return _record_publication_failure(

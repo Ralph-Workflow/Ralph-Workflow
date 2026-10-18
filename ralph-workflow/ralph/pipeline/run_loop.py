@@ -204,6 +204,16 @@ class _LoopContext:
     # (normal, error, SIGINT, SIGTERM). Wired from
     # ``pipeline_deps.process_teardown`` when provided.
     process_teardown: Callable[[], None] | None = None
+    # Session-scoped one-shot flag that prevents the
+    # INTERVENTION_REQUIRED escalation path from re-dispatching
+    # ``_handoff_retained_failure`` after the first automated
+    # resolution attempt. The first time the cap is reached in this
+    # session the flag flips to True; subsequent retries within the
+    # same session skip the handoff (avoiding the operator-visible
+    # rotation that the original guard was designed to prevent). A
+    # cold-loaded capped-intervention record resets the flag because
+    # ``_LoopContext`` is constructed fresh per run.
+    _session_handoff_dispatched: bool = False
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -2370,8 +2380,10 @@ def _wait_for_integration_retry(
     if rebase.resolution_exhausted or rebase.consecutive_conflicts >= (
         ctx.config.conflict_resolution.max_consecutive_resolver_attempts
     ):
-        if not rebase.is_intervention_required:
+        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+        if not session_attempted:
             _handoff_retained_failure(ctx, detail)
+            ctx._session_handoff_dispatched = True
             if ctx.latest_state and ctx.latest_state[0].rebase is not None:
                 rebase = ctx.latest_state[0].rebase
         # The reason must be the ORIGINAL failure detail, not a
@@ -2384,10 +2396,8 @@ def _wait_for_integration_retry(
         )
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
-        # Deliberately do NOT sleep and do NOT call
-        # ``_run_auto_integrate_recovery_preamble``: the
-        # ``INTERVENTION_REQUIRED`` transition is a persistent
-        # wait-for-operator state, not a fresh attempt.
+        # At cap: persist INTERVENTION_REQUIRED without sleeping
+        # (never an operator-only dead end).
         return state.clear_waiting()
 
     # Durable-record intervention guard (AC-1 / GAP-4 / O1 residual).
@@ -2452,11 +2462,23 @@ def _handle_intervention_required_retry(
     preamble is invoked once; if it makes progress the iteration
     returns. Otherwise the consecutive-conflict counter is charged
     and the typed single-writer setter escalates -- never sleep.
+
+    Cold-loaded capped intervention (O1 retry rule): a durable record
+    that already carries ``is_intervention_required=True`` and is at
+    the consecutive-conflict cap when this session loaded it must
+    still receive a fresh automated-resolution handoff this session,
+    otherwise the previous session's exhausted attempt becomes a
+    permanent dead end. The flag ``ctx._session_handoff_dispatched``
+    guards against repeat handoffs within the same session.
     """
     recovered = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config, backend=backend
     )
-    if recovered is not None and not recovered.is_intervention_required:
+    if (
+        recovered is not None
+        and not recovered.is_intervention_required
+        and not recovered.integration_unresolved
+    ):
         state = state.copy_with(rebase=recovered, last_error=alarm).set_waiting(
             WaitReason.EXHAUSTED_RETRY, None
         )
@@ -2468,8 +2490,10 @@ def _handle_intervention_required_retry(
     if rebase.consecutive_conflicts >= (
         ctx.config.conflict_resolution.max_consecutive_resolver_attempts
     ):
-        if not rebase.is_intervention_required:
+        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+        if not session_attempted:
             _handoff_retained_failure(ctx, detail)
+            ctx._session_handoff_dispatched = True
             if ctx.latest_state and ctx.latest_state[0].rebase is not None:
                 rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(bumped_conflicts)
         rebase = rebase.set_intervention_required(detail)
@@ -2497,36 +2521,42 @@ def _handle_pending_retry(
     so an in-progress recovery (e.g. busy worktree lock) has time
     to advance state on the next iteration. At the cap, we escalate
     WITHOUT sleeping (D3: never loop forever on a fixed-interval
-    wait). Recovery returning ``None`` is also treated as no
-    progress and charges it on the next attempt, matching the
-    in-process satisfier contract.
+    wait). Recovery returning ``None`` or an unresolved/blocked state
+    is treated as no progress and charges the attempt counter.
     """
     recovered = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config, backend=backend
     )
-    if recovered is not None:
+    if recovered is not None and not recovered.integration_unresolved:
         state = state.copy_with(rebase=recovered).clear_waiting()
-    else:
-        bumped_conflicts = rebase.consecutive_conflicts + 1
-        rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
-        if rebase.consecutive_conflicts >= (
-            ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-        ):
-            if not rebase.is_intervention_required:
-                _handoff_retained_failure(ctx, detail)
-                if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                    rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
-                        bumped_conflicts
-                    )
-            rebase = rebase.set_intervention_required(detail)
-            state = state.copy_with(rebase=rebase)
-            _save_recovered_rebase_checkpoint(state, ctx)
-            ctx.latest_state[:] = [state]
-            # Cap reached: escalate WITHOUT sleeping (D3).
-            return state.clear_waiting()
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        return state
+
+    bumped_conflicts = (
+        max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0)) + 1
+    )
+    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts)
+    if rebase.consecutive_conflicts >= (
+        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    ):
+        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+        if not session_attempted:
+            _handoff_retained_failure(ctx, detail)
+            ctx._session_handoff_dispatched = True
+            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
+                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(bumped_conflicts)
+        rebase = rebase.set_intervention_required(detail)
         state = state.copy_with(rebase=rebase)
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
+        # Cap reached: escalate WITHOUT sleeping (D3).
+        return state.clear_waiting()
+
+    rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+    state = state.copy_with(rebase=rebase).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
+    _save_recovered_rebase_checkpoint(state, ctx)
+    ctx.latest_state[:] = [state]
     # Below cap: bounded sleep paired with an in-process
     # satisfier (next iteration's recovery preamble).
     ctx.sleep(5.0)

@@ -80,6 +80,7 @@ def _create_retry_ctx(
             latest_state=latest_state,
             sleep=sleep_sink.append,
             connectivity_monitor=SimpleNamespace(current_state=None),
+            _session_handoff_dispatched=False,
         ),
     )
 
@@ -763,3 +764,214 @@ def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
     assert len(handoffs) == 1
     assert "conflict detail" in handoffs[0]
     assert len(saved_checkpoints) >= 1
+
+
+def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 cold-load: capped intervention loaded cold still dispatches handoff.
+
+    A durable record loaded from disk that already carries
+    ``is_intervention_required=True`` and is at the consecutive-conflict
+    cap must receive a fresh automated-resolution handoff in this
+    session, otherwise the previous session's exhausted attempt becomes
+    a permanent dead end. A subsequent call within the same session
+    must NOT re-attempt the handoff (the in-session flag prevents the
+    operator-visible rotation that motivated the original guard).
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    handoff_calls: list[str] = []
+
+    def _fake_handoff(loop_ctx: object, detail: str) -> None:
+        handoff_calls.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    # COLD-LOADED: intervention-required AND consecutive-conflicts at cap
+    cold_loaded_rebase = RebaseState(
+        last_action="conflict",
+        last_reason="cold-loaded detail",
+        consecutive_conflicts=cap,
+    ).set_intervention_required("cold-loaded detail")
+    initial_state = PipelineState(
+        phase="development",
+        rebase=cold_loaded_rebase,
+    )
+    assert initial_state.rebase.is_intervention_required is True
+
+    first_result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    # Cold-loaded capped intervention must dispatch automated resolution
+    assert len(handoff_calls) == 1
+    assert "cold-loaded detail" in handoff_calls[0]
+    assert first_result.rebase.is_intervention_required is True
+
+    # Subsequent call within the same session must avoid repeat handoffs.
+    second_result = run_loop._wait_for_integration_retry(first_result, ctx)
+    assert len(handoff_calls) == 1, "Same-session calls must not re-dispatch handoff"
+    assert second_result.rebase.is_intervention_required is True
+
+
+def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 retry progress: identical blocked outcomes charge attempts and escalate.
+
+    When the recovery preamble returns a non-None state that is itself
+    blocked, repeated calls must charge the conflict counter, reach the
+    cap, escalate to the resolver handoff, and never sleep.
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+
+    handoffs: list[str] = []
+
+    def _fake_handoff(loop_ctx: object, detail: str) -> None:
+        handoffs.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+
+    def _fake_preamble(
+        _scope: WorkspaceScope,
+        _config: UnifiedConfig,
+        *,
+        backend: object = None,
+    ) -> RebaseState | None:
+        # Returns a non-None blocked state (is_intervention_required=True).
+        # Mirrors an unchanging durable state that nothing in-process can satisfy.
+        return RebaseState(
+            last_reason="blocked state from preamble",
+        ).set_intervention_required("blocked state from preamble")
+
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _fake_preamble)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_reason="identical blocked detail",
+            consecutive_conflicts=0,
+        ).set_intervention_required("identical blocked detail"),
+    )
+
+    # Repeated iterations must charge attempts and eventually escalate.
+    for _ in range(cap):
+        state = run_loop._wait_for_integration_retry(state, ctx)
+    assert sleeps == [], "Identical blocked outcomes must not sleep"
+    assert len(handoffs) == 1
+    assert state.rebase.is_intervention_required is True
+    assert state.rebase.consecutive_conflicts >= cap
+
+
+def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 unsuccessful handoff: handoff that does not progress still escalates.
+
+    When the automated-resolution handoff does not produce observable
+    progress (the in-memory rebase still carries
+    ``is_intervention_required``), the retry must record the
+    intervention transition without sleeping so the next seam can
+    re-derive state from Git instead of looping forever on a fixed
+    interval wait.
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+
+    def _noop_preamble(
+        _scope: WorkspaceScope,
+        _config: UnifiedConfig,
+        *,
+        backend: object = None,
+    ) -> RebaseState | None:
+        return None
+
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    handoff_calls: list[str] = []
+
+    def _noop_handoff(loop_ctx: object, detail: str) -> None:
+        # Simulates a handoff that does NOT make progress (no observable
+        # side-effect on the rebase state).
+        handoff_calls.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _noop_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_reason="unsuccessful handoff detail",
+            consecutive_conflicts=cap,
+        ).set_intervention_required("unsuccessful handoff detail"),
+    )
+
+    result = run_loop._wait_for_integration_retry(state, ctx)
+    assert sleeps == [], "Unsuccessful handoff must not sleep"
+    assert len(handoff_calls) == 1
+    assert "unsuccessful handoff detail" in handoff_calls[0]
+    assert result.rebase.is_intervention_required is True
+
+
+def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and_escalate(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 pending retry: repeated non-None blocked results charge attempts and escalate.
+
+    When starting from a pending (non-intervention-required) state and
+    the recovery preamble repeatedly returns an identical non-None
+    blocked state, the retry loop must charge consecutive conflicts on
+    each iteration, reach the cap, dispatch automated resolution handoff,
+    and escalate without sleeping.
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+
+    handoffs: list[str] = []
+
+    def _fake_handoff(loop_ctx: object, detail: str) -> None:
+        handoffs.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+
+    def _fake_preamble(
+        _scope: WorkspaceScope,
+        _config: UnifiedConfig,
+        *,
+        backend: object = None,
+    ) -> RebaseState | None:
+        return RebaseState(
+            last_action="skipped",
+            last_reason="integration worktree busy; recovery will retry",
+            recovery_record_retained=True,
+        )
+
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _fake_preamble)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_reason="pending retry detail",
+            consecutive_conflicts=0,
+        ),
+    )
+    assert state.rebase.is_intervention_required is False
+
+    for _ in range(cap):
+        state = run_loop._wait_for_integration_retry(state, ctx)
+
+    assert len(handoffs) == 1
+    assert state.rebase.is_intervention_required is True
+    assert state.rebase.consecutive_conflicts >= cap

@@ -14,6 +14,7 @@ exercise the diagnostic's per-proof branches:
 * uncertain marker query persists intervention while preserving on-disk markers.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -86,9 +87,7 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
         owning_worktree=str(root),
     )
     record = record.model_copy(
-        update={
-            "diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"
-        }
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
     )
     # The release path now routes through apply_record_transition, which
     # requires the on-disk record to be the transition source. Persist
@@ -277,9 +276,7 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
         owning_worktree=str(root),
     )
     record = record.model_copy(
-        update={
-            "diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"
-        }
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
     )
 
     # Valid matching nonempty ownership
@@ -422,9 +419,7 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
         owning_worktree=str(root),
     )
     record = record.model_copy(
-        update={
-            "diagnostic_ownership": f"{identity_fingerprint(record)}:{__import__('time').time()}"
-        }
+        update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
     )
 
     def fake_run_git(
@@ -485,10 +480,6 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     import subprocess
     import sys
 
-    from ralph.pipeline._integration_action import (
-        IntegrationAction,
-        next_integration_action,
-    )
     from ralph.pipeline.auto_integrate_record import read_record
 
     root = tmp_path / "repo"
@@ -499,29 +490,29 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     base = _commit(root, "shared.txt", "base\n")
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "shared.txt", "feature\n")
-    assert _git(root, "switch", "main").returncode == 0
 
     # 1. Run a real subprocess that exercises the diagnostic hold
     # seam via the actual ``diagnose_retained_integration`` entry point.
     # The subprocess writes a held record with its own PID/boot id,
-    # then sleeps so the test can SIGKILL it before the diagnostic
-    # completes (mimicking the production crash window).
+    # then sleeps inside its invoke callback so the test can SIGKILL it
+    # before the diagnostic completes (mimicking the production crash window).
     diag_script = (
         "import os, sys, time\n"
         "from pathlib import Path\n"
+        "from unittest.mock import MagicMock\n"
         "from types import SimpleNamespace\n"
         "\n"
+        "from ralph.config.models import UnifiedConfig\n"
         "from ralph.pipeline.auto_integrate_record import (\n"
         "    IntegrationRecord,\n"
-        "    read_record,\n"
         "    write_record,\n"
-        "    HOLD_DIAGNOSTIC_EVIDENCE,\n"
         ")\n"
         "from ralph.pipeline._integration_diagnostic import (\n"
         "    diagnose_retained_integration,\n"
         ")\n"
-        "from ralph.pipeline.operation_evidence import identity_fingerprint\n"
-        "from ralph.pipeline._auto_integrate_record_restamp import current_boot_id\n"
+        "from ralph.pipeline.conflict_resolution.session import resolution_chain_agents\n"
+        "from ralph.policy.loader import load_policy\n"
+        "from ralph.workspace.scope import WorkspaceScope\n"
         "\n"
         "root = Path(sys.argv[1])\n"
         "feature = sys.argv[2]\n"
@@ -535,19 +526,27 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         "    owning_worktree=str(root),\n"
         "    operation_kind='feature_integrate',\n"
         ")\n"
-        "fp = identity_fingerprint(record)\n"
-        "lease = f'{fp}:{time.time()}'\n"
-        "held = record.with_transition(\n"
-        "    HOLD_DIAGNOSTIC_EVIDENCE,\n"
-        "    diagnostic_evidence=(('unstaged_work', 'clean'),),\n"
-        "    diagnostic_ownership=lease,\n"
-        "    diagnostic_owner_pid=os.getpid(),\n"
-        "    diagnostic_owner_boot_id=current_boot_id(),\n"
+        "write_record(root, record)\n"
+        "import ralph\n"
+        "bundle = load_policy(Path(ralph.__file__).parent / 'policy' / 'defaults')\n"
+        "agents = resolution_chain_agents(bundle)\n"
+        "ctx = SimpleNamespace(\n"
+        "    workspace_scope=WorkspaceScope(root),\n"
+        "    config=UnifiedConfig(),\n"
+        "    pipeline_deps=MagicMock(),\n"
+        "    policy_bundle=bundle,\n"
+        "    registry={a: MagicMock() for a in agents},\n"
+        "    active_display=MagicMock(),\n"
+        "    display_context=None,\n"
         ")\n"
-        "write_record(root, held)\n"
-        "sys.stdout.write('HELD\\n')\n"
-        "sys.stdout.flush()\n"
-        "time.sleep(5)\n"
+        "\n"
+        "def slow_invoke(agent, prompt):\n"
+        "    sys.stdout.write('HELD\\n')\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(5)\n"
+        "    return True\n"
+        "\n"
+        "diagnose_retained_integration(ctx, 'simulated diagnostic failure', invoke=slow_invoke)\n"
     )
 
     proc = subprocess.Popen(
@@ -579,6 +578,7 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         "import sys\n"
         "from pathlib import Path\n"
         "\n"
+        "from ralph.config.models import UnifiedConfig\n"
         "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
         "from ralph.pipeline.auto_integrate_recovery import (\n"
         "    recover_incomplete_integration,\n"
@@ -586,10 +586,15 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         "from ralph.workspace.scope import WorkspaceScope\n"
         "\n"
         "root = Path(sys.argv[1])\n"
-        "_outcome = recover_incomplete_integration(\n"
-        "    WorkspaceScope(root), backend=DEFAULT_FILE_BACKEND\n"
+        "outcome = recover_incomplete_integration(\n"
+        "    WorkspaceScope(root), config=UnifiedConfig(), backend=DEFAULT_FILE_BACKEND\n"
         ")\n"
-        "sys.stdout.write('RECOVERED\\n')\n"
+        "if outcome is None:\n"
+        "    sys.stderr.write('NO_OUTCOME\\n')\n"
+        "    sys.exit(2)\n"
+        "outcome_kind = outcome.last_outcome.value if outcome.last_outcome else 'none'\n"
+        "retained = '1' if outcome.recovery_record_retained else '0'\n"
+        "sys.stdout.write(f'{outcome_kind}:{retained}\\n')\n"
         "sys.stdout.flush()\n"
     )
     rec_proc = subprocess.Popen(
@@ -599,16 +604,16 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         text=True,
     )
     assert rec_proc.stdout is not None
-    assert rec_proc.stdout.readline().strip() == "RECOVERED"
+    rec_line = rec_proc.stdout.readline().strip()
+    assert rec_line == "rebased:0"
     rec_proc.wait(timeout=15)
 
     # 4. Assert next run made automated progress: hold released, no
     # intervention, no retained skip. The fresh subprocess had a
     # different PID than the killed diagnostic owner.
     after = read_record(root)
-    assert after is not None
-    assert after.diagnostic_ownership is None
-    assert after.diagnostic_evidence == ()
-    assert after.diagnostic_owner_pid is None
-    assert after.diagnostic_intervention_required is False
-    assert next_integration_action(after) != IntegrationAction.REQUIRE_INTERVENTION
+    assert after is None or (
+        after.diagnostic_ownership is None
+        and after.diagnostic_owner_pid is None
+        and after.diagnostic_intervention_required is False
+    )

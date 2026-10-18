@@ -369,28 +369,28 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Land a local commit in the primary repository. The subprocess
-    # invokes the real Ralph reconciler entry point to perform the
-    # landing push, so this is an authentic Ralph landing rather than
-    # a hand-rolled git add/commit. The subprocess is hard-killed
-    # before the push can complete (AC7: real interruption between
-    # local landing and push).
+    # Prepare feature work on a feature branch in the primary repository.
+    # The subprocess invokes Ralph's authentic landing entry point
+    # (:func:`auto_integrate_after_commit`), which lands the feature
+    # onto the target branch and pauses at the publication seam. The
+    # subprocess is hard-killed before the push can complete (AC7: real
+    # interruption between local landing and push).
     import sys
 
-    (repo / "local.txt").write_text("local work\n", encoding="utf-8")
-    assert _run(repo, "add", "local.txt").returncode == 0
-    assert _run(repo, "commit", "-m", "local advance").returncode == 0
-    local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
+    assert _run(repo, "switch", "-c", "feature").returncode == 0
+    (repo / "feature.txt").write_text("feature work\n", encoding="utf-8")
+    assert _run(repo, "add", "feature.txt").returncode == 0
+    assert _run(repo, "commit", "-m", "feature advance").returncode == 0
 
     landing_script = (
         "import sys, time\n"
         "from pathlib import Path\n"
         "from ralph.config.models import UnifiedConfig\n"
         "from ralph.pipeline import auto_integrate_remote_sync as _sync\n"
-        "from ralph.pipeline.auto_integrate_remote_sync import (\n"
-        "    reconcile_remote_publication,\n"
-        ")\n"
+        "from ralph.pipeline.auto_integrate import auto_integrate_after_commit\n"
+        "from ralph.pipeline.rebase_state import RebaseState\n"
         "from ralph.pipeline.auto_integrate_remote_push import push_single_remote\n"
+        "from ralph.workspace.scope import WorkspaceScope\n"
         "\n"
         "_real_push = push_single_remote\n"
         "def _slow_push(*args, **kwargs):\n"
@@ -410,8 +410,8 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         "        'auto_integrate_remote_interval_seconds': 0.0,\n"
         "    }\n"
         "})\n"
-        "reconcile_remote_publication(\n"
-        "    config, root, 'release', remote='tacos'\n"
+        "auto_integrate_after_commit(\n"
+        "    config, WorkspaceScope(root), RebaseState()\n"
         ")\n"
         "sys.stdout.write('LANDED\\n')\n"
         "sys.stdout.flush()\n"
@@ -431,7 +431,9 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     proc.kill()
     proc.wait()
 
-    # Pre-state: local ref is ahead of bare remote.
+    local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
+
+    # Pre-state: local ref has landed ahead of bare remote.
     bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_before != local_sha
 
