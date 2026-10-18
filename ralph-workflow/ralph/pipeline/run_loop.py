@@ -2066,14 +2066,19 @@ def _persist_unreadable_intervention(
     _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
 
 
-def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
+def _handoff_retained_failure(
+    ctx: _LoopContext,
+    failure: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     from ralph.pipeline._integration_diagnostic import diagnostic_needed
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
         read_record_outcome,
     )
 
-    outcome = read_record_outcome(ctx.workspace_scope.root)
+    outcome = read_record_outcome(ctx.workspace_scope.root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.PRESENT and outcome.record is not None:
         latest = outcome.record
         if diagnostic_needed(ctx.workspace_scope.root, latest):
@@ -2083,13 +2088,92 @@ def _handoff_retained_failure(ctx: _LoopContext, failure: str) -> None:
             GitOperationKind.AWAITING_MERGE_COMMIT,
         ):
             _repair_pending_merge_commit(ctx, failure)
-    elif outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-        # Decision-complete handoff: a corrupt or unsupported record cannot
-        # answer `diagnostic_needed`, so re-running the diagnostic would loop
-        # forever. Persist the intervention projection once so
-        # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED with a
-        # label distinct from evidence_diagnosis.
-        _persist_unreadable_intervention(ctx, failure, outcome.unreadable_reason)
+        else:
+            config = cast(
+                "UnifiedConfig | None",
+                getattr(ctx, "config", None),
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            resolved = _run_integration_conflict_resolution(
+                ctx,
+                ctx.latest_state[0].rebase if ctx.latest_state else None,
+            )
+            recovered = _run_auto_integrate_recovery_preamble(
+                ctx.workspace_scope, config, backend=backend
+            )
+            if (
+                recovered is not None
+                and not recovered.is_intervention_required
+                and not recovered.integration_unresolved
+                and ctx.latest_state
+            ):
+                ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=recovered)]
+                _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+            elif resolved and ctx.latest_state and ctx.latest_state[0].rebase is not None:
+                rebase_resolved = ctx.latest_state[0].rebase.model_copy(
+                    update={
+                        "is_intervention_required": False,
+                        "last_outcome": RebaseOutcomeKind.COMPLETED,
+                        "last_reason": "conflict resolved by automated resolver",
+                    }
+                )
+                ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=rebase_resolved)]
+                _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+    elif outcome.disposition in (
+        RecordReadOutcomeDisposition.ABSENT,
+        RecordReadOutcomeDisposition.UNREADABLE,
+    ):
+        config_absent = cast(
+            "UnifiedConfig | None",
+            getattr(ctx, "config", None),
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        resolved = _run_integration_conflict_resolution(
+            ctx,
+            ctx.latest_state[0].rebase if ctx.latest_state else None,
+        )
+        recovered = _run_auto_integrate_recovery_preamble(
+            ctx.workspace_scope, config_absent, backend=backend
+        )
+        if (
+            recovered is not None
+            and not recovered.is_intervention_required
+            and not recovered.integration_unresolved
+        ):
+            if ctx.latest_state:
+                ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=recovered)]
+                _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+        elif resolved and ctx.latest_state and ctx.latest_state[0].rebase is not None:
+            rebase_resolved = ctx.latest_state[0].rebase.model_copy(
+                update={
+                    "is_intervention_required": False,
+                    "last_outcome": RebaseOutcomeKind.COMPLETED,
+                    "last_reason": "conflict resolved by automated resolver",
+                }
+            )
+            ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=rebase_resolved)]
+            _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+        elif outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            # Decision-complete handoff: a corrupt or unsupported record cannot
+            # answer `diagnostic_needed`, so re-running the diagnostic would loop
+            # forever. Persist the intervention projection once so
+            # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED with a
+            # label distinct from evidence_diagnosis.
+            _persist_unreadable_intervention(ctx, failure, outcome.unreadable_reason)
+
+
+def _dispatch_retained_handoff(
+    ctx: _LoopContext,
+    detail: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Dispatch automated resolver handoff with optional backend support."""
+    if backend is DEFAULT_FILE_BACKEND:
+        _handoff_retained_failure(ctx, detail)
+        return
+    try:
+        _handoff_retained_failure(ctx, detail, backend=backend)
+    except TypeError:
+        _handoff_retained_failure(ctx, detail)
 
 
 def _handle_retained_integration(
@@ -2387,11 +2471,33 @@ def _wait_for_integration_retry(
     cap = _effective_conflict_cap(ctx)
     if rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
-        if not session_attempted:
-            _handoff_retained_failure(ctx, detail)
+        if not session_attempted and not rebase.resolution_exhausted:
+            rebase_before = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            _dispatch_retained_handoff(ctx, detail, backend=backend)
             ctx._session_handoff_dispatched = True
-            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                rebase = ctx.latest_state[0].rebase
+            handoff_rebase = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            if (
+                handoff_rebase is not None
+                and handoff_rebase != rebase_before
+                and not handoff_rebase.is_intervention_required
+                and not handoff_rebase.integration_unresolved
+                and not handoff_rebase.resolution_exhausted
+                and handoff_rebase.consecutive_conflicts < cap
+            ):
+                state = state.copy_with(rebase=handoff_rebase).clear_waiting()
+                _save_recovered_rebase_checkpoint(state, ctx)
+                ctx.latest_state[:] = [state]
+                return state
+            if handoff_rebase is not None and handoff_rebase != rebase_before:
+                rebase = handoff_rebase
         # Clamping to the effective configured cap ensures historical
         # over-cap values are governed by the active configuration.
         rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts, cap=cap)
@@ -2500,12 +2606,33 @@ def _handle_intervention_required_retry(
     if rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
-            _handoff_retained_failure(ctx, detail)
+            rebase_before = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            _dispatch_retained_handoff(ctx, detail, backend=backend)
             ctx._session_handoff_dispatched = True
-            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
-                    bumped_conflicts, cap=cap
-                )
+            handoff_rebase = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            if (
+                handoff_rebase is not None
+                and handoff_rebase != rebase_before
+                and not handoff_rebase.is_intervention_required
+                and not handoff_rebase.integration_unresolved
+                and not handoff_rebase.resolution_exhausted
+                and handoff_rebase.consecutive_conflicts < cap
+            ):
+                state = state.copy_with(rebase=handoff_rebase, last_error=alarm).clear_waiting()
+                _save_recovered_rebase_checkpoint(state, ctx)
+                ctx.latest_state[:] = [state]
+                return state
+            if handoff_rebase is not None and handoff_rebase != rebase_before:
+                rebase = handoff_rebase
+        rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
         rebase = rebase.set_intervention_required(detail)
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
@@ -2551,12 +2678,33 @@ def _handle_pending_retry(
     if rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
-            _handoff_retained_failure(ctx, detail)
+            rebase_before = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            _dispatch_retained_handoff(ctx, detail, backend=backend)
             ctx._session_handoff_dispatched = True
-            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
-                    bumped_conflicts, cap=cap
-                )
+            handoff_rebase = (
+                ctx.latest_state[0].rebase
+                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+                else None
+            )
+            if (
+                handoff_rebase is not None
+                and handoff_rebase != rebase_before
+                and not handoff_rebase.is_intervention_required
+                and not handoff_rebase.integration_unresolved
+                and not handoff_rebase.resolution_exhausted
+                and handoff_rebase.consecutive_conflicts < cap
+            ):
+                state = state.copy_with(rebase=handoff_rebase).clear_waiting()
+                _save_recovered_rebase_checkpoint(state, ctx)
+                ctx.latest_state[:] = [state]
+                return state
+            if handoff_rebase is not None and handoff_rebase != rebase_before:
+                rebase = handoff_rebase
+        rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
         rebase = rebase.set_intervention_required(detail)
         state = state.copy_with(rebase=rebase)
         _save_recovered_rebase_checkpoint(state, ctx)

@@ -85,6 +85,40 @@ def _create_retry_ctx(
     )
 
 
+def _setup_retry_env(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> tuple[list[float], run_loop._LoopContext]:
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    return sleeps, ctx
+
+
+def _mock_successful_handoff(loop_ctx: run_loop._LoopContext, _detail: str) -> None:
+    resolved = RebaseState(
+        last_outcome=RebaseOutcomeKind.COMPLETED,
+        last_reason="conflict resolved by automated resolver",
+        consecutive_conflicts=0,
+    )
+    loop_ctx.latest_state[:] = [
+        (
+            loop_ctx.latest_state[0]
+            if loop_ctx.latest_state
+            else PipelineState(phase="development")
+        ).copy_with(rebase=resolved)
+    ]
+
+
+def _make_state(conflicts: int = 0, **kw: object) -> PipelineState:
+    rebase_kwargs: dict[str, object] = {
+        "last_action": "conflict",
+        "last_reason": "synchronization unproven",
+        "consecutive_conflicts": conflicts,
+    }
+    rebase_kwargs.update(kw)
+    return PipelineState(phase="development", rebase=RebaseState(**rebase_kwargs))
+
+
 def test_wait_for_retry_unchanged_durable_record_clears_evidence_without_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -94,10 +128,7 @@ def test_wait_for_retry_unchanged_durable_record_clears_evidence_without_sleep(
     Asserts that _wait_for_integration_retry does not call ctx.sleep,
     durable evidence is cleared from disk, and it returns immediately.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -113,13 +144,7 @@ def test_wait_for_retry_unchanged_durable_record_clears_evidence_without_sleep(
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -147,10 +172,7 @@ def test_wait_for_retry_expired_lease_unknown_clears_evidence_without_sleep(
     Asserts that _wait_for_integration_retry fails open, clears durable
     evidence without calling ctx.sleep, and returns immediately.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     expired_held_at = time.time() - (EVIDENCE_LEASE_SECONDS + 120.0)
     record = IntegrationRecord(
@@ -166,13 +188,7 @@ def test_wait_for_retry_expired_lease_unknown_clears_evidence_without_sleep(
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -202,9 +218,7 @@ def test_wait_for_retry_changed_record_fails_open_and_does_not_sleep(
     clears the held evidence, marks the durable record for
     Git re-derivation on the next seam, and returns immediately.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -217,13 +231,7 @@ def test_wait_for_retry_changed_record_fails_open_and_does_not_sleep(
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -248,9 +256,7 @@ def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """An unparseable lease fails open and does not sleep (O1)."""
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -263,13 +269,7 @@ def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -302,23 +302,14 @@ def test_wait_for_retry_unreadable_record_escalates_to_intervention_without_cool
     counter is charged and the typed INTERVENTION_REQUIRED transition
     is persisted (capped escalation, no sleep).
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     # Write corrupt payload to the record path
     target_file = record_path(tmp_path)
     target_file.parent.mkdir(parents=True, exist_ok=True)
     target_file.write_text("CORRUPT_JSON_{not valid")
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -344,10 +335,7 @@ def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_reso
     monkeypatch: MonkeyPatch,
 ) -> None:
     """WU-2: consecutive conflicts cap triggers single automated resolver handoff."""
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    _sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     handoff_calls: list[str] = []
 
@@ -394,10 +382,7 @@ def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_
     persisted (capped escalation, no sleep). The forensic bytes of any
     held evidence are preserved for the operator.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -410,13 +395,7 @@ def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -443,8 +422,7 @@ def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_
     wait that D3 forbade. The conflict counter is charged so the
     cap-bound escalation path remains reachable.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
     preamble_called: list[bool] = []
 
     def _recording_preamble(
@@ -456,7 +434,6 @@ def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_
         preamble_called.append(True)
         return None
 
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
     monkeypatch.setattr(
         run_loop,
         "_run_auto_integrate_recovery_preamble",
@@ -472,13 +449,7 @@ def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_
     )
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -509,10 +480,7 @@ def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
     the diagnostic path re-derives state from Git, clears durable evidence,
     and makes progress without demanding manual 'restore original evidence'.
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     pre_feature = "a" * 40
     pre_target = "b" * 40
@@ -530,13 +498,7 @@ def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
     record = record.model_copy(update={"diagnostic_ownership": lease})
     write_record(tmp_path, record)
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -573,10 +535,7 @@ def test_wait_for_retry_after_real_git_head_movement_clears_evidence_without_sle
     """
     import subprocess
 
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     # Initialise a real git repository so we can move HEAD.
     assert (
@@ -686,13 +645,7 @@ def test_wait_for_retry_after_real_git_head_movement_clears_evidence_without_sle
     ).stdout.strip()
     assert head_after != head_before, "HEAD must have actually moved"
 
-    initial_state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="synchronization unproven",
-        ),
-    )
+    initial_state = _make_state()
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
@@ -724,19 +677,12 @@ def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     saved_checkpoints: list[PipelineState] = []
-
-    def _recording_save(state: PipelineState, _c: run_loop._LoopContext) -> None:
-        saved_checkpoints.append(state)
-
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _recording_save)
+    monkeypatch.setattr(
+        run_loop, "_save_recovered_rebase_checkpoint", lambda s, _c: saved_checkpoints.append(s)
+    )
     monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
-
     handoffs: list[str] = []
-
-    def _recording_handoff(_c: object, failure: str) -> None:
-        handoffs.append(failure)
-
-    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", lambda _c, f: handoffs.append(f))
 
     record = IntegrationRecord(
         phase="integrating",
@@ -780,29 +726,21 @@ def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
     must NOT re-attempt the handoff (the in-session flag prevents the
     operator-visible rotation that motivated the original guard).
     """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+    _sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
 
     handoff_calls: list[str] = []
 
-    def _fake_handoff(loop_ctx: object, detail: str) -> None:
-        handoff_calls.append(detail)
-
-    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+    monkeypatch.setattr(
+        run_loop, "_handoff_retained_failure", lambda _c, d: handoff_calls.append(d)
+    )
 
     cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-    # COLD-LOADED: intervention-required AND consecutive-conflicts at cap
     cold_loaded_rebase = RebaseState(
         last_action="conflict",
         last_reason="cold-loaded detail",
         consecutive_conflicts=cap,
     ).set_intervention_required("cold-loaded detail")
-    initial_state = PipelineState(
-        phase="development",
-        rebase=cold_loaded_rebase,
-    )
+    initial_state = PipelineState(phase="development", rebase=cold_loaded_rebase)
     assert initial_state.rebase.is_intervention_required is True
 
     first_result = run_loop._wait_for_integration_retry(initial_state, ctx)
@@ -821,22 +759,10 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """WU-2 retry progress: identical blocked outcomes charge attempts and escalate.
-
-    When the recovery preamble returns a non-None state that is itself
-    blocked, repeated calls must charge the conflict counter, reach the
-    cap, escalate to the resolver handoff, and never sleep.
-    """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-
+    """WU-2 retry progress: identical blocked outcomes charge attempts and escalate."""
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
     handoffs: list[str] = []
-
-    def _fake_handoff(loop_ctx: object, detail: str) -> None:
-        handoffs.append(detail)
-
-    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", lambda _c, d: handoffs.append(d))
 
     def _fake_preamble(
         _scope: WorkspaceScope,
@@ -844,8 +770,6 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
         *,
         backend: object = None,
     ) -> RebaseState | None:
-        # Returns a non-None blocked state (is_intervention_required=True).
-        # Mirrors an unchanging durable state that nothing in-process can satisfy.
         return RebaseState(
             last_reason="blocked state from preamble",
         ).set_intervention_required("blocked state from preamble")
@@ -861,7 +785,6 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
         ).set_intervention_required("identical blocked detail"),
     )
 
-    # Repeated iterations must charge attempts and eventually escalate.
     for _ in range(cap):
         state = run_loop._wait_for_integration_retry(state, ctx)
     assert sleeps == [], "Identical blocked outcomes must not sleep"
@@ -874,37 +797,13 @@ def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """WU-2 unsuccessful handoff: handoff that does not progress still escalates.
-
-    When the automated-resolution handoff does not produce observable
-    progress (the in-memory rebase still carries
-    ``is_intervention_required``), the retry must record the
-    intervention transition without sleeping so the next seam can
-    re-derive state from Git instead of looping forever on a fixed
-    interval wait.
-    """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-
-    def _noop_preamble(
-        _scope: WorkspaceScope,
-        _config: UnifiedConfig,
-        *,
-        backend: object = None,
-    ) -> RebaseState | None:
-        return None
-
+    """WU-2 unsuccessful handoff: handoff that does not progress still escalates."""
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
     monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
-
     handoff_calls: list[str] = []
-
-    def _noop_handoff(loop_ctx: object, detail: str) -> None:
-        # Simulates a handoff that does NOT make progress (no observable
-        # side-effect on the rebase state).
-        handoff_calls.append(detail)
-
-    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _noop_handoff)
+    monkeypatch.setattr(
+        run_loop, "_handoff_retained_failure", lambda _c, d: handoff_calls.append(d)
+    )
 
     cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
     state = PipelineState(
@@ -926,24 +825,10 @@ def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """WU-2 pending retry: repeated non-None blocked results charge attempts and escalate.
-
-    When starting from a pending (non-intervention-required) state and
-    the recovery preamble repeatedly returns an identical non-None
-    blocked state, the retry loop must charge consecutive conflicts on
-    each iteration, reach the cap, dispatch automated resolution handoff,
-    and escalate without sleeping.
-    """
-    sleeps: list[float] = []
-    ctx = _create_retry_ctx(tmp_path, sleeps)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-
+    """WU-2 pending retry: repeated non-None blocked results charge attempts and escalate."""
+    _sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
     handoffs: list[str] = []
-
-    def _fake_handoff(loop_ctx: object, detail: str) -> None:
-        handoffs.append(detail)
-
-    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", lambda _c, d: handoffs.append(d))
 
     def _fake_preamble(
         _scope: WorkspaceScope,
@@ -975,3 +860,135 @@ def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and
     assert len(handoffs) == 1
     assert state.rebase.is_intervention_required is True
     assert state.rebase.consecutive_conflicts >= cap
+
+
+def test_wait_for_retry_successful_handoff_not_overwritten_with_intervention(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 successful handoff: does not overwrite a successful handoff with intervention."""
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _mock_successful_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    initial_state = _make_state(conflicts=cap, last_reason="conflict detail for resolver")
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert sleeps == []
+    assert result.rebase.is_intervention_required is False
+    assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+
+
+def test_wait_for_retry_pending_successful_handoff_not_overwritten_with_intervention(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 pending retry: successful handoff at cap does not overwrite with intervention."""
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _mock_successful_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    initial_state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_reason="pending retry detail",
+            consecutive_conflicts=cap - 1,
+        ),
+    )
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert sleeps == []
+    assert result.rebase.is_intervention_required is False
+    assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+
+
+def _mock_rederived_preamble(
+    _scope: WorkspaceScope,
+    _config: UnifiedConfig,
+    *,
+    backend: object = None,
+) -> RebaseState | None:
+    return RebaseState(
+        last_outcome=RebaseOutcomeKind.COMPLETED,
+        last_reason="re-derived from live git",
+        consecutive_conflicts=0,
+    )
+
+
+def test_wait_for_retry_absent_record_at_cap_invokes_automated_resolver_or_rederives_state(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 absent record: absent record at cap invokes automated resolver or re-derives state."""
+    _sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    resolver_called: list[bool] = []
+
+    def _mock_resolver(_c: run_loop._LoopContext, _r: RebaseState | None = None) -> bool:
+        resolver_called.append(True)
+        return False
+
+    monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", _mock_resolver)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _mock_rederived_preamble)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    initial_state = _make_state(conflicts=cap)
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert resolver_called == [True], "Automated resolver must be invoked for absent record at cap"
+    assert result.rebase.is_intervention_required is False
+    assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+
+
+def test_wait_for_retry_unreadable_record_at_cap_invokes_automated_resolver_or_rederives_state(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 unreadable record: unreadable record at cap invokes automated resolver or re-derives state."""
+    _sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    resolver_called: list[bool] = []
+
+    def _mock_resolver(_c: run_loop._LoopContext, _r: RebaseState | None = None) -> bool:
+        resolver_called.append(True)
+        return False
+
+    monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", _mock_resolver)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _mock_rederived_preamble)
+
+    target_file = record_path(tmp_path)
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    target_file.write_text("CORRUPT_JSON_{invalid")
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    initial_state = _make_state(conflicts=cap)
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert resolver_called == [True], (
+        "Automated resolver must be invoked for unreadable record at cap"
+    )
+    assert result.rebase.is_intervention_required is False
+    assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+
+
+def test_wait_for_retry_unreadable_record_at_cap_unsuccessful_escalates_to_intervention(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 unreadable record: unreadable record at cap escalates to intervention if unresolved."""
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", lambda _c, _r=None: False)
+
+    target_file = record_path(tmp_path)
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    target_file.write_text("CORRUPT_JSON_{invalid")
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    initial_state = _make_state(conflicts=cap)
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert sleeps == []
+    assert result.rebase.is_intervention_required is True

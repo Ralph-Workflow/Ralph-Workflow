@@ -85,9 +85,10 @@ def _seed_raw_legacy_pair(
     """
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
-    (agent_dir / "checkpoint.json").write_text(
-        json.dumps(checkpoint_payload or {"phase": "development"}), encoding="utf-8"
+    active_checkpoint: dict[str, object] = (
+        checkpoint_payload if checkpoint_payload is not None else {"phase": "development"}
     )
+    (agent_dir / "checkpoint.json").write_text(json.dumps(active_checkpoint), encoding="utf-8")
     (agent_dir / "auto_integrate_in_progress.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
@@ -141,19 +142,26 @@ def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Pa
 
 def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Path) -> None:
     """Contradicting legacy pair with dictionary evidence migrates cleanly
-    through the production recovery path; the record still blocks recovery
-    and business dispatch as the single authority."""
+    on load and auto-releases through recovery; the record still blocks
+    recovery and business dispatch as the single authority."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_DICT_EVIDENCE_PAYLOAD)
+
+    # Legacy dictionary evidence migrates cleanly to the new key space on load.
+    pre_recovery = read_record(tmp_git_repo)
+    assert pre_recovery is not None
+    pre_evidence = dict(pre_recovery.diagnostic_evidence)
+    assert pre_evidence.get("unstaged_work") == "unstaged diff"
+    assert pre_evidence.get("commit_controls") == "controls data"
 
     recovered, _ = _restart_via_production_recovery(tmp_git_repo)
 
+    # On recovery, missing-lease legacy evidence auto-releases fail-open
+    # per AC1/O1 so unverified legacy evidence never livelocks.
     persisted = read_record(tmp_git_repo)
     assert persisted is not None
     assert persisted.phase == "integrating"
     assert not persisted.diagnostic_intervention_required
-    evidence = dict(persisted.diagnostic_evidence)
-    assert evidence.get("unstaged_work") == "unstaged diff"
-    assert evidence.get("commit_controls") == "controls data"
+    assert persisted.diagnostic_evidence == ()
 
     # The record is still the single recovery authority: it is retained and
     # ordinary dispatch stays blocked until recovery finishes.

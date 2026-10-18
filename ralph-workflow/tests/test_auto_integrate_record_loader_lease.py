@@ -13,6 +13,8 @@ structurally unreachable:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_parse_lease_extracts_fingerprint_and_held_at() -> None:
     from ralph.pipeline.auto_integrate_record import parse_lease
@@ -458,3 +460,103 @@ def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
     )
     assert bumped_over_cap.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     assert bumped_over_cap.diagnostic_intervention_required is True
+
+
+def test_recovery_on_legacy_work_evidence_missing_lease_auto_releases(tmp_path: Path) -> None:
+    """AC1: Record with legacy 'work' evidence and missing lease auto-releases fail-open on recovery."""
+    import json
+
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        AUTO_INTEGRATE_RECORD_FILENAME,
+        read_record,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": [["work", "modified_file.py"]],
+        "diagnostic_ownership": None,
+    }
+    record_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    recover_incomplete_integration(WorkspaceScope(tmp_path), backend=DEFAULT_FILE_BACKEND)
+
+    loaded = read_record(tmp_path)
+    assert loaded is not None
+    assert loaded.diagnostic_evidence == ()
+    assert loaded.diagnostic_ownership is None
+    assert loaded.diagnostic_intervention_required is False
+    assert next_integration_action(loaded) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_recovery_on_malformed_lease_auto_releases(tmp_path: Path) -> None:
+    """AC1: Record with malformed lease auto-releases fail-open on recovery rather than retaining a skip."""
+    import json
+
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        AUTO_INTEGRATE_RECORD_FILENAME,
+        read_record,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": "forged_ownership_no_colon",
+    }
+    record_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    recover_incomplete_integration(WorkspaceScope(tmp_path), backend=DEFAULT_FILE_BACKEND)
+
+    loaded = read_record(tmp_path)
+    assert loaded is not None
+    assert loaded.diagnostic_evidence == ()
+    assert loaded.diagnostic_ownership is None
+    assert loaded.diagnostic_intervention_required is False
+    assert next_integration_action(loaded) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_recovery_on_valid_old_lease_differing_fingerprint_preserves_bytes(tmp_path: Path) -> None:
+    """AC1: Valid old lease bytes with differing fingerprint retain skip and preserve disk bytes."""
+    import time
+
+    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+    )
+    from ralph.pipeline.operation_evidence import EvidenceVerdict
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        owning_worktree="/some/worktree",
+        operation_kind="feature_integrate",
+        diagnostic_evidence=(("unstaged_work", "clean"),),
+        diagnostic_ownership=f"differing_worktree_fingerprint:{time.time()}",
+    )
+    verdict = release_verified_diagnostic(tmp_path, record)
+    assert verdict == EvidenceVerdict.CHANGED

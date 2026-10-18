@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import (
@@ -100,12 +102,33 @@ def push_single_remote(
         return None, decision
 
     client = remote_client or _default_remote_client()
-    result = client.push_branch(
-        repo_root,
-        target,
-        remote=remote,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        result = client.push_branch(
+            repo_root,
+            target,
+            remote=remote,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate: push_branch raised unexpectedly for {}/{}: {}",
+            remote,
+            target,
+            exc,
+        )
+        status = (
+            _remote_push_module.PushStatus.TIMEOUT
+            if isinstance(exc, TimeoutError)
+            or "timeout" in str(exc).lower()
+            or "timed out" in str(exc).lower()
+            else _remote_push_module.PushStatus.UNREACHABLE
+        )
+        result = _remote_push_module.PushResult(
+            status,
+            remote,
+            target,
+            detail=str(exc) or status.value,
+        )
     typed_result = _coerce_push_result(result, remote=remote, target=target)
     is_unavailable = typed_result.status in {
         _remote_push_module.PushStatus.UNREACHABLE,

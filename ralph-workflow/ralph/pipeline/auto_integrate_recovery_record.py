@@ -334,8 +334,8 @@ def _maybe_release_diagnostic(
     (caller proceeds with the recovery). Returns the
     :class:`IntegrationRecord` (unchanged) on a successful release.
     Returns a typed :class:`RebaseState` for BUSY/UNREADABLE
-    refusals (bounded retry vs intervention) or CHANGED/UNKNOWN
-    diagnostic verdicts (retained skip).
+    refusals (bounded retry vs intervention) or CHANGED
+    diagnostic verdict (retained skip).
     """
     outcome = read_record_outcome(root, backend=backend)
     record = outcome.record

@@ -110,7 +110,6 @@ def _assert_planning_agrees(
     # integrator is a stub so the test is hermetic.
     monkeypatch.setattr(planning_module, "resolve_integration_target", lambda _c, _r: "main")
     monkeypatch.setattr(planning_module, "assess_tree_readiness", lambda _root: readiness)
-    monkeypatch.setattr(planning_module, "_worktree_is_clean", lambda _root: expected_ready)
     monkeypatch.setattr(planning_module, "ancestry_state", lambda _r, _t, _h: False)
     monkeypatch.setattr(
         planning_module,
@@ -161,7 +160,6 @@ def _assert_boundary_agrees(
     monkeypatch = pytest.MonkeyPatch()
     try:
         monkeypatch.setattr(boundary_module, "assess_tree_readiness", lambda _root: readiness)
-        monkeypatch.setattr(boundary_module, "_worktree_is_clean", lambda _root: expected_ready)
         monkeypatch.setattr(boundary_module, "branch_sha", lambda _r, _t: "b" * 40)
         monkeypatch.setattr(boundary_module, "get_head_sha", lambda _r: "a" * 40)
         monkeypatch.setattr(boundary_module, "is_ancestor", lambda _r, _a, _b: False)
@@ -408,7 +406,6 @@ def test_planning_staged_block_records_skip_not_unresolved_conflict(
             blocking_reasons=("staged uncommitted work blocks integration",),
         ),
     )
-    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: False)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_recovery_terminal.post_attempt_verify",
         lambda *_a, **_kw: None,
@@ -447,7 +444,6 @@ def test_planning_modified_tracked_records_skip_without_force_merge(
             blocking_reasons=(canonical_reason,),
         ),
     )
-    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: False)
 
     def _unexpected_force_merge(*_a: object, **_kw: object) -> RebaseState:
         pytest.fail("_integrate_with_force_merge must not be executed for modified tracked tree")
@@ -470,7 +466,6 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
 ) -> None:
     """Boundary and planning agree when tracked changes are present."""
     (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _r: False)
     monkeypatch.setattr(boundary, "branch_sha", lambda _r, _t: "b" * 40)
     monkeypatch.setattr(boundary, "get_head_sha", lambda _r: "a" * 40)
     monkeypatch.setattr(boundary, "is_ancestor", lambda _r, _a, _b: False)
@@ -496,7 +491,6 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
     monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
     monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
     monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
-    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: False)
     monkeypatch.setattr(
         planning,
         "_integrate_with_force_merge",

@@ -37,6 +37,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.integration_resolution import TreeReadinessAssessment
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -210,7 +211,17 @@ def _dirty_boundary_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     the deferral must RECORD rather than swallow.
     """
     (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda root: False)
+    monkeypatch.setattr(
+        boundary,
+        "assess_tree_readiness",
+        lambda root: TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=(
+                "worktree not clean; uncommitted tracked changes deferred catch-up integration",
+            ),
+        ),
+    )
     monkeypatch.setattr(auto_integrate, "resolve_integration_target", lambda config, root: "main")
     monkeypatch.setattr(boundary, "branch_sha", lambda root, ref: _TARGET_SHA)
     monkeypatch.setattr(boundary, "get_head_sha", lambda root: _HEAD_SHA)

@@ -36,11 +36,20 @@ from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_worktree_state as ai_worktree
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
 from ralph.pipeline.auto_integrate_sync import REFRESH_REFRESHED
+from ralph.pipeline.integration_resolution import TreeReadinessAssessment
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 _HEAD_SHA = "a" * 40
 _TARGET_SHA = "b" * 40
+
+_DIRTY_READINESS = TreeReadinessAssessment(
+    development_dispatch_allowed=True,
+    integration_ready=False,
+    blocking_reasons=(
+        "worktree not clean; uncommitted tracked changes deferred catch-up integration",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -84,12 +93,12 @@ def test_boundary_cleanliness_probe_ignores_untracked_files(
     """
     seen = _record_status_argv(monkeypatch, returncode=0)
 
-    assert boundary._worktree_is_clean(tmp_path) is True
+    assert ai_worktree._worktree_is_clean(tmp_path) is True
     assert seen == [(*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no")]
 
     # Any git failure still counts as "not clean" (fail closed).
     _record_status_argv(monkeypatch, returncode=1)
-    assert boundary._worktree_is_clean(tmp_path) is False
+    assert ai_worktree._worktree_is_clean(tmp_path) is False
 
 
 def _dirty_boundary_config() -> UnifiedConfig:
@@ -118,7 +127,7 @@ def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     """
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)
     monkeypatch.setattr(boundary, "get_head_sha", lambda _root: _HEAD_SHA)
     monkeypatch.setattr(boundary, "branch_sha", lambda _root, _name: _TARGET_SHA)
     monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: False)
@@ -148,7 +157,7 @@ def test_dirty_clean_target_boundary_stays_silent_on_repeated_evaluations(
     """Expected local work never becomes a repeated auto-integration failure."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)
     monkeypatch.setattr(boundary, "get_head_sha", lambda _root: _HEAD_SHA)
     monkeypatch.setattr(boundary, "branch_sha", lambda _root, _name: _TARGET_SHA)
     monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: True)
@@ -170,7 +179,7 @@ def test_dirty_boundary_regression_suppressed_divergence_forces_a_refresh(
     """AC-06: an armed throttle cannot leave a catch-up verdict stale."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)
     monkeypatch.setattr(boundary, "get_head_sha", lambda _root: _HEAD_SHA)
     monkeypatch.setattr(boundary, "branch_sha", lambda _root, _name: _TARGET_SHA)
     monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: False)

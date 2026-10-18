@@ -601,7 +601,6 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
     evidence and refused to proceed.
     """
     raw_evidence = data_raw.get("diagnostic_evidence")
-    is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
     sequence: tuple[tuple[str, str], ...]
     if raw_evidence is None:
         sequence = ()
@@ -614,6 +613,7 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
         except Exception:
             return _clear_legacy_ownership_and_intervention(data_raw)
 
+    is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
     has_legacy_global_evidence = any(_is_legacy_global_evidence_key(key) for key, _ in sequence)
     raw_ownership = data_raw.get("diagnostic_ownership")
     has_unparseable_ownership = (

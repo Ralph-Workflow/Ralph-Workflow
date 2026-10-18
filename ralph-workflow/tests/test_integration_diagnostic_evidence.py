@@ -156,10 +156,9 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     # 1. Empty evidence + empty ownership -> UNCHANGED (nothing to hold)
     assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
 
-    # 2. Unparseable lease -> CHANGED (the sole operator-escalation
-    # path for a non-empty unparseable ownership; the fail-open
-    # auto-release contract is preserved for the separate
-    # expired-lease branch below).
+    # 2. Unparseable lease -> UNKNOWN (fail-open auto-release contract
+    # so unparseable/malformed leases never livelock or stall in an
+    # operator-only state per O1 / AC1).
     record_with_forged = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
@@ -167,7 +166,7 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.CHANGED
+        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.UNKNOWN
     )
 
     # 3. Expired lease (held_at far in the past) -> UNKNOWN
@@ -382,25 +381,24 @@ def test_malformed_timestamp_lease_returns_changed() -> None:
         resolving_rebase=True,
     )
     # Non-numeric held_at -> parse_lease returns (None, None)
-    # -> verdict is CHANGED.
+    # -> verdict is UNKNOWN (fail-open auto-release per AC1).
     record_malformed = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
             "diagnostic_ownership": "fingerprint:not-a-number",
         }
     )
-    assert diagnostic.diagnostic_evidence_verdict(root, record_malformed) == EvidenceVerdict.CHANGED
+    assert diagnostic.diagnostic_evidence_verdict(root, record_malformed) == EvidenceVerdict.UNKNOWN
 
 
 def test_empty_evidence_with_unparseable_ownership_returns_changed() -> None:
-    """A record with empty evidence but a non-empty unparseable ownership returns ``CHANGED``.
+    """A record with empty evidence but a non-empty unparseable ownership returns ``UNKNOWN``.
 
     The empty-evidence short-circuit at the top of the verdict
     function only fires when ``diagnostic_ownership`` is also
     empty (the no-hold case). A record with empty evidence but
-    a non-empty unparseable ownership must escalate: the lease
-    is no longer a valid durable identity, so the only path
-    forward is operator review.
+    a non-empty unparseable ownership auto-releases fail-open
+    (``UNKNOWN``) per O1 / AC1.
     """
     root = Path("/workspace")
     record = IntegrationRecord(
@@ -418,5 +416,5 @@ def test_empty_evidence_with_unparseable_ownership_returns_changed() -> None:
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_unparseable) == EvidenceVerdict.CHANGED
+        diagnostic.diagnostic_evidence_verdict(root, record_unparseable) == EvidenceVerdict.UNKNOWN
     )

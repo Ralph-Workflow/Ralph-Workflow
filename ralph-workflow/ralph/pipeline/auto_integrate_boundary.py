@@ -36,7 +36,6 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_remote_publication as _reconcile_remote_publication,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
-from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
 )
@@ -67,6 +66,7 @@ def phase_boundary_outcome(
     state: RebaseState,
     *,
     rebase_stop_resolver: RebaseStopResolver | None,
+    readiness: TreeReadinessAssessment | None = None,
 ) -> tuple[bool, RebaseState | None]:
     """Return whether the target, cleanliness, or freshness gate ends this boundary."""
     if target is None:
@@ -74,8 +74,9 @@ def phase_boundary_outcome(
             reason=_missing_target_reason(config), target=_configured_target(config)
         )
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
-    readiness = assess_tree_readiness(root)
-    if not readiness.integration_ready or not _worktree_is_clean(root):
+    if readiness is None:
+        readiness = assess_tree_readiness(root)
+    if not readiness.integration_ready:
         return True, defer_dirty_boundary(config, root, target, readiness=readiness)
     outcome = boundary_freshness_outcome(
         config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
@@ -162,6 +163,8 @@ def defer_dirty_boundary(
     readiness: TreeReadinessAssessment | None = None,
 ) -> RebaseState | None:
     """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
+    if readiness is None:
+        readiness = assess_tree_readiness(root)
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
         refresh = _refresh_target(config, root, target)

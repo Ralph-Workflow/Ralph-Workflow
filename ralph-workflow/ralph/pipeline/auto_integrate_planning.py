@@ -13,7 +13,6 @@ from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
     recovery_retained_record,
 )
-from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
 )
@@ -42,6 +41,7 @@ def integrate_before_planning(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    readiness: TreeReadinessAssessment | None = None,
 ) -> RebaseState | None:
     """Land committed work without stashing or committing unfinished edits.
 
@@ -70,12 +70,9 @@ def integrate_before_planning(
     if target is None:
         return None
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
-    readiness = assess_tree_readiness(root)
-    if (
-        readiness.integration_ready
-        and _worktree_is_clean(root)
-        and ancestry_state(root, target, "HEAD") is True
-    ):
+    if readiness is None:
+        readiness = assess_tree_readiness(root)
+    if readiness.integration_ready and ancestry_state(root, target, "HEAD") is True:
         return auto_integrate_after_commit(
             config,
             scope,

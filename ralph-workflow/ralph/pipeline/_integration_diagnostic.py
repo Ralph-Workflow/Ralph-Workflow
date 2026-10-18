@@ -393,19 +393,14 @@ def diagnostic_evidence_verdict(
       no live hold; the record is already released. Returns
       ``UNCHANGED`` so the caller can proceed to recovery.
     * Non-empty ``diagnostic_evidence`` and no ``diagnostic_ownership``
-      (legacy migrated record) -- returns ``CHANGED`` so the
-      caller escalates through the operator-only path. The migrated
-      observation is preserved on disk because the ``CHANGED``
-      branch returns a skip verdict and never mutates the record.
-    * Empty ``diagnostic_evidence`` and non-empty unparseable
-      ``diagnostic_ownership`` -- returns ``CHANGED`` (the lease
-      is no longer a valid durable identity; escalate).
-    * Non-empty ``diagnostic_evidence`` and non-empty unparseable
-      ``diagnostic_ownership`` -- returns ``CHANGED`` (the lease
-      is no longer a valid durable identity; escalate).
+      (missing lease) -- returns ``UNKNOWN``; the caller
+      auto-releases fail-open and re-derives from Git.
+    * Non-empty unparseable ``diagnostic_ownership``
+      (malformed lease) -- returns ``UNKNOWN``; the caller
+      auto-releases fail-open and re-derives from Git.
     * Fingerprint mismatch (the durable identity was rewritten by
-      a different worktree) -- returns ``CHANGED`` (the only path
-      to operator escalation for a parseable lease).
+      a different worktree) -- returns ``CHANGED`` (valid old lease
+      bytes preserved on disk).
     * Lease parseable and unexpired -- returns ``UNCHANGED``.
     * Lease parseable and expired -- returns ``UNKNOWN``; the caller
       auto-releases (fail-open).
@@ -413,28 +408,23 @@ def diagnostic_evidence_verdict(
     Returns:
         EvidenceVerdict.UNCHANGED: the lease is valid; release.
         EvidenceVerdict.CHANGED: the durable identity was rewritten.
-        EvidenceVerdict.UNKNOWN: the lease is expired or unparseable.
+        EvidenceVerdict.UNKNOWN: the lease is expired, missing, or unparseable.
     """
     if not record.diagnostic_evidence and not record.diagnostic_ownership:
         return EvidenceVerdict.UNCHANGED
-    if is_owner_dead(record):
+    if is_owner_dead(record) or record.diagnostic_ownership is None:
         return EvidenceVerdict.UNKNOWN
-    if record.diagnostic_ownership is None:
-        # No held lease (e.g. a post-migration record whose evidence
-        # was already cleaned by the loader). There is no lease to
-        # release; the record is retained so the recovery path can
-        # either auto-release through the typed record store or block
-        # dispatch if the evidence is still authoritative. The
-        # CHANGED verdict matches the legacy migration contract:
-        # a record whose evidence was rewritten by the loader is
-        # not silently cleared.
-        return EvidenceVerdict.CHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    if held_at is not None and (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
+    is_expired = held_at is not None and (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
+    if is_expired or fingerprint is None:
         return EvidenceVerdict.UNKNOWN
-    if fingerprint is None or fingerprint != identity_fingerprint(record):
+    if fingerprint != identity_fingerprint(record):
+        # Valid old lease bytes with differing fingerprint: preserve as CHANGED.
         return EvidenceVerdict.CHANGED
     return EvidenceVerdict.UNCHANGED
+
+
+evaluate_held_diagnostic_evidence = diagnostic_evidence_verdict
 
 
 def snapshot_has_unreadable(root: Path, record: IntegrationRecord) -> bool:

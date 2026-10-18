@@ -167,7 +167,10 @@ def retry_pending_remote_publish(
         config,
         repo_root,
         target,
+        remote=record.last_remote,
         remote_client=remote_client,
+        rebase_stop_resolver=rebase_stop_resolver,
+        source_state=record,
     )
 
 
