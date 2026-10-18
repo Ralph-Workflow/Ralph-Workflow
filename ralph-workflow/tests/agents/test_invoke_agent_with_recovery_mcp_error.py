@@ -23,7 +23,6 @@ from ralph.display.context import make_display_context
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
 from ralph.workspace import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 

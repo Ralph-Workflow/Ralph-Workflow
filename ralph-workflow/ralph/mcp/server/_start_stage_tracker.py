@@ -25,6 +25,7 @@ import contextlib
 import json
 import os
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 from typing import cast
@@ -42,7 +43,7 @@ _STAGE_FILE_NAME_COMPONENT: str = ".agent/.ralph_mcp_start_stage"
 #: address the SAME per-spawn stage file. Without this, the child records
 #: under its own import-time UUID and the parent's ``read_last_stage``
 #: always returns ``None`` after a preflight failure.
-_spawn_id: str = os.environ.get(MCP_STAGE_ID_ENV) or str(uuid.uuid4())
+_spawn_id_holder: list[str] = [os.environ.get(MCP_STAGE_ID_ENV) or str(uuid.uuid4())]
 
 
 def _get_spawn_id() -> str:
@@ -50,7 +51,7 @@ def _get_spawn_id() -> str:
 
     Overrideable via patching for deterministic testing.
     """
-    return _spawn_id
+    return _spawn_id_holder[0]
 
 
 def reset_spawn_id() -> None:
@@ -62,8 +63,7 @@ def reset_spawn_id() -> None:
     path is stable for a given spawn but the file content is atomically
     replaced on each write.
     """
-    global _spawn_id  # noqa: PLW0603 — intentional module-state reset per spawn identity
-    _spawn_id = str(uuid.uuid4())
+    _spawn_id_holder[0] = str(uuid.uuid4())
 
 
 def stage_file_path(root: Path, *, spawn_id: str | None = None) -> Path:
@@ -185,50 +185,68 @@ RUNTIME_STAGES: tuple[str, ...] = (
 )
 
 
+#: Default fail-safe timeout for diagnostic writes (seconds).
+_DEFAULT_DIAGNOSTIC_TIMEOUT_S: float = 0.2
+
+
 def record_overrun(
     root: Path,
     stage: str,
     elapsed_s: float,
     budget_s: float,
     remaining_s: float,
+    headroom_s: float | None = None,
+    *,
+    timeout_s: float | None = None,
 ) -> None:
     """Append one JSONL overrun record to ``<stage_file_path>.overruns``.
 
     Per-stage overruns are non-fatal diagnostic warnings. Each line is
     a JSON object with keys:
-    ``stage``, ``elapsed_s``, ``budget_s``, ``remaining_s``,
+    ``stage``, ``elapsed_s``, ``budget_s``, ``remaining_s``, ``headroom_s``,
     ``observed_at`` (unix timestamp), ``warning_id`` (UUID4 hex).
 
     Uses append-mode open (``O_CREAT | O_WRONLY | O_APPEND``) so multiple
     calls accumulate entries in the same file rather than overwriting.
+    Diagnostic writes are bounded by ``timeout_s`` (defaulting to
+    ``mcp_overrun_diagnostic_timeout_seconds()``) in a daemon thread so a
+    stalled or hung filesystem cannot delay startup deadline checks.
     """
     path = stage_file_path(root)
     overruns_path = Path(str(path) + ".overruns")
-    overruns_path.parent.mkdir(parents=True, exist_ok=True)
 
     _warn_id: str = uuid.uuid4().hex
     _now: float = __import__("time").time()
-    record = {
+    record: dict[str, object] = {
         "stage": stage,
         "elapsed_s": elapsed_s,
         "budget_s": budget_s,
         "remaining_s": remaining_s,
+        "headroom_s": headroom_s,
         "observed_at": _now,
         "warning_id": _warn_id,
     }
     line: str = json.dumps(record, separators=(",", ":")) + "\n"
 
-    # Append-mode write to the overruns JSONL file. ``file.write()``
-    # converts str -> bytes under the hood (TextIOWrapper), and the
-    # flush+fileno+fsync trio gives the same durability guarantee as
-    # the fd+os.write path without triggering ``Any``-from-stub issues.
-    try:
-        with overruns_path.open("a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
-            os.fsync(f.fileno())
-    except BaseException:
-        raise
+    eff_timeout_s = timeout_s if timeout_s is not None else _DEFAULT_DIAGNOSTIC_TIMEOUT_S
+
+    def _write_record() -> None:
+        try:
+            overruns_path.parent.mkdir(parents=True, exist_ok=True)
+            with overruns_path.open("a", encoding="utf-8") as f:
+                f.write(line)
+                f.flush()
+                os.fsync(f.fileno())
+        except BaseException:
+            pass
+
+    diag_thread = threading.Thread(
+        target=_write_record,
+        name="ralph-mcp-overrun-record",
+        daemon=True,
+    )
+    diag_thread.start()
+    diag_thread.join(timeout=max(0.0, eff_timeout_s))
 
 
 def read_overruns(root: Path, *, spawn_id: str | None = None) -> list[dict[str, object]]:

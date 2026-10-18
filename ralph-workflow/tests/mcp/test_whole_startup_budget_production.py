@@ -77,6 +77,7 @@ def test_real_deadline_is_preflight_minus_safety() -> None:
         assert err.last_stage == "stage_28_5"
         assert err.elapsed_s == 28.5
 
+
 # Stable exit codes emitted by the pre-serve overrun helper. Hard-coded
 # here so the test compiles against the PRE-fix code too: the
 # production helper exposes the same constants, but the test

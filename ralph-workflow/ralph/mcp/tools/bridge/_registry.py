@@ -26,9 +26,7 @@ from ralph.mcp.tools.bridge._upstream_proxy_handler import UpstreamProxyHandler
 from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
 
 
-def _warn_over_budget(
-    stage: str, elapsed_s: float, budget_s: float
-) -> None:
+def _warn_over_budget(stage: str, elapsed_s: float, budget_s: float) -> None:
     """Log a diagnostic warning for a per-stage budget overrun (non-fatal)."""
     remaining_s = max(0.0, budget_s - elapsed_s)
     print(
@@ -37,7 +35,10 @@ def _warn_over_budget(
         file=sys.stderr,
     )
 
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config.mcp_models import McpConfig
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
     from ralph.mcp.upstream.registry import UpstreamRegistry
@@ -70,6 +71,7 @@ def _read_workspace_policy(
     *,
     timeout_s: float,
     t0: float | None = None,
+    clock_fn: Callable[[], float] = time.monotonic,
 ) -> str:
     """Read design system policy with a strict, fail-closed timeout bound."""
     if not hasattr(workspace, "read"):
@@ -91,7 +93,7 @@ def _read_workspace_policy(
     thread = threading.Thread(target=_worker, daemon=True, name="ralph-policy-reader")
     thread.start()
     if not done.wait(timeout=timeout_s):
-        elapsed = (_clock() - t0) if t0 is not None else timeout_s
+        elapsed = (clock_fn() - t0) if t0 is not None else timeout_s
         raise McpServerError(
             f"workspace policy read exceeded budget ({elapsed:.3f}s >= {timeout_s:.3f}s)",
             restart_count=0,
@@ -108,6 +110,7 @@ def _capture_policy_is_resolved(
     *,
     timeout_s: float | None = None,
     t0: float | None = None,
+    clock_fn: Callable[[], float] = time.monotonic,
 ) -> bool:
     """Return whether this workspace declares a complete capture matrix."""
     effective_timeout_s = timeout_s if timeout_s is not None else _REGISTRY_BUILD_BUDGET_S
@@ -116,6 +119,7 @@ def _capture_policy_is_resolved(
             workspace,
             timeout_s=effective_timeout_s,
             t0=t0,
+            clock_fn=clock_fn,
         )
         parse_policy_facts(policy_markdown, target="_capture_policy_probe")
     except (AttributeError, OSError, TypeError, ValueError):
@@ -149,6 +153,7 @@ def build_ralph_tool_registry(
     t0: float | None = None,
     budget_s: float | None = None,
     timeout_s: float | None = None,
+    clock_fn: Callable[[], float] = time.monotonic,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
     mcp_config_cls = cast(
@@ -160,9 +165,10 @@ def build_ralph_tool_registry(
         workspace,
         timeout_s=timeout_s,
         t0=t0,
+        clock_fn=clock_fn,
     )
     if t0 is not None and budget_s is not None:
-        elapsed = _clock() - t0
+        elapsed = clock_fn() - t0
         if elapsed > budget_s:
             _warn_over_budget("registry_built", elapsed, budget_s)
     for spec in tool_specs(mcp_cfg):

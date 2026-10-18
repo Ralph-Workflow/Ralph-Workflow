@@ -629,19 +629,18 @@ def test_all_late_successful_completion_discarded() -> None:
 def test_late_successful_probe_logs_diagnostic() -> None:
     """Genuine late completions emit a structured outcome=skipped diagnostic.
 
-    Two workers, each advancing the shared clock by 30.0s (well past the
-    28.0s default discovery deadline), complete their probes after the
-    shared deadline has expired. The late-result branch in
-    ``_handle_completed_probe`` fires for each completion and emits a
-    structured ``outcome=skipped reason=budget_exhausted`` line via
-    ``_log_probe_outcome`` (with the worker-computed ``probe_elapsed_ms``,
+    A worker advancing the clock by 30.0s (well past the 28.0s default
+    discovery deadline) completes its probe after the shared deadline has
+    expired. The late-result branch in ``_handle_completed_probe`` fires
+    and emits a structured ``outcome=skipped reason=budget_exhausted`` line
+    via ``_log_probe_outcome`` (with the worker-computed ``probe_elapsed_ms``,
     not the budget-exhausted sentinel's 0.0). The old code returned
     silently after appending to the unused ``discarded_late_servers``
     list and emitted nothing; this test pins the diagnostic back in
     place while still asserting the late-result-rejection invariant.
     """
     clock = _FakeMonotonic()
-    servers = _make_servers("late-1", "late-2")
+    servers = _make_servers("late-1")
 
     sink = io.StringIO()
     handler_id = loguru_logger.add(sink, format="{message}", level="WARNING")

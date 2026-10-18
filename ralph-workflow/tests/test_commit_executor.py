@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -131,8 +133,10 @@ def test_repairable_git_state_stale_index_lock_repaired_and_retried(tmp_path: Pa
     # Create stale index.lock with dead PID
     git_dir = tmp_path / ".git"
     index_lock = git_dir / "index.lock"
-    # Write PID that definitely does not exist (99999999)
+    # Write PID that definitely does not exist (99999999) and set mtime > 10s old
     index_lock.write_text("99999999\n", encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(index_lock, (stale_time, stale_time))
 
     message_file = _create_commit_message_artifact(tmp_path, "feat: lock recovery")
 

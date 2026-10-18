@@ -369,6 +369,8 @@ if _EXPECTED_WATCHDOG_UNAVAILABILITY_REASONS != _WATCHDOG_UNAVAILABILITY_REASONS
 
 def _is_environmental_exc(exc: BaseException) -> bool:
     """Return True if this exception is clearly an environmental/network fault."""
+    if type(exc).__name__ == "McpServerError":
+        return True
     if isinstance(exc, ConnectionError | TimeoutError):
         return True
     if isinstance(exc, socket.gaierror):
@@ -1016,7 +1018,7 @@ class FailureClassifier:
             or _is_post_tool_empty_response_failure(detail_parts)
         )
 
-    def _categorize_exc(  # noqa: PLR0911 - one return per exception class; the priority order is the contract
+    def _categorize_exc(
         self,
         exc: BaseException,
         raw_message: str,
@@ -1078,8 +1080,6 @@ class FailureClassifier:
             "AgyIncompleteExitError",
         }:
             return FailureCategory.AGENT, type_name != "QuotaExhaustedError", False
-        if type_name == "McpServerError":
-            return FailureCategory.ENVIRONMENTAL, False, False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
                 exc,

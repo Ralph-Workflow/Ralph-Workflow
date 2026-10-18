@@ -18,8 +18,8 @@ distinct ``CATALOG_PUBLISH_OVERRUN_EXIT_CODE`` so the parent
 restart budget attributes the exit to this stage without
 re-reading the on-disk stage file.
 
-The timeout envelope is ``remaining_s`` (the time left in the whole-startup
-budget, ``mcp_whole_startup_budget_from_env``), not a separate constant cap.
+The timeout envelope is ``remaining_s`` (the time left in the real startup
+deadline, ``mcp_real_startup_deadline_from_env``), not a separate constant cap.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol._startup_timeouts import (
-    mcp_whole_startup_budget_from_env,
+    mcp_real_startup_deadline_from_env,
 )
 from ralph.mcp.server._pre_serve_overrun import (
     CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
@@ -50,7 +50,7 @@ def publish_tool_catalog_bounded(
     env_map: Mapping[str, str],
     t0: float | None = None,
 ) -> None:
-    """Run ``publish_tool_catalog_to_parent`` with the remaining whole-startup deadline.
+    """Run ``publish_tool_catalog_to_parent`` with the remaining real startup deadline.
 
     Returns normally on success. On timeout (or zero remaining
     budget), the process is force-exited via ``os._exit`` with
@@ -59,10 +59,10 @@ def publish_tool_catalog_bounded(
     ``upstream_catalog_or_discovery_done`` stage without
     re-reading the on-disk stage file.
     """
-    whole_budget_s = mcp_whole_startup_budget_from_env(env_map)
+    real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     if t0 is None:
         t0 = time.monotonic()
-    remaining_s = max(0.0, whole_budget_s - (time.monotonic() - t0))
+    remaining_s = max(0.0, real_deadline_s - (time.monotonic() - t0))
     effective_timeout_s = remaining_s
     if effective_timeout_s <= 0.0:
         fail_closed_pre_serve_overrun(

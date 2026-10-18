@@ -889,9 +889,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     assert captured_scopes and captured_scopes[0]
 
 
-def test_mcp_server_error_propagates(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_mcp_server_error_propagates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """McpServerError from check_mcp_bridge_health propagates out of execute_agent_effect."""
     del monkeypatch
     config = _make_config(300.0)

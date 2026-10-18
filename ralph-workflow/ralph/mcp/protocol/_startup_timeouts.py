@@ -312,6 +312,21 @@ def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timed
     return preflight - timedelta(seconds=_PROBE_SAFETY_S)
 
 
+def mcp_real_startup_deadline_from_env(
+    env: Mapping[str, str] | None = None,
+) -> float:
+    """Return the real cumulative startup deadline in seconds.
+
+    This is the preflight timeout minus the probe-safety floor:
+    ``(mcp_preflight_timeout_from_env(env) - timedelta(seconds=_PROBE_SAFETY_S)).total_seconds()``.
+    Ensures that pre-serve operations cannot consume the failure-reporting safety margin.
+    """
+    env_map = os.environ if env is None else env
+    return (
+        mcp_preflight_timeout_from_env(env_map) - timedelta(seconds=_PROBE_SAFETY_S)
+    ).total_seconds()
+
+
 _OVERRUN_LOGGER_NAME = "ralph.mcp.protocol._startup_timeouts"
 
 
@@ -321,6 +336,7 @@ def record_stage_elapsed(
     *,
     budget_s: float,
     root: Path | None = None,
+    headroom_s: float | None = None,
 ) -> float | None:
     """Diagnose a per-stage startup budget overrun; return ``None`` on overrun.
 
@@ -345,14 +361,25 @@ def record_stage_elapsed(
 
     if elapsed_s > budget_s:
         remaining_s = budget_s - elapsed_s
-        logger.warning(
-            "startup stage {stage} over budget: "
-            "elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s",
-            stage=stage,
-            elapsed_s=elapsed_s,
-            budget_s=budget_s,
-            remaining_s=remaining_s,
-        )
+        if headroom_s is not None:
+            logger.warning(
+                "startup stage {stage} over budget: "
+                "elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s headroom_s={headroom_s:.3f}s",
+                stage=stage,
+                elapsed_s=elapsed_s,
+                budget_s=budget_s,
+                remaining_s=remaining_s,
+                headroom_s=headroom_s,
+            )
+        else:
+            logger.warning(
+                "startup stage {stage} over budget: "
+                "elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s",
+                stage=stage,
+                elapsed_s=elapsed_s,
+                budget_s=budget_s,
+                remaining_s=remaining_s,
+            )
         target_root = root if root is not None else Path.cwd()
         try:
             record_overrun(
@@ -361,6 +388,8 @@ def record_stage_elapsed(
                 elapsed_s=elapsed_s,
                 budget_s=budget_s,
                 remaining_s=remaining_s,
+                headroom_s=headroom_s,
+                timeout_s=mcp_overrun_diagnostic_timeout_seconds(),
             )
         except Exception as exc:
             logger.warning("failed to record overrun to stage tracker: {exc}", exc=exc)
@@ -377,7 +406,7 @@ def _check_real_startup_deadline(
     """Enforce the preflight startup deadline at a stage boundary.
 
     Checks elapsed monotonic time from ``t0`` against the real startup envelope:
-    ``mcp_preflight_timeout_from_env(env_map) - _PROBE_SAFETY_S``.
+    ``mcp_real_startup_deadline_from_env(env_map)``.
     Default: 30.0s - 2.0s = 28.0s.
 
     This is the ONLY fatal startup check. Per-stage budget overruns are
@@ -388,11 +417,11 @@ def _check_real_startup_deadline(
         McpServerError: when cumulative elapsed exceeds the real startup deadline.
     """
     elapsed = _time_module.monotonic() - t0
-    envelope = mcp_preflight_timeout_from_env(env_map) - timedelta(seconds=_PROBE_SAFETY_S)
-    if elapsed > envelope.total_seconds():
+    real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
+    if elapsed > real_deadline_s:
         raise McpServerError(
             f"real startup deadline exceeded at stage {stage!r} "
-            f"({elapsed:.3f}s > {envelope.total_seconds():.3f}s)",
+            f"({elapsed:.3f}s > {real_deadline_s:.3f}s)",
             last_stage=stage,
             elapsed_s=elapsed,
             restart_count=0,
@@ -467,9 +496,7 @@ if not (
 
 # Import-time invariant: the real startup deadline (preflight - probe-safety) must
 # be strictly positive and strictly less than the preflight timeout.
-_real_startup_deadline_s: float = (
-    mcp_preflight_timeout_from_env().total_seconds() - _PROBE_SAFETY_S
-)
+_real_startup_deadline_s: float = mcp_real_startup_deadline_from_env()
 if not (0 < _real_startup_deadline_s < mcp_preflight_timeout_from_env().total_seconds()):
     raise RuntimeError(
         f"real startup deadline ({_real_startup_deadline_s}s) must be strictly "
@@ -491,13 +518,20 @@ def mcp_registry_built_budget_from_env(
 
 def mcp_registry_read_timeout_from_env(
     env: Mapping[str, str] | None = None,
+    *,
+    remaining_s: float | None = None,
 ) -> float:
     """Return the bounded per-workspace-read timeout for registry construction."""
     env_map = os.environ if env is None else env
     requested = _timeout_ms_from_env(env_map, "RALPH_MCP_REGISTRY_READ_TIMEOUT_MS")
     if requested is not None:
-        return requested.total_seconds()
-    return _REGISTRY_BUILD_BUDGET_S
+        timeout = requested.total_seconds()
+        if remaining_s is not None:
+            return min(timeout, max(0.0, remaining_s))
+        return timeout
+    if remaining_s is not None:
+        return max(0.0, remaining_s)
+    return mcp_real_startup_deadline_from_env(env_map)
 
 
 def mcp_whole_startup_budget_from_env(
@@ -547,6 +581,7 @@ __all__ = [
     "mcp_overrun_diagnostic_timeout_seconds",
     "mcp_pre_serve_budget_from_env",
     "mcp_preflight_timeout_from_env",
+    "mcp_real_startup_deadline_from_env",
     "mcp_registry_built_budget_from_env",
     "mcp_registry_read_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",

@@ -220,9 +220,7 @@ def test_slow_session_from_env_succeeds_with_default_env(
         return session
 
     monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
-    monkeypatch.setattr(
-        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
-    )
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
     monkeypatch.setattr(runtime_mod, "session_from_env", slow_session_from_env)
 
     # Mock server so run_standalone_server does not block or start real network listener
@@ -264,9 +262,7 @@ def test_hung_session_from_env_fails_closed_before_preflight_minus_safety(
 
     # Synchronize clocks to exact 0.0 so remaining_s math is exact
     monkeypatch.setattr(runtime_mod, "_clock", lambda: 0.0)
-    monkeypatch.setattr(
-        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", lambda: 0.0
-    )
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", lambda: 0.0)
 
     captured_timeout: list[float] = []
 
@@ -295,9 +291,7 @@ def test_hung_session_from_env_fails_closed_before_preflight_minus_safety(
     assert read_last_stage(tmp_path) == "session_ready"
 
 
-def test_pre_serve_io_taking_1_5s_succeeds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pre_serve_io_taking_1_5s_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Pre-serve I/O taking 1.5s succeeds under the real remaining startup deadline."""
     import ralph.mcp.server.runtime as runtime_mod
     from ralph.config.mcp_models import McpConfig
@@ -320,9 +314,7 @@ def test_pre_serve_io_taking_1_5s_succeeds(
         return McpConfig()
 
     monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
-    monkeypatch.setattr(
-        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
-    )
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
     monkeypatch.setattr(runtime_mod, "load_mcp_config", slow_load_mcp_config)
 
     # Call _poll_bounded_pre_serve with t0=0.0 and default env
@@ -353,9 +345,7 @@ def test_catalog_publish_slow_but_answers_succeeds(
         return clock_val
 
     monkeypatch.setattr(time_module, "monotonic", fake_monotonic)
-    monkeypatch.setattr(
-        "ralph.mcp.server._publish_catalog_bounded.time.monotonic", fake_monotonic
-    )
+    monkeypatch.setattr("ralph.mcp.server._publish_catalog_bounded.time.monotonic", fake_monotonic)
 
     publish_called = False
 
@@ -390,9 +380,7 @@ def test_registry_read_slow_but_answers_succeeds(
         return clock_val
 
     monkeypatch.setattr(reg_mod, "_clock", fake_clock)
-    monkeypatch.setattr(
-        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
-    )
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
 
     session = AgentSession(
         session_id="test-session-reg",

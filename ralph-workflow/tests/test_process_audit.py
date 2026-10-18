@@ -55,6 +55,10 @@ ALLOWLIST: list[tuple[str, str]] = [
         "ceiling; same single-purpose subprocess.run pattern as the parent "
         "(bounded timeout, parent blocks on .run() so no leaks)",
     ),
+    (
+        "git/operations.py",
+        "runs read-only lsof and fuser to probe git lock liveness with check=False and bounded timeout; no shell, no user input",
+    ),
 ]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.

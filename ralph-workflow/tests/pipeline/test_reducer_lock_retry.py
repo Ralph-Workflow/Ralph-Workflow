@@ -57,9 +57,7 @@ def test_no_recovery_phase_routes_in_place() -> None:
         pending_cycle_outcome="completed",
         last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
     )
-    set_last_commit_error(
-        "GitOperationError: Unable to create '.git/index.lock': File exists"
-    )
+    set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
     try:
         # Patch in the reducer module so _handle_commit_failure sees no recovery phase
         with patch(
@@ -80,27 +78,24 @@ def test_no_recovery_phase_routes_in_place() -> None:
         set_last_commit_error(None)
 
 
-def test_recovery_epoch_caps_at_max() -> None:
-    """After recovery_epoch reaches the cap with no recovery phase, routes to failed_terminal.
+def test_recovery_epoch_clamps_at_max_and_retries_in_place() -> None:
+    """When recovery_epoch reaches or exceeds the cap, it clamps rather than stops.
 
-    Each in-place retry increments recovery_epoch. When recovery_epoch >= 3
-    (the cap) and _resolve_commit_recovery_phase returns None,
-    _recoverable_git_failure_default_target returns None and the reducer
-    falls through to _enter_failed_recovery -> failed_terminal.
+    Persistent lock contention retries in place with recovery_epoch clamped at
+    _MAX_COMMIT_RECOVERY_ATTEMPTS (3), preserving the message on disk for a fresh
+    pass of commit_executor rather than aborting to failed_terminal.
     """
     policy = _load_pipeline_policy()
     cap = _MAX_COMMIT_RECOVERY_ATTEMPTS
 
-    # recovery_epoch already at the cap: no more in-place retries allowed
+    # Test when recovery_epoch is at cap (3)
     state = PipelineState(
         phase="development_commit",
-        recovery_epoch=cap,  # already at cap = 3
+        recovery_epoch=cap,
         pending_cycle_outcome="completed",
         last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
     )
-    set_last_commit_error(
-        "GitOperationError: Unable to create '.git/index.lock': File exists"
-    )
+    set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
     try:
         with patch(
             "ralph.pipeline.reducer._resolve_commit_recovery_phase",
@@ -108,14 +103,27 @@ def test_recovery_epoch_caps_at_max() -> None:
         ):
             next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Must reach failed_terminal when recovery_epoch is exhausted
-        # AND there is no commit_recovery / commit_cleanup phase to fall back to
-        assert next_state.phase == "failed_terminal", (
-            f"Expected failed_terminal at recovery_epoch={cap}, "
-            f"got phase={next_state.phase}"
-        )
-        # pending_cycle_outcome cleared
+        # Must NOT route to failed_terminal; must retry in-place
+        assert next_state.phase == "development_commit"
+        assert next_state.recovery_epoch == cap
         assert next_state.pending_cycle_outcome is None
+
+        # Test when recovery_epoch is above cap (e.g. 5)
+        state_above_cap = PipelineState(
+            phase="development_commit",
+            recovery_epoch=5,
+            pending_cycle_outcome="completed",
+            last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        )
+        with patch(
+            "ralph.pipeline.reducer._resolve_commit_recovery_phase",
+            return_value=None,
+        ):
+            next_state_above, _ = reduce(state_above_cap, PipelineEvent.COMMIT_FAILURE, policy)
+
+        assert next_state_above.phase == "development_commit"
+        assert next_state_above.recovery_epoch == cap
+        assert next_state_above.pending_cycle_outcome is None
     finally:
         set_last_commit_error(None)
 
@@ -153,9 +161,7 @@ def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
         pending_cycle_outcome="completed",
         last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
     )
-    set_last_commit_error(
-        "GitOperationError: Unable to create '.git/index.lock': File exists"
-    )
+    set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
     try:
         with patch(
             "ralph.pipeline.reducer._resolve_commit_recovery_phase",
@@ -178,8 +184,6 @@ def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
         _event = execute_commit_effect(effect, tmp_path)
 
         # The message file was NOT deleted by the reducer's COMMIT_FAILURE handling
-        assert message_file.exists(), (
-            "Message file must still exist after reducer routes in-place"
-        )
+        assert message_file.exists(), "Message file must still exist after reducer routes in-place"
     finally:
         set_last_commit_error(None)

@@ -108,12 +108,12 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # allowlisted. Line 428 remains the recorded carve-out for the upstream
     # registry branch in build_standalone_http_server.
     "mcp/server/runtime.py:428",
-    # mcp/server/_start_stage_tracker.py:37 — import-time spawn identity:
+    # mcp/server/_start_stage_tracker.py:46 — import-time spawn identity:
     # the module reads MCP_STAGE_ID_ENV once at import so parent and
     # child share the per-spawn stage file (R3 fix, commit 3a7d61c4d).
     # This is a composition-root read; the value is consumed exactly
     # once and re-reading it via a seam would not change behavior.
-    "mcp/server/_start_stage_tracker.py:37",
+    "mcp/server/_start_stage_tracker.py:46",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live
