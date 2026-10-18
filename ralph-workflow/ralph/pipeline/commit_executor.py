@@ -361,13 +361,75 @@ def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> b
 
 
 def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
-    """If HEAD is detached, safely reattach to the verified feature branch."""
+    """If HEAD is detached, safely reattach to the verified feature branch.
+
+    Three-step strategy (AC-10 / GAP-1):
+
+    1. **Exact-tip match** (the original invariant). If a candidate
+       branch's tip equals the detached HEAD's SHA, the
+       ``git symbolic-ref HEAD refs/heads/<branch>`` reattach is
+       lossless -- the reflog and the branch are already
+       consistent.
+    2. **Ancestry-verified fast-forward** (new). When the detached
+       HEAD is a *descendant* of an existing branch's tip
+       (``git merge-base --is-ancestor <branch-tip> <detached-head>``)
+       and the candidate is neither the integration target nor a
+       branch currently checked out in another worktree, the
+       branch is fast-forwarded to the detached SHA via the
+       compare-and-swap ``git update-ref <ref> <new-oid> <old-oid>``
+       (the observed branch tip is the ``<old-oid>``). The CAS
+       refuses to clobber a concurrent ref change, so a divergent
+       reflog-orphan state surfaces as a non-zero exit and the
+       resolver falls through to step 3.
+    3. **Fresh branch** (new). When no candidate is safe, a fresh
+       branch is created at the detached SHA with a collision-safe
+       name (``<preferred>-<7-char-sha>`` on collision; never
+       overwrites an existing branch). The integration target is
+       never a preferred name -- fast-forwarding it would clobber
+       remote commits.
+    """
+    from ralph.pipeline._commit_reattach_fallback import (
+        create_fresh_branch_for_detached,
+        fast_forward_reattach,
+        integration_target_branch,
+        occupied_worktree_branches,
+    )
+
     if not _is_head_detached(repo_root):
         return False
     branch = _resolve_branch_for_reattach(repo_root, **opts)
     if branch:
         logger.info("Detached HEAD detected; safely reattaching to branch '{}'", branch)
         reattach_head_to_branch(repo_root, branch)
+        return True
+    # Step 2: ancestry-verified fast-forward fallback.
+    detached_head_sha = _detached_head_sha(repo_root)
+    integration_target = integration_target_branch(**opts)
+    occupied = occupied_worktree_branches(repo_root)
+    if fast_forward_reattach(
+        repo_root,
+        detached_head_sha=detached_head_sha,
+        candidates=_candidate_branch_names(repo_root, **opts),
+        branch_exists=_branch_exists,
+        integration_target=integration_target,
+        occupied=occupied,
+    ):
+        return True
+    # Step 3: fresh branch with collision-safe naming.
+    fresh = create_fresh_branch_for_detached(
+        repo_root,
+        detached_head_sha=detached_head_sha,
+        candidates=_candidate_branch_names(repo_root, **opts),
+        branch_exists=_branch_exists,
+        integration_target=integration_target,
+        occupied=occupied,
+    )
+    if fresh:
+        logger.info(
+            "Detached HEAD reattached to fresh branch '{}' (no safe candidate)",
+            fresh,
+        )
+        reattach_head_to_branch(repo_root, fresh)
         return True
     logger.warning("Detached HEAD detected but target branch could not be resolved")
     return False

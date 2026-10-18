@@ -97,16 +97,21 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
 #: extend this tuple; the fingerprint is structurally isolated from
 #: record-schema changes. Each field's role in the durable identity is
 #: documented inline.
+#:
+#: The set is narrowed to the structurally stable trio
+#: ``target`` / ``operation_kind`` / ``owning_worktree`` (AC-4). A
+#: successful integration legitimately transitions ``phase`` to
+#: ``"integrated"``, sets ``integrated_feature_sha``, clears
+#: ``reintegrate_pending``, and may update ``pre_target_sha``; those
+#: transitions describe the record's lifecycle, not the durable
+#: identity of the operation. The diagnostic path re-derives
+#: state from Git on the next seam when the lease is still held;
+#: HEAD / index / reflog / worktree path are already excluded by
+#: construction (see the function docstring below).
 _IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
-    "phase",
     "target",
-    "pre_feature_sha",
-    "pre_target_sha",
-    "integrated_feature_sha",
     "operation_kind",
     "owning_worktree",
-    "initiating_feature_sha",
-    "reintegrate_pending",
 )
 
 

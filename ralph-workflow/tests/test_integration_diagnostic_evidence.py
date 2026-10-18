@@ -103,7 +103,13 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         # Rewrite the durable identity (forged) so the current
         # identity_fingerprint differs from the held one. The
         # collector is irrelevant -- the verdict follows the lease.
-        record = record.model_copy(update={"pre_feature_sha": "forged"})
+        # ``target`` is the only stable identity field that
+        # participates in ``identity_fingerprint`` (the field set is
+        # narrowed to ``("target", "operation_kind", "owning_worktree")``
+        # in AC-4: a record whose ``target`` is rewritten is a
+        # different durable operation even when the lifecycle fields
+        # are unchanged).
+        record = record.model_copy(update={"target": "forged-target"})
 
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="reflog", value="changed"),),

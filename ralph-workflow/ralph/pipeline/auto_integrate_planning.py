@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.git.merge_obstructions import ancestry_state
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._planning_obstruction import PlanningObstructionKind
 from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
@@ -110,16 +109,42 @@ def _record_staged_block(
     the caller falls through to the normal integration path. The
     return value is the recorded :class:`RebaseState` when staged
     work IS blocking.
+
+    The planning gate uses :data:`assess_tree_readiness` as the
+    canonical predicate (AC-12): the planning, boundary, and
+    integration-resolution gates all agree on the same ``readiness``
+    verdict. The first ``blocking_reasons`` entry is the operator-
+    facing reason. The pre-fix code called ``git diff --cached
+    --quiet`` independently and produced a *different* clean/blocked
+    verdict than the boundary and integration-resolution gates, which
+    is the three-gates-disagree symptom the criteria call out.
+
+    A modified-tracked (but not staged) tree is NOT recorded as a
+    planning obstruction: the caller's force-merge path is
+    designed to handle the dirty work and land committed work
+    without overwriting the dirty edits. The plan's invariant is
+    that planning and boundary emit the *same* first-readiness
+    reason for the same tree; the boundary gate records
+    ``worktree not clean; uncommitted tracked changes deferred
+    catch-up integration`` and planning reaches the same state via
+    the force-merge path that resolves the dirty work first. The
+    planning obstruction is therefore raised only when the
+    readiness reason starts with ``"staged uncommitted work"`` --
+    the reason a force-merge would clobber staged work.
     """
     if readiness is None:
         readiness = assess_tree_readiness(root)
-    staged = run_git(("diff", "--cached", "--quiet"), cwd=root, label="planning:staged-work")
-    has_staged = staged.returncode != 0 or any(
-        "staged uncommitted work blocks integration" in r for r in readiness.blocking_reasons
-    )
-    if not has_staged:
+    if readiness.integration_ready:
         return None
-    recorded = record_skip(reason="staged uncommitted work blocks integration", target=target)
+    reason = readiness.blocking_reasons[0]
+    if not reason.startswith("staged uncommitted work"):
+        # Modified-tracked / unmerged / rebase-active trees fall
+        # through to the caller's force-merge path. The readiness
+        # reason is still preserved by the boundary gate; planning
+        # only records an obstruction when the reason names staged
+        # work the force-merge would clobber.
+        return None
+    recorded = record_skip(reason=reason, target=target)
     return recorded.model_copy(
         update={
             "last_planning_obstruction": PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value

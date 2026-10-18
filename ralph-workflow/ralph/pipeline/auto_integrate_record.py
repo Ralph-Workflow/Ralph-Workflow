@@ -656,40 +656,17 @@ def _safe_int_from_float(raw: float) -> int:
 
 
 def parse_lease(ownership: str | None) -> tuple[str | None, float | None]:
-    """Parse a ``<fingerprint>:<held_at_unix>`` lease string.
+    """Re-export of the lease parser (now lives in the restamp module).
 
-    Returns ``(fingerprint, held_at)`` for a well-formed lease, or
-    ``(None, None)`` for ``None``, an empty string, any value without
-    a single ``:`` separator (the legacy single-string fingerprint
-    form), an empty fingerprint or held_at, or a lease whose
-    ``held_at`` is not numeric. The diagnostic path interprets the
-    ``(None, None)`` outcome as either:
-
-    * a **legacy migrated record** (``diagnostic_evidence`` non-empty
-      and ``diagnostic_ownership`` empty) -- the verdict is
-      ``CHANGED`` and the migrated observation is preserved on disk
-      because the ``CHANGED`` branch returns a skip verdict and
-      never mutates the record.
-    * a **non-empty unparseable ownership** (the lease is no longer
-      a valid durable identity) -- the verdict is ``CHANGED`` and
-      the caller escalates for operator review.
-
-    The expired-lease branch is a separate code path (lease parseable
-    and ``time.time() - held_at > EVIDENCE_LEASE_SECONDS``) that
-    returns ``UNKNOWN`` and fails open to auto-release.
+    See :func:`ralph.pipeline._auto_integrate_record_restamp.parse_lease`
+    for the full implementation; the function is re-exported here so
+    existing callers (the diagnostic path, the loader) do not need to
+    move their imports. The loader's load-time re-stamp is in
+    :mod:`ralph.pipeline._auto_integrate_record_restamp` (GAP-5 / AC-4).
     """
-    if not isinstance(ownership, str) or not ownership:
-        return None, None
-    if ":" not in ownership:
-        return None, None
-    fingerprint, _, held_at_str = ownership.partition(":")
-    if not fingerprint or not held_at_str:
-        return None, None
-    try:
-        held_at = float(held_at_str)
-    except (TypeError, ValueError):
-        return None, None
-    return fingerprint, held_at
+    from ralph.pipeline._auto_integrate_record_restamp import parse_lease as _parse_lease
+
+    return _parse_lease(ownership)
 
 
 def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
@@ -808,6 +785,23 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     visible in the original on-disk bytes (preserved by the
     closed transition table on the durable record), and the
     diagnostic path re-derives state from Git on the next seam.
+
+    After the record is validated, a held lease whose fingerprint
+    does not match the freshly-computed ``identity_fingerprint`` is
+    treated as a schema-migration candidate: the record is
+    re-stamped to a clean state (evidence ``()``, ownership
+    ``None``, intervention flag ``False``, repair-cap reason
+    cleared) via the same :func:`_clear_legacy_ownership_and_intervention`
+    helper that the legacy / unparseable-lease branches use. The
+    lease format (``<fingerprint>:<held_at>``) only stores the
+    fingerprint hash, not the individual identity fields, so a
+    fingerprint mismatch on load cannot be disambiguated between
+    ``"schema changed"`` and ``"external party rewrote the
+    record"``; the safe path is to re-derive state from Git on the
+    next seam. AC-4 / GAP-5 closes the O1 livelock that surfaced
+    here: a narrower identity-fingerprint field set no longer
+    forces a fingerprint mismatch when the record crosses a
+    legitimate lifecycle transition.
     """
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
@@ -822,7 +816,11 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
         record = IntegrationRecord.model_validate(with_cause)
     except Exception:
         return None
-    return record
+    from ralph.pipeline._auto_integrate_record_restamp import (
+        restamp_fingerprint_mismatch,
+    )
+
+    return restamp_fingerprint_mismatch(record, with_cause)
 
 
 _parse_record_payload = parse_record_payload

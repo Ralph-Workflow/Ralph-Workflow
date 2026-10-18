@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from ralph.config.models import UnifiedConfig
-from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_planning as planning
@@ -252,11 +251,6 @@ def test_planning_staged_block_records_skip_not_unresolved_conflict(
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
     monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
-    monkeypatch.setattr(
-        planning,
-        "run_git",
-        lambda argv, **_kw: GitRunResult(argv, 1, "M  staged.py\n", ""),
-    )
     monkeypatch.setattr(
         planning,
         "assess_tree_readiness",

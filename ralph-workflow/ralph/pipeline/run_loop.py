@@ -2384,6 +2384,35 @@ def _wait_for_integration_retry(
         # wait-for-operator state, not a fresh attempt.
         return state.clear_waiting()
 
+    # Durable-record intervention guard (AC-1 / GAP-4 / O1 residual).
+    # The on-disk record may carry ``diagnostic_intervention_required=True``
+    # even when the in-memory ``rebase`` state shows no in-memory
+    # exhaustion -- for example, after a cold reload of a record left
+    # by a prior crashed run. The previous behaviour slept 5 s and
+    # re-ran the recovery preamble indefinitely in that case. The
+    # guard first asks the diagnostic path whether the held lease is
+    # still trustworthy: a fresh-lease record whose fingerprint
+    # matches the durable identity returns ``UNCHANGED`` (the loader
+    # already cleared any fingerprint-mismatch record via
+    # :func:`auto_integrate_record._restamp_fingerprint_mismatch`),
+    # an expired / unparseable lease returns ``UNKNOWN`` (the
+    # fail-open auto-release contract), and a fingerprint mismatch
+    # returns ``CHANGED`` (escalation). On ``UNCHANGED`` / ``UNKNOWN``
+    # the durable evidence is cleared and the guard returns without
+    # sleeping or re-running the preamble; on ``CHANGED`` /
+    # unreadable the typed ``INTERVENTION_REQUIRED`` transition is
+    # recorded (the durable flag is the source of truth -- the
+    # in-memory retry path is unchanged for the unresolved path).
+    durable_escalation = _durable_record_intervention_guard(ctx.workspace_scope.root, rebase)
+    if durable_escalation is not None:
+        rebase = durable_escalation
+        state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
+            WaitReason.EXHAUSTED_RETRY, None
+        )
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        return state.clear_waiting()
+
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
@@ -2396,6 +2425,64 @@ def _wait_for_integration_retry(
     if recovered is not None:
         state = state.copy_with(rebase=recovered)
     return state.clear_waiting()
+
+
+def _durable_record_intervention_guard(
+    root: Path,
+    rebase: RebaseState,
+) -> RebaseState | None:
+    """Consult the durable record's intervention flag; return escalated state on CHANGED.
+
+    A record carrying ``diagnostic_intervention_required=True`` was
+    set by a prior run (or a prior Ralph version) and is the source
+    of truth for the persistent operator handoff. The guard
+    attempts to release the held evidence through the diagnostic
+    path: ``UNCHANGED`` (fresh lease, fingerprint match) and
+    ``UNKNOWN`` (expired or unparseable lease) both auto-release;
+    only ``CHANGED`` (fingerprint mismatch) or an unreadable record
+    escalates. The returned state carries the typed
+    ``INTERVENTION_REQUIRED`` transition so the run-loop's existing
+    persistence and display handling do not have to learn a new
+    outcome.
+
+    Returns ``None`` when no durable intervention is recorded OR
+    when the held evidence was released (the caller falls through
+    to the normal retry path on a cleared record). The
+    ``release_verified_diagnostic`` helper is monkey-patched by
+    tests to make the typed transition observable.
+    """
+    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+        read_record,
+    )
+    from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
+
+    try:
+        record_obj: IntegrationRecord | None = read_record(root)
+    except Exception:
+        return rebase.set_intervention_required(
+            "durable integration record unreadable; intervention required"
+        )
+    if record_obj is None:
+        return None
+    if not record_obj.diagnostic_intervention_required:
+        return None
+    verdict = release_verified_diagnostic(root, record_obj)
+    if verdict is EvidenceVerdict.UNCHANGED or verdict is EvidenceVerdict.UNKNOWN:
+        # Fail-open: clear the durable evidence so the next seam
+        # re-derives state from Git. The record's intervention flag
+        # is now False and the loop can proceed on the next pass.
+        return None
+    # CHANGED or unreadable -- escalate through the typed
+    # INTERVENTION_REQUIRED transition. The reason carries the
+    # durable-identity signature so the operator-facing alert
+    # names the durable record, not the in-memory reason.
+    return rebase.set_intervention_required(
+        f"durable integration record requires intervention "
+        f"(verdict={verdict.value if verdict is not None else 'unreadable'}); "
+        f"target synchronization remains unproven"
+    )
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineState:

@@ -123,17 +123,31 @@ def _remote_suffix(
     pull / reconcile / push outcome alongside the local land without
     changing the headline action. Distinct from :func:`_push_suffix`,
     which carries the free-form push summary string.
+
+    The ``remote`` and ``target`` arguments are the configured
+    names (sourced from ``remote_target_name(config)`` /
+    ``configured_target(config)``) and are required for the
+    ``RECONCILED`` verb: the message MUST reflect the workspace's
+    configured target/remote so the display never falls back to
+    the literal ``origin`` / ``main`` defaults (AC-5). When
+    ``remote`` or ``target`` is missing on the ``RECONCILED`` path
+    the message degrades to the configured-verb prefix only --
+    the operator-facing summary still carries the remote-sync
+    outcome, but the unrecoverable fallback literal is dropped.
     """
     if not remote_sync:
         return ""
-    if remote_sync == _ACTION_PULLED:
-        return " [remote: pulled]"
+    base = {
+        _ACTION_PULLED: " [remote: pulled]",
+        _ACTION_PUSHED: " [remote: pushed]",
+        _ACTION_PUSH_REJECTED: " [remote: push rejected]",
+    }.get(remote_sync)
+    if base is not None:
+        return base
+    if remote_sync == _ACTION_RECONCILED and remote and target:
+        return f" [remote: reconciled with {remote}/{target}]"
     if remote_sync == _ACTION_RECONCILED:
-        return f" [remote: reconciled with {remote or 'origin'}/{target or 'target'}]"
-    if remote_sync == _ACTION_PUSHED:
-        return " [remote: pushed]"
-    if remote_sync == _ACTION_PUSH_REJECTED:
-        return " [remote: push rejected]"
+        return " [remote: reconciled]"
     return f" [remote: {remote_sync}]"
 
 
