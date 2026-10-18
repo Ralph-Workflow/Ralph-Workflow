@@ -78,12 +78,13 @@ def test_no_recovery_phase_routes_in_place() -> None:
         set_last_commit_error(None)
 
 
-def test_recovery_epoch_clamps_at_max_and_retries_in_place() -> None:
-    """When recovery_epoch reaches or exceeds the cap, it clamps rather than stops.
+def test_recovery_epoch_caps_at_max() -> None:
+    """After recovery_epoch reaches the cap with no recovery phase, routes to failed_terminal.
 
-    Persistent lock contention retries in place with recovery_epoch clamped at
-    _MAX_COMMIT_RECOVERY_ATTEMPTS (3), preserving the message on disk for a fresh
-    pass of commit_executor rather than aborting to failed_terminal.
+    Each in-place retry increments recovery_epoch. When recovery_epoch >= 3
+    (the cap) and _resolve_commit_recovery_phase returns None,
+    _recoverable_git_failure_default_target returns None and the reducer
+    falls through to _enter_failed_recovery -> failed_terminal.
     """
     policy = _load_pipeline_policy()
     cap = _MAX_COMMIT_RECOVERY_ATTEMPTS
@@ -124,8 +125,7 @@ def test_recovery_epoch_clamps_at_max_and_retries_in_place() -> None:
         ):
             next_state_above, _ = reduce(state_above_cap, PipelineEvent.COMMIT_FAILURE, policy)
 
-        assert next_state_above.phase == "development_commit"
-        assert next_state_above.recovery_epoch == cap
+        assert next_state_above.phase == "failed_terminal"
         assert next_state_above.pending_cycle_outcome is None
     finally:
         set_last_commit_error(None)

@@ -570,16 +570,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
 from types import SimpleNamespace
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
-from ralph.pipeline.auto_integrate_remote_sync import (
-    RemoteSyncStatus,
-    reconcile_remote_publication,
-)
-from ralph.pipeline.rebase_state import RebaseOutcomeKind
+from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 root = Path(sys.argv[1])
@@ -622,60 +620,68 @@ config = UnifiedConfig.model_validate({
     }
 })
 
-# Initial publication attempt against unreachable remote
-state1 = reconcile_remote_publication(config, root, target, remote=remote)
-if state1.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED:
-    sys.stderr.write(f"UNEXPECTED_PUBLISHED_EARLY:{local_sha}\\n")
-    sys.exit(2)
+def sleep_hook(_s):
+    sys.stdout.write(f"DEFERRED:{local_sha}\\n")
+    sys.stdout.flush()
+    signal = sys.stdin.readline().strip()
+    if signal != "RESTORED":
+        sys.stderr.write(f"UNEXPECTED_SIGNAL:{signal}\\n")
+        sys.exit(7)
+    if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
+        # Negative control: disable the runner's scheduling connection (skip second iteration)
+        sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
+        sys.exit(0)
 
-if state1.last_remote_sync not in (
-    RemoteSyncStatus.REMOTE_UNREACHABLE,
-    "origin unreachable",
-    "unreachable",
-):
-    sys.stderr.write(f"UNEXPECTED_SYNC_STATUS:{state1.last_remote_sync}\\n")
-    sys.exit(3)
+defaults_dir = Path("ralph/policy/defaults")
+bundle = load_policy(defaults_dir)
 
-if state1.last_outcome != RebaseOutcomeKind.SKIPPED:
-    sys.stderr.write(f"UNEXPECTED_OUTCOME:{state1.last_outcome}\\n")
-    sys.exit(4)
-
-if "unreachable" not in (state1.last_reason or ""):
-    sys.stderr.write(f"UNEXPECTED_REASON:{state1.last_reason}\\n")
-    sys.exit(5)
-
-sys.stdout.write(f"DEFERRED:{local_sha}\\n")
-sys.stdout.flush()
-
-signal = sys.stdin.readline().strip()
-if signal != "RESTORED":
-    sys.stderr.write(f"UNEXPECTED_SIGNAL:{signal}\\n")
-    sys.exit(7)
-
-if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
-    sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
-    sys.exit(0)
-
-# Invoke the real runner retry path: run_loop._wait_for_integration_retry
-pipeline_state = PipelineState(phase="development", rebase=state1)
+pipeline_state = PipelineState(
+    phase="complete",
+    rebase=RebaseState(
+        last_target=target,
+        last_remote=remote,
+        last_publication_decision="publish_deferred_remote",
+        last_push_status="unreachable",
+    ),
+)
 ctx = SimpleNamespace(
     config=config,
     workspace_scope=WorkspaceScope(root),
-    latest_state=[],
-    sleep=lambda _s: None,
+    latest_state=[pipeline_state],
+    sleep=sleep_hook,
     active_display=None,
+    display_context=None,
+    effective_verbosity=None,
+    registry=None,
+    effective_pipeline_subscriber=None,
+    controller=None,
+    config_path=None,
+    cli_overrides=None,
+    monitor_stop=None,
+    connectivity_monitor=None,
+    pipeline_deps=None,
+    snapshot_registry=None,
+    process_teardown=None,
     _session_handoff_dispatched=False,
+    policy_bundle=bundle,
 )
-retried_state = run_loop._wait_for_integration_retry(pipeline_state, ctx)
-if retried_state.rebase is not None and retried_state.rebase.last_outcome in (
-    RebaseOutcomeKind.REMOTE_PUSHED,
-    RebaseOutcomeKind.FAST_FORWARDED,
+
+# Start real runner loop: run_loop._run_inner_loop_after_startup
+# The runner's scheduling connection detects that publication was deferred and retries automatically
+final_state, _, _ = run_loop._run_inner_loop_after_startup(pipeline_state, ctx, "development")
+
+if (
+    final_state.rebase is not None
+    and final_state.rebase.last_outcome in (
+        RebaseOutcomeKind.REMOTE_PUSHED,
+        RebaseOutcomeKind.FAST_FORWARDED,
+    )
 ):
     sys.stdout.write(f"PUBLISHED:{local_sha}\\n")
     sys.stdout.flush()
     sys.exit(0)
 else:
-    sys.stderr.write(f"FAILED_RETRY:{retried_state}\\n")
+    sys.stderr.write(f"FAILED_RETRY:{final_state}\\n")
     sys.exit(1)
 """
 

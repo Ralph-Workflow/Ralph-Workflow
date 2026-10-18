@@ -58,6 +58,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 # The seven fields whose writers are gated by the typed setters.
 DECISION_FIELDS: frozenset[str] = frozenset(
     {
@@ -129,14 +131,24 @@ def _extract_dict_keys(value: ast.AST) -> list[str]:
 
 
 def _enclosing_function(
-    tree: ast.AST, target: ast.AST
+    tree: ast.AST,
+    target: ast.AST,
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     """Find the nearest enclosing function for *target* in *tree*."""
+    candidates = (
+        funcs
+        if funcs is not None
+        else [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+    )
     best: ast.FunctionDef | ast.AsyncFunctionDef | None = None
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if not (node.lineno <= getattr(target, "lineno", 0) <= (node.end_lineno or node.lineno)):
+    target_line = getattr(target, "lineno", 0)
+    for node in candidates:
+        if not (node.lineno <= target_line <= (node.end_lineno or node.lineno)):
             continue
         if best is None or node.lineno >= best.lineno:
             best = node
@@ -144,7 +156,10 @@ def _enclosing_function(
 
 
 def _resolve_name_dict_literal(
-    tree: ast.AST, call: ast.Call, name_node: ast.Name
+    tree: ast.AST,
+    call: ast.Call,
+    name_node: ast.Name,
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
 ) -> ast.Dict | None:
     """Trace a Name ``update=`` value back to an in-function dict literal.
 
@@ -152,7 +167,7 @@ def _resolve_name_dict_literal(
     enclosing function (handles both ``Assign`` and ``AnnAssign``),
     or ``None`` when no such assignment exists.
     """
-    func = _enclosing_function(tree, call)
+    func = _enclosing_function(tree, call, funcs=funcs)
     if func is None:
         return None
     for stmt in ast.walk(func):
@@ -176,7 +191,11 @@ def _resolve_name_dict_literal(
     return None
 
 
-def _resolve_call_dict_literal(tree: ast.AST, call_node: ast.Call) -> ast.Dict | None:
+def _resolve_call_dict_literal(
+    tree: ast.AST,
+    call_node: ast.Call,
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
+) -> ast.Dict | None:
     """Resolve a Call ``update=f(...)`` to a dict literal by name.
 
     Looks for a top-level ``def f(...)`` (or ``async def``) in the
@@ -186,9 +205,16 @@ def _resolve_call_dict_literal(tree: ast.AST, call_node: ast.Call) -> ast.Dict |
     if not isinstance(call_node.func, ast.Name):
         return None
     fn_name = call_node.func.id
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+    candidates = (
+        funcs
+        if funcs is not None
+        else [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+    )
+    for node in candidates:
         if node.name != fn_name:
             continue
         for child in ast.walk(node):
@@ -238,12 +264,17 @@ def _is_in_allowed_body(lineno: int, allowed_bodies: dict[tuple[int, int], str])
     return any(start <= lineno <= end for (start, end) in allowed_bodies)
 
 
-def _resolve_variable_dict(tree: ast.AST, call: ast.Call, update_value: ast.AST) -> ast.Dict | None:
+def _resolve_variable_dict(
+    tree: ast.AST,
+    call: ast.Call,
+    update_value: ast.AST,
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] | None = None,
+) -> ast.Dict | None:
     """Resolve a Name/Call ``update=`` value to a dict literal if possible."""
     if isinstance(update_value, ast.Name):
-        return _resolve_name_dict_literal(tree, call, update_value)
+        return _resolve_name_dict_literal(tree, call, update_value, funcs=funcs)
     if isinstance(update_value, ast.Call):
-        return _resolve_call_dict_literal(tree, update_value)
+        return _resolve_call_dict_literal(tree, update_value, funcs=funcs)
     return None
 
 
@@ -272,6 +303,9 @@ def _scan_for_field_writes(
         return []
     text = path.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(path))
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = [
+        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
     offenders: list[tuple[int, str, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_writer_call(node):
@@ -294,7 +328,7 @@ def _scan_for_field_writes(
             continue
         # Variable-backed Name / Call: resolve to a dict literal if
         # statically possible; otherwise flag conservatively.
-        resolved = _resolve_variable_dict(tree, node, update_value)
+        resolved = _resolve_variable_dict(tree, node, update_value, funcs=funcs)
         if resolved is not None:
             _record_dict_decision_offenders(offenders, node.lineno, "variable", resolved)
             continue
@@ -306,6 +340,7 @@ class TestNoSupersededPathsTypedSetterContract:
     """No raw literal-Dict writer exists for the seven decision fields
     outside the typed setter method-body allowlist."""
 
+    @pytest.mark.timeout_seconds(5)
     def test_no_raw_writers_in_pipeline(self) -> None:
         root = Path("ralph/pipeline")
         all_offenders: list[tuple[str, int, str, str]] = []

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -142,6 +143,91 @@ def test_liveness_probe_whole_timeout_0_5s(
 
     result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=tmp_path / "proc")
     assert result == "unknown", "Probe timeout must return 'unknown', not 'live' or 'dead'"
+
+
+def test_liveness_probe_returns_within_budget_when_worker_stuck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe must return within the deadline even when its worker is stuck.
+
+    Regression guard: a previous implementation used ``with ThreadPoolExecutor``
+    as the probe boundary. When the worker's probe took longer than the
+    deadline, ``future.result(timeout=probe_timeout_s)`` raised TimeoutError,
+    but the context manager's ``__exit__`` waited for the worker thread to
+    finish, holding the caller for the worker's full duration (e.g. 0.2 s
+    scan vs 0.01 s budget = 20x overshoot). The fix calls
+    ``executor.shutdown(wait=False)`` so the caller returns within the
+    deadline regardless of whether the worker has finished.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+
+    # Block the worker's probe() on an event for longer than the deadline.
+    stall_event = threading.Event()
+    try:
+        monkeypatch.setattr(
+            "ralph.git._lock_recovery._scan_proc",
+            lambda *a, **kw: stall_event.wait(timeout=5.0) and "unknown",
+        )
+
+        result = _lock_has_no_live_holder(
+            lock_path, gitdir, probe_timeout_s=0.05, _proc_root=tmp_path / "proc"
+        )
+        assert result == "unknown", "Deadline must fire and return 'unknown'"
+        assert not stall_event.is_set(), (
+            "Caller must return within deadline while the worker is still blocked on the event"
+        )
+    finally:
+        stall_event.set()
+
+
+def test_liveness_probe_truncated_proc_scan_returns_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the /proc PID list is truncated, the probe must return 'unknown'.
+
+    Regression guard: a previous implementation accepted 'dead' when at
+    least one scanned PID was verified, even if the scan window was
+    truncated and unseen PIDs could still hold the lock. The fix returns
+    'unknown' whenever the scan covers fewer PIDs than /proc reports.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+
+    fake_proc = tmp_path / "proc"
+    fake_proc.mkdir()
+    # Many more PIDs than the 120-pid scan window.
+    for pid in range(200):
+        pid_dir = fake_proc / str(pid)
+        pid_dir.mkdir()
+        (pid_dir / "fd").mkdir()
+        (pid_dir / "environ").write_bytes(b"")
+        cwd_target = tmp_path / "elsewhere"
+        cwd_target.mkdir(exist_ok=True)
+        (pid_dir / "cwd").symlink_to(str(cwd_target))
+
+    def fake_run(
+        cmd: object,
+        *,
+        timeout: float | None = None,
+        capture_output: bool = False,
+        check: bool = False,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout=b"")
+
+    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
+
+    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
+    assert result == "unknown", (
+        f"Truncated /proc scan must return 'unknown', not {result!r}; "
+        "otherwise the recovery helper could unlink a live lock held by an unseen PID"
+    )
 
 
 def test_liveness_probe_or_predicate_cwd_only(

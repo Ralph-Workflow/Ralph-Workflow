@@ -209,6 +209,11 @@ def _scan_proc(
     else:
         pids_to_scan = pids[:120]
 
+    # Truncated scan: there are more PIDs than we will examine. We cannot
+    # prove the lock has no holder beyond the scan window, so refuse to
+    # return "dead" -- the helper must fail closed.
+    scan_truncated = len(pids) > len(pids_to_scan)
+
     lock_resolved = str(lock.resolve())
     any_verified = False
     for pid in pids_to_scan:
@@ -226,7 +231,9 @@ def _scan_proc(
         if is_verified:
             any_verified = True
 
-    return "dead" if any_verified else "unknown"
+    if scan_truncated or not any_verified:
+        return "unknown"
+    return "dead"
 
 
 def _lock_has_no_live_holder(
@@ -303,13 +310,19 @@ def _lock_has_no_live_holder(
             return "live"
         return "unknown"
 
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_probe)
-            return future.result(timeout=probe_timeout_s)
+        future = executor.submit(_probe)
+        return future.result(timeout=probe_timeout_s)
     except Exception:
-        # TimeoutError or any other thread error: fail closed
+        # TimeoutError or any other thread error: fail closed.
+        # ``shutdown(wait=False)`` so a permanently stalled probe cannot
+        # block this caller past the deadline -- ``with ThreadPoolExecutor``
+        # would wait for the worker thread on context exit and re-introduce
+        # the unbounded block.
         return "unknown"
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _recover_stale_git_lock(

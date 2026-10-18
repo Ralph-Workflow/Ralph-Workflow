@@ -275,9 +275,11 @@ def _wait_for_connectivity(monitor: _ConnectivityMonitorLike, wake: threading.Ev
 
 
 def _apply_connectivity_check(
-    state: PipelineState, monitor: _ConnectivityMonitorLike
+    state: PipelineState, monitor: _ConnectivityMonitorLike | None
 ) -> PipelineState:
     """Block synchronously if offline; return updated state when online."""
+    if monitor is None:
+        return state
     if monitor.current_state == ConnectivityState.ONLINE:
         return state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
     if monitor.current_state != ConnectivityState.OFFLINE:
@@ -2994,7 +2996,10 @@ def _run_inner_loop_after_startup(
     # Guard is persisted on PipelineState by apply_session_capture, so this
     # survives checkpoint restarts.
     while (
-        state.phase not in ctx.policy_bundle.pipeline.terminal_states()
+        (
+            state.phase != ctx.policy_bundle.pipeline.terminal_phase
+            and state.phase not in ctx.policy_bundle.pipeline.terminal_states()
+        )
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
             and not _retry_guard_requires_intervention(state)
@@ -3025,6 +3030,18 @@ def _run_inner_loop_after_startup(
             state = _wait_for_integration_retry(state, ctx, backend=backend)
             if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
                 return state, prev_phase, blocked_sync[2]
+            continue
+        if (
+            ctx.policy_bundle.pipeline.terminal_phase == state.phase
+            and not is_terminal_success_eligible(
+                state,
+                read_record(ctx.workspace_scope.root),
+                state.rebase,
+            )
+        ):
+            state = _wait_for_integration_retry(state, ctx, backend=backend)
+            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
+                return state, prev_phase, 1
             continue
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]

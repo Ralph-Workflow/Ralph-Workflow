@@ -113,7 +113,8 @@ def fan_out_decision(state: PipelineState) -> FanOutDecision:
     computed by inspecting :class:`WorkerState` instances; the
     reducer never inspects them directly.
     """
-    if not state.worker_states:
+    raw_worker_states: object = getattr(state, "worker_states", None)
+    if not isinstance(raw_worker_states, dict) or not raw_worker_states:
         return FanOutDecision.JOIN_COMPLETE
     statuses = {worker.status for worker in state.worker_states.values()}
     if WorkerStatus.RUNNING in statuses or WorkerStatus.PENDING in statuses:

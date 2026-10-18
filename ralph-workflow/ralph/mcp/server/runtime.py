@@ -56,12 +56,14 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_BUDGET_S,
+    _PROBE_SAFETY_S,
     _READY_TO_SERVE_BUDGET_S,
     _REGISTRY_BUILD_BUDGET_S,
     _check_real_startup_deadline,
     mcp_discovery_budget_from_env,
     mcp_pre_serve_budget_from_env,
     mcp_preflight_timeout_from_env,
+    mcp_real_startup_deadline_from_env,
     mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
     record_stage_elapsed,
@@ -81,6 +83,7 @@ from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._pre_serve_overrun import (
+    PRE_SERVE_OVERRUN_EXIT_CODE,
     SESSION_OVERRUN_EXIT_CODE,
     fail_closed_pre_serve_overrun,
 )
@@ -95,9 +98,6 @@ from ralph.mcp.server._runtime_constants import (
     DEFAULT_MOUNT_PATH,
     DEFAULT_PORT,
     DEFAULT_TRANSPORT,
-)
-from ralph.mcp.server._runtime_polling import (
-    _poll_bounded_pre_serve as _base_poll_bounded_pre_serve,
 )
 from ralph.mcp.server._runtime_polling import (
     _poll_registry_build_gate as _base_poll_registry_build_gate,
@@ -118,13 +118,13 @@ from ralph.mcp.upstream.config import (
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     import socket
     from collections.abc import Callable, Mapping, MutableMapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
-    from ralph.workspace.fs import FsWorkspace
 
 
 def _log_and_record_stage(workspace_root: Path, name: str) -> None:

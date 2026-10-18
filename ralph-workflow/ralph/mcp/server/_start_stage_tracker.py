@@ -26,6 +26,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import cast
@@ -214,12 +215,8 @@ def record_overrun(
     """
     path = stage_file_path(root)
     overruns_path = Path(str(path) + ".overruns")
-    overruns_path.parent.mkdir(  # filesystem-write-ok: ensure parent directory exists for per-spawn overruns diagnostic log
-        parents=True, exist_ok=True
-    )
-
     _warn_id: str = uuid.uuid4().hex
-    _now: float = __import__("time").time()
+    _now: float = time.time()
     record: dict[str, object] = {
         "stage": stage,
         "elapsed_s": elapsed_s,
@@ -230,24 +227,33 @@ def record_overrun(
         "warning_id": _warn_id,
     }
     line: str = json.dumps(record, separators=(",", ":")) + "\n"
+    eff_timeout_s = timeout_s if timeout_s is not None else _DEFAULT_DIAGNOSTIC_TIMEOUT_S
 
-    # Append-mode write to the overruns JSONL file. ``file.write()``
-    # converts str -> bytes under the hood (TextIOWrapper), and the
-    # flush+fileno+fsync trio gives the same durability guarantee as
-    # the fd+os.write path without triggering ``Any``-from-stub issues.
-    try:
-        with (
-            overruns_path.open(  # filesystem-write-ok: append-mode journal for per-spawn startup overruns diagnostics  # filesystem-read-ok: open append-mode write journal for startup overruns
-                "a", encoding="utf-8"
-            ) as f
-        ):
-            f.write(line)
-            f.flush()
-            os.fsync(  # filesystem-write-ok: durability barrier so startup overrun record survives a child SIGKILL
-                f.fileno()
+    def _write_record() -> None:
+        try:
+            overruns_path.parent.mkdir(  # filesystem-write-ok: ensure parent directory exists for per-spawn overruns diagnostic log
+                parents=True, exist_ok=True
             )
-    except BaseException:
-        raise
+            with (
+                overruns_path.open(  # filesystem-write-ok: append-mode journal for per-spawn startup overruns diagnostics  # filesystem-read-ok: open append-mode write journal for startup overruns
+                    "a", encoding="utf-8"
+                ) as f
+            ):
+                f.write(line)
+                f.flush()
+                os.fsync(  # filesystem-write-ok: durability barrier so startup overrun record survives a child SIGKILL
+                    f.fileno()
+                )
+        except BaseException:
+            pass
+
+    diag_thread = threading.Thread(
+        target=_write_record,
+        name="ralph-mcp-overrun-record",
+        daemon=True,
+    )
+    diag_thread.start()
+    diag_thread.join(timeout=max(0.0, eff_timeout_s))
 
 
 def read_overruns(root: Path, *, spawn_id: str | None = None) -> list[dict[str, object]]:

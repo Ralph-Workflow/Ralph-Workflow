@@ -1516,6 +1516,8 @@ def _recoverable_git_failure_default_target(
         return None
     if _resolve_commit_recovery_phase(state, policy) is not None:
         return None
+    if state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
+        return None
     return state.phase
 
 
@@ -1633,7 +1635,7 @@ def _handle_commit_failure(
             )
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
                 last_error=failure_reason,
-                recovery_epoch=min(cleared_state.recovery_epoch + 1, _MAX_COMMIT_RECOVERY_ATTEMPTS),
+                recovery_epoch=cleared_state.recovery_epoch + 1,
                 pending_cycle_outcome=None,
                 last_execution_result_status="failed",
             )
