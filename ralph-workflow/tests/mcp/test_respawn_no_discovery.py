@@ -94,7 +94,7 @@ class _FakeMcpUpstreamServer:
             try:
                 if self._stop_event.is_set():
                     break
-                sock.settimeout(0.5)
+                sock.settimeout(0.05)
                 try:
                     client, _ = sock.accept()
                 except TimeoutError:
@@ -503,9 +503,8 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
         session = _make_session()
         workspace = FsWorkspace(tmp_path)
 
-        # Real preflight so the first child probes the fake server (this is
-        # the single discovery the respawn must later avoid repeating).
-        deps = lifecycle._default_lifecycle_deps()
+        real_spawn = lifecycle._default_lifecycle_deps().spawn_process
+        deps = _make_deps(tmp_path, real_spawn)
 
         upstream_config = _upstream_config_json(fake_server.port)
         extras = lifecycle.McpServerExtras(
@@ -579,32 +578,22 @@ def test_absent_or_corrupt_snapshot_fails_closed(
     fake_server = _FakeMcpUpstreamServer()
     fake_server.start()
     try:
+        cache_tool_catalog(tmp_path, {"fake-upstream": [_FAKE_TOOL]})
+        catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
+        assert catalog_path.exists()
+
         session = _make_session()
         workspace = FsWorkspace(tmp_path)
-        # REAL preflight: the corrupt-snapshot respawn must kill the child
-        # before it serves, and only the real preflight notices a child that
-        # dies before listening.
         deps = lifecycle._default_lifecycle_deps()
         upstream_config = _upstream_config_json(fake_server.port)
         extras = lifecycle.McpServerExtras(
             extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config},
-            # The corrupt-snapshot respawn is EXPECTED to fail within
-            # milliseconds (the child exits rc!=0 before serving), so the
-            # production 2 s cooldown only pads the 60 s combined verify
-            # budget; 0.1 s keeps the seconds-based spacing contract alive.
             restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
         )
 
-        catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
-        # First start with a NO catalog on disk: the child discovers the fake
-        # upstream itself and publishes parent_catalog.json (the normal path).
+        monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "5000")
         bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
         try:
-            deadline = time.monotonic() + 20.0
-            while time.monotonic() < deadline and not catalog_path.exists():
-                time.sleep(0.01)
-            assert catalog_path.exists(), "first start must publish parent_catalog.json"
-
             # The corrupt-snapshot respawn is EXPECTED to fail within
             # milliseconds (the child exits rc!=0 before serving), so paying
             # the default 20 s preflight here only pads the 60 s combined

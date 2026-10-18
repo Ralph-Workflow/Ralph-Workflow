@@ -25,7 +25,10 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
     reattach_head_to_branch,
 )
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.timeout_seconds(10),
+]
 
 
 def _run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:

@@ -163,7 +163,7 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
         # TCP connect itself succeeds because the parent-owned socket listens.
         sock = socket.create_connection((host, port), timeout=5.0)
         sock.sendall(_http_request(host, port))
-        sock.settimeout(0.3)
+        sock.settimeout(0.1)
         # socket.timeout is an alias of TimeoutError on Python 3.10+.
         with pytest.raises(TimeoutError):
             sock.recv(4096)

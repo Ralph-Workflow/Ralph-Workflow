@@ -251,6 +251,7 @@ def test_exhausted_commit_failure_routes_to_automated_recovery_not_terminal() ->
         set_last_commit_error(None)
 
 
+@pytest.mark.timeout_seconds(10)
 def test_detached_head_descendant_with_dirty_work_reattaches_and_preserves_work(
     tmp_path: Path,
 ) -> None:
@@ -291,6 +292,7 @@ def test_detached_head_descendant_with_dirty_work_reattaches_and_preserves_work(
     assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "unstaged dirty changes\n"
 
 
+@pytest.mark.timeout_seconds(10)
 def test_detached_head_equals_integration_target_skips_integration_target(
     tmp_path: Path,
 ) -> None:
@@ -324,6 +326,7 @@ def test_detached_head_equals_integration_target_skips_integration_target(
     assert repo.heads.main.commit.hexsha == main_sha, "Integration target tip must not be clobbered"
 
 
+@pytest.mark.timeout_seconds(10)
 def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
     tmp_path: Path,
 ) -> None:
@@ -456,6 +459,7 @@ def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
     assert repo.heads[expected_second_name].commit.hexsha == divergent_sha
 
 
+@pytest.mark.timeout_seconds(10)
 def test_committed_feature_work_lands_on_configured_integration_target(
     tmp_path: Path,
 ) -> None:

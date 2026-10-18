@@ -44,12 +44,13 @@ def post_attempt_verify(
                 raise TerminalStateViolationError(
                     f"terminal-state invariant violated: {marker} present in {git_dir}"
                 )
-    if expected_head_sha is not None and not _head_matches_sha(root, expected_head_sha):
+    if expected_head_sha is not None:
         actual = _read_head_sha(root)
-        raise TerminalStateViolationError(
-            "terminal-state invariant violated: HEAD is "
-            f"{actual or '<unreadable>'}, expected {expected_head_sha}"
-        )
+        if actual != expected_head_sha:
+            raise TerminalStateViolationError(
+                "terminal-state invariant violated: HEAD is "
+                f"{actual or '<unreadable>'}, expected {expected_head_sha}"
+            )
 
 
 def _read_head_sha(root: Path) -> str | None:

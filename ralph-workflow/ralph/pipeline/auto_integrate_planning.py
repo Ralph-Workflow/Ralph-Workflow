@@ -5,10 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.git.merge_obstructions import ancestry_state
-from ralph.pipeline._planning_obstruction import (
-    PlanningObstructionKind,
-    identify_planning_obstruction,
-)
+from ralph.pipeline._planning_obstruction import identify_planning_obstruction
 from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_outcome import record_skip
@@ -138,14 +135,6 @@ def _record_staged_block(
     # kind is the closed-vocabulary routing signal the run loop reads;
     # the reason is the operator-facing free-form text.
     kind = identify_planning_obstruction(reason)
-    if kind is PlanningObstructionKind.NONE and not reason.startswith("staged uncommitted work"):
-        # Reasons the closed vocabulary does not yet cover (rebase
-        # in progress, merge in progress, unmerged paths) still need
-        # a typed planning obstruction so the three gates agree.
-        # Pin those under the NONE kind with the readiness reason as
-        # ``last_reason``; the run loop reads the kind, the reason
-        # is preserved verbatim for display.
-        kind = PlanningObstructionKind.NONE
     recorded = record_skip(reason=reason, target=target)
     return recorded.model_copy(update={"last_planning_obstruction": kind.value})
 

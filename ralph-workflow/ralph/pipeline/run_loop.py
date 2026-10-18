@@ -2452,22 +2452,21 @@ def _durable_record_intervention_guard(
     path: ``UNCHANGED`` (fresh lease, fingerprint match) and
     ``UNKNOWN`` (expired or unparseable lease) both auto-release.
 
-    Per O1 (criterion 1: no durable integration state may block
-    dispatch indefinitely), a record whose held evidence has no
-    valid lease (CHANGED verdict) or whose on-disk file is
-    unreadable also fails open: the held evidence is cleared, the
-    durable record is rebuilt from Git on the next seam, and the
-    caller persists a fresh state without sleeping on the
-    fixed-interval 5-second cooldown. The only path to a true
-    operator handoff is the in-memory ``resolution_exhausted`` /
-    consecutive-conflict cap, which the caller (in
-    :func:`_wait_for_integration_retry`) still respects.
+    If the on-disk record is unreadable or corrupted, the guard fails
+    closed: it escalates to ``INTERVENTION_REQUIRED`` and returns
+    ``(rebase, False)``, allowing the caller to persist the
+    intervention state and perform the standard cooldown retry wait.
+    Likewise, if a record requires intervention but carries no held
+    diagnostic evidence or ownership to verify, it escalates to
+    operator intervention rather than auto-releasing.
 
     The return is a 2-tuple ``(rebase, durable_cleared)`` where:
 
-    * ``(rebase, False)`` -- no durable intervention is recorded.
-      The caller proceeds through the standard 5-second cooldown
-      retry wait (the in-memory exhaustion path).
+    * ``(rebase, False)`` -- durable intervention was not cleared.
+      Either no durable intervention was recorded, or an unreadable
+      record / unproven synchronization escalated to
+      ``INTERVENTION_REQUIRED``. The caller proceeds through the
+      standard 5-second cooldown retry wait.
     * ``(rebase, True)`` -- the held evidence was released (the
       fail-open path). The durable record's intervention flag is
       now ``False``; the caller persists the cleared state and
