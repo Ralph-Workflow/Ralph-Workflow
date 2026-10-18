@@ -88,7 +88,7 @@ DEFAULT_ROOTS: tuple[str, ...] = ("ralph", "tests")
 #: process pool. Capped so the audit stays a polite citizen when it runs inside
 #: a sharded ``make test`` worker that already shares the machine with eleven
 #: sibling shards.
-_POOL_WORKER_CAP = 8
+_POOL_WORKER_CAP = 4
 
 #: Below this many candidate files the pool startup costs more than the parse
 #: work it would save, so the scan stays in-process.

@@ -234,7 +234,9 @@ def test_acceptance_scenario_3_workflow_resume_without_replaying_work(
     ctx_1 = run_loop._LoopContext(
         policy_bundle=bundle,
         workspace_scope=WorkspaceScope(tmp_path),
-        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        config=UnifiedConfig.model_validate(
+            {"general": {"auto_integrate_enabled": False, "auto_integrate_remote_enabled": False}}
+        ),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=MagicMock(),
@@ -266,7 +268,9 @@ def test_acceptance_scenario_3_workflow_resume_without_replaying_work(
     ctx_2 = run_loop._LoopContext(
         policy_bundle=bundle,
         workspace_scope=WorkspaceScope(tmp_path),
-        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        config=UnifiedConfig.model_validate(
+            {"general": {"auto_integrate_enabled": False, "auto_integrate_remote_enabled": False}}
+        ),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=MagicMock(),

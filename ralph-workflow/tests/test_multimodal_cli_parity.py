@@ -58,7 +58,14 @@ _SMOKE_COMMANDS_WITH_MULTIMODAL = (
 def _invoke_help(cmd_name: str) -> tuple[int, str]:
     runner = CliRunner()
     result = runner.invoke(app, [cmd_name, "--help"], prog_name="ralph")
-    return result.exit_code, result.output
+    output = result.output
+    if result.exit_code != 0 and result.exception:
+        import traceback
+
+        output = (
+            f"{result.output}\nException: {''.join(traceback.format_exception(result.exception))}"
+        )
+    return result.exit_code, output
 
 
 def test_smoke_interactive_claude_help_advertises_multimodal() -> None:

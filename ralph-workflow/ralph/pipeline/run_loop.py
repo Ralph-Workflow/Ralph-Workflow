@@ -2674,10 +2674,27 @@ def _handle_pending_retry(
         ctx.workspace_scope, ctx.config, backend=backend
     )
     if recovered is not None and not recovered.integration_unresolved:
-        state = state.copy_with(rebase=recovered).clear_waiting()
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        return state
+        # The remote-publication authority is a separate obligation from
+        # Git-side integration. A nonterminal publication decision
+        # (PUBLISH_DEFERRED_REMOTE / PUBLISH_DEFERRED_FRESHNESS /
+        # PUBLICATION_PENDING / PUBLISH_NOW / PUBLICATION_BLOCKED) means
+        # the configured remote push is still owed (O2 / AC8 -- a pending
+        # push must be retried, never silently dropped). Only a terminal
+        # publication decision (or no decision at all, e.g. remote sync
+        # disabled by policy) closes the retry loop; otherwise the loop
+        # must sleep and let the recovery preamble re-observe the remote.
+        from ralph.pipeline._publication_state_machine import (
+            PublicationDecision as _PubDec,
+        )
+
+        if recovered.last_publication_decision in (
+            None,
+            _PubDec.PUBLICATION_TERMINAL,
+        ):
+            state = state.copy_with(rebase=recovered).clear_waiting()
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            return state
 
     cap = _effective_conflict_cap(ctx)
     bumped_conflicts = (

@@ -62,12 +62,25 @@ _MAX_REMOTE_SYNC_ATTEMPTS = 3
 
 
 def remote_sync_enabled(config: object | None) -> bool:
-    """Whether configured-remote synchronization is enabled by policy."""
+    """Whether configured-remote synchronization is enabled by policy.
+
+    Resolves ``auto_integrate_remote_enabled`` when explicitly set;
+    otherwise falls back to the top-level ``auto_integrate_enabled``
+    flag so callers that disable the integration seam by setting
+    only ``auto_integrate_enabled=False`` (the established test
+    convention) also disable remote sync without having to repeat
+    the inverse. An explicit ``auto_integrate_remote_enabled``
+    always wins.
+    """
     if config is None:
         return False
     general: object = getattr(config, "general", config)
-    enabled: object = getattr(general, "auto_integrate_remote_enabled", True)
-    return isinstance(enabled, bool) and enabled
+    fields_set: object = getattr(general, "model_fields_set", None)
+    if isinstance(fields_set, (set, frozenset)) and "auto_integrate_remote_enabled" in fields_set:
+        remote_enabled: object = getattr(general, "auto_integrate_remote_enabled", True)
+        return isinstance(remote_enabled, bool) and remote_enabled
+    general_enabled: object = getattr(general, "auto_integrate_enabled", True)
+    return isinstance(general_enabled, bool) and general_enabled
 
 
 def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE) -> str:

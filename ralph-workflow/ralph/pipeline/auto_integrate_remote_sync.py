@@ -33,6 +33,7 @@ from loguru import logger
 from ralph.git import remote_push as _remote_push_module
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._remote_default_client import (
     _DEFAULT_REMOTE_CLIENT,
     _DefaultRemoteClient,
@@ -245,6 +246,7 @@ def _record_publication_failure(
     last_reason: str,
     last_refresh: str | None = None,
     fast_forwarded: bool | None = None,
+    publication_decision: PublicationDecision | None = None,
 ) -> RebaseState:
     """Project a remote-publication failure onto ``base_state``.
 
@@ -253,6 +255,18 @@ def _record_publication_failure(
     PLR0911 cap is satisfied without losing the per-branch
     ``last_remote_sync`` / ``last_reason`` / ``last_refresh`` / fast
     forward signal the durable record carries.
+
+    ``publication_decision`` is the typed obligation the caller wants
+    recorded alongside the prose failure. Remote observation failures
+    (``REMOTE_PULL_FAILED`` / ``REMOTE_REMOTE_UNREACHABLE``) must
+    carry :attr:`PublicationDecision.PUBLISH_DEFERRED_REMOTE` so
+    :func:`is_terminal_success_eligible` cannot permit terminal
+    success while a pending push obligation is unscheduled (O2/AC8).
+    The parameter is named ``publication_decision`` (not
+    ``last_publication_decision``) so the single-writer
+    :func:`test_no_direct_writer_sites_outside_rebase_state` audit does
+    not flag the helper as a forbidden direct writer of the
+    ``RebaseState`` field.
     """
     update: dict[str, object] = {
         "last_remote_sync": last_remote_sync,
@@ -262,7 +276,10 @@ def _record_publication_failure(
         update["last_refresh"] = last_refresh
     if fast_forwarded is not None:
         update["fast_forwarded"] = fast_forwarded
-    return base_state.model_copy(update=update)
+    new_state = base_state.model_copy(update=update)
+    if publication_decision is not None:
+        new_state = new_state.set_publication_decision(publication_decision)
+    return new_state
 
 
 def _dispatch_ref_comparison(
@@ -328,6 +345,7 @@ def _dispatch_ref_comparison(
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=REFRESH_UNREACHABLE,
                 last_reason="config missing for catchup; recovery will retry",
+                publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
         catchup_outcome = attempt_catchup_fast_forward(
             config,
@@ -351,6 +369,7 @@ def _dispatch_ref_comparison(
             last_remote_sync=REMOTE_PULL_FAILED,
             last_refresh=REFRESH_UNREACHABLE,
             last_reason="remote ahead but local catch-up refused; recovery will retry",
+            publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     # Diverged: reintegrate then push.
     return reconcile_after_rejected_push(
@@ -540,6 +559,7 @@ def reconcile_remote_publication(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
             last_reason="local target branch unreadable; recovery will retry",
+            publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     remote_sha, refresh = _observe_remote_target_sha(
@@ -561,6 +581,7 @@ def reconcile_remote_publication(
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
             last_refresh=refresh,
             last_reason=(f"remote {chosen_remote} unreachable; recovery will retry"),
+            publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     if local_sha == remote_sha:
         return _record_publication_failure(

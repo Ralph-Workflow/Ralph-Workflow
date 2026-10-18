@@ -38,6 +38,7 @@ from ralph.pipeline._integration_action import (
     next_integration_action,
 )
 from ralph.pipeline._integration_diagnostic import _busy_refusal_state
+from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._recovery_fast_forward_landing import (
     _land_and_reconcile,
     _record_skip,
@@ -211,7 +212,14 @@ def recover_incomplete_integration(
         if (
             recovered is None
             and startup_publication is not None
-            and startup_publication.last_push_status == "pushed"
+            and (
+                startup_publication.last_push_status == "pushed"
+                or (
+                    startup_publication.last_publication_decision is not None
+                    and startup_publication.last_publication_decision
+                    != PublicationDecision.PUBLICATION_TERMINAL
+                )
+            )
         ):
             return startup_publication
         return recovered

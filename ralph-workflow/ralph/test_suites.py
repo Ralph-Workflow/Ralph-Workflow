@@ -394,6 +394,10 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_commit_detached_head_recovery.py": 65,
     "tests/test_phases_retry_on_stale_session.py": 53,
     "tests/display/test_operator_display_labels.py": 52,
+    "tests/test_filesystem_scenario_baseline.py": 120,
+    "tests/test_mcp_supervision_resilience.py": 170,
+    "tests/test_mcp_lifecycle.py": 150,
+    "tests/test_property_c_liveness_contract.py": 60,
 }
 
 

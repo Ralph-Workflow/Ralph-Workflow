@@ -64,7 +64,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-_POOL_WORKER_CAP = 8
+_POOL_WORKER_CAP = 4
 _FORK_CONTEXT = multiprocessing.get_context("fork")
 _PARALLEL_PAYLOAD_THRESHOLD = 32
 _PARALLEL_CHUNK_SIZE = 32

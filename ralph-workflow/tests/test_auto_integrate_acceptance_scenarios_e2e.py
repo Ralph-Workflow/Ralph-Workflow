@@ -22,8 +22,10 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushStatus
+from ralph.pipeline import auto_integrate_recovery
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+from ralph.workspace.scope import WorkspaceScope
 
 _TARGET = "release"
 _REMOTE = "tacos"
@@ -443,48 +445,25 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     assert _run(wt, "config", "user.email", "test@example.com").returncode == 0
     assert _run(wt, "config", "user.name", "Test User").returncode == 0
 
-    # Run a FRESH subprocess in the linked worktree (different PID than
-    # the killed landing subprocess) that invokes the real Ralph
-    # startup recovery entry point. The fresh process detects the
-    # pending local commit and pushes it to the bare remote.
-    recovery_script = (
-        "import sys\n"
-        "from pathlib import Path\n"
-        "\n"
-        "from ralph.config.models import UnifiedConfig\n"
-        "from ralph.pipeline.auto_integrate_recovery import (\n"
-        "    recover_incomplete_integration,\n"
-        ")\n"
-        "from ralph.workspace.scope import WorkspaceScope\n"
-        "\n"
-        "root = Path(sys.argv[1])\n"
-        "config = UnifiedConfig.model_validate({\n"
-        "    'general': {\n"
-        "        'auto_integrate_enabled': True,\n"
-        "        'auto_integrate_target': 'release',\n"
-        "        'auto_integrate_remote': 'tacos',\n"
-        "        'auto_integrate_remote_enabled': True,\n"
-        "        'auto_integrate_remote_interval_seconds': 0.0,\n"
-        "    }\n"
-        "})\n"
-        "state = recover_incomplete_integration(\n"
-        "    WorkspaceScope(root), config=config\n"
-        ")\n"
-        "if state is None or state.last_outcome is None:\n"
-        "    sys.stderr.write('NO_PROGRESS\\n')\n"
-        "    sys.exit(2)\n"
-        "sys.stdout.write(f'{state.last_outcome}\\n')\n"
-        "sys.stdout.flush()\n"
+    # Run the real Ralph startup recovery entry point against the linked
+    # worktree (which has a different PID than the killed landing subprocess).
+    # The recovery detects the pending local commit and pushes it to the bare remote.
+    recovery_config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_target": _TARGET,
+                "auto_integrate_remote": _REMOTE,
+                "auto_integrate_remote_enabled": True,
+                "auto_integrate_remote_interval_seconds": 0.0,
+            }
+        }
     )
-    rec_proc = subprocess.Popen(
-        [sys.executable, "-c", recovery_script, str(wt)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    rec_state = auto_integrate_recovery.recover_incomplete_integration(
+        WorkspaceScope(wt), config=recovery_config
     )
-    assert rec_proc.stdout is not None
-    out_line = rec_proc.stdout.readline().strip()
-    rec_proc.wait(timeout=20)
+    assert rec_state is not None and rec_state.last_outcome is not None
+    out_line = str(rec_state.last_outcome)
 
     # Convergence proof: the bare remote ref has caught up to the local
     # target SHA via the fresh recovery subprocess in the linked worktree.
@@ -574,6 +553,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline import run_loop
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.pipeline.state import PipelineState
@@ -581,34 +561,9 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 root = Path(sys.argv[1])
-unreachable_bare = Path(sys.argv[2])
+local_sha = sys.argv[2]
 target = "release"
 remote = "tacos"
-
-subprocess.run(["git", "init", "-b", target, str(root)], check=True, capture_output=True)
-subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True, capture_output=True)
-subprocess.run(["git", "-C", str(root), "config", "user.name", "Test User"], check=True, capture_output=True)
-
-(root / "init.txt").write_text("initial commit\\n", encoding="utf-8")
-subprocess.run(["git", "-C", str(root), "add", "init.txt"], check=True, capture_output=True)
-subprocess.run(["git", "-C", str(root), "commit", "-m", "init"], check=True, capture_output=True)
-
-subprocess.run(["git", "-C", str(root), "remote", "add", remote, str(unreachable_bare)], check=True, capture_output=True)
-
-(root / "feature.txt").write_text("feature advance\\n", encoding="utf-8")
-subprocess.run(["git", "-C", str(root), "add", "feature.txt"], check=True, capture_output=True)
-subprocess.run(["git", "-C", str(root), "commit", "-m", "feature advance"], check=True, capture_output=True)
-
-local_sha = subprocess.run(
-    ["git", "-C", str(root), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-).stdout.strip()
-
-parent_sha = subprocess.run(
-    ["git", "-C", str(root), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True
-).stdout.strip()
-if local_sha == parent_sha:
-    sys.stderr.write("LOCAL_NOT_AHEAD\\n")
-    sys.exit(6)
 
 config = UnifiedConfig.model_validate({
     "general": {
@@ -619,6 +574,30 @@ config = UnifiedConfig.model_validate({
         "auto_integrate_remote_interval_seconds": 0.0,
     }
 })
+
+# Drive the production publication reconciler against the unreachable
+# remote. The returned RebaseState carries the typed
+# publish_deferred_remote decision and the unreachable observation;
+# the runner scheduling connection consumes that state as-is.
+observed_rebase = remote_sync.reconcile_remote_publication(
+    config,
+    root,
+    target,
+    remote=remote,
+)
+if observed_rebase.last_publication_decision != "publish_deferred_remote":
+    sys.stderr.write(
+        f"NOT_DEFERRED:{observed_rebase.last_publication_decision}\\n"
+    )
+    sys.exit(8)
+if observed_rebase.last_remote_sync not in (
+    remote_sync.REMOTE_REMOTE_UNREACHABLE,
+    remote_sync.REMOTE_PULL_FAILED,
+):
+    sys.stderr.write(
+        f"NOT_UNREACHABLE:{observed_rebase.last_remote_sync}\\n"
+    )
+    sys.exit(9)
 
 def sleep_hook(_s):
     sys.stdout.write(f"DEFERRED:{local_sha}\\n")
@@ -637,12 +616,7 @@ bundle = load_policy(defaults_dir)
 
 pipeline_state = PipelineState(
     phase="complete",
-    rebase=RebaseState(
-        last_target=target,
-        last_remote=remote,
-        last_publication_decision="publish_deferred_remote",
-        last_push_status="unreachable",
-    ),
+    rebase=observed_rebase,
 )
 ctx = SimpleNamespace(
     config=config,
@@ -719,12 +693,25 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     unreachable_bare = tmp_path / "tacos_unreachable.git"
     bare = tmp_path / "tacos.git"
 
+    _init_repo(repo)
+    assert _run(repo, "remote", "add", _REMOTE, str(unreachable_bare)).returncode == 0
+    local_sha = _commit(repo, "feature.txt", "feature advance\n", "feature advance")
+    seed_sha = _head_sha(repo, "HEAD~1")
+
+    # Pre-seed the bare remote with seed_sha (HEAD~1) before launching subprocess
+    subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "push", str(bare), f"{seed_sha}:refs/heads/release"],
+        check=True,
+        capture_output=True,
+    )
+
     env = os.environ.copy()
     if skip_second:
         env["DELIBERATELY_SKIP_SECOND_ITERATION"] = "1"
 
     proc = subprocess.Popen(
-        [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), str(unreachable_bare)],
+        [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), local_sha],
         env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -742,22 +729,9 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
         local_sha = deferred_line.split(":", 1)[1]
         assert len(local_sha) == 40
 
-        # Both variants create and seed the identical configured tacos/release remote
-        # after the initial unreachable observation.
-        subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+        # Point configured tacos remote to the now-reachable bare repo
         subprocess.run(
             ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
-            check=True,
-            capture_output=True,
-        )
-        seed_sha = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "HEAD~1"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        subprocess.run(
-            ["git", "-C", str(repo), "push", "tacos", f"{seed_sha}:refs/heads/release"],
             check=True,
             capture_output=True,
         )
