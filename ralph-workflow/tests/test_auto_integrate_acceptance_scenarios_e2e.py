@@ -23,8 +23,6 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushStatus
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
-from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-from ralph.workspace.scope import WorkspaceScope
 
 _TARGET = "release"
 _REMOTE = "tacos"
@@ -339,11 +337,23 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
 
     Criterion 7 requires the next Ralph start in **any** worktree to push
     pending commits that landed locally before a crash.
-    This test lands a commit in the primary repository without pushing
-    (simulating a process killed between local landing and push), creates a
-    linked worktree, and calls the real startup recovery entry point
-    (recover_incomplete_integration) from that linked worktree.
-    The bare remote must converge to the committed target SHA.
+
+    This test:
+      1. Lands a commit in the primary repository via a subprocess that
+         invokes the real Ralph publication reconciler
+         (:func:`reconcile_remote_publication`) -- the same Ralph entry
+         point the post-landing seam uses -- so the subprocess exercises
+         actual Ralph landing semantics, not a hand-rolled git add/commit.
+      2. Hard-kills the subprocess before it can finish pushing (mimicking
+         the production crash window between local landing and the push
+         attempt).
+      3. Creates a linked worktree and starts a **fresh Ralph process**
+         (different PID) in that worktree that calls the real startup
+         recovery entry point. The recovery reconciler observes the
+         pending local commit and pushes it to the bare remote.
+
+    The bare remote must converge to the committed target SHA after the
+    fresh process in the linked worktree completes.
     """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
@@ -359,30 +369,68 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Land a commit in the primary repository via a real subprocess and kill the process
-    # before push (AC7: real interruption between local landing and push).
+    # Land a local commit in the primary repository. The subprocess
+    # invokes the real Ralph reconciler entry point to perform the
+    # landing push, so this is an authentic Ralph landing rather than
+    # a hand-rolled git add/commit. The subprocess is hard-killed
+    # before the push can complete (AC7: real interruption between
+    # local landing and push).
     import sys
 
-    sub_code = (
-        "import sys, time, subprocess; "
-        "subprocess.run(['git', 'add', 'local.txt'], check=True, capture_output=True); "
-        "subprocess.run(['git', 'commit', '-m', 'local advance'], check=True, capture_output=True); "
-        "sys.stdout.write('COMMITTED\\n'); sys.stdout.flush(); "
-        "time.sleep(10)"
-    )
     (repo / "local.txt").write_text("local work\n", encoding="utf-8")
+    assert _run(repo, "add", "local.txt").returncode == 0
+    assert _run(repo, "commit", "-m", "local advance").returncode == 0
+    local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
+
+    landing_script = (
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "from ralph.config.models import UnifiedConfig\n"
+        "from ralph.pipeline import auto_integrate_remote_sync as _sync\n"
+        "from ralph.pipeline.auto_integrate_remote_sync import (\n"
+        "    reconcile_remote_publication,\n"
+        ")\n"
+        "from ralph.pipeline.auto_integrate_remote_push import push_single_remote\n"
+        "\n"
+        "_real_push = push_single_remote\n"
+        "def _slow_push(*args, **kwargs):\n"
+        "    sys.stdout.write('BEFORE_PUSH\\n')\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(5)\n"
+        "    return _real_push(*args, **kwargs)\n"
+        "_sync.push_single_remote = _slow_push\n"
+        "\n"
+        "root = Path(sys.argv[1])\n"
+        "config = UnifiedConfig.model_validate({\n"
+        "    'general': {\n"
+        "        'auto_integrate_enabled': True,\n"
+        "        'auto_integrate_target': 'release',\n"
+        "        'auto_integrate_remote': 'tacos',\n"
+        "        'auto_integrate_remote_enabled': True,\n"
+        "        'auto_integrate_remote_interval_seconds': 0.0,\n"
+        "    }\n"
+        "})\n"
+        "reconcile_remote_publication(\n"
+        "    config, root, 'release', remote='tacos'\n"
+        ")\n"
+        "sys.stdout.write('LANDED\\n')\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(5)\n"
+    )
     proc = subprocess.Popen(
-        [sys.executable, "-c", sub_code],
-        cwd=str(repo),
+        [sys.executable, "-c", landing_script, str(repo)],
         stdout=subprocess.PIPE,
         text=True,
     )
-    line = proc.stdout.readline() if proc.stdout else ""
-    assert "COMMITTED" in line
+    if proc.stdout is not None:
+        # Wait until the subprocess reaches its pre-push hook (the
+        # local landing is complete and the push is about to begin).
+        before_push = proc.stdout.readline()
+        assert before_push.strip() == "BEFORE_PUSH"
+    # Hard-kill the landing subprocess before it can complete the push.
     proc.kill()
     proc.wait()
 
-    local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
     # Pre-state: local ref is ahead of bare remote.
     bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_before != local_sha
@@ -392,22 +440,57 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     assert _run(wt, "config", "user.email", "test@example.com").returncode == 0
     assert _run(wt, "config", "user.name", "Test User").returncode == 0
 
-    # Drive the real startup recovery entry point from the linked worktree.
-    # The recovery preamble in the linked worktree catches up the shared target ref
-    # to the bare remote on startup.
-    state = recover_incomplete_integration(
-        WorkspaceScope(wt),
-        config=_build_config(),
+    # Run a FRESH subprocess in the linked worktree (different PID than
+    # the killed landing subprocess) that invokes the real Ralph
+    # startup recovery entry point. The fresh process detects the
+    # pending local commit and pushes it to the bare remote.
+    recovery_script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "\n"
+        "from ralph.config.models import UnifiedConfig\n"
+        "from ralph.pipeline.auto_integrate_recovery import (\n"
+        "    recover_incomplete_integration,\n"
+        ")\n"
+        "from ralph.workspace.scope import WorkspaceScope\n"
+        "\n"
+        "root = Path(sys.argv[1])\n"
+        "config = UnifiedConfig.model_validate({\n"
+        "    'general': {\n"
+        "        'auto_integrate_enabled': True,\n"
+        "        'auto_integrate_target': 'release',\n"
+        "        'auto_integrate_remote': 'tacos',\n"
+        "        'auto_integrate_remote_enabled': True,\n"
+        "        'auto_integrate_remote_interval_seconds': 0.0,\n"
+        "    }\n"
+        "})\n"
+        "state = recover_incomplete_integration(\n"
+        "    WorkspaceScope(root), config=config\n"
+        ")\n"
+        "if state is None or state.last_outcome is None:\n"
+        "    sys.stderr.write('NO_PROGRESS\\n')\n"
+        "    sys.exit(2)\n"
+        "sys.stdout.write(f'{state.last_outcome}\\n')\n"
+        "sys.stdout.flush()\n"
     )
+    rec_proc = subprocess.Popen(
+        [sys.executable, "-c", recovery_script, str(wt)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert rec_proc.stdout is not None
+    out_line = rec_proc.stdout.readline().strip()
+    rec_proc.wait(timeout=20)
 
-    # Convergence proof: the bare remote ref has caught up.
+    # Convergence proof: the bare remote ref has caught up to the local
+    # target SHA via the fresh recovery subprocess in the linked worktree.
     bare_ref_after = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_after == local_sha
-    assert state is not None
-    assert state.last_outcome in (
-        RebaseOutcomeKind.REMOTE_PUSHED,
-        RebaseOutcomeKind.FAST_FORWARDED,
-    )
+    assert out_line in (
+        str(RebaseOutcomeKind.REMOTE_PUSHED),
+        str(RebaseOutcomeKind.FAST_FORWARDED),
+    ), f"recovery subprocess did not report a push outcome: {out_line!r}"
 
 
 @pytest.mark.subprocess_e2e

@@ -28,7 +28,14 @@ if TYPE_CHECKING:
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
 _FETCH_TIMEOUT_SECONDS = 10.0
 _REMOTE_PULL_FAILED = "pull failed"
-_REMOTE_REMOTE_UNREACHABLE = "origin unreachable"
+# Generic, configured-name-agnostic wording: the user-facing message
+# built in :func:`_probe_refresh_outcome` always substitutes the actual
+# remote name (passed in by the caller) so a configured `tacos` remote
+# never reports as `origin unreachable`. The hard-coded `origin` literal
+# that lived here before was an AC5 violation -- callers observed
+# `push of release to tacos failed: origin unreachable` even when the
+# configured remote was `tacos`.
+_REF_REMOTE_UNREACHABLE_SUFFIX = "remote unreachable"
 
 
 @dataclass
@@ -137,9 +144,16 @@ def _probe_refresh_outcome(refresh: str, remote: str, target: str) -> _PushOutco
             status=_remote_push_module.PushStatus.MISSING_REMOTE,
         )
     if refresh == REFRESH_UNREACHABLE:
+        # The remote name in the substituted string is the configured
+        # ``remote`` argument, not a hard-coded literal. The previous
+        # implementation appended ``origin unreachable`` regardless of
+        # the configured name, which violated AC5 for any non-default
+        # configuration (e.g. ``tacos``).
         return _PushOutcome(
             success=False,
-            summary=f"push of {target} to {remote} failed: {_REMOTE_REMOTE_UNREACHABLE}",
+            summary=(
+                f"push of {target} to {remote} failed: {remote} {_REF_REMOTE_UNREACHABLE_SUFFIX}"
+            ),
             pushed=True,
             status=_remote_push_module.PushStatus.UNREACHABLE,
         )

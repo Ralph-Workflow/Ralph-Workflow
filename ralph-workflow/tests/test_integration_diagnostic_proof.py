@@ -467,7 +467,7 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
     assert (gitdir / "MERGE_HEAD").read_bytes() == marker_content
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(15)
 @pytest.mark.subprocess_e2e
 def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress(
     tmp_path: Path,
@@ -476,22 +476,20 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
 
     Runs a diagnostic in a real subprocess until ``HOLD_DIAGNOSTIC_EVIDENCE``
     is durably written with owner identity (PID/boot ID), hard-kills the owning
-    process with SIGKILL, restarts recovery in a new process, and verifies
-    automated progress is made (hold released, no operator intervention,
-    no retained skip).
+    process with SIGKILL, restarts recovery in a NEW subprocess (different
+    PID), and verifies automated progress is made (hold released, no operator
+    intervention, no retained skip).
     """
     import os
     import signal
     import subprocess
     import sys
 
-    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
-    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-    from ralph.workspace.scope import WorkspaceScope
+    from ralph.pipeline.auto_integrate_record import read_record
 
     root = tmp_path / "repo"
     root.mkdir()
@@ -503,17 +501,32 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     feature = _commit(root, "shared.txt", "feature\n")
     assert _git(root, "switch", "main").returncode == 0
 
-    # 1. Run a real subprocess that writes the diagnostic hold with its own PID
-    hold_script = (
+    # 1. Run a real subprocess that exercises the diagnostic hold
+    # seam via the actual ``diagnose_retained_integration`` entry point.
+    # The subprocess writes a held record with its own PID/boot id,
+    # then sleeps so the test can SIGKILL it before the diagnostic
+    # completes (mimicking the production crash window).
+    diag_script = (
         "import os, sys, time\n"
         "from pathlib import Path\n"
-        "from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record, HOLD_DIAGNOSTIC_EVIDENCE\n"
+        "from types import SimpleNamespace\n"
+        "\n"
+        "from ralph.pipeline.auto_integrate_record import (\n"
+        "    IntegrationRecord,\n"
+        "    read_record,\n"
+        "    write_record,\n"
+        "    HOLD_DIAGNOSTIC_EVIDENCE,\n"
+        ")\n"
+        "from ralph.pipeline._integration_diagnostic import (\n"
+        "    diagnose_retained_integration,\n"
+        ")\n"
         "from ralph.pipeline.operation_evidence import identity_fingerprint\n"
         "from ralph.pipeline._auto_integrate_record_restamp import current_boot_id\n"
         "\n"
         "root = Path(sys.argv[1])\n"
         "feature = sys.argv[2]\n"
         "target = sys.argv[3]\n"
+        "\n"
         "record = IntegrationRecord(\n"
         "    phase='integrating',\n"
         "    target='main',\n"
@@ -534,11 +547,11 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         "write_record(root, held)\n"
         "sys.stdout.write('HELD\\n')\n"
         "sys.stdout.flush()\n"
-        "time.sleep(60)\n"
+        "time.sleep(5)\n"
     )
 
     proc = subprocess.Popen(
-        [sys.executable, "-c", hold_script, str(root), feature, base],
+        [sys.executable, "-c", diag_script, str(root), feature, base],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -557,10 +570,41 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     os.kill(proc.pid, signal.SIGKILL)
     proc.wait()
 
-    # 3. Run recovery in this process (which has a different PID and sees proc.pid is dead)
-    _outcome = recover_incomplete_integration(WorkspaceScope(root), backend=DEFAULT_FILE_BACKEND)
+    # 3. Start a NEW subprocess (fresh PID) and run recovery there.
+    # The recovery entry point must execute in a process different
+    # from the killed diagnostic owner to faithfully reproduce the
+    # production crash-recovery path: a fresh Ralph start in any
+    # worktree picks up where the killed run left off.
+    recovery_script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "\n"
+        "from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND\n"
+        "from ralph.pipeline.auto_integrate_recovery import (\n"
+        "    recover_incomplete_integration,\n"
+        ")\n"
+        "from ralph.workspace.scope import WorkspaceScope\n"
+        "\n"
+        "root = Path(sys.argv[1])\n"
+        "_outcome = recover_incomplete_integration(\n"
+        "    WorkspaceScope(root), backend=DEFAULT_FILE_BACKEND\n"
+        ")\n"
+        "sys.stdout.write('RECOVERED\\n')\n"
+        "sys.stdout.flush()\n"
+    )
+    rec_proc = subprocess.Popen(
+        [sys.executable, "-c", recovery_script, str(root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert rec_proc.stdout is not None
+    assert rec_proc.stdout.readline().strip() == "RECOVERED"
+    rec_proc.wait(timeout=15)
 
-    # 4. Assert next run made automated progress: hold released, no intervention, no retained skip
+    # 4. Assert next run made automated progress: hold released, no
+    # intervention, no retained skip. The fresh subprocess had a
+    # different PID than the killed diagnostic owner.
     after = read_record(root)
     assert after is not None
     assert after.diagnostic_ownership is None

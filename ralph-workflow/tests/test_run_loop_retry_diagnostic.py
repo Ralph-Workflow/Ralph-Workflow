@@ -15,6 +15,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline._integration_action import RebaseOutcomeKind
@@ -285,14 +287,19 @@ def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
     assert updated_state.rebase.is_intervention_required is False
 
 
-def test_wait_for_retry_unreadable_record_escalates_to_intervention_with_cooldown_sleep(
+def test_wait_for_retry_unreadable_record_escalates_to_intervention_without_cooldown_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
     """Requirement 2(c): Unreadable record.
 
     Asserts that _wait_for_integration_retry escalates to INTERVENTION_REQUIRED
-    and performs the standard cooldown retry wait when the durable record file is unreadable.
+    when the durable record file is unreadable, and follows the O1
+    retry-progress rule: never sleeps on a fixed interval. The recovery
+    preamble is invoked to attempt live-Git re-derivation; when it
+    cannot clear the durable intervention flag, the consecutive-conflict
+    counter is charged and the typed INTERVENTION_REQUIRED transition
+    is persisted (capped escalation, no sleep).
     """
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
@@ -314,8 +321,8 @@ def test_wait_for_retry_unreadable_record_escalates_to_intervention_with_cooldow
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was called for cooldown retry
-    assert sleeps == [5.0], "Unreadable record must perform standard cooldown wait"
+    # 1. Assert ctx.sleep was NOT called (O1: no fixed-interval wait).
+    assert sleeps == [], "Unreadable record must not sleep; O1 retry-progress rule"
 
     # 2. Assert raw corrupt bytes preserved for forensics (WU-1)
     evidence_file = record_path(tmp_path).with_name("corrupt_record_evidence.json")
@@ -372,11 +379,20 @@ def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_reso
     assert second_result.rebase.is_intervention_required is True
 
 
-def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_with_cooldown_sleep(
+def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_without_cooldown_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Requirement: Empty evidence record escalates with cooldown sleep."""
+    """Requirement: Empty evidence record escalates via live-Git re-derivation.
+
+    The O1 retry-progress rule forbids a fixed-interval wait when the
+    durable record demands intervention. The retry path first asks the
+    recovery preamble to re-derive state from Git; if recovery cannot
+    clear the intervention flag, the consecutive-conflict counter is
+    charged and the typed INTERVENTION_REQUIRED transition is
+    persisted (capped escalation, no sleep). The forensic bytes of any
+    held evidence are preserved for the operator.
+    """
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
@@ -403,7 +419,7 @@ def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    assert sleeps == [5.0], "Empty evidence record must perform standard cooldown wait"
+    assert sleeps == [], "Empty evidence record must not sleep; O1 retry-progress rule"
     assert updated_state.rebase.is_intervention_required is True
     assert updated_state.rebase.last_outcome in (
         RebaseOutcomeKind.INTERVENTION_REQUIRED,
@@ -411,14 +427,20 @@ def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_
     )
 
 
-def test_wait_for_retry_negative_no_intervention_required_falls_through_to_sleep(
+def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_bounded_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
     """Requirement 2(d): Negative test - record with no intervention required.
 
-    Asserts that when diagnostic_intervention_required is False,
-    _wait_for_integration_retry falls through to the existing 5.0s retry sleep.
+    Asserts that when ``diagnostic_intervention_required`` is False,
+    ``_wait_for_integration_retry`` invokes the recovery preamble
+    (live-Git re-derivation, O1 retry-progress rule) and pairs the
+    next iteration with a bounded sleep. The sleep is paired with an
+    in-process satisfier (the recovery preamble on the next
+    iteration), so it is not the old operator-only fixed-interval
+    wait that D3 forbade. The conflict counter is charged so the
+    cap-bound escalation path remains reachable.
     """
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
@@ -457,13 +479,22 @@ def test_wait_for_retry_negative_no_intervention_required_falls_through_to_sleep
         ),
     )
 
-    run_loop._wait_for_integration_retry(initial_state, ctx)
+    updated = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep(5.0) WAS called
-    assert sleeps == [5.0], "Negative test must fall through to 5.0s sleep"
+    # 1. Assert recovery preamble WAS invoked (live-Git re-derivation).
+    assert preamble_called == [True], "Recovery preamble must be invoked before the bounded sleep"
 
-    # 2. Assert recovery preamble was invoked
-    assert preamble_called == [True], "Recovery preamble should be invoked after sleep"
+    # 2. Assert ctx.sleep was called exactly once (bounded retry with
+    # in-process satisfier, not the old fixed-interval wait).
+    assert len(sleeps) == 1, (
+        f"Below-cap retry must perform exactly one bounded sleep, got {sleeps!r}"
+    )
+
+    # 3. Assert the consecutive-conflict counter was charged so the
+    # cap-bound escalation remains reachable.
+    assert updated.rebase.consecutive_conflicts == 1, (
+        "Recovery failure must charge the consecutive-conflict counter"
+    )
 
 
 def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
@@ -510,6 +541,162 @@ def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
 
     # 1. Must NOT sleep on a fixed interval wait (fail-open / UNCHANGED lease)
     assert sleeps == []
+
+    # 2. Durable evidence must be cleared on disk (no 'restore original evidence' hold)
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+
+    # 3. Must not report intervention required
+    assert updated_state.rebase.is_intervention_required is False
+
+
+@pytest.mark.subprocess_e2e
+def test_wait_for_retry_after_real_git_head_movement_clears_evidence_without_sleep(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """AC4 faithful: HEAD actually moved through a Ralph-like git operation.
+
+    The previous AC4 proof at :470-488 wrote the held record in
+    isolation and asserted the lease released. The complementary test
+    below exercises a real ``git reset --hard`` (the same family of
+    operation Ralph uses for snapshot/reset/reintegration) BEFORE the
+    retry call. The held lease is bound to ``identity_fingerprint``,
+    which isolates HEAD/index/worktree movements: even though HEAD has
+    physically moved, the fingerprint is stable, the durable evidence
+    is cleared on disk, and the retry loop never sleeps on a fixed
+    interval.
+    """
+    import subprocess
+
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    # Initialise a real git repository so we can move HEAD.
+    assert (
+        subprocess.run(
+            ("git", "init", "-b", "main"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "config", "user.email", "test@example.com"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "config", "user.name", "Test"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    (tmp_path / "seed.txt").write_text("seed\n", encoding="utf-8")
+    assert (
+        subprocess.run(
+            ("git", "add", "seed.txt"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "commit", "-m", "seed"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    head_before = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    pre_feature = head_before
+    pre_target = head_before
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=pre_feature,
+        pre_target_sha=pre_target,
+        owning_worktree=str(tmp_path),
+        diagnostic_intervention_required=True,
+        diagnostic_evidence=(("head", "will_be_moved_by_ralph_snapshot"),),
+    )
+    # Valid unexpired lease with stable identity fingerprint
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(update={"diagnostic_ownership": lease})
+    write_record(tmp_path, record)
+
+    # Move HEAD through a real git operation (the same family of
+    # operation Ralph performs for snapshot/reset/reintegration).
+    (tmp_path / "extra.txt").write_text("extra\n", encoding="utf-8")
+    assert (
+        subprocess.run(
+            ("git", "add", "extra.txt"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ("git", "commit", "-m", "extra"),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+    head_after = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert head_after != head_before, "HEAD must have actually moved"
+
+    initial_state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="synchronization unproven",
+        ),
+    )
+
+    updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
+
+    # 1. Must NOT sleep on a fixed interval wait (fail-open / UNCHANGED lease)
+    assert sleeps == [], "Real HEAD movement must not sleep; fail-open contract"
 
     # 2. Durable evidence must be cleared on disk (no 'restore original evidence' hold)
     on_disk = read_record(tmp_path)

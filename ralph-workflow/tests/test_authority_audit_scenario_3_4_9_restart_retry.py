@@ -148,7 +148,17 @@ _MATRIX: tuple[tuple[str, dict[str, object]], ...] = (
     ("RESUME_REPAIR", {"repair_pending_diff": "diff", "repair_pending_paths": ()}),
     (
         "HOLD_DIAGNOSTIC_EVIDENCE",
-        {"diagnostic_evidence": (("k", "v"),), "diagnostic_ownership": "owner"},
+        # ``head`` is a valid collector-evidence key produced by the
+        # current collector (see
+        # ``_auto_integrate_record_restamp._VALID_COLLECTOR_EVIDENCE_EXACT_KEYS``).
+        # The placeholder ``(k, v)`` previously used here was a
+        # non-collector key and was dropped by the migration loader
+        # under the AC1 / O1 contract; ``head`` lets this transition
+        # survive a crash-after round-trip intact.
+        {
+            "diagnostic_evidence": (("head", "v"),),
+            "diagnostic_ownership": "owner",
+        },
     ),
     ("RELEASE_DIAGNOSTIC_EVIDENCE", {"diagnostic_evidence": (), "diagnostic_ownership": None}),
     ("BUMP_DIAGNOSTIC_ATTEMPT", {"merge_commit_repair_attempts": 1, "repair_last_error": "x"}),
@@ -160,7 +170,7 @@ _MATRIX: tuple[tuple[str, dict[str, object]], ...] = (
     (
         "MARK_LEGACY_FIELDS_PRESERVED",
         {
-            "diagnostic_evidence": (("k", "v"),),
+            "diagnostic_evidence": (("head", "v"),),
             "diagnostic_ownership": "owner",
             "repair_cap_reason": "legacy preserved",
         },

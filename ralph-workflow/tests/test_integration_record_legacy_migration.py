@@ -151,6 +151,45 @@ def test_public_checkpoint_reload_global_evidence_loads_cleanly(
     assert ("for-each-ref", "deadbeef") not in dict(loaded.diagnostic_evidence)
 
 
+def test_unrecognised_durable_evidence_key_loads_cleanly_without_intervention(
+    tmp_path: Path,
+) -> None:
+    """AC1 / O1: any evidence key the current collector cannot interpret must clear.
+
+    The migration loader previously kept an unrecognised evidence key
+    on the record when no intervention flag was stored. The diagnostic
+    path then could not verify the held evidence and the record
+    retained forever (production livelock). The fix drops unrecognised
+    keys regardless of the intervention flag: the loaded record carries
+    empty evidence, no ownership, and no intervention flag, so the
+    next seam re-derives state from Git and makes progress.
+    """
+    record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": str(tmp_path),
+        # Key the current collector cannot interpret; no intervention
+        # flag stored. This is the case the old loader retained.
+        "diagnostic_evidence": [["future_unknown_kind", "value"]],
+    }
+    record_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = read_record(tmp_path)
+    assert loaded is not None
+    # Evidence is cleared; the loader no longer leaves the unknown
+    # key on the record (AC1 / O1).
+    assert loaded.diagnostic_evidence == ()
+    assert loaded.diagnostic_ownership is None
+    assert loaded.diagnostic_intervention_required is False
+    # The unknown key is no longer in the live evidence tuple.
+    assert ("future_unknown_kind", "value") not in dict(loaded.diagnostic_evidence)
+
+
 @pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)
 def test_rebase_state_model_validate_migrates_all_19_verbs(verb: str) -> None:
     """RebaseState.model_validate deserializes all 19 legacy last_action strings."""

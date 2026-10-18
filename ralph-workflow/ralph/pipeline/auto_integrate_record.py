@@ -626,9 +626,13 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
         return data_raw
 
     migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
-    if is_intervention_flagged and any(
-        not _is_valid_collector_evidence_key(key) for key, _ in migrated_evidence
-    ):
+    # Any key the current collector cannot interpret must drop the held
+    # evidence regardless of the intervention flag (O1 / AC1). The old
+    # gate only fired when the intervention flag was set; that left
+    # unknown keys persistent when no operator escalation was recorded,
+    # which is the documented O1 livelock: the diagnostic path could not
+    # verify the evidence and the record retained forever.
+    if any(not _is_valid_collector_evidence_key(key) for key, _ in migrated_evidence):
         return _clear_legacy_ownership_and_intervention(data_raw)
 
     return _apply_evidence_migration(data_raw, migrated_evidence, drop_marker, sequence)

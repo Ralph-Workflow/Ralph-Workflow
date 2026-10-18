@@ -2427,26 +2427,85 @@ def _wait_for_integration_retry(
 
     rebase = durable_rebase
     if rebase.is_intervention_required:
-        state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
-            WaitReason.EXHAUSTED_RETRY, None
-        )
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        ctx.sleep(5.0)
-        return state.clear_waiting()
+        return _handle_intervention_required_retry(state, ctx, rebase, alarm, detail, backend)
 
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
+    return _handle_pending_retry(state, ctx, rebase, detail, backend)
 
-    ctx.sleep(5.0)
+
+def _handle_intervention_required_retry(
+    state: PipelineState,
+    ctx: _LoopContext,
+    rebase: RebaseState,
+    alarm: str,
+    detail: str,
+    backend: FileBackend,
+) -> PipelineState:
+    """Handle retry when ``rebase.is_intervention_required`` is set.
+
+    O1 retry-progress rule (D3): the durable intervention flag means
+    Ralph is in a state without an in-process satisfier. The recovery
+    preamble is invoked once; if it makes progress the iteration
+    returns. Otherwise the consecutive-conflict counter is charged
+    and the typed single-writer setter escalates -- never sleep.
+    """
+    recovered = _run_auto_integrate_recovery_preamble(
+        ctx.workspace_scope, ctx.config, backend=backend
+    )
+    if recovered is not None and not recovered.is_intervention_required:
+        state = state.copy_with(rebase=recovered, last_error=alarm).set_waiting(
+            WaitReason.EXHAUSTED_RETRY, None
+        )
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        return state.clear_waiting()
+    bumped_conflicts = rebase.consecutive_conflicts + 1
+    rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
+    if rebase.consecutive_conflicts >= (
+        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    ):
+        if not rebase.is_intervention_required:
+            _handoff_retained_failure(ctx, detail)
+            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
+                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(bumped_conflicts)
+        rebase = rebase.set_intervention_required(detail)
+    state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
+        WaitReason.EXHAUSTED_RETRY, None
+    )
+    _save_recovered_rebase_checkpoint(state, ctx)
+    ctx.latest_state[:] = [state]
+    return state.clear_waiting()
+
+
+def _handle_pending_retry(
+    state: PipelineState,
+    ctx: _LoopContext,
+    rebase: RebaseState,
+    detail: str,
+    backend: FileBackend,
+) -> PipelineState:
+    """Handle retry when no durable intervention flag is set.
+
+    O1 retry-progress rule (D3): the recovery preamble is the
+    live-Git re-derivation paired with an in-process satisfier (the
+    same preamble on the next iteration). Below the conflict cap,
+    the iteration pairs a bounded sleep with the recovery preamble
+    so an in-progress recovery (e.g. busy worktree lock) has time
+    to advance state on the next iteration. At the cap, we escalate
+    WITHOUT sleeping (D3: never loop forever on a fixed-interval
+    wait). Recovery returning ``None`` is also treated as no
+    progress and charges it on the next attempt, matching the
+    in-process satisfier contract.
+    """
     recovered = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config, backend=backend
     )
     if recovered is not None:
-        state = state.copy_with(rebase=recovered)
+        state = state.copy_with(rebase=recovered).clear_waiting()
     else:
         bumped_conflicts = rebase.consecutive_conflicts + 1
         rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
@@ -2460,9 +2519,17 @@ def _wait_for_integration_retry(
                         bumped_conflicts
                     )
             rebase = rebase.set_intervention_required(detail)
+            state = state.copy_with(rebase=rebase)
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            # Cap reached: escalate WITHOUT sleeping (D3).
+            return state.clear_waiting()
         state = state.copy_with(rebase=rebase)
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
+    # Below cap: bounded sleep paired with an in-process
+    # satisfier (next iteration's recovery preamble).
+    ctx.sleep(5.0)
     return state.clear_waiting()
 
 

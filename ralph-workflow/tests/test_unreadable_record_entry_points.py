@@ -324,16 +324,22 @@ def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path, c
     assert recovered is not None
     state = PipelineState(phase="development", rebase=recovered)
     latest_state: list[PipelineState] = []
-    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    sleep = MagicMock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    with pytest.raises(StopIteration):
-        run_loop._run_inner_loop(state, ctx, "development")
-    assert sleep.called, "the phase-boundary loop must reach the cooldown sleep, not dispatch"
-    assert ctx.latest_state, "the blocked turn must publish its state"
-    blocked = ctx.latest_state[0]
-    assert blocked.is_waiting_state is True
-    assert blocked.rebase.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, blocked.rebase, payload)
+    # O1 retry-progress rule (D3): the phase-boundary loop escalates
+    # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
+    # calling the fixed-interval cooldown sleep. Recovery has no
+    # in-process satisfier for an unreadable record, so escalation
+    # must be immediate -- the loop returns from
+    # ``_continue_after_startup_integration`` via the early-return
+    # branch without sleeping.
+    result_state, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
+    assert not sleep.called, (
+        "the phase-boundary loop must escalate an unreadable record "
+        "without calling the cooldown sleep (D3)"
+    )
+    assert result_state.rebase.last_decision == INTERVENTION.value
+    _assert_intervention(workspace_root, result_state.rebase, payload)
     # The blocked turn checkpoints through the real persistence boundary.
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
@@ -393,15 +399,19 @@ def test_cooldown_entry_point_reports_intervention(workspace_root: Path, cause: 
     assert recovered is not None
     state = PipelineState(phase="development", rebase=recovered)
     latest_state: list[PipelineState] = [state]
-    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    sleep = MagicMock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    with pytest.raises(StopIteration):
-        run_loop._wait_for_integration_retry(state, ctx)
-    assert sleep.called
-    assert sleep.call_args is not None
-    delay = sleep.call_args.args[0]
-    assert isinstance(delay, (int, float)) and delay > 0
-    cooled = ctx.latest_state[0]
+    # O1 retry-progress rule (D3): the cooldown retry path escalates
+    # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
+    # calling the fixed-interval cooldown sleep. The unreadable
+    # record has no in-process satisfier (no lease, no evidence);
+    # the 5-second sleep that lived here was the operator-only stall
+    # that D3 forbade. Escalation must be immediate.
+    cooled = run_loop._wait_for_integration_retry(state, ctx)
+    assert not sleep.called, (
+        "the cooldown retry path must escalate an unreadable record "
+        "without calling the cooldown sleep (D3)"
+    )
     assert cooled.rebase.last_decision == INTERVENTION.value
     _assert_intervention(workspace_root, cooled.rebase, payload)
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
@@ -497,19 +507,22 @@ def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure
     # strictly REPORT_INTERVENTION_REQUIRED.
     state = PipelineState(phase="development", rebase=RebaseState())
     latest_state: list[PipelineState] = []
-    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    sleep = MagicMock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    with pytest.raises(StopIteration):
-        run_loop._run_inner_loop(
-            state,
-            ctx,
-            "development",
-            backend=_FailingReadBackend(record_file),
-        )
-    assert sleep.called, "the phase-boundary loop must reach the cooldown sleep, not dispatch"
-    assert ctx.latest_state, "the blocked turn must publish its state"
-    blocked = ctx.latest_state[0]
-    assert blocked.is_waiting_state is True
+    # O1 retry-progress rule (D3): same as the corrupt-in-parsed case --
+    # the failing backend has no in-process satisfier, so the loop
+    # escalates to INTERVENTION_REQUIRED without calling the cooldown
+    # sleep.
+    blocked, _previous, _exit = run_loop._run_inner_loop(
+        state,
+        ctx,
+        "development",
+        backend=_FailingReadBackend(record_file),
+    )
+    assert not sleep.called, (
+        "the phase-boundary loop must escalate a backend read failure "
+        "without calling the cooldown sleep (D3)"
+    )
     assert blocked.rebase.last_decision == INTERVENTION.value
     _assert_intervention(
         workspace_root, blocked.rebase, b'{"phase": "integrating", "target": "main"}'
@@ -569,18 +582,20 @@ def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
     assert recovered.last_decision == INTERVENTION.value
     state = PipelineState(phase="development", rebase=recovered)
     latest_state: list[PipelineState] = [state]
-    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    sleep = MagicMock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    with pytest.raises(StopIteration):
-        run_loop._wait_for_integration_retry(
-            state,
-            ctx,
-            backend=_FailingReadBackend(record_file),
-        )
-    assert sleep.called
-    assert sleep.call_args is not None
-    delay = sleep.call_args.args[0]
-    assert isinstance(delay, (int, float)) and delay > 0
+    cooled = run_loop._wait_for_integration_retry(
+        state,
+        ctx,
+        backend=_FailingReadBackend(record_file),
+    )
+    # O1 retry-progress rule (D3): the failing backend has no in-process
+    # satisfier, so the cooldown retry path escalates to
+    # INTERVENTION_REQUIRED WITHOUT calling the cooldown sleep.
+    assert not sleep.called, (
+        "the cooldown retry path must escalate a backend read failure "
+        "without calling the cooldown sleep (D3)"
+    )
     cooled = ctx.latest_state[0]
     assert cooled.rebase.last_decision == INTERVENTION.value
     _assert_intervention(
@@ -671,17 +686,17 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(
 ) -> None:
     payload = _seed_unreadable_record(workspace_root, cause)
     # First visit through the real startup seam, then one blocked inner-loop
-    # turn that checkpoints the intervention projection.
+    # turn that checkpoints the intervention projection. O1 retry-progress
+    # rule (D3): the loop returns from ``_continue_after_startup_integration``
+    # via the early-return branch without sleeping.
     recovered = run_loop._run_auto_integrate_recovery_preamble(
         WorkspaceScope(workspace_root), UnifiedConfig()
     )
     assert recovered is not None
     state = PipelineState(phase="development", rebase=recovered)
     latest_state: list[PipelineState] = []
-    ctx = _loop_context(workspace_root, latest_state, MagicMock(side_effect=_INNER_LOOP_STOP))
-    with pytest.raises(StopIteration):
-        run_loop._run_inner_loop(state, ctx, "development")
-    first = ctx.latest_state[0]
+    ctx = _loop_context(workspace_root, latest_state, MagicMock())
+    first, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
     assert first.rebase.last_decision == INTERVENTION.value
     checkpoint_path = workspace_root / "checkpoint.json"
     reloaded = checkpoint_module.load(checkpoint_path)
@@ -694,16 +709,16 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(
     # identical, the persisted projection survives, and the record bytes are
     # exactly as the crash left them.
     fresh_latest: list[PipelineState] = []
-    fresh_ctx = _loop_context(workspace_root, fresh_latest, MagicMock(side_effect=_INNER_LOOP_STOP))
+    fresh_ctx = _loop_context(workspace_root, fresh_latest, MagicMock())
     recovered_restart = run_loop._run_auto_integrate_recovery_preamble(
         WorkspaceScope(workspace_root), UnifiedConfig()
     )
     assert recovered_restart is not None
-    with pytest.raises(StopIteration):
-        run_loop._run_inner_loop(
-            PipelineState(phase="development", rebase=recovered_restart), fresh_ctx, "development"
-        )
-    restarted = fresh_ctx.latest_state[0]
+    restarted, _previous, _exit = run_loop._run_inner_loop(
+        PipelineState(phase="development", rebase=recovered_restart),
+        fresh_ctx,
+        "development",
+    )
     assert restarted.rebase.last_decision == INTERVENTION.value
     assert format_integration_label(restarted.rebase) not in FORBIDDEN_LABELS
     outcome_restart = read_record_outcome(workspace_root)
