@@ -166,6 +166,13 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
     ("completion_signals", "PLC0415"),  # lazy import avoids cycle with invoke->tools
     ("pydantic_validation_errors", "PLR0911"),  # exhaustive error-type dispatch
+    # failure_classifier._categorize_exc: returns once per exception
+    # class (the priority order IS the classification contract); the
+    # function fans out across NETWORK/ENVIRONMENTAL, SUPERVISION,
+    # TOOL_AVAILABILITY, CONTENT_POLICY, USER_INPUT, and the
+    # post-tool-empty-response branches before the catch-all
+    # ``counted=True`` default.
+    ("failure_classifier", "PLR0911"),
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),

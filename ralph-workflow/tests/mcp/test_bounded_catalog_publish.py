@@ -77,6 +77,8 @@ from ralph.mcp.upstream.config import UPSTREAM_MCP_TOOL_CATALOG_ENV
 #: case the assertion below fails on the pre-fix code.
 _EXPECTED_CATALOG_PUBLISH_OVERRUN_EXIT_CODE: int = 34
 
+pytestmark = pytest.mark.required_auto_integrate_e2e
+
 
 def _setup_session(tmp_path: Path) -> dict[str, str]:
     session = AgentSession(

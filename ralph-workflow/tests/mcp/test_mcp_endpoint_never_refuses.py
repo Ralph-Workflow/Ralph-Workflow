@@ -77,6 +77,74 @@ def _wait_until_child_exits(process: ProcessLike, deadline: float) -> int | None
     return process.poll()
 
 
+def _repeated_connects_during_respawn(
+    bridge: lifecycle.RestartAwareMcpBridge, endpoint: str, *, deadline: float
+) -> None:
+    """Repeatedly attempt TCP connections during the respawn window.
+
+    Fires multiple connect attempts while check_health_and_restart_if_needed()
+    is blocked waiting for the new child to become ready. Each attempt must
+    NOT raise ECONNREFUSED — the kernel backlog absorbs connections because
+    the bridge-owned listening socket stays open throughout the respawn.
+
+    The R1 invariant is structurally absolute: ECONNREFUSED is impossible
+    whenever the bridge owns the listening socket, regardless of whether the
+    current child is alive, dead, or in-flight to respawn.
+    """
+    import threading
+
+    restart_done = threading.Event()
+    connect_errors: list[OSError] = []
+    connect_lock = threading.Lock()
+
+    def _restart_in_background() -> None:
+        bridge.check_health_and_restart_if_needed()
+        restart_done.set()
+
+    restart_thread = threading.Thread(target=_restart_in_background, daemon=True)
+    restart_thread.start()
+
+    # Spin until the restart actually kicks in. After SIGKILL the process
+    # is already dead (poll() != None), so we just wait for the background
+    # thread's health check to notice and call _restart_fn.
+    spin_deadline = time.monotonic() + 2.0
+    while (
+        bridge._inner.process.poll() is None
+        and not restart_done.is_set()
+        and time.monotonic() < spin_deadline
+    ):
+        time.sleep(0.001)
+
+    # Repeated connect attempts during the respawn window.
+    # Short timeout (0.1 s) so we sample frequently; the connect itself may
+    # succeed (backlog) or fail non-ECONNREFUSED (e.g. timeout waiting for
+    # accept), but ECONNREFUSED is the structural impossibility we must catch.
+    connect_attempts = 0
+    while not restart_done.is_set() and time.monotonic() < deadline:
+        connect_attempts += 1
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.1)
+        try:
+            sock.connect(("127.0.0.1", _extract_port(endpoint)))
+        except OSError as exc:
+            with connect_lock:
+                connect_errors.append(exc)
+        finally:
+            sock.close()
+        time.sleep(0.01)
+
+    restart_thread.join(timeout=5.0)
+
+    # ECONNREFUSED is the structural impossibility — any other error is expected.
+    with connect_lock:
+        for exc in connect_errors:
+            if exc.errno == errno.ECONNREFUSED:
+                pytest.fail(
+                    f"ECONNREFUSED during respawn window is impossible per R1 invariant; "
+                    f"got {connect_attempts} connect attempt(s) with {len(connect_errors)} error(s): {connect_errors}"
+                )
+
+
 def _queued_connection_served_after_respawn(
     bridge: lifecycle.RestartAwareMcpBridge, endpoint: str
 ) -> str:
@@ -98,7 +166,7 @@ def _queued_connection_served_after_respawn(
         # ``queued_sock`` is still open and un-accepted by any child.
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True, "check_health_and_restart_if_needed must restart a dead child"
-        assert bridge.restart_count == 1, "restart_count must be 1 after first respawn"
+        assert bridge.restart_count >= 1, "restart_count must be >= 1 after a respawn"
 
         # SAME socket receives a valid HTTP response.
         request = b"GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
@@ -181,9 +249,24 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         finally:
             foreign.close()
 
-        # --- 5. ECONNREFUSED never occurs during the respawn window ------------
+        # --- 5. R1 invariant: REPEATED connect attempts during the respawn window
+        # never raise ECONNREFUSED (kernel backlog absorbs each new connection).
+        # Run the respawn in a background thread and hammer the endpoint from
+        # the main thread so every connect lands while the child is in-flight.
         endpoint = bridge.endpoint_uri()
-        port = _extract_port(endpoint)
+        connect_deadline = time.monotonic() + 8.0
+        _repeated_connects_during_respawn(bridge, endpoint, deadline=connect_deadline)
+
+        # --- 6. Queued connection served after respawn --------------------------
+        # The repeated-connect loop already performed one full restart cycle
+        # (restart_count is now 1). _queued_connection_served_after_respawn
+        # will find the child already alive and the restart_count already
+        # incremented — skip its own restart path but still verify the
+        # queued-connection-served invariant (a second health-check on an
+        # already-healthy child is a no-op; the queued socket from step 3
+        # is still open and will be served if we trigger one more restart).
+        bridge._inner.process.kill()
+        _wait_until_child_exits(bridge._inner.process, deadline=time.monotonic() + 3.0)
         _queued_connection_served_after_respawn(bridge, endpoint)
 
         # --- 8. child is alive again -------------------------------------------
@@ -191,6 +274,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
 
         # --- 9. final ECONNREFUSED check ----------------------------------------
         # After respawn: ECONNREFUSED must still be impossible
+        port = _extract_port(endpoint)
         probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         probe.settimeout(1.0)
         try:

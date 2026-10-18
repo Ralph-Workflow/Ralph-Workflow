@@ -123,6 +123,7 @@ def test_detached_head_resolves_branch_from_env(
     assert repo.active_branch.name == "feature-env"
 
 
+@pytest.mark.timeout_seconds(15)
 def test_repairable_git_state_stale_index_lock_repaired_and_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -131,7 +132,11 @@ def test_repairable_git_state_stale_index_lock_repaired_and_retried(
     work_file = tmp_path / "initial.txt"
     work_file.write_text("updated work", encoding="utf-8")
 
-    # Create stale index.lock with dead PID
+    # Create stale index.lock with dead PID. The age-gated recovery
+    # refuses to unlink locks younger than ``_STALE_GIT_LOCK_AGE_SECONDS``
+    # (10s) because the holder cannot be proven dead from the file
+    # contents alone, so backdate the mtime past the 10s threshold
+    # rather than waiting in the test body.
     git_dir = tmp_path / ".git"
     index_lock = git_dir / "index.lock"
     # Write stale index.lock (older than 10s age gate)

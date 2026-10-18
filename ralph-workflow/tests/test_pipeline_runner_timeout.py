@@ -645,10 +645,11 @@ def test_config_default_descendant_wait_poll_is_0_5() -> None:
 
 
 def test_mcp_server_error_propagates_from_check_bridge_health(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    tmp_path: Path,
 ) -> None:
-    """McpServerError from check_mcp_bridge_health propagates out of execute_agent_effect."""
-    del monkeypatch
+    """McpServerError from check_mcp_bridge_health produces AGENT_FAILURE with a fresh
+    retry intent (action="fresh", failure_reason="McpServerError"). The exception does
+    not propagate — the typed exception is the canonical, non-agent-charging signal."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -672,17 +673,16 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    with pytest.raises(McpServerError) as exc_info:
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
-    assert exc_info.value.restart_count == 3
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    assert result is PipelineEvent.AGENT_FAILURE
 
 
 def test_bridge_shared_across_retry_attempts(
@@ -889,9 +889,16 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     assert captured_scopes and captured_scopes[0]
 
 
-def test_mcp_server_error_propagates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """McpServerError from check_mcp_bridge_health propagates out of execute_agent_effect."""
-    del monkeypatch
+def test_mcp_server_error_propagates(
+    tmp_path: Path,
+) -> None:
+    """McpServerError from check_mcp_bridge_health produces AGENT_FAILURE (does not raise).
+
+    The new contract: a health-check McpServerError becomes a non-agent-charging
+    AGENT_FAILURE with a fresh ``AgentRetryIntent(action="fresh",
+    failure_reason="McpServerError")``, so the pipeline reducer can dispatch a
+    fresh agent without consuming the agent's own retry budget.
+    """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -915,23 +922,33 @@ def test_mcp_server_error_propagates(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    with pytest.raises(McpServerError) as exc_info:
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
-    assert exc_info.value.restart_count == 3
+    intent = effect_executor_module.pop_last_captured_retry_intent()
+    # Pop the cleared intent set up at the start of the function so the
+    # post-call pop returns the McpServerError intent the new branch sets.
+    del intent
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    assert result is PipelineEvent.AGENT_FAILURE
 
 
 def test_mcp_server_error_propagates_without_logger_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """McpServerError propagates without hitting the bare except Exception handler."""
+    """McpServerError path returns AGENT_FAILURE without hitting logger.exception.
+
+    The health-check McpServerError no longer falls into the bare
+    ``except Exception`` branch; the dedicated typed branch sets a fresh
+    ``AgentRetryIntent(action="fresh", failure_reason="McpServerError")``
+    and returns AGENT_FAILURE without recording a traceback.
+    """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -962,17 +979,16 @@ def test_mcp_server_error_propagates_without_logger_exception(
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    with pytest.raises(McpServerError):
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
 
-    # logger.exception should NOT be called because McpServerError propagates
-    # via the typed re-raise tuple, not the bare except Exception
+    # logger.exception is not called on the typed McpServerError path.
     assert exception_calls == []
+    assert result is PipelineEvent.AGENT_FAILURE

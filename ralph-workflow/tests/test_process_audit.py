@@ -43,6 +43,16 @@ ALLOWLIST: list[tuple[str, str]] = [
         "runs read-only sysctl -n kern.maxfiles with check=False and a 2s timeout; no shell, no user input",
     ),
     (
+        "git/operations.py",
+        "git lock liveness probe shells out to lsof and fuser with bounded "
+        "subprocess timeouts (see _PROBE_TIMEOUT_S) to verify the lock "
+        "holder is dead before unlinking; the calls are bounded, parent "
+        "blocks on .run() so no fd or process leaks, and the alternative "
+        "(calling ProcessManager) would couple the static AST-based "
+        "audit to a heavy infrastructure module that the bounded probe "
+        "deliberately avoids",
+    ),
+    (
         "mcp/explore/_bench_r6_metrics.py",
         "R6 benchmark harness spawns a fresh ``python -c`` subprocess to "
         "measure per-build peak RSS via /proc/self/status VmHWM; the parent "

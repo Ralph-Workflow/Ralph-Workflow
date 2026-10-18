@@ -47,6 +47,8 @@ from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.server.runtime import McpServerExtras, run_standalone_server
 from ralph.process.manager import SpawnOptions, get_process_manager
 
+pytestmark = pytest.mark.required_auto_integrate_e2e
+
 
 def test_real_deadline_is_preflight_minus_safety() -> None:
     """The real startup deadline equals preflight - _PROBE_SAFETY_S (28.0s at defaults).

@@ -66,6 +66,7 @@ from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
+    agent_retry_intent_for_failure,
     cleared_agent_retry_intent,
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
@@ -733,9 +734,17 @@ def _invoke_agent_with_recovery(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
             )
+    except McpServerError:
+        _set_last_captured_retry_intent(
+            agent_retry_intent_for_failure(
+                failure_reason="McpServerError",
+                session_id=None,
+                reset_tool_registry=False,
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
     except (
         McpConfigError,
-        McpServerError,
         OpenCodeResumableExitError,
         AgentInactivityTimeoutError,
         SupervisionInfrastructureError,

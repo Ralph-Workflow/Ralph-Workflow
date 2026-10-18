@@ -32,7 +32,7 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e]
 
 
 # ---------------------------------------------------------------------------

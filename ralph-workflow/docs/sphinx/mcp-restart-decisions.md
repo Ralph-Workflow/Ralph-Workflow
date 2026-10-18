@@ -28,7 +28,7 @@ The stream records two distinct shapes:
    - `exit_status`: OS exit status from `process.poll()` (for `process_exited`), or `null`.
    - `probe_duration_s`: wall-clock probe duration in seconds (for `probe_failed`), or `null`.
    - `log_tail`: list of up to 10 captured child log lines, or `null` if the log was unavailable.
-   - `stage`: the active startup or health stage label (e.g. `"ready_to_serve"`, `"registry_built"`, or `"process_exited"` / `"probe_failed"`).
+   - `stage`: always `"process_exited"` (when `reason` is `"process_exited"`) or `"probe_failed"` (when `reason` is `"probe_failed"`). The value records the restart trigger, **not** the child's startup-progress label. Startup-stage information for the child at decision time lives in the per-spawn stage file described in the next section. See `lifecycle.py:632-638`.
 
    The two restart reasons classify the restart trigger:
    - `PROCESS_EXITED` (`reason="process_exited"`) — the child process died
@@ -48,9 +48,12 @@ The stream records two distinct shapes:
    - `stage`: `"probe_deferred_contention"`.
 
    **Crucially, contention deferrals represent NO restart.** The bridge
-   detects that failure was driven by host resource starvation rather than a
-   wedged server, increments `deferral_count`, and defers restarting while
-   exponentially backing off probe timeouts up to the preflight ceiling.
+   detects a host-contention signal (e.g. an inotify watch-exhaustion event)
+   alongside a probe failure and *conservatively defers* the restart decision,
+   incrementing `deferral_count` and backing off probe timeouts. The signal
+   indicates the probe failed *in the presence of* contention, but does not
+   prove the failure was caused by host starvation rather than a wedged
+   server — the implementation cannot make that distinction.
 
 The table below summarizes what each record type proves:
 
@@ -59,7 +62,7 @@ The table below summarizes what each record type proves:
 | Did the child crash? | `reason == "process_exited"` | The child died; `exit_status` carries the OS exit code. |
 | Did the child hang? | `reason == "probe_failed"` | The child is alive but unresponsive; `probe_duration_s` is the wall-clock duration of the failed probe. |
 | Was a probe failure deferred under load? | `reason == "probe_deferred_contention"` | Host contention was detected; NO restart occurred. `deferral_count` tracks consecutive deferred misses. |
-| What was the child doing when the event was recorded? | `stage` | The stage label at decision time; for mid-startup crashes, the per-spawn stage file (see below) is the source of truth for the exact step reached. |
+| Why was the restart triggered? | `stage` | For restart decisions, `stage` is always `"process_exited"` or `"probe_failed"` — it records the restart trigger, not the child's startup step. For contention deferrals, `stage` is `"probe_deferred_contention"`. What the child was actually doing at decision time is answered by the per-spawn stage file (see below), not by the JSONL `stage` field. |
 
 ## Triage procedure on the next incident
 

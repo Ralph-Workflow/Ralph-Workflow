@@ -22,7 +22,10 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 from ralph.workspace import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
@@ -224,14 +227,14 @@ def _registry_factory(config: object) -> object:
     return _Registry()
 
 
-def test_invoke_agent_with_recovery_propagates_health_check_mcp_server_error(
+def test_invoke_agent_with_recovery_health_check_mcp_server_error_returns_agent_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_invoke_agent_with_recovery propagates a health-check ``McpServerError`` as a
-    typed exception (the new contract: McpServerError is re-raised by
-    ``execute_agent_effect`` so the classifier sees it as
-    ``FailureCategory.ENVIRONMENTAL, counted=False`` and the agent is
-    not charged). The old swallow-to-AGENT_FAILURE path is gone.
+    """A health-check ``McpServerError`` produces ``AGENT_FAILURE`` with
+    ``AgentRetryIntent(action='fresh', failure_reason='McpServerError')``.
+    ``logger.exception`` is NOT called, and the failure is classified as
+    ``FailureCategory.ENVIRONMENTAL, counted=False`` (environmental — not
+    agent-charging — is preserved by ``failure_classifier.py`` at line 1081-1082).
     """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -265,19 +268,30 @@ def test_invoke_agent_with_recovery_propagates_health_check_mcp_server_error(
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    with pytest.raises(McpServerError) as exc_info:
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
 
-    # The typed exception is the same instance the health check raised.
-    assert exc_info.value is original_error
-    # The bare ``except Exception`` branch was not taken, so
-    # ``logger.exception`` was never called.
+    # Contract: returns AGENT_FAILURE (not re-raise).
+    assert result is PipelineEvent.AGENT_FAILURE
+
+    # Contract: retry intent is fresh/McpServerError.
+    intent = effect_executor_module.pop_last_captured_retry_intent()
+    assert isinstance(intent, AgentRetryIntent)
+    assert intent.action == "fresh"
+    assert intent.failure_reason == "McpServerError"
+
+    # Contract: logger.exception was NOT called.
     assert exception_calls == []
+
+    # Contract: environmental classification is preserved (failure_classifier.py
+    # line 1081-1082 — must NOT be changed).
+    classified = FailureClassifier().classify(original_error, phase="development", agent="dev")
+    assert classified.category is FailureCategory.ENVIRONMENTAL
+    assert classified.counts_against_budget is False
