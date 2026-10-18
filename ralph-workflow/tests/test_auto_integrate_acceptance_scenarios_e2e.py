@@ -562,3 +562,175 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
         RebaseOutcomeKind.REMOTE_PUSHED,
         RebaseOutcomeKind.FAST_FORWARDED,
     )
+
+
+_SUBPROCESS_SCRIPT = """
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.rebase_state import RebaseOutcomeKind
+from ralph.workspace.scope import WorkspaceScope
+
+root = Path(sys.argv[1])
+unreachable_bare = Path(sys.argv[2])
+target = "release"
+remote = "tacos"
+
+subprocess.run(["git", "init", "-b", target, str(root)], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(root), "config", "user.name", "Test User"], check=True, capture_output=True)
+
+(root / "init.txt").write_text("initial commit\\n", encoding="utf-8")
+subprocess.run(["git", "-C", str(root), "add", "init.txt"], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(root), "commit", "-m", "init"], check=True, capture_output=True)
+
+subprocess.run(["git", "-C", str(root), "remote", "add", remote, str(unreachable_bare)], check=True, capture_output=True)
+
+(root / "feature.txt").write_text("feature advance\\n", encoding="utf-8")
+subprocess.run(["git", "-C", str(root), "add", "feature.txt"], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(root), "commit", "-m", "feature advance"], check=True, capture_output=True)
+
+local_sha = subprocess.run(
+    ["git", "-C", str(root), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+).stdout.strip()
+
+config = UnifiedConfig.model_validate({
+    "general": {
+        "auto_integrate_enabled": True,
+        "auto_integrate_target": target,
+        "auto_integrate_remote": remote,
+        "auto_integrate_remote_enabled": True,
+        "auto_integrate_remote_interval_seconds": 0.0,
+    }
+})
+
+state1 = recover_incomplete_integration(WorkspaceScope(root), config=config)
+if state1 is not None and state1.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED:
+    sys.stderr.write(f"UNEXPECTED_PUBLISHED_EARLY:{local_sha}\\n")
+    sys.exit(2)
+
+sys.stdout.write(f"DEFERRED:{local_sha}\\n")
+sys.stdout.flush()
+
+if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
+    sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
+    sys.exit(0)
+
+# Sleep for production retry interval (_wait_for_integration_retry's 5.0s)
+time.sleep(5)
+
+state2 = recover_incomplete_integration(WorkspaceScope(root), config=config)
+if state2 is not None and state2.last_outcome in (
+    RebaseOutcomeKind.REMOTE_PUSHED,
+    RebaseOutcomeKind.FAST_FORWARDED,
+):
+    sys.stdout.write(f"PUBLISHED:{local_sha}\\n")
+    sys.stdout.flush()
+    sys.exit(0)
+else:
+    sys.stderr.write(f"FAILED_SECOND_ITERATION:{state2}\\n")
+    sys.exit(1)
+"""
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(60)
+@pytest.mark.parametrize(
+    ("mode", "skip_second"),
+    [
+        ("positive", False),
+        ("negative_control", True),
+    ],
+)
+def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
+    tmp_path: Path, mode: str, skip_second: bool
+) -> None:
+    """AC8: production recovery entry point automatically retries and publishes once reachable."""
+    import os
+    import sys
+
+    repo = tmp_path / "repo"
+    unreachable_bare = tmp_path / "tacos_unreachable.git"
+    bare = tmp_path / "tacos.git"
+
+    env = os.environ.copy()
+    if skip_second:
+        env["DELIBERATELY_SKIP_SECOND_ITERATION"] = "1"
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), str(unreachable_bare)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    try:
+        assert proc.stdout is not None
+        deferred_line = proc.stdout.readline().strip()
+        assert deferred_line.startswith("DEFERRED:"), (
+            f"Expected DEFERRED: prefix, got: {deferred_line}"
+        )
+        local_sha = deferred_line.split(":", 1)[1]
+        assert len(local_sha) == 40
+
+        if skip_second:
+            _out, err = proc.communicate(timeout=15)
+            assert proc.returncode == 0
+            assert "SKIPPED_SECOND_ITERATION" in err
+            # Negative control proof: bare is never pushed to without retry
+            assert not bare.exists() or (
+                subprocess.run(
+                    ["git", "-C", str(bare), "rev-parse", "release"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout.strip()
+                != local_sha
+            )
+            return
+
+        # Bring remote bare online and seed it with parent commit
+        subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
+            check=True,
+            capture_output=True,
+        )
+        seed_sha = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD~1"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "-C", str(repo), "push", "tacos", f"{seed_sha}:refs/heads/release"],
+            check=True,
+            capture_output=True,
+        )
+
+        published_line = proc.stdout.readline().strip()
+        assert published_line == f"PUBLISHED:{local_sha}", (
+            f"Expected PUBLISHED:{local_sha}, got: {published_line}"
+        )
+
+        _out, err = proc.communicate(timeout=15)
+        assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
+
+        # Convergence proof: bare ref now points to local_sha
+        bare_sha = subprocess.run(
+            ["git", "-C", str(bare), "rev-parse", "release"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert bare_sha == local_sha
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()

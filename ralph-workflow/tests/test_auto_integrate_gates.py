@@ -8,6 +8,7 @@ and in-progress rebase/merge.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -909,3 +910,18 @@ def test_persisted_clean_evidence_over_live_dirty_tree_defers_to_live_tree(tmp_p
     assert planning_sync is not None
     assert planning_sync.last_action == "skipped"
     assert planning_sync.last_reason == readiness.blocking_reasons[0]
+
+
+# AC12 namespace guard: this assertion runs at module import AFTER
+# every function in this module has been defined. Renaming or moving
+# test_all_three_gates_agree_on_tree_state out of this module raises
+# AssertionError at collection, hiding the AC12 contract cannot pass
+# silently through a refactor.
+_ac12_self_module = sys.modules[__name__]
+assert hasattr(_ac12_self_module, "test_all_three_gates_agree_on_tree_state"), (
+    "AC12 three-gates-agree test missing from test_auto_integrate_gates.py; "
+    "moving or renaming this test hides the AC12 contract from the default profile."
+)
+assert callable(_ac12_self_module.test_all_three_gates_agree_on_tree_state), (
+    "AC12 three-gates-agree attribute exists but is not callable; expected a test function."
+)
