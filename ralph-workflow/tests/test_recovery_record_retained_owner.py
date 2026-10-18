@@ -10,10 +10,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.pipeline.rebase_state import (
     RebaseState,
     StartupRetentionReason,
 )
+
+# Audit-style file scans: allow extra headroom under shard load so the
+# budget-shaped SIGALRM does not flake the same scan the other audit
+# tests in this codebase already permit (see
+# ``tests/test_audit_workspace_resource_inventory.py`` for the same
+# precedent). The contract being verified is unchanged: per-file bytes
+# pre-filter then a one-shot per-line check.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_PIPELINE = Path(__file__).resolve().parent.parent / "ralph" / "pipeline"
 
