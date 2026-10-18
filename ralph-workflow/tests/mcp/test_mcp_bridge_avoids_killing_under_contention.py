@@ -394,3 +394,47 @@ def test_sustained_contention_writes_durable_sink_records(tmp_path: pathlib.Path
         assert record["deferral_count"] == idx
         assert isinstance(record["probe_duration_s"], (float, int))
         assert record["probe_duration_s"] >= 0.0
+
+
+def test_sustained_contention_60_failures_no_overflow_no_restart() -> None:
+    """60+ immediate contention probe failures never overflow or restart.
+
+    Regression for D-04: a live child kept under sustained host contention
+    would previously raise OverflowError from ``timedelta * 2**N`` once
+    the deferral count crossed ~44, tearing down the health-check path
+    instead of being safely deferred. After the exponent cap, the bridge
+    must keep deferring, observe no exception, and emit zero restarts
+    even past 60 deferrals.
+    """
+    observed_timeouts: list[float] = []
+
+    def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
+        observed_timeouts.append(timeout.total_seconds())
+        raise RuntimeError("probe failed")
+
+    inner = _make_inner(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None),
+        restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
+        run_id="test-sustained-60",
+        probe_fn=always_fail_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=5.0),
+        preflight_timeout_fn=lambda: timedelta(seconds=30.0),
+        contention_signal_producer=lambda: True,
+    )
+
+    # Probe 70 times under sustained fresh contention; no exception, no restart.
+    for _ in range(70):
+        restarted = bridge.check_health_and_restart_if_needed()
+        assert restarted is False
+
+    assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 70
+
+    # Every observed probe timeout must be bounded by the ceiling
+    # (preflight - 1s = 29s; with base_timeout=5s the ceiling is max(5, 29) = 29s).
+    assert observed_timeouts, "probe was never called"
+    assert all(0.0 < t <= 29.0 for t in observed_timeouts), (
+        f"observed probe timeout out of bounds: {observed_timeouts}"
+    )

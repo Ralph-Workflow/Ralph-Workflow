@@ -117,31 +117,25 @@ def test_absent_inherited_fd_falls_back_to_fresh_bind(tmp_path: Path) -> None:
         server_thread.join(timeout=5.0)
 
 
-def test_empty_inherited_fd_falls_back_to_fresh_bind(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV is empty string, the server binds freshly without error."""
+def test_empty_inherited_fd_fails_closed(tmp_path: Path) -> None:
+    """When MCP_INHERITED_FD_ENV is set but blank, the server fails closed.
+
+    A parent bridge that promised an inherited listening FD and handed
+    us a blank string has lost its endpoint contract: silently falling
+    back to a fresh bind would reintroduce the ECONNREFUSED window
+    R1 eliminates. The only safe behavior is a typed ``McpServerError``
+    with ``last_stage="fd_inherit_failed"``. The absent-variable
+    fallback (no env var at all) is preserved by a separate test.
+    """
     env = _setup_session(tmp_path)
     env[MCP_INHERITED_FD_ENV] = ""
 
-    ready_event = threading.Event()
-    stop_event = threading.Event()
+    with pytest.raises(McpServerError) as exc_info:
+        run_standalone_server(tmp_path, env=env, port=0)
 
-    def _run() -> None:
-        run_standalone_server(
-            tmp_path,
-            ready_event=ready_event,
-            stop_event=stop_event,
-            port=0,
-            env=env,
-        )
-
-    server_thread = threading.Thread(target=_run, daemon=True)
-    server_thread.start()
-
-    try:
-        assert ready_event.wait(timeout=10.0), "server failed to bind and become ready"
-    finally:
-        stop_event.set()
-        server_thread.join(timeout=5.0)
+    err = exc_info.value
+    assert err.last_stage == "fd_inherit_failed"
+    assert read_last_stage(tmp_path) == "fd_inherit_failed"
 
 
 def test_valid_inherited_fd_is_adopted_successfully(tmp_path: Path) -> None:
@@ -203,6 +197,45 @@ def test_real_subprocess_invalid_inherited_fd_fails_closed(tmp_path: Path) -> No
             "0",
         ],
         SpawnOptions(cwd=str(tmp_path), env=child_env, label="mcp-invalid-fd-child"),
+    )
+
+    rc = proc.wait(timeout=15)
+    assert rc != 0, f"child process should have failed, but exited with {rc}"
+    recorded = read_last_stage(tmp_path, spawn_id=spawn_id)
+    assert recorded == "fd_inherit_failed"
+
+
+@pytest.mark.timeout_seconds(20)
+@pytest.mark.subprocess_e2e
+def test_real_subprocess_empty_inherited_fd_fails_closed(tmp_path: Path) -> None:
+    """A real child subprocess with empty RALPH_MCP_INHERITED_FD fails closed end-to-end.
+
+    Regression for D-01: a parent bridge that promised an inherited
+    listening FD and handed the child a blank string must surface
+    typed ``McpServerError`` (last_stage="fd_inherit_failed") rather
+    than silently rebind and reintroduce the ECONNREFUSED window R1
+    eliminates. The real subprocess path proves the typed error
+    reaches the parent's pipe as a non-zero exit, matching the
+    in-process contract asserted by ``test_empty_inherited_fd_fails_closed``.
+    """
+    spawn_id = str(uuid.uuid4())
+    env = _setup_session(tmp_path)
+    child_env = dict(os.environ)
+    child_env.update(env)
+    child_env[MCP_INHERITED_FD_ENV] = ""
+    child_env[MCP_STAGE_ID_ENV] = spawn_id
+
+    proc = get_process_manager().spawn(
+        [
+            sys.executable,
+            "-m",
+            "ralph.mcp.server",
+            "--workspace",
+            str(tmp_path),
+            "--port",
+            "0",
+        ],
+        SpawnOptions(cwd=str(tmp_path), env=child_env, label="mcp-empty-fd-child"),
     )
 
     rc = proc.wait(timeout=15)

@@ -99,6 +99,15 @@ if TYPE_CHECKING:
 # fired. The error message MUST contain the substring
 # 'tool-registry-reset exhausted' so the orchestrator can branch on it.
 _TOOL_REGISTRY_MAX_RESETS: int = 3
+# Hard cap on the exponent for the sustained-contention probe-timeout
+# backoff. A live child kept deferring past this cap would otherwise
+# raise ``OverflowError`` from ``timedelta * 2**N`` and tear down the
+# health-check path — the exact incident class. The cap is far past
+# the realistic ceiling (the timeout is min'd against the preflight
+# ceiling below, so any exponent above ~10 already saturates the
+# observable probe timeout). 32 keeps 2**N < 2**32 = 4.3e9, well
+# below the timedelta microsecond range.
+_PROBE_TIMEOUT_EXPAWN_CAP: int = 32
 
 
 def _restart_error_fields(exc: BaseException) -> tuple[str | None, float | None]:
@@ -526,7 +535,15 @@ class RestartAwareMcpBridge:
             else mcp_preflight_timeout_from_env()
         )
         ceiling: timedelta = max(base_timeout, preflight_timeout - timedelta(seconds=1.0))
-        multiplier: int = 2**self._consecutive_probe_failures_deferred
+        # Cap the exponent so the timedelta multiply cannot overflow at very
+        # high deferral counts (sustained host contention: a live child kept
+        # deferring past 2**31 would otherwise raise ``OverflowError`` and
+        # tear down the health-check path). The cap is far past the
+        # realistic ceiling anyway: probe timeout is min'd against the
+        # ``ceiling`` below, so anything above ~2**10 already saturates.
+        deferred_count = max(0, self._consecutive_probe_failures_deferred)
+        safe_exponent = min(deferred_count, _PROBE_TIMEOUT_EXPAWN_CAP)
+        multiplier: int = 2**safe_exponent
         probe_timeout: timedelta = min(base_timeout * multiplier, ceiling)
         probe_start = time.monotonic()
         try:

@@ -100,8 +100,20 @@ def _adopt_inherited_socket(
     if MCP_INHERITED_FD_ENV not in env_map:
         return None
     inherited_fd_raw = env_map[MCP_INHERITED_FD_ENV].strip()
+    # Fail closed on a present-but-empty descriptor: a parent bridge that
+    # promised an inherited FD and handed us a blank string has lost its
+    # endpoint contract. Silently falling back to a fresh bind would
+    # reintroduce the ECONNREFUSED window R1 eliminates, so the only
+    # safe behavior is to raise a typed McpServerError naming the failure.
     if not inherited_fd_raw:
-        return None
+        stage_fn("fd_inherit_failed")
+        raise McpServerError(
+            "inherited listening FD is empty: parent bridge handed a blank "
+            "descriptor; cannot bind a fresh endpoint without breaking R1",
+            restart_count=0,
+            last_stage="fd_inherit_failed",
+            elapsed_s=clock_fn() - t0,
+        )
     if not inherited_fd_raw.isdigit():
         stage_fn("fd_inherit_failed")
         raise McpServerError(

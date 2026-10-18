@@ -112,17 +112,20 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
 
     # Build a clean env: no PYTHONUNBUFFERED, no PYTHONIOENCODING, and
     # no RALPH_MCP_INHERITED_FD (this is a fresh CLI invocation, not a
-    # bridge-managed respawn on an inherited FD). PYTHONHASHSEED=0
-    # keeps the env deterministic for any code that hashes by accident.
-    # Pass an explicit stage_id via RALPH_MCP_STAGE_ID so parent and
-    # child address the same stage file.
+    # bridge-managed respawn on an inherited FD). A present-but-blank
+    # RALPH_MCP_INHERITED_FD would now fail closed (see
+    # ``_reserved_socket._adopt_inherited_socket`` and the paired test
+    # ``test_empty_inherited_fd_fails_closed``), so we leave the variable
+    # absent entirely and let the child take the fresh-bind fallback.
+    # PYTHONHASHSEED=0 keeps the env deterministic for any code that
+    # hashes by accident. Pass an explicit stage_id via RALPH_MCP_STAGE_ID
+    # so parent and child address the same stage file.
     env = {
         key: value
         for key, value in os.environ.items()
         if key not in {"PYTHONUNBUFFERED", "PYTHONIOENCODING", "RALPH_MCP_INHERITED_FD"}
     }
     env["PYTHONHASHSEED"] = "0"
-    env["RALPH_MCP_INHERITED_FD"] = ""
     env["RALPH_MCP_STAGE_ID"] = stage_id
 
     # The child is the real production CLI: ``python -m ralph.mcp.server``.
