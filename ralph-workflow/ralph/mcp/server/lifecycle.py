@@ -48,6 +48,8 @@ from ralph.mcp.server._http_tools_list import (
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._mcp_health_event import (
     RestartReason,
+    current_host_is_contended,
+    pop_recent_host_contention_signals,
 )
 from ralph.mcp.server._mcp_health_event import (
     configure_bridge_sink as _configure_bridge_sink,
@@ -275,6 +277,7 @@ class RestartAwareMcpBridge:
         activity_relay: ActivityRelay | None = None,
         sleep_fn: Callable[[float], object] | None = None,
         workspace_root: Path | None = None,
+        contention_signal_producer: Callable[[], bool] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -325,6 +328,29 @@ class RestartAwareMcpBridge:
         # sink file. Set by start_mcp_server; never cleared on shutdown
         # so evidence is retained after bridge shutdown for incident triage.
         self._durable_sink_path: Path | None = None
+        # R3 host-contention guard: consecutive probe-failures deferred
+        # because a fresh workspace-monitor ``watch_capacity_predicted``
+        # signal (or a producer-injected signal) suggests the host is
+        # saturated, not the server. Reset on every successful probe.
+        # Independent of ``_consecutive_probe_failures`` so a regular
+        # three-miss policy still applies when no contention signal is
+        # present.
+        self._consecutive_probe_failures_deferred: int = 0
+        # Test seam: a callable that returns True when the host is
+        # currently under contention. Production calls
+        # ``current_host_is_contended`` (the default) so the bounded
+        # /proc reader is exercised. ``None`` means "use the default
+        # production probe".
+        self._contention_signal_producer: Callable[[], bool] | None = contention_signal_producer
+        # Sliding window (seconds) for ``watch_capacity_predicted``
+        # signals. Read from the policy when present; default 10.0 s
+        # when the policy is a mock or predates the field.
+        window_attr: object = getattr(restart_policy, "host_contention_window_seconds", 10.0)
+        self._host_contention_window_seconds: float = (
+            float(window_attr)
+            if isinstance(window_attr, (int, float)) and not isinstance(window_attr, bool)
+            else 10.0
+        )
 
     @property
     def run_id(self) -> str:
@@ -471,7 +497,7 @@ class RestartAwareMcpBridge:
             lines.pop()  # trailing newline, not a line of content
         return tuple(lines[-_LOG_TAIL_LINES:])
 
-    def check_health_and_restart_if_needed(self) -> bool:
+    def check_health_and_restart_if_needed(self) -> bool:  # noqa: PLR0912 — see audit_lint_bypass._NOQA_ALLOWLIST
         """Check if MCP server is alive and responsive; restart if not.
 
         Treats the bridge as unhealthy when either (a) the subprocess has exited
@@ -509,9 +535,60 @@ class RestartAwareMcpBridge:
                     probe_duration_s = time.monotonic() - probe_start
 
             if probe_failed:
-                self._consecutive_probe_failures += 1
+                # R3 host-contention guard: consult BOTH signals
+                # (workspace-monitor ``watch_capacity_predicted`` deque
+                # + a producer-injected B-signal). When either is
+                # fresh, the probe miss is likely a load artifact, not
+                # a server fault, so DEFER instead of counting toward
+                # the regular 3-miss restart policy. The deferral is
+                # bounded by ``max_contention_deferrals``; once the
+                # budget is exhausted the guard yields back to the
+                # existing restart path.
+                fresh_w_signal = bool(
+                    pop_recent_host_contention_signals(self._host_contention_window_seconds)
+                )
+                producer = self._contention_signal_producer or current_host_is_contended
+                try:
+                    fresh_b_signal = bool(producer())
+                except Exception:
+                    # Producer raised — a blocked /proc reader, a stale
+                    # mock. Treat as no fresh signal; the existing
+                    # restart path stays in charge.
+                    fresh_b_signal = False
+                fresh_contention = fresh_w_signal or fresh_b_signal
+                if fresh_contention:
+                    self._consecutive_probe_failures_deferred += 1
+                    if (
+                        self._consecutive_probe_failures_deferred
+                        > self._restart_policy.max_contention_deferrals
+                    ):
+                        # Guard YIELDS: deferral budget exhausted,
+                        # fall through to the existing restart path.
+                        # Reset the deferred counter (restart signals
+                        # "host contention is over" for accounting
+                        # purposes). Charge the regular probe-failure
+                        # counter to the restart threshold so the
+                        # existing ``< _PROBE_FAILURES_BEFORE_RESTART``
+                        # branch passes through to the restart below.
+                        self._consecutive_probe_failures_deferred = 0
+                        self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART
+                        # FALL THROUGH to the restart branch below
+                    else:
+                        logger.debug(
+                            "MCP server probe failed with fresh contention signal; deferring restart "
+                            "(deferred={}/{}, w={}, b={})",
+                            self._consecutive_probe_failures_deferred,
+                            self._restart_policy.max_contention_deferrals,
+                            fresh_w_signal,
+                            fresh_b_signal,
+                        )
+                        return False
+                else:
+                    self._consecutive_probe_failures += 1
             else:
+                # Successful probe: BOTH counters reset.
                 self._consecutive_probe_failures = 0
+                self._consecutive_probe_failures_deferred = 0
 
             if not process_exited and not probe_failed:
                 return False

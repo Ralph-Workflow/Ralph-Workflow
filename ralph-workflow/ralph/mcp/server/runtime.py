@@ -34,9 +34,11 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import os
 import socket
 import stat
+import sys
 import threading
 import time
 import uuid
@@ -721,6 +723,28 @@ def run_standalone_server(
         _log_and_record_stage(workspace_root, name)
 
     _stage("env_loaded")
+
+    # WU-B: switch the child's stdio to line-buffered so the listening
+    # banner (``_fallback_standalone_server.py``) and every other
+    # stdout line reaches the parent's pipe even when the parent did
+    # NOT pre-set ``PYTHONUNBUFFERED`` (the W4 regression: setting
+    # ``PYTHONUNBUFFERED`` inside the already-running child cannot
+    # reconfigure its own stdio, and the parent sometimes forgets).
+    # A closed/redirected stream raises ``ValueError`` from
+    # ``reconfigure``; treat it as a no-op so embedded callers and
+    # the test suite do not need a live tty.
+    with contextlib.suppress(ValueError, AttributeError, OSError):
+        # ``sys.stdout`` is typed ``TextIO | Any`` by mypy; ``reconfigure``
+        # is a runtime method on the concrete text stream class, not on
+        # the ``TextIO`` ABC, so the type stub does not declare it.
+        # Use a ``getattr`` so the call is dynamic and a non-text
+        # stream (e.g. a captured/redirected one) returns ``None``
+        # instead of raising ``AttributeError`` (the suppress handles
+        # the ValueError that ``reconfigure`` raises on a closed
+        # stream).
+        reconfigure_fn: object = getattr(sys.stdout, "reconfigure", None)
+        if callable(reconfigure_fn):
+            reconfigure_fn(line_buffering=True)
 
     protect_broker_secret()
     sanitize_process_environment()

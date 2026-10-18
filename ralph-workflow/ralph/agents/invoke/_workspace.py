@@ -285,6 +285,14 @@ class WorkspaceMonitor:
                 logger.warning(
                     "Workspace monitoring unavailable: predicted watch count exceeds host budget"
                 )
+                try:
+                    from ralph.mcp.server._mcp_health_event import record_host_contention_signal
+
+                    record_host_contention_signal("watch_capacity_predicted")
+                except (
+                    Exception
+                ):  # bounded-accumulator-ok: workspace monitor must not fail on a sink import
+                    pass
                 return
             if not self._acquire_cross_process_watch_lock():
                 return

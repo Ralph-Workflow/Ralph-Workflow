@@ -27,6 +27,7 @@ import hashlib
 import json
 import re
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -297,14 +298,85 @@ def configure_bridge_sink(root: Path, bridge_id: str) -> Path:
     return sink_path
 
 
+#: Module-level FIFO for cross-process host-contention signals. Workspace
+#: monitor pushes (timestamp, reason) on watch-budget warnings; bridge
+#: pops the recent window. Capped so the deque never grows under load.
+# bounded-accumulator-ok: cap=64
+_HOST_CONTENTION_SIGNALS: deque[tuple[float, str]] = deque(maxlen=64)
+
+#: Default ratio at or above which the current host is considered
+#: contended. 0.85 = 85% of the inotify watch budget consumed. Bound
+#: strictly below 1.0 so a saturated-but-not-fully-over host still
+#: registers as contended.
+CONTENDED_WATCH_RATIO: float = 0.85
+
+# Import-time invariant
+if not (0.0 < CONTENDED_WATCH_RATIO < 1.0):
+    raise RuntimeError(f"CONTENDED_WATCH_RATIO must be in (0.0, 1.0) (got {CONTENDED_WATCH_RATIO})")
+
+
+def record_host_contention_signal(reason: str) -> None:
+    """Append (now, reason) to the contention-signal deque."""
+    _HOST_CONTENTION_SIGNALS.append((time.monotonic(), reason))
+
+
+def pop_recent_host_contention_signals(window_s: float) -> tuple[tuple[float, str], ...]:
+    """Return all signals whose timestamp is within ``window_s`` of now.
+
+    Signals are NOT removed — the deque is bounded at 64 entries. The
+    bridge consults the WINDOW, not the deque length.
+    """
+    now = time.monotonic()
+    return tuple((ts, reason) for ts, reason in _HOST_CONTENTION_SIGNALS if now - ts <= window_s)
+
+
+def _clear_host_contention_signals() -> None:
+    """Test-only: clear the deque. Not for production use."""
+    _HOST_CONTENTION_SIGNALS.clear()
+
+
+def current_host_is_contended(
+    *,
+    budget_seconds: float = 1.0,
+) -> bool:
+    """Return whether the host is currently under watch-budget pressure.
+
+    Bounded — the underlying kernel data reads run via
+    :func:`ralph.agents.invoke._watch_capacity.call_within_budget` with
+    a default 1.0s budget. A blocked reader (e.g. uninterruptible
+    sleep on a /proc/<pid>/fdinfo scan) times out and returns False
+    within the budget; the bridge is NEVER held while /proc is read.
+    """
+    from ralph.agents.invoke._watch_capacity import (  # noqa: PLC0415 — lazy import avoids a circular dependency with ralph.agents.invoke
+        _read_inotify_watch_limit,
+        _read_inotify_watch_user_total,
+        call_within_budget,
+    )
+
+    def _probe() -> bool:
+        limit = _read_inotify_watch_limit()
+        if limit is None or limit <= 0:
+            return False
+        total = _read_inotify_watch_user_total()
+        if total is None:
+            return False
+        return (total / limit) >= CONTENDED_WATCH_RATIO
+
+    return call_within_budget(_probe, fallback=False, budget_seconds=budget_seconds)
+
+
 __all__ = [
+    "CONTENDED_WATCH_RATIO",
     "RestartDecision",
     "RestartReason",
     "clear_durable_sink",
     "configure_bridge_sink",
+    "current_host_is_contended",
     "get_durable_sink_path",
     "get_restart_decisions",
+    "pop_recent_host_contention_signals",
     "read_durable_sink",
+    "record_host_contention_signal",
     "record_restart_decision",
     "record_stage",
     "set_durable_sink_path",

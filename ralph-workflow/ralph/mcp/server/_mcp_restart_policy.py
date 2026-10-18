@@ -33,7 +33,31 @@ class McpRestartPolicy:
     # (``AgentInvocationError`` retries, not MCP restarts) and is not
     # touched here.
     cooldown_seconds: float = 2.0
+    # Sliding window (seconds) within which workspace-monitor
+    # ``watch_capacity_predicted`` signals are treated as fresh for
+    # the bridge's host-contention guard.  Default 10.0 s — long
+    # enough to cover a single probe-miss burst under load without
+    # leaking stale state across recovery cycles.  Bounded strictly
+    # above 6.0 s below so a future regression that drops it to a
+    # value that risks eating probe-budget timeout windows trips
+    # here.
+    host_contention_window_seconds: float = 10.0
+    # Maximum consecutive probe-failures deferred under a fresh
+    # host-contention signal before the guard yields to the existing
+    # restart path.  Default 3 — the same magnitude as the regular
+    # 3-miss restart budget, so a contended host gets the same
+    # affordance as a non-contended one.  Capped in [1, 10] below.
+    max_contention_deferrals: int = 3
 
+
+#: Lower bound for the host-contention window. Must be strictly above
+#: the production probe timeout (6.0 s) so a contended probe-miss
+#: burst fits inside the window.
+_HOST_CONTENTION_WINDOW_MIN_S: float = 6.0
+#: Inclusive lower bound for the contention-deferral budget.
+_MAX_CONTENTION_DEFERRALS_MIN: int = 1
+#: Inclusive upper bound for the contention-deferral budget.
+_MAX_CONTENTION_DEFERRALS_MAX: int = 10
 
 # Import-time invariants pin the named positive production floor for
 # ``cooldown_seconds``. ``if``/``raise RuntimeError`` (NOT ``assert``)
@@ -49,6 +73,23 @@ if not _DEFAULT_COOLDOWN_SECONDS > 0:
 if not _DEFAULT_MAX_RESTARTS > 0:
     raise RuntimeError(
         f"McpRestartPolicy.max_restarts default must be positive (got {_DEFAULT_MAX_RESTARTS})"
+    )
+_DEFAULT_HOST_CONTENTION_WINDOW_S: float = McpRestartPolicy.host_contention_window_seconds
+_DEFAULT_MAX_CONTENTION_DEFERRALS: int = McpRestartPolicy.max_contention_deferrals
+if not _DEFAULT_HOST_CONTENTION_WINDOW_S > _HOST_CONTENTION_WINDOW_MIN_S:
+    raise RuntimeError(
+        f"McpRestartPolicy.host_contention_window_seconds default must be > "
+        f"{_HOST_CONTENTION_WINDOW_MIN_S}s (got {_DEFAULT_HOST_CONTENTION_WINDOW_S})"
+    )
+if not (
+    _MAX_CONTENTION_DEFERRALS_MIN
+    <= _DEFAULT_MAX_CONTENTION_DEFERRALS
+    <= _MAX_CONTENTION_DEFERRALS_MAX
+):
+    raise RuntimeError(
+        f"McpRestartPolicy.max_contention_deferrals default must be in "
+        f"[{_MAX_CONTENTION_DEFERRALS_MIN}, {_MAX_CONTENTION_DEFERRALS_MAX}] "
+        f"(got {_DEFAULT_MAX_CONTENTION_DEFERRALS})"
     )
 
 

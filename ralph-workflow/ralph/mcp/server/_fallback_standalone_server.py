@@ -174,7 +174,17 @@ class _FallbackStandaloneServer:
             on_ready()
         if ready_event is not None:
             ready_event.set()
-        print(f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}")
+        # WU-B: the banner MUST reach the parent's pipe even when the
+        # parent did not pre-set ``PYTHONUNBUFFERED``. The runtime
+        # additionally reconfigures ``sys.stdout`` to line-buffered on
+        # the env_loaded path; this explicit ``flush=True`` is the
+        # backstop for any caller that hits the print site before the
+        # reconfigure (e.g. embedded test use) or with stdout attached
+        # to a fully-buffered block-buffered pipe.
+        print(
+            f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}",
+            flush=True,
+        )
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
         finally:
