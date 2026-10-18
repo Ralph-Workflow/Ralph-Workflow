@@ -1501,7 +1501,31 @@ def _handle_commit_failure(
         recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)
         if recovery_phase is not None:
             failure_reason = last_error or commit_failure_reason(state)
-            next_epoch = cleared_state.recovery_epoch + 1
+            # Cap-enforcement (AC-11 / WU-3): the bounded
+            # ``recovery_epoch`` counter is the durable stop-the-line
+            # for the cleanup loop. When the next increment would
+            # exceed the declared cap, the epoch is clamped at the
+            # cap and a clear exhaustion event is logged; routing
+            # still goes to the policy's automated commit-recovery
+            # phase (the distinct resolver), never to
+            # ``failed_terminal`` for a repairable Git state. The
+            # repairable failure is therefore never turned into a
+            # terminal one by the cap itself.
+            current_epoch = cleared_state.recovery_epoch
+            raw_next_epoch = current_epoch + 1
+            if raw_next_epoch > _MAX_COMMIT_RECOVERY_ATTEMPTS:
+                bounded_epoch = _MAX_COMMIT_RECOVERY_ATTEMPTS
+                logger.bind(component="policy.routing").warning(
+                    "commit-recovery counter exhausted (epoch={}, cap={}); "
+                    "clamping epoch and routing to the policy's automated "
+                    "recovery phase ({}) -- the repairable failure is "
+                    "preserved, not escalated to failed_terminal",
+                    current_epoch,
+                    _MAX_COMMIT_RECOVERY_ATTEMPTS,
+                    recovery_phase,
+                )
+            else:
+                bounded_epoch = raw_next_epoch
             logger.bind(component="policy.routing").info(
                 explain_routing_decision(
                     cleared_state.phase,
@@ -1516,7 +1540,7 @@ def _handle_commit_failure(
             )
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
                 last_error=failure_reason,
-                recovery_epoch=next_epoch,
+                recovery_epoch=bounded_epoch,
                 pending_cycle_outcome=None,
             )
             return new_state, []

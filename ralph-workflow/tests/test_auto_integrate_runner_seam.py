@@ -174,7 +174,7 @@ def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> No
     monkeypatch.setattr(
         boundary,
         "_reconcile_remote_publication",
-        lambda _config, root, _target: called.append(root) or RebaseState(),
+        lambda _config, root, _target, **_kwargs: called.append(root) or RebaseState(),
     )
 
     boundary.boundary_freshness_outcome(

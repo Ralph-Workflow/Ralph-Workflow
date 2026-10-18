@@ -248,9 +248,31 @@ def _branch_from_worktree_metadata(repo_root: Path) -> str | None:
 
 
 def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
+    # Authoritative-source-first ordering (AC-10 / WU-2): the
+    # reflog and worktree metadata describe what branch the user
+    # was actually on before the detach; the integration target is
+    # the weakest signal (it is the *destination* of a successful
+    # integration, not the work's source branch). The previous
+    # order yielded ``config.general.auto_integrate_target`` (the
+    # integration target) before the reflog, which caused the
+    # resolver to commit work on the integration target instead of
+    # the feature branch when both tips happened to coincide after
+    # a reset/snapshot. The reflog-derived branch now wins in that
+    # shared-tip case; the integration target is the last-resort
+    # config fallback. ``detached_branch_name`` (the .git/HEAD
+    # residual) is still first; ``repo_root.name`` is the last
+    # fallback.
     branch = detached_branch_name(repo_root)
     if branch:
         yield branch
+
+    from_reflog = _detached_branch_from_reflog(repo_root)
+    if from_reflog:
+        yield from_reflog
+
+    from_wt = _branch_from_worktree_metadata(repo_root)
+    if from_wt:
+        yield from_wt
 
     for key in ("branch", "feature_branch", "target_branch"):
         val = opts.get(key)
@@ -269,14 +291,6 @@ def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
                 gen_val: object = getattr(general_obj, general_attr, None)
                 if isinstance(gen_val, str) and gen_val.strip():
                     yield gen_val.strip()
-
-    from_reflog = _detached_branch_from_reflog(repo_root)
-    if from_reflog:
-        yield from_reflog
-
-    from_wt = _branch_from_worktree_metadata(repo_root)
-    if from_wt:
-        yield from_wt
 
     yield repo_root.name
 

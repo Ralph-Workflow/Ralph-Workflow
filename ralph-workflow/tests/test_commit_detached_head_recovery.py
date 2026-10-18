@@ -203,17 +203,25 @@ def test_exhausted_commit_failure_routes_to_automated_recovery_not_terminal() ->
     The bounded counter protects against an infinite recovery loop
     but MUST NOT turn a repairable failure into a terminal one:
     Ralph owns the recovery path. The repairable failure is routed
-    to the policy's commit-recovery phase even when the counter
-    is exhausted. The counter is still incremented so any failure
-    pattern that depends on it for safety continues to function.
+    to the policy's commit-recovery phase (the distinct automated
+    resolver) even when the counter is exhausted. Once the raw
+    next increment would exceed the declared cap, the epoch is
+    clamped at the cap and the recovery phase is still invoked.
     The phase display MUST NOT report 'completed' for a commit
-    that failed.
+    that failed and the route MUST NEVER be ``failed_terminal``
+    for a repairable Git state.
     """
+    # Hardcoded mirror of ``ralph.pipeline.reducer._MAX_COMMIT_RECOVERY_ATTEMPTS``
+    # (= 3). The reducer is the only owner of that cap; the test pins the
+    # boundary so a runtime cap bump is a deliberate, single-site change.
+    # Importing the private symbol would re-anchor a private-ralph import
+    # this test does not need.
+    cap = 3
     policy = _load_pipeline_policy()
-    # When recovery epoch is already 3 (exhausted)
+    # When recovery epoch is already at the cap (exhausted).
     state = PipelineState(
         phase="development_commit",
-        recovery_epoch=3,
+        recovery_epoch=cap,
         pending_cycle_outcome="completed",
         last_error="repeated commit failure",
     )
@@ -221,18 +229,18 @@ def test_exhausted_commit_failure_routes_to_automated_recovery_not_terminal() ->
     try:
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Bounded counter exhausted, but a repairable failure is still
-        # routed to the policy's commit-recovery phase. The phase must
-        # NEVER be failed_terminal for a repairable commit failure, and
-        # the phase display must NOT report 'completed' for a commit
-        # that failed.
+        # The phase must NEVER be failed_terminal for a repairable
+        # commit failure, and the phase display must NOT report
+        # 'completed' for a commit that failed.
         assert next_state.phase != "failed_terminal"
         assert next_state.phase in (
             "commit_recovery",
             "development_commit_cleanup",
         )
         assert next_state.pending_cycle_outcome is None
-        # The counter still ticks (next attempt is the next epoch).
-        assert next_state.recovery_epoch == 4
+        # The counter is bounded: once the next increment would
+        # exceed the cap, the epoch is clamped at the cap rather
+        # than growing past it.
+        assert next_state.recovery_epoch == cap
     finally:
         set_last_commit_error(None)

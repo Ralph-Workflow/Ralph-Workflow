@@ -169,7 +169,13 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
         lambda: observer,
     )
     workspace = FsWorkspace(Path("/virtual-ws"), backend=backend)
-    monitor = WorkspaceMonitor(Path("/virtual-ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/virtual-ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
     workspace.write("artifacts/result.txt", "alpha")
@@ -238,8 +244,20 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
         lambda: next(observers),
     )
 
-    first_monitor = WorkspaceMonitor(Path("/virtual-ws"), classifier=WorkspaceChangeClassifier())
-    second_monitor = WorkspaceMonitor(Path("/virtual-ws"), classifier=WorkspaceChangeClassifier())
+    first_monitor = WorkspaceMonitor(
+        Path("/virtual-ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
+    second_monitor = WorkspaceMonitor(
+        Path("/virtual-ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     first_monitor.start()
     second_monitor.start()
 

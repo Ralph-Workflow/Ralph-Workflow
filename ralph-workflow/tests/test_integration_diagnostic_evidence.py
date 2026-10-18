@@ -150,11 +150,10 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     # 1. Empty evidence + empty ownership -> UNCHANGED (nothing to hold)
     assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
 
-    # 2. Unparseable lease -> UNKNOWN (fail-open auto-release)
-    # The previous-shape fingerprint string is not authoritative; the
-    # record's evidence is no longer trusted. The caller treats
-    # UNKNOWN as "auto-release and re-derive from Git", which is the
-    # O1 contract for state left by an older or pre-fix version.
+    # 2. Unparseable lease -> CHANGED (the sole operator-escalation
+    # path for a non-empty unparseable ownership; the fail-open
+    # auto-release contract is preserved for the separate
+    # expired-lease branch below).
     record_with_forged = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
@@ -162,7 +161,7 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.UNKNOWN
+        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.CHANGED
     )
 
     # 3. Expired lease (held_at far in the past) -> UNKNOWN

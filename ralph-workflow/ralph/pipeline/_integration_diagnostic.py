@@ -416,10 +416,12 @@ def diagnostic_evidence_verdict(
         return EvidenceVerdict.CHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
     if fingerprint is None or held_at is None:
-        # Unparseable lease: the previous-shape fingerprint string is
-        # not authoritative. Treat as expired/missing (UNKNOWN) so the
-        # caller auto-releases (fail-open) and re-derives from Git.
-        return EvidenceVerdict.UNKNOWN
+        # Unparseable lease: the previous-shape fingerprint string
+        # is no longer a valid durable identity. This is the only
+        # path to operator escalation for a non-empty unparseable
+        # ownership (the fail-open auto-release contract is
+        # preserved for the separate expired-lease branch below).
+        return EvidenceVerdict.CHANGED
     if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
         return EvidenceVerdict.UNKNOWN
     if fingerprint != identity_fingerprint(record):

@@ -339,6 +339,46 @@ def _dispatch_ref_comparison(
     )
 
 
+def _build_disabled_noop_state(
+    *,
+    source_state: RebaseState | None,
+    target: str,
+    remote: str | None,
+    config: UnifiedConfig | None,
+) -> RebaseState:
+    """Build the strict no-op ``RebaseState`` when remote sync is disabled.
+
+    The reconciler returns this state instead of touching the
+    network. The caller's ``source_state`` is preserved (including
+    ``fast_forwarded``) so the post-landing seam's headline signal
+    survives; the annotation (``REMOTE_NO_REMOTE`` + a clear
+    reason) tells the caller that the seam was a no-op.
+    """
+    chosen_remote = (
+        remote
+        if isinstance(remote, str) and remote
+        else (remote_target_name(config) if config is not None else None)
+    )
+    if source_state is not None:
+        return source_state.model_copy(
+            update={
+                "last_target": target,
+                "last_remote": chosen_remote,
+                "last_remote_sync": REMOTE_NO_REMOTE,
+                "last_reason": "remote sync disabled by policy",
+            }
+        )
+    return RebaseState(
+        last_outcome=RebaseOutcomeKind.SKIPPED,
+        last_target=target,
+        last_remote=chosen_remote,
+        last_remote_sync=REMOTE_NO_REMOTE,
+        last_reason="remote sync disabled by policy",
+        fast_forwarded=False,
+        freshness_verdict="verified",
+    )
+
+
 def _safe_local_sha(repo_root: Path, target: str) -> str | None:
     """Read the local target SHA, mapping exceptions to ``None``.
 
@@ -352,6 +392,45 @@ def _safe_local_sha(repo_root: Path, target: str) -> str | None:
     except Exception as exc:
         logger.debug("auto_integrate: local target SHA unreadable: {}", exc)
         return None
+
+
+def _handle_no_remote_branch(
+    *,
+    config: UnifiedConfig | None,
+    repo_root: Path,
+    target: str,
+    base_state: RebaseState,
+    chosen_remote: str,
+    client: RemoteClient,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState:
+    """Handle the no-remote-branch case: push first, recover on non-fast-forward.
+
+    Extracted from :func:`reconcile_remote_publication` to keep the
+    parent function's PLR0911 return count under the configured cap.
+    The non-fast-forward rejection is the only freshness proof that
+    matters; everything else is a recovery-loop signal on the
+    returned ``RebaseState``.
+    """
+    pushed = push_target_after_landing(
+        config,
+        repo_root,
+        target,
+        base_state.model_copy(update={"fast_forwarded": True}),
+        remote=chosen_remote,
+        remote_client=client,
+    )
+    if pushed.last_push_status == _remote_push_module.PushStatus.NON_FAST_FORWARD.value:
+        return reconcile_after_rejected_push(
+            config,
+            repo_root,
+            target,
+            pushed,
+            remote=chosen_remote,
+            rebase_stop_resolver=rebase_stop_resolver,
+            remote_client=client,
+        )
+    return pushed
 
 
 def reconcile_remote_publication(
@@ -395,6 +474,21 @@ def reconcile_remote_publication(
             fresh state with the default ``fast_forwarded=False``;
             the no-op convergence branch sets it to ``True``.
     """
+    # Disabled-by-policy guard (AC-12 / WU-1): when the configured
+    # ``auto_integrate_remote_enabled`` is False, this is a strict
+    # no-op. The function must perform ZERO remote observation,
+    # ZERO refresh, and ZERO push calls; the only side effect is
+    # annotating the returned ``RebaseState`` so the caller can
+    # tell that the seam was a no-op. The caller's ``source_state``
+    # is preserved (including ``fast_forwarded``) so the post-landing
+    # seam's headline "did the local land" signal survives.
+    if not remote_sync_enabled(config):
+        return _build_disabled_noop_state(
+            source_state=source_state,
+            target=target,
+            remote=remote,
+            config=config,
+        )
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     # Build the base record for the push path: carry the caller's
     # ``fast_forwarded`` so the post-landing seam can rely on it.
@@ -427,25 +521,15 @@ def reconcile_remote_publication(
         repo_root, target, remote=chosen_remote, remote_client=client
     )
     if refresh == REFRESH_NO_REMOTE_BRANCH:
-        pushed = push_target_after_landing(
-            config,
-            repo_root,
-            target,
-            base_state.model_copy(update={"fast_forwarded": True}),
-            remote=chosen_remote,
-            remote_client=client,
+        return _handle_no_remote_branch(
+            config=config,
+            repo_root=repo_root,
+            target=target,
+            base_state=base_state,
+            chosen_remote=chosen_remote,
+            client=client,
+            rebase_stop_resolver=rebase_stop_resolver,
         )
-        if pushed.last_push_status == _remote_push_module.PushStatus.NON_FAST_FORWARD.value:
-            return reconcile_after_rejected_push(
-                config,
-                repo_root,
-                target,
-                pushed,
-                remote=chosen_remote,
-                rebase_stop_resolver=rebase_stop_resolver,
-                remote_client=client,
-            )
-        return pushed
     if remote_sha is None:
         return _record_publication_failure(
             base_state,

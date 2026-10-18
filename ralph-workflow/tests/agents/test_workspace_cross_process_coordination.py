@@ -169,7 +169,13 @@ def test_cross_process_holder_blocks_start_and_reports_shared_awareness_consumer
         lambda _root: fake_sidecar,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert len(fake.scheduled) == 0
@@ -204,7 +210,13 @@ def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
 
     monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", _factory)
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert len(observers) == 1
@@ -240,7 +252,13 @@ def test_non_owner_stop_does_not_release_and_does_not_raise(
     fake = _FakeObserver()
     monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()  # blocked by the cross-process holder
 
     assert monitor._cross_process_owner_id is None
@@ -262,13 +280,25 @@ def test_shared_lease_releases_cross_process_lock_only_at_final_stop(
     monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
 
     # Monitor A: creates the shared watch and acquires the cross-process lock.
-    monitor_a = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor_a = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor_a.start()
     assert len(fake.scheduled) == 1
     assert fake_lock.acquire_calls == [Path("/ws")]
 
     # Monitor B: joins the existing shared watch (no new observer, no acquire).
-    monitor_b = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor_b = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor_b.start()
     assert len(fake.scheduled) == 1
     assert len(fake_lock.acquire_calls) == 1
@@ -306,7 +336,13 @@ def test_owner_publishes_source_changes_to_sidecar(
         lambda _root: fake_sidecar,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert fake_sidecar.begin_calls, "owner must begin sidecar ownership"
@@ -345,7 +381,13 @@ def test_sidecar_write_failure_enters_live_fallback(
         lambda _root: _FailingSidecar(),
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
     monitor.record_event("/ws/src/app.py")
 
@@ -371,7 +413,13 @@ def test_consumer_sidecar_read_failure_enters_live_fallback(
         lambda _root: fake_sidecar,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert len(fake.scheduled) == 0

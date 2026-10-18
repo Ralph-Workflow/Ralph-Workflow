@@ -225,7 +225,13 @@ def test_start_schedules_single_recursive_root_watch(
         lambda: fake,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert len(fake.scheduled) == 1
@@ -249,7 +255,13 @@ def test_start_single_recursive_root_watch_when_classifier_none(
         lambda: fake,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=None)
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=None,
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     assert len(fake.scheduled) == 1
@@ -275,7 +287,13 @@ def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registratio
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: next(observers),
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -301,7 +319,13 @@ def test_start_failure_after_registration_enters_live_fallback_and_remains_retry
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: next(observers),
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -327,7 +351,13 @@ def test_workspace_monitor_regression_start_failure_after_registration_releases_
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: next(observers),
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -353,7 +383,13 @@ def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: next(observers),
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -375,7 +411,13 @@ def test_capacity_exhaustion_enters_observable_live_fallback(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -399,7 +441,13 @@ def test_inotify_instance_limit_during_start_enters_live_fallback(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -417,7 +465,13 @@ def test_capacity_exhaustion_updates_shared_awareness_status(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/canonical-fallback"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/canonical-fallback"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
 
@@ -564,7 +618,13 @@ def test_start_replay_preserves_one_live_workspace_watch(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
     monitor.start()
@@ -584,7 +644,13 @@ def test_stop_failure_releases_monitor_for_a_later_watch_registration(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: next(observers),
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
 
     monitor.start()
     with pytest.raises(OSError, match="watch release failed"):
@@ -713,7 +779,13 @@ def test_dispatched_file_event_counts_via_public_seam(
         lambda: fake,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
     initial_count = len(fake.scheduled)
 
@@ -733,7 +805,13 @@ def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress(
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
 
     monitor.dispatch_event(_FakeEvent("/other-project/src/app.py"))
@@ -757,7 +835,13 @@ def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingres
         "ralph.agents.invoke._workspace._create_watchdog_observer",
         lambda: fake,
     )
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
     initial_count = len(fake.scheduled)
 
@@ -781,7 +865,13 @@ def test_dispatched_directory_event_schedules_no_additional_watch(
         lambda: fake,
     )
 
-    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.start()
     initial_count = len(fake.scheduled)
 
@@ -825,7 +915,13 @@ def test_record_event_ignores_the_monitors_own_sidecar_even_when_cache_counts(
 
 def test_record_event_drops_the_runners_root_checkpoint_but_not_a_user_file(tmp_path: Path) -> None:
     """The monitor passes its root so ``checkpoint.json`` at the root is engine-owned."""
-    monitor = WorkspaceMonitor(tmp_path, classifier=WorkspaceChangeClassifier())
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=lambda *_, **__: 0,
+        live_watch_total=0,
+    )
     monitor.record_event(str(tmp_path / "checkpoint.json"))
     assert monitor.event_count == 0
     monitor.record_event(str(tmp_path / "src" / "checkpoint.json"))

@@ -106,7 +106,12 @@ def boundary_freshness_outcome(
     # push needed) or the remote is unreachable (defer to the
     # next seam); a successful push returns the reconciler's
     # ``pending`` so the caller can observe the publication.
-    pending = _reconcile_remote_publication(config, root, target)
+    pending = _reconcile_remote_publication(
+        config,
+        root,
+        target,
+        rebase_stop_resolver=rebase_stop_resolver,
+    )
     last_remote_sync_now = pending.last_remote_sync
     already_current = last_remote_sync_now == "already current"
     is_transient_failure = last_remote_sync_now in {

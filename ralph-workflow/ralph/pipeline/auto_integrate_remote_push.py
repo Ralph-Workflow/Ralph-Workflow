@@ -446,35 +446,6 @@ def _attempt_reconcile_and_push(
     )
 
 
-# ----- Reconciler: ref-comparison-driven publication --------------------
-
-
-def _observe_remote_target_sha(
-    repo_root: Path,
-    target: str,
-    *,
-    remote: str,
-    remote_client: RemoteClient | None = None,
-) -> str | None:
-    """Observe the remote-tracking ref SHA without raising.
-
-    Returns ``None`` for any failure (unreachable remote, missing
-    branch, transient network error). The caller interprets ``None``
-    as "remote observation failed" and routes to
-    :data:`REMOTE_PULL_FAILED`.
-    """
-    client = remote_client or _default_remote_client()
-    try:
-        if hasattr(client, "observe_remote_sha"):
-            return client.observe_remote_sha(repo_root, target, remote=remote)
-        # Fallback: read the reflog entry directly.
-        from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
-
-        return observe_remote_target_sha(repo_root, remote, target)
-    except Exception:
-        return None
-
-
 # ----- State helpers ---------------------------------------------------
 # The canonical ``_record_remote_state`` builder lives in the client
 # module (it is the largest user). The orchestrator re-exports it from
