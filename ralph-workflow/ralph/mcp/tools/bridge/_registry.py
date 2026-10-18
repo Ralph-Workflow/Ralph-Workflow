@@ -158,7 +158,6 @@ def build_ralph_tool_registry(
     clock_fn: Callable[[], float] | None = None,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
-    clk = clock_fn if clock_fn is not None else _clock
     mcp_config_cls = cast(
         "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
