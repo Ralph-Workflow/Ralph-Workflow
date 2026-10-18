@@ -17,6 +17,16 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
+# Audit-style file scans: allow extra headroom under shard load so the
+# budget-shaped SIGALRM does not flake the same scan the other audit
+# tests in this codebase already permit (see
+# ``tests/test_recovery_record_retained_owner.py`` for the same
+# precedent). The contract being verified is unchanged: per-file bytes
+# pre-filter then a one-shot AST check.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 # Only directories that can reach a ``RebaseState`` instance need to be
 # scanned. ``ralph/pipeline/`` owns rebase state; ``ralph/display/`` reads

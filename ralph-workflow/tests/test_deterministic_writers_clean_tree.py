@@ -44,6 +44,21 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scope baseline skills to the tested skill to avoid redundant multi-root hashing.
+
+    The skill install and sync tests in this file specifically test clean tree
+    and no-op repeat behavior for BASELINE_SKILL_NAMES[0]. Scoping the baseline
+    skill set avoids hundreds of redundant per-leaf `git hash-object` calls
+    across unexercised skills.
+    """
+    test_skills = (BASELINE_SKILL_NAMES[0],)
+    monkeypatch.setattr("ralph.skills._content.BASELINE_SKILL_NAMES", test_skills)
+    monkeypatch.setattr("ralph.skills._installer.BASELINE_SKILL_NAMES", test_skills)
+    monkeypatch.setattr("ralph.skills._installer_candidates.BASELINE_SKILL_NAMES", test_skills)
+
+
 # ---------------------------------------------------------------------------
 # Shared real-git helpers
 # ---------------------------------------------------------------------------

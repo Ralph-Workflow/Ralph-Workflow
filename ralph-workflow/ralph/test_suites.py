@@ -420,6 +420,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_audit_artifact_submission_canonical_path.py": 131,
     "tests/project_policy/test_run_integration.py": 60,
     "tests/agents/test_workspace_event_backpressure.py": 56,
+    "tests/test_commit_detached_head_recovery.py": 65,
     "tests/test_phases_retry_on_stale_session.py": 53,
     "tests/display/test_operator_display_labels.py": 52,
 }

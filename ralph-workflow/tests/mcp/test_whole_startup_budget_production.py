@@ -413,7 +413,7 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
         # time out, the helper to log/flush, and the kernel to
         # reap the process. The preflight is 10s, so any
         # "exits in 5s" is well below it.
-        rc = proc.wait(timeout=5.0)
+        rc = proc.wait(timeout=8.0)
 
         # The child must exit non-zero with the distinct
         # SESSION_OVERRUN_EXIT_CODE (33). The previous

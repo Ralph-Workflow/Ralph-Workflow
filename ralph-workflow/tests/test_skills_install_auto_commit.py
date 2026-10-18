@@ -51,6 +51,22 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scope baseline skills to the tested skill to avoid redundant multi-root hashing.
+
+    The 7 acceptance tests in this file specifically test sibling transition,
+    dirty tracking, and symlink replacement using 'brainstorming'. Scoping the
+    baseline skill set avoids hundreds of redundant per-leaf `git hash-object`
+    subprocess invocations across unexercised skills without changing any
+    behavioral assertion.
+    """
+    test_skills = ("brainstorming",)
+    monkeypatch.setattr("ralph.skills._content.BASELINE_SKILL_NAMES", test_skills)
+    monkeypatch.setattr("ralph.skills._installer.BASELINE_SKILL_NAMES", test_skills)
+    monkeypatch.setattr("ralph.skills._installer_candidates.BASELINE_SKILL_NAMES", test_skills)
+
+
 def _commit_all_initial(repo_root: Path) -> None:
     """Initial empty commit so HEAD exists for the per-test diffing."""
     repo = Repo(repo_root)
