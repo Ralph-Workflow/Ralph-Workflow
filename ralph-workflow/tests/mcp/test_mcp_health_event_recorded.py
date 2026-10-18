@@ -527,3 +527,67 @@ def test_explicit_sink_none_falls_back_to_global(tmp_path: Path) -> None:
     finally:
         set_durable_sink_path(orig)
         clear_durable_sink(sink)
+
+
+# ---------------------------------------------------------------------------
+# Closed JSONL record vocabulary — schema-drift detector
+# ---------------------------------------------------------------------------
+
+
+def test_durable_sink_record_shape_is_closed(tmp_path: Path) -> None:
+    """The per-bridge JSONL record carries exactly the closed field set.
+
+    The R3 operator-facing doc
+    (``docs/sphinx/mcp-restart-decisions.md``) describes the manual
+    correlation procedure that pairs the per-bridge JSONL record with
+    the per-spawn stage file. That correlation is operator-driven
+    because the JSONL record does NOT carry ``spawn_id``, ``pid``, or
+    ``timestamp`` today. If a future change adds any of those fields,
+    update the R3 doc and the manual correlation procedure at the
+    same time. The test below pins the closed vocabulary so schema
+    drift is detected at test time, not by a future operator.
+    """
+    orig = get_durable_sink_path()
+    sink = tmp_path / "shape.jsonl"
+    try:
+        set_durable_sink_path(sink)
+        clear_durable_sink()
+        # PROCESS_EXITED with a representative log tail.
+        record_restart_decision(
+            reason=RestartReason.PROCESS_EXITED,
+            exit_status=137,
+            log_tail=("line a", "line b"),
+            stage="ready_to_serve",
+        )
+        # PROBE_FAILED with a representative duration.
+        record_restart_decision(
+            reason=RestartReason.PROBE_FAILED,
+            probe_duration_s=1.234,
+            stage="registry_built",
+        )
+        read_back = read_durable_sink(path=sink)
+        assert len(read_back) == 2
+        expected_keys = {
+            "reason",
+            "exit_status",
+            "probe_duration_s",
+            "log_tail",
+            "stage",
+        }
+        forbidden_keys = {"spawn_id", "pid", "timestamp"}
+        for record in read_back:
+            assert set(record.keys()) == expected_keys, (
+                f"JSONL record schema drift: got {set(record.keys())!r}, "
+                f"expected exactly {expected_keys!r}. Update the R3 doc "
+                f"(docs/sphinx/mcp-restart-decisions.md) and the manual "
+                f"correlation procedure together."
+            )
+            assert not (set(record.keys()) & forbidden_keys), (
+                f"JSONL record added a correlation-key field "
+                f"({set(record.keys()) & forbidden_keys!r}). The R3 doc "
+                f"must describe how the operator pairs the new field with "
+                f"the per-spawn stage file before the test is updated."
+            )
+    finally:
+        set_durable_sink_path(orig)
+        clear_durable_sink(sink)

@@ -354,3 +354,64 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     assert saved3.merge_commit_repair_attempts == cap
     assert saved3.diagnostic_intervention_required is True
     assert invoked == []
+
+
+def test_malformed_timestamp_lease_returns_changed() -> None:
+    """A lease with a non-numeric ``held_at`` segment returns ``CHANGED``.
+
+    The lease-based verdict: a non-empty unparseable
+    ``diagnostic_ownership`` (no ``:`` separator, empty
+    fingerprint, empty held_at, or non-numeric held_at) is no
+    longer a valid durable identity; the verdict escalates to
+    ``CHANGED`` for operator review. This is the only path to
+    operator escalation for a non-empty unparseable ownership
+    (the fail-open auto-release contract is preserved for the
+    separate expired-lease branch).
+    """
+    root = Path("/workspace")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_rebase=True,
+    )
+    # Non-numeric held_at -> parse_lease returns (None, None)
+    # -> verdict is CHANGED.
+    record_malformed = record.model_copy(
+        update={
+            "diagnostic_evidence": (("reflog", "original"),),
+            "diagnostic_ownership": "fingerprint:not-a-number",
+        }
+    )
+    assert diagnostic.diagnostic_evidence_verdict(root, record_malformed) == EvidenceVerdict.CHANGED
+
+
+def test_empty_evidence_with_unparseable_ownership_returns_changed() -> None:
+    """A record with empty evidence but a non-empty unparseable ownership returns ``CHANGED``.
+
+    The empty-evidence short-circuit at the top of the verdict
+    function only fires when ``diagnostic_ownership`` is also
+    empty (the no-hold case). A record with empty evidence but
+    a non-empty unparseable ownership must escalate: the lease
+    is no longer a valid durable identity, so the only path
+    forward is operator review.
+    """
+    root = Path("/workspace")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feature",
+        pre_target_sha="target",
+        resolving_rebase=True,
+    )
+    # Empty evidence + non-empty unparseable ownership.
+    record_unparseable = record.model_copy(
+        update={
+            "diagnostic_evidence": (),
+            "diagnostic_ownership": "forged_ownership_no_colon",
+        }
+    )
+    assert (
+        diagnostic.diagnostic_evidence_verdict(root, record_unparseable) == EvidenceVerdict.CHANGED
+    )

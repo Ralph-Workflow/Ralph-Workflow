@@ -28,7 +28,7 @@ Where to go next
   :doc:`operator-states`
 - Operate: :doc:`diagnostics`, :doc:`troubleshooting`,
   :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`,
-  :doc:`versioning`, :doc:`pro-support`
+  :doc:`mcp-restart-decisions`, :doc:`versioning`, :doc:`pro-support`
 - Develop: :doc:`developer-internals`, :doc:`agents`
 
 .. note::
@@ -76,6 +76,7 @@ Where to go next
    agent-compatibility
    mcp-tools
    mcp-tool-restriction
+   mcp-restart-decisions
    versioning
    pro-support
 

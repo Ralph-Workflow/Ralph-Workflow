@@ -376,15 +376,26 @@ def diagnostic_evidence_verdict(
     lease in ``diagnostic_ownership`` (``<fingerprint>:<held_at>``)
     is the sole release authority:
 
-    * Empty ``diagnostic_evidence`` -- no live hold; the record is
-      already released. Returns ``UNCHANGED`` so the caller can
-      proceed to recovery.
+    * Empty ``diagnostic_evidence`` and no ``diagnostic_ownership`` --
+      no live hold; the record is already released. Returns
+      ``UNCHANGED`` so the caller can proceed to recovery.
+    * Non-empty ``diagnostic_evidence`` and no ``diagnostic_ownership``
+      (legacy migrated record) -- returns ``CHANGED`` so the
+      caller escalates through the operator-only path. The migrated
+      observation is preserved on disk because the ``CHANGED``
+      branch returns a skip verdict and never mutates the record.
+    * Empty ``diagnostic_evidence`` and non-empty unparseable
+      ``diagnostic_ownership`` -- returns ``CHANGED`` (the lease
+      is no longer a valid durable identity; escalate).
+    * Non-empty ``diagnostic_evidence`` and non-empty unparseable
+      ``diagnostic_ownership`` -- returns ``CHANGED`` (the lease
+      is no longer a valid durable identity; escalate).
     * Fingerprint mismatch (the durable identity was rewritten by
       a different worktree) -- returns ``CHANGED`` (the only path
-      to operator escalation).
+      to operator escalation for a parseable lease).
     * Lease parseable and unexpired -- returns ``UNCHANGED``.
-    * Lease expired or unparseable -- returns ``UNKNOWN``; the
-      caller auto-releases (fail-open).
+    * Lease parseable and expired -- returns ``UNKNOWN``; the caller
+      auto-releases (fail-open).
 
     Returns:
         EvidenceVerdict.UNCHANGED: the lease is valid; release.
