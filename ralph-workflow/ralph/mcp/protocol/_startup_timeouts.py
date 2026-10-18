@@ -1,9 +1,10 @@
 """Startup timeout budgets for the MCP server subprocess and its parent-owned listening socket.
 
 R1 (parent-owned socket): the child serves on a socket the parent bound and handed off via
-``MCP_INHERITED_FD_ENV``; the child never rebinds. The pre-serve path below is bounded by
-construction so a hung filesystem or slow config cannot starve the readiness budget before the
-socket is adopted.
+``MCP_INHERITED_FD_ENV``; the child never rebinds. The pre-serve path below is bounded
+against hung filesystems and slow configuration: synchronous stage writes are bounded at stage
+boundaries, and overrun diagnostics are isolated behind a strict fail-safe timeout so a
+wedged filesystem cannot starve the readiness budget before the socket is adopted.
 
 Two budgets are nested, and the nesting is the whole point:
 
@@ -40,7 +41,10 @@ The whole-startup envelope is ``mcp_whole_startup_budget_from_env``, which bound
 the per-stage cumulative budgets (config + discovery + registry_built + ready_to_serve). Both
 the aggregate discovery loop and the bootstrap serving architecture operationally enforce that
 spawn-to-serving tools/list completes strictly below ``mcp_preflight_timeout_from_env`` by
-construction, guarded by import-time invariants.
+construction, guarded by import-time invariants. Synchronous stage-file persistence is
+boundary-checked at stage transitions, and the overrun exit path bounds diagnostic and
+stage-recording I/O so stalled filesystem operations cannot hold a live child past the
+preflight deadline.
 
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
@@ -63,6 +67,9 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 # Env var for the pre-serve budget. Follows the same pattern as the other
 # timeout env vars so operators can lower it to force-fail a slow dev setup.
 _MCP_PRE_SERVE_TIMEOUT_MS_ENV = "RALPH_MCP_PRE_SERVE_TIMEOUT_MS"
+
+# Env var for the bounded overrun diagnostic exit budget.
+_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV = "RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS"
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -135,6 +142,7 @@ _PRE_SERVE_BUDGET_S: float = 1.0
 _CONFIG_LOAD_BUDGET_S: float = 1.0
 _REGISTRY_BUILD_BUDGET_S: float = 0.4
 _READY_TO_SERVE_BUDGET_S: float = 0.4
+_OVERRUN_DIAGNOSTIC_BUDGET_S: float = 0.2
 
 if not (_PRE_SERVE_BUDGET_S > 0):
     raise RuntimeError(f"_PRE_SERVE_BUDGET_S must be > 0, got {_PRE_SERVE_BUDGET_S!r}")
@@ -144,6 +152,16 @@ if not (_REGISTRY_BUILD_BUDGET_S > 0):
     raise RuntimeError(f"_REGISTRY_BUILD_BUDGET_S must be > 0, got {_REGISTRY_BUILD_BUDGET_S!r}")
 if not (_READY_TO_SERVE_BUDGET_S > 0):
     raise RuntimeError(f"_READY_TO_SERVE_BUDGET_S must be > 0, got {_READY_TO_SERVE_BUDGET_S!r}")
+if not (_OVERRUN_DIAGNOSTIC_BUDGET_S > 0):
+    raise RuntimeError(
+        f"_OVERRUN_DIAGNOSTIC_BUDGET_S must be > 0, got {_OVERRUN_DIAGNOSTIC_BUDGET_S!r}"
+    )
+if not (_OVERRUN_DIAGNOSTIC_BUDGET_S < _PROBE_SAFETY_S):
+    raise RuntimeError(
+        f"_OVERRUN_DIAGNOSTIC_BUDGET_S ({_OVERRUN_DIAGNOSTIC_BUDGET_S}s) must be "
+        f"strictly less than _PROBE_SAFETY_S ({_PROBE_SAFETY_S}s) to preserve "
+        f"the failure-reporting safety margin"
+    )
 
 
 def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
@@ -232,6 +250,30 @@ def mcp_pre_serve_budget_from_env(env: Mapping[str, str] | None = None) -> timed
     if requested is not None:
         return requested
     return timedelta(seconds=_PRE_SERVE_BUDGET_S)
+
+
+def mcp_overrun_diagnostic_timeout_from_env(
+    env: Mapping[str, str] | None = None,
+) -> timedelta:
+    """Return the bounded fail-safe timeout for diagnostic I/O during overrun exit (default 0.2s).
+
+    ``RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS`` overrides the budget explicitly.
+    Overrun diagnostics (stage recording, logging, stdio flushing) are bounded by
+    this timeout so a stalled filesystem or blocked pipe cannot hold a live unserving
+    child past its deadline before ``os._exit``.
+    """
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, _MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV)
+    if requested is not None:
+        return requested
+    return timedelta(seconds=_OVERRUN_DIAGNOSTIC_BUDGET_S)
+
+
+def mcp_overrun_diagnostic_timeout_seconds(
+    env: Mapping[str, str] | None = None,
+) -> float:
+    """Return :func:`mcp_overrun_diagnostic_timeout_from_env` as seconds."""
+    return mcp_overrun_diagnostic_timeout_from_env(env).total_seconds()
 
 
 def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
@@ -380,6 +422,8 @@ if not (mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET
 __all__ = [
     "_CONFIG_LOAD_BUDGET_S",
     "_CONFIG_LOAD_CUMULATIVE_S",
+    "_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV",
+    "_OVERRUN_DIAGNOSTIC_BUDGET_S",
     "_PRE_SERVE_BUDGET_S",
     "_PROBE_SAFETY_S",
     "_READY_TO_SERVE_BUDGET_S",
@@ -388,6 +432,8 @@ __all__ = [
     "_REGISTRY_BUILT_CUMULATIVE_S",
     "_WHOLE_STARTUP_BUDGET_S",
     "mcp_discovery_budget_from_env",
+    "mcp_overrun_diagnostic_timeout_from_env",
+    "mcp_overrun_diagnostic_timeout_seconds",
     "mcp_pre_serve_budget_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_registry_built_budget_from_env",

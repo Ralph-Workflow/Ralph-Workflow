@@ -55,12 +55,14 @@ from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.protocol.env import (
     MCP_INHERITED_FD_ENV,
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
+    MCP_RESPAWN_ENV,
     MCP_STAGE_ID_ENV,
     MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV,
 )
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.mcp.server.lifecycle import session_payload_json
+from ralph.mcp.upstream.config import UPSTREAM_MCP_TOOL_CATALOG_ENV
 
 #: Distinct exit code emitted by the bounded catalog publish helper
 #: (``CATALOG_PUBLISH_OVERRUN_EXIT_CODE`` in
@@ -192,6 +194,8 @@ def test_real_child_catalog_publish_fifo_fails_closed_with_typed_exit(
     # reached inside the test budget. The exact value is
     # irrelevant; what matters is the bounded publish fires.
     child_env = dict(os.environ)
+    child_env.pop(UPSTREAM_MCP_TOOL_CATALOG_ENV, None)
+    child_env.pop(MCP_RESPAWN_ENV, None)
     child_env.update(env)
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
