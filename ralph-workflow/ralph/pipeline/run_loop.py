@@ -2403,9 +2403,15 @@ def _wait_for_integration_retry(
     # unreadable the typed ``INTERVENTION_REQUIRED`` transition is
     # recorded (the durable flag is the source of truth -- the
     # in-memory retry path is unchanged for the unresolved path).
-    durable_escalation = _durable_record_intervention_guard(ctx.workspace_scope.root, rebase)
-    if durable_escalation is not None:
-        rebase = durable_escalation
+    # The guard returns a 2-tuple ``(rebase, return_now)`` so the
+    # caller can distinguish ``"no intervention, fall through"``
+    # from ``"handled, return now"`` (the O1 contract forbids a
+    # silent 5-second sleep after the durable case was resolved).
+    durable_rebase, durable_cleared = _durable_record_intervention_guard(
+        ctx.workspace_scope.root, rebase, backend=backend
+    )
+    if durable_cleared:
+        rebase = durable_rebase
         state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
             WaitReason.EXHAUSTED_RETRY, None
         )
@@ -2413,6 +2419,7 @@ def _wait_for_integration_retry(
         ctx.latest_state[:] = [state]
         return state.clear_waiting()
 
+    rebase = durable_rebase
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
@@ -2430,8 +2437,10 @@ def _wait_for_integration_retry(
 def _durable_record_intervention_guard(
     root: Path,
     rebase: RebaseState,
-) -> RebaseState | None:
-    """Consult the durable record's intervention flag; return escalated state on CHANGED.
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> tuple[RebaseState, bool]:
+    """Consult the durable record's intervention flag; return ``(rebase, durable_cleared)``.
 
     A record carrying ``diagnostic_intervention_required=True`` was
     set by a prior run (or a prior Ralph version) and is the source
@@ -2440,48 +2449,88 @@ def _durable_record_intervention_guard(
     path: ``UNCHANGED`` (fresh lease, fingerprint match) and
     ``UNKNOWN`` (expired or unparseable lease) both auto-release;
     only ``CHANGED`` (fingerprint mismatch) or an unreadable record
-    escalates. The returned state carries the typed
-    ``INTERVENTION_REQUIRED`` transition so the run-loop's existing
-    persistence and display handling do not have to learn a new
-    outcome.
+    escalates.
 
-    Returns ``None`` when no durable intervention is recorded OR
-    when the held evidence was released (the caller falls through
-    to the normal retry path on a cleared record). The
-    ``release_verified_diagnostic`` helper is monkey-patched by
-    tests to make the typed transition observable.
+    The return is a 2-tuple ``(rebase, durable_cleared)`` where:
+
+    * ``(rebase, False)`` -- no durable intervention is recorded, or
+      the record escalated to ``INTERVENTION_REQUIRED``. The caller
+      proceeds through the standard 5-second cooldown retry wait.
+    * ``(rebase, True)`` -- the held evidence was released (the
+      fail-open path). The durable record's intervention flag is
+      now ``False``; the caller persists the cleared state and
+      returns immediately so the next seam re-derives state from Git.
     """
     from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
     from ralph.pipeline.auto_integrate_record import (
-        IntegrationRecord,
-        read_record,
+        RecordReadOutcomeDisposition,
+        read_record_outcome,
     )
+    from ralph.pipeline.auto_integrate_record_store import (
+        apply_record_transition,
+    )
+    from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
     from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
 
+    unreadable_detail: str | None = None
+    is_unreadable = False
     try:
-        record_obj: IntegrationRecord | None = read_record(root)
+        outcome = read_record_outcome(root, backend=backend)
+        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            is_unreadable = True
+            unreadable_detail = outcome.unreadable_reason
     except Exception:
-        return rebase.set_intervention_required(
-            "durable integration record unreadable; intervention required"
+        is_unreadable = True
+
+    if is_unreadable:
+        reason = "durable integration record unreadable; intervention required"
+        if unreadable_detail:
+            reason += f" ({unreadable_detail})"
+        return (
+            rebase.set_intervention_required(reason, diagnostic=True),
+            False,
         )
-    if record_obj is None:
-        return None
-    if not record_obj.diagnostic_intervention_required:
-        return None
+    record_obj = outcome.record
+    if record_obj is None or not record_obj.diagnostic_intervention_required:
+        return rebase, False
+    if not record_obj.diagnostic_evidence and not record_obj.diagnostic_ownership:
+        return (
+            rebase.set_intervention_required(
+                "durable integration record requires intervention; "
+                "target synchronization remains unproven",
+                diagnostic=True,
+            ),
+            False,
+        )
     verdict = release_verified_diagnostic(root, record_obj)
     if verdict is EvidenceVerdict.UNCHANGED or verdict is EvidenceVerdict.UNKNOWN:
-        # Fail-open: clear the durable evidence so the next seam
-        # re-derives state from Git. The record's intervention flag
-        # is now False and the loop can proceed on the next pass.
-        return None
-    # CHANGED or unreadable -- escalate through the typed
-    # INTERVENTION_REQUIRED transition. The reason carries the
-    # durable-identity signature so the operator-facing alert
-    # names the durable record, not the in-memory reason.
-    return rebase.set_intervention_required(
-        f"durable integration record requires intervention "
-        f"(verdict={verdict.value if verdict is not None else 'unreadable'}); "
-        f"target synchronization remains unproven"
+        try:
+            apply_record_transition(
+                root,
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                backend=backend,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+                diagnostic_intervention_required=False,
+                repair_cap_reason=None,
+            )
+        except Exception:
+            return (
+                rebase.set_intervention_required(
+                    "durable integration record unreadable at release; intervention required",
+                    diagnostic=True,
+                ),
+                False,
+            )
+        return rebase, True
+    return (
+        rebase.set_intervention_required(
+            f"durable integration record requires intervention "
+            f"(verdict={verdict.value if verdict is not None else 'unreadable'}); "
+            f"target synchronization remains unproven",
+            diagnostic=True,
+        ),
+        False,
     )
 
 

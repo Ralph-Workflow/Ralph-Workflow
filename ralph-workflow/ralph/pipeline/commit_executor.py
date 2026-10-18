@@ -306,15 +306,46 @@ def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
     enforces for reflog-derived candidates) for every candidate --
     reflog, config, worktree metadata, or repository name. A
     candidate whose branch tip is ahead of, behind, or diverged from
-    the detached HEAD is rejected. The caller (``_reattach_head_if_detached``)
-    logs a warning and refuses to reattach when no safe candidate
-    is found; the detached work remains visible and the next
-    commit attempt surfaces the unresolved state instead of
-    silently losing the work.
+    the detached HEAD is rejected.
+
+    The same integration-target and occupied-worktree exclusions
+    the ancestry-verified fast-forward fallback applies (see
+    :mod:`ralph.pipeline._commit_reattach_fallback`) are also
+    applied here (AC-10): reattaching onto the integration target
+    strands the work on the destination branch rather than the
+    feature branch, and reattaching onto a branch currently
+    checked out in another worktree strands another agent's
+    working copy. Excluding them on the exact-tip path closes
+    the same-gap the ancestry fallback already guards.
+
+    The caller (``_reattach_head_if_detached``) logs a warning
+    and refuses to reattach when no safe candidate is found; the
+    detached work remains visible and the next commit attempt
+    surfaces the unresolved state instead of silently losing the
+    work.
     """
+    from ralph.pipeline._commit_reattach_fallback import (
+        integration_target_branch,
+        occupied_worktree_branches,
+    )
+
     detached_head_sha = _detached_head_sha(repo_root)
+    integration_target = integration_target_branch(**opts)
+    occupied = occupied_worktree_branches(repo_root, **opts)
     for candidate in _candidate_branch_names(repo_root, **opts):
         if not _branch_exists(repo_root, candidate):
+            continue
+        if integration_target and candidate == integration_target:
+            logger.debug(
+                "reattach exact-tip: skipping integration target '{}' (clobber risk)",
+                candidate,
+            )
+            continue
+        if candidate in occupied:
+            logger.debug(
+                "reattach exact-tip: skipping occupied worktree branch '{}'",
+                candidate,
+            )
             continue
         if not _branch_tip_matches(repo_root, candidate, detached_head_sha):
             logger.debug(
@@ -405,7 +436,7 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
     # Step 2: ancestry-verified fast-forward fallback.
     detached_head_sha = _detached_head_sha(repo_root)
     integration_target = integration_target_branch(**opts)
-    occupied = occupied_worktree_branches(repo_root)
+    occupied = occupied_worktree_branches(repo_root, **opts)
     if fast_forward_reattach(
         repo_root,
         detached_head_sha=detached_head_sha,

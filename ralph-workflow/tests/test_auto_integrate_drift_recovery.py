@@ -10,11 +10,15 @@ cannot regress to fire-once publication or ``origin``/``main`` defaults.
 
 from __future__ import annotations
 
+import contextlib
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.git import remote_push as _remote_push_module
+from ralph.git.remote_push import PushStatus
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
@@ -37,9 +41,11 @@ class _RecordingRemoteClient(RemoteClient):
         *,
         remote_sha: str | None = "remote-head-sha",
         refresh_status: str = "refreshed",
+        branch_sha_getter: Callable[[Path, str], str] | None = None,
     ) -> None:
         self.remote_sha = remote_sha
         self.refresh_status = refresh_status
+        self.branch_sha_getter = branch_sha_getter
         self.observed: list[tuple[str, str, str]] = []
         self.pushed: list[tuple[str, str]] = []
         self.refresh_outcomes: list[tuple[str, str, str]] = []
@@ -68,6 +74,9 @@ class _RecordingRemoteClient(RemoteClient):
         timeout_seconds: float = 0.0,
     ) -> _remote_push_module.PushResult:
         self.pushed.append((remote, branch))
+        if self.branch_sha_getter is not None:
+            with contextlib.suppress(Exception):
+                self.remote_sha = self.branch_sha_getter(repo_root, branch)
         return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, branch)
 
 
@@ -225,6 +234,96 @@ def test_throttle_deferred_probe_still_publishes(
     assert len(client.pushed) == 1
 
 
+def test_throttle_deferred_probe_publishes_to_configured_release_tacos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC5, AC6: real throttle suppresses probe during landing; publication converges release/tacos.
+
+    Arms the real fetch throttle (interval > 0, e.g. 60.0s), uses non-default
+    auto_integrate_target="release" and auto_integrate_remote="tacos".
+    Demonstrates that fetch probe is suppressed during landing, but publication
+    converges release and tacos/release, recording ("tacos", "release") push,
+    with no origin/main accessed or pushed.
+    """
+    config = UnifiedConfig(
+        general=GeneralConfig(
+            auto_integrate_target="release",
+            auto_integrate_remote="tacos",
+            auto_integrate_remote_interval_seconds=60.0,
+        )
+    )
+    client = _RecordingRemoteClient(remote_sha="tacos-release-remote-sha")
+
+    # Arm the real fetch throttle for (tmp_path, "tacos", "release")
+    remote_sync._REMOTE_PULL_THROTTLE.arm(tmp_path, "tacos", "release", clock=time.monotonic)
+
+    # 1. Fetch probe is suppressed during landing
+    pull_record = remote_sync.pull_and_reconcile_target(
+        config,
+        tmp_path,
+        "release",
+        remote_client=client,
+    )
+    assert pull_record is not None
+    assert pull_record.last_remote_sync == "refresh suppressed"
+    assert pull_record.last_refresh == "refresh suppressed by throttle"
+    assert len(client.refresh_outcomes) == 0  # probe was suppressed, not executed
+
+    # 2. Local lands a commit ahead of remote
+    local_sha = "tacos-release-local-sha"
+    remote_sha = "tacos-release-remote-sha"
+
+    def _branch_sha(_root: Path, _target: str) -> str:
+        return local_sha
+
+    def _is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
+        return ancestor == remote_sha and descendant == local_sha
+
+    monkeypatch.setattr(remote_sync, "branch_sha", _branch_sha)
+    monkeypatch.setattr(remote_sync, "is_ancestor", _is_ancestor)
+
+    # 3. Publication converges release and tacos/release
+    state = remote_sync.reconcile_remote_publication(
+        config,
+        tmp_path,
+        "release",
+        source_state=pull_record,
+        remote_client=client,
+    )
+
+    # 4. Records ("tacos", "release") push
+    assert client.pushed == [("tacos", "release")]
+    assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+    assert state.last_push_status == PushStatus.PUSHED
+    assert state.last_remote == "tacos"
+    assert state.last_target == "release"
+
+    # 5. Convergence proof: next reconcile when remote matches local reports convergence
+    client.remote_sha = local_sha
+    converged_state = remote_sync.reconcile_remote_publication(
+        config,
+        tmp_path,
+        "release",
+        remote_client=client,
+    )
+    assert converged_state.last_remote_sync == remote_sync.REMOTE_ALREADY_CURRENT
+    assert converged_state.fast_forwarded is True
+    assert len(client.pushed) == 1  # No duplicate push
+
+    # 6. Prove local target ref == remote target ref on the same seam
+    local_target_ref = _branch_sha(tmp_path, "release")
+    remote_target_ref = client.observe_remote_sha(tmp_path, "release", remote="tacos")
+    assert local_target_ref == remote_target_ref == local_sha
+
+    # 7. No origin or main accessed or pushed anywhere
+    assert "origin" not in str(client.observed)
+    assert "origin" not in str(client.pushed)
+    assert "origin" not in str(client.refresh_outcomes)
+    assert "main" not in str(client.observed)
+    assert "main" not in str(client.pushed)
+    assert "main" not in str(client.refresh_outcomes)
+
+
 def test_killed_between_landing_and_push_recovery_publishes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -338,16 +437,19 @@ def test_concurrent_remote_advance_calls_reconcile_helper(
     ref comparison detects divergence and passes the resolver to
     ``reconcile_after_rejected_push``, which reconciles and pushes the converged state.
     """
+    current_local_sha = "local-sha"
+
+    def _branch_sha(_root: Path, _target: str) -> str:
+        return current_local_sha
+
     client = _RecordingRemoteClient(
         remote_sha="diverged-remote-sha",
         refresh_status=REFRESH_DIVERGED,
+        branch_sha_getter=_branch_sha,
     )
 
     def _is_ancestor(_root: Path, _ancestor: str, _descendant: str) -> bool:
         return False
-
-    def _branch_sha(_root: Path, _target: str) -> str:
-        return "local-sha"
 
     monkeypatch.setattr(remote_sync, "is_ancestor", _is_ancestor)
     monkeypatch.setattr(remote_sync, "branch_sha", _branch_sha)
@@ -370,8 +472,9 @@ def test_concurrent_remote_advance_calls_reconcile_helper(
         rebase_stop_resolver: RebaseStopResolver | None = None,
         conflict_resolution_config: UnifiedConfig | None = None,
     ) -> ReconciliationOutcome:
-        nonlocal received_resolver
+        nonlocal received_resolver, current_local_sha
         received_resolver = rebase_stop_resolver
+        current_local_sha = "reconciled-sha"
         if rebase_stop_resolver is not None:
             # Simulate resolver being called during conflicted rebase
             fake_stop = RebaseStop(
@@ -400,6 +503,11 @@ def test_concurrent_remote_advance_calls_reconcile_helper(
         )
     )
 
+    # Pre-state: local and remote refs are diverged
+    assert _branch_sha(tmp_path, "release") != client.observe_remote_sha(
+        tmp_path, "release", remote="tacos"
+    )
+
     state = remote_sync.reconcile_remote_publication(
         config,
         tmp_path,
@@ -411,8 +519,120 @@ def test_concurrent_remote_advance_calls_reconcile_helper(
     assert received_resolver is not None
     assert resolver_invoked is True
     assert client.pushed == [("tacos", "release")]
-    assert state.last_push_status == "pushed"
+    assert state.last_push_status == PushStatus.PUSHED
     assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+    assert "origin" not in str(client.pushed)
+    assert "main" not in str(client.pushed)
+
+    # Prove local target ref == remote target ref on the same seam
+    local_target_ref = _branch_sha(tmp_path, "release")
+    remote_target_ref = client.observe_remote_sha(tmp_path, "release", remote="tacos")
+    assert local_target_ref == remote_target_ref == "reconciled-sha"
+
+
+def test_rejected_push_fetch_reintegrate_converges_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC9: rejected push triggers fetch -> reintegrate -> push -> ref equality on same seam.
+
+    Demonstrates the full rejected-push recovery sequence:
+    1. Local attempts push thinking it is ahead.
+    2. Remote rejects with NON_FAST_FORWARD (concurrent advance on remote).
+    3. Publication reconciler catches rejection and invokes reconcile_after_rejected_push.
+    4. Reconciler fetches (refresh returns REFRESH_DIVERGED).
+    5. Reconciler reintegrates local target onto remote target.
+    6. Second push succeeds with last_push_status == PUSHED.
+    7. Proves local target ref == remote target ref on the same seam.
+    """
+    push_attempts = 0
+    current_local_sha = "local-pre-reconcile-sha"
+
+    class _RejectOnceRemoteClient(_RecordingRemoteClient):
+        def push_branch(
+            self,
+            repo_root: Path,
+            branch: str,
+            *,
+            remote: str,
+            timeout_seconds: float = 0.0,
+        ) -> _remote_push_module.PushResult:
+            nonlocal push_attempts
+            push_attempts += 1
+            self.pushed.append((remote, branch))
+            if push_attempts == 1:
+                return _remote_push_module.PushResult(
+                    _remote_push_module.PushStatus.NON_FAST_FORWARD, remote, branch
+                )
+            self.remote_sha = current_local_sha
+            return _remote_push_module.PushResult(
+                _remote_push_module.PushStatus.PUSHED, remote, branch
+            )
+
+    client = _RejectOnceRemoteClient(
+        remote_sha="old-remote-sha",
+        refresh_status=REFRESH_DIVERGED,
+    )
+
+    def _branch_sha(_root: Path, _target: str) -> str:
+        return current_local_sha
+
+    def _is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
+        return ancestor == "old-remote-sha" and descendant == "local-pre-reconcile-sha"
+
+    monkeypatch.setattr(remote_sync, "is_ancestor", _is_ancestor)
+    monkeypatch.setattr(remote_sync, "branch_sha", _branch_sha)
+
+    def _reconcile_target_mock(
+        _repo_root: Path,
+        _target: str,
+        _remote: str,
+        *,
+        reclaim_target_worktree: bool = True,
+        rebase_stop_resolver: RebaseStopResolver | None = None,
+        conflict_resolution_config: UnifiedConfig | None = None,
+    ) -> ReconciliationOutcome:
+        nonlocal current_local_sha
+        current_local_sha = "reconciled-post-push-sha"
+        return ReconciliationOutcome(
+            reconciled=True,
+            reason="reconciled successfully",
+            cleanly_aborted=False,
+        )
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_reconcile.reconcile_target_onto_remote",
+        _reconcile_target_mock,
+    )
+
+    config = UnifiedConfig(
+        general=GeneralConfig(
+            auto_integrate_target="release",
+            auto_integrate_remote="tacos",
+        )
+    )
+
+    state = remote_sync.reconcile_remote_publication(
+        config,
+        tmp_path,
+        "release",
+        remote="tacos",
+        remote_client=client,
+    )
+
+    # 1. Two push attempts recorded: first rejected, second succeeded
+    assert push_attempts == 2
+    assert client.pushed == [("tacos", "release"), ("tacos", "release")]
+
+    # 2. Push status is PUSHED
+    assert state.last_push_status == PushStatus.PUSHED
+    assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+
+    # 3. Prove local target ref == remote target ref on the same seam
+    local_target_ref = _branch_sha(tmp_path, "release")
+    remote_target_ref = client.observe_remote_sha(tmp_path, "release", remote="tacos")
+    assert local_target_ref == remote_target_ref == "reconciled-post-push-sha"
+
+    # 4. Configured tacos/release respected, no origin/main
     assert "origin" not in str(client.pushed)
     assert "main" not in str(client.pushed)
 

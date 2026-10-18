@@ -60,19 +60,26 @@ def integration_target_branch(**opts: object) -> str | None:
     already yields it, so the exclusion lives here in the
     resolver to keep the generator source-agnostic.
     """
+    for key in ("integration_target", "auto_integrate_target", "target_branch"):
+        val = opts.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
     config = opts.get("config")
-    if config is None:
-        return None
-    general_obj: object = getattr(config, "general", None)
-    if general_obj is None:
-        return None
-    target: object = getattr(general_obj, "auto_integrate_target", None)
-    if isinstance(target, str) and target.strip():
-        return target.strip()
+    if config is not None:
+        for attr in ("auto_integrate_target", "integration_target", "target_branch"):
+            attr_val: object = getattr(config, attr, None)
+            if isinstance(attr_val, str) and attr_val.strip():
+                return attr_val.strip()
+        general_obj: object = getattr(config, "general", None)
+        if general_obj is not None:
+            for gen_attr in ("auto_integrate_target", "integration_target", "target_branch"):
+                target_val: object = getattr(general_obj, gen_attr, None)
+                if isinstance(target_val, str) and target_val.strip():
+                    return target_val.strip()
     return None
 
 
-def occupied_worktree_branches(repo_root: Path) -> frozenset[str]:
+def occupied_worktree_branches(repo_root: Path, **opts: object) -> frozenset[str]:
     """Return branches currently checked out in OTHER worktrees.
 
     A fast-forward that strands another agent's working copy is
@@ -80,6 +87,10 @@ def occupied_worktree_branches(repo_root: Path) -> frozenset[str]:
     excluded by definition -- its checked-out branch is the
     detached HEAD we are trying to reattach.
     """
+    occupied: set[str] = set()
+    raw_occupied = opts.get("occupied_worktree_branches") or opts.get("occupied")
+    if isinstance(raw_occupied, (set, frozenset, list, tuple)):
+        occupied.update(raw_occupied)
     try:
         res = run_git(
             ("worktree", "list", "--porcelain"),
@@ -87,15 +98,14 @@ def occupied_worktree_branches(repo_root: Path) -> frozenset[str]:
             label="commit:worktree-list-occupied",
         )
     except Exception:
-        return frozenset()
+        return frozenset(occupied)
     if res.returncode != 0:
-        return frozenset()
+        return frozenset(occupied)
     try:
         resolved_root = repo_root.resolve()
     except Exception:
         resolved_root = repo_root
     current_path: str | None = None
-    occupied: set[str] = set()
     for line in res.stdout.splitlines():
         if line.startswith("worktree "):
             current_path = line[len("worktree ") :].strip()
@@ -243,12 +253,19 @@ def create_fresh_branch_for_detached(
             continue
         if not preferred:
             preferred = candidate
+            break
     if not preferred:
-        return None
-    chosen = preferred
-    if branch_exists(repo_root, preferred):
-        collision = f"{preferred}-{short_sha}"
-        chosen = collision if not branch_exists(repo_root, collision) else f"wt-{short_sha}"
+        chosen = f"wt-{short_sha}"
+    else:
+        chosen = preferred
+        if branch_exists(repo_root, preferred):
+            collision = f"{preferred}-{short_sha}"
+            chosen = collision if not branch_exists(repo_root, collision) else f"wt-{short_sha}"
+    if branch_exists(repo_root, chosen):
+        suffix_idx = 1
+        while branch_exists(repo_root, f"{chosen}-{suffix_idx}"):
+            suffix_idx += 1
+        chosen = f"{chosen}-{suffix_idx}"
     try:
         create_branch = run_git(
             ("branch", chosen, detached_head_sha),

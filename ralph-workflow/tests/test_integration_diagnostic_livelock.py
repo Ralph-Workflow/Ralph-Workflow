@@ -408,3 +408,67 @@ def test_handoff_integration_diagnostic_at_repair_cap_rederives(
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
+
+
+def test_load_record_with_fingerprint_mismatched_lease_clears_hold_and_prevents_livelock(
+    tmp_path: Path,
+) -> None:
+    """Loading a record with a fingerprint-mismatched lease clears evidence/ownership/intervention.
+
+    When a record has a parseable lease whose fingerprint does not match the freshly-computed
+    durable identity (e.g. from a prior version or external mutation), the loader clears the
+    held evidence, ownership lease, intervention flag, and stale repair-cap reason. This fail-open
+    migration ensures the recovery loop can re-derive Git state and proceed instead of entering
+    an operator-intervention livelock.
+    """
+    import json
+
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        read_record,
+        record_path,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    # On-disk record with held evidence, a stale mismatched lease, and flagged intervention
+    raw_payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "0" * 40,
+        "pre_target_sha": "1" * 40,
+        "diagnostic_evidence": [["unstaged_work", "dirty"]],
+        "diagnostic_ownership": f"stale_fingerprint_mismatch:{time.time()}",
+        "diagnostic_intervention_required": True,
+        "repair_cap_reason": "diagnostic repair exhausted; operator intervention required",
+    }
+    rec_file = record_path(tmp_path)
+    rec_file.parent.mkdir(parents=True, exist_ok=True)
+    rec_file.write_text(json.dumps(raw_payload), encoding="utf-8")
+
+    # 1. Read from disk: load-time restamp immediately clears the hold and intervention flag
+    loaded = read_record(tmp_path, backend=DEFAULT_FILE_BACKEND)
+    assert loaded is not None
+    assert loaded.diagnostic_evidence == ()
+    assert loaded.diagnostic_ownership is None
+    assert loaded.diagnostic_intervention_required is False
+    assert loaded.repair_cap_reason is None
+
+    # 2. Next action is not blocked by operator intervention
+    assert next_integration_action(loaded) != IntegrationAction.REQUIRE_INTERVENTION
+
+    # 3. Recovery loop runs and does not deadlock/livelock in intervention
+    recover_incomplete_integration(WorkspaceScope(tmp_path), backend=DEFAULT_FILE_BACKEND)
+
+    # 4. Verified clean state persisted on disk
+    on_disk = read_record(tmp_path, backend=DEFAULT_FILE_BACKEND)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+    assert on_disk.repair_cap_reason is None
+    assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION

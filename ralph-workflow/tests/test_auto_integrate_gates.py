@@ -307,3 +307,178 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
     assert outcome is not None
     assert outcome.last_action == "skipped"
     assert "worktree not clean" in str(outcome.last_reason)
+
+
+@pytest.mark.parametrize(
+    (
+        "state_name",
+        "porcelain_out",
+        "rebase_active",
+        "merge_status",
+        "expected_ready",
+        "expected_first_reason",
+    ),
+    [
+        (
+            "clean",
+            "",
+            False,
+            MERGE_STATE_NONE,
+            True,
+            None,
+        ),
+        (
+            "modified-tracked",
+            " M src/foo.py\n",
+            False,
+            MERGE_STATE_NONE,
+            False,
+            "worktree not clean; uncommitted tracked changes deferred catch-up integration",
+        ),
+        (
+            "staged",
+            "M  src/foo.py\n",
+            False,
+            MERGE_STATE_NONE,
+            False,
+            "staged uncommitted work blocks integration",
+        ),
+        (
+            "unmerged",
+            "UU src/foo.py\n",
+            False,
+            MERGE_STATE_NONE,
+            False,
+            "unmerged paths remain from an unfinished rebase or merge: src/foo.py",
+        ),
+        (
+            "rebase-active",
+            "",
+            True,
+            MERGE_STATE_NONE,
+            False,
+            "rebase is in progress",
+        ),
+        (
+            "merge-active",
+            "",
+            False,
+            "in_progress",
+            False,
+            "merge is in progress or merge state is unreadable",
+        ),
+    ],
+)
+def test_all_gates_agree_on_clean_and_blocked_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state_name: str,
+    porcelain_out: str,
+    rebase_active: bool,
+    merge_status: str,
+    expected_ready: bool,
+    expected_first_reason: str | None,
+) -> None:
+    """Criterion 12: resolution, boundary, and planning agree across all tree states.
+
+    Verifies the one clean/blocked truth contract across clean, modified-tracked,
+    staged, unmerged, rebase-active, and merge-active:
+    1. Resolution (verdict.integration_ready), boundary (ended / dirty deferral),
+       and planning (_record_staged_block / planning sync) all agree on whether
+       integration is ready/clean vs blocked.
+    2. Resolution and planning agree on the exact first blocking reason, and
+       boundary records a cleanliness deferral outcome when blocked.
+    """
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    cfg = _config()
+    scope = WorkspaceScope(tmp_path)
+
+    # 1. Integration resolution entry points
+    readiness = assess_tree_readiness(
+        tmp_path,
+        porcelain=lambda _: (True, porcelain_out),
+        rebase_active=lambda _: rebase_active,
+        merge_status=lambda _: merge_status,
+    )
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (True, porcelain_out),
+        rebase_active=lambda _: rebase_active,
+        merge_status=lambda _: merge_status,
+    )
+
+    assert readiness.integration_ready is expected_ready
+    assert verdict.integration_ready is expected_ready
+    if expected_ready:
+        assert readiness.blocking_reasons == ()
+        assert verdict.blocking_reasons == ()
+    else:
+        assert len(readiness.blocking_reasons) > 0
+        assert readiness.blocking_reasons[0] == expected_first_reason
+        assert verdict.blocking_reasons[0] == expected_first_reason
+
+    # 2. Planning entry points (_record_staged_block and integrate_before_planning)
+    planning_block = planning._record_staged_block(tmp_path, "main", readiness=readiness)
+    if state_name == "staged":
+        assert planning_block is not None
+        assert planning_block.last_action == "skipped"
+        assert planning_block.last_reason == expected_first_reason
+        assert (
+            planning_block.last_planning_obstruction
+            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+        )
+        assert planning_block.integration_unresolved is False
+    else:
+        assert planning_block is None
+
+    monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
+    monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
+    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: expected_ready)
+    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(
+        planning,
+        "auto_integrate_after_commit",
+        lambda *_a, **_kw: RebaseState(last_outcome="fast_forwarded", fast_forwarded=True),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_recovery_terminal.post_attempt_verify",
+        lambda *_a, **_kw: None,
+    )
+
+    if state_name == "staged":
+        planning_sync = planning.integrate_before_planning(cfg, scope, RebaseState())
+        assert planning_sync is not None
+        assert planning_sync.last_action == "skipped"
+        assert planning_sync.last_reason == expected_first_reason
+        assert (
+            planning_sync.last_planning_obstruction
+            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+        )
+    elif expected_ready:
+        planning_sync = planning.integrate_before_planning(cfg, scope, RebaseState())
+        assert planning_sync is not None
+        assert planning_sync.fast_forwarded is True
+
+    # 3. Boundary entry point (phase_boundary_outcome)
+    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: readiness)
+    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: expected_ready)
+    monkeypatch.setattr(boundary, "branch_sha", lambda _r, _t: "b" * 40)
+    monkeypatch.setattr(boundary, "get_head_sha", lambda _r: "a" * 40)
+    monkeypatch.setattr(boundary, "is_ancestor", lambda _r, _a, _b: False)
+    monkeypatch.setattr(boundary, "pull_and_reconcile_target", lambda *_a, **_kw: None)
+
+    boundary_ended, boundary_outcome = boundary.phase_boundary_outcome(
+        cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+    )
+
+    if expected_ready:
+        # Ready tree proceeds to freshness/sync check (not ended by cleanliness gate)
+        assert boundary_ended is False
+        assert boundary_outcome is None
+    else:
+        # Non-ready tree ends at dirty/readiness gate with a recorded cleanliness deferral
+        assert boundary_ended is True
+        assert boundary_outcome is not None
+        assert boundary_outcome.last_action == "skipped"
+        assert "worktree not clean" in str(boundary_outcome.last_reason)

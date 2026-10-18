@@ -149,3 +149,29 @@ def test_migrate_payload_legacy_global_keys_clears_fields() -> None:
     assert parsed.diagnostic_ownership is None
     assert parsed.diagnostic_intervention_required is False
     assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_migrate_payload_stale_fingerprint_lease_clears_fields() -> None:
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    legacy = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": (("unstaged_work", "dirty"),),
+        "diagnostic_ownership": "mismatched_stale_fingerprint:12345.0",
+        "diagnostic_intervention_required": True,
+        "repair_cap_reason": "diagnostic repair exhausted; operator intervention required",
+    }
+    parsed = parse_record_payload(legacy)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_intervention_required is False
+    assert parsed.repair_cap_reason is None
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION

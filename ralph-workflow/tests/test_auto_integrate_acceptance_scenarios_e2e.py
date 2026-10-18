@@ -14,11 +14,13 @@ they run inside the 60-second combined ``make verify`` budget.
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.remote_push import PushStatus
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 
@@ -61,7 +63,12 @@ def _head_sha(repo_root: Path, ref: str) -> str:
     return _run(repo_root, "rev-parse", ref).stdout.strip()
 
 
-def _build_config(*, enabled: bool = True, remote_enabled: bool = True) -> UnifiedConfig:
+def _build_config(
+    *,
+    enabled: bool = True,
+    remote_enabled: bool = True,
+    interval_seconds: float = 0.0,
+) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
@@ -69,7 +76,7 @@ def _build_config(*, enabled: bool = True, remote_enabled: bool = True) -> Unifi
                 "auto_integrate_target": _TARGET,
                 "auto_integrate_remote": _REMOTE,
                 "auto_integrate_remote_enabled": remote_enabled,
-                "auto_integrate_remote_interval_seconds": 0.0,
+                "auto_integrate_remote_interval_seconds": interval_seconds,
             }
         }
     )
@@ -152,11 +159,76 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
     assert remote_advance_sha in descendants, (
         f"remote advance {remote_advance_sha} missing from reconciled history"
     )
+    assert state.last_push_status == PushStatus.PUSHED
     assert state.last_outcome in (
         RebaseOutcomeKind.REMOTE_PUSHED,
         RebaseOutcomeKind.MERGED,
         RebaseOutcomeKind.REBASED,
     )
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(60)
+def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path: Path) -> None:
+    """AC5, AC6 real-Git: fetch throttle armed at 60s suppresses probe during landing, but publication converges release/tacos.
+
+    Uses non-default target 'release' and remote 'tacos'. Arms the real
+    fetch throttle so the landing-seam probe is suppressed, lands a commit,
+    and demonstrates that publication pushes and converges release and tacos/release
+    with no origin or main branches/remotes accessed or created.
+    """
+    repo = tmp_path / "repo"
+    bare = tmp_path / "tacos.git"
+
+    _init_repo(repo)
+    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
+    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
+    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
+    assert _run(repo, "config", "user.name", "Test User").returncode == 0
+    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
+    assert _run(repo, "fetch", _REMOTE).returncode == 0
+
+    cfg = _build_config(interval_seconds=60.0)
+
+    # Arm the real fetch throttle
+    remote_sync._REMOTE_PULL_THROTTLE.arm(repo, _REMOTE, _TARGET, clock=time.monotonic)
+
+    # Demonstrate that fetch probe is suppressed during landing
+    pull_record = remote_sync.pull_and_reconcile_target(
+        cfg,
+        repo,
+        _TARGET,
+    )
+    assert pull_record is not None
+    assert pull_record.last_remote_sync == "refresh suppressed"
+    assert pull_record.last_refresh == "refresh suppressed by throttle"
+
+    # Local lands a commit
+    local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
+
+    # Publication converges release and tacos/release
+    state = remote_sync.reconcile_remote_publication(
+        cfg,
+        repo,
+        _TARGET,
+        source_state=pull_record,
+    )
+
+    # Convergence proof: real ref equality
+    local_ref = _head_sha(repo, f"refs/heads/{_TARGET}")
+    bare_ref = _run(bare, "rev-parse", _TARGET).stdout.strip()
+    assert local_ref == bare_ref == local_sha
+    assert state.last_push_status == PushStatus.PUSHED
+    assert state.last_outcome in (
+        RebaseOutcomeKind.REMOTE_PUSHED,
+        RebaseOutcomeKind.FAST_FORWARDED,
+    )
+
+    # No origin or main accessed or created
+    remotes = _run(repo, "remote").stdout.split()
+    assert "origin" not in remotes
+    branches = _run(repo, "branch", "-a").stdout
+    assert "main" not in branches
 
 
 @pytest.mark.subprocess_e2e
@@ -203,6 +275,7 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
     local_ref = _head_sha(repo, f"refs/heads/{_TARGET}")
     bare_ref = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert local_ref == bare_ref == local_sha
+    assert state.last_push_status == PushStatus.PUSHED
     assert state.last_outcome in (
         RebaseOutcomeKind.REMOTE_PUSHED,
         RebaseOutcomeKind.FAST_FORWARDED,
