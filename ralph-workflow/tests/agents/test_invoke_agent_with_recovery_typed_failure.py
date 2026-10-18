@@ -21,6 +21,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     _terminal_retry_error,
     run_with_direct_mcp_recovery,
 )
+from ralph.agents.invoke._supervision_infrastructure_error import SupervisionInfrastructureError
 
 
 class _SomeCustomError(Exception):
@@ -104,4 +105,37 @@ def test_terminal_retry_error_no_agent_switch_wording_for_typed_failure() -> Non
     joined = " ".join((*result.args, *notes))
     assert "retry cooldown exhausted" in joined
     # Must NOT have agent-switch wording
+    assert "try the next eligible agent" not in joined
+
+
+def test_terminal_retry_error_no_agent_switch_wording_for_supervision_infrastructure_error() -> (
+    None
+):
+    """SupervisionInfrastructureError terminal error has no agent-switch wording."""
+    original = SupervisionInfrastructureError("resolver", "relay dead")
+    result = _terminal_retry_error(original, consecutive_failures=3)
+
+    assert result is original
+    assert type(result) is SupervisionInfrastructureError
+    joined = "\n".join(result.parsed_output)
+    assert "retry cooldown exhausted" in joined
+    assert "try the next eligible agent" not in joined
+
+
+def test_terminal_retry_error_no_agent_switch_wording_for_mcp_operation_error() -> None:
+    """AgentInvocationError with failure_origin='mcp_operation' has no agent-switch wording."""
+    original = AgentInvocationError(
+        "mcp",
+        1,
+        "mcp bridge reset failed",
+        parsed_output=["tool failed"],
+        failure_origin="mcp_operation",
+        issuer="direct_mcp_recovery.reset_tool_registry",
+    )
+    result = _terminal_retry_error(original, consecutive_failures=3)
+
+    assert result is original
+    assert type(result) is AgentInvocationError
+    joined = "\n".join(result.parsed_output)
+    assert "retry cooldown exhausted" in joined
     assert "try the next eligible agent" not in joined

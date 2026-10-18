@@ -30,6 +30,8 @@ from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
+from ralph.mcp.server._reserved_socket import _reserve_listening_socket
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.mcp.server._lifecycle_deps import LifecycleDeps
@@ -65,7 +67,7 @@ def _make_deps(signal: _PortSignal) -> LifecycleDeps:
     """
 
     default_deps = lifecycle._default_lifecycle_deps()
-    default_reserve = default_deps.reserve_listening_socket or lifecycle._reserve_listening_socket
+    default_reserve = default_deps.reserve_listening_socket or _reserve_listening_socket
 
     def recording_reserve() -> tuple[str, int, socket.socket]:
         host, port, sock = default_reserve()
@@ -120,7 +122,7 @@ def _read_last_stage_label(workspace: Path, deadline: float) -> str:
 def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
     """A real HTTP request sent while the child is pre-accept must be answered on the same connection."""
     session = _make_session()
-    workspace = lifecycle.FsWorkspace(tmp_path)
+    workspace = FsWorkspace(tmp_path)
     sentinel = tmp_path / "pre_serve_gate"
     extras = McpServerExtras(extra_env={MCP_TEST_PRE_SERVE_GATE_ENV: str(sentinel)})
 
@@ -198,7 +200,7 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
 def test_slow_startup_preflight_succeeds(tmp_path: Path) -> None:
     """Preflight must succeed even when the child takes seconds to cross the serving boundary."""
     session = _make_session()
-    workspace = lifecycle.FsWorkspace(tmp_path)
+    workspace = FsWorkspace(tmp_path)
     sentinel = tmp_path / "pre_serve_gate"
     extras = McpServerExtras(extra_env={MCP_TEST_PRE_SERVE_GATE_ENV: str(sentinel)})
 

@@ -47,14 +47,18 @@ from ralph.mcp.server._http_tools_list import (
 )
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._mcp_health_event import (
+    _DURABLE_SINK_LOCK,
     RestartReason,
     current_host_is_contended,
+    get_durable_sink_path,
     pop_recent_host_contention_signals,
 )
 from ralph.mcp.server._mcp_health_event import (
     configure_bridge_sink as _configure_bridge_sink,
 )
-from ralph.mcp.server._mcp_health_event import record_restart_decision as _record_restart_decision
+from ralph.mcp.server._mcp_health_event import (
+    record_restart_decision as _record_restart_decision,
+)
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
@@ -278,6 +282,7 @@ class RestartAwareMcpBridge:
         sleep_fn: Callable[[float], object] | None = None,
         workspace_root: Path | None = None,
         contention_signal_producer: Callable[[], bool] | None = None,
+        preflight_timeout_fn: Callable[[], timedelta] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -290,6 +295,7 @@ class RestartAwareMcpBridge:
         self._run_id = run_id
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
+        self._preflight_timeout_fn = preflight_timeout_fn
         self._activity_relay = activity_relay
         # S4: tests inject a ``FakeClock``/sentinel sleep so the
         # production 2.0-second default does not stall the suite.
@@ -511,9 +517,17 @@ class RestartAwareMcpBridge:
         """
         if self._probe_fn is None:
             return False, None, False
-        probe_timeout = (
+        base_timeout: timedelta = (
             self._probe_timeout_fn() if self._probe_timeout_fn is not None else timedelta(seconds=5)
         )
+        preflight_timeout: timedelta = (
+            self._preflight_timeout_fn()
+            if self._preflight_timeout_fn is not None
+            else mcp_preflight_timeout_from_env()
+        )
+        ceiling: timedelta = max(base_timeout, preflight_timeout - timedelta(seconds=1.0))
+        multiplier: int = 2**self._consecutive_probe_failures_deferred
+        probe_timeout: timedelta = min(base_timeout * multiplier, ceiling)
         probe_start = time.monotonic()
         try:
             self._probe_fn(self._inner.endpoint, probe_timeout)
@@ -527,6 +541,42 @@ class RestartAwareMcpBridge:
                 self._activity_relay.record_sender_error(str(exc))
                 return False, None, True
             return True, time.monotonic() - probe_start, False
+
+    def _record_contention_deferral(
+        self,
+        *,
+        probe_duration_s: float | None,
+        deferral_count: int,
+        stage: str = "probe_deferred_contention",
+    ) -> None:
+        """Write a durable sink record when a probe failure is deferred under contention."""
+        target = (
+            self._durable_sink_path
+            if self._durable_sink_path is not None
+            else get_durable_sink_path()
+        )
+        if target is None:
+            return
+        try:
+            with _DURABLE_SINK_LOCK:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with (
+                    target.open(  # filesystem-write-ok: append-only durable JSONL stream; each contention deferral must append
+                        "a", encoding="utf-8"
+                    ) as fh
+                ):
+                    record: dict[str, object] = {
+                        "reason": "probe_deferred_contention",
+                        "exit_status": None,
+                        "probe_duration_s": probe_duration_s,
+                        "deferral_count": deferral_count,
+                        "log_tail": None,
+                        "stage": stage,
+                    }
+                    fh.write(json.dumps(record))
+                    fh.write("\n")
+        except OSError:
+            pass
 
     def _perform_restart(
         self,
@@ -628,25 +678,21 @@ class RestartAwareMcpBridge:
             fresh_contention = fresh_w_signal or fresh_b_signal
             if fresh_contention:
                 self._consecutive_probe_failures_deferred += 1
-                if (
-                    self._consecutive_probe_failures_deferred
-                    > self._restart_policy.max_contention_deferrals
-                ):
-                    self._consecutive_probe_failures_deferred = 0
-                    self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART
-                    return self._perform_restart(
-                        process_exited=False, probe_duration_s=probe_duration_s
-                    )
+                self._record_contention_deferral(
+                    probe_duration_s=probe_duration_s,
+                    deferral_count=self._consecutive_probe_failures_deferred,
+                    stage="probe_deferred_contention",
+                )
                 logger.debug(
                     "MCP server probe failed with fresh contention signal; deferring restart "
-                    "(deferred={}/{}, w={}, b={})",
+                    "(deferred={}, w={}, b={})",
                     self._consecutive_probe_failures_deferred,
-                    self._restart_policy.max_contention_deferrals,
                     fresh_w_signal,
                     fresh_b_signal,
                 )
                 return False
 
+            self._consecutive_probe_failures_deferred = 0
             self._consecutive_probe_failures += 1
             if self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART:
                 logger.debug(
@@ -1065,6 +1111,7 @@ def start_mcp_server(
             run_id=session.run_id,
             probe_fn=lifecycle_deps.probe,
             probe_timeout_fn=lifecycle_deps.probe_timeout,
+            preflight_timeout_fn=lifecycle_deps.preflight_timeout,
             activity_relay=effective_extras.activity_relay,
             workspace_root=root,
         )

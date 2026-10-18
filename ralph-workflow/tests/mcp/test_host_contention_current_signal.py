@@ -55,3 +55,23 @@ def test_current_host_is_contended_bounded_under_blocked_reader() -> None:
         )
         is False
     )
+
+
+def test_contention_signal_truthful_watch_pressure_no_cpu_claim() -> None:
+    """Verify contention signal derives truthfully from inotify watch budget without CPU claim."""
+    # Under watch capacity below ratio, contention is False regardless of CPU state.
+    assert (
+        current_host_is_contended(
+            watch_limit_reader=lambda: 1000,
+            watch_user_total_reader=lambda: 100,
+        )
+        is False
+    )
+    # Under watch capacity at or above ratio, contention is True.
+    assert (
+        current_host_is_contended(
+            watch_limit_reader=lambda: 1000,
+            watch_user_total_reader=lambda: 850,
+        )
+        is True
+    )

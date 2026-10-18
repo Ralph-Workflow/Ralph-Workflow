@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger as loguru_logger
 
+from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._start_stage_tracker import (
@@ -191,11 +192,15 @@ def test_observed_stage_deadline_enforces_bound(tmp_path: Path) -> None:
             extras=McpServerExtras(
                 session=session,
                 upstream_registry=None,
-                mcp_config=runtime_module.load_mcp_config(config_path=None),
+                mcp_config=load_mcp_config(config_path=None),
             ),
             env={},
         )
 
     err = exc_info.value
-    assert err.last_stage in ("config_loaded", "upstream_catalog_or_discovery_done")
+    assert err.last_stage in (
+        "config_loading",
+        "config_loaded",
+        "upstream_catalog_or_discovery_done",
+    )
     assert err.elapsed_s is not None and err.elapsed_s > budget

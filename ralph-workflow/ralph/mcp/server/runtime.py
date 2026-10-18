@@ -36,8 +36,6 @@ import argparse
 import concurrent.futures
 import contextlib
 import os
-import socket
-import stat
 import sys
 import threading
 import time
@@ -62,6 +60,7 @@ from ralph.mcp.protocol._startup_timeouts import (
     _PRE_SERVE_BUDGET_S,
     mcp_discovery_budget_from_env,
     mcp_pre_serve_budget_from_env,
+    mcp_preflight_timeout_from_env,
     mcp_registry_built_budget_from_env,
     mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
@@ -69,7 +68,6 @@ from ralph.mcp.protocol._startup_timeouts import (
 )
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import (
-    MCP_INHERITED_FD_ENV,
     MCP_OWNER_PID_ENV,
     MCP_RESPAWN_ENV,
     MCP_TEST_REGISTRY_BUILD_GATE_ENV,
@@ -87,6 +85,7 @@ from ralph.mcp.server._process_secrecy import (
     erase_broker_secret_environment,
     protect_broker_secret,
 )
+from ralph.mcp.server._reserved_socket import _adopt_inherited_socket
 from ralph.mcp.server._runtime_constants import (
     DEFAULT_HOST,
     DEFAULT_MOUNT_PATH,
@@ -113,6 +112,7 @@ from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    import socket
     from collections.abc import Callable, Mapping, MutableMapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
@@ -180,41 +180,36 @@ _clock = time.monotonic
 # var, so the gate returns immediately).
 _REGISTRY_BUILD_GATE_HARD_DEADLINE_S: float = 0.05
 
+# Import-time invariant: whole startup budget must stay strictly below
+# preflight timeout (if/raise, not assert, so it survives python -O).
+if not (mcp_whole_startup_budget_from_env() < mcp_preflight_timeout_from_env().total_seconds()):
+    raise RuntimeError(
+        "import-time invariant violated: mcp_whole_startup_budget_from_env() "
+        "must be strictly less than mcp_preflight_timeout_from_env()"
+    )
 
-def _validate_inherited_fd(fd_int: int, env_name: str = MCP_INHERITED_FD_ENV) -> bool:
-    """Return True if ``fd_int`` refers to a live, socket-typed FD.
 
-    Defensive guard: a stale ``fd_inherit_failed`` value in the env
-    (e.g. ``fd 8`` set by a prior test or sibling process) crashes
-    ``socket.socket(fileno=fd_int)`` with ``ENOTSOCK`` (errno 88).
-    We must NOT raise from here: the standalone server is a unit
-    caller's path with no bridge parent, so an unparseable env value
-    means the test/process simply never wired the inherited FD
-    through. The right behavior is to log a warning and serve on the
-    default port (the bridge's later respawn will rebind anyway).
-    The check is a cheap ``os.fstat`` that confirms the FD's file
-    type is ``S_IFSOCK``; a permission-denied fstat is the only
-    failure mode and is treated the same as "not a socket".
+def _check_cumulative_startup_deadline(
+    stage: str,
+    t0: float,
+    env_map: Mapping[str, str],
+) -> None:
+    """Enforce cumulative spawn-to-serving startup deadline at stage boundary.
+
+    Checks elapsed monotonic time from `t0` against `mcp_whole_startup_budget_from_env(env_map)`.
+    Raises typed `McpServerError` with `last_stage=stage` and `elapsed_s` when exceeded.
+    Uses `if`/`raise` (not `assert`) so the check survives `python -O`.
     """
-    try:
-        st_mode = os.fstat(fd_int).st_mode
-    except OSError as exc:
-        logger.warning(
-            "inherited_fd_skipped: env=%r fd=%r reason=%s",
-            env_name,
-            fd_int,
-            exc,
+    elapsed = _clock() - t0
+    whole_budget = mcp_whole_startup_budget_from_env(env_map)
+    if elapsed > whole_budget:
+        raise McpServerError(
+            f"cumulative startup deadline exceeded at stage {stage!r} "
+            f"({elapsed:.3f}s > {whole_budget:.3f}s)",
+            last_stage=stage,
+            elapsed_s=elapsed,
+            restart_count=0,
         )
-        return False
-    if not stat.S_ISSOCK(st_mode):
-        logger.warning(
-            "inherited_fd_skipped: env=%r fd=%r reason=%s",
-            env_name,
-            fd_int,
-            f"not a socket (st_mode=0o{st_mode:o})",
-        )
-        return False
-    return True
 
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
@@ -276,9 +271,11 @@ def _build_mcp_registry_and_server(
     wrote before invoking this function.
     """
     registry_budget_s = mcp_registry_built_budget_from_env(env_map)
+    whole_budget_s = mcp_whole_startup_budget_from_env(env_map)
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
+    _check_cumulative_startup_deadline("registry_built", t0, env_map)
 
-    remaining_budget_s = max(0.0, registry_budget_s - (_clock() - t0))
+    remaining_budget_s = max(0.0, min(registry_budget_s, whole_budget_s) - (_clock() - t0))
     read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
     effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
 
@@ -292,6 +289,7 @@ def _build_mcp_registry_and_server(
         timeout_s=effective_read_timeout_s,
     )
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
+    _check_cumulative_startup_deadline("registry_built", t0, env_map)
     n_builtin = len(list(reg.list_definitions()))
     if upstream_reg and upstream_servers:
         n_proxied = len(list(upstream_reg.tool_definitions()))
@@ -399,7 +397,9 @@ def _poll_bounded_pre_serve(
     path.open("rb") on a FIFO holds the GIL and cannot be interrupted.
     """
     pre_serve_budget = mcp_pre_serve_budget_from_env(env_map)
-    t_start = _clock()
+    whole_budget_s = mcp_whole_startup_budget_from_env(env_map)
+    remaining_s = max(0.0, whole_budget_s - (_clock() - t0))
+    effective_timeout_s = min(pre_serve_budget.total_seconds(), remaining_s)
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
         # allowed_roots access triggers FileBackedSession._load() which
@@ -432,12 +432,12 @@ def _poll_bounded_pre_serve(
         # operations so the budget covers the whole sequence.
         ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = ex.submit(_do_pre_serve)
-        return future.result(timeout=pre_serve_budget.total_seconds())
+        return future.result(timeout=effective_timeout_s)
     except concurrent.futures.TimeoutError:
-        elapsed = _clock() - t_start
+        elapsed = _clock() - t0
         raise McpServerError(
             f"pre-serve critical path timed out after {elapsed:.3f}s "
-            f"(budget={pre_serve_budget.total_seconds():.3f}s)",
+            f"(budget={effective_timeout_s:.3f}s)",
             last_stage="config_loading",
             elapsed_s=elapsed,
             restart_count=0,
@@ -503,6 +503,7 @@ def build_standalone_http_server(
     # where the child was when the budget fires. ThreadPoolExecutor (not bare
     # daemon Thread) is required by the resource-lifecycle audit.
     _log_and_record_stage(workspace_root, "config_loading")
+    _check_cumulative_startup_deadline("config_loading", t0, env_map)
     effective_workspace, mcp_cfg = _poll_bounded_pre_serve(
         workspace_root=workspace_root,
         effective_session=effective_session,
@@ -517,6 +518,7 @@ def build_standalone_http_server(
         _clock() - t0,
         budget_s=_CONFIG_LOAD_CUMULATIVE_S,
     )
+    _check_cumulative_startup_deadline("config_loaded", t0, env_map)
 
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
@@ -634,6 +636,7 @@ def build_standalone_http_server(
         _clock() - t0,
         budget_s=mcp_discovery_budget_from_env().total_seconds(),
     )
+    _check_cumulative_startup_deadline("upstream_catalog_or_discovery_done", t0, env_map)
     registry_budget_s = mcp_registry_built_budget_from_env(env_map)
 
     # R4-LOGS: ``registry_built`` is recorded at the boundary, BEFORE
@@ -645,6 +648,7 @@ def build_standalone_http_server(
     # post-construction ``record_stage_elapsed`` below is the
     # checkpoint that catches a slow (but not blocked) constructor.
     _log_and_record_stage(workspace_root, "registry_built")
+    _check_cumulative_startup_deadline("registry_built", t0, env_map)
 
     server = _build_mcp_registry_and_server(
         effective_session=effective_session,
@@ -657,6 +661,7 @@ def build_standalone_http_server(
         env_map=env_map,
     )
     record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
+    _check_cumulative_startup_deadline("registry_built", t0, env_map)
 
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
@@ -723,6 +728,8 @@ def run_standalone_server(
         _log_and_record_stage(workspace_root, name)
 
     _stage("env_loaded")
+    # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
+    _check_cumulative_startup_deadline("env_loaded", t0, env_map)
 
     # WU-B: switch the child's stdio to line-buffered so the listening
     # banner (``_fallback_standalone_server.py``) and every other
@@ -752,8 +759,12 @@ def run_standalone_server(
     scrub_activity_relay_environment(os.environ)
 
     # R2: Session loading can perform blocking I/O (file read/stat, explore index SQLite open).
-    # Isolate behind ThreadPoolExecutor with timeout _PRE_SERVE_BUDGET_S so it cannot hang
+    # Isolate behind ThreadPoolExecutor with timeout <= remaining deadline so it cannot hang
     # indefinitely.
+    whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
+    remaining_s = max(0.0, whole_startup_budget_s - (_clock() - t0))
+    session_timeout_s = min(_PRE_SERVE_BUDGET_S, remaining_s)
+
     ex: concurrent.futures.ThreadPoolExecutor | None = None
     try:
         ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -762,11 +773,11 @@ def run_standalone_server(
             declared_agent_transport=agent_transport,
             workspace_root=workspace_root,
         )
-        session = future.result(timeout=_PRE_SERVE_BUDGET_S)
+        session = future.result(timeout=session_timeout_s)
     except concurrent.futures.TimeoutError:
         elapsed = _clock() - t0
         raise McpServerError(
-            f"session initialization timed out after {elapsed:.3f}s (budget={_PRE_SERVE_BUDGET_S:.3f}s)",
+            f"session initialization timed out after {elapsed:.3f}s (budget={session_timeout_s:.3f}s)",
             last_stage="session_ready",
             elapsed_s=elapsed,
             restart_count=0,
@@ -776,40 +787,21 @@ def run_standalone_server(
             ex.shutdown(wait=False)
 
     erase_broker_secret_environment()
+    # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
     _stage("session_ready")
+    _check_cumulative_startup_deadline("session_ready", t0, env_map)
+
     # R1: when the parent passed a listening FD via
     # ``RALPH_MCP_INHERITED_FD``, adopt it. The bridge owns the
     # socket for the full lifetime; this child serves on it without
     # re-binding, so a client that connects during a respawn queues
     # in the kernel backlog instead of being refused.
-    parent_socket: socket.socket | None = None
-    inherited_fd_raw = env_map.get(MCP_INHERITED_FD_ENV, "")
-    if inherited_fd_raw.isdigit():
-        inherited_fd_int = int(inherited_fd_raw)
-        if _validate_inherited_fd(inherited_fd_int):
-            try:
-                parent_socket = socket.socket(
-                    socket.AF_INET,
-                    socket.SOCK_STREAM,
-                    fileno=inherited_fd_int,
-                )
-            except (OSError, ValueError) as exc:
-                # FD validated as a socket above but became invalid
-                # between the fstat and the wrap (rare race against
-                # a sibling closing it). Surface as McpServerError so
-                # the supervisor records the precise stage and the
-                # operator sees ``last_stage="fd_inherit_failed"``.
-                raise McpServerError(
-                    f"failed to adopt inherited listening FD "
-                    f"({inherited_fd_raw!r}) from parent bridge: {exc}",
-                    restart_count=0,
-                    last_stage="fd_inherit_failed",
-                ) from exc
-        # If validation failed, the env var was set but the FD is
-        # not actually a live socket (e.g. unit tests that never
-        # went through the bridge). Fall through and let
-        # ``_StandaloneHttpServer`` bind its own port; the bridge
-        # respawn will rebind to the inherited FD on the next spawn.
+    # Fail-closed invalid-inherited-FD: when MCP_INHERITED_FD_ENV is set
+    # but the FD fails validation/adoption, child fails closed with typed
+    # McpServerError (not log-and-fresh-bind). Absent env keeps the
+    # fallback to fresh bind.
+    parent_socket = _adopt_inherited_socket(env_map, t0, _stage, clock_fn=_clock)
+
     # R2: a respawn runs with ``MCP_RESPAWN_ENV=1`` set. The
     # upstream registry must come from the cached tool catalog the
     # parent hands us, never from a live probe — a respawn has no
@@ -840,6 +832,7 @@ def run_standalone_server(
     # starts, not before. The stage file is the authoritative
     # marker the supervisor reads on preflight failure.
     def _record_ready_to_serve() -> None:
+        _check_cumulative_startup_deadline("ready_to_serve", t0, env_map)
         record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=ready_budget_s)
         _stage("ready_to_serve")
 

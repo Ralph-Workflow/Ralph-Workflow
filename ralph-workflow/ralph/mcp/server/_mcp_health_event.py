@@ -60,6 +60,7 @@ class RestartReason(Enum):
 
     PROCESS_EXITED = "process_exited"
     PROBE_FAILED = "probe_failed"
+    PROBE_DEFERRED_CONTENTION = "probe_deferred_contention"
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,8 @@ class RestartDecision:
     Attributes
     ----------
     reason : RestartReason
-        One of ``PROCESS_EXITED`` or ``PROBE_FAILED``.
+        One of ``PROCESS_EXITED``, ``PROBE_FAILED``, or
+        ``PROBE_DEFERRED_CONTENTION``.
     exit_status : int | None
         The raw process exit code, present only when ``reason`` is
         ``PROCESS_EXITED``.
@@ -81,7 +83,8 @@ class RestartDecision:
         ``None`` when no log is available.
     stage : str
         The startup stage or the string ``"process_exited"`` /
-        ``"probe_failed"`` that was current when the decision was made.
+        ``"probe_failed"`` / ``"probe_deferred_contention"`` that was
+        current when the decision was made.
     available : bool
         Always ``False`` for a restart decision record.
     """
@@ -94,10 +97,19 @@ class RestartDecision:
     available: bool = False
 
     def __post_init__(self) -> None:
+        if isinstance(self.reason, str):
+            try:
+                object.__setattr__(self, "reason", RestartReason(self.reason))
+            except ValueError:
+                raise ValueError(
+                    f"Unknown restart reason: {self.reason!r}. Must be one of {[r.value for r in RestartReason]}"
+                ) from None
         if self.reason is RestartReason.PROCESS_EXITED and self.exit_status is None:
             raise ValueError("exit_status is required when reason is PROCESS_EXITED")
         if self.reason is RestartReason.PROBE_FAILED and self.probe_duration_s is None:
             raise ValueError("probe_duration_s is required when reason is PROBE_FAILED")
+        if self.log_tail is not None and len(self.log_tail) > _LOG_TAIL_LINES:
+            object.__setattr__(self, "log_tail", self.log_tail[-_LOG_TAIL_LINES:])
 
 
 #: Maximum number of log lines stored per restart decision.
@@ -124,7 +136,7 @@ def get_durable_sink_path() -> Path | None:
 
 def record_restart_decision(
     *,
-    reason: RestartReason,
+    reason: RestartReason | str,
     exit_status: int | None = None,
     probe_duration_s: float | None = None,
     log_tail: tuple[str, ...] | None = None,
@@ -135,9 +147,10 @@ def record_restart_decision(
 
     Parameters
     ----------
-    reason : RestartReason
+    reason : RestartReason | str
         ``PROCESS_EXITED`` when the child process exited; ``PROBE_FAILED``
-        when the health probe failed.
+        when the health probe failed; ``PROBE_DEFERRED_CONTENTION`` when
+        a probe was deferred due to host contention.
     exit_status : int | None
         Raw process exit code. Required when ``reason`` is ``PROCESS_EXITED``.
     probe_duration_s : float | None
@@ -159,8 +172,9 @@ def record_restart_decision(
         bridge's own ``_durable_sink_path`` so records land only in
         that bridge's file regardless of the global setting.
     """
+    resolved_reason = RestartReason(reason) if isinstance(reason, str) else reason
     decision = RestartDecision(
-        reason=reason,
+        reason=resolved_reason,
         exit_status=exit_status,
         probe_duration_s=probe_duration_s,
         log_tail=log_tail,

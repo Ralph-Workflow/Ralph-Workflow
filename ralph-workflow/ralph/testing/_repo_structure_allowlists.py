@@ -1527,7 +1527,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # retry classification) where each branch short-circuits to a
         # typed outcome; flattening the branches would obscure the
         # typed control flow.
-        ("ralph/agents/invoke/_direct_mcp_recovery.py", 285),
+        ("ralph/agents/invoke/_direct_mcp_recovery.py", 292),
         # wt-16: ``_start_stage_tracker`` uses a process-lifetime
         # module-level ``_spawn_id`` UUID that ``reset_spawn_id`` and
         # ``record`` must mutate in place; the alternative (a

@@ -16,7 +16,6 @@ import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -133,8 +132,21 @@ def test_mcp_server_error_last_stage_carries_child_stage(tmp_path: Path) -> None
     spawned_procs: list[lifecycle.ProcessLike] = []
     real_deps = lifecycle._default_lifecycle_deps()
 
-    def tracking_spawn(*args: Any, **kwargs: Any) -> lifecycle.ProcessLike:
-        proc = real_deps.spawn_process(*args, **kwargs)
+    def tracking_spawn(
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> lifecycle.ProcessLike:
+        proc = real_deps.spawn_process(
+            command,
+            cwd,
+            env,
+            phase=phase,
+            pass_fds=pass_fds,
+        )
         spawned_procs.append(proc)
         return proc
 

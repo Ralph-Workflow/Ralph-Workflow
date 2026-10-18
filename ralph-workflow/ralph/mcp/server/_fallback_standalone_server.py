@@ -16,6 +16,7 @@ from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
 from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._runtime_constants import (
     DEFAULT_MOUNT_PATH,
     DEFAULT_TRANSPORT,
@@ -128,9 +129,12 @@ class _FallbackStandaloneServer:
                 gate_path_obj
             ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
                 if time.monotonic() >= deadline:
-                    raise RuntimeError(
+                    raise McpServerError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "
-                        f"waiting for {gate_path}"
+                        f"waiting for {gate_path}",
+                        last_stage="ready_to_serve",
+                        elapsed_s=_PRE_SERVE_GATE_TIMEOUT_S,
+                        restart_count=0,
                     )
                 # filesystem-poll-ok: test-only pre-serve gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
                 time.sleep(0.05)

@@ -9,6 +9,7 @@ failure and never triggers ``reset_tool_registry`` as a recovery step.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 
 import pytest
 
@@ -17,23 +18,31 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     iter_with_direct_mcp_recovery,
     run_with_direct_mcp_recovery,
 )
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.workspace import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 
 def test_mcp_server_error_propagates_after_one_attempt_no_registry_call() -> None:
     attempts = 0
     registry_calls = 0
+    original_error = McpServerError("mcp server failed", restart_count=3)
 
     def run_attempt(_session_id: str | None, _capture: object) -> str:
         nonlocal attempts
         attempts += 1
-        raise McpServerError("mcp server failed", restart_count=3)
+        raise original_error
 
     def _reset_tool_registry() -> None:
         nonlocal registry_calls
         registry_calls += 1
 
-    with pytest.raises(McpServerError):
+    with pytest.raises(McpServerError) as exc_info:
         run_with_direct_mcp_recovery(
             run_attempt,
             max_retries=5,
@@ -42,24 +51,28 @@ def test_mcp_server_error_propagates_after_one_attempt_no_registry_call() -> Non
 
     assert attempts == 1
     assert registry_calls == 0
+    assert exc_info.value is original_error
+    assert type(exc_info.value) is McpServerError
+    assert exc_info.value.restart_count == 3
 
 
 def test_iter_mcp_server_error_propagates_after_one_attempt_no_registry_call() -> None:
     attempts = 0
     registry_calls = 0
+    original_error = McpServerError("mcp server failed", restart_count=3)
 
     def _run_attempt(_session_id: str | None) -> Iterable[str]:
         nonlocal attempts
         attempts += 1
         yield "stream-line-1"
         yield "stream-line-2"
-        raise McpServerError("mcp server failed", restart_count=3)
+        raise original_error
 
     def _reset_tool_registry() -> None:
         nonlocal registry_calls
         registry_calls += 1
 
-    with pytest.raises(McpServerError):
+    with pytest.raises(McpServerError) as exc_info:
         list(
             iter_with_direct_mcp_recovery(
                 _run_attempt,
@@ -70,6 +83,9 @@ def test_iter_mcp_server_error_propagates_after_one_attempt_no_registry_call() -
 
     assert attempts == 1
     assert registry_calls == 0
+    assert exc_info.value is original_error
+    assert type(exc_info.value) is McpServerError
+    assert exc_info.value.restart_count == 3
 
 
 def _reset_raises_mcp_server_error(calls: list[int]) -> None:
@@ -184,3 +200,79 @@ def test_run_reset_callback_generic_error_still_converts_to_invocation_error() -
     assert error.failure_origin == "mcp_operation"
     assert error.issuer == "direct_mcp_recovery.reset_tool_registry"
     assert reset_calls == [1]
+
+
+class _FakeBridge:
+    def shutdown(self) -> None:
+        pass
+
+
+def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
+    return UnifiedConfig(
+        general=GeneralConfig(agent_idle_timeout_seconds=agent_idle_timeout_seconds)
+    )
+
+
+def _registry_factory(config: object) -> object:
+    del config
+    agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class _Registry:
+        def get(self, name: str) -> AgentConfig | None:
+            del name
+            return agent_config
+
+    return _Registry()
+
+
+def test_invoke_agent_with_recovery_maps_health_check_mcp_server_error_without_logger_exception(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """_invoke_agent_with_recovery maps health-check McpServerError to AGENT_FAILURE with
+    failure_reason='McpServerError' without logger.exception.
+    """
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    def fake_materialize_master_prompt(
+        workspace_root: Path,
+        name: str,
+        default_product_criteria: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
+
+    def fake_check_mcp_bridge_health(_bridge: object) -> None:
+        raise McpServerError("budget exhausted", restart_count=3)
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=_FakeBridge(),
+        master_prompt_materializer=fake_materialize_master_prompt,
+        registry_factory=_registry_factory,
+        check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
+    )
+
+    exception_calls: list[str] = []
+
+    def _spy_exception(message: object, *args: object) -> None:
+        exception_calls.append(str(message))
+
+    monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+
+    assert result == PipelineEvent.AGENT_FAILURE
+    assert exception_calls == []
+    intent = effect_executor_module.pop_last_captured_retry_intent()
+    assert intent.action == "fresh"
+    assert intent.failure_reason == "McpServerError"

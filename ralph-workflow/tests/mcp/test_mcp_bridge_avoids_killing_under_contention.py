@@ -6,7 +6,7 @@ import pathlib
 import tempfile
 import threading
 from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING
+from datetime import timedelta
 
 import pytest
 from loguru import logger
@@ -14,12 +14,11 @@ from loguru import logger
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_health_event import (
     _clear_host_contention_signals,
+    configure_bridge_sink,
+    read_durable_sink,
     record_host_contention_signal,
 )
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
-
-if TYPE_CHECKING:
-    from datetime import timedelta
 
 
 @pytest.fixture(autouse=True)
@@ -115,9 +114,11 @@ def test_w_only_defers_restart() -> None:
     # 3 contended misses → no restart yet
     assert bridge._restart_count == 0
     assert bridge._consecutive_probe_failures_deferred == 3
-    # 4th miss → guard yields → restart fires
-    bridge.check_health_and_restart_if_needed()
-    assert bridge._restart_count == 1
+    # Under sustained contention, 4th and subsequent misses NEVER escalate to restart
+    for _ in range(5):
+        bridge.check_health_and_restart_if_needed()
+    assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 8
 
 
 # 3. B-only: B True, W empty → defer
@@ -130,9 +131,11 @@ def test_b_only_defers_restart() -> None:
         bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 0
     assert bridge._consecutive_probe_failures_deferred == 3
-    # 4th miss → guard yields → restart fires
-    bridge.check_health_and_restart_if_needed()
-    assert bridge._restart_count == 1
+    # 4th and 5th misses under sustained contention NEVER escalate to restart
+    for _ in range(5):
+        bridge.check_health_and_restart_if_needed()
+    assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 8
 
 
 # 4. Both: B True, W True → defer
@@ -146,9 +149,11 @@ def test_both_defers_restart() -> None:
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 0
-    # 4th miss → restart
-    bridge.check_health_and_restart_if_needed()
-    assert bridge._restart_count == 1
+    # Sustained contention: never restarts
+    for _ in range(5):
+        bridge.check_health_and_restart_if_needed()
+    assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 8
 
 
 # 5. Successful recovery: contended misses + success resets BOTH counters
@@ -174,14 +179,20 @@ def test_successful_recovery_preserves_server() -> None:
     assert bridge._consecutive_probe_failures_deferred == 0
     assert bridge._restart_count == 0
 
-    # Second sequence of 3 contended misses
+    # Second sequence of 5 contended misses -> never restarts
     should_fail[0] = True
-    for _ in range(3):
+    for _ in range(5):
         bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 0
-    assert bridge._consecutive_probe_failures_deferred == 3
+    assert bridge._consecutive_probe_failures_deferred == 5
 
-    # 4th miss triggers restart
+    # If contention ceases (producer returns False, W signal cleared),
+    # regular 3 misses trigger restart
+    _clear_host_contention_signals()
+    bridge._contention_signal_producer = lambda: False
+    for _ in range(2):
+        bridge.check_health_and_restart_if_needed()
+    assert bridge._restart_count == 0
     bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 1
     assert bridge._consecutive_probe_failures_deferred == 0
@@ -257,7 +268,11 @@ def test_stale_probe_result_discarded_after_reset() -> None:
     and discards the stale B-signal without touching any counter.
     """
     log_records: list[str] = []
-    sink_id = logger.add(lambda msg: log_records.append(str(msg)), level="DEBUG")
+
+    def record_log(msg: object) -> None:
+        log_records.append(str(msg))
+
+    sink_id = logger.add(record_log, level="DEBUG")
 
     producer_entered = threading.Event()
     release_producer = threading.Event()
@@ -312,3 +327,70 @@ def test_stale_probe_result_discarded_after_reset() -> None:
         )
     finally:
         logger.remove(sink_id)
+
+
+def test_sustained_contention_probe_timeout_escalation_and_ceiling() -> None:
+    """Under sustained contention, probe timeout doubles up to ceiling below preflight budget."""
+    observed_timeouts: list[float] = []
+
+    def recording_probe(endpoint: str, timeout: timedelta) -> None:
+        observed_timeouts.append(timeout.total_seconds())
+        raise RuntimeError("probe failed")
+
+    inner = _make_inner(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None),
+        restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
+        run_id="test-run",
+        probe_fn=recording_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=1.0),
+        preflight_timeout_fn=lambda: timedelta(seconds=6.0),
+        contention_signal_producer=lambda: True,
+    )
+
+    # Base timeout: 1.0s, preflight: 6.0s -> ceiling: max(1.0, 6.0 - 1.0) = 5.0s
+    # Call 1: deferred=0 -> timeout=1.0s
+    # Call 2: deferred=1 -> timeout=min(2.0s, 5.0s) = 2.0s
+    # Call 3: deferred=2 -> timeout=min(4.0s, 5.0s) = 4.0s
+    # Call 4: deferred=3 -> timeout=min(8.0s, 5.0s) = 5.0s (capped at ceiling)
+    # Call 5: deferred=4 -> timeout=min(16.0s, 5.0s) = 5.0s (capped at ceiling)
+    for _ in range(5):
+        restarted = bridge.check_health_and_restart_if_needed()
+        assert restarted is False
+
+    assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 5
+    assert observed_timeouts == [1.0, 2.0, 4.0, 5.0, 5.0]
+
+
+def test_sustained_contention_writes_durable_sink_records(tmp_path: pathlib.Path) -> None:
+    """Each contention deferral appends a record with reason, duration, deferral_count, stage."""
+    sink_path = configure_bridge_sink(tmp_path, "contention-bridge-test")
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        raise RuntimeError("probe failed")
+
+    inner = _make_inner(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None),
+        restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
+        run_id="test-run",
+        probe_fn=failing_probe,
+        contention_signal_producer=lambda: True,
+    )
+    bridge._durable_sink_path = sink_path
+
+    for _ in range(3):
+        bridge.check_health_and_restart_if_needed()
+
+    records = read_durable_sink(path=sink_path)
+    assert len(records) == 3
+
+    for idx, record in enumerate(records, start=1):
+        assert record["reason"] == "probe_deferred_contention"
+        assert record["stage"] == "probe_deferred_contention"
+        assert record["deferral_count"] == idx
+        assert isinstance(record["probe_duration_s"], (float, int))
+        assert record["probe_duration_s"] >= 0.0

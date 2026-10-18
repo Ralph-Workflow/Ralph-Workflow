@@ -138,10 +138,16 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
     """Preserve the failure evidence while making same-signature exhaustion explicit."""
 
     if isinstance(exc, AgentInvocationError):
-        # Keep the "try the next eligible agent" wording for
-        # AgentInvocationError - the existing pinned assertion in
-        # tests/test_commit_retry_cooldown.py:33 requires the
-        # "retry cooldown exhausted" substring in parsed_output.
+        # Keep the "try the next eligible agent" wording ONLY for agent-origin failures:
+        # infrastructure failures (SupervisionInfrastructureError or failure_origin != "agent")
+        # cannot be resolved by switching agents, so omit the agent-switch advice.
+        if exc.failure_origin != "agent" or isinstance(exc, SupervisionInfrastructureError):
+            diagnostic = f"retry cooldown exhausted after {consecutive_failures} identical failure signatures"
+            exc.parsed_output = [*_exception_parsed_output(exc), diagnostic]
+            return exc
+
+        # Agent-origin failure: prompt that agent switch may be attempted (required by
+        # existing pinned assertion contract).
         diagnostic = (
             "Commit/direct-MCP retry cooldown exhausted after "
             f"{consecutive_failures} identical failure signatures; try the next eligible agent."
@@ -153,6 +159,7 @@ def _terminal_retry_error(exc: Exception, consecutive_failures: int) -> Exceptio
         # (same contract as ``_invocation_error_with_output``).
         exc.parsed_output = [*_exception_parsed_output(exc), diagnostic]
         return exc
+
     # Non-AgentInvocationError: preserve the original typed exception so
     # callers' ``pytest.raises`` and upstream classifiers key on the real
     # type, and attach the diagnostic as a note. Remove the "try the next

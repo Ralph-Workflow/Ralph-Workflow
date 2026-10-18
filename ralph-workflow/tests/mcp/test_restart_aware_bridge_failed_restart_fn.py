@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
+from datetime import timedelta
 
 import pytest
 
@@ -194,4 +195,56 @@ def test_bridge_mixed_health_and_reset_shared_accounting() -> None:
         bridge.check_health_and_restart_if_needed()
     assert exc4.value.restart_count == 2
     assert "restart budget exhausted" in str(exc4.value)
+    assert attempts == [1, 2]
+
+
+def test_bridge_probe_failure_increments_counter_before_failed_restart_fn() -> None:
+    """Probe failure increments restart_count before invoking failing _restart_fn."""
+    attempts: list[int] = []
+    inner = _make_inner(poll_result=None)
+
+    def failing_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        attempts.append(len(attempts) + 1)
+        raise RuntimeError("synthetic restart failure on probe")
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        raise RuntimeError("probe failed")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=failing_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
+        run_id="test-probe-restart-failure",
+        probe_fn=failing_probe,
+        contention_signal_producer=lambda: False,
+    )
+
+    # First 2 misses: no restart yet
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.restart_count == 0
+
+    # 3rd miss: attempts restart 1 -> failing_restart_fn raises McpServerError with restart_count=1
+    with pytest.raises(lifecycle.McpServerError) as exc1:
+        bridge.check_health_and_restart_if_needed()
+    assert exc1.value.restart_count == 1
+    assert bridge.restart_count == 1
+    assert "MCP restart attempt 1/2 failed" in str(exc1.value)
+    assert attempts == [1]
+
+    # Inner process was shut down during failed attempt 1; next call immediately attempts restart 2
+    with pytest.raises(lifecycle.McpServerError) as exc2:
+        bridge.check_health_and_restart_if_needed()
+    assert exc2.value.restart_count == 2
+    assert bridge.restart_count == 2
+    assert "MCP restart attempt 2/2 failed" in str(exc2.value)
+    assert attempts == [1, 2]
+
+    # Budget exhausted (current=2, max=2) -> raises without calling restart_fn again
+    with pytest.raises(lifecycle.McpServerError) as exc3:
+        bridge.check_health_and_restart_if_needed()
+    assert exc3.value.restart_count == 2
+    assert "restart budget exhausted" in str(exc3.value)
+    assert "current=2" in str(exc3.value)
+    assert "max=2" in str(exc3.value)
     assert attempts == [1, 2]

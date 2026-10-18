@@ -1,3 +1,5 @@
+from collections.abc import Generator
+
 import pytest
 
 from ralph.mcp.server._mcp_health_event import (
@@ -21,14 +23,14 @@ class _FakeClock:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_contention_signals():
+def _isolate_contention_signals() -> Generator[None, None, None]:
     """Clear the module-level contention deque before and after each test."""
     _clear_host_contention_signals()
     yield
     _clear_host_contention_signals()
 
 
-def test_record_and_pop_round_trip():
+def test_record_and_pop_round_trip() -> None:
     _clear_host_contention_signals()
     record_host_contention_signal("watch_capacity_predicted")
     sigs = pop_recent_host_contention_signals(60.0)
@@ -36,7 +38,7 @@ def test_record_and_pop_round_trip():
     assert sigs[0][1] == "watch_capacity_predicted"
 
 
-def test_window_filters_old_signals():
+def test_window_filters_old_signals() -> None:
     _clear_host_contention_signals()
     clock = _FakeClock(start=100.0)
     # Record the first signal at t=100.0 via the injected clock.
@@ -56,7 +58,7 @@ def test_window_filters_old_signals():
     assert len(sigs_mixed) == 1
 
 
-def test_deque_keeps_latest_64_after_overflow():
+def test_deque_keeps_latest_64_after_overflow() -> None:
     _clear_host_contention_signals()
     # A stable clock makes every recorded (ts, reason) share ts=0.0
     # so the window only filters on deque order, not on timestamps.
@@ -71,7 +73,7 @@ def test_deque_keeps_latest_64_after_overflow():
     assert reasons == expected
 
 
-def test_deque_is_bounded():
+def test_deque_is_bounded() -> None:
     _clear_host_contention_signals()
     for i in range(200):
         record_host_contention_signal(f"reason-{i}")

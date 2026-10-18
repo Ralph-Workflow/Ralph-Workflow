@@ -21,6 +21,7 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.mcp.server._lifecycle_deps import LifecycleDeps
@@ -76,7 +77,9 @@ def _wait_until_child_exits(process: ProcessLike, deadline: float) -> int | None
     return process.poll()
 
 
-def _queued_connection_served_after_respawn(bridge: object, endpoint: str) -> str:
+def _queued_connection_served_after_respawn(
+    bridge: lifecycle.RestartAwareMcpBridge, endpoint: str
+) -> str:
     """Open a socket while the child is dead, respawn, and assert the SAME socket
     receives a valid HTTP response from the respawned child (which inherits the
     bridge listening socket). Returns the received status line."""
@@ -134,7 +137,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
       5. After the new child is ready, the endpoint serves real HTTP.
     """
     session = _make_session()
-    workspace = lifecycle.FsWorkspace(tmp_path)
+    workspace = FsWorkspace(tmp_path)
 
     real_spawn = lifecycle._default_lifecycle_deps().spawn_process
 
@@ -165,10 +168,13 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         )
 
         # --- 4. R1 invariant: foreign bind raises EADDRINUSE --------------------
+        sock_addr = listening_socket.getsockname()
+        assert isinstance(sock_addr, tuple)
+        bind_port = int(sock_addr[1])
         foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             with pytest.raises(OSError) as exc_info:
-                foreign.bind(("127.0.0.1", listening_socket.getsockname()[1]))
+                foreign.bind(("127.0.0.1", bind_port))
             assert exc_info.value.errno == errno.EADDRINUSE, (
                 f"foreign bind while bridge owns socket must EADDRINUSE, got {exc_info.value.errno}"
             )
@@ -203,7 +209,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
 def test_inherited_socket_stays_listening_across_kill(tmp_path: Path) -> None:
     """After SIGKILL the socket stays open and in LISTEN state until bridge shutdown."""
     session = _make_session()
-    workspace = lifecycle.FsWorkspace(tmp_path)
+    workspace = FsWorkspace(tmp_path)
 
     real_spawn = lifecycle._default_lifecycle_deps().spawn_process
     deps = _make_deps(tmp_path, real_spawn)
@@ -224,10 +230,13 @@ def test_inherited_socket_stays_listening_across_kill(tmp_path: Path) -> None:
         assert backlog_state != 0, "SO_ACCEPTCONN must be non-zero while bridge owns the socket"
 
         # foreign bind still fails
+        sock_addr = listening_socket.getsockname()
+        assert isinstance(sock_addr, tuple)
+        bind_port = int(sock_addr[1])
         foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             with pytest.raises(OSError) as exc_info:
-                foreign.bind(("127.0.0.1", listening_socket.getsockname()[1]))
+                foreign.bind(("127.0.0.1", bind_port))
             assert exc_info.value.errno == errno.EADDRINUSE
         finally:
             foreign.close()

@@ -42,11 +42,11 @@ class McpRestartPolicy:
     # value that risks eating probe-budget timeout windows trips
     # here.
     host_contention_window_seconds: float = 10.0
-    # Maximum consecutive probe-failures deferred under a fresh
-    # host-contention signal before the guard yields to the existing
-    # restart path.  Default 3 — the same magnitude as the regular
-    # 3-miss restart budget, so a contended host gets the same
-    # affordance as a non-contended one.  Capped in [1, 10] below.
+    # Maximum consecutive probe-failures deferred under a host-contention signal.
+    # While the child process is alive and a fresh contention signal is present,
+    # probe failures never escalate to restart; instead next probe timeouts
+    # escalate and durable contention deferral records are written. Retained
+    # for configuration and backward-compatibility. Capped in [1, 10] below.
     max_contention_deferrals: int = 3
 
 

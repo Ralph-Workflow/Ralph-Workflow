@@ -112,6 +112,69 @@ def test_record_restart_decision_probe_failed_requires_probe_duration() -> None:
 
 
 # ---------------------------------------------------------------------------
+# record_restart_decision — PROBE_DEFERRED_CONTENTION branch
+# ---------------------------------------------------------------------------
+
+
+def test_record_restart_decision_probe_deferred_contention_has_expected_fields() -> None:
+    """``PROBE_DEFERRED_CONTENTION`` records carry reason and stage without requiring exit_status/probe_duration."""
+    record_restart_decision(
+        reason=RestartReason.PROBE_DEFERRED_CONTENTION,
+        stage="probe_deferred_contention",
+    )
+    decisions = get_restart_decisions()
+    assert len(decisions) >= 1
+    last = decisions[-1]
+    assert last.reason is RestartReason.PROBE_DEFERRED_CONTENTION
+    assert last.exit_status is None
+    assert last.probe_duration_s is None
+    assert last.log_tail is None
+    assert last.stage == "probe_deferred_contention"
+    assert last.available is False
+
+
+def test_record_restart_decision_probe_deferred_contention_accepts_str_reason() -> None:
+    """``record_restart_decision`` accepts string ``'probe_deferred_contention'``."""
+    record_restart_decision(
+        reason="probe_deferred_contention",
+        stage="contended_host",
+    )
+    last = get_restart_decisions()[-1]
+    assert last.reason is RestartReason.PROBE_DEFERRED_CONTENTION
+    assert last.stage == "contended_host"
+
+
+def test_record_restart_decision_probe_deferred_contention_with_evidence() -> None:
+    """``PROBE_DEFERRED_CONTENTION`` can carry optional duration and log tail."""
+    log_tail = ("warning: inotify watch budget saturated",)
+    record_restart_decision(
+        reason=RestartReason.PROBE_DEFERRED_CONTENTION,
+        probe_duration_s=0.05,
+        log_tail=log_tail,
+        stage="watch_saturated",
+    )
+    last = get_restart_decisions()[-1]
+    assert last.reason is RestartReason.PROBE_DEFERRED_CONTENTION
+    assert last.probe_duration_s == 0.05
+    assert last.log_tail == log_tail
+    assert last.stage == "watch_saturated"
+
+
+def test_record_restart_decision_bounds_log_tail() -> None:
+    """``log_tail`` longer than _LOG_TAIL_LINES is bounded to the last 10 lines."""
+    oversized_tail = tuple(f"line-{i}" for i in range(25))
+    record_restart_decision(
+        reason=RestartReason.PROBE_DEFERRED_CONTENTION,
+        log_tail=oversized_tail,
+        stage="tail_bounded",
+    )
+    last = get_restart_decisions()[-1]
+    assert last.log_tail is not None
+    assert len(last.log_tail) == 10
+    assert last.log_tail == tuple(f"line-{i}" for i in range(15, 25))
+
+
+# ---------------------------------------------------------------------------
 # record_restart_decision — unavailable-log branch (log_tail=None)
 # ---------------------------------------------------------------------------
 
@@ -178,13 +241,12 @@ def test_restart_decision_is_frozen() -> None:
     assert decision.exit_status == 1
     # Frozen dataclass: mutation must fail at runtime. The write goes
     # through the frozen ``__setattr__`` (raising the
-    # FrozenInstanceError/AttributeError). The ``getattr`` indirection
-    # avoids a literal attribute assignment (which ruff B010 would
-    # demand be a normal assignment, exactly what the frozen class
-    # rejects at type level) while staying fully typed — no cast.
+    # FrozenInstanceError/AttributeError). Using setattr with a variable
+    # name avoids static attribute assignment while staying fully typed.
     alias = decision
+    attr_name = "exit_status"
     with pytest.raises(AttributeError):
-        alias.exit_status = 99
+        setattr(alias, attr_name, 99)
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +255,15 @@ def test_restart_decision_is_frozen() -> None:
 
 
 def test_restart_reason_enum_values() -> None:
-    """``RestartReason`` has exactly the two expected members."""
-    assert set(RestartReason) == {RestartReason.PROCESS_EXITED, RestartReason.PROBE_FAILED}
+    """``RestartReason`` has exactly the three expected members."""
+    assert set(RestartReason) == {
+        RestartReason.PROCESS_EXITED,
+        RestartReason.PROBE_FAILED,
+        RestartReason.PROBE_DEFERRED_CONTENTION,
+    }
     assert RestartReason.PROCESS_EXITED.value == "process_exited"
     assert RestartReason.PROBE_FAILED.value == "probe_failed"
+    assert RestartReason.PROBE_DEFERRED_CONTENTION.value == "probe_deferred_contention"
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +413,32 @@ def test_durable_sink_log_unavailable_records_none(
         # log_tail=None serialises as JSON null — distinguishable from
         # a successful read that returned zero lines ([]).
         assert record["log_tail"] is None
+    finally:
+        set_durable_sink_path(orig)
+        clear_durable_sink()
+
+
+def test_durable_sink_probe_deferred_contention_persists(
+    tmp_path: Path,
+) -> None:
+    """(e) PROBE_DEFERRED_CONTENTION records are persisted to the JSONL sink and readable."""
+    orig = get_durable_sink_path()
+    sink = tmp_path / "decisions.jsonl"
+    try:
+        set_durable_sink_path(sink)
+        clear_durable_sink()
+        record_restart_decision(
+            reason=RestartReason.PROBE_DEFERRED_CONTENTION,
+            stage="probe_deferred_contention",
+        )
+        read_back = read_durable_sink()
+        assert len(read_back) == 1
+        record = read_back[0]
+        assert record["reason"] == "probe_deferred_contention"
+        assert record["exit_status"] is None
+        assert record["probe_duration_s"] is None
+        assert record["log_tail"] is None
+        assert record["stage"] == "probe_deferred_contention"
     finally:
         set_durable_sink_path(orig)
         clear_durable_sink()
@@ -565,8 +658,13 @@ def test_durable_sink_record_shape_is_closed(tmp_path: Path) -> None:
             probe_duration_s=1.234,
             stage="registry_built",
         )
+        # PROBE_DEFERRED_CONTENTION with optional evidence.
+        record_restart_decision(
+            reason=RestartReason.PROBE_DEFERRED_CONTENTION,
+            stage="probe_deferred_contention",
+        )
         read_back = read_durable_sink(path=sink)
-        assert len(read_back) == 2
+        assert len(read_back) == 3
         expected_keys = {
             "reason",
             "exit_status",

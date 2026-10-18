@@ -58,6 +58,8 @@ def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
     monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
     monkeypatch.delenv("RALPH_MCP_RUN_ID", raising=False)
+    monkeypatch.delenv("RALPH_MCP_INHERITED_FD", raising=False)
+    monkeypatch.delenv("RALPH_MCP_RESPAWN", raising=False)
 
 
 @pytest.fixture(autouse=True)
