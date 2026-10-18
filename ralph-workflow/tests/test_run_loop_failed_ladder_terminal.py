@@ -174,16 +174,22 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
     """When the conflict ladder is exhausted, the run loop must
     persist the :class:`RebaseOutcomeKind.INTERVENTION_REQUIRED`
     transition through the typed :meth:`set_intervention_required`
-    single-writer setter and refuse to call the recovery preamble.
+    single-writer setter and dispatch ONE session-scoped automated
+    resolver handoff (O1 / O3 cold durable exhausted contract).
     The old behaviour -- sleep + recovery preamble + strategy
     rotation -- silently replenished the attempt budget and is
-    forbidden by the bounded-progress invariant.
+    forbidden by the bounded-progress invariant. The replacement
+    contract keeps that invariant: no sleep, no strategy rotation,
+    no silent cap replenishment; it dispatches a single automated
+    resolver handoff ONCE per session so a cold durable
+    ``resolution_exhausted=True`` state is not a permanent
+    operator-only dead end.
 
     The test exercises the same setup as before, but instead of
     asserting that the loop dispatches after a bounded retry, it
-    asserts that the exhausted state is escalated to intervention
-    and that no further dispatch occurs. The recovery loop is
-    bounded by operator action, not by an internal sleep.
+    asserts that the exhausted state is escalated to intervention,
+    one handoff was dispatched, no sleep was performed, and a
+    repeated call within the same session does NOT re-dispatch.
     """
     # The run-loop call would loop forever (the integration is still
     # unresolved and the exhausted state escalates to intervention
@@ -203,17 +209,14 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
         ),
     )
 
-    preamble_invocations: list[Path] = []
+    handoff_calls: list[str] = []
     sleeps: list[float] = []
 
-    def _preamble(workspace_scope: object, config: object, *, backend: object = None) -> object:
-        # Capture the call so the test can assert the run loop avoids
-        # it on the exhausted path.
-        if isinstance(workspace_scope, WorkspaceScope):
-            preamble_invocations.append(workspace_scope.root)
-        else:
-            preamble_invocations.append(Path("/memory/recovery"))
-        return None
+    def _record_handoff(_ctx: object, failure: str, *, backend: object = None) -> None:
+        # Capture the dispatch so the test asserts the run loop
+        # dispatches exactly one session-scoped handoff on the cold
+        # exhausted path (O1 / O3 contract).
+        handoff_calls.append(failure)
 
     workspace = MemoryWorkspace("/memory/recovery")
     workspace.write("main", "before")
@@ -242,10 +245,14 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
             latest_state=latest_state,
             sleep=_record_sleep,
             connectivity_monitor=SimpleNamespace(current_state=None),
+            _session_handoff_dispatched=False,
         ),
     )
 
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _preamble)
+    # Mock the automated-resolver handoff so the test does not pull
+    # in the full recovery / diagnostic chain; we only need to
+    # observe whether the run loop dispatched it.
+    monkeypatch.setattr(run_loop, "_dispatch_retained_handoff", _record_handoff)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
@@ -262,21 +269,30 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
     # ``INTERVENTION_REQUIRED`` transition does NOT cycle or reset it.
     assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
     assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
-    # The recovery preamble is NOT called when the state is
-    # exhausted. The run loop's bounded-progress invariant forbids
-    # silent replenishment of the attempt budget via a recovery
-    # preamble call after ``INTERVENTION_REQUIRED`` is recorded.
-    assert preamble_invocations == [], (
-        "Exhausted state must not call _run_auto_integrate_recovery_preamble; "
-        "the typed INTERVENTION_REQUIRED transition is the persistent operator "
-        "handoff and the run loop must wait for operator action."
+    # The cold exhausted state MUST dispatch exactly one session-scoped
+    # handoff (O1 / O3 -- not a permanent operator-only dead end).
+    assert len(handoff_calls) == 1, (
+        "Cold exhausted state must dispatch one session-scoped automated "
+        "resolver handoff (O1/O3 cold durable exhausted contract)."
     )
+    assert "unresolved shared.txt" in handoff_calls[0]
     # The exhausted path does NOT sleep -- a sleep would mask the
     # intervention transition and let the loop continue iterating.
     assert sleeps == [], (
         "Exhausted state must not sleep; the run loop must escalate "
         "to INTERVENTION_REQUIRED and return."
     )
+
+    # A repeated call within the SAME session MUST NOT re-dispatch the
+    # handoff (the in-session flag prevents the operator-visible rotation
+    # that motivated the original guard).
+    handoff_calls.clear()
+    run_loop._wait_for_integration_retry(updated, ctx)
+    assert handoff_calls == [], (
+        "Same-session calls must not re-dispatch the automated resolver handoff "
+        "(O1 cap-bound escalation, no operator-visible rotation)."
+    )
+    assert sleeps == []
 
 
 def test_exhausted_conflict_ladder_loop_exits_with_terminal_code(

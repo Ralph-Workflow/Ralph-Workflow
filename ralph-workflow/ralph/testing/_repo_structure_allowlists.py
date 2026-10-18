@@ -183,6 +183,19 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # cap; the pinned-tuple assertions are interdependent and cannot
         # split without losing the invariant.
         "tests/test_test_suites_orchestration.py",
+        # wt-18 fix-integration-bug (WU-1 / O1 cold exhausted): the
+        # ``_wait_for_integration_retry`` durable-diagnostic
+        # regression suite grew with the cold
+        # ``resolution_exhausted=True`` autonomous-recovery tests.
+        # The new cases share the ``_setup_retry_env`` / ``_make_state``
+        # / ``_create_retry_ctx`` fixture trio (defined in the same
+        # file and re-imported by every cold-exhausted test), so
+        # splitting would force every test to rebuild a parallel
+        # fixture stack and the cross-test invariant on the
+        # ``_session_handoff_dispatched`` flag would drift. The
+        # whole-module cohesion is the cohesive ``_wait_for_integration_retry``
+        # contract surface, not a candidate for extraction.
+        "tests/test_run_loop_retry_diagnostic.py",
     }
 )
 

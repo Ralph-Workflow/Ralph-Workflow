@@ -109,10 +109,16 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
             latest_state=[],
             sleep=_record_sleep,
             connectivity_monitor=SimpleNamespace(current_state=None),
+            _session_handoff_dispatched=False,
         ),
     )
 
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _preamble)
+    handoff_calls: list[str] = []
+
+    def _record_handoff(_ctx: object, failure: str, *, backend: object = None) -> None:
+        handoff_calls.append(failure)
+
+    monkeypatch.setattr(run_loop, "_dispatch_retained_handoff", _record_handoff)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *a, **k: None)
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
@@ -128,8 +134,20 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
     assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
     assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
     assert updated.rebase.resolution_exhausted is True
-    # The recovery preamble is NOT called when the state is
-    # exhausted.
-    assert preamble_invocations == []
+    # The cold exhausted state dispatches exactly one session-scoped
+    # automated resolver handoff (O1 / O3 -- not a permanent
+    # operator-only dead end). The session-scoped flag prevents
+    # repeated dispatches within the same session.
+    assert len(handoff_calls) == 1, (
+        "Cold exhausted state must dispatch one session-scoped automated "
+        "resolver handoff (O1/O3 cold durable exhausted contract)."
+    )
     # The exhausted path does NOT sleep.
+    assert sleeps == []
+    # A second call within the SAME session must NOT re-dispatch the handoff.
+    handoff_calls.clear()
+    run_loop._wait_for_integration_retry(updated, ctx)
+    assert handoff_calls == [], (
+        "Same-session calls must not re-dispatch the automated resolver handoff."
+    )
     assert sleeps == []

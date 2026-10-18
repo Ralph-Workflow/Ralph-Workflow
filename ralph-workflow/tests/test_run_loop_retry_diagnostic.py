@@ -992,3 +992,122 @@ def test_wait_for_retry_unreadable_record_at_cap_unsuccessful_escalates_to_inter
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
     assert sleeps == []
     assert result.rebase.is_intervention_required is True
+
+
+def test_wait_for_retry_cold_durable_resolution_exhausted_with_live_conflict_dispatches_session_handoff(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1/O3 cold exhausted-with-live-conflict: dispatch one session handoff.
+
+    A cold-loaded durable ``RebaseState`` that carries
+    ``resolution_exhausted=True`` AND a still-binding live conflict
+    (e.g. ``consecutive_conflicts >= cap``) must NOT be a permanent
+    operator-only dead end. The first call in a fresh session MUST
+    dispatch exactly one automated resolver handoff (O1 / O3). A
+    subsequent call within the same session MUST NOT re-dispatch
+    (the in-session flag prevents the operator-visible rotation
+    that motivated the original guard). The consecutive-conflict
+    counter is clamped to the effective configured cap, no sleep is
+    performed, and intervention is recorded when the handoff does
+    not clear the exhausted state.
+    """
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    assert sleeps == []
+
+    handoff_calls: list[str] = []
+
+    def _fake_handoff(loop_ctx: object, detail: str) -> None:
+        handoff_calls.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cold_exhausted_rebase = RebaseState(
+        last_action="conflict",
+        last_reason="cold exhausted detail with live conflict",
+        consecutive_conflicts=cap,
+    ).model_copy(
+        update={
+            "resolution_exhausted": True,
+            "resolution_exhaustion_reason": "all strategies tried",
+        }
+    )
+    initial_state = PipelineState(phase="development", rebase=cold_exhausted_rebase)
+    assert initial_state.rebase.resolution_exhausted is True
+    assert initial_state.rebase.consecutive_conflicts >= cap
+    assert initial_state.rebase.is_intervention_required is False
+
+    first_result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    # 1. Cold exhausted-with-live-conflict must dispatch exactly one handoff.
+    assert len(handoff_calls) == 1, (
+        "Cold exhausted state with live conflict must dispatch one session-scoped "
+        "automated resolver handoff (O1/O3 -- not a permanent operator-only dead end)."
+    )
+    assert "cold exhausted detail with live conflict" in handoff_calls[0]
+    # 2. No sleep was performed (O1 retry-progress rule).
+    assert sleeps == [], "Cold exhausted handoff must not sleep; O1 retry-progress rule"
+    # 3. Counter clamped to the effective configured cap (no counter may exceed cap).
+    assert first_result.rebase.consecutive_conflicts <= cap, (
+        f"Counter must be clamped to the cap ({cap}), got "
+        f"{first_result.rebase.consecutive_conflicts}"
+    )
+    # 4. Intervention is recorded (handoff did not clear exhaustion in this mock).
+    assert first_result.rebase.is_intervention_required is True
+
+    # 5. A second call within the SAME session MUST NOT re-dispatch the handoff.
+    second_result = run_loop._wait_for_integration_retry(first_result, ctx)
+    assert len(handoff_calls) == 1, (
+        "Same-session calls must not re-dispatch the automated resolver handoff "
+        "(O1 cap-bound escalation, no operator-visible rotation)."
+    )
+    assert second_result.rebase.is_intervention_required is True
+    assert sleeps == [], "Repeated retry calls must not sleep"
+
+
+def test_wait_for_retry_cold_exhausted_state_with_no_live_conflict_still_dispatches_session_handoff(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1 boundary: cold exhausted without live conflict still gets handoff.
+
+    Defensive boundary: even when the consecutive-conflict counter has
+    not yet reached the cap, the cold durable ``resolution_exhausted=True``
+    flag alone is sufficient to enter the exhausted branch
+    (``resolution_exhausted or consecutive_conflicts >= cap``). The first
+    session-scoped call MUST still dispatch one handoff -- the O1
+    contract forbids using the durable flag as a reason to suppress
+    automation forever.
+    """
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+
+    handoff_calls: list[str] = []
+
+    monkeypatch.setattr(
+        run_loop, "_handoff_retained_failure", lambda _c, d: handoff_calls.append(d)
+    )
+
+    cold_exhausted_rebase = RebaseState(
+        last_action="conflict",
+        last_reason="cold exhausted without live counter cap",
+        consecutive_conflicts=1,  # NOT at cap; only the exhausted flag drives this branch
+    ).model_copy(
+        update={
+            "resolution_exhausted": True,
+            "resolution_exhaustion_reason": "all strategies tried (prior session)",
+        }
+    )
+    initial_state = PipelineState(phase="development", rebase=cold_exhausted_rebase)
+    assert initial_state.rebase.resolution_exhausted is True
+    assert (
+        initial_state.rebase.consecutive_conflicts
+        < ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    )
+
+    first_result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert len(handoff_calls) == 1
+    assert sleeps == []
+    assert first_result.rebase.is_intervention_required is True
+
+    run_loop._wait_for_integration_retry(first_result, ctx)
+    assert len(handoff_calls) == 1, "Same-session calls must not re-dispatch handoff"

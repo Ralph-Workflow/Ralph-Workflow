@@ -2459,21 +2459,28 @@ def _wait_for_integration_retry(
     rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
 
     # When the resolver is exhausted or the consecutive-conflict cap
-    # is reached, escalate to the persistent INTERVENTION_REQUIRED
-    # transition through the typed single-writer setter. The previous
-    # behaviour rotated the strategy ladder modulo
-    # ``len(CONFLICT_RESOLUTION_STRATEGIES)``, reset the consecutive
-    # counter to 0, slept, and re-ran the recovery preamble -- a
-    # silent replenishment of the attempt budget that violated
-    # bounded-progress and let unbounded rotation hide a real
-    # exhaustion. The new behaviour: persist
-    # ``INTERVENTION_REQUIRED`` once, retain the carried counters and
-    # resolution_exhausted flag across the checkpoint save, and
-    # refuse to call the recovery preamble.
+    # is reached, dispatch ONE session-scoped automated resolver
+    # handoff (guarded by ``ctx._session_handoff_dispatched`` so a
+    # repeated call in the same process does not spin), then escalate
+    # to the persistent INTERVENTION_REQUIRED transition through the
+    # typed single-writer setter. The previous behaviour rotated the
+    # strategy ladder modulo ``len(CONFLICT_RESOLUTION_STRATEGIES)``,
+    # reset the consecutive counter to 0, slept, and re-ran the
+    # recovery preamble -- a silent replenishment of the attempt
+    # budget that violated bounded-progress and let unbounded
+    # rotation hide a real exhaustion. The new behaviour: dispatch
+    # the handoff once per session (O1 / O3 -- cold durable
+    # ``resolution_exhausted=True`` states with a still-binding live
+    # conflict must receive one fresh automated-resolution attempt,
+    # not be a permanent operator-only dead end), retain the carried
+    # counters and resolution_exhausted flag across the checkpoint
+    # save when the handoff does not clear them, and refuse to call
+    # the recovery preamble after the single handoff has been
+    # dispatched.
     cap = _effective_conflict_cap(ctx)
     if rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
-        if not session_attempted and not rebase.resolution_exhausted:
+        if not session_attempted:
             rebase_before = (
                 ctx.latest_state[0].rebase
                 if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
