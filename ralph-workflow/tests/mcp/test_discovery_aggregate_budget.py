@@ -692,19 +692,23 @@ class TestAggregateVsPerStageEnvelope:
         assert discovery < preflight
         per_stage_sum = mod._CONFIG_LOAD_BUDGET_S + mod._REGISTRY_BUILD_BUDGET_S + discovery
         assert per_stage_sum > discovery, "summing must not be the enforcement mechanism"
-        # The registry tests above already prove the shared deadline skips
-        # probes past the budget; here we pin the helper that records stage
-        # overruns against per-stage envelopes.
+        # Per-stage overruns are diagnostic-only (warning + JSONL sibling
+        # record) under the new contract. The aggregate is enforced by the
+        # real deadline helper, not by the per-stage record call. The
+        # registration tests above prove the deadline skips probes past the
+        # budget; here we pin that record_stage_elapsed on an overrun
+        # does NOT raise (no McpServerError) and returns None.
         from ralph.mcp.protocol._startup_timeouts import record_stage_elapsed
-        from ralph.mcp.server._mcp_server_error import McpServerError
 
-        with pytest.raises(McpServerError) as exc_info:
-            record_stage_elapsed(
-                "upstream_catalog_or_discovery_done",
-                mod._REGISTRY_BUILD_BUDGET_S + 0.01,
-                budget_s=mod._REGISTRY_BUILD_BUDGET_S,
-            )
-        assert exc_info.value.last_stage == "upstream_catalog_or_discovery_done"
+        result = record_stage_elapsed(
+            "upstream_catalog_or_discovery_done",
+            mod._REGISTRY_BUILD_BUDGET_S + 0.01,
+            budget_s=mod._REGISTRY_BUILD_BUDGET_S,
+        )
+        assert result is None, (
+            "per-stage overrun must be diagnostic (no raise, returns None); "
+            "the aggregate deadline is the only fatal enforcement"
+        )
 
 
 class _RaisingClient:

@@ -1016,7 +1016,7 @@ class FailureClassifier:
             or _is_post_tool_empty_response_failure(detail_parts)
         )
 
-    def _categorize_exc(
+    def _categorize_exc(  # noqa: PLR0911 - one return per exception class; the priority order is the contract
         self,
         exc: BaseException,
         raw_message: str,
@@ -1078,6 +1078,8 @@ class FailureClassifier:
             "AgyIncompleteExitError",
         }:
             return FailureCategory.AGENT, type_name != "QuotaExhaustedError", False
+        if type_name == "McpServerError":
+            return FailureCategory.ENVIRONMENTAL, False, False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
                 exc,

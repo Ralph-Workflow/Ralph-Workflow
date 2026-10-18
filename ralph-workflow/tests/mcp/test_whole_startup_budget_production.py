@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from typing import IO, cast
 from unittest.mock import patch
@@ -25,6 +26,9 @@ from unittest.mock import patch
 import pytest
 
 from ralph.mcp.protocol._startup_timeouts import (
+    _PROBE_SAFETY_S,
+    _check_cumulative_startup_deadline,
+    _check_real_startup_deadline,
     mcp_preflight_timeout_from_env,
     mcp_whole_startup_budget_from_env,
 )
@@ -42,6 +46,36 @@ from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.server.runtime import McpServerExtras, run_standalone_server
 from ralph.process.manager import SpawnOptions, get_process_manager
+
+
+def test_real_deadline_is_preflight_minus_safety() -> None:
+    """The real startup deadline equals preflight - _PROBE_SAFETY_S (28.0s at defaults).
+
+    The contract: _check_real_startup_deadline enforces
+    mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S, NOT the 29.8s
+    whole-startup envelope. At default env (30.0s preflight, _PROBE_SAFETY_S=2.0s):
+    - deadline = 28.0s
+    - elapsed = 27.5s does not raise
+    - elapsed = 28.5s raises McpServerError with last_stage
+    """
+    # At default env: preflight=30.0s, _PROBE_SAFETY_S=2.0s, real_deadline=28.0s
+    real_deadline = mcp_preflight_timeout_from_env({}) - timedelta(seconds=_PROBE_SAFETY_S)
+    assert real_deadline.total_seconds() == 28.0
+
+    # With mocked monotonic clock, test exact boundary behavior:
+    with patch("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", return_value=100.0):
+        # Elapsed of 27.5s is below 28.0s — must not raise
+        t0_27_5s = 100.0 - 27.5
+        _check_real_startup_deadline("stage_27_5", t0_27_5s, {})
+
+        # Elapsed of 28.5s exceeds 28.0s — must raise McpServerError with last_stage
+        t0_28_5s = 100.0 - 28.5
+        with pytest.raises(McpServerError) as exc_info:
+            _check_real_startup_deadline("stage_28_5", t0_28_5s, {})
+
+        err = exc_info.value
+        assert err.last_stage == "stage_28_5"
+        assert err.elapsed_s == 28.5
 
 # Stable exit codes emitted by the pre-serve overrun helper. Hard-coded
 # here so the test compiles against the PRE-fix code too: the
@@ -126,16 +160,20 @@ def test_cumulative_deadline_enforces_at_config_loading(tmp_path: Path) -> None:
 def test_cumulative_deadline_enforces_at_ready_to_serve(tmp_path: Path) -> None:
     """Cumulative deadline exceeded at the ready_to_serve boundary raises McpServerError."""
     env = _setup_session(tmp_path)
-    whole_budget = mcp_whole_startup_budget_from_env(env)
+    # The real deadline is the preflight timeout minus _PROBE_SAFETY_S, not the
+    # whole_startup_budget sum (the new contract: preflight - safety envelope,
+    # not the sum of per-stage constants).
+    preflight = mcp_preflight_timeout_from_env(env).total_seconds()
+    real_deadline = preflight - _PROBE_SAFETY_S
 
     # Calling _check_cumulative_startup_deadline with an expired t0 raises typed McpServerError
-    expired_t0 = time.monotonic() - whole_budget - 1.0
+    expired_t0 = time.monotonic() - real_deadline - 1.0
     with pytest.raises(McpServerError) as exc_info:
-        runtime_module._check_cumulative_startup_deadline("ready_to_serve", expired_t0, env)
+        _check_cumulative_startup_deadline("ready_to_serve", expired_t0, env)
 
     err = exc_info.value
     assert err.last_stage == "ready_to_serve"
-    assert err.elapsed_s is not None and err.elapsed_s > whole_budget
+    assert err.elapsed_s is not None and err.elapsed_s > real_deadline
 
 
 @pytest.mark.timeout_seconds(20)
@@ -312,12 +350,15 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
     addr: tuple[str, int] = parent_sock.getsockname()[:2]
     host, port = addr
 
-    # Shrunken pre-serve budget (300ms) is well below the preflight
-    # timeout (10s) so the pre-serve overrun helper fires before the
-    # parent's preflight. The exact factor is irrelevant; what
-    # matters is the helper wins the race.
+    # Shrunken preflight (5s) so the real deadline envelope
+    # (preflight - _PROBE_SAFETY_S = 3s) fires well below the
+    # parent's preflight. The new contract replaces the old
+    # 300 ms per-stage pre-serve cap with the real remaining
+    # deadline: a hung FIFO now fails closed when the real
+    # deadline is exceeded, not when a 300 ms constant expires.
+    # (Must exceed the import-time preflight minimum: 4001 ms.)
     pre_serve_budget_ms = "300"
-    preflight_timeout_ms = "10000"
+    preflight_timeout_ms = "5000"
 
     child_env = dict(os.environ)
     child_env["RALPH_MCP_SESSION_FILE"] = str(session_file)

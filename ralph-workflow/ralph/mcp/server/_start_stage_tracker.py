@@ -7,19 +7,27 @@ or a call to ``reset_spawn_id``), ensuring a new child cannot inherit or
 read a predecessor's stage — even when both children share the same
 workspace root.
 
-The file is opened with ``O_CREAT | O_TRUNC | O_WRONLY`` so a concurrent
+The stage file is opened with ``O_CREAT | O_TRUNC | O_WRONLY`` so a concurrent
 supervisor reader always sees a complete stage label, never a partial one.
 Writes are flushed and fsynced so a SIGKILL of the child after ``record()``
 returns leaves the latest label on disk.
+
+A sibling overrun log file (``<stage_file_path>.overruns``) records every
+per-stage budget overrun as a JSONL entry for post-hoc diagnostics. Missing
+or malformed lines are skipped silently. Per-stage budget overruns are
+diagnostic warnings and do not abort startup; the fatal deadline is enforced
+separately by ``_check_real_startup_deadline`` against ``preflight - _PROBE_SAFETY_S``.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import tempfile
 import uuid
 from pathlib import Path
+from typing import cast
 
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
@@ -177,10 +185,88 @@ RUNTIME_STAGES: tuple[str, ...] = (
 )
 
 
+def record_overrun(
+    root: Path,
+    stage: str,
+    elapsed_s: float,
+    budget_s: float,
+    remaining_s: float,
+) -> None:
+    """Append one JSONL overrun record to ``<stage_file_path>.overruns``.
+
+    Per-stage overruns are non-fatal diagnostic warnings. Each line is
+    a JSON object with keys:
+    ``stage``, ``elapsed_s``, ``budget_s``, ``remaining_s``,
+    ``observed_at`` (unix timestamp), ``warning_id`` (UUID4 hex).
+
+    Uses append-mode open (``O_CREAT | O_WRONLY | O_APPEND``) so multiple
+    calls accumulate entries in the same file rather than overwriting.
+    """
+    path = stage_file_path(root)
+    overruns_path = Path(str(path) + ".overruns")
+    overruns_path.parent.mkdir(parents=True, exist_ok=True)
+
+    _warn_id: str = uuid.uuid4().hex
+    _now: float = __import__("time").time()
+    record = {
+        "stage": stage,
+        "elapsed_s": elapsed_s,
+        "budget_s": budget_s,
+        "remaining_s": remaining_s,
+        "observed_at": _now,
+        "warning_id": _warn_id,
+    }
+    line: str = json.dumps(record, separators=(",", ":")) + "\n"
+
+    # Append-mode write to the overruns JSONL file. ``file.write()``
+    # converts str -> bytes under the hood (TextIOWrapper), and the
+    # flush+fileno+fsync trio gives the same durability guarantee as
+    # the fd+os.write path without triggering ``Any``-from-stub issues.
+    try:
+        with overruns_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        raise
+
+
+def read_overruns(root: Path, *, spawn_id: str | None = None) -> list[dict[str, object]]:
+    """Read all overrun records from ``<stage_file_path>.overruns``.
+
+    Returns a list of dicts in insertion order. Malformed lines are skipped.
+    Missing file returns ``[]``.
+
+    Args:
+        root: Workspace root for the MCP server.
+        spawn_id: Optional explicit spawn identity. When ``None`` the
+            module-global identity is used.
+    """
+    path = stage_file_path(root, spawn_id=spawn_id)
+    overruns_path = Path(str(path) + ".overruns")
+    try:
+        content = overruns_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, IsADirectoryError, PermissionError, OSError):
+        return []
+
+    records: list[dict[str, object]] = []
+    for raw_line in content.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
+            parsed: object = json.loads(stripped)
+            if isinstance(parsed, dict):
+                records.append(cast("dict[str, object]", parsed))
+    return records
+
+
 __all__ = [
     "RUNTIME_STAGES",
     "read_last_stage",
+    "read_overruns",
     "record",
+    "record_overrun",
     "reset_spawn_id",
     "stage_file_path",
 ]

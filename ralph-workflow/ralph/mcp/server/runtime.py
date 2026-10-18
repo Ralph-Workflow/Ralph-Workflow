@@ -56,13 +56,12 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
 )
 from ralph.mcp.protocol._startup_timeouts import (
-    _CONFIG_LOAD_CUMULATIVE_S,
-    _PRE_SERVE_BUDGET_S,
+    _CONFIG_LOAD_BUDGET_S,
+    _PROBE_SAFETY_S,
+    _READY_TO_SERVE_BUDGET_S,
+    _REGISTRY_BUILD_BUDGET_S,
     mcp_discovery_budget_from_env,
-    mcp_pre_serve_budget_from_env,
     mcp_preflight_timeout_from_env,
-    mcp_registry_built_budget_from_env,
-    mcp_registry_read_timeout_from_env,
     mcp_whole_startup_budget_from_env,
     record_stage_elapsed,
 )
@@ -194,27 +193,39 @@ if not (mcp_whole_startup_budget_from_env() < mcp_preflight_timeout_from_env().t
     )
 
 
-def _check_cumulative_startup_deadline(
+def _check_real_startup_deadline(
     stage: str,
     t0: float,
-    env_map: Mapping[str, str],
+    env_map: Mapping[str, str] | None = None,
 ) -> None:
     """Enforce cumulative spawn-to-serving startup deadline at stage boundary.
 
-    Checks elapsed monotonic time from `t0` against `mcp_whole_startup_budget_from_env(env_map)`.
+    Checks elapsed monotonic time from `t0` against the real startup envelope:
+    `mcp_preflight_timeout_from_env(env_map) - _PROBE_SAFETY_S` (default: 28.0s).
     Raises typed `McpServerError` with `last_stage=stage` and `elapsed_s` when exceeded.
     Uses `if`/`raise` (not `assert`) so the check survives `python -O`.
     """
     elapsed = _clock() - t0
-    whole_budget = mcp_whole_startup_budget_from_env(env_map)
-    if elapsed > whole_budget:
+    real_deadline_s = (
+        mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
+    )
+    if elapsed > real_deadline_s:
         raise McpServerError(
-            f"cumulative startup deadline exceeded at stage {stage!r} "
-            f"({elapsed:.3f}s > {whole_budget:.3f}s)",
+            f"real startup deadline exceeded at stage {stage!r} "
+            f"({elapsed:.3f}s > {real_deadline_s:.3f}s)",
             last_stage=stage,
             elapsed_s=elapsed,
             restart_count=0,
         )
+
+
+def _check_cumulative_startup_deadline(
+    stage: str,
+    t0: float,
+    env_map: Mapping[str, str] | None = None,
+) -> None:
+    """Thin backward-compatibility alias delegating to _check_real_startup_deadline."""
+    _check_real_startup_deadline(stage, t0, env_map)
 
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
@@ -275,26 +286,28 @@ def _build_mcp_registry_and_server(
     ``last_stage="registry_built"`` from the stage file the caller
     wrote before invoking this function.
     """
-    registry_budget_s = mcp_registry_built_budget_from_env(env_map)
-    whole_budget_s = mcp_whole_startup_budget_from_env(env_map)
-    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
-    _check_cumulative_startup_deadline("registry_built", t0, env_map)
+    real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
+    remaining_budget_s = max(0.0, real_deadline_s - (_clock() - t0))
+    effective_read_timeout_s = remaining_budget_s
 
-    remaining_budget_s = max(0.0, min(registry_budget_s, whole_budget_s) - (_clock() - t0))
-    read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
-    effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
-
+    t_reg_build_start = _clock()
     reg = build_ralph_tool_registry(
         effective_session,
         workspace,
         upstream_registry=upstream_reg,
         mcp_config=mcp_cfg,
         t0=t0,
-        budget_s=registry_budget_s,
+        budget_s=remaining_budget_s,
         timeout_s=effective_read_timeout_s,
     )
-    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
-    _check_cumulative_startup_deadline("registry_built", t0, env_map)
+    per_stage_build_s = _clock() - t_reg_build_start
+    record_stage_elapsed(
+        "registry_built",
+        per_stage_build_s,
+        budget_s=_REGISTRY_BUILD_BUDGET_S,
+        root=workspace.root,
+    )
+    _check_real_startup_deadline("registry_built", t0, env_map)
     n_builtin = len(list(reg.list_definitions()))
     if upstream_reg and upstream_servers:
         n_proxied = len(list(upstream_reg.tool_definitions()))
@@ -401,10 +414,9 @@ def _poll_bounded_pre_serve(
     (which releases the GIL) is used in test doubles so the timeout fires;
     path.open("rb") on a FIFO holds the GIL and cannot be interrupted.
     """
-    pre_serve_budget = mcp_pre_serve_budget_from_env(env_map)
-    whole_budget_s = mcp_whole_startup_budget_from_env(env_map)
-    remaining_s = max(0.0, whole_budget_s - (_clock() - t0))
-    effective_timeout_s = min(pre_serve_budget.total_seconds(), remaining_s)
+    real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
+    remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
+    effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
         # allowed_roots access triggers FileBackedSession._load() which
@@ -510,7 +522,8 @@ def build_standalone_http_server(
     # where the child was when the budget fires. ThreadPoolExecutor (not bare
     # daemon Thread) is required by the resource-lifecycle audit.
     _log_and_record_stage(workspace_root, "config_loading")
-    _check_cumulative_startup_deadline("config_loading", t0, env_map)
+    _check_real_startup_deadline("config_loading", t0, env_map)
+    t_stage_config = _clock()
     effective_workspace, mcp_cfg = _poll_bounded_pre_serve(
         workspace_root=workspace_root,
         effective_session=effective_session,
@@ -520,13 +533,16 @@ def build_standalone_http_server(
         t0=t0,
     )
     _log_and_record_stage(workspace_root, "config_loaded")
+    per_stage_config_s = _clock() - t_stage_config
     record_stage_elapsed(
         "config_loaded",
-        _clock() - t0,
-        budget_s=_CONFIG_LOAD_CUMULATIVE_S,
+        per_stage_config_s,
+        budget_s=_CONFIG_LOAD_BUDGET_S,
+        root=workspace_root,
     )
-    _check_cumulative_startup_deadline("config_loaded", t0, env_map)
+    _check_real_startup_deadline("config_loaded", t0, env_map)
 
+    t_stage_discovery = _clock()
     # Keep this composition seam unary: callers and test doubles can replace
     # it without knowing which environment source the standalone runtime uses.
     # The production loader defaults to ``os.environ``; ``env_map`` remains
@@ -633,13 +649,14 @@ def build_standalone_http_server(
             m=n_proxied,
         )
     _log_and_record_stage(workspace_root, "upstream_catalog_or_discovery_done")
+    per_stage_discovery_s = _clock() - t_stage_discovery
     record_stage_elapsed(
         "upstream_catalog_or_discovery_done",
-        _clock() - t0,
-        budget_s=mcp_discovery_budget_from_env().total_seconds(),
+        per_stage_discovery_s,
+        budget_s=mcp_discovery_budget_from_env(env_map).total_seconds(),
+        root=workspace_root,
     )
-    _check_cumulative_startup_deadline("upstream_catalog_or_discovery_done", t0, env_map)
-    registry_budget_s = mcp_registry_built_budget_from_env(env_map)
+    _check_real_startup_deadline("upstream_catalog_or_discovery_done", t0, env_map)
 
     # R4-LOGS: ``registry_built`` is recorded at the boundary, BEFORE
     # calling ``_build_mcp_registry_and_server``. This is essential:
@@ -649,8 +666,9 @@ def build_standalone_http_server(
     # is "we are entering the registry_built phase"; the
     # post-construction ``record_stage_elapsed`` below is the
     # checkpoint that catches a slow (but not blocked) constructor.
+    t_stage_reg = _clock()
     _log_and_record_stage(workspace_root, "registry_built")
-    _check_cumulative_startup_deadline("registry_built", t0, env_map)
+    _check_real_startup_deadline("registry_built", t0, env_map)
 
     server = _build_mcp_registry_and_server(
         effective_session=effective_session,
@@ -662,8 +680,14 @@ def build_standalone_http_server(
         t0=t0,
         env_map=env_map,
     )
-    record_stage_elapsed("registry_built", _clock() - t0, budget_s=registry_budget_s)
-    _check_cumulative_startup_deadline("registry_built", t0, env_map)
+    per_stage_reg_s = _clock() - t_stage_reg
+    record_stage_elapsed(
+        "registry_built",
+        per_stage_reg_s,
+        budget_s=_REGISTRY_BUILD_BUDGET_S,
+        root=workspace_root,
+    )
+    _check_real_startup_deadline("registry_built", t0, env_map)
 
     return _StandaloneHttpServer(host, port, server, parent_socket=parent_socket)
 
@@ -731,7 +755,7 @@ def run_standalone_server(
 
     _stage("env_loaded")
     # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
-    _check_cumulative_startup_deadline("env_loaded", t0, env_map)
+    _check_real_startup_deadline("env_loaded", t0, env_map)
 
     # WU-B: switch the child's stdio to line-buffered so the listening
     # banner (``_fallback_standalone_server.py``) and every other
@@ -763,9 +787,9 @@ def run_standalone_server(
     # R2: Session loading can perform blocking I/O (file read/stat, explore index SQLite open).
     # Isolate behind ThreadPoolExecutor with timeout <= remaining deadline so it cannot hang
     # indefinitely.
-    whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
-    remaining_s = max(0.0, whole_startup_budget_s - (_clock() - t0))
-    session_timeout_s = min(_PRE_SERVE_BUDGET_S, remaining_s)
+    real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
+    remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
+    session_timeout_s = remaining_s
 
     ex: concurrent.futures.ThreadPoolExecutor | None = None
     try:
@@ -794,7 +818,7 @@ def run_standalone_server(
     erase_broker_secret_environment()
     # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
     _stage("session_ready")
-    _check_cumulative_startup_deadline("session_ready", t0, env_map)
+    _check_real_startup_deadline("session_ready", t0, env_map)
 
     # R1: when the parent passed a listening FD via
     # ``RALPH_MCP_INHERITED_FD``, adopt it. The bridge owns the
@@ -830,15 +854,21 @@ def run_standalone_server(
             "registry built from cached tool catalog)"
         )
 
-    ready_budget_s = mcp_whole_startup_budget_from_env(env_map)
+    t_stage_ready = _clock()
 
     # R4: record ready_to_serve and emit the banner INSIDE
     # ``server.run()`` so the banner fires when serving actually
     # starts, not before. The stage file is the authoritative
     # marker the supervisor reads on preflight failure.
     def _record_ready_to_serve() -> None:
-        _check_cumulative_startup_deadline("ready_to_serve", t0, env_map)
-        record_stage_elapsed("ready_to_serve", _clock() - t0, budget_s=ready_budget_s)
+        _check_real_startup_deadline("ready_to_serve", t0, env_map)
+        per_stage_ready_s = _clock() - t_stage_ready
+        record_stage_elapsed(
+            "ready_to_serve",
+            per_stage_ready_s,
+            budget_s=_READY_TO_SERVE_BUDGET_S,
+            root=workspace_root,
+        )
         _stage("ready_to_serve")
 
     if stop_event is not None:

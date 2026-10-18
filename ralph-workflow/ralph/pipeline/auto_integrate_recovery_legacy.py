@@ -232,7 +232,7 @@ def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
     for lock_path in lock_paths:
         if not lock_path.exists():
             continue
-        if not _lock_holder_is_dead(lock_path):
+        if not _lock_holder_is_dead(lock_path, gitdir=git_dir):
             logger.warning(
                 "recovery: live lock holder in {}; leaving it for retry",
                 lock_path,

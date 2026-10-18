@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from importlib import import_module
@@ -23,6 +24,18 @@ from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 from ralph.mcp.tools.bridge._upstream_proxy_handler import UpstreamProxyHandler
 from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
+
+
+def _warn_over_budget(
+    stage: str, elapsed_s: float, budget_s: float
+) -> None:
+    """Log a diagnostic warning for a per-stage budget overrun (non-fatal)."""
+    remaining_s = max(0.0, budget_s - elapsed_s)
+    print(
+        f"WARNING: startup stage {stage!r} over budget: "
+        f"elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s",
+        file=sys.stderr,
+    )
 
 if TYPE_CHECKING:
     from ralph.config.mcp_models import McpConfig
@@ -151,12 +164,7 @@ def build_ralph_tool_registry(
     if t0 is not None and budget_s is not None:
         elapsed = _clock() - t0
         if elapsed > budget_s:
-            raise McpServerError(
-                f"registry_built budget exceeded during tool registry build ({elapsed:.3f}s > {budget_s:.3f}s)",
-                restart_count=0,
-                last_stage="registry_built",
-                elapsed_s=elapsed,
-            )
+            _warn_over_budget("registry_built", elapsed, budget_s)
     for spec in tool_specs(mcp_cfg):
         is_websearch = (
             spec.module_name == "ralph.mcp.tools.websearch"

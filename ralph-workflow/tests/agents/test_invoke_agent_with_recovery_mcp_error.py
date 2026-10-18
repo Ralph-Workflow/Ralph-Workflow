@@ -225,11 +225,14 @@ def _registry_factory(config: object) -> object:
     return _Registry()
 
 
-def test_invoke_agent_with_recovery_maps_health_check_mcp_server_error_without_logger_exception(
+def test_invoke_agent_with_recovery_propagates_health_check_mcp_server_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_invoke_agent_with_recovery maps health-check McpServerError to AGENT_FAILURE with
-    failure_reason='McpServerError' without logger.exception.
+    """_invoke_agent_with_recovery propagates a health-check ``McpServerError`` as a
+    typed exception (the new contract: McpServerError is re-raised by
+    ``execute_agent_effect`` so the classifier sees it as
+    ``FailureCategory.ENVIRONMENTAL, counted=False`` and the agent is
+    not charged). The old swallow-to-AGENT_FAILURE path is gone.
     """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -243,8 +246,10 @@ def test_invoke_agent_with_recovery_maps_health_check_mcp_server_error_without_l
         del workspace_root, name, default_product_criteria, worker_namespace
         return str(tmp_path / "MASTER_PROMPT.md")
 
+    original_error = McpServerError("budget exhausted", restart_count=3)
+
     def fake_check_mcp_bridge_health(_bridge: object) -> None:
-        raise McpServerError("budget exhausted", restart_count=3)
+        raise original_error
 
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
@@ -261,18 +266,19 @@ def test_invoke_agent_with_recovery_maps_health_check_mcp_server_error_without_l
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    result = effect_executor_module.execute_agent_effect(
-        effect,
-        config,
-        deps,
-        WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
-    )
+    with pytest.raises(McpServerError) as exc_info:
+        effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_a, **_kw: [],
+            agent_invocation_error=RuntimeError,
+        )
 
-    assert result == PipelineEvent.AGENT_FAILURE
+    # The typed exception is the same instance the health check raised.
+    assert exc_info.value is original_error
+    # The bare ``except Exception`` branch was not taken, so
+    # ``logger.exception`` was never called.
     assert exception_calls == []
-    intent = effect_executor_module.pop_last_captured_retry_intent()
-    assert intent.action == "fresh"
-    assert intent.failure_reason == "McpServerError"

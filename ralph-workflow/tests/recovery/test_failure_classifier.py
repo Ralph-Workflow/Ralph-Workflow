@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from ralph.agents.invoke import BrokenAgentExitError
+from ralph.mcp.server.lifecycle import McpServerError
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
@@ -108,3 +109,16 @@ def test_generic_broken_agent_exit_remains_agent_failure() -> None:
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True
     assert failure.reset_session is True
+
+
+def test_mcp_server_error_classified_as_environmental() -> None:
+    """McpServerError is classified as ENVIRONMENTAL, not charged to the agent."""
+    failure = FailureClassifier().classify(
+        McpServerError("MCP server crashed", restart_count=0),
+        phase="development",
+        agent="dev",
+    )
+
+    assert failure.category == FailureCategory.ENVIRONMENTAL
+    assert failure.counts_against_budget is False
+    assert failure.reset_session is False

@@ -22,6 +22,19 @@ handed a bare ``[Errno 61] Connection refused``. Clamping the probe budget
 strictly below the readiness budget guarantees the child always has time left to
 fail loudly and say which upstream stalled.
 
+DIAGNOSTIC vs DEADLINE split:
+
+- Per-stage budgets are diagnostic warnings recorded in sibling JSONL ``.overruns`` files:
+  ``record_stage_elapsed`` is DIAGNOSTIC ONLY. It logs a structured WARNING for
+  per-stage overruns and appends an entry to the sibling JSONL ``.overruns`` file
+  (``<stage_file_path>.overruns``) via :func:`record_overrun`, but never raises.
+  It returns ``None`` on overrun so callers can distinguish logged-overrun from clean
+  completion.
+- The real fatal deadline is ``mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S``:
+  ``_check_real_startup_deadline`` is the ONLY fatal check during startup. It enforces
+  the preflight envelope (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin)
+  and raises ``McpServerError`` when cumulative elapsed time exceeds it.
+
 Stage vocabulary tracked by :func:`record_stage_elapsed`:
 
 - ``env_loaded`` — environment loaded; no budget (instant);
@@ -37,14 +50,14 @@ Stage vocabulary tracked by :func:`record_stage_elapsed`:
   bounded by ``mcp_whole_startup_budget_from_env`` (per-stage individual upper bound
   ``_READY_TO_SERVE_BUDGET_S``).
 
-The whole-startup envelope is ``mcp_whole_startup_budget_from_env``, which bounds the sum of
-the per-stage cumulative budgets (config + discovery + registry_built + ready_to_serve). Both
-the aggregate discovery loop and the bootstrap serving architecture operationally enforce that
-spawn-to-serving tools/list completes strictly below ``mcp_preflight_timeout_from_env`` by
-construction, guarded by import-time invariants. Synchronous stage-file persistence is
-boundary-checked at stage transitions, and the overrun exit path bounds diagnostic and
-stage-recording I/O so stalled filesystem operations cannot hold a live child past the
-preflight deadline.
+The real startup deadline is ``mcp_preflight_timeout_from_env - _PROBE_SAFETY_S``
+(default: 28.0s), which is strictly below the preflight ceiling (30.0s). Both
+the aggregate discovery loop and the bootstrap serving architecture operationally
+enforce that spawn-to-serving tools/list completes strictly below the preflight
+timeout by construction, guarded by import-time invariants. Synchronous stage-file
+persistence is boundary-checked at stage transitions, and the overrun exit path
+bounds diagnostic and stage-recording I/O so stalled filesystem operations cannot
+hold a live child past the preflight deadline.
 
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
@@ -55,14 +68,19 @@ public surface.
 from __future__ import annotations
 
 import os
+import time as _time_module
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 from ralph.mcp.protocol.env import (
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
     MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._start_stage_tracker import read_overruns, record_overrun
 
 # Env var for the pre-serve budget. Follows the same pattern as the other
 # timeout env vars so operators can lower it to force-fail a slow dev setup.
@@ -294,21 +312,100 @@ def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timed
     return preflight - timedelta(seconds=_PROBE_SAFETY_S)
 
 
-def record_stage_elapsed(stage: str, elapsed_s: float, *, budget_s: float) -> None:
-    """Enforce a per-stage startup budget; raise ``McpServerError`` when exceeded.
+_OVERRUN_LOGGER_NAME = "ralph.mcp.protocol._startup_timeouts"
+
+
+def record_stage_elapsed(
+    stage: str,
+    elapsed_s: float,
+    *,
+    budget_s: float,
+    root: Path | None = None,
+) -> float | None:
+    """Diagnose a per-stage startup budget overrun; return ``None`` on overrun.
+
+    This function is DIAGNOSTIC ONLY. It logs a structured WARNING for per-stage
+    overruns and records an overrun entry in the sibling JSONL file via
+    :func:`record_overrun`, but never raises. Use ``_check_real_startup_deadline``
+    for the only fatal deadline check.
 
     Fake-clock friendly by design: the caller measures ``elapsed_s`` (with its
     own clock) and passes it in; this function never reads ``time.monotonic``,
     so tests control time entirely.
+
+    Returns:
+        ``None`` when ``elapsed_s > budget_s`` (overrun diagnosed).
+        ``budget_s`` when ``elapsed_s <= budget_s`` (within budget).
+
+    Raises:
+        RuntimeError: if ``budget_s`` is not strictly positive.
     """
+    if not (budget_s > 0):
+        raise RuntimeError(f"budget_s must be strictly positive, got {budget_s!r}")
 
     if elapsed_s > budget_s:
-        raise McpServerError(
-            f"startup stage {stage!r} took {elapsed_s:.3f}s, over its budget of {budget_s:.3f}s",
-            last_stage=stage,
+        remaining_s = budget_s - elapsed_s
+        logger.warning(
+            "startup stage {stage} over budget: "
+            "elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s",
+            stage=stage,
             elapsed_s=elapsed_s,
+            budget_s=budget_s,
+            remaining_s=remaining_s,
+        )
+        target_root = root if root is not None else Path.cwd()
+        try:
+            record_overrun(
+                target_root,
+                stage,
+                elapsed_s=elapsed_s,
+                budget_s=budget_s,
+                remaining_s=remaining_s,
+            )
+        except Exception as exc:
+            logger.warning("failed to record overrun to stage tracker: {exc}", exc=exc)
+        return None
+
+    return budget_s
+
+
+def _check_real_startup_deadline(
+    stage: str,
+    t0: float,
+    env_map: Mapping[str, str] | None = None,
+) -> None:
+    """Enforce the preflight startup deadline at a stage boundary.
+
+    Checks elapsed monotonic time from ``t0`` against the real startup envelope:
+    ``mcp_preflight_timeout_from_env(env_map) - _PROBE_SAFETY_S``.
+    Default: 30.0s - 2.0s = 28.0s.
+
+    This is the ONLY fatal startup check. Per-stage budget overruns are
+    diagnostic warnings only (see :func:`record_stage_elapsed`), recorded in
+    the sibling JSONL ``.overruns`` file without aborting startup.
+
+    Raises:
+        McpServerError: when cumulative elapsed exceeds the real startup deadline.
+    """
+    elapsed = _time_module.monotonic() - t0
+    envelope = mcp_preflight_timeout_from_env(env_map) - timedelta(seconds=_PROBE_SAFETY_S)
+    if elapsed > envelope.total_seconds():
+        raise McpServerError(
+            f"real startup deadline exceeded at stage {stage!r} "
+            f"({elapsed:.3f}s > {envelope.total_seconds():.3f}s)",
+            last_stage=stage,
+            elapsed_s=elapsed,
             restart_count=0,
         )
+
+
+def _check_cumulative_startup_deadline(
+    stage: str,
+    t0: float,
+    env_map: Mapping[str, str] | None = None,
+) -> None:
+    """Thin backward-compatibility wrapper delegating to :func:`_check_real_startup_deadline`."""
+    _check_real_startup_deadline(stage, t0, env_map)
 
 
 def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = None) -> float:
@@ -366,6 +463,18 @@ if not (
     raise RuntimeError(
         "import-time invariant violated: mcp_discovery_budget_from_env() "
         "must be strictly less than mcp_preflight_timeout_from_env()"
+    )
+
+# Import-time invariant: the real startup deadline (preflight - probe-safety) must
+# be strictly positive and strictly less than the preflight timeout.
+_real_startup_deadline_s: float = (
+    mcp_preflight_timeout_from_env().total_seconds() - _PROBE_SAFETY_S
+)
+if not (0 < _real_startup_deadline_s < mcp_preflight_timeout_from_env().total_seconds()):
+    raise RuntimeError(
+        f"real startup deadline ({_real_startup_deadline_s}s) must be strictly "
+        f"positive and strictly less than preflight "
+        f"({mcp_preflight_timeout_from_env().total_seconds()}s)"
     )
 
 
@@ -431,6 +540,8 @@ __all__ = [
     "_REGISTRY_BUILD_BUDGET_S",
     "_REGISTRY_BUILT_CUMULATIVE_S",
     "_WHOLE_STARTUP_BUDGET_S",
+    "_check_cumulative_startup_deadline",
+    "_check_real_startup_deadline",
     "mcp_discovery_budget_from_env",
     "mcp_overrun_diagnostic_timeout_from_env",
     "mcp_overrun_diagnostic_timeout_seconds",
@@ -441,5 +552,8 @@ __all__ = [
     "mcp_upstream_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_seconds",
     "mcp_whole_startup_budget_from_env",
+    "read_overruns",
+    "record_overrun",
+    "record_stage_elapsed",
     "upstream_call_timeout_seconds",
 ]

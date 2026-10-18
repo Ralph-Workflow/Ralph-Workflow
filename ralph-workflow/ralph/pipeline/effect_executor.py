@@ -723,14 +723,6 @@ def _invoke_agent_with_recovery(
                     retry_resumable_exit=True,
                 )
             )
-        except McpServerError as exc:
-            logger.error(
-                "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
-            )
-            _set_last_captured_retry_intent(
-                AgentRetryIntent(action="fresh", failure_reason="McpServerError")
-            )
-            return PipelineEvent.AGENT_FAILURE
         except ctx.deps.agent_invocation_error as exc:
             if (
                 raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError)
@@ -743,6 +735,7 @@ def _invoke_agent_with_recovery(
             )
     except (
         McpConfigError,
+        McpServerError,
         OpenCodeResumableExitError,
         AgentInactivityTimeoutError,
         SupervisionInfrastructureError,

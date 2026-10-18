@@ -17,6 +17,9 @@ whole-startup deadline; on timeout, ``os._exit`` with the
 distinct ``CATALOG_PUBLISH_OVERRUN_EXIT_CODE`` so the parent
 restart budget attributes the exit to this stage without
 re-reading the on-disk stage file.
+
+The timeout envelope is ``remaining_s`` (the time left in the whole-startup
+budget, ``mcp_whole_startup_budget_from_env``), not a separate constant cap.
 """
 
 from __future__ import annotations
@@ -26,7 +29,6 @@ import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol._startup_timeouts import (
-    _READY_TO_SERVE_BUDGET_S,
     mcp_whole_startup_budget_from_env,
 )
 from ralph.mcp.server._pre_serve_overrun import (
@@ -61,7 +63,7 @@ def publish_tool_catalog_bounded(
     if t0 is None:
         t0 = time.monotonic()
     remaining_s = max(0.0, whole_budget_s - (time.monotonic() - t0))
-    effective_timeout_s = min(_READY_TO_SERVE_BUDGET_S, remaining_s)
+    effective_timeout_s = remaining_s
     if effective_timeout_s <= 0.0:
         fail_closed_pre_serve_overrun(
             workspace_root,

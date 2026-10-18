@@ -115,22 +115,17 @@ def remove_path(path: Path) -> None:
             return
 
 
-def lock_holder_is_dead(lock_path: Path) -> bool:
-    """True when the index.lock holder PID is provably dead (A9).
+def lock_holder_is_dead(
+    lock_path: Path | str,
+    gitdir: Path | str | None = None,
+    gitdir_common: Path | str | None = None,
+) -> bool:
+    """True when the lock has no live holder and is old enough to be stale.
 
-    A live holder is contention (E9), not staleness -- the lock
-    MUST be left in place so the concurrent writer finishes, and
-    the bounded retry loop backs off. A PID that is missing,
-    unreadable, or that the OS reports as ``NoSuchProcess`` is
-    treated as dead; any other error (a sandbox that hides
-    ``/proc`` etc.) is treated as LIVE so a missed reclaim costs
-    one backoff rather than a corrupt checkout.
-
-    The PID is read via the standard git convention: a single
-    line of plain text (the writing process's PID) in the lock
-    file itself. Older gits wrote nothing here, so an empty /
-    whitespace-only file is treated as "no PID", which the
-    spec resolves as dead (A9: "liveness check, not age").
+    A live holder is contention, not staleness -- the lock MUST be left
+    in place so the concurrent writer finishes, and the bounded retry
+    loop backs off. Requires both the age threshold to be met and a
+    conclusive 'dead' result from the liveness probe.
 
     Implementation lives in
     :mod:`ralph.pipeline.auto_integrate_recovery_lock`; this
@@ -144,7 +139,7 @@ def lock_holder_is_dead(lock_path: Path) -> bool:
         _lock_holder_is_dead as _impl,
     )
 
-    return _impl(lock_path)
+    return _impl(lock_path, gitdir=gitdir, gitdir_common=gitdir_common)
 
 
 def rebase_state_dir_is_corrupt(state_dir: Path) -> bool:

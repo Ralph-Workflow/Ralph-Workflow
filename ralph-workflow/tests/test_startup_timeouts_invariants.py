@@ -11,6 +11,10 @@ These tests validate that:
 4. An undersized preflight budget is caught at runtime
    (``mcp_upstream_probe_timeout_from_env`` raises ``RuntimeError`` when
    the ceiling would be at or below ``_PROBE_SAFETY_S``).
+5. Per-stage budget overruns are DIAGNOSTIC ONLY: ``record_stage_elapsed``
+   logs a warning but returns ``None`` instead of raising.
+6. The real startup deadline is the ONLY fatal check (28.0s default).
+7. Overrun records are written to and read from a sibling JSONL file.
 
 These tests deliberately avoid ``time.sleep`` and do not assume implementation
 internals beyond the documented public API of
@@ -19,7 +23,12 @@ internals beyond the documented public API of
 
 from __future__ import annotations
 
+import json
+import time
 from datetime import timedelta
+from pathlib import Path
+from typing import cast
+from unittest import mock
 
 import pytest
 
@@ -28,10 +37,18 @@ from ralph.mcp.protocol._startup_timeouts import (
     _MAX_UPSTREAMS_AT_DEFAULTS,
     _PROBE_BUDGET_SHARE,
     _PROBE_SAFETY_S,
+    _check_real_startup_deadline,
     mcp_discovery_budget_from_env,
     mcp_preflight_timeout_from_env,
     mcp_upstream_probe_timeout_from_env,
     mcp_upstream_probe_timeout_seconds,
+    record_stage_elapsed,
+)
+from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._start_stage_tracker import (
+    read_overruns,
+    record_overrun,
+    stage_file_path,
 )
 
 
@@ -51,41 +68,18 @@ class TestImportTimeInvariants:
         assert _MAX_UPSTREAMS_AT_DEFAULTS >= 1
 
     def test_default_preflight_budget_exceeds_probe_safety(self) -> None:
-        """Import-time invariant: default preflight * share > _PROBE_SAFETY_S.
-
-        The child's failure-reporting window after probes finish is
-        preflight * (1 - share).  The ceiling (preflight * share) must be
-        strictly above _PROBE_SAFETY_S so that even a worst-case probe that
-        hits the ceiling still leaves the child enough time to surface the
-        stall before the supervisor SIGKILLs it.
-        """
+        """Import-time invariant: default preflight * share > _PROBE_SAFETY_S."""
         default_preflight = mcp_preflight_timeout_from_env({})
         ceiling = default_preflight * _PROBE_BUDGET_SHARE
-        assert ceiling.total_seconds() > _PROBE_SAFETY_S, (
-            f"default ceiling {ceiling.total_seconds():.1f}s must be > "
-            f"_PROBE_SAFETY_S {_PROBE_SAFETY_S}s"
-        )
+        assert ceiling.total_seconds() > _PROBE_SAFETY_S
 
     def test_max_upstreams_at_defaults_math_is_consistent(self) -> None:
         """_MAX_UPSTREAMS_AT_DEFAULTS is the largest N such that
-        N * _PROBE_SAFETY_S < preflight * share.
-
-        This guarantees N concurrent probes can each receive a budget at or
-        above the safety margin without exhausting the child's failure-
-        reporting window.
-        """
+        N * _PROBE_SAFETY_S < preflight * share."""
         default_preflight = mcp_preflight_timeout_from_env({})
         ceiling = default_preflight * _PROBE_BUDGET_SHARE
-        # Each of N upstreams gets ceiling/N budget; all N must be ≥ _PROBE_SAFETY_S
-        # so the child can surface a stall before the supervisor kills it.
-        # Re-arranged: N ≤ floor((ceiling - ε) / _PROBE_SAFETY_S) for any ε>0.
-        # The integer formula used in the module is:
-        #   _MAX_UPSTREAMS_AT_DEFAULTS = int((ceiling - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
         expected = int((ceiling.total_seconds() - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
-        assert expected == _MAX_UPSTREAMS_AT_DEFAULTS, (
-            f"_MAX_UPSTREAMS_AT_DEFAULTS {_MAX_UPSTREAMS_AT_DEFAULTS} "
-            f"≠ expected {expected} from default ceiling {ceiling.total_seconds():.1f}s"
-        )
+        assert expected == _MAX_UPSTREAMS_AT_DEFAULTS
 
 
 class TestProbeTimeoutAtDefaults:
@@ -105,7 +99,6 @@ class TestProbeTimeoutAtDefaults:
         preflight = mcp_preflight_timeout_from_env({})
         ceiling = mcp_upstream_probe_timeout_from_env({})
         assert ceiling < preflight
-        # Remaining time after probes = preflight - ceiling = 15s, well above safety
         remaining = preflight - ceiling
         assert remaining.total_seconds() > _PROBE_SAFETY_S
 
@@ -114,13 +107,6 @@ class TestUndersizedPreflightAtRuntime:
     """An undersized preflight is caught at runtime when the ceiling ≤ _PROBE_SAFETY_S."""
 
     def test_preflight_below_minimum_raises_runtime_error(self) -> None:
-        """When preflight * share ≤ _PROBE_SAFETY_S, the ceiling is too small
-        for the child to report a stalled probe. The function must raise
-        ``RuntimeError`` rather than silently returning a value that would
-        cause a silent SIGKILL in production.
-
-        Minimum preflight to pass: _PROBE_SAFETY_S / _PROBE_BUDGET_SHARE = 4000 ms.
-        """
         # Just above the minimum: 4001ms → ceiling = 2000.5ms > 2000ms ✓
         env_just_above = {"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "4001"}
         ceiling_above = mcp_upstream_probe_timeout_from_env(env_just_above)
@@ -128,18 +114,19 @@ class TestUndersizedPreflightAtRuntime:
 
         # At the minimum (4000ms): ceiling = 2000ms == _PROBE_SAFETY_S → must raise
         env_at_minimum = {"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "4000"}
-        with pytest.raises(RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"):
+        with pytest.raises(
+            RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"
+        ):
             mcp_upstream_probe_timeout_from_env(env_at_minimum)
 
         # Below minimum: 1000ms → ceiling = 500ms < 2000ms → must raise
         env_too_small = {"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "1000"}
-        with pytest.raises(RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"):
+        with pytest.raises(
+            RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"
+        ):
             mcp_upstream_probe_timeout_from_env(env_too_small)
 
     def test_explicit_probe_timeout_below_ceiling_is_returned(self) -> None:
-        """An explicit RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS below the ceiling
-        is returned as-is (the operator explicitly requested a shorter budget)."""
-        # preflight=30s → ceiling=15s; explicit probe=1s < ceiling → returned
         env = {
             "RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "30000",
             "RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS": "1000",
@@ -148,13 +135,13 @@ class TestUndersizedPreflightAtRuntime:
         assert result == timedelta(seconds=1)
 
     def test_small_explicit_probe_also_raises(self) -> None:
-        """If preflight itself is small, even an explicit probe timeout
-        clamped to the ceiling still fails the safety floor."""
         env = {
-            "RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "4000",  # ceiling = 2000ms == safety
+            "RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "4000",
             "RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS": "1000",
         }
-        with pytest.raises(RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"):
+        with pytest.raises(
+            RuntimeError, match="preflight timeout.*probe ceiling.*_PROBE_SAFETY_S"
+        ):
             mcp_upstream_probe_timeout_from_env(env)
 
 
@@ -162,19 +149,14 @@ class TestProbeSafetyConstantExistence:
     """_PROBE_SAFETY_S must be a consumable constant for the runtime and tests."""
 
     def test_probe_safety_s_is_exported(self) -> None:
-        # The brief requires _PROBE_SAFETY_S as a consumable constant
-        from ralph.mcp.protocol._startup_timeouts import _PROBE_SAFETY_S
-
         assert _PROBE_SAFETY_S == 2.0
 
     def test_probe_safety_s_is_float(self) -> None:
         assert type(_PROBE_SAFETY_S) is float
 
     def test_probe_safety_s_is_consumed_in_max_upstreams_formula(self) -> None:
-        """Verify _PROBE_SAFETY_S participates in _MAX_UPSTREAMS_AT_DEFAULTS."""
         default_preflight = mcp_preflight_timeout_from_env({})
         ceiling = default_preflight * _PROBE_BUDGET_SHARE
-        # The formula is: int((ceiling - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
         computed = int((ceiling.total_seconds() - _PROBE_SAFETY_S) / _PROBE_SAFETY_S)
         assert computed == _MAX_UPSTREAMS_AT_DEFAULTS
 
@@ -197,9 +179,7 @@ class TestPerStageBudgets:
             + mod._REGISTRY_BUILD_BUDGET_S
             + mod._READY_TO_SERVE_BUDGET_S
         )
-        assert whole < preflight, (
-            f"whole-startup envelope {whole:.3f}s must be < preflight {preflight:.3f}s"
-        )
+        assert whole < preflight
         # Both constants and the stage vocabulary must be in the docstring.
         doc = mod.__doc__ or ""
         for needle in (
@@ -217,38 +197,228 @@ class TestPerStageBudgets:
         assert "monotonic" in docstring, "helper must document fake-clock friendliness"
 
     def test_record_stage_elapsed_enforces_shared_deadline(self) -> None:
-        from ralph.mcp.protocol._startup_timeouts import record_stage_elapsed
-        from ralph.mcp.server._mcp_server_error import McpServerError
-
-        # Under budget: no raise.
-        record_stage_elapsed("config_loaded", 0.5, budget_s=1.0)
-        # Over budget: typed error with the measured values, not the budget.
-        with pytest.raises(McpServerError) as exc_info:
-            record_stage_elapsed("ready_to_serve", 1.25, budget_s=1.0)
-        err = exc_info.value
-        assert err.last_stage == "ready_to_serve"
-        assert err.elapsed_s == 1.25
-        assert err.restart_count == 0
+        # REWRITTEN: per-stage overrun is now DIAGNOSTIC ONLY (no raise).
+        # Under budget: returns the budget value.
+        result = record_stage_elapsed("config_loaded", 0.5, budget_s=1.0)
+        assert result == 1.0
+        # Over budget: returns None (diagnostic), does NOT raise.
+        result = record_stage_elapsed("ready_to_serve", 1.25, budget_s=1.0)
+        assert result is None
 
     def test_per_stage_envelope_independent_of_sum(self) -> None:
-        """A single stage exceeding its own budget raises even while the
-        aggregate stays below preflight (per-stage bounds are individual,
-        the aggregate is enforced by the shared deadline, not by summing)."""
-        from ralph.mcp.protocol._startup_timeouts import (
-            _CONFIG_LOAD_BUDGET_S,
-            mcp_discovery_budget_from_env,
-            mcp_preflight_timeout_from_env,
-            record_stage_elapsed,
-        )
-        from ralph.mcp.server._mcp_server_error import McpServerError
+        # REWRITTEN: per-stage overrun is now DIAGNOSTIC ONLY (no raise).
+        from ralph.mcp.protocol import _startup_timeouts as mod
 
         preflight = mcp_preflight_timeout_from_env({}).total_seconds()
         discovery = mcp_discovery_budget_from_env({}).total_seconds()
         # Aggregate is comfortably under preflight...
         assert discovery < preflight
-        # ...yet an individual stage violation still raises.
-        stage_elapsed = _CONFIG_LOAD_BUDGET_S + 0.1
+        # ...and per-stage overrun does NOT raise (only logs warning).
+        stage_elapsed = mod._CONFIG_LOAD_BUDGET_S + 0.1
         assert stage_elapsed < preflight
-        with pytest.raises(McpServerError) as exc_info:
-            record_stage_elapsed("config_loaded", stage_elapsed, budget_s=_CONFIG_LOAD_BUDGET_S)
-        assert exc_info.value.last_stage == "config_loaded"
+        # Must NOT raise — diagnostic only
+        result = record_stage_elapsed(
+            "config_loaded", stage_elapsed, budget_s=mod._CONFIG_LOAD_BUDGET_S
+        )
+        assert result is None
+
+
+class TestDiagnosticStageContract:
+    """New contract: per-stage overruns are diagnostic, not fatal."""
+
+    def test_diagnostic_does_not_raise_overrun(self) -> None:
+        """record_stage_elapsed returns None on overrun; does not raise."""
+        result = record_stage_elapsed("config_loaded", 1.128, budget_s=1.0)
+        assert result is None
+
+    def test_real_deadline_equals_preflight_minus_safety(self) -> None:
+        """At default env, real deadline = 30.0s - 2.0s = 28.0s."""
+        preflight = mcp_preflight_timeout_from_env({}).total_seconds()
+        real = preflight - _PROBE_SAFETY_S
+        assert real == 28.0
+
+    def test_per_stage_elapsed_independent_of_cumulative(self) -> None:
+        """Per-stage overrun at exactly the budget does NOT raise."""
+        from ralph.mcp.protocol import _startup_timeouts as mod
+
+        # Exactly at budget: returns budget value (within budget)
+        result = record_stage_elapsed(
+            "registry_built", 0.4, budget_s=mod._REGISTRY_BUILD_BUDGET_S
+        )
+        assert result == mod._REGISTRY_BUILD_BUDGET_S
+        # Over budget by 0.0001s: returns None (diagnostic), does NOT raise
+        result = record_stage_elapsed(
+            "registry_built", 0.4001, budget_s=mod._REGISTRY_BUILD_BUDGET_S
+        )
+        assert result is None
+
+    def test_ready_to_serve_at_budget_plus_epsilon_logs_warning_and_does_not_raise(
+        self,
+    ) -> None:
+        """ready_to_serve at budget + epsilon logs a warning and does not raise.
+
+        The contract: per-stage overrun at ready_to_serve (0.4001s with budget 0.4s)
+        logs a diagnostic warning via logger.warning and returns None, rather than
+        raising McpServerError.
+        """
+        from ralph.mcp.protocol import _startup_timeouts as mod
+
+        with mock.patch("ralph.mcp.protocol._startup_timeouts.logger.warning") as mock_warning:
+            result = record_stage_elapsed(
+                "ready_to_serve",
+                0.4001,
+                budget_s=mod._READY_TO_SERVE_BUDGET_S,
+            )
+            assert result is None
+            mock_warning.assert_called_once_with(
+                mock.ANY,
+                stage="ready_to_serve",
+                elapsed_s=0.4001,
+                budget_s=mod._READY_TO_SERVE_BUDGET_S,
+                remaining_s=mock.ANY,
+            )
+
+    def test_overrun_recorded_in_sibling_jsonl_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """record_overrun writes one JSONL line to <stage_file_path>.overruns."""
+        fake_sid = "test-spawn-1234"
+        monkeypatch.setattr(
+            "ralph.mcp.server._start_stage_tracker._get_spawn_id",
+            lambda: fake_sid,
+        )
+        # Write one overrun
+        record_overrun(
+            root=tmp_path,
+            stage="config_loaded",
+            elapsed_s=1.128,
+            budget_s=1.0,
+            remaining_s=-0.128,
+        )
+        # Verify file exists and contains one valid JSON line
+        sf_path = stage_file_path(tmp_path, spawn_id=fake_sid)
+        overruns_path = Path(str(sf_path) + ".overruns"
+        )
+        assert overruns_path.exists()
+        lines = overruns_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        parsed: object = json.loads(lines[0])
+        assert isinstance(parsed, dict)
+        record = cast("dict[str, object]", parsed)
+        assert record["stage"] == "config_loaded"
+        assert record["elapsed_s"] == 1.128
+        assert record["budget_s"] == 1.0
+        assert record["remaining_s"] == -0.128
+        assert "observed_at" in record
+        assert "warning_id" in record
+
+    def test_read_overruns_returns_recorded_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """read_overruns returns all recorded entries as dicts."""
+        fake_sid = "test-spawn-5678"
+        monkeypatch.setattr(
+            "ralph.mcp.server._start_stage_tracker._get_spawn_id",
+            lambda: fake_sid,
+        )
+        record_overrun(
+            root=tmp_path,
+            stage="config_loaded",
+            elapsed_s=1.128,
+            budget_s=1.0,
+            remaining_s=-0.128,
+        )
+        record_overrun(
+            root=tmp_path,
+            stage="registry_built",
+            elapsed_s=0.5,
+            budget_s=0.4,
+            remaining_s=-0.1,
+        )
+        records = read_overruns(tmp_path, spawn_id=fake_sid)
+        assert len(records) == 2
+        assert records[0]["stage"] == "config_loaded"
+        assert records[1]["stage"] == "registry_built"
+
+    def test_read_overruns_missing_file_returns_empty_list(
+        self, tmp_path: Path
+    ) -> None:
+        """read_overruns returns [] when the overruns file does not exist."""
+        records = read_overruns(tmp_path, spawn_id="nonexistent-spawn-9999")
+        assert records == []
+
+    def test_read_overruns_skips_malformed_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Malformed JSON lines are silently skipped."""
+        fake_sid = "test-spawn-malformed"
+        monkeypatch.setattr(
+            "ralph.mcp.server._start_stage_tracker._get_spawn_id",
+            lambda: fake_sid,
+        )
+        # Write one valid and one malformed line directly
+        sf_path = stage_file_path(tmp_path, spawn_id=fake_sid)
+        overruns_path = Path(str(sf_path) + ".overruns")
+        overruns_path.parent.mkdir(parents=True, exist_ok=True)
+        entry1: dict[str, object] = {
+            "stage": "config_loaded",
+            "elapsed_s": 1.0,
+            "budget_s": 1.0,
+            "remaining_s": 0.0,
+            "observed_at": time.time(),
+            "warning_id": "abc",
+        }
+        entry2: dict[str, object] = {
+            "stage": "registry_built",
+            "elapsed_s": 0.5,
+            "budget_s": 0.4,
+            "remaining_s": -0.1,
+            "observed_at": time.time(),
+            "warning_id": "def",
+        }
+        overruns_path.write_text(
+            f"{json.dumps(entry1)}\nnot valid json\n{json.dumps(entry2)}\n",
+            encoding="utf-8",
+        )
+        records = read_overruns(tmp_path, spawn_id=fake_sid)
+        assert len(records) == 2
+        assert records[0]["stage"] == "config_loaded"
+        assert records[1]["stage"] == "registry_built"
+
+    def test_config_loaded_1_128s_continues_to_next_stage(self) -> None:
+        """REGRESSION TEST: 1.128s config_loaded does NOT raise or exit.
+
+        Before the fix: record_stage_elapsed raised McpServerError on the
+        1.128s overrun (1.128s > 1.0s budget), crashing the child with
+        last_stage="config_loaded" instead of continuing to discovery.
+
+        After the fix: record_stage_elapsed logs a WARNING and returns None.
+        _check_real_startup_deadline is NOT exceeded at 1.128s (28.0s envelope).
+        """
+        # Diagnostic call: 1.128s over 1.0s budget → None (no raise)
+        result = record_stage_elapsed("config_loaded", 1.128, budget_s=1.0)
+        assert result is None
+        # _check_real_startup_deadline uses time.monotonic() internally;
+        # mock it so elapsed = 1.5s (well under 28.0s envelope).
+        import time as time_module
+
+        with mock.patch.object(time_module, "monotonic", return_value=1.5):
+            _check_real_startup_deadline("config_loaded", t0=0.0, env_map={})
+        # No exception means the test passes.
+
+    def test_real_deadline_raises_at_threshold_plus_epsilon(self) -> None:
+        """_check_real_startup_deadline DOES raise when elapsed exceeds 28.0s."""
+        # Patch time.monotonic to report 28.1s elapsed
+        with mock.patch.object(
+            __import__("time"), "monotonic", return_value=28.1
+        ):
+            with pytest.raises(McpServerError) as exc_info:
+                _check_real_startup_deadline(
+                    stage="config_loaded",
+                    t0=0.0,
+                    env_map={},
+                )
+            assert exc_info.value.last_stage == "config_loaded"
+            # elapsed_s will be 28.1 (monotonic returns 28.1, t0=0)
+            assert exc_info.value.elapsed_s == 28.1
+            assert exc_info.value.restart_count == 0

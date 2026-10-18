@@ -12,7 +12,9 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time as time_module
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
 import pytest
@@ -21,16 +23,20 @@ import ralph.mcp.server._pre_serve_overrun as pre_serve_overrun_mod
 from ralph.mcp.protocol._startup_timeouts import (
     _OVERRUN_DIAGNOSTIC_BUDGET_S,
     _PROBE_SAFETY_S,
+    _check_real_startup_deadline,
     mcp_overrun_diagnostic_timeout_from_env,
     mcp_overrun_diagnostic_timeout_seconds,
 )
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._pre_serve_overrun import (
     CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
     PRE_SERVE_OVERRUN_EXIT_CODE,
     SESSION_OVERRUN_EXIT_CODE,
     fail_closed_pre_serve_overrun,
 )
+from ralph.mcp.server._publish_catalog_bounded import publish_tool_catalog_bounded
 from ralph.mcp.server._start_stage_tracker import read_last_stage
+from ralph.mcp.server.runtime import McpServerExtras
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -182,3 +188,243 @@ def test_overrun_diagnostic_budget_invariants() -> None:
     """_OVERRUN_DIAGNOSTIC_BUDGET_S must be strictly positive and below _PROBE_SAFETY_S."""
     assert _OVERRUN_DIAGNOSTIC_BUDGET_S > 0
     assert _OVERRUN_DIAGNOSTIC_BUDGET_S < _PROBE_SAFETY_S
+
+
+def test_slow_session_from_env_succeeds_with_default_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 1.5s slow session_from_env succeeds with default env (previously killed at 1.0s).
+
+    Under the old contract, session_timeout_s was min(_PRE_SERVE_BUDGET_S=1.0s, remaining_s),
+    killing session loading after 1.0s. Under the new contract, session loading gets
+    the full remaining real startup deadline (28.0s at default), allowing slow-but-successful
+    session discovery (e.g. 1.5s) to complete normally without being killed.
+    """
+    import ralph.mcp.server.runtime as runtime_mod
+
+    clock_val = 0.0
+
+    def fake_clock() -> float:
+        return clock_val
+
+    session = AgentSession(
+        session_id="test-session-slow",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+
+    def slow_session_from_env(*args: object, **kwargs: object) -> AgentSession:
+        nonlocal clock_val
+        clock_val += 1.5  # Simulate 1.5s elapsed during session_from_env
+        return session
+
+    monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
+    monkeypatch.setattr(
+        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
+    )
+    monkeypatch.setattr(runtime_mod, "session_from_env", slow_session_from_env)
+
+    # Mock server so run_standalone_server does not block or start real network listener
+    class _MockServer:
+        def __init__(self) -> None:
+            self.run_called = False
+
+        def run(self, *args: object, **kwargs: object) -> None:
+            self.run_called = True
+
+    mock_server = _MockServer()
+    build_called_with_session: list[AgentSession] = []
+
+    def mock_build(
+        workspace_root: Path,
+        *,
+        extras: McpServerExtras | None = None,
+        **kwargs: object,
+    ) -> _MockServer:
+        if extras is not None and isinstance(extras.session, AgentSession):
+            build_called_with_session.append(extras.session)
+        return mock_server
+
+    monkeypatch.setattr(runtime_mod, "build_standalone_http_server", mock_build)
+
+    # Must complete cleanly without being killed by overrun helper
+    runtime_mod.run_standalone_server(tmp_path, env={})
+    assert build_called_with_session == [session]
+    assert mock_server.run_called is True
+
+
+def test_hung_session_from_env_fails_closed_before_preflight_minus_safety(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hung session_from_env fails closed with last_stage='session_ready' before preflight - _PROBE_SAFETY_S."""
+    import concurrent.futures
+
+    import ralph.mcp.server.runtime as runtime_mod
+
+    # Synchronize clocks to exact 0.0 so remaining_s math is exact
+    monkeypatch.setattr(runtime_mod, "_clock", lambda: 0.0)
+    monkeypatch.setattr(
+        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", lambda: 0.0
+    )
+
+    captured_timeout: list[float] = []
+
+    def mock_future_result(
+        self: concurrent.futures.Future[object], timeout: float | None = None
+    ) -> object:
+        if timeout is not None:
+            captured_timeout.append(timeout)
+        raise concurrent.futures.TimeoutError("Session loading hung")
+
+    monkeypatch.setattr(concurrent.futures.Future, "result", mock_future_result)
+    monkeypatch.setattr(os, "_exit", _mock_exit)
+
+    default_preflight_s = 30.0
+    expected_deadline_s = default_preflight_s - _PROBE_SAFETY_S  # 28.0s
+
+    with pytest.raises(_ExitInterceptedError) as exc_info:
+        runtime_mod.run_standalone_server(tmp_path, env={})
+
+    assert exc_info.value.code == SESSION_OVERRUN_EXIT_CODE
+    # Captured timeout must match preflight - _PROBE_SAFETY_S (28.0s at default)
+    assert len(captured_timeout) >= 1
+    assert captured_timeout[0] == expected_deadline_s
+    assert captured_timeout[0] < default_preflight_s
+    # Stage file must attribute failure to session_ready
+    assert read_last_stage(tmp_path) == "session_ready"
+
+
+def test_pre_serve_io_taking_1_5s_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pre-serve I/O taking 1.5s succeeds under the real remaining startup deadline."""
+    import ralph.mcp.server.runtime as runtime_mod
+    from ralph.config.mcp_models import McpConfig
+
+    clock_val = 0.0
+
+    def fake_clock() -> float:
+        return clock_val
+
+    session = AgentSession(
+        session_id="test-session-preserve",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+
+    def slow_load_mcp_config(*args: object, **kwargs: object) -> McpConfig:
+        nonlocal clock_val
+        clock_val += 1.5  # Simulate 1.5s pre-serve I/O
+        return McpConfig()
+
+    monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
+    monkeypatch.setattr(
+        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
+    )
+    monkeypatch.setattr(runtime_mod, "load_mcp_config", slow_load_mcp_config)
+
+    # Call _poll_bounded_pre_serve with t0=0.0 and default env
+    ws, cfg = runtime_mod._poll_bounded_pre_serve(
+        workspace_root=tmp_path,
+        effective_session=session,
+        workspace=None,
+        extras=McpServerExtras(),
+        env_map={},
+        t0=0.0,
+    )
+    assert ws is not None
+    assert cfg is not None
+    # Verify clock advanced by 1.5s and real deadline check succeeds
+    assert clock_val == 1.5
+    _check_real_startup_deadline("config_loaded", 0.0, {})
+
+
+def test_catalog_publish_slow_but_answers_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catalog-publish slow-but-answers (e.g. 1.5s) succeeds under remaining deadline."""
+    import ralph.mcp.server._publish_catalog_bounded as pub_mod
+
+    clock_val = 100.0
+
+    def fake_monotonic() -> float:
+        return clock_val
+
+    monkeypatch.setattr(time_module, "monotonic", fake_monotonic)
+    monkeypatch.setattr(
+        "ralph.mcp.server._publish_catalog_bounded.time.monotonic", fake_monotonic
+    )
+
+    publish_called = False
+
+    def slow_publish(root: Path, cat: dict[str, list[object]]) -> None:
+        nonlocal publish_called, clock_val
+        publish_called = True
+        clock_val += 1.5  # Simulate 1.5s publish I/O
+
+    monkeypatch.setattr(pub_mod, "publish_tool_catalog_to_parent", slow_publish)
+
+    # t0 is 100.0, so at start remaining_s is whole_budget (~29.8s > 1.5s)
+    publish_tool_catalog_bounded(
+        workspace_root=tmp_path,
+        catalog={},
+        env_map={},
+        t0=100.0,
+    )
+    assert publish_called is True
+
+
+def test_registry_read_slow_but_answers_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registry-read slow-but-answers (e.g. 1.5s) succeeds without raising McpServerError."""
+    import ralph.mcp.tools.bridge._registry as reg_mod
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.protocol.session import AgentSession
+
+    clock_val = 0.0
+
+    def fake_clock() -> float:
+        return clock_val
+
+    monkeypatch.setattr(reg_mod, "_clock", fake_clock)
+    monkeypatch.setattr(
+        "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
+    )
+
+    session = AgentSession(
+        session_id="test-session-reg",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+
+    warned: list[tuple[str, float, float]] = []
+
+    def mock_warn(stage: str, elapsed_s: float, budget_s: float) -> None:
+        warned.append((stage, elapsed_s, budget_s))
+
+    monkeypatch.setattr(reg_mod, "_warn_over_budget", mock_warn)
+
+    # Set clock to 1.5s so elapsed is 1.5s > budget_s (0.4s)
+    clock_val = 1.5
+
+    # Prior to the fix, elapsed > budget_s raised McpServerError.
+    # Now it emits a diagnostic warning and returns the built registry.
+    reg = reg_mod.build_ralph_tool_registry(
+        session=session,
+        workspace=None,
+        mcp_config=McpConfig(),
+        t0=0.0,
+        budget_s=0.4,
+        timeout_s=28.0,
+    )
+    assert reg is not None
+    assert len(warned) == 1
+    assert warned[0][0] == "registry_built"
+    assert warned[0][1] == 1.5
+    assert warned[0][2] == 0.4
+    # And real startup deadline is NOT exceeded (1.5s <= 28.0s)
+    _check_real_startup_deadline("registry_built", 0.0, {})

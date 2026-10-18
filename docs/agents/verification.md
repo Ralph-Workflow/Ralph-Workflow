@@ -194,6 +194,19 @@ Documentation review note:
 - *How duplication was contained.* The new bullet on normal/exception exits and the bullet on interrupt/termination now share the same one-sentence description of the two-escape sequence and the same "saved snapshot, never fresh `tcgetattr`" framing, so the contract no longer implies distinct envelopes for each path.
 - *Why the operator route is clearer.* Operators reading this guide now learn the three things they can rely on (saved termios restored, cursor visible, SGR neutral) and the one thing Ralph deliberately does not do (flush their typed input), which is the answerable question behind "will `make verify` eat my unsent prompt?".
 
+## MCP timeout contract
+
+Every blocking I/O operation under `ralph/mcp/` (as well as `ralph/git/` and `ralph/process/manager/`) must perform blocking calls with a bounded, fail-closed timeout. An unbounded blocking call hangs the worker or server thread and starves the agent of output. This contract is enforced by `ralph/testing/audit_mcp_timeout.py` as part of `make verify`.
+
+### Diagnostic-vs-deadline split in MCP startup
+
+The MCP server startup architecture enforces a strict distinction between non-fatal stage diagnostics and the fatal process deadline:
+
+- **Diagnostic stage budgets:** Individual startup stages are tracked with stage budgets (e.g. `_PRE_SERVE_BUDGET_S`, `_CONFIG_LOAD_BUDGET_S`, `_REGISTRY_BUILD_BUDGET_S`, `_READY_TO_SERVE_BUDGET_S`). When a stage overruns its individual budget, `record_stage_elapsed` emits a structured WARNING log and appends a diagnostic entry to the sibling JSONL `.overruns` file (`<stage_file_path>.overruns`). Stage overruns are diagnostic warnings only; they do NOT raise exceptions or abort startup.
+- **Fatal startup deadline:** The only fatal check during startup is `_check_real_startup_deadline`, which evaluates cumulative elapsed time against the real deadline: `mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S` (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin). When cumulative time exceeds this deadline, it raises `McpServerError` so the child fails loudly before supervisor `SIGKILL`.
+- **Bounded pre-serve and exit paths:** Pre-serve operations and overrun diagnostic flushes execute within bounded timeouts (`mcp_pre_serve_budget_from_env()`, `mcp_overrun_diagnostic_timeout_from_env()`) so a stalled filesystem or blocked FIFO cannot delay process exit or hold inherited sockets past the preflight ceiling.
+- **Stale git lock recovery:** Git operations guard mutating calls with `_run_git_operation_with_stale_lock_recovery` using a conservative 10s age threshold and negative liveness proof (OR-predicate across proc fd, cwd, environ, lsof, fuser) inside a bounded 0.5s `ThreadPoolExecutor` probe. Contention retries with bounded exponential backoff (total ≤ 1.7s) before escalating to the reducer for in-place retry when policy defines no recovery phase.
+
 ## Cross-links
 
 - `ralph/verify.py` — budget tracker, `_VERIFY_STEPS`, invariant checks

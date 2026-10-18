@@ -499,17 +499,17 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
     git_dir = rebase_bookkeeping_dir(repo_root) or (repo_root / ".git")
     if git_dir.is_dir():
         index_lock = git_dir / "index.lock"
-        if index_lock.exists() and lock_holder_is_dead(index_lock):
+        if index_lock.exists() and lock_holder_is_dead(index_lock, gitdir=git_dir):
             logger.info("Removing stale index.lock: {}", index_lock)
             remove_path(index_lock)
             repaired = True
         head_lock = git_dir / "HEAD.lock"
-        if head_lock.exists() and lock_holder_is_dead(head_lock):
+        if head_lock.exists() and lock_holder_is_dead(head_lock, gitdir=git_dir):
             logger.info("Removing stale HEAD.lock: {}", head_lock)
             remove_path(head_lock)
             repaired = True
         for lock_path in common_dir_lock_paths(repo_root):
-            if lock_path.exists() and lock_holder_is_dead(lock_path):
+            if lock_path.exists() and lock_holder_is_dead(lock_path, gitdir=git_dir):
                 logger.info("Removing stale common dir lock: {}", lock_path)
                 remove_path(lock_path)
                 repaired = True

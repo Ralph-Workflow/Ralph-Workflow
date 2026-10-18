@@ -18,6 +18,8 @@ not hardcoded match arms. All workflow semantics are expressed in policy.
 from __future__ import annotations
 
 import functools
+import re
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -1480,6 +1482,45 @@ def _resolve_commit_recovery_phase(
     return None
 
 
+def _recoverable_git_failure_default_target(
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Return the in-place phase to retry when a repairable git failure has no recovery phase.
+
+    Returns the current phase name (e.g. ``development_commit``) when all of:
+      - The failure is repairable (matches ``_is_repairable_git_failure``)
+      - The policy defines neither ``commit_recovery`` nor ``commit_cleanup`` phase
+        (i.e. ``_resolve_commit_recovery_phase`` returns ``None``)
+      - The ``recovery_epoch`` has not exceeded ``_MAX_COMMIT_RECOVERY_ATTEMPTS``
+
+    When these hold, the reducer re-routes the cycle to the in-place phase so a
+    fresh pass of ``commit_executor.execute_commit_effect`` re-reads the validated
+    commit message from ``effect.message_file`` (which is preserved on disk when
+    the commit operation fails). When any condition fails, returns ``None`` and the
+    caller falls through to ``failed_terminal``.
+
+    The ``effect.message_file`` lifecycle:
+      - ``commit_executor.execute_commit_effect`` writes the validated message to
+        ``effect.message_file`` before attempting the commit.
+      - On failure it sets ``_execution_record.last_error`` and returns
+        ``PipelineEvent.COMMIT_FAILURE``.
+      - The message file is deleted only on ``COMMIT_SUCCESS`` or ``COMMIT_SKIPPED``;
+        on failure it stays on disk.
+      - A fresh pass of ``execute_commit_effect`` re-reads ``effect.message_file``.
+    """
+    from ralph.pipeline.commit_executor import get_last_commit_error
+
+    last_error = get_last_commit_error() or state.last_error
+    if not _is_repairable_git_failure(last_error):
+        return None
+    if _resolve_commit_recovery_phase(state, policy) is not None:
+        return None
+    if state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
+        return None
+    return state.phase
+
+
 def _handle_commit_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
@@ -1488,13 +1529,18 @@ def _handle_commit_failure(
     """Handle commit failure without unconditionally routing to failed_terminal.
 
     A repairable commit failure (detached HEAD, index.lock contention,
-    unmerged paths, conflict, repeated commit failure) is never a
-    terminal failure: Ralph owns the recovery path. The bounded
-    counter only protects against an infinite recovery loop; when
-    the counter is exhausted the policy's commit-recovery phase is
-    still invoked (the counter does not turn a repairable failure
-    into a terminal one). Only when no recovery phase is reachable
-    does the failure escalate to ``failed_terminal``.
+    unmerged paths, conflict, repeated commit failure) is never an
+    immediate terminal failure: Ralph owns the recovery path.
+    1. If the policy defines a recovery phase (``commit_recovery`` or
+       ``commit_cleanup``), the reducer routes there.
+    2. If the policy defines no recovery phase, the reducer performs an in-place
+       retry of the current commit phase (via :func:`_recoverable_git_failure_default_target`),
+       preserving the validated commit message in ``effect.message_file`` across
+       attempts.
+    3. The bounded counter (``recovery_epoch``) protects against infinite loops:
+       only when no recovery phase is reachable AND the retry budget
+       (``_MAX_COMMIT_RECOVERY_ATTEMPTS``) is exhausted does the failure
+       escalate to ``failed_terminal``.
     """
     from ralph.pipeline.commit_executor import get_last_commit_error
 
@@ -1556,6 +1602,47 @@ def _handle_commit_failure(
             )
             return new_state, []
 
+        # No commit_recovery / commit_cleanup phase: re-route in-place to retry
+        # with the validated message preserved on disk at effect.message_file.
+        in_place_target = _recoverable_git_failure_default_target(cleared_state, policy)
+        if in_place_target is not None:
+            failure_reason = last_error or commit_failure_reason(state)
+            # Extract lock path and age from the error for the operator log.
+            lock_path_str = ""
+            _lock_pattern = re.compile(r"Unable to create '([^']+\.lock)'")
+            _lock_match = _lock_pattern.search(last_error or "")
+            if _lock_match:
+                lock_path_str = _lock_match.group(1)
+                try:
+                    from pathlib import Path as _Path
+
+                    lock_age = time.time() - _Path(lock_path_str).stat().st_mtime
+                    lock_path_str = f"{lock_path_str} (age={lock_age:.1f}s)"
+                except Exception:
+                    pass
+            logger.bind(component="policy.routing").warning(
+                "Repairable git failure with no recovery phase defined; "
+                "re-routing in-place to {} (lock={}) with validated message preserved "
+                "at effect.message_file; policy has no commit_recovery/commit_cleanup phase; "
+                "recovery_epoch={}/{}",
+                in_place_target,
+                lock_path_str or last_error,
+                cleared_state.recovery_epoch,
+                _MAX_COMMIT_RECOVERY_ATTEMPTS,
+            )
+            advanced_state, target = _prepare_phase_advance(
+                cleared_state, in_place_target, policy, routing_timing=routing_timing
+            )
+            new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
+                last_error=failure_reason,
+                recovery_epoch=cleared_state.recovery_epoch + 1,
+                pending_cycle_outcome=None,
+                last_execution_result_status="failed",
+            )
+            return new_state, []
+
+    # Non-repairable failure or recovery_epoch exhausted with no in-place fallback:
+    # escalate to terminal failure.
     failure_reason = commit_failure_reason(state)
     return _enter_failed_recovery(cleared_state, failure_reason, policy)
 
