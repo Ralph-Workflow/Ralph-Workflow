@@ -321,7 +321,7 @@ def _poll_endpoint(endpoint: str, deadline: float) -> bool:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return True
         except OSError:
-            time.sleep(0.1)
+            time.sleep(0.01)
     return False
 
 
@@ -373,6 +373,7 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls(tmp_path: Path) 
         # McpServerExtras.extra_env carries env vars into the subprocess.
         extras = lifecycle.McpServerExtras(
             extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config},
+            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
         )
 
         bridge = lifecycle.start_mcp_server(
@@ -454,7 +455,10 @@ def test_respawn_increments_restart_count(tmp_path: Path) -> None:
         real_spawn = lifecycle._default_lifecycle_deps().spawn_process
         deps = _make_deps(tmp_path, real_spawn)
         upstream_config = _upstream_config_json(fake_server.port)
-        extras = lifecycle.McpServerExtras(extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config})
+        extras = lifecycle.McpServerExtras(
+            extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config},
+            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
+        )
 
         bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
         try:
@@ -504,7 +508,10 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
         deps = lifecycle._default_lifecycle_deps()
 
         upstream_config = _upstream_config_json(fake_server.port)
-        extras = lifecycle.McpServerExtras(extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config})
+        extras = lifecycle.McpServerExtras(
+            extra_env={_MCP_UPSTREAM_CONFIG_ENV: upstream_config},
+            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
+        )
 
         bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
@@ -521,7 +528,7 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
             while time.monotonic() < deadline:
                 if catalog_path.exists() and fake_server.tools_list_count >= 1:
                     break
-                time.sleep(0.1)
+                time.sleep(0.01)
             assert catalog_path.exists(), (
                 "first start must publish parent_catalog.json (runtime.py first-start call site)"
             )
@@ -585,7 +592,7 @@ def test_absent_or_corrupt_snapshot_fails_closed(
             # milliseconds (the child exits rc!=0 before serving), so the
             # production 2 s cooldown only pads the 60 s combined verify
             # budget; 0.1 s keeps the seconds-based spacing contract alive.
-            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.1),
+            restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
         )
 
         catalog_path = tmp_path / ".agent" / "mcp" / "parent_catalog.json"
@@ -595,7 +602,7 @@ def test_absent_or_corrupt_snapshot_fails_closed(
         try:
             deadline = time.monotonic() + 20.0
             while time.monotonic() < deadline and not catalog_path.exists():
-                time.sleep(0.1)
+                time.sleep(0.01)
             assert catalog_path.exists(), "first start must publish parent_catalog.json"
 
             # The corrupt-snapshot respawn is EXPECTED to fail within

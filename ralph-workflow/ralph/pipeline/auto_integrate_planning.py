@@ -134,10 +134,6 @@ def _record_staged_block(
     if readiness.integration_ready:
         return None
     reason = readiness.blocking_reasons[0]
-    if reason.startswith("worktree not clean; uncommitted tracked changes"):
-        # Modified-tracked worktree routes to the force-merge resolver, which
-        # safely lands dirty work without overwriting unfinished edits.
-        return None
     # The single-source-of-truth predicate decides the verdict. The
     # kind is the closed-vocabulary routing signal the run loop reads;
     # the reason is the operator-facing free-form text.

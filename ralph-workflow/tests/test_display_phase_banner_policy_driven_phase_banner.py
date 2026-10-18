@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
@@ -145,16 +146,17 @@ def test_unknown_transition_renders_gracefully() -> None:
     assert "Another Unknown" in output
 
 
+@pytest.mark.timeout_seconds(5)
 def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
     """Major role-pair transitions must not show duplicated description prose.
 
     The phase-close banner already communicates exit context via exit_trigger;
     the transition banner should not repeat status prose.
     """
+    console = Console(record=True, width=120)
+    display = resolve_active_display(None, _ctx_from_console(console))
     for from_role, to_role in MAJOR_ROLE_PAIRS:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
-        console = Console(record=True, width=120)
-        display = resolve_active_display(None, _ctx_from_console(console))
         display.emit_phase_transition("phase_a", "phase_b", pipeline_policy=policy)
         output = console.export_text()
         # Transition must not contain status prose that the phase-close banner handles

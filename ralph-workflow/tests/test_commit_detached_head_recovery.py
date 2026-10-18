@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from git import Actor, Repo
 
 from ralph.pipeline.commit_executor import execute_commit_effect, set_last_commit_error
@@ -21,6 +22,8 @@ from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Repo:

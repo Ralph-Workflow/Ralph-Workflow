@@ -125,13 +125,12 @@ def test_planning_lands_commits_without_committing_dirty_edits(
         RebaseState(),
     )
 
-    assert outcome is not None and outcome.fast_forwarded
-    assert (
-        _run(tmp_git_repo, "rev-parse", base).stdout
-        == _run(tmp_git_repo, "rev-parse", "HEAD").stdout
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert "uncommitted tracked changes deferred catch-up integration" in (
+        outcome.last_reason or ""
     )
-    assert _run(tmp_git_repo, "show", f"{base}:feature.txt").stdout == "feature\n"
-    assert _run(tmp_git_repo, "show", f"{base}:tracked.txt").stdout == "base\n"
+    assert not outcome.fast_forwarded
     assert (tmp_git_repo / "tracked.txt").read_text(encoding="utf-8") == "unfinished\n"
     assert (tmp_git_repo / "loose.txt").read_text(encoding="utf-8") == "untracked\n"
 

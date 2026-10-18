@@ -2303,6 +2303,8 @@ def _continue_after_startup_integration(
     blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
     if blocked_startup is not None:
         state = _wait_for_integration_retry(blocked_startup[0], ctx, backend=backend)
+        if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
+            return state, prev_phase, blocked_startup[2]
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 
@@ -2425,6 +2427,7 @@ def _wait_for_integration_retry(
     )
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
+
     ctx.sleep(5.0)
     recovered = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config, backend=backend
@@ -2552,7 +2555,7 @@ def _durable_record_intervention_guard(
                     "durable integration record unreadable at release; intervention required",
                     diagnostic=True,
                 ),
-                False,
+                True,
             )
     return rebase, True
 
@@ -2717,11 +2720,15 @@ def _run_inner_loop_after_startup(
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:
             state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
+            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
+                return state, prev_phase, blocked_integration[2]
             continue
         state = _reconcile_dispatch_state(state)
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
             state = _wait_for_integration_retry(state, ctx, backend=backend)
+            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
+                return state, prev_phase, blocked_sync[2]
             continue
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]

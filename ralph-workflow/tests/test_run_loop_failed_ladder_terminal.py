@@ -24,6 +24,14 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
 
+def _noop_warn(_display: object, _msg: str) -> None:
+    pass
+
+
+def _noop_save(_state: PipelineState, _ctx: run_loop._LoopContext) -> None:
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class RecoveryObservation:
     result: PipelineState
@@ -198,10 +206,13 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
     preamble_invocations: list[Path] = []
     sleeps: list[float] = []
 
-    def _preamble(workspace_scope: object, config: object, *, backend: object) -> object:
+    def _preamble(workspace_scope: object, config: object, *, backend: object = None) -> object:
         # Capture the call so the test can assert the run loop avoids
         # it on the exhausted path.
-        preamble_invocations.append(getattr(workspace_scope, "root", Path("/memory/recovery")))
+        if isinstance(workspace_scope, WorkspaceScope):
+            preamble_invocations.append(workspace_scope.root)
+        else:
+            preamble_invocations.append(Path("/memory/recovery"))
         return None
 
     workspace = MemoryWorkspace("/memory/recovery")
@@ -211,6 +222,7 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
     def _record_sleep(delay: float) -> None:
         sleeps.append(delay)
 
+    latest_state: list[PipelineState] = []
     ctx = cast(
         "run_loop._LoopContext",
         SimpleNamespace(
@@ -224,17 +236,17 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
                     },
                 )
             ),
-            active_display=SimpleNamespace(emit_warn_line=lambda *a, **k: None),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
             config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(workspace.root),
-            latest_state=[],
+            latest_state=latest_state,
             sleep=_record_sleep,
             connectivity_monitor=SimpleNamespace(current_state=None),
         ),
     )
 
     monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _preamble)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *a, **k: None)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
 
@@ -265,3 +277,28 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
         "Exhausted state must not sleep; the run loop must escalate "
         "to INTERVENTION_REQUIRED and return."
     )
+
+
+def test_exhausted_conflict_ladder_loop_exits_with_terminal_code(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """When the conflict ladder is exhausted, the enclosing run loop must
+    make an automated terminal transition (exit code 1) rather than continuing
+    indefinitely in an operator-only waiting loop.
+    """
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="unresolved shared.txt",
+            resolution_exhausted=True,
+            conflict_strategies_tried=(
+                "rebase_resolver: unresolved shared.txt",
+                "merge_instead: unresolved shared.txt",
+            ),
+        ),
+    )
+    observed = run_recovery_scenario(monkeypatch, state)
+    assert observed.exit_code == 1
+    assert observed.dispatched == ()
+    assert observed.waits == ()

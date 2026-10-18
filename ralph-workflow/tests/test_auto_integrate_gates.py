@@ -81,26 +81,25 @@ def _assert_planning_agrees(
     # does not need to read the worktree again (the test already
     # pre-computed the readiness from the parametrized state).
     planning_block = planning_module._record_staged_block(tmp_path, "main", readiness=readiness)
-    if expected_ready or state_name == "modified-tracked":
+    if expected_ready:
         assert planning_block is None
-        if expected_ready:
-            return
+        return
+
+    assert planning_block is not None
+    assert planning_block.last_action == "skipped"
+    assert planning_block.last_reason == expected_first_reason
+    if state_name == "staged":
+        assert (
+            planning_block.last_planning_obstruction
+            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+        )
     else:
-        assert planning_block is not None
-        assert planning_block.last_action == "skipped"
-        assert planning_block.last_reason == expected_first_reason
-        if state_name == "staged":
-            assert (
-                planning_block.last_planning_obstruction
-                == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
-            )
-        else:
-            assert planning_block.last_planning_obstruction in (
-                PlanningObstructionKind.NONE.value,
-                PlanningObstructionKind.LOCAL_OVERWRITE.value,
-                PlanningObstructionKind.UNTRACKED_OVERWRITE.value,
-            )
-        assert planning_block.integration_unresolved is False
+        assert planning_block.last_planning_obstruction in (
+            PlanningObstructionKind.NONE.value,
+            PlanningObstructionKind.LOCAL_OVERWRITE.value,
+            PlanningObstructionKind.UNTRACKED_OVERWRITE.value,
+        )
+    assert planning_block.integration_unresolved is False
 
     # Stage the planning seam: resolve_integration_target returns
     # "main", assess_tree_readiness is bound to the pre-computed
@@ -115,14 +114,14 @@ def _assert_planning_agrees(
         "auto_integrate_after_commit",
         lambda *_a, **_kw: RebaseState(last_outcome="fast_forwarded", fast_forwarded=True),
     )
+
+    def _unexpected_force_merge(*_a: object, **_kw: object) -> RebaseState:
+        pytest.fail("force merge must not be executed when tree is not integration ready")
+
     monkeypatch.setattr(
         planning_module,
         "_integrate_with_force_merge",
-        lambda *_a, **_kw: RebaseState(
-            last_action="skipped",
-            last_reason=expected_first_reason,
-            last_planning_obstruction=PlanningObstructionKind.NONE.value,
-        ),
+        _unexpected_force_merge,
     )
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_recovery_terminal.post_attempt_verify",
@@ -426,6 +425,43 @@ def test_planning_staged_block_records_skip_not_unresolved_conflict(
     assert result.integration_unresolved is False
 
 
+def test_planning_modified_tracked_records_skip_without_force_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Planning returns a typed skip with canonical reason and does not force merge."""
+    (tmp_path / ".git").mkdir()
+    canonical_reason = (
+        "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+    )
+    monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
+    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(
+        planning,
+        "assess_tree_readiness",
+        lambda _root: TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=(canonical_reason,),
+        ),
+    )
+    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: False)
+
+    def _unexpected_force_merge(*_a: object, **_kw: object) -> RebaseState:
+        pytest.fail("_integrate_with_force_merge must not be executed for modified tracked tree")
+
+    monkeypatch.setattr(planning, "_integrate_with_force_merge", _unexpected_force_merge)
+
+    cfg = _config()
+    scope = WorkspaceScope(tmp_path)
+    result = planning.integrate_before_planning(cfg, scope, RebaseState())
+
+    assert result is not None
+    assert result.last_action == "skipped"
+    assert result.last_reason == canonical_reason
+    assert result.last_planning_obstruction == PlanningObstructionKind.NONE.value
+    assert result.integration_unresolved is False
+
+
 def test_boundary_and_planning_agree_on_cleanliness_deferral(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -453,6 +489,22 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
     assert outcome is not None
     assert outcome.last_action == "skipped"
     assert "worktree not clean" in str(outcome.last_reason)
+
+    monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
+    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
+    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(
+        planning,
+        "_integrate_with_force_merge",
+        lambda *_a, **_kw: pytest.fail("planning must not execute force merge"),
+    )
+    planning_outcome = planning.integrate_before_planning(
+        cfg, WorkspaceScope(tmp_path), RebaseState()
+    )
+    assert planning_outcome is not None
+    assert planning_outcome.last_action == "skipped"
+    assert planning_outcome.last_reason == outcome.last_reason
 
 
 @pytest.mark.parametrize(

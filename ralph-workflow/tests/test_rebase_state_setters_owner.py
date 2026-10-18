@@ -38,6 +38,8 @@ _FORBIDDEN_FIELDS = (
     "resolution_exhausted",
     "resolution_exhaustion_reason",
 )
+_FORBIDDEN_BYTES: tuple[bytes, ...] = tuple(f.encode("utf-8") for f in _FORBIDDEN_FIELDS)
+_WRITER_METHODS_BYTES: tuple[bytes, ...] = (b"copy_with", b"model_copy")
 _AUTHORITATIVE_FILE = "rebase_state.py"
 
 
@@ -54,7 +56,9 @@ def _scan_writer_sites(*roots: Path) -> list[str]:
             if path.name == _AUTHORITATIVE_FILE:
                 continue
             raw = path.read_bytes()
-            if not any(field.encode() in raw for field in _FORBIDDEN_FIELDS):
+            if not any(w in raw for w in _WRITER_METHODS_BYTES):
+                continue
+            if not any(field in raw for field in _FORBIDDEN_BYTES):
                 continue
             source = raw.decode(encoding="utf-8")
             tree = ast.parse(source)

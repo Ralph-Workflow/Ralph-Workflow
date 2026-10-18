@@ -100,6 +100,7 @@ def _queued_connection_served_after_respawn(bridge: object, endpoint: str) -> st
         # SAME socket receives a valid HTTP response.
         request = b"GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
         queued_sock.sendall(request)
+        queued_sock.settimeout(0.2)
         response = b""
         deadline = time.monotonic() + 10.0
         while b"\r\n" not in response and time.monotonic() < deadline:
@@ -139,7 +140,10 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
 
     deps = _make_deps(tmp_path, real_spawn)
 
-    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
+    extras = lifecycle.McpServerExtras(
+        restart_policy=lifecycle.McpRestartPolicy(cooldown_seconds=0.0),
+    )
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
     try:
         # --- 1. child is alive -------------------------------------------------
