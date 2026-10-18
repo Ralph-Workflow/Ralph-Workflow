@@ -25,7 +25,10 @@ import concurrent.futures
 import time
 from typing import TYPE_CHECKING
 
-from ralph.mcp.protocol._startup_timeouts import mcp_whole_startup_budget_from_env
+from ralph.mcp.protocol._startup_timeouts import (
+    _READY_TO_SERVE_BUDGET_S,
+    mcp_whole_startup_budget_from_env,
+)
 from ralph.mcp.server._pre_serve_overrun import (
     CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
     fail_closed_pre_serve_overrun,
@@ -58,7 +61,8 @@ def publish_tool_catalog_bounded(
     if t0 is None:
         t0 = time.monotonic()
     remaining_s = max(0.0, whole_budget_s - (time.monotonic() - t0))
-    if remaining_s <= 0.0:
+    effective_timeout_s = min(_READY_TO_SERVE_BUDGET_S, remaining_s)
+    if effective_timeout_s <= 0.0:
         fail_closed_pre_serve_overrun(
             workspace_root,
             stage="upstream_catalog_or_discovery_done",
@@ -74,7 +78,7 @@ def publish_tool_catalog_bounded(
             workspace_root,
             catalog,
         )
-        future.result(timeout=remaining_s)
+        future.result(timeout=effective_timeout_s)
     except concurrent.futures.TimeoutError:
         # GIL-bound worker on FIFO blocks shutdown(wait=False); the
         # GIL blocks all cleanup, so the parent's snapshot reader
@@ -86,7 +90,7 @@ def publish_tool_catalog_bounded(
             workspace_root,
             stage="upstream_catalog_or_discovery_done",
             elapsed_s=time.monotonic() - t0,
-            budget_s=remaining_s,
+            budget_s=effective_timeout_s,
             exit_code=CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
         )
     finally:

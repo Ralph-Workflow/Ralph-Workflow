@@ -514,13 +514,16 @@ class RebaseState(RalphBaseModel):
                 raise ValueError(f"non-finite retry_deadline: {value!r}")
         return self.model_copy(update={"retry_deadline": value})
 
-    def record_consecutive_conflicts(self, value: int) -> Self:
+    def record_consecutive_conflicts(self, value: int | None, cap: int | None = None) -> Self:
         """Record the bounded consecutive-conflict counter.
 
         Single writer of :attr:`consecutive_conflicts`; ``value`` is
-        clamped to ``[0, MAX_CONSECUTIVE_RESOLVER_ATTEMPTS]`` so a
-        caller that hands in a stale or oversized count cannot push
-        the ladder past the configured cap. ``None`` is treated as 0.
+        clamped to ``[0, effective_cap]`` where ``effective_cap`` is
+        ``cap`` if supplied (clamped to >= 1), or
+        ``MAX_CONSECUTIVE_RESOLVER_ATTEMPTS`` by default.
+        This ensures that a caller that hands in a stale or oversized
+        count cannot push the ladder past the configured cap.
+        ``None`` is treated as 0.
         """
         # Lazy import: auto_integrate_conflict_budget imports
         # ``RebaseState`` only under ``TYPE_CHECKING``, but importing
@@ -532,8 +535,9 @@ class RebaseState(RalphBaseModel):
             MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
         )
 
+        effective_cap = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS if cap is None else max(1, int(cap))
         coerced = 0 if value is None else int(value)
-        clamped = max(0, min(coerced, MAX_CONSECUTIVE_RESOLVER_ATTEMPTS))
+        clamped = max(0, min(coerced, effective_cap))
         return self.model_copy(update={"consecutive_conflicts": clamped})
 
     def advance_conflict_strategy(self, reason: str) -> Self:

@@ -2351,6 +2351,13 @@ def _publish_state_snapshot(ctx: _LoopContext, state: PipelineState) -> None:
     ctx.snapshot_registry.publish(build_pipeline_state_snapshot(state, ctx.workspace_scope.root))
 
 
+def _effective_conflict_cap(ctx: _LoopContext) -> int:
+    """Resolve the effective consecutive-conflict counter-cap."""
+    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
+
+    return max(1, resolver_attempt_limit(ctx.config))
+
+
 def _wait_for_integration_retry(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2377,15 +2384,17 @@ def _wait_for_integration_retry(
     # ``INTERVENTION_REQUIRED`` once, retain the carried counters and
     # resolution_exhausted flag across the checkpoint save, and
     # refuse to call the recovery preamble.
-    if rebase.resolution_exhausted or rebase.consecutive_conflicts >= (
-        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-    ):
+    cap = _effective_conflict_cap(ctx)
+    if rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
             _handoff_retained_failure(ctx, detail)
             ctx._session_handoff_dispatched = True
             if ctx.latest_state and ctx.latest_state[0].rebase is not None:
                 rebase = ctx.latest_state[0].rebase
+        # Clamping to the effective configured cap ensures historical
+        # over-cap values are governed by the active configuration.
+        rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts, cap=cap)
         # The reason must be the ORIGINAL failure detail, not a
         # concatenation of the previous ``last_reason`` (which would
         # grow without bound across repeated calls). Use ``detail``
@@ -2485,17 +2494,18 @@ def _handle_intervention_required_retry(
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
         return state.clear_waiting()
+    cap = _effective_conflict_cap(ctx)
     bumped_conflicts = rebase.consecutive_conflicts + 1
-    rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
-    if rebase.consecutive_conflicts >= (
-        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-    ):
+    rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
+    if rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
             _handoff_retained_failure(ctx, detail)
             ctx._session_handoff_dispatched = True
             if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(bumped_conflicts)
+                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
+                    bumped_conflicts, cap=cap
+                )
         rebase = rebase.set_intervention_required(detail)
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
@@ -2533,19 +2543,20 @@ def _handle_pending_retry(
         ctx.latest_state[:] = [state]
         return state
 
+    cap = _effective_conflict_cap(ctx)
     bumped_conflicts = (
         max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0)) + 1
     )
-    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts)
-    if rebase.consecutive_conflicts >= (
-        ctx.config.conflict_resolution.max_consecutive_resolver_attempts
-    ):
+    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts, cap=cap)
+    if rebase.consecutive_conflicts >= cap:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
             _handoff_retained_failure(ctx, detail)
             ctx._session_handoff_dispatched = True
             if ctx.latest_state and ctx.latest_state[0].rebase is not None:
-                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(bumped_conflicts)
+                rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
+                    bumped_conflicts, cap=cap
+                )
         rebase = rebase.set_intervention_required(detail)
         state = state.copy_with(rebase=rebase)
         _save_recovered_rebase_checkpoint(state, ctx)

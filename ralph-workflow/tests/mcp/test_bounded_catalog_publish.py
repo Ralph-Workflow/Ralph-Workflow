@@ -50,7 +50,10 @@ from typing import IO, cast
 
 import pytest
 
-from ralph.mcp.protocol._startup_timeouts import mcp_whole_startup_budget_from_env
+from ralph.mcp.protocol._startup_timeouts import (
+    mcp_preflight_timeout_from_env,
+    mcp_whole_startup_budget_from_env,
+)
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.protocol.env import (
     MCP_INHERITED_FD_ENV,
@@ -320,6 +323,6 @@ def test_whole_startup_budget_is_strictly_below_preflight() -> None:
     locally so the bounded helper's deadline contract cannot rot.
     """
     whole_budget = mcp_whole_startup_budget_from_env()
-    preflight_timeout = mcp_whole_startup_budget_from_env()
+    preflight_timeout = mcp_preflight_timeout_from_env().total_seconds()
     assert whole_budget > 0
-    assert whole_budget < preflight_timeout * 2  # generous bound, real invariant in runtime
+    assert whole_budget < preflight_timeout

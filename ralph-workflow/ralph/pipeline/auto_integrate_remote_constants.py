@@ -79,9 +79,14 @@ def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE)
 
 def resolver_attempt_limit(config: object) -> int:
     """Return the configured budget, retaining the public GeneralConfig seam."""
-    if not isinstance(config, UnifiedConfig):
-        return MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
-    return config.conflict_resolution.max_consecutive_resolver_attempts
+    if isinstance(config, UnifiedConfig):
+        return config.conflict_resolution.max_consecutive_resolver_attempts
+    conflict_resolution: object = getattr(config, "conflict_resolution", None)
+    if conflict_resolution is not None:
+        attempts: object = getattr(conflict_resolution, "max_consecutive_resolver_attempts", None)
+        if isinstance(attempts, int) and attempts > 0:
+            return attempts
+    return MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 
 
 def reclaim_target_worktree_enabled(config: object | None) -> bool:

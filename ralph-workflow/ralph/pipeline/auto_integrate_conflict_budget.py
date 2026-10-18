@@ -160,7 +160,7 @@ def prior_conflict_count(
         return 0
     if state.last_conflict_strategy_index != state.conflict_strategy_index:
         return 0
-    return max(0, state.consecutive_conflicts)
+    return min(attempts, max(0, state.consecutive_conflicts))
 
 
 def resolver_allowed(
@@ -254,7 +254,7 @@ def apply_conflict_budget(
         effective_deadline = _read_clock_seconds(clock) + float(cooldown_seconds)
 
     if record.fast_forwarded:
-        updated = record.record_consecutive_conflicts(0).set_retry_deadline(None)
+        updated = record.record_consecutive_conflicts(0, cap=attempts).set_retry_deadline(None)
         return updated.model_copy(
             update={
                 "last_conflict_feature_sha": None,
@@ -273,7 +273,9 @@ def apply_conflict_budget(
                 record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline
             )
         )
-        updated = record.record_consecutive_conflicts(carried).set_retry_deadline(deadline_value)
+        updated = record.record_consecutive_conflicts(carried, cap=attempts).set_retry_deadline(
+            deadline_value
+        )
         return updated.model_copy(
             update={
                 "last_conflict_feature_sha": prior.last_conflict_feature_sha,
@@ -290,9 +292,9 @@ def apply_conflict_budget(
         if effective_deadline is not None
         else (record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline)
     )
-    updated = record.record_consecutive_conflicts(min(attempts, carried + 1)).set_retry_deadline(
-        deadline_value
-    )
+    updated = record.record_consecutive_conflicts(
+        min(attempts, carried + 1), cap=attempts
+    ).set_retry_deadline(deadline_value)
     update: dict[str, object] = {
         "last_conflict_feature_sha": identity.feature_sha,
         "last_conflict_target_sha": identity.target_sha,
