@@ -36,13 +36,11 @@ Stage vocabulary tracked by :func:`record_stage_elapsed`:
   bounded by ``mcp_whole_startup_budget_from_env`` (per-stage individual upper bound
   ``_READY_TO_SERVE_BUDGET_S``).
 
-The whole-startup envelope is ``mcp_whole_startup_budget_from_env``, which is the SUM of the
-per-stage cumulative budgets (config + discovery + registry_built + ready_to_serve). The
-aggregate is enforced by the parent's preflight timeout (``mcp_preflight_timeout_from_env``),
-which is the only construction-enforced upper bound; the per-stage budgets are individual
-envelopes, not the aggregate. Distinguishing "numerical envelope" (a number, not independently
-enforced) from "operational enforcement" (the parent's preflight timeout, enforced by the
-supervisor).
+The whole-startup envelope is ``mcp_whole_startup_budget_from_env``, which bounds the sum of
+the per-stage cumulative budgets (config + discovery + registry_built + ready_to_serve). Both
+the aggregate discovery loop and the bootstrap serving architecture operationally enforce that
+spawn-to-serving tools/list completes strictly below ``mcp_preflight_timeout_from_env`` by
+construction, guarded by import-time invariants.
 
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
@@ -137,6 +135,15 @@ _PRE_SERVE_BUDGET_S: float = 1.0
 _CONFIG_LOAD_BUDGET_S: float = 1.0
 _REGISTRY_BUILD_BUDGET_S: float = 0.4
 _READY_TO_SERVE_BUDGET_S: float = 0.4
+
+if not (_PRE_SERVE_BUDGET_S > 0):
+    raise RuntimeError(f"_PRE_SERVE_BUDGET_S must be > 0, got {_PRE_SERVE_BUDGET_S!r}")
+if not (_CONFIG_LOAD_BUDGET_S > 0):
+    raise RuntimeError(f"_CONFIG_LOAD_BUDGET_S must be > 0, got {_CONFIG_LOAD_BUDGET_S!r}")
+if not (_REGISTRY_BUILD_BUDGET_S > 0):
+    raise RuntimeError(f"_REGISTRY_BUILD_BUDGET_S must be > 0, got {_REGISTRY_BUILD_BUDGET_S!r}")
+if not (_READY_TO_SERVE_BUDGET_S > 0):
+    raise RuntimeError(f"_READY_TO_SERVE_BUDGET_S must be > 0, got {_READY_TO_SERVE_BUDGET_S!r}")
 
 
 def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
@@ -353,6 +360,12 @@ _CONFIG_LOAD_CUMULATIVE_S: float = _CONFIG_LOAD_BUDGET_S
 _REGISTRY_BUILT_CUMULATIVE_S: float = mcp_registry_built_budget_from_env()
 _WHOLE_STARTUP_BUDGET_S: float = mcp_whole_startup_budget_from_env()
 _READY_TO_SERVE_CUMULATIVE_S: float = _WHOLE_STARTUP_BUDGET_S
+
+if not (0 < _CONFIG_LOAD_CUMULATIVE_S < _REGISTRY_BUILT_CUMULATIVE_S < _WHOLE_STARTUP_BUDGET_S):
+    raise RuntimeError(
+        f"import-time invariant violated: cumulative budgets must be strictly monotonic: "
+        f"{_CONFIG_LOAD_CUMULATIVE_S} < {_REGISTRY_BUILT_CUMULATIVE_S} < {_WHOLE_STARTUP_BUDGET_S}"
+    )
 
 if not (mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET_S):
     raise RuntimeError(

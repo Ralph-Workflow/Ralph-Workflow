@@ -187,6 +187,29 @@ class UpstreamRegistry:
                 continue
             else:
                 probe_elapsed_ms = (_clock() - probe_start) * 1000.0
+                if _clock() > deadline:
+                    budget_exc = UpstreamCallError(
+                        f"upstream server '{server.name}' exceeded discovery budget deadline"
+                    )
+                    if on_unreachable == "raise":
+                        _log_probe_outcome(
+                            server.name,
+                            server_kind,
+                            probe_elapsed_ms,
+                            "strict_failure",
+                            "UpstreamCallError",
+                        )
+                        raise UpstreamValidationError(
+                            f"{server_kind} '{server.name}' is unreachable: {budget_exc}"
+                        ) from budget_exc
+                    _log_probe_outcome(
+                        server.name,
+                        server_kind,
+                        probe_elapsed_ms,
+                        "skipped",
+                        "UpstreamCallError",
+                    )
+                    continue
                 logger.info(
                     "ralph-mcp upstream probe: server={name} elapsed_ms={ms:.1f} n_tools={n}",
                     name=server.name,

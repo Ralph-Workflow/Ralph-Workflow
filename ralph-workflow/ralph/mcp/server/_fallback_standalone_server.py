@@ -71,16 +71,10 @@ class _FallbackStandaloneServer:
             "tuple[str, int]", self._httpd.server_address
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
-    def run(
-        self,
-        transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
-        *,
-        ready_event: Event | None = None,
-        stop_event: Event | None = None,
-        on_ready: Callable[[], None] | None = None,
-    ) -> None:
-        if transport != DEFAULT_TRANSPORT:
-            raise ValueError(f"Unsupported transport: {transport}")
+    def prepare_httpd(self) -> _FallbackHttpServer:
+        """Instantiate and bind the underlying HTTP server on the host/port or parent_socket."""
+        if self._httpd is not None:
+            return self._httpd
         if self._parent_socket is not None:
             httpd = _FallbackHttpServer(
                 (self._host, self._port),
@@ -100,6 +94,19 @@ class _FallbackStandaloneServer:
         httpd.health_probe_fn = None
         httpd.metrics = None
         self._httpd = httpd
+        return httpd
+
+    def run(
+        self,
+        transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
+        *,
+        ready_event: Event | None = None,
+        stop_event: Event | None = None,
+        on_ready: Callable[[], None] | None = None,
+    ) -> None:
+        if transport != DEFAULT_TRANSPORT:
+            raise ValueError(f"Unsupported transport: {transport}")
+        httpd = self.prepare_httpd()
         if stop_event is not None:
 
             def _stop_watcher() -> None:

@@ -55,13 +55,13 @@ class _RecordingRemoteClient:
     def push_branch(
         self,
         repo_root: Path,
-        target: str,
+        branch: str,
         *,
         remote: str,
         timeout_seconds: float = 0.0,
     ) -> _remote_push_module.PushResult:
-        self.pushed.append((remote, target))
-        return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, target)
+        self.pushed.append((remote, branch))
+        return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, branch)
 
 
 class _UnreachableRemoteClient:
@@ -88,14 +88,14 @@ class _UnreachableRemoteClient:
     def push_branch(
         self,
         repo_root: Path,
-        target: str,
+        branch: str,
         *,
         remote: str,
         timeout_seconds: float = 0.0,
     ) -> _remote_push_module.PushResult:
-        self.pushed.append((remote, target))
+        self.pushed.append((remote, branch))
         return _remote_push_module.PushResult(
-            _remote_push_module.PushStatus.UNREACHABLE, remote, target
+            _remote_push_module.PushStatus.UNREACHABLE, remote, branch
         )
 
 
@@ -123,7 +123,7 @@ def test_non_default_target_remote_converges(
         tmp_path,
         "release",
         remote="tacos",
-        remote_client=cast("RemoteClient", client),
+        remote_client=client,
     )
 
     # 1. Non-vacuous execution: observations and push actually happened
@@ -288,7 +288,7 @@ def test_concurrent_remote_advance_calls_reconcile_helper(
         tmp_path,
         "main",
         remote="origin",
-        remote_client=cast("RemoteClient", client),
+        remote_client=client,
     )
     assert client.pushed == [("origin", "main")]
     assert state.last_push_status == "pushed"

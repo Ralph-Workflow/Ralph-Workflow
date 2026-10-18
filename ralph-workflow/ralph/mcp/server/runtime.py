@@ -57,6 +57,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol._startup_timeouts import (
     _CONFIG_LOAD_CUMULATIVE_S,
+    _PRE_SERVE_BUDGET_S,
     mcp_discovery_budget_from_env,
     mcp_pre_serve_budget_from_env,
     mcp_registry_built_budget_from_env,
@@ -725,10 +726,31 @@ def run_standalone_server(
     sanitize_process_environment()
     relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
     scrub_activity_relay_environment(os.environ)
-    session = session_from_env(
-        declared_agent_transport=agent_transport,
-        workspace_root=workspace_root,
-    )
+
+    # R2: Session loading can perform blocking I/O (file read/stat, explore index SQLite open).
+    # Isolate behind ThreadPoolExecutor with timeout _PRE_SERVE_BUDGET_S so it cannot hang
+    # indefinitely.
+    ex: concurrent.futures.ThreadPoolExecutor | None = None
+    try:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(
+            session_from_env,
+            declared_agent_transport=agent_transport,
+            workspace_root=workspace_root,
+        )
+        session = future.result(timeout=_PRE_SERVE_BUDGET_S)
+    except concurrent.futures.TimeoutError:
+        elapsed = _clock() - t0
+        raise McpServerError(
+            f"session initialization timed out after {elapsed:.3f}s (budget={_PRE_SERVE_BUDGET_S:.3f}s)",
+            last_stage="session_ready",
+            elapsed_s=elapsed,
+            restart_count=0,
+        ) from None
+    finally:
+        if ex is not None:
+            ex.shutdown(wait=False)
+
     erase_broker_secret_environment()
     _stage("session_ready")
     # R1: when the parent passed a listening FD via
@@ -787,7 +809,7 @@ def run_standalone_server(
             "registry built from cached tool catalog)"
         )
 
-    ready_budget_s = mcp_whole_startup_budget_from_env()
+    ready_budget_s = mcp_whole_startup_budget_from_env(env_map)
 
     # R4: record ready_to_serve and emit the banner INSIDE
     # ``server.run()`` so the banner fires when serving actually
