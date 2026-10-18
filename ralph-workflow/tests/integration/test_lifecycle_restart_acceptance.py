@@ -102,7 +102,12 @@ def _loop_context(
     return run_loop._LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=WorkspaceScope(tmp_path),
-        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        config=UnifiedConfig.model_validate(
+            {
+                "general": {"auto_integrate_enabled": False},
+                "conflict_resolution": {"max_consecutive_resolver_attempts": 1},
+            }
+        ),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=MagicMock(),

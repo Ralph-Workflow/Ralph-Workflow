@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, NoReturn
 import pytest
 
 import ralph.mcp.server._pre_serve_overrun as pre_serve_overrun_mod
+from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol._startup_timeouts import (
     _OVERRUN_DIAGNOSTIC_BUDGET_S,
     _PROBE_SAFETY_S,
@@ -331,6 +332,50 @@ def test_pre_serve_io_taking_1_5s_succeeds(tmp_path: Path, monkeypatch: pytest.M
     # Verify clock advanced by 1.5s and real deadline check succeeds
     assert clock_val == 1.5
     _check_real_startup_deadline("config_loaded", 0.0, {})
+
+
+def test_pre_serve_future_timeout_uses_remaining_headroom_not_one_second_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pre-serve Future.result timeout uses remaining headroom (~28s), not the old 1s cap."""
+    from concurrent.futures import Future
+
+    import ralph.mcp.server.runtime as runtime_mod
+
+    captured_timeouts: list[float | None] = []
+    real_result = Future.result
+
+    def spy_result(self: Future[object], timeout: float | None = None) -> object:
+        captured_timeouts.append(timeout)
+        return real_result(self, timeout=timeout)
+
+    monkeypatch.setattr(runtime_mod, "_clock", lambda: 0.0)
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", lambda: 0.0)
+    monkeypatch.setattr(Future, "result", spy_result)
+
+    session = AgentSession(
+        session_id="test-session-preserve-cap",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"mcp"},
+    )
+
+    ws, cfg = runtime_mod._poll_bounded_pre_serve(
+        workspace_root=tmp_path,
+        effective_session=session,
+        workspace=None,
+        extras=McpServerExtras(mcp_config=McpConfig()),
+        env_map={},
+        t0=0.0,
+    )
+    assert ws is not None
+    assert cfg is not None
+    assert len(captured_timeouts) == 1
+    timeout = captured_timeouts[0]
+    assert timeout is not None
+    # Must use remaining headroom (~28.0s at defaults), strictly greater than the old 1.0s cap
+    assert timeout > 1.0
+    assert abs(timeout - 28.0) < 1.0
 
 
 def test_catalog_publish_slow_but_answers_succeeds(

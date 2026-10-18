@@ -814,8 +814,10 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
 
+    gate = threading.Event()
+
     def hung_lsof(*args: object, **kwargs: object) -> bool:
-        time.sleep(1.0)
+        gate.wait(timeout=1.0)
         return False
 
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_lsof)
@@ -840,6 +842,7 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
             f"Thread pool accumulated {len(executor._threads)} threads, exceeding cap {_PROBE_MAX_WORKERS}"
         )
     finally:
+        gate.set()
         _reset_probe_executor()
 
 
@@ -869,3 +872,66 @@ def test_liveness_probe_zombie_process_treated_as_dead(
         )
     finally:
         fd_dir.chmod(0o755)
+
+
+def test_liveness_probe_cwd_in_repo_subdirectory_is_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A git process whose cwd is a subdirectory of the worktree top returns 'live'.
+
+    The OR-predicate must accept any path inside the repository (worktree top,
+    main-repo top, or any subdirectory of either) as a live holder signal. A
+    developer running ``git status`` from a project subdirectory while a long
+    ``git gc`` holds a worktree-private lock must be treated as a live holder;
+    unlinking the lock would corrupt the gc.
+    """
+    # Real worktree layout: repo_root is the worktree top, .git/worktrees/wt-17
+    # is the per-worktree gitdir, repo_root/.git is the common gitdir symlink.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    worktree_dot_git = repo_root / ".git"
+    worktree_dot_git.mkdir()
+    common_gitdir = tmp_path / "common_git"
+    common_gitdir.mkdir()
+    worktree_gitdir = common_gitdir / "worktrees" / "wt-17"
+    worktree_gitdir.mkdir(parents=True)
+    (worktree_gitdir / "gitdir").write_text(str(worktree_dot_git) + "\n", encoding="utf-8")
+    (worktree_gitdir / "commondir").write_text("../..\n", encoding="utf-8")
+
+    lock_path = worktree_gitdir / "index.lock"
+    lock_path.write_bytes(b"\x00\x01binary index contents\x00")
+
+    subdir = repo_root / "src" / "pkg" / "deep"
+    subdir.mkdir(parents=True)
+
+    fake_proc = tmp_path / "proc"
+    fake_proc.mkdir()
+    pid_dir = fake_proc / str(os.getpid())
+    pid_dir.mkdir()
+    # cwd is a subdirectory of the worktree top — not an exact match for any
+    # live_cwd entry. The expanded OR-predicate must still recognize it.
+    (pid_dir / "cwd").symlink_to(str(subdir.resolve()))
+    (pid_dir / "fd").mkdir()  # empty: no lock open
+    (pid_dir / "comm").write_text("git\n", encoding="utf-8")
+    (pid_dir / "environ").write_bytes(b"")  # no GIT_DIR
+
+    def fake_run(
+        cmd: object,
+        *,
+        timeout: float | None = None,
+        capture_output: bool = False,
+        check: bool = False,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout=b"")
+
+    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
+
+    result = _lock_has_no_live_holder(
+        lock_path, worktree_gitdir, common_gitdir, _proc_root=fake_proc
+    )
+    assert result == "live", (
+        "Process with cwd in a subdirectory of the worktree top must return 'live'; "
+        "the OR-predicate must recognize ANY path under the worktree top, not only "
+        "the exact worktree-top path itself"
+    )

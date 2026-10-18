@@ -1496,10 +1496,14 @@ def _recoverable_git_failure_default_target(
     When these hold, the reducer re-routes the cycle to the in-place phase so a
     fresh pass of ``commit_executor.execute_commit_effect`` re-reads the validated
     commit message from ``effect.message_file`` (which is preserved on disk when
-    the commit operation fails). Persistent lock contention retries in-place with
-    ``recovery_epoch`` clamped at ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than
-    aborting. When the failure is not repairable, returns ``None`` and the caller
-    falls through to ``failed_terminal``.
+    the commit operation fails). The ``recovery_epoch`` counter is **clamped** at
+    ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than used as a stop-the-line: the
+    reducer keeps retrying in-place so an orphaned ``index.lock`` cannot end the
+    run before the worker's own ``_LOCK_BACKOFF_S`` sequence and ``recovery_epoch``
+    cap give way to a higher-priority non-repairable error.
+
+    When the failure is not repairable, returns ``None`` and the caller falls
+    through to ``failed_terminal``.
 
     The ``effect.message_file`` lifecycle:
       - ``commit_executor.execute_commit_effect`` writes the validated message to
@@ -1516,8 +1520,6 @@ def _recoverable_git_failure_default_target(
     if not _is_repairable_git_failure(last_error):
         return None
     if _resolve_commit_recovery_phase(state, policy) is not None:
-        return None
-    if state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
         return None
     return state.phase
 
@@ -1635,16 +1637,35 @@ def _handle_commit_failure(
             advanced_state, target = _prepare_phase_advance(
                 cleared_state, in_place_target, policy, routing_timing=routing_timing
             )
+            # Cap-enforcement: clamp ``recovery_epoch`` at
+            # ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than incrementing
+            # unbounded. Persistent lock contention is recoverable and the
+            # worker's own ``_LOCK_BACKOFF_S`` sequence and the cap on the
+            # commit-operation level are the durable stop-the-line; the cap
+            # here is purely diagnostic and never escalates to
+            # ``failed_terminal`` for a repairable failure.
+            raw_next_epoch = cleared_state.recovery_epoch + 1
+            if raw_next_epoch > _MAX_COMMIT_RECOVERY_ATTEMPTS:
+                bounded_epoch = _MAX_COMMIT_RECOVERY_ATTEMPTS
+                logger.bind(component="policy.routing").warning(
+                    "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
+                    "clamping epoch and continuing in-place retry of {} -- the "
+                    "repairable failure is preserved, not escalated to failed_terminal",
+                    cleared_state.recovery_epoch,
+                    _MAX_COMMIT_RECOVERY_ATTEMPTS,
+                    in_place_target,
+                )
+            else:
+                bounded_epoch = raw_next_epoch
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
                 last_error=failure_reason,
-                recovery_epoch=cleared_state.recovery_epoch + 1,
+                recovery_epoch=bounded_epoch,
                 pending_cycle_outcome=None,
                 last_execution_result_status="failed",
             )
             return new_state, []
 
-    # Non-repairable failure or recovery_epoch exhausted with no in-place fallback:
-    # escalate to terminal failure.
+    # Non-repairable failure: escalate to terminal failure.
     failure_reason = commit_failure_reason(state)
     return _enter_failed_recovery(cleared_state, failure_reason, policy)
 

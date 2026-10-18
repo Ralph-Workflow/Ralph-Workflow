@@ -61,7 +61,6 @@ from ralph.mcp.protocol._startup_timeouts import (
     _REGISTRY_BUILD_BUDGET_S,
     _check_real_startup_deadline,
     mcp_discovery_budget_from_env,
-    mcp_pre_serve_budget_from_env,
     mcp_preflight_timeout_from_env,
     mcp_real_startup_deadline_from_env,
     mcp_registry_read_timeout_from_env,
@@ -249,6 +248,12 @@ def _build_mcp_registry_and_server(
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_budget_s = max(0.0, real_deadline_s - (_clock() - t0))
     read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
+    # Diagnostic-vs-deadline contract: the per-read ceiling is informational only.
+    # Slow-but-responsive I/O succeeds as long as it fits the real deadline.
+    # Truly hung I/O still fails closed via ``_read_workspace_policy``'s
+    # ``done.wait(timeout=...)`` bound, which is set to ``effective_read_timeout_s``
+    # below; a hung read therefore surfaces a typed McpServerError with
+    # ``last_stage="registry_built"`` before the real deadline elapses.
     effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
 
     t_reg_build_start = _clock()
@@ -334,8 +339,12 @@ def _poll_bounded_pre_serve(
     """
     real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
     remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
-    pre_serve_budget = mcp_pre_serve_budget_from_env(env_map)
-    effective_timeout_s = min(pre_serve_budget.total_seconds(), remaining_s)
+    # Per the diagnostic-vs-deadline contract: the per-stage budget is diagnostic-only.
+    # Slow-but-responsive I/O succeeds as long as it finishes before the real deadline.
+    # The wall-clock envelope is the remaining real deadline, not a min() with a
+    # sub-second constant; the per-stage budget is recorded in the overrun
+    # diagnostics and never used as a hard cap.
+    effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
         # allowed_roots access triggers FileBackedSession._load() which

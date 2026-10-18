@@ -78,18 +78,19 @@ def test_no_recovery_phase_routes_in_place() -> None:
         set_last_commit_error(None)
 
 
-def test_recovery_epoch_caps_at_max() -> None:
-    """After recovery_epoch reaches the cap with no recovery phase, routes to failed_terminal.
+def test_recovery_epoch_clamps_at_max() -> None:
+    """Past the cap, the reducer clamps ``recovery_epoch`` and continues in-place.
 
-    Each in-place retry increments recovery_epoch. When recovery_epoch >= 3
-    (the cap) and _resolve_commit_recovery_phase returns None,
-    _recoverable_git_failure_default_target returns None and the reducer
-    falls through to _enter_failed_recovery -> failed_terminal.
+    The cap is purely diagnostic for repairable failures: the reducer never
+    escalates to ``failed_terminal`` merely because ``recovery_epoch`` reached
+    ``_MAX_COMMIT_RECOVERY_ATTEMPTS``. Past the cap, the in-place retry
+    continues with the epoch clamped at the cap, and the validated commit
+    message is re-read on the next pass.
     """
     policy = _load_pipeline_policy()
     cap = _MAX_COMMIT_RECOVERY_ATTEMPTS
 
-    # Test when recovery_epoch is at cap (3)
+    # At the cap: re-route in-place and clamp at the cap.
     state = PipelineState(
         phase="development_commit",
         recovery_epoch=cap,
@@ -104,15 +105,16 @@ def test_recovery_epoch_caps_at_max() -> None:
         ):
             next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Must reach failed_terminal when recovery_epoch is exhausted
-        # AND there is no commit_recovery / commit_cleanup phase to fall back to
-        assert next_state.phase == "failed_terminal", (
-            f"Expected failed_terminal at recovery_epoch={cap}, got phase={next_state.phase}"
+        assert next_state.phase == "development_commit", (
+            f"Expected in-place retry at recovery_epoch={cap}, got phase={next_state.phase}"
         )
-        # pending_cycle_outcome cleared
+        # Epoch is clamped at the cap (does not increment past it).
+        assert next_state.recovery_epoch == cap, (
+            f"recovery_epoch must be clamped at the cap, got {next_state.recovery_epoch}"
+        )
         assert next_state.pending_cycle_outcome is None
 
-        # Test when recovery_epoch is above cap (e.g. 5)
+        # Above the cap (e.g. 5): re-route in-place and keep the epoch at the cap.
         state_above_cap = PipelineState(
             phase="development_commit",
             recovery_epoch=5,
@@ -125,7 +127,8 @@ def test_recovery_epoch_caps_at_max() -> None:
         ):
             next_state_above, _ = reduce(state_above_cap, PipelineEvent.COMMIT_FAILURE, policy)
 
-        assert next_state_above.phase == "failed_terminal"
+        assert next_state_above.phase == "development_commit"
+        assert next_state_above.recovery_epoch == cap
         assert next_state_above.pending_cycle_outcome is None
     finally:
         set_last_commit_error(None)
@@ -190,3 +193,113 @@ def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
         assert message_file.exists(), "Message file must still exist after reducer routes in-place"
     finally:
         set_last_commit_error(None)
+
+
+def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) -> None:
+    """A validated commit message survives a real failure and is re-used on success.
+
+    Demonstrates the full failure-then-success commit seam required by AC-4:
+    a real ``execute_commit_effect`` invocation fails on a fake stage-all
+    (simulated lock contention), the message file stays on disk, the reducer
+    routes in-place, and the next pass reads the same message and succeeds.
+    """
+    from ralph.git.commit_result import CommitCreationResult
+    from ralph.pipeline.commit_executor import (
+        execute_commit_effect,
+        get_last_commit_error,
+    )
+
+    agent_dir = tmp_path / ".agent" / "artifacts"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    message_file = agent_dir / "commit_message.md"
+    message_text = (
+        "---\ntype: commit\nsubject: feat: valid message must be reused after lock retry\n---\n"
+    )
+    message_file.write_text(message_text, encoding="utf-8")
+
+    # Set up a real git repo_root so the executor's checks pass.
+    from git import Actor, Repo
+
+    repo_root = tmp_path / "worktree"
+    repo = Repo.init(repo_root)
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    actor = Actor("Test User", "test@example.com")
+    init_file = repo_root / "initial.txt"
+    init_file.write_text("initial content", encoding="utf-8")
+    repo.index.add(["initial.txt"])
+    repo.index.commit("initial commit", author=actor, committer=actor)
+    if repo.active_branch.name != "main":
+        repo.git.branch("-M", "main")
+    # Stage a real change so the executor detects commit work.
+    (repo_root / "feature.txt").write_text("feature body", encoding="utf-8")
+
+    # Fake commit helpers.
+    observed_messages: list[str] = []
+    stage_call_count = {"n": 0}
+    create_call_count = {"n": 0}
+
+    def fake_stage_all(root: Path) -> None:
+        del root
+        stage_call_count["n"] += 1
+        if stage_call_count["n"] == 1:
+            raise RuntimeError(
+                "GitOperationError: Unable to create '.git/index.lock': File exists."
+            )
+
+    def fake_create_commit(root: str, message: str, **kwargs: object) -> CommitCreationResult:
+        del root, kwargs
+        create_call_count["n"] += 1
+        observed_messages.append(message)
+        return CommitCreationResult.created(sha="deadbeef" + str(create_call_count["n"]))
+
+    effect = CommitEffect(message_file=str(message_file))
+
+    # First attempt: fails on the simulated lock contention.
+    first_event = execute_commit_effect(
+        effect,
+        repo_root,
+        stage_all_fn=fake_stage_all,
+        create_commit_fn=fake_create_commit,
+    )
+    assert first_event is PipelineEvent.COMMIT_FAILURE
+    assert "index.lock" in (get_last_commit_error() or "")
+    # The message file is preserved on disk.
+    assert message_file.exists(), (
+        "Validated message must be preserved on COMMIT_FAILURE for the in-place retry"
+    )
+
+    # Reducer routes in-place for a policy with no commit_recovery/commit_cleanup.
+    policy = _load_pipeline_policy()
+    state = PipelineState(
+        phase="development_commit",
+        recovery_epoch=0,
+        pending_cycle_outcome="completed",
+        last_error=get_last_commit_error() or "",
+    )
+    with patch(
+        "ralph.pipeline.reducer._resolve_commit_recovery_phase",
+        return_value=None,
+    ):
+        next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
+    assert next_state.phase == "development_commit", (
+        f"Reducer must route in-place for a repairable git failure, got {next_state.phase}"
+    )
+
+    # Second attempt: the same message is re-read and the commit succeeds.
+    second_event = execute_commit_effect(
+        effect,
+        repo_root,
+        stage_all_fn=fake_stage_all,
+        create_commit_fn=fake_create_commit,
+    )
+    assert second_event is PipelineEvent.COMMIT_SUCCESS, (
+        f"Second attempt must succeed with the reused message, got {second_event}"
+    )
+
+    # The SAME message bytes were used on the successful attempt.
+    assert len(observed_messages) == 1
+    assert observed_messages[0] == "feat: valid message must be reused after lock retry", (
+        "The validated subject must reach the second (successful) commit "
+        "unchanged; the message file is the durable source of truth across retries"
+    )

@@ -288,7 +288,15 @@ def _pid_in_repo_cwd(
     live_cwds: set[Path],
     common_worktrees_dir: Path,
 ) -> Literal["in_repo", "not_in_repo", "unknown"]:
-    """Check if process cwd is in the workspace repository or gitdirs."""
+    """Check if process cwd is in the workspace repository or gitdirs.
+
+    A process is treated as "in the repo" when its cwd is ANY path inside the
+    repository: the worktree-private gitdir, the common gitdir, the worktree
+    working tree, the main-repo working tree, any subdirectory of any of those,
+    or any path under ``gitdir_common/worktrees/``. This covers the common case
+    of a developer running ``git status`` from a project subdirectory while a
+    long-running ``git gc`` holds a worktree-private lock.
+    """
     try:
         cwd_link = pid_dir / "cwd"
         if not (cwd_link.is_symlink() or cwd_link.exists()):
@@ -302,6 +310,12 @@ def _pid_in_repo_cwd(
             bool({cwd_target, cwd_resolved} & (live_cwds | {common_worktrees_dir}))
             or str(cwd_target).startswith(str(common_worktrees_dir) + "/")
             or str(cwd_resolved).startswith(str(common_worktrees_dir) + "/")
+            or any(
+                str(cwd_resolved).startswith(str(cwd) + "/")
+                or str(cwd_target).startswith(str(cwd) + "/")
+                for cwd in (live_cwds | {common_worktrees_dir})
+                if cwd != common_worktrees_dir
+            )
         ):
             return "in_repo"
         return "not_in_repo"
@@ -343,7 +357,14 @@ def _check_non_git_liveness(
     fd_status: Literal["live", "not_live", "unknown"],
     lock_uid: int | None,
 ) -> Literal["live", "dead", "unknown"]:
-    """Resolve liveness for confirmed non-git processes."""
+    """Resolve liveness for confirmed non-git processes.
+
+    Fail-closed: an unreadable fd table (``unknown``) and an fd table owned by
+    another UID are treated as ``unknown`` (refuse) rather than ``dead``
+    (unlink). A process whose fd dir is owned by another UID can still hold the
+    lock (e.g. via sudo, capability, or running in a user namespace); ownership
+    and process-name heuristics are not proof of inability to hold the lock.
+    """
     if fd_status == "live":
         return "live"
     if fd_status == "not_live":
@@ -358,17 +379,19 @@ def _check_non_git_liveness(
             return "dead"
     except OSError:
         pass
-    # If the fd directory itself is owned by root / another UID, it is not a candidate
-    # lock holder for a user-owned repository.
+    # If the fd directory itself is owned by root / another UID, we cannot prove
+    # the process is not a candidate lock holder: it may have acquired the lock
+    # via sudo, a capability set, or a user namespace. Fail closed and refuse.
     try:
         fd_dir = pid_dir / "fd"
         fd_uid = fd_dir.stat().st_uid
         current_uid = os.getuid()
         eff_lock_uid = lock_uid if lock_uid is not None else current_uid
         if fd_uid not in (current_uid, eff_lock_uid):
-            return "dead"
+            return "unknown"
     except OSError:
-        pass
+        # Unreadable fd metadata is also fail-closed ``unknown``.
+        return "unknown"
     return "unknown"
 
 
@@ -597,6 +620,8 @@ def _lock_has_no_live_holder(
     """
     lsof_fuser = probe_lsof_fuser_fn if probe_lsof_fuser_fn is not None else _probe_lsof_fuser
 
+    probe_start = time.monotonic()
+
     def _probe() -> Literal["live", "dead", "unknown"]:
         try:
             (
@@ -606,7 +631,17 @@ def _lock_has_no_live_holder(
                 gitdir_bytes,
                 gitdir_common_bytes,
             ) = _resolve_repo_identity(lock_path, gitdir, gitdir_common)
-        except OSError:
+        except OSError as exc:
+            if time.monotonic() - probe_start < probe_timeout_s:
+                with suppress(Exception):
+                    logger.warning(
+                        "Lock liveness probe returning 'unknown' for {}: failed to resolve "
+                        "repository identity ({}: {}); refusing to unlink without proven "
+                        "negative liveness",
+                        lock_path,
+                        type(exc).__name__,
+                        exc,
+                    )
             return "unknown"
 
         proc_status = _scan_proc(
@@ -619,15 +654,50 @@ def _lock_has_no_live_holder(
         )
         if proc_status in ("live", "dead"):
             return proc_status
+        # proc_status == "unknown": /proc scan could not prove dead (platform
+        # limitation, e.g. macOS / Windows without /proc, or PermissionError on
+        # another UID's /proc entries). Fall through to the lsof/fuser probe.
         if lsof_fuser(lock, probe_timeout_s):
             return "live"
+        if time.monotonic() - probe_start >= probe_timeout_s:
+            return "unknown"
+        platform_reason = (
+            "no /proc scan succeeded and lsof/fuser did not return a holder"
+            if not _proc_root.exists()
+            else "/proc scan reported 'unknown' (likely other-UID or platform "
+            "limitation) and lsof/fuser returned no holder"
+        )
+        with suppress(Exception):
+            logger.warning(
+                "Lock liveness probe returning 'unknown' for {}: {}; refusing to "
+                "unlink without proven negative liveness",
+                lock_path,
+                platform_reason,
+            )
         return "unknown"
 
     active_executor = executor if executor is not None else _get_probe_executor()
     future = active_executor.submit(_probe)
     try:
         return future.result(timeout=probe_timeout_s)
-    except (TimeoutError, Exception):
+    except TimeoutError:
+        logger.warning(
+            "Lock liveness probe returning 'unknown' for {}: probe exceeded "
+            "{}s budget; refusing to unlink without proven negative liveness",
+            lock_path,
+            probe_timeout_s,
+        )
+        with suppress(AttributeError):
+            future.cancel()
+        return "unknown"
+    except Exception as exc:
+        logger.warning(
+            "Lock liveness probe returning 'unknown' for {}: probe raised "
+            "{}: {}; refusing to unlink without proven negative liveness",
+            lock_path,
+            type(exc).__name__,
+            exc,
+        )
         with suppress(AttributeError):
             future.cancel()
         return "unknown"

@@ -647,9 +647,13 @@ def test_config_default_descendant_wait_poll_is_0_5() -> None:
 def test_mcp_server_error_propagates_from_check_bridge_health(
     tmp_path: Path,
 ) -> None:
-    """McpServerError from check_mcp_bridge_health produces AGENT_FAILURE with a fresh
-    retry intent (action="fresh", failure_reason="McpServerError"). The exception does
-    not propagate — the typed exception is the canonical, non-agent-charging signal."""
+    """McpServerError from check_mcp_bridge_health propagates so the classifier
+    can route it as ENVIRONMENTAL / non-agent-charging.
+
+    New contract: the typed ``McpServerError`` is re-raised (not swallowed into
+    ``PipelineEvent.AGENT_FAILURE``) so the failure classifier's
+    ``FailureCategory.ENVIRONMENTAL, counted=False`` path can consume it.
+    """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -673,16 +677,16 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    result = effect_executor_module.execute_agent_effect(
-        effect,
-        config,
-        deps,
-        WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
-    )
-    assert result is PipelineEvent.AGENT_FAILURE
+    with pytest.raises(McpServerError, match="budget exhausted"):
+        effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_a, **_kw: [],
+            agent_invocation_error=RuntimeError,
+        )
 
 
 def test_bridge_shared_across_retry_attempts(
@@ -892,13 +896,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
 def test_mcp_server_error_propagates(
     tmp_path: Path,
 ) -> None:
-    """McpServerError from check_mcp_bridge_health produces AGENT_FAILURE (does not raise).
-
-    The new contract: a health-check McpServerError becomes a non-agent-charging
-    AGENT_FAILURE with a fresh ``AgentRetryIntent(action="fresh",
-    failure_reason="McpServerError")``, so the pipeline reducer can dispatch a
-    fresh agent without consuming the agent's own retry budget.
-    """
+    """Health-check McpServerError propagates to classifier without charging budget."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -922,33 +920,34 @@ def test_mcp_server_error_propagates(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    intent = effect_executor_module.pop_last_captured_retry_intent()
-    # Pop the cleared intent set up at the start of the function so the
-    # post-call pop returns the McpServerError intent the new branch sets.
-    del intent
+    with pytest.raises(McpServerError, match="budget exhausted") as exc_info:
+        effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_a, **_kw: [],
+            agent_invocation_error=RuntimeError,
+        )
 
-    result = effect_executor_module.execute_agent_effect(
-        effect,
-        config,
-        deps,
-        WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
+    # Prove environmental/non-counted behavior through the executor boundary:
+    from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
+
+    failure = FailureClassifier().classify(
+        exc_info.value,
+        phase="development",
+        agent="dev",
     )
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert failure.category == FailureCategory.ENVIRONMENTAL
+    assert failure.counts_against_budget is False
+    assert failure.reset_session is False
 
 
 def test_mcp_server_error_propagates_without_logger_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """McpServerError path returns AGENT_FAILURE without hitting logger.exception.
-
-    The health-check McpServerError no longer falls into the bare
-    ``except Exception`` branch; the dedicated typed branch sets a fresh
-    ``AgentRetryIntent(action="fresh", failure_reason="McpServerError")``
-    and returns AGENT_FAILURE without recording a traceback.
-    """
+    """McpServerError propagates without hitting bare-except logger.exception."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -979,16 +978,16 @@ def test_mcp_server_error_propagates_without_logger_exception(
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    result = effect_executor_module.execute_agent_effect(
-        effect,
-        config,
-        deps,
-        WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
-    )
+    with pytest.raises(McpServerError, match="budget exhausted"):
+        effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_a, **_kw: [],
+            agent_invocation_error=RuntimeError,
+        )
 
     # logger.exception is not called on the typed McpServerError path.
     assert exception_calls == []
-    assert result is PipelineEvent.AGENT_FAILURE
