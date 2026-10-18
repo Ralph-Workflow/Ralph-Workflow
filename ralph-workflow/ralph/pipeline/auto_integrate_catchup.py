@@ -95,6 +95,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_ff import RemoteClient
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 #: Cadence of the background catch-up probe. Each tick costs a handful
 #: of in-process ref reads (no subprocess, no log lines), so a
@@ -249,6 +250,8 @@ def attempt_catchup_fast_forward(
     config: UnifiedConfig | None,
     root: Path,
     *,
+    target: str | None = None,
+    remote: str | None = None,
     remote_client: RemoteClient | None = None,
 ) -> str:
     """One catch-up probe: fast-forward the checkout onto the target if free."""
@@ -258,26 +261,34 @@ def attempt_catchup_fast_forward(
     current = _current_branch_name(root)
     if current is None:
         return CATCHUP_NOT_ON_BRANCH
-    target = resolve_integration_target(config, root)
-    if target is None:
+    resolved_target = target if target is not None else resolve_integration_target(config, root)
+    if resolved_target is None:
         return CATCHUP_NO_TARGET
     remote_outcome: str | None = None
     if remote_sync_enabled(config):
-        if remote_client is not None:
+        if remote_client is not None and remote is not None:
             remote_outcome = _synchronize_remote_target(
-                config, root, target, remote_client=remote_client
+                config, root, resolved_target, remote=remote, remote_client=remote_client
+            )
+        elif remote_client is not None:
+            remote_outcome = _synchronize_remote_target(
+                config, root, resolved_target, remote_client=remote_client
+            )
+        elif remote is not None:
+            remote_outcome = _synchronize_remote_target(
+                config, root, resolved_target, remote=remote
             )
         else:
-            remote_outcome = _synchronize_remote_target(config, root, target)
+            remote_outcome = _synchronize_remote_target(config, root, resolved_target)
         if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
             return remote_outcome
-    if current == target:
+    if current == resolved_target:
         return (
             CATCHUP_FAST_FORWARDED
             if remote_outcome == CATCHUP_FAST_FORWARDED
             else CATCHUP_ON_TARGET
         )
-    return _fast_forward_if_strictly_behind(root, target, current)
+    return _fast_forward_if_strictly_behind(root, resolved_target, current)
 
 
 def _catchup_enabled(config: UnifiedConfig | None) -> bool:
@@ -293,10 +304,11 @@ def _synchronize_remote_target(
     root: Path,
     target: str,
     *,
+    remote: str | None = None,
     remote_client: RemoteClient | None = None,
 ) -> str | None:
-    remote = remote_target_name(config)
-    with remote_sync_transaction(root, remote, target) as lease:
+    chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
+    with remote_sync_transaction(root, chosen_remote, target) as lease:
         if lease is None:
             return CATCHUP_REMOTE_SKIPPED
         if not lease.fetch_allowed:
@@ -306,14 +318,14 @@ def _synchronize_remote_target(
                 root,
                 target,
                 timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                remote=remote,
+                remote=chosen_remote,
             )
         else:
             outcome = refresh_target_from_remote(
                 root,
                 target,
                 timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                remote=remote,
+                remote=chosen_remote,
             )
         if outcome == REFRESH_UNREACHABLE:
             return CATCHUP_REMOTE_SKIPPED
@@ -323,7 +335,7 @@ def _synchronize_remote_target(
             return CATCHUP_REMOTE_SKIPPED
         if outcome != REFRESH_ORIGIN_AHEAD:
             return None
-        return _advance_target_to_remote(root, remote, target, remote_client=remote_client)
+        return _advance_target_to_remote(root, chosen_remote, target, remote_client=remote_client)
 
 
 def _advance_target_to_remote(
@@ -460,6 +472,7 @@ class AutoIntegrateCatchupWorker:
         tick: Callable[[], str] | None = None,
         wait: Callable[[float], bool] | None = None,
         remote_client: RemoteClient | None = None,
+        rebase_stop_resolver: RebaseStopResolver | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -467,6 +480,7 @@ class AutoIntegrateCatchupWorker:
         self._root = root
         self._interval = float(interval_seconds)
         self._remote_client = remote_client
+        self._rebase_stop_resolver = rebase_stop_resolver
         self._tick: Callable[[], str] = tick if tick is not None else self._default_tick
         self._stop_event = threading.Event()
         self._wait = wait if wait is not None else self._stop_event.wait
@@ -554,7 +568,9 @@ class AutoIntegrateCatchupWorker:
                         self._config,
                         self._root,
                         target,
+                        remote=remote_target_name(self._config),
                         remote_client=self._remote_client,
+                        rebase_stop_resolver=self._rebase_stop_resolver,
                     )
             except Exception as tick_exc:
                 logger.warning(
@@ -576,6 +592,7 @@ def start_catchup_worker_if_enabled(
     *,
     interval_seconds: float = DEFAULT_CATCHUP_INTERVAL_SECONDS,
     remote_client: RemoteClient | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> AutoIntegrateCatchupWorker | None:
     """Construct and start the catch-up worker when auto-integration is on.
 
@@ -589,7 +606,11 @@ def start_catchup_worker_if_enabled(
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return None
     worker = AutoIntegrateCatchupWorker(
-        config, root, interval_seconds=interval_seconds, remote_client=remote_client
+        config,
+        root,
+        interval_seconds=interval_seconds,
+        remote_client=remote_client,
+        rebase_stop_resolver=rebase_stop_resolver,
     )
     worker.start()
     return worker

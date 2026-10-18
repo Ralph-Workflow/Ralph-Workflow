@@ -9,13 +9,17 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._planning_obstruction import PlanningObstructionKind
 from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
-from ralph.pipeline.auto_integrate_outcome import record_conflict
+from ralph.pipeline.auto_integrate_outcome import record_skip
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
     recovery_retained_record,
 )
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
-from ralph.pipeline.integration_resolution import retained_integration_reason
+from ralph.pipeline.integration_resolution import (
+    TreeReadinessAssessment,
+    assess_tree_readiness,
+    retained_integration_reason,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,7 +65,8 @@ def integrate_before_planning(
     if not config.general.auto_integrate_enabled:
         return None
     target = resolve_integration_target(config, root)
-    if target is None or _worktree_is_clean(root):
+    readiness = assess_tree_readiness(root)
+    if target is None or (readiness.integration_ready and _worktree_is_clean(root)):
         return auto_integrate_after_commit(
             config,
             scope,
@@ -74,7 +79,7 @@ def integrate_before_planning(
 
     post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
     if ancestry_state(root, target, "HEAD") is not True:
-        staged_block = _record_staged_block(root, target)
+        staged_block = _record_staged_block(root, target, readiness=readiness)
         if staged_block is not None:
             return staged_block
     return _integrate_with_force_merge(
@@ -87,7 +92,12 @@ def integrate_before_planning(
     )
 
 
-def _record_staged_block(root: Path, target: str) -> RebaseState | None:
+def _record_staged_block(
+    root: Path,
+    target: str,
+    *,
+    readiness: TreeReadinessAssessment | None = None,
+) -> RebaseState | None:
     """Record a typed ``STAGED_BLOCKS_INTEGRATION`` planning obstruction.
 
     The free-form reason is preserved for operator display but the
@@ -101,10 +111,15 @@ def _record_staged_block(root: Path, target: str) -> RebaseState | None:
     return value is the recorded :class:`RebaseState` when staged
     work IS blocking.
     """
+    if readiness is None:
+        readiness = assess_tree_readiness(root)
     staged = run_git(("diff", "--cached", "--quiet"), cwd=root, label="planning:staged-work")
-    if staged.returncode == 0:
+    has_staged = staged.returncode != 0 or any(
+        "staged uncommitted work blocks integration" in r for r in readiness.blocking_reasons
+    )
+    if not has_staged:
         return None
-    recorded = record_conflict(reason="staged uncommitted work blocks integration", target=target)
+    recorded = record_skip(reason="staged uncommitted work blocks integration", target=target)
     return recorded.model_copy(
         update={
             "last_planning_obstruction": PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value

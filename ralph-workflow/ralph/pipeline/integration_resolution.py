@@ -9,6 +9,7 @@ it is the sole recovery executor named by a blocking verdict.
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,183 @@ RECOVERABLE = IntegrationResolutionStatus.RECOVERABLE
 EXHAUSTED = IntegrationResolutionStatus.EXHAUSTED
 
 
+@dataclass(frozen=True)
+class TreeReadinessAssessment:
+    """Readiness assessment distinguishing development dispatch from integration readiness."""
+
+    development_dispatch_allowed: bool
+    integration_ready: bool
+    blocking_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _AssessedIntegrationResolutionVerdict(IntegrationResolutionVerdict):
+    """Integration resolution verdict carrying structured tree readiness."""
+
+    development_dispatch_allowed: bool = True
+    integration_ready: bool = True
+    blocking_reasons: tuple[str, ...] = ()
+
+
+def _inspect_porcelain_uncommitted_state(porcelain_output: str) -> tuple[bool, bool]:
+    """Return (has_staged, has_modified_tracked) from porcelain v1 lines."""
+    has_staged = False
+    has_modified_tracked = False
+    for raw_line in porcelain_output.splitlines():
+        if len(raw_line) < _PORCELAIN_MIN_ENTRY_LEN:
+            continue
+        code = raw_line[:2]
+        x, y = code[0], code[1]
+        if (x, y) == ("?", "?") or (x, y) == ("!", "!"):
+            continue
+        if x in ("M", "A", "D", "R", "C", "T"):
+            has_staged = True
+        if y in ("M", "D", "T"):
+            has_modified_tracked = True
+    return has_staged, has_modified_tracked
+
+
+def _check_live_dispatch_reasons(
+    porcelain_output: str,
+    root: Path,
+    *,
+    rebase_active: Callable[[Path], bool],
+    merge_status: Callable[[Path], str],
+) -> list[str]:
+    """Collect dispatch blocking reasons (unmerged, rebase, merge)."""
+    dispatch_reasons: list[str] = []
+    unmerged = unmerged_porcelain_paths(porcelain_output)
+    if unmerged:
+        dispatch_reasons.append(
+            "unmerged paths remain from an unfinished rebase or merge: " + ", ".join(unmerged)
+        )
+    try:
+        if rebase_active(root):
+            dispatch_reasons.append("rebase is in progress")
+    except Exception:
+        dispatch_reasons.append("unable to inspect rebase state")
+    try:
+        if merge_status(root) != MERGE_STATE_NONE:
+            dispatch_reasons.append("merge is in progress or merge state is unreadable")
+    except Exception:
+        dispatch_reasons.append("unable to inspect merge state")
+    return dispatch_reasons
+
+
+def assess_tree_readiness(
+    root: Path,
+    state: RebaseState | None = None,
+    *,
+    porcelain: Callable[[Path], tuple[bool, str]] | None = None,
+    rebase_active: Callable[[Path], bool] = rebase_in_progress,
+    merge_status: Callable[[Path], str] = merge_state,
+) -> TreeReadinessAssessment:
+    """Assess live repository readiness for development dispatch vs auto-integration.
+
+    Development dispatch allows ordinary uncommitted work (modified, staged,
+    untracked) because development phases edit and stage files before
+    committing them.
+
+    Auto-integration requires the tree to be clean of tracked changes (no
+    staged work, no modified tracked files), no unmerged conflicts, no active
+    rebase or merge, and no retained durable integration ownership. Untracked
+    files do not block integration.
+    """
+    ownership = retained_integration_reason(root)
+    if ownership is not None:
+        return TreeReadinessAssessment(
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=(ownership,),
+        )
+    inspectable = not (
+        porcelain is None and (not isinstance(root, Path) or not (root / ".git").exists())
+    )
+    if not inspectable:
+        if state is not None:
+            persisted = persisted_integration_resolution_verdict(state)
+            if persisted is not None:
+                return TreeReadinessAssessment(
+                    development_dispatch_allowed=persisted.dispatch_allowed,
+                    integration_ready=False,
+                    blocking_reasons=persisted.reasons,
+                )
+        return TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=True,
+            blocking_reasons=(),
+        )
+
+    probe = porcelain or _full_porcelain
+    try:
+        readable, porcelain_output = probe(root)
+    except Exception:
+        readable = False
+        porcelain_output = ""
+
+    if not readable:
+        return TreeReadinessAssessment(
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=("unable to inspect full git porcelain status",),
+        )
+
+    dispatch_reasons = _check_live_dispatch_reasons(
+        porcelain_output, root, rebase_active=rebase_active, merge_status=merge_status
+    )
+    if dispatch_reasons:
+        return TreeReadinessAssessment(
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=tuple(dispatch_reasons),
+        )
+
+    has_staged, has_modified_tracked = _inspect_porcelain_uncommitted_state(porcelain_output)
+    integration_blocking: list[str] = []
+    if has_staged:
+        integration_blocking.append("staged uncommitted work blocks integration")
+    if has_modified_tracked:
+        integration_blocking.append(
+            "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+        )
+
+    return TreeReadinessAssessment(
+        development_dispatch_allowed=True,
+        integration_ready=not bool(integration_blocking),
+        blocking_reasons=tuple(integration_blocking),
+    )
+
+
+def _clean_assessed_verdict() -> _AssessedIntegrationResolutionVerdict:
+    return _AssessedIntegrationResolutionVerdict(
+        RESOLVED,
+        (),
+        None,
+        development_dispatch_allowed=True,
+        integration_ready=True,
+        blocking_reasons=(),
+    )
+
+
+def _log_persisted_override(
+    persisted: IntegrationResolutionVerdict, readiness: TreeReadinessAssessment
+) -> None:
+    if readiness.integration_ready:
+        logger.info(
+            "integration resolution: persisted {} evidence describes a repository that is "
+            "now clean ({}); the live tree decides",
+            persisted.status,
+            "; ".join(persisted.reasons) or "no reason recorded",
+        )
+    else:
+        logger.info(
+            "integration resolution: persisted {} evidence describes a repository with "
+            "uncommitted work ({}); development dispatch allowed, live tree decides",
+            persisted.status,
+            "; ".join(readiness.blocking_reasons),
+        )
+
+
 def inspect_integration_resolution(
     root: Path,
     state: RebaseState,
@@ -53,7 +231,7 @@ def inspect_integration_resolution(
     porcelain: Callable[[Path], tuple[bool, str]] | None = None,
     rebase_active: Callable[[Path], bool] = rebase_in_progress,
     merge_status: Callable[[Path], str] = merge_state,
-) -> IntegrationResolutionVerdict:
+) -> _AssessedIntegrationResolutionVerdict:
     """Return the fail-closed dispatch verdict for ``root`` and ``state``.
 
     Durable integration ownership blocks dispatch even on a clean tree.
@@ -69,37 +247,61 @@ def inspect_integration_resolution(
     """
     ownership = retained_integration_reason(root)
     if ownership is not None:
-        return IntegrationResolutionVerdict(RECOVERABLE, (ownership,), RESOLUTION_DRAIN)
+        return _AssessedIntegrationResolutionVerdict(
+            RECOVERABLE,
+            (ownership,),
+            RESOLUTION_DRAIN,
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=(ownership,),
+        )
     persisted = persisted_integration_resolution_verdict(state)
-    reasons: list[str] = []
-    # Non-repository orchestration contexts (unit seams and initial project
-    # setup) have no live Git integration state to inspect. Persisted conflict
-    # evidence remains blocking even in these synthetic contexts.
     inspectable = not (
         porcelain is None and (not isinstance(root, Path) or not (root / ".git").exists())
     )
     if not inspectable:
-        return persisted if persisted is not None else _verdict_from_persisted_reasons(reasons)
-    reasons = _live_integration_reasons(
-        root, porcelain=porcelain, rebase_active=rebase_active, merge_status=merge_status
+        if persisted is not None:
+            return _AssessedIntegrationResolutionVerdict(
+                persisted.status,
+                persisted.reasons,
+                persisted.recovery_executor,
+                development_dispatch_allowed=persisted.dispatch_allowed,
+                integration_ready=False,
+                blocking_reasons=persisted.reasons,
+            )
+        return _clean_assessed_verdict()
+
+    readiness = assess_tree_readiness(
+        root,
+        state=state,
+        porcelain=porcelain,
+        rebase_active=rebase_active,
+        merge_status=merge_status,
     )
-    if persisted is not None:
-        if reasons:
-            return persisted
-        # The record describes a repository that no longer exists. Nothing
-        # is unmerged, no rebase or merge is in progress, and the probes
-        # that would have said "unreadable" did not. Letting the record
-        # outrank that is how one exhausted conflict -- or one stale
-        # checkpoint file -- blocked every later run against a clean tree,
-        # with no way out but editing the record by hand.
-        logger.info(
-            "integration resolution: persisted {} evidence describes a repository that is "
-            "now clean ({}); the live tree decides",
-            persisted.status,
-            "; ".join(persisted.reasons) or "no reason recorded",
+    if not readiness.development_dispatch_allowed:
+        status = persisted.status if persisted is not None else RECOVERABLE
+        reasons = persisted.reasons if persisted is not None else readiness.blocking_reasons
+        executor = persisted.recovery_executor if persisted is not None else RESOLUTION_DRAIN
+        return _AssessedIntegrationResolutionVerdict(
+            status,
+            reasons,
+            executor,
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=readiness.blocking_reasons,
         )
-        return IntegrationResolutionVerdict(RESOLVED)
-    return _verdict_from_persisted_reasons(reasons)
+
+    if persisted is not None:
+        _log_persisted_override(persisted, readiness)
+
+    return _AssessedIntegrationResolutionVerdict(
+        RESOLVED,
+        (),
+        None,
+        development_dispatch_allowed=True,
+        integration_ready=readiness.integration_ready,
+        blocking_reasons=readiness.blocking_reasons,
+    )
 
 
 def retained_integration_reason(
@@ -210,11 +412,25 @@ def persisted_integration_resolution_verdict(
     return None
 
 
-def _verdict_from_persisted_reasons(reasons: list[str]) -> IntegrationResolutionVerdict:
+def _verdict_from_persisted_reasons(reasons: list[str]) -> _AssessedIntegrationResolutionVerdict:
     """Build the ordinary verdict after all available evidence was collected."""
     if reasons:
-        return IntegrationResolutionVerdict(RECOVERABLE, tuple(reasons), RESOLUTION_DRAIN)
-    return IntegrationResolutionVerdict(RESOLVED)
+        return _AssessedIntegrationResolutionVerdict(
+            RECOVERABLE,
+            tuple(reasons),
+            RESOLUTION_DRAIN,
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=tuple(reasons),
+        )
+    return _AssessedIntegrationResolutionVerdict(
+        RESOLVED,
+        (),
+        None,
+        development_dispatch_allowed=True,
+        integration_ready=True,
+        blocking_reasons=(),
+    )
 
 
 def assert_non_resolution_dispatch_allowed(

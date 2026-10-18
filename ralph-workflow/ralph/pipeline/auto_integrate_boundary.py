@@ -37,6 +37,10 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
+from ralph.pipeline.integration_resolution import (
+    TreeReadinessAssessment,
+    assess_tree_readiness,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,8 +70,9 @@ def phase_boundary_outcome(
         return True, _record_skip(
             reason=_missing_target_reason(config), target=_configured_target(config)
         )
-    if not _worktree_is_clean(root):
-        return True, defer_dirty_boundary(config, root, target)
+    readiness = assess_tree_readiness(root)
+    if not readiness.integration_ready or not _worktree_is_clean(root):
+        return True, defer_dirty_boundary(config, root, target, readiness=readiness)
     outcome = boundary_freshness_outcome(
         config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
     )
@@ -140,7 +145,13 @@ def target_is_ahead(root: Path, target_sha: str | None) -> bool:
     return not is_ancestor(root, target_sha, get_head_sha(root))
 
 
-def defer_dirty_boundary(config: UnifiedConfig, root: Path, target: str) -> RebaseState | None:
+def defer_dirty_boundary(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    *,
+    readiness: TreeReadinessAssessment | None = None,
+) -> RebaseState | None:
     """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
@@ -158,10 +169,15 @@ def defer_dirty_boundary(config: UnifiedConfig, root: Path, target: str) -> Reba
         target_sha = branch_sha(root, target)
         diverged = target_is_ahead(root, target_sha)
     if diverged:
+        reason = (
+            readiness.blocking_reasons[0]
+            if readiness and readiness.blocking_reasons
+            else "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+        )
+        if "worktree not clean" not in reason:
+            reason = "worktree not clean; uncommitted tracked changes deferred catch-up integration"
         skip = _record_skip(
-            reason=(
-                "worktree not clean; uncommitted tracked changes deferred catch-up integration"
-            ),
+            reason=reason,
             target=target,
         )
         return record_refresh(skip, refresh)

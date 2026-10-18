@@ -615,6 +615,7 @@ def _enter_failed_recovery(
         recovery_epoch=state.recovery_epoch + 1,
         rebase=rebase,
         last_retry_delay_ms=retry_delay_ms,
+        pending_cycle_outcome=None,
     )
     if failure_category is FailureCategory.INTEGRATION:
         resume_phase = state.phase if target != state.phase else state.previous_phase
@@ -1426,14 +1427,94 @@ def _handle_commit_skipped(
         )
 
 
+_MAX_COMMIT_RECOVERY_ATTEMPTS = 3
+
+
+def _is_repairable_git_failure(reason: str | None) -> bool:
+    """Determine whether a commit failure is caused by a repairable Git state."""
+    if not reason:
+        return False
+    error_text = reason.lower()
+    repairable_patterns = (
+        "head is detached",
+        "detached head",
+        "index.lock",
+        "stale lock",
+        "lock contention",
+        "unmerged",
+        "conflict",
+        "repeated commit failure",
+    )
+    return any(p in error_text for p in repairable_patterns)
+
+
+def _resolve_commit_recovery_phase(
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Resolve the automated recovery target phase for a repairable commit failure."""
+    for name in ("commit_recovery", "COMMIT_RECOVERY"):
+        if name in policy.phases and name != state.phase:
+            return name
+    for name in ("development_commit_cleanup", "DEVELOPMENT_COMMIT_CLEANUP"):
+        if name in policy.phases and name != state.phase:
+            return name
+    for name, defn in policy.phases.items():
+        if (
+            defn.role == "commit_cleanup"
+            and name != state.phase
+            and defn.transitions
+            and defn.transitions.on_success == state.phase
+        ):
+            return name
+    for name, defn in policy.phases.items():
+        if defn.role == "commit_cleanup" and name != state.phase:
+            return name
+    return None
+
+
 def _handle_commit_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle commit failure."""
+    """Handle commit failure without unconditionally routing to failed_terminal."""
+    from ralph.pipeline.commit_executor import get_last_commit_error
+
+    if policy is None:
+        return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
+
+    cleared_state = state.copy_with(pending_cycle_outcome=None)
+    last_error = get_last_commit_error() or state.last_error
+
+    if (
+        _is_repairable_git_failure(last_error)
+        and cleared_state.recovery_epoch < _MAX_COMMIT_RECOVERY_ATTEMPTS
+    ):
+        recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)
+        if recovery_phase is not None:
+            failure_reason = last_error or commit_failure_reason(state)
+            logger.bind(component="policy.routing").info(
+                explain_routing_decision(
+                    cleared_state.phase,
+                    recovery_phase,
+                    "recovery",
+                    failure_reason,
+                    recovery=True,
+                )
+            )
+            advanced_state, target = _prepare_phase_advance(
+                cleared_state, recovery_phase, policy, routing_timing=routing_timing
+            )
+            new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
+                last_error=failure_reason,
+                recovery_epoch=cleared_state.recovery_epoch + 1,
+                pending_cycle_outcome=None,
+            )
+            return new_state, []
+
     failure_reason = commit_failure_reason(state)
-    return _enter_failed_recovery(state, failure_reason, policy)
+    return _enter_failed_recovery(cleared_state, failure_reason, policy)
 
 
 def _apply_invocation_gate(

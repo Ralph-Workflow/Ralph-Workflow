@@ -99,3 +99,53 @@ def test_load_time_counter_clamp_treats_garbage_as_rejected() -> None:
     # The model rejects non-int values; the loader must surface the
     # rejection (returns None) rather than coerce silently.
     assert parse_record_payload(legacy) is None
+
+
+def test_migrate_payload_unparseable_lease_ownership_clears_fields() -> None:
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    legacy = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": (("unstaged_work", "changes"),),
+        "diagnostic_ownership": "legacy_fingerprint_without_colon",
+        "diagnostic_intervention_required": True,
+        "repair_cap_reason": "diagnostic repair exhausted; operator intervention required",
+    }
+    parsed = parse_record_payload(legacy)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_intervention_required is False
+    assert parsed.repair_cap_reason is None
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_migrate_payload_legacy_global_keys_clears_fields() -> None:
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    legacy = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": (("for-each-ref", "refs/heads/main"), ("ls-files", "file.txt")),
+        "diagnostic_ownership": "owner:12345.0",
+        "diagnostic_intervention_required": True,
+    }
+    parsed = parse_record_payload(legacy)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_intervention_required is False
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION

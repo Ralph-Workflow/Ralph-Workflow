@@ -253,15 +253,37 @@ def diagnose_retained_integration(
             record.diagnostic_intervention_required
             or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ):
-            if not record.diagnostic_intervention_required:
-                write_record(
-                    ctx.workspace_scope.root,
-                    _raise_intervention(
-                        record,
-                        "diagnostic repair exhausted; operator intervention required",
-                    ),
-                )
-            return False
+            _fingerprint, held_at = parse_lease(record.diagnostic_ownership)
+            is_expired_lease = held_at is None or (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
+            is_old_flagged = not record.diagnostic_evidence and not record.diagnostic_ownership
+            if is_expired_lease or is_old_flagged:
+                try:
+                    apply_record_transition(
+                        ctx.workspace_scope.root,
+                        RELEASE_DIAGNOSTIC_EVIDENCE,
+                        diagnostic_evidence=(),
+                        diagnostic_ownership=None,
+                        diagnostic_intervention_required=False,
+                        repair_cap_reason=None,
+                    )
+                    refreshed = read_record(ctx.workspace_scope.root)
+                    if refreshed is not None:
+                        record = refreshed
+                except Exception:
+                    pass
+            if (
+                record.diagnostic_intervention_required
+                or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+            ):
+                if not record.diagnostic_intervention_required:
+                    write_record(
+                        ctx.workspace_scope.root,
+                        _raise_intervention(
+                            record,
+                            "diagnostic repair exhausted; operator intervention required",
+                        ),
+                    )
+                return False
 
         operation_root = _operation_root_for(record, ctx.workspace_scope.root)
         if operation_root != ctx.workspace_scope.root and not leases.enter_context(
@@ -373,28 +395,11 @@ def diagnostic_evidence_verdict(
         return EvidenceVerdict.UNCHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
     if fingerprint is None or held_at is None:
-        # Unparseable lease (legacy single-string fingerprint, or
-        # any malformed input). The on-disk evidence is no longer
-        # authoritative; treat as expired (UNKNOWN) so the caller
-        # auto-releases. CHANGED is reserved for the case where
-        # the durable identity fingerprint was actually rewritten
-        # by a different worktree.
-        #
-        # Special case: legacy records migrated to the new
-        # key space carry migrated evidence but no lease (the
-        # pre-lease Ralph versions never wrote a lease string).
-        # In that case the evidence is not a live diagnostic
-        # hold; it is a migrated observation. Return UNCHANGED
-        # so the caller preserves the migrated evidence and
-        # does not auto-release (which would wipe the migrated
-        # keys).
-        if record.diagnostic_evidence and not record.diagnostic_ownership:
-            return EvidenceVerdict.UNCHANGED
-        return EvidenceVerdict.UNKNOWN
-    if fingerprint != identity_fingerprint(record):
         return EvidenceVerdict.CHANGED
     if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
         return EvidenceVerdict.UNKNOWN
+    if fingerprint != identity_fingerprint(record):
+        return EvidenceVerdict.CHANGED
     return EvidenceVerdict.UNCHANGED
 
 
@@ -838,6 +843,22 @@ def handoff_integration_diagnostic(
         return pre_pass_result
 
     if record.merge_commit_repair_attempts >= repair_attempt_cap:
+        proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
+        if proof_ok or not diagnostic_needed(inspection_root, record):
+            try:
+                apply_record_transition(
+                    root,
+                    RELEASE_DIAGNOSTIC_EVIDENCE,
+                    backend=backend,
+                    diagnostic_evidence=(),
+                    diagnostic_ownership=None,
+                    diagnostic_intervention_required=False,
+                    repair_cap_reason=None,
+                )
+                logger.info("Automated recovery re-derived state; released diagnostic evidence")
+                return True
+            except (RecordBusyError, RecordUnreadableError):
+                return False
         write_record(
             root,
             _raise_intervention(

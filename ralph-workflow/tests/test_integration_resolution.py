@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import MERGE_STATE_NONE
-from ralph.git.subprocess_runner import GitRunResult
 from ralph.pipeline import effect_executor, runner
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -17,7 +17,9 @@ from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
     RESOLVED,
+    TreeReadinessAssessment,
     assert_non_resolution_dispatch_allowed,
+    assess_tree_readiness,
     inspect_integration_resolution,
 )
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
@@ -401,3 +403,46 @@ def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:
 
     assert verdict.status is RESOLVED
     assert_non_resolution_dispatch_allowed("planning", verdict)
+
+
+def test_tree_readiness_assessment_fields(tmp_path: Path) -> None:
+    """Readiness assessment provides separate development_dispatch_allowed and integration_ready."""
+    assessment = assess_tree_readiness(
+        tmp_path,
+        porcelain=lambda _: (True, "M  staged.py\n"),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+    assert isinstance(assessment, TreeReadinessAssessment)
+    assert assessment.development_dispatch_allowed is True
+    assert assessment.integration_ready is False
+    assert any(
+        "staged uncommitted work blocks integration" in r for r in assessment.blocking_reasons
+    )
+
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (True, "M  staged.py\n"),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+    assert verdict.development_dispatch_allowed is True
+    assert verdict.integration_ready is False
+    assert any("staged uncommitted work blocks integration" in r for r in verdict.blocking_reasons)
+
+
+@pytest.mark.parametrize("code", (" M file.py\n", "M  file.py\n", "A  new.py\n", "D  gone.py\n"))
+def test_uncommitted_work_allows_development_dispatch_but_not_integration(
+    tmp_path: Path, code: str
+) -> None:
+    """Ordinary uncommitted work permits development dispatch while integration is not ready."""
+    readiness = assess_tree_readiness(
+        tmp_path,
+        porcelain=lambda _root: (True, code),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+    assert readiness.development_dispatch_allowed is True
+    assert readiness.integration_ready is False
+    assert len(readiness.blocking_reasons) > 0

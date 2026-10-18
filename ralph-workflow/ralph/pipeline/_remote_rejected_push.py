@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.git import remote_push as _remote_push_module
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import next_publication_action
 from ralph.pipeline.auto_integrate_sync import (
@@ -144,6 +145,44 @@ def _probe_refresh_outcome(refresh: str, remote: str, target: str) -> _PushOutco
     return None
 
 
+def _reconcile_in_progress_rebase(
+    repo_root: Path,
+    target: str,
+    config: UnifiedConfig | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> _PushOutcome | None:
+    if rebase_stop_resolver is not None:
+        from ralph.pipeline.conflict_resolution import (
+            resolution_session_from_config,
+            resolve_rebase_in_progress,
+        )
+
+        session = resolution_session_from_config(config) if config is not None else None
+        resolved = (
+            resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver, session=session)
+            if session is not None
+            else resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver)
+        )
+        if not resolved:
+            return _PushOutcome(
+                success=False,
+                summary=f"rebase in progress on {target} could not be resolved",
+                pushed=False,
+            )
+        return None
+    from ralph.pipeline.conflict_resolution.abort import (
+        abort_rebase_discarding_progress,
+    )
+
+    abort_rebase_discarding_progress(repo_root)
+    return _PushOutcome(
+        success=False,
+        summary=f"rebase in progress on {target} cleanly aborted without resolver",
+        pushed=False,
+        status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
+    )
+
+
 def _attempt_reconcile_and_push(
     *,
     repo_root: Path,
@@ -173,7 +212,19 @@ def _attempt_reconcile_and_push(
     if refresh_outcome is not None:
         return refresh_outcome
 
-    if refresh == REFRESH_DIVERGED:
+    rebase_ongoing = False
+    try:
+        rebase_ongoing = rebase_in_progress(repo_root)
+    except Exception:
+        rebase_ongoing = False
+
+    if rebase_ongoing:
+        ongoing_outcome = _reconcile_in_progress_rebase(
+            repo_root, target, config, rebase_stop_resolver
+        )
+        if ongoing_outcome is not None:
+            return ongoing_outcome
+    elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 
         reconciliation = reconcile_target_onto_remote(

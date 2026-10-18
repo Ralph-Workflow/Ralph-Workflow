@@ -62,7 +62,7 @@ def _build_ctx(root: Path, policy: PipelinePolicy) -> run_loop._LoopContext:
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=MagicMock(),
-        registry=MagicMock(),
+        registry=MagicMock(get=lambda _name: None),
         effective_pipeline_subscriber=None,
         controller=MagicMock(),
         config_path=None,

@@ -24,6 +24,7 @@ from pydantic import ConfigDict
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_transition import (
     ACCEPT_REPAIR_EDITS,
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -606,33 +607,19 @@ def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, obje
     return {**data_raw, "last_failure_cause": ResolutionFailureCause.NONE}
 
 
-#: Default load-time clamp target for the diagnostic repair-attempt
-#: counter. ``parse_record_payload`` rewrites any loaded value above
-#: ``cap - 1`` down to ``cap - 1`` so the diagnostic check
-#: (``record.merge_commit_repair_attempts >= cap``) evaluates to False
-#: and the record proceeds to automated recovery. The runtime cap
-#: (``_bump_attempt`` in :mod:`ralph.pipeline._integration_diagnostic`)
-#: is the authoritative source; this constant is mirrored here to
-#: avoid an import cycle. Both constants MUST stay in sync; tests
-#: in :mod:`tests.test_integration_diagnostic_livelock` enforce it.
+#: Default load-time clamp target for diagnostic repair attempts.
+#: Coerces loaded values >= cap to cap - 1. Mirrored here to avoid import cycles.
 _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP: int = 5
 
 
 def _clamp_loaded_attempt_counters(data_raw: dict[str, object]) -> dict[str, object]:
     """Clamp pre-existing over-cap attempt counters on a loaded payload.
 
-    The diagnostic check at
-    :mod:`ralph.pipeline._integration_diagnostic` is
-    ``record.merge_commit_repair_attempts >= cap`` (inclusive ``>=``),
-    so a value clamped to ``cap`` itself would still satisfy the gate
-    and re-trigger intervention. Clamping to ``cap - 1`` ensures the
-    next run's gate evaluates to False (``4 >= 5`` is False) and the
-    record proceeds to automated recovery. The clamp is a load-time
-    coercion only; the runtime ``_bump_attempt`` writes a real
-    ``>= cap`` value through the closed
-    :data:`BUMP_DIAGNOSTIC_ATTEMPT` transition when it detects
-    exhaustion, and that value is preserved on the next read (the
-    clamp never re-runs on a value that is already < cap).
+    Inclusive ``>= cap`` check means clamping to ``cap - 1`` allows automated
+    recovery on next run. Clears intervention flag, stale intervention
+    Records written at or above cap (e.g. 200/541 from stuck records)
+    are clamped to cap - 1 so the diagnostic check evaluates to False
+    and the record proceeds to automated recovery on next run.
     """
     raw = data_raw.get("merge_commit_repair_attempts", 0)
     loaded = _safe_int_from_raw(raw)
@@ -721,8 +708,14 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
             sequence = _parse_raw_evidence_pairs(raw_evidence) or ()
         except Exception:
             return None
-    if any(_is_legacy_global_evidence_key(key) for key, _ in sequence):
-        return _clear_legacy_ownership_and_intervention({**data_raw, "diagnostic_evidence": ()})
+    has_legacy_global_evidence = any(_is_legacy_global_evidence_key(key) for key, _ in sequence)
+    raw_ownership = data_raw.get("diagnostic_ownership")
+    has_unparseable_ownership = (
+        isinstance(raw_ownership, str) and parse_lease(raw_ownership) == (None, None)
+    ) or (raw_ownership is not None and not isinstance(raw_ownership, str))
+    is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
+    if has_legacy_global_evidence or (is_intervention_flagged and has_unparseable_ownership):
+        return _clear_legacy_ownership_and_intervention(data_raw)
     if raw_evidence is None:
         return data_raw
     return _apply_evidence_migration(data_raw, sequence)
@@ -755,27 +748,31 @@ def _apply_evidence_migration(
 def _clear_legacy_ownership_and_intervention(
     data_raw: dict[str, object],
 ) -> dict[str, object]:
-    """Clear a non-lease ``diagnostic_ownership`` and stale intervention flag.
+    """Clear legacy formats: evidence to (), ownership to None, intervention to False.
 
-    Used by :func:`_migrate_payload_evidence` for the legacy
-    global-evidence case so the post-migration record is in a
-    clean state: a non-lease ownership string is replaced with
-    ``None`` (the new lease-based diagnostic is the sole
-    authority) and a persisted ``diagnostic_intervention_required``
-    from a pre-lease Ralph version is cleared so the next run can
-    auto-recover rather than block dispatch.
+    Used by :func:`_migrate_payload_evidence` for legacy formats
+    (such as repository-global evidence or unparseable lease ownership)
+    so the post-migration record is in a clean state: ownership is None,
+    evidence is an empty tuple, and any persisted intervention flag or
+    stale repair-exhausted reason is cleared.
     """
     result = dict(data_raw)
-    ownership_raw = result.get("diagnostic_ownership")
-    if (
-        isinstance(ownership_raw, str)
-        and ownership_raw
-        and parse_lease(ownership_raw) == (None, None)
-    ) or (ownership_raw is not None and not isinstance(ownership_raw, str)):
-        result["diagnostic_ownership"] = None
-        result["diagnostic_evidence"] = ()
-    if result.get("diagnostic_intervention_required") is True:
-        result["diagnostic_intervention_required"] = False
+    result["diagnostic_evidence"] = ()
+    result["diagnostic_ownership"] = None
+    result["diagnostic_intervention_required"] = False
+    last_outcome = result.get("last_outcome")
+    if last_outcome in (
+        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+        RebaseOutcomeKind.INTERVENTION_REQUIRED,
+        "diagnostic_intervention_required",
+        "intervention_required",
+    ):
+        result["last_outcome"] = None
+    cap_reason = result.get("repair_cap_reason")
+    if isinstance(cap_reason, str) and (
+        "exhausted" in cap_reason.lower() or "operator intervention required" in cap_reason.lower()
+    ):
+        result["repair_cap_reason"] = None
     return result
 
 
@@ -805,18 +802,7 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None
-    # Load-time counter clamp: pre-existing over-cap values (e.g. 200/541
-    # from stuck records cited in the symptoms) are coerced to
-    # ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1`` so the diagnostic check
-    # (``record.merge_commit_repair_attempts >= cap``) evaluates to
-    # False and the record proceeds to automated recovery. The bound
-    # is ``cap - 1`` because the diagnostic check is an inclusive
-    # ``>=``: clamping to ``cap`` itself would still satisfy the
-    # gate and re-trigger intervention. The clamp is a load-time
-    # coercion only: a value that the runtime ``_bump_attempt``
-    # writes through the closed ``BUMP_DIAGNOSTIC_ATTEMPT``
-    # transition is already below the gate until the bump crosses
-    # it, so the clamp never re-runs on a runtime-bumped value.
+    # Load-time clamp: coerce over-cap attempts to cap - 1 (see _clamp_loaded_attempt_counters).
     with_cause = _coerce_payload_failure_cause(migrated)
     with_cause = _clamp_loaded_attempt_counters(with_cause)
     try:

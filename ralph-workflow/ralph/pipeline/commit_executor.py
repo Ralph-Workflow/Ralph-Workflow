@@ -27,6 +27,7 @@ from ralph.git.operations import (
     stage_all,
 )
 from ralph.git.operations import stage_files as _stage_files
+from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -39,11 +40,22 @@ from ralph.phases.required_artifacts import (
     build_required_artifacts,
     resolve_phase_required_artifact,
 )
+from ralph.pipeline._auto_integrate_recovery_git_state import (
+    common_dir_lock_paths,
+    detached_branch_name,
+    detached_head_no_state,
+    lock_holder_is_dead,
+    reattach_head_to_branch,
+    rebase_bookkeeping_dir,
+    remove_path,
+)
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
 from ralph.prompts.commit_evidence import build_commit_evidence_bundle
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Mapping
+
     from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace import FsWorkspace
@@ -109,6 +121,242 @@ if TYPE_CHECKING:
         def __call__(self, repo_root: Path, display_context: object) -> None: ...
 
 
+class _CommitExecutionRecord:
+    last_error: str | None = None
+
+
+_execution_record = _CommitExecutionRecord()
+
+
+def get_last_commit_error() -> str | None:
+    """Return the error message from the most recent failed commit execution."""
+    return _execution_record.last_error
+
+
+def set_last_commit_error(error: str | None) -> None:
+    """Record the error message from a commit execution failure."""
+    _execution_record.last_error = error
+
+
+def _is_git_worktree(repo_root: Path) -> bool:
+    """Check if repo_root is inside a valid git working tree."""
+    try:
+        res = run_git(
+            ("rev-parse", "--is-inside-work-tree"),
+            cwd=repo_root,
+            label="check-git-worktree",
+        )
+        return res.returncode == 0 and res.stdout.strip() == "true"
+    except Exception:
+        return False
+
+
+def _is_head_detached(repo_root: Path) -> bool:
+    """Check if HEAD is currently detached."""
+    if not _is_git_worktree(repo_root):
+        return False
+    git_dir = rebase_bookkeeping_dir(repo_root)
+    if git_dir is not None and detached_head_no_state(repo_root, git_dir):
+        return True
+    try:
+        result = run_git(
+            ("symbolic-ref", "--quiet", "HEAD"),
+            cwd=repo_root,
+            label="commit:head-symbolic-ref",
+        )
+        return result.returncode != 0
+    except Exception:
+        return False
+
+
+def _branch_exists(repo_root: Path, branch: str) -> bool:
+    """Check if a branch exists locally in refs/heads/."""
+    if not branch or not branch.strip():
+        return False
+    try:
+        res = run_git(
+            ("show-ref", "--verify", f"refs/heads/{branch.strip()}"),
+            cwd=repo_root,
+            label="check-branch",
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def _detached_branch_from_reflog(repo_root: Path) -> str | None:
+    """Find the branch detached from by inspecting the reflog."""
+    try:
+        result = run_git(
+            ("reflog", "--format=%H%x00%gs", "-n", "50"),
+            cwd=repo_root,
+            label="commit:reflog-source-branch",
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        if "\x00" not in line:
+            continue
+        _sha, subject = line.split("\x00", 1)
+        for marker in ("checkout: moving from ", "switch branch to "):
+            idx = subject.find(marker)
+            if idx == -1:
+                continue
+            rest = subject[idx + len(marker) :]
+            src, *dest_parts = rest.split(" to ", 1)
+            src = src.strip()
+            if src and _branch_exists(repo_root, src):
+                return src
+            if dest_parts:
+                dest = dest_parts[0].strip()
+                if dest and _branch_exists(repo_root, dest):
+                    return dest
+    return None
+
+
+def _branch_from_worktree_metadata(repo_root: Path) -> str | None:
+    """Inspect git worktree list --porcelain to find the branch for this worktree."""
+    try:
+        res = run_git(
+            ("worktree", "list", "--porcelain"),
+            cwd=repo_root,
+            label="commit:worktree-list",
+        )
+    except Exception:
+        return None
+    if res.returncode != 0:
+        return None
+    current_matches = False
+    try:
+        resolved_root = repo_root.resolve()
+    except Exception:
+        resolved_root = repo_root
+    for line in res.stdout.splitlines():
+        if line.startswith("worktree "):
+            path_str = line[len("worktree ") :].strip()
+            try:
+                current_matches = Path(path_str).resolve() == resolved_root
+            except Exception:
+                current_matches = False
+        elif current_matches and line.startswith("branch refs/heads/"):
+            b = line[len("branch refs/heads/") :].strip()
+            if _branch_exists(repo_root, b):
+                return b
+    return None
+
+
+def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
+    branch = detached_branch_name(repo_root)
+    if branch:
+        yield branch
+
+    for key in ("branch", "feature_branch", "target_branch"):
+        val = opts.get(key)
+        if isinstance(val, str) and val.strip():
+            yield val.strip()
+
+    config = opts.get("config")
+    if config is not None:
+        for attr in ("feature_branch", "branch", "target_branch"):
+            attr_val: object = getattr(config, attr, None)
+            if isinstance(attr_val, str) and attr_val.strip():
+                yield attr_val.strip()
+        general_obj: object = getattr(config, "general", None)
+        if general_obj is not None:
+            for general_attr in ("feature_branch", "branch", "auto_integrate_target"):
+                gen_val: object = getattr(general_obj, general_attr, None)
+                if isinstance(gen_val, str) and gen_val.strip():
+                    yield gen_val.strip()
+
+    from_reflog = _detached_branch_from_reflog(repo_root)
+    if from_reflog:
+        yield from_reflog
+
+    from_wt = _branch_from_worktree_metadata(repo_root)
+    if from_wt:
+        yield from_wt
+
+    yield repo_root.name
+
+
+def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
+    """Resolve the target branch to safely reattach a detached HEAD to."""
+    for candidate in _candidate_branch_names(repo_root, **opts):
+        if _branch_exists(repo_root, candidate):
+            return candidate
+    return None
+
+
+def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
+    """If HEAD is detached, safely reattach to the verified feature branch."""
+    if not _is_head_detached(repo_root):
+        return False
+    branch = _resolve_branch_for_reattach(repo_root, **opts)
+    if branch:
+        logger.info("Detached HEAD detected; safely reattaching to branch '{}'", branch)
+        reattach_head_to_branch(repo_root, branch)
+        return True
+    logger.warning("Detached HEAD detected but target branch could not be resolved")
+    return False
+
+
+def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
+    """Repair repairable git state (detached HEAD, stale locks) so commit can succeed."""
+    if not _is_git_worktree(repo_root):
+        return False
+    repaired = False
+    if _is_head_detached(repo_root) and _reattach_head_if_detached(repo_root, **opts):
+        repaired = True
+
+    git_dir = rebase_bookkeeping_dir(repo_root) or (repo_root / ".git")
+    if git_dir.is_dir():
+        index_lock = git_dir / "index.lock"
+        if index_lock.exists() and lock_holder_is_dead(index_lock):
+            logger.info("Removing stale index.lock: {}", index_lock)
+            remove_path(index_lock)
+            repaired = True
+        head_lock = git_dir / "HEAD.lock"
+        if head_lock.exists() and lock_holder_is_dead(head_lock):
+            logger.info("Removing stale HEAD.lock: {}", head_lock)
+            remove_path(head_lock)
+            repaired = True
+        for lock_path in common_dir_lock_paths(repo_root):
+            if lock_path.exists() and lock_holder_is_dead(lock_path):
+                logger.info("Removing stale common dir lock: {}", lock_path)
+                remove_path(lock_path)
+                repaired = True
+    return repaired
+
+
+def _perform_commit_creation(
+    repo_root: Path,
+    message: str,
+    payload: dict[str, object],
+    create_commit_fn: _CreateCommitFn,
+    stage_all_fn: _StageAllFn,
+    repair_opts: Mapping[str, object],
+) -> str:
+    """Attempt commit creation with repairable git state retry, returning commit sha."""
+    expected_head = get_head_sha(repo_root)
+    _stage_commit_scope(repo_root, payload, stage_all_fn)
+    result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+    if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+        if _attempt_repair_git_state(repo_root, **repair_opts):
+            logger.info("Retrying commit creation after git state repair")
+            expected_head = get_head_sha(repo_root)
+            _stage_commit_scope(repo_root, payload, stage_all_fn)
+            result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+        if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+            err_msg = result.error or f"commit creation returned {result.status.value}"
+            logger.warning("Commit was not created: {}", err_msg)
+            raise RuntimeError(err_msg)
+    if result.sha is None:
+        raise RuntimeError("commit creation produced no sha")
+    return result.sha
+
+
 def execute_commit_effect(
     effect: CommitEffect,
     repo_root: Path,
@@ -152,25 +400,32 @@ def execute_commit_effect(
         if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
             logger.info("Commit agent requested skip — skipping commit execution")
             cleanup_commit_message_artifacts(repo_root)
+            set_last_commit_error(None)
             return PipelineEvent.COMMIT_SKIPPED
+        _reattach_head_if_detached(repo_root, **opts)
         if not _has_commit_work_fn(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             cleanup_commit_message_artifacts(repo_root)
+            set_last_commit_error(None)
             return PipelineEvent.COMMIT_SUCCESS
         try:
             before_paths = tuple(_changed_commit_paths(repo_root))
         except Exception:
             before_paths = ()
         include_paths = _commit_include_paths(repo_root, payload)
-        expected_head = get_head_sha(repo_root)
-        _stage_commit_scope(repo_root, payload, _stage_all_fn)
-        result = _create_commit_fn(str(repo_root), message, expected_head=expected_head)
-        if result.status is not CommitCreationStatus.CREATED or result.sha is None:
-            logger.warning("Commit was not created: {}", result.status.value)
-            raise RuntimeError(f"commit creation returned {result.status.value}")
-        sha = result.sha
+        sha = _perform_commit_creation(
+            repo_root,
+            message,
+            payload,
+            _create_commit_fn,
+            _stage_all_fn,
+            opts,
+        )
+        set_last_commit_error(None)
         logger.info("Created commit: {}", sha[:8])
     except Exception as exc:
+        err_msg = f"{type(exc).__name__}: {exc}"
+        set_last_commit_error(err_msg)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         return PipelineEvent.COMMIT_FAILURE
 

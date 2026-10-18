@@ -292,6 +292,8 @@ def _apply_release_or_typed_skip(
             backend=backend,
             diagnostic_evidence=(),
             diagnostic_ownership=None,
+            diagnostic_intervention_required=False,
+            repair_cap_reason=None,
         )
     except RecordBusyError:
         # Fail closed: bytes untouched. The bounded wait vs
@@ -335,11 +337,16 @@ def _maybe_release_diagnostic(
     """
     outcome = read_record_outcome(root, backend=backend)
     record = outcome.record
-    if (
-        record is None
-        or (not record.diagnostic_evidence and not record.diagnostic_ownership)
-        or record.operation_kind == "target_reconcile"
-    ):
+    if record is None or record.operation_kind == "target_reconcile":
+        return record
+    if not record.diagnostic_evidence and not record.diagnostic_ownership:
+        from ralph.pipeline._integration_diagnostic import DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+
+        if (
+            record.diagnostic_intervention_required
+            or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+        ):
+            return _apply_release_or_typed_skip(root, record, backend)
         return record
     from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
     from ralph.pipeline._integration_diagnostic import (
@@ -349,27 +356,20 @@ def _maybe_release_diagnostic(
     from ralph.pipeline.operation_evidence import EvidenceVerdict
 
     verdict = release_verified_diagnostic(_operation_root_for(record, workspace_scope.root), record)
-    if verdict == EvidenceVerdict.UNCHANGED:
-        return _apply_release_or_typed_skip(root, record, backend)
-    if verdict == EvidenceVerdict.UNKNOWN:
-        # Expired or unparseable lease: fail-open to auto-release. The
-        # diagnostic re-derives state from Git on the next seam. A
-        # SIGKILL between HOLD and RELEASE no longer blocks the next
-        # run; a stuck record with a stale lease is auto-released
-        # without operator action.
-        return _apply_release_or_typed_skip(root, record, backend)
-    if verdict == EvidenceVerdict.CHANGED:
-        # Unparseable or fingerprint-mismatched lease: the durable
-        # identity was rewritten by a different worktree, not by
-        # Ralph's legitimate actions. The only path to operator
-        # escalation.
-        return _record_skip(
-            reason=diagnostic_evidence_gate_reason(verdict),
-            target=record.target,
-            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-            record_retained=True,
-        )
-    assert_never(verdict)
+    match verdict:
+        case EvidenceVerdict.UNCHANGED | EvidenceVerdict.UNKNOWN:
+            # UNCHANGED: held lease valid; release.
+            # UNKNOWN: expired or unparseable lease: fail-open to auto-release.
+            return _apply_release_or_typed_skip(root, record, backend)
+        case EvidenceVerdict.CHANGED:
+            return _record_skip(
+                reason=diagnostic_evidence_gate_reason(verdict),
+                target=record.target,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+                record_retained=True,
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _recover_unresolved_integrating(

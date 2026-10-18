@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 import ralph.pipeline._integration_diagnostic as diagnostic
 from ralph.pipeline.auto_integrate_record import (
@@ -227,3 +231,92 @@ def test_loaded_over_cap_counter_proceeds_to_recovery() -> None:
     assert parsed is not None
     assert parsed.merge_commit_repair_attempts == diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
     assert parsed.diagnostic_intervention_required is False
+
+
+def test_diagnostic_evidence_verdict_expired_lease_with_different_fingerprint_returns_unknown(
+    tmp_path: Path,
+) -> None:
+    """Lease expiry is checked BEFORE fingerprint mismatch: returns UNKNOWN."""
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+    )
+    # Different fingerprint AND expired timestamp
+    stale_lease = f"different_fingerprint:{time.time() - (diagnostic.EVIDENCE_LEASE_SECONDS + 100)}"
+    record = record.model_copy(update={"diagnostic_ownership": stale_lease})
+    verdict = diagnostic.release_verified_diagnostic(tmp_path, record)
+    assert verdict == EvidenceVerdict.UNKNOWN
+
+
+def test_recovery_on_flagged_record_without_evidence_auto_releases(tmp_path: Path) -> None:
+    """Old flagged record with no evidence auto-releases on recovery instead of livelocking."""
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        DEFAULT_FILE_BACKEND,
+        read_record,
+        write_record,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        diagnostic_intervention_required=True,
+        merge_commit_repair_attempts=5,
+        repair_cap_reason="diagnostic repair exhausted; operator intervention required",
+    )
+    write_record(tmp_path, record)
+
+    recover_incomplete_integration(WorkspaceScope(tmp_path), backend=DEFAULT_FILE_BACKEND)
+
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_intervention_required is False
+    assert on_disk.merge_commit_repair_attempts < diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert on_disk.repair_cap_reason is None
+    assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_handoff_integration_diagnostic_at_repair_cap_rederives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When repair cap is reached, if automated recovery can re-derive, it does not livelock."""
+    from ralph.pipeline.auto_integrate_record import read_record, write_record
+
+    monkeypatch.setattr(diagnostic, "diagnostic_needed", lambda *_: False)
+    monkeypatch.setattr(
+        diagnostic, "_check_operation_completion_proof", lambda *_, **__: (True, "ok")
+    )
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        merge_commit_repair_attempts=diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    )
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(update={"diagnostic_ownership": lease})
+    write_record(tmp_path, record)
+
+    res = diagnostic.handoff_integration_diagnostic(
+        root=tmp_path,
+        record=record,
+        failure="diagnostic failure",
+        agents=(),
+        invoke=lambda agent, prompt: True,
+    )
+    assert res is True
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False

@@ -299,3 +299,44 @@ def test_transition_rejects_unknown_name() -> None:
 
     with pytest.raises(ValueError, match="unknown transition"):
         transition_by_name("BOGUS")
+
+
+def test_legacy_format_records_clear_intervention_for_next_action() -> None:
+    """Legacy formats clear intervention flags so next_integration_action does not require intervention."""
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    # 1. Unparseable lease ownership
+    payload_lease = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_ownership": "invalid-no-colon",
+        "diagnostic_intervention_required": True,
+    }
+    rec1 = parse_record_payload(payload_lease)
+    assert rec1 is not None
+    assert rec1.diagnostic_intervention_required is False
+    assert rec1.diagnostic_evidence == ()
+    assert rec1.diagnostic_ownership is None
+    assert next_integration_action(rec1) != IntegrationAction.REQUIRE_INTERVENTION
+
+    # 2. Legacy global key (ls-files)
+    payload_ls = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": (("ls-files", "some/path"),),
+        "diagnostic_intervention_required": True,
+    }
+    rec2 = parse_record_payload(payload_ls)
+    assert rec2 is not None
+    assert rec2.diagnostic_intervention_required is False
+    assert rec2.diagnostic_evidence == ()
+    assert rec2.diagnostic_ownership is None
+    assert next_integration_action(rec2) != IntegrationAction.REQUIRE_INTERVENTION

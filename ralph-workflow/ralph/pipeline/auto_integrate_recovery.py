@@ -34,6 +34,7 @@ from ralph.pipeline._git_operation_authority import (
 )
 from ralph.pipeline._integration_action import (
     IntegrationAction,
+    RebaseOutcomeKind,
     next_integration_action,
 )
 from ralph.pipeline._integration_diagnostic import _busy_refusal_state
@@ -43,6 +44,8 @@ from ralph.pipeline._recovery_fast_forward_landing import (
 )
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
+    RecordReadOutcomeDisposition,
+    read_record_outcome,
 )
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -70,6 +73,7 @@ from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_tar
 from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_remote_publication,
     remote_sync_enabled,
+    remote_target_name,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
@@ -171,8 +175,25 @@ def recover_incomplete_integration(
             target_obj = _configured_target(config)
             if isinstance(target_obj, str) and target_obj:
                 startup_publication = reconcile_remote_publication(
-                    config, Path(workspace_scope.root), target_obj
+                    config,
+                    Path(workspace_scope.root),
+                    target_obj,
+                    remote=remote_target_name(config),
+                    rebase_stop_resolver=rebase_stop_resolver,
                 )
+
+        record_outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
+        if record_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            reason = "durable integration record unreadable; intervention required" + (
+                f" ({record_outcome.unreadable_reason})" if record_outcome.unreadable_reason else ""
+            )
+            return RebaseState(
+                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_reason=reason,
+                last_target=None,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+            )
 
         early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
         if early is not None:
@@ -303,6 +324,7 @@ __all__ = [
     "legacy_rebase_startup_block",
     "merge_state",
     "post_attempt_verify",
+    "read_record_outcome",
     "rebase_in_progress",
     "recover_incomplete_integration",
     "recovery_retained_record",

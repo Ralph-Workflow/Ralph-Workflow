@@ -6,6 +6,7 @@ remote target pointers after an integration lands, along with the
 ref-comparison helpers and the public outcome vocabulary.
 
 Helper modules:
+
 * :mod:`ralph.pipeline.auto_integrate_remote_constants`: shared timeout,
   interval, and outcome-string constants.
 * :mod:`ralph.pipeline.auto_integrate_remote_client`: the production
@@ -108,10 +109,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
 __all__ = [
     "FETCH_TIMEOUT_SECONDS",
+    "REMOTE_ALREADY_CURRENT",
     "REMOTE_AUTH_FAILED",
     "REMOTE_BACKOFF_MAX_SECONDS",
     "REMOTE_CREATED",
@@ -247,6 +250,7 @@ def _dispatch_ref_comparison(
     remote_sha: str,
     base_state: RebaseState,
     remote_client: RemoteClient | None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
     """Apply the local/remote ancestor verdict and dispatch to the right helper.
 
@@ -283,6 +287,7 @@ def _dispatch_ref_comparison(
                 target,
                 pushed,
                 remote=chosen_remote,
+                rebase_stop_resolver=rebase_stop_resolver,
                 remote_client=remote_client,
             )
         return pushed
@@ -302,6 +307,8 @@ def _dispatch_ref_comparison(
         catchup_outcome = attempt_catchup_fast_forward(
             config,
             repo_root,
+            target=target,
+            remote=chosen_remote,
             remote_client=remote_client,
         )
         if catchup_outcome == "fast-forwarded":
@@ -311,6 +318,7 @@ def _dispatch_ref_comparison(
                 target,
                 remote=chosen_remote,
                 remote_client=remote_client,
+                rebase_stop_resolver=rebase_stop_resolver,
                 source_state=base_state,
             )
         return _record_publication_failure(
@@ -326,6 +334,7 @@ def _dispatch_ref_comparison(
         target,
         base_state,
         remote=chosen_remote,
+        rebase_stop_resolver=rebase_stop_resolver,
         remote_client=remote_client,
     )
 
@@ -352,6 +361,7 @@ def reconcile_remote_publication(
     *,
     remote: str | None = None,
     remote_client: RemoteClient | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
     source_state: RebaseState | None = None,
 ) -> RebaseState:
     """Reconcile local ``<target>`` with ``<remote>/<target>`` by ref comparison.
@@ -432,6 +442,7 @@ def reconcile_remote_publication(
                 target,
                 pushed,
                 remote=chosen_remote,
+                rebase_stop_resolver=rebase_stop_resolver,
                 remote_client=client,
             )
         return pushed
@@ -458,6 +469,7 @@ def reconcile_remote_publication(
         remote_sha=remote_sha,
         base_state=base_state,
         remote_client=client,
+        rebase_stop_resolver=rebase_stop_resolver,
     )
 
 
