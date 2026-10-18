@@ -247,6 +247,7 @@ __all__ = [
     "emit_phase_transition_if_changed",
     "execute_agent_effect",
     "execute_commit_effect",
+    "execute_commit_effect_from_deps",
     "handle_phase",
     "heartbeat_policy_from_env",
     "install_signal_handlers",
@@ -355,9 +356,11 @@ def _execute_commit_effect_from_deps(
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | None,
     verbosity: Verbosity,
+    config: UnifiedConfig | None = None,
 ) -> Event:
     if pipeline_deps.commit_effect_executor is not None:
         return cast("Event", pipeline_deps.commit_effect_executor(effect, workspace_scope.root))
+    target: str | None = config.general.auto_integrate_target if config is not None else None
     return execute_commit_effect(
         effect,
         create_commit,
@@ -366,7 +369,12 @@ def _execute_commit_effect_from_deps(
         display,
         verbosity=verbosity,
         has_residual_work_fn=repo_has_commit_work,
+        config=config,
+        auto_integrate_target=target,
     )
+
+
+execute_commit_effect_from_deps = _execute_commit_effect_from_deps
 
 
 def _execute_effect(
@@ -402,7 +410,7 @@ def _execute_effect(
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect_from_deps(
-            effect, pipeline_deps, workspace_scope, display, verbosity
+            effect, pipeline_deps, workspace_scope, display, verbosity, config=config
         )
     if isinstance(effect, EmptyCommitEffect):
         return _execute_empty_commit_effect(effect, workspace_scope)

@@ -317,13 +317,59 @@ def test_wait_for_retry_unreadable_record_escalates_to_intervention_with_cooldow
     # 1. Assert ctx.sleep was called for cooldown retry
     assert sleeps == [5.0], "Unreadable record must perform standard cooldown wait"
 
-    # 2. Assert INTERVENTION_REQUIRED is set
+    # 2. Assert raw corrupt bytes preserved for forensics (WU-1)
+    evidence_file = record_path(tmp_path).with_name("corrupt_record_evidence.json")
+    assert evidence_file.exists()
+    assert evidence_file.read_text(encoding="utf-8") == "CORRUPT_JSON_{not valid"
+
+    # 3. Assert INTERVENTION_REQUIRED is set
     assert updated_state.rebase.is_intervention_required is True
     assert updated_state.rebase.last_outcome in (
         RebaseOutcomeKind.INTERVENTION_REQUIRED,
         RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
     )
     assert "unreadable" in (updated_state.rebase.last_reason or "")
+
+
+def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_resolver_handoff(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2: consecutive conflicts cap triggers single automated resolver handoff."""
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    handoff_calls: list[str] = []
+
+    def _fake_handoff(loop_ctx: object, detail: str) -> None:
+        handoff_calls.append(detail)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _fake_handoff)
+
+    initial_state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="conflict detail for resolver",
+            consecutive_conflicts=ctx.config.conflict_resolution.max_consecutive_resolver_attempts,
+        ),
+    )
+
+    first_result = run_loop._wait_for_integration_retry(initial_state, ctx)
+    assert len(handoff_calls) == 1
+    assert "conflict detail for resolver" in handoff_calls[0]
+    assert first_result.rebase.is_intervention_required is True
+    assert (
+        first_result.rebase.consecutive_conflicts
+        >= ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    )
+
+    # Subsequent call with is_intervention_required=True must avoid repeat handoffs
+    second_result = run_loop._wait_for_integration_retry(first_result, ctx)
+    assert len(handoff_calls) == 1, "Must avoid repeat automated resolver handoff"
+    assert second_result.rebase.is_intervention_required is True
 
 
 def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_with_cooldown_sleep(

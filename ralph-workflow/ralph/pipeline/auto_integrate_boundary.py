@@ -37,6 +37,9 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
+from ralph.pipeline.commit_executor import (
+    reattach_head_if_detached as _reattach_head_if_detached,
+)
 from ralph.pipeline.integration_resolution import (
     TreeReadinessAssessment,
     assess_tree_readiness,
@@ -70,6 +73,7 @@ def phase_boundary_outcome(
         return True, _record_skip(
             reason=_missing_target_reason(config), target=_configured_target(config)
         )
+    _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
     readiness = assess_tree_readiness(root)
     if not readiness.integration_ready or not _worktree_is_clean(root):
         return True, defer_dirty_boundary(config, root, target, readiness=readiness)

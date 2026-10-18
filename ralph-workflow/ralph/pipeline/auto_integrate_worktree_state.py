@@ -63,3 +63,8 @@ def _worktree_is_clean(root: Path) -> bool:
     if result.returncode != 0:
         return False
     return not result.stdout.strip()
+
+
+worktree_is_clean = _worktree_is_clean
+
+__all__ = ["_worktree_is_clean", "worktree_is_clean"]

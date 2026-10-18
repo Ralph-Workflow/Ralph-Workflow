@@ -104,6 +104,9 @@ from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.commit_executor import (
+    reattach_head_if_detached as _reattach_head_if_detached,
+)
 from ralph.pipeline.rebase_state import StartupRetentionReason
 
 _random = (
@@ -283,6 +286,7 @@ def _auto_integrate_on_phase_transition_inner(
         if not config.general.auto_integrate_enabled:
             return None
         target = resolve_integration_target(config, root)
+        _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
         boundary_handled, boundary_outcome = _phase_boundary_outcome(
             config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
         )

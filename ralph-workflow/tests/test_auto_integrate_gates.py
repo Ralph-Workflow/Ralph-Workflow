@@ -12,12 +12,14 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from git import Actor, Repo
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_planning as planning
 from ralph.pipeline._planning_obstruction import PlanningObstructionKind
+from ralph.pipeline.auto_integrate_worktree_state import worktree_is_clean
 from ralph.pipeline.integration_resolution import (
     RECOVERABLE,
     RESOLVED,
@@ -622,3 +624,133 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
 
     # 3. Boundary entry point (phase_boundary_outcome)
     _assert_boundary_agrees(boundary, cfg, tmp_path, readiness, expected_ready)
+
+
+def _make_real_repo(repo_root: Path) -> Repo:
+    repo = Repo.init(repo_root)
+    repo.config_writer().set_value("user", "name", "Test Committer").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    actor = Actor("Test Committer", "test@example.com")
+    tracked_file = repo_root / "tracked.txt"
+    tracked_file.write_text("initial tracked content\n", encoding="utf-8")
+    repo.index.add(["tracked.txt"])
+    repo.index.commit("initial commit", author=actor, committer=actor)
+    repo.git.branch("-M", "main")
+    return repo
+
+
+@pytest.mark.timeout_seconds(5)
+@pytest.mark.parametrize(
+    "state_name,setup_state,expected_ready",
+    [
+        ("clean", lambda r, p: None, True),
+        (
+            "untracked",
+            lambda r, p: (p / "scratch.txt").write_text("untracked\n", encoding="utf-8"),
+            True,
+        ),
+        (
+            "modified_tracked",
+            lambda r, p: (p / "tracked.txt").write_text("modified\n", encoding="utf-8"),
+            False,
+        ),
+        (
+            "staged",
+            lambda r, p: (
+                (p / "staged.txt").write_text("staged\n", encoding="utf-8"),
+                r.index.add(["staged.txt"]),
+            ),
+            False,
+        ),
+        (
+            "rebase_in_progress",
+            lambda r, p: (p / ".git" / "rebase-merge").mkdir(parents=True),
+            False,
+        ),
+    ],
+)
+def test_unpatched_real_worktree_gates_agree(
+    tmp_path: Path,
+    state_name: str,
+    setup_state: object,
+    expected_ready: bool,
+) -> None:
+    """WU-5: unpatched real-worktree tests proving resolution, boundary, and planning agree."""
+    repo = _make_real_repo(tmp_path)
+    setup_state(repo, tmp_path)
+    cfg = _config()
+
+    # 1. Integration resolution
+    readiness = assess_tree_readiness(tmp_path)
+    verdict = inspect_integration_resolution(tmp_path, RebaseState())
+    assert readiness.integration_ready is expected_ready
+    assert verdict.integration_ready is expected_ready
+
+    # 2. Planning
+    planning_block = planning._record_staged_block(tmp_path, "main")
+
+    # 3. Boundary
+    handled, outcome = boundary.phase_boundary_outcome(
+        cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+    )
+
+    if expected_ready:
+        assert readiness.blocking_reasons == ()
+        assert verdict.blocking_reasons == ()
+        assert planning_block is None
+        assert worktree_is_clean(tmp_path) is True
+        assert handled is True
+        assert outcome is not None
+        assert outcome.last_reason == "no commits beyond target"
+    else:
+        assert len(readiness.blocking_reasons) > 0
+        assert verdict.blocking_reasons[0] == readiness.blocking_reasons[0]
+        assert planning_block is not None
+        assert planning_block.last_action == "skipped"
+        assert planning_block.last_reason == readiness.blocking_reasons[0]
+        assert handled is True
+        assert outcome is None or (
+            outcome.last_action == "skipped" and "worktree not clean" in str(outcome.last_reason)
+        )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_unpatched_real_worktree_dirty_target_ahead_records_skip(tmp_path: Path) -> None:
+    """WU-5: When target is ahead and worktree is dirty, real boundary records a skip."""
+    repo = _make_real_repo(tmp_path)
+    actor = Actor("Test Committer", "test@example.com")
+
+    # Checkout feature branch
+    repo.git.checkout("-b", "feature/work")
+
+    # Advance main with a commit
+    repo.git.checkout("main")
+    main_file = tmp_path / "main.txt"
+    main_file.write_text("main update\n", encoding="utf-8")
+    repo.index.add(["main.txt"])
+    repo.index.commit("main advance", author=actor, committer=actor)
+
+    # Return to feature branch and dirty it
+    repo.git.checkout("feature/work")
+    (tmp_path / "tracked.txt").write_text("dirty work\n", encoding="utf-8")
+
+    cfg = _config()
+    readiness = assess_tree_readiness(tmp_path)
+    assert readiness.integration_ready is False
+
+    verdict = inspect_integration_resolution(tmp_path, RebaseState())
+    assert verdict.integration_ready is False
+    assert verdict.blocking_reasons[0] == readiness.blocking_reasons[0]
+
+    planning_block = planning._record_staged_block(tmp_path, "main")
+    assert planning_block is not None
+    assert planning_block.last_action == "skipped"
+    assert planning_block.last_reason == readiness.blocking_reasons[0]
+
+    handled, outcome = boundary.phase_boundary_outcome(
+        cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+    )
+    assert handled is True
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert "worktree not clean" in str(outcome.last_reason)

@@ -518,3 +518,116 @@ def test_committed_feature_work_lands_on_configured_integration_target(
     assert (tmp_path / "feature.txt").read_text(
         encoding="utf-8"
     ) == "feature content to be integrated\n"
+
+
+@pytest.mark.timeout_seconds(10)
+def test_execute_commit_effect_from_deps_detached_dirty_commits_on_feature_branch_not_target(
+    tmp_path: Path,
+) -> None:
+    """WU-3: _execute_commit_effect_from_deps preserves target branch and commits to feature branch."""
+    from rich.console import Console
+
+    from ralph.config.enums import Verbosity
+    from ralph.config.models import UnifiedConfig
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.runner import execute_commit_effect_from_deps
+    from ralph.workspace.scope import WorkspaceScope
+
+    repo = _make_test_repo(tmp_path, "feature/work")
+    repo.git.branch("-m", "main", "release")
+    initial_release_sha = repo.heads.release.commit.hexsha
+
+    # Detach HEAD at feature commit
+    feature_sha = repo.heads["feature/work"].commit.hexsha
+    repo.git.checkout(feature_sha)
+    assert repo.head.is_detached
+
+    # Add dirty work while detached
+    work_file = tmp_path / "feature.txt"
+    work_file.write_text("feature uncommitted changes\n", encoding="utf-8")
+
+    message_file = _make_commit_artifact(tmp_path, "feat: implement work from runner deps")
+    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "release"}})
+
+    display_context = make_display_context(
+        console=Console(record=True, force_terminal=False, width=120, color_system=None),
+        force_width=120,
+    )
+    event = execute_commit_effect_from_deps(
+        CommitEffect(message_file=str(message_file)),
+        PipelineDeps(display_context=display_context),
+        WorkspaceScope(tmp_path),
+        None,
+        Verbosity.VERBOSE,
+        config=config,
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+
+    repo = Repo(tmp_path)
+    assert not repo.head.is_detached
+    assert repo.active_branch.name == "feature/work"
+    new_feature_sha = repo.head.commit.hexsha
+
+    # The configured integration target 'release' MUST NOT be advanced directly
+    assert repo.heads.release.commit.hexsha == initial_release_sha
+    assert new_feature_sha != initial_release_sha
+    assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "feature uncommitted changes\n"
+
+
+@pytest.mark.timeout_seconds(10)
+def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_staged_and_dirty_work(
+    tmp_path: Path,
+) -> None:
+    """WU-4: auto-integrate phase transition reattaches detached HEAD and preserves staged/dirty work."""
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
+    from ralph.pipeline.auto_integrate_boundary import phase_boundary_outcome
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
+
+    repo = _make_test_repo(tmp_path, "feature/work")
+    feature_sha = repo.heads["feature/work"].commit.hexsha
+
+    # Detach HEAD at feature commit
+    repo.git.checkout(feature_sha)
+    assert repo.head.is_detached
+
+    # Add both staged and unstaged changes
+    staged_file = tmp_path / "staged.txt"
+    staged_file.write_text("staged content\n", encoding="utf-8")
+    repo.index.add(["staged.txt"])
+
+    dirty_file = tmp_path / "feature.txt"
+    dirty_file.write_text("dirty unstaged content\n", encoding="utf-8")
+
+    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+
+    # Test direct phase_boundary_outcome reattachment
+    handled, _outcome = phase_boundary_outcome(
+        config, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+    )
+    assert handled is True
+    repo = Repo(tmp_path)
+    assert not repo.head.is_detached
+    assert repo.active_branch.name == "feature/work"
+    assert (tmp_path / "staged.txt").read_text(encoding="utf-8") == "staged content\n"
+    assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "dirty unstaged content\n"
+    assert "staged.txt" in [item.a_path for item in repo.index.diff("HEAD")]
+
+    # Detach again and test auto_integrate_on_phase_transition reattachment
+    repo.git.checkout(feature_sha)
+    assert repo.head.is_detached
+
+    _res = auto_integrate_on_phase_transition(
+        config,
+        WorkspaceScope(tmp_path),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+    repo = Repo(tmp_path)
+    assert not repo.head.is_detached
+    assert repo.active_branch.name == "feature/work"
+    assert (tmp_path / "staged.txt").read_text(encoding="utf-8") == "staged content\n"
+    assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "dirty unstaged content\n"

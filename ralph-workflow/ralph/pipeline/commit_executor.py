@@ -287,7 +287,7 @@ def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
                 yield attr_val.strip()
         general_obj: object = getattr(config, "general", None)
         if general_obj is not None:
-            for general_attr in ("feature_branch", "branch", "auto_integrate_target"):
+            for general_attr in ("feature_branch", "branch"):
                 gen_val: object = getattr(general_obj, general_attr, None)
                 if isinstance(gen_val, str) and gen_val.strip():
                     yield gen_val.strip()
@@ -464,6 +464,9 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
         return True
     logger.warning("Detached HEAD detected but target branch could not be resolved")
     return False
+
+
+reattach_head_if_detached = _reattach_head_if_detached
 
 
 def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:

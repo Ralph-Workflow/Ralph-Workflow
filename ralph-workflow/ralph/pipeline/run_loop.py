@@ -2370,6 +2370,10 @@ def _wait_for_integration_retry(
     if rebase.resolution_exhausted or rebase.consecutive_conflicts >= (
         ctx.config.conflict_resolution.max_consecutive_resolver_attempts
     ):
+        if not rebase.is_intervention_required:
+            _handoff_retained_failure(ctx, detail)
+            if ctx.latest_state and ctx.latest_state[0].rebase is not None:
+                rebase = ctx.latest_state[0].rebase
         # The reason must be the ORIGINAL failure detail, not a
         # concatenation of the previous ``last_reason`` (which would
         # grow without bound across repeated calls). Use ``detail``
@@ -2499,6 +2503,18 @@ def _durable_record_intervention_guard(
         reason = "durable integration record unreadable; intervention required"
         if unreadable_detail:
             reason += f" ({unreadable_detail})"
+        with suppress(Exception):
+            rec_file = record_path(root)
+            if rec_file.exists():
+                from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed
+
+                corrupt_bytes = rec_file.read_bytes()
+                # filesystem-write-ok: forensic snapshot of corrupt durable record before escalation
+                write_bytes_if_changed(
+                    backend,
+                    rec_file.with_name("corrupt_record_evidence.json"),
+                    corrupt_bytes,
+                )
         return (
             rebase.set_intervention_required(reason, diagnostic=True),
             False,
