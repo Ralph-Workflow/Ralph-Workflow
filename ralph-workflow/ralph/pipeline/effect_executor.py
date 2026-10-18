@@ -749,7 +749,7 @@ def _invoke_agent_with_recovery(
     ):
         raise
     except Exception:
-        logger.exception("Unexpected error during agent invocation: {}")
+        logger.exception("Unexpected error during agent invocation")
         return PipelineEvent.AGENT_FAILURE
     finally:
         if own_bridge and bridge is not None:

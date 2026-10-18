@@ -147,6 +147,8 @@ def test_unowned_target_interruption_cleans_resources(
         return GitRunResult(args=cmd, returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(remote_reconcile, "run_git", fake_run_git)
+    monkeypatch.setattr("ralph.git.subprocess_runner.run_git", fake_run_git)
+    monkeypatch.setattr("ralph.pipeline.conflict_resolution.rebase_loop.run_git", fake_run_git)
 
     monkeypatch.setattr(
         remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
