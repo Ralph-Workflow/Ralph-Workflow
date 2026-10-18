@@ -81,6 +81,11 @@ from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServ
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._pre_serve_overrun import (
+    PRE_SERVE_OVERRUN_EXIT_CODE,
+    SESSION_OVERRUN_EXIT_CODE,
+    fail_closed_pre_serve_overrun,
+)
 from ralph.mcp.server._process_secrecy import (
     erase_broker_secret_environment,
     protect_broker_secret,
@@ -434,14 +439,16 @@ def _poll_bounded_pre_serve(
         future = ex.submit(_do_pre_serve)
         return future.result(timeout=effective_timeout_s)
     except concurrent.futures.TimeoutError:
+        # Worker is wedged on real I/O holding the GIL;
+        # ``shutdown(wait=False)`` cannot interrupt it (see ``_pre_serve_overrun``).
         elapsed = _clock() - t0
-        raise McpServerError(
-            f"pre-serve critical path timed out after {elapsed:.3f}s "
-            f"(budget={effective_timeout_s:.3f}s)",
-            last_stage="config_loading",
+        fail_closed_pre_serve_overrun(  # never returns: ``os._exit``
+            workspace_root,
+            stage="config_loading",
             elapsed_s=elapsed,
-            restart_count=0,
-        ) from None
+            budget_s=effective_timeout_s,
+            exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
+        )
     except Exception:
         raise
     finally:
@@ -775,13 +782,16 @@ def run_standalone_server(
         )
         session = future.result(timeout=session_timeout_s)
     except concurrent.futures.TimeoutError:
+        # FIFO / hung FS / wedged explore-index blocks the worker holding the
+        # GIL; ``shutdown(wait=False)`` cannot interrupt it (see ``_pre_serve_overrun``).
         elapsed = _clock() - t0
-        raise McpServerError(
-            f"session initialization timed out after {elapsed:.3f}s (budget={session_timeout_s:.3f}s)",
-            last_stage="session_ready",
+        fail_closed_pre_serve_overrun(
+            workspace_root,
+            stage="session_ready",
             elapsed_s=elapsed,
-            restart_count=0,
-        ) from None
+            budget_s=session_timeout_s,
+            exit_code=SESSION_OVERRUN_EXIT_CODE,
+        )
     finally:
         if ex is not None:
             ex.shutdown(wait=False)
