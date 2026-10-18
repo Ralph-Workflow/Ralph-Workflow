@@ -148,13 +148,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # excludes them and their coverage silently rots.
     "tests/test_display_lifecycle_label_taxonomy.py",
     "tests/test_unreadable_record_entry_points.py",
-    # wt-16: the CLI-child banner visibility regression. The parent does
-    # not pre-set PYTHONUNBUFFERED, so the child must reach stdout via the
-    # flush + line_buffering reconfigure wired in runtime.py and
-    # _fallback_standalone_server.py. subprocess_e2e because it crosses
-    # a real process boundary. On the default make-test profile so the
-    # banner regression cannot rot.
+    # wt-16: CLI-child banner visibility and bounded catalog publish/FD regressions.
     "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py",
+    "tests/mcp/test_whole_startup_budget_production.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
+    "tests/mcp/test_bounded_catalog_publish.py",
 )
 EXPECTED_FAST_TEST_FILES = (
     "tests/test_makefile_verification_workflow.py",

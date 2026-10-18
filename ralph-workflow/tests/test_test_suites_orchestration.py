@@ -154,6 +154,12 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # a real process boundary. On the default make-test profile so the
     # banner regression cannot rot.
     "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py",
+    # wt-16 WU-1: bounded catalog publication + fail-closed-FD regression.
+    # All carry ``subprocess_e2e`` (real-child boundary); on the default
+    # make-test profile so the regression coverage cannot rot silently.
+    "tests/mcp/test_whole_startup_budget_production.py",
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
+    "tests/mcp/test_bounded_catalog_publish.py",
 )
 
 

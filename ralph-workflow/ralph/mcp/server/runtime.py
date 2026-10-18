@@ -90,6 +90,7 @@ from ralph.mcp.server._process_secrecy import (
     erase_broker_secret_environment,
     protect_broker_secret,
 )
+from ralph.mcp.server._publish_catalog_bounded import publish_tool_catalog_bounded
 from ralph.mcp.server._reserved_socket import _adopt_inherited_socket
 from ralph.mcp.server._runtime_constants import (
     DEFAULT_HOST,
@@ -111,7 +112,6 @@ from ralph.mcp.upstream.config import (
     load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
-from ralph.mcp.upstream.tool_catalog_cache import publish_tool_catalog_to_parent
 from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
@@ -591,19 +591,14 @@ def build_standalone_http_server(
                 upstream_servers,
                 on_unreachable="raise" if strict_mode_from_env(env_map) else "warn_and_skip",
             )
-            # First start owns the catalog: publish the freshly discovered
-            # mapping so the parent (and any respawn) sees it on disk.
-            publish_tool_catalog_to_parent(
-                workspace_root,
-                {
-                    server.name: [
-                        pt.tool
-                        for pt in upstream_reg.tool_definitions()
-                        if pt.server_name == server.name
-                    ]
-                    for server in upstream_servers
-                },
-            )
+            # First start owns the catalog; bounded publish keeps ``os.open`` from wedging on a FIFO.
+            catalog_payload = {
+                s.name: [
+                    pt.tool for pt in upstream_reg.tool_definitions() if pt.server_name == s.name
+                ]
+                for s in upstream_servers
+            }
+            publish_tool_catalog_bounded(workspace_root, catalog_payload, env_map, t0=t0)
         except McpServerError:
             (workspace_root / ".agent" / "mcp" / "parent_catalog.json").unlink(missing_ok=True)
             raise

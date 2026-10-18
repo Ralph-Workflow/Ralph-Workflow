@@ -35,12 +35,18 @@ from ralph.mcp.server._start_stage_tracker import record as _record_stage
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: Distinct non-zero exit codes for the pre-serve overrun paths. Two
+#: Distinct non-zero exit codes for the pre-serve overrun paths. Three
 #: codes (one per stage) so the parent's restart budget and the
 #: incident-triage sink can attribute the exit without re-reading
 #: the on-disk stage file.
 PRE_SERVE_OVERRUN_EXIT_CODE: int = 32
 SESSION_OVERRUN_EXIT_CODE: int = 33
+#: Catalog publication overrun: ``os.open`` on the catalog temp path
+#: blocked (hostile or wedged filesystem, FIFO replacement). Distinct
+#: from the session and config_loading overruns so the parent
+#: attributes the exit to the catalog publication stage without
+#: re-reading the on-disk stage file.
+CATALOG_PUBLISH_OVERRUN_EXIT_CODE: int = 34
 
 
 def fail_closed_pre_serve_overrun(
@@ -87,6 +93,7 @@ def fail_closed_pre_serve_overrun(
 
 
 __all__ = [
+    "CATALOG_PUBLISH_OVERRUN_EXIT_CODE",
     "PRE_SERVE_OVERRUN_EXIT_CODE",
     "SESSION_OVERRUN_EXIT_CODE",
     "fail_closed_pre_serve_overrun",
