@@ -71,6 +71,7 @@ def _writer_sites() -> list[str]:
     return offenders
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_direct_writer_sites_outside_rebase_state() -> None:
     offenders = _writer_sites()
     assert offenders == [], (

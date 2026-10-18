@@ -33,7 +33,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from ralph.agents.invoke._watch_capacity import (
+    _read_inotify_watch_limit,
+    _read_inotify_watch_user_total,
+    call_within_budget,
+)
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 # bounded-accumulator-ok: cap=64
@@ -45,7 +52,7 @@ _DECISIONS: deque[RestartDecision] = deque(maxlen=64)
 # is also exposed for tests that drive the API from multiple threads
 # to verify the contract.
 _DURABLE_SINK_LOCK: threading.Lock = threading.Lock()
-_DURABLE_SINK_PATH: Path | None = None
+_DURABLE_SINK_HOLDER: list[Path | None] = [None]
 
 
 class RestartReason(Enum):
@@ -107,13 +114,12 @@ def set_durable_sink_path(path: Path | None) -> None:
     created on first write, not on this call, so a misconfigured path
     only surfaces when a real decision is recorded.
     """
-    global _DURABLE_SINK_PATH  # noqa: PLW0603 — intentional module-state singleton for the sink path
-    _DURABLE_SINK_PATH = path
+    _DURABLE_SINK_HOLDER[0] = path
 
 
 def get_durable_sink_path() -> Path | None:
     """Return the currently configured durable sink path, or ``None``."""
-    return _DURABLE_SINK_PATH
+    return _DURABLE_SINK_HOLDER[0]
 
 
 def record_restart_decision(
@@ -165,7 +171,7 @@ def record_restart_decision(
     # swallowed: the bounded in-memory deque is the authoritative
     # record for the running supervisor and a failed disk append
     # must not stop the supervisor from recording this restart.
-    target = sink_path if sink_path is not None else _DURABLE_SINK_PATH
+    target = sink_path if sink_path is not None else _DURABLE_SINK_HOLDER[0]
     if target is not None:
         try:
             with _DURABLE_SINK_LOCK:
@@ -217,7 +223,7 @@ def read_durable_sink(path: Path | None = None) -> tuple[dict[str, object], ...]
     ``{"reason": "unavailable", "stage": "..."}`` is returned so the
     operator can distinguish "no log" from "log captured and empty".
     """
-    sink_path = path if path is not None else _DURABLE_SINK_PATH
+    sink_path = path if path is not None else _DURABLE_SINK_HOLDER[0]
     if sink_path is None or not sink_path.exists():
         return ()
     try:
@@ -250,7 +256,7 @@ def clear_durable_sink(path: Path | None = None) -> None:
     absent. Errors are swallowed: a failed cleanup of a sink file
     must not crash the bridge constructor.
     """
-    sink_path = path if path is not None else _DURABLE_SINK_PATH
+    sink_path = path if path is not None else _DURABLE_SINK_HOLDER[0]
     if sink_path is None:
         return
     try:
@@ -330,14 +336,19 @@ def pop_recent_host_contention_signals(window_s: float) -> tuple[tuple[float, st
     return tuple((ts, reason) for ts, reason in _HOST_CONTENTION_SIGNALS if now - ts <= window_s)
 
 
-def _clear_host_contention_signals() -> None:
-    """Test-only: clear the deque. Not for production use."""
+def clear_host_contention_signals() -> None:
+    """Clear the host contention signal deque."""
     _HOST_CONTENTION_SIGNALS.clear()
+
+
+_clear_host_contention_signals = clear_host_contention_signals
 
 
 def current_host_is_contended(
     *,
     budget_seconds: float = 1.0,
+    watch_limit_reader: Callable[[], int | None] | None = None,
+    watch_user_total_reader: Callable[[], int | None] | None = None,
 ) -> bool:
     """Return whether the host is currently under watch-budget pressure.
 
@@ -347,17 +358,18 @@ def current_host_is_contended(
     sleep on a /proc/<pid>/fdinfo scan) times out and returns False
     within the budget; the bridge is NEVER held while /proc is read.
     """
-    from ralph.agents.invoke._watch_capacity import (  # noqa: PLC0415 — lazy import avoids a circular dependency with ralph.agents.invoke
-        _read_inotify_watch_limit,
-        _read_inotify_watch_user_total,
-        call_within_budget,
+    limit_fn = watch_limit_reader if watch_limit_reader is not None else _read_inotify_watch_limit
+    user_total_fn = (
+        watch_user_total_reader
+        if watch_user_total_reader is not None
+        else _read_inotify_watch_user_total
     )
 
     def _probe() -> bool:
-        limit = _read_inotify_watch_limit()
+        limit = limit_fn()
         if limit is None or limit <= 0:
             return False
-        total = _read_inotify_watch_user_total()
+        total = user_total_fn()
         if total is None:
             return False
         return (total / limit) >= CONTENDED_WATCH_RATIO

@@ -1516,21 +1516,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.protocol._startup_timeouts",
             ("_PROBE_SAFETY_S",),
         ),
-        # wt-16: the R3 B-signal test imports the private
-        # ``_watch_capacity`` module directly to monkey-patch the
-        # kernel readers (``_read_inotify_watch_limit``,
-        # ``_read_inotify_watch_user_total``) at their source. The
-        # production wrapper
-        # (``ralph.mcp.server._mcp_health_event.current_host_is_contended``)
-        # uses ``call_within_budget`` from this module, so the test
-        # patches the source to keep the B-signal producer
-        # deterministic. Mirrors the ``test_preflight_error`` pattern
-        # above.
-        (
-            "tests/mcp/test_host_contention_current_signal.py",
-            "ralph.agents.invoke._watch_capacity",
-            ("_read_inotify_watch_limit", "_read_inotify_watch_user_total"),
-        ),
     }
 )
 

@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import ralph.cli.commands.run as run_module
 from ralph.config.general_config import GeneralConfig
 from ralph.config.loader import load_config
 from ralph.workspace.scope import WorkspaceScope
@@ -76,8 +77,6 @@ def test_run_start_sweep_receives_configured_retention(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The run-start bookkeeping path forwards the configured age to the sweep."""
-    import ralph.cli.commands.run as run_module
-
     captured: dict[str, object] = {}
 
     def _fake_sweep(

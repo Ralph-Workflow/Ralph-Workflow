@@ -10,8 +10,8 @@ moved the fix to the child itself: ``runtime.py`` reconfigures
 ``sys.stdout`` to line-buffered on the ``env_loaded`` path, and
 ``_fallback_standalone_server.py`` prints the banner with
 ``flush=True``. This test proves the banner reaches the parent's pipe
-within 1.0 s of stdout becoming readable, even when the parent did
-NOT pre-set ``PYTHONUNBUFFERED``.
+within 1.0 s of the child reaching the independent ``ready_to_serve`` stage,
+even when the parent did NOT pre-set ``PYTHONUNBUFFERED``.
 
 The test is ``subprocess_e2e`` because the bug lives in the cross-
 process pipe buffering: an in-process test that monkeypatches stdout
@@ -28,16 +28,19 @@ import socket
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
+
+from ralph.mcp.server._start_stage_tracker import read_last_stage
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 _BANNER_PREFIX = b"Ralph MCP server listening on "
 _BANNER_TIMEOUT_S = 1.0
-_OVERALL_BUDGET_S = 5.0
-_CHILD_STARTUP_BUDGET_S = 10.0
+_READY_TIMEOUT_S = 5.0
 
 
 def _bind_free_port() -> int:
@@ -50,45 +53,13 @@ def _bind_free_port() -> int:
     probe = socket.socket()
     try:
         probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
+        return int(probe.getsockname()[1])
     finally:
         probe.close()
 
 
-def _wait_first_event(
-    stream,
-    selector: selectors.DefaultSelector,
-    deadline: float,
-) -> bytes:
-    """Wait for the child's stdout to first become readable.
-
-    The child takes a few hundred ms to import the ralph package and
-    build the server before any byte lands on stdout. The 1.0 s banner
-    budget starts FROM this first readable event, not from the
-    ``Popen`` call.
-    """
-    chunks: list[bytes] = []
-    while time.monotonic() < deadline:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        events = selector.select(timeout=remaining)
-        if not events:
-            continue
-        for _key, _mask in events:
-            try:
-                chunk = os.read(stream.fileno(), 65536)
-            except BlockingIOError:
-                continue
-            if not chunk:
-                return b"".join(chunks)
-            chunks.append(chunk)
-            return b"".join(chunks)
-    return b"".join(chunks)
-
-
 def _read_until_banner(
-    stream,
+    stream: BinaryIO,
     selector: selectors.DefaultSelector,
     deadline: float,
 ) -> bytes:
@@ -126,7 +97,8 @@ def _read_until_banner(
 def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
     """Spawn the real CLI child WITHOUT ``PYTHONUNBUFFERED`` and assert the
     ``Ralph MCP server listening on ...`` banner reaches the parent
-    within 1.0 s of stdout becoming readable.
+    within 1.0 s of reaching the ready_to_serve stage while the child
+    remains alive.
 
     Failure mode this guards against: a fully-buffered child stdout
     holds the banner inside the pipe buffer until either the buffer
@@ -136,11 +108,14 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
     """
     port = _bind_free_port()
     workspace = tmp_path
+    stage_id = str(uuid.uuid4())
 
     # Build a clean env: no PYTHONUNBUFFERED, no PYTHONIOENCODING, and
     # no RALPH_MCP_INHERITED_FD (this is a fresh CLI invocation, not a
     # bridge-managed respawn on an inherited FD). PYTHONHASHSEED=0
     # keeps the env deterministic for any code that hashes by accident.
+    # Pass an explicit stage_id via RALPH_MCP_STAGE_ID so parent and
+    # child address the same stage file.
     env = {
         key: value
         for key, value in os.environ.items()
@@ -148,6 +123,7 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
     }
     env["PYTHONHASHSEED"] = "0"
     env["RALPH_MCP_INHERITED_FD"] = ""
+    env["RALPH_MCP_STAGE_ID"] = stage_id
 
     # The child is the real production CLI: ``python -m ralph.mcp.server``.
     # ``cwd=`` is the ralph-workflow project root so ``-m`` resolves the
@@ -177,68 +153,40 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
 
     assert process.stdout is not None
 
-    banner_found = False
-    initial_chunk = b""
-    accumulated = b""
-    overall_deadline = time.monotonic() + _OVERALL_BUDGET_S
+    try:
+        # Step 1: Wait for independent serving signal: poll
+        # read_last_stage(workspace, spawn_id=stage_id) == "ready_to_serve"
+        # with a bounded timeout (5.0s).
+        ready_deadline = time.monotonic() + _READY_TIMEOUT_S
+        ready_reached = False
+        while time.monotonic() < ready_deadline:
+            if read_last_stage(workspace, spawn_id=stage_id) == "ready_to_serve":
+                ready_reached = True
+                break
+            if process.poll() is not None:
+                break
+            time.sleep(0.01)
 
-    with selectors.DefaultSelector() as selector:
-        selector.register(process.stdout, selectors.EVENT_READ)
-        try:
-            # Step 1: wait for the child's stdout to first become
-            # readable. This absorbs the cold-start cost (imports,
-            # stage recording, server build) so the 1.0 s banner
-            # budget measures ONLY the buffering behaviour we are
-            # regressing on, not child-startup latency.
-            startup_deadline = time.monotonic() + _CHILD_STARTUP_BUDGET_S
-            initial_chunk = _wait_first_event(
+        assert ready_reached, (
+            f"CLI child failed to reach 'ready_to_serve' stage within {_READY_TIMEOUT_S:.1f}s; "
+            f"last_stage={read_last_stage(workspace, spawn_id=stage_id)!r}, "
+            f"returncode={process.poll()}"
+        )
+
+        # Step 2: As soon as ready_to_serve is reached, start the 1.0s banner deadline.
+        banner_deadline = time.monotonic() + _BANNER_TIMEOUT_S
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            accumulated = _read_until_banner(
                 process.stdout,
                 selector,
-                startup_deadline,
+                banner_deadline,
             )
-            if initial_chunk:
-                accumulated = initial_chunk
-                if _BANNER_PREFIX in accumulated:
-                    banner_found = True
 
-            # Step 2: now that the pipe is open, give the banner
-            # exactly 1.0 s to appear. A buffered child would sit
-            # silent until the buffer fills; a fixed child emits
-            # the banner the moment the serve_forever boundary
-            # crosses.
-            if not banner_found:
-                banner_deadline = time.monotonic() + _BANNER_TIMEOUT_S
-                more = _read_until_banner(
-                    process.stdout,
-                    selector,
-                    banner_deadline,
-                )
-                accumulated = initial_chunk + more
-                if _BANNER_PREFIX in accumulated:
-                    banner_found = True
-        finally:
-            if not banner_found and process.poll() is not None and process.stdout is not None:
-                # Drain any remaining bytes (e.g. late banner after
-                # the child exits and the buffer is flushed by the
-                # kernel) so the failure message is informative.
-                try:
-                    rest = process.stdout.read()
-                except Exception:
-                    rest = b""
-                if rest:
-                    accumulated += rest
-                    if _BANNER_PREFIX in accumulated:
-                        banner_found = True
-
-    try:
-        # If the banner never arrived, surface the child's stderr so
-        # the failure message is actionable (a clean run only ever
-        # produces the banner; an error produces a stack trace on
-        # stderr that the parent cannot otherwise see once stdout
-        # is buffered).
-        assert banner_found, (
+        # Step 3: Assert that _BANNER_PREFIX in accumulated.
+        assert _BANNER_PREFIX in accumulated, (
             "CLI child never emitted the 'Ralph MCP server listening on ' "
-            "banner within 1.0s of stdout becoming readable. The bug is "
+            f"banner within {_BANNER_TIMEOUT_S:.1f}s of ready_to_serve. The bug is "
             "back: the child is block-buffering stdout because "
             "``PYTHONUNBUFFERED`` was not inherited and the "
             "line_buffering reconfigure in runtime.py / the explicit "
@@ -247,14 +195,14 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
             f"argv was: {argv!r}; returncode={process.returncode}"
         )
 
-        # Bound the absolute wall-clock too: a banner at 0.95s inside a
-        # 4.5s test is fine; a banner at 4.9s means the child was just
-        # slow, not the buffered-output bug.
-        assert time.monotonic() < overall_deadline, (
-            f"banner arrived but overall test budget (>{_OVERALL_BUDGET_S:.1f}s) was exceeded"
+        # Step 4: Assert that process.poll() is None when the banner is accepted
+        # (child MUST be alive!).
+        assert process.poll() is None, (
+            f"CLI child was expected to be alive when banner was accepted, "
+            f"but process exited with code {process.returncode}"
         )
     finally:
-        # Always reap the child so a CI hang cannot leak a zombie.
+        # Retain bounded cleanup (process.terminate(), wait).
         if process.poll() is None:
             process.terminate()
             try:

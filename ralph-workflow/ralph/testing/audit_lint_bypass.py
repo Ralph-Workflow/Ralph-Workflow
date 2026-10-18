@@ -169,29 +169,6 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
-    # wt-16: ``current_host_is_contended`` lazy-imports
-    # ``ralph.agents.invoke._watch_capacity`` so a
-    # mcp<->agents invoke import cycle is not closed. The bounded
-    # /proc probe lives in the agents side and is intentionally
-    # not promoted to a public API.
-    ("_mcp_health_event", "PLC0415"),
-    # wt-16: registry.build() uses bounded-concurrent fan-out via
-    # ThreadPoolExecutor + as_completed; the per-probe branch fan-out
-    # (sentinel / success / strict-mode raise / warn-and-skip / late-
-    # result discard / registry-collision) is the contract and is not
-    # flattenable without losing the budget-exhausted observability
-    # signals. ``PLR0915`` (statements): the deadline enforcement is a
-    # single shared monotonic captured once plus per-worker and per-
-    # future reads; the linear flow is the invariant.
-    ("registry", "PLR0912"),
-    ("registry", "PLR0915"),
-    # wt-16: check_health_and_restart_if_needed now has TWO
-    # probe-failure counters (regular + deferred-under-contention),
-    # a fresh-contention consultation, the defer-or-yield branch, the
-    # existing process-exit branch (untouched), and the existing
-    # successful-recovery reset; each branch is a short-circuit
-    # boundary and the function is the documented R3 guard.
-    ("lifecycle", "PLR0912"),
     # smoke_multimodal.grade_multimodal_evidence has the 4-condition
     # contract branch fan-out (verified read_media call + server-persisted
     # receipt == MEDIA_RECEIPT + verified replay-digest call + DIMENSIONS

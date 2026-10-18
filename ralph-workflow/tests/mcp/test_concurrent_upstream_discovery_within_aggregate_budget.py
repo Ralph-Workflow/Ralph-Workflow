@@ -26,6 +26,7 @@ and ``_monotonic``) keep the test hermetic.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import threading
 from collections.abc import Callable
@@ -153,6 +154,33 @@ class _SequentialAdvancingClient:
             UpstreamTool(
                 name=f"tool-{self._server.name}",
                 description="sequential-advancing fake",
+                input_schema={"type": "object"},
+            )
+        ]
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        return {}
+
+
+class _LateSuccessfulClient:
+    """Fake client that returns tools successfully, but advances clock past deadline."""
+
+    def __init__(
+        self,
+        server: UpstreamMcpServer,
+        time_advancer: Callable[[float], None],
+        advance_by: float,
+    ) -> None:
+        self._server = server
+        self._time_advancer = time_advancer
+        self._advance_by = advance_by
+
+    def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+        self._time_advancer(self._advance_by)
+        return [
+            UpstreamTool(
+                name=f"tool-{self._server.name}",
+                description="late successful fake",
                 input_schema={"type": "object"},
             )
         ]
@@ -504,3 +532,93 @@ def test_discovery_budget_strictly_below_preflight_unchanged() -> None:
     preflight = mcp_preflight_timeout_from_env({})
     discovery = mcp_discovery_budget_from_env({})
     assert discovery < preflight
+
+
+def test_as_completed_timeout_forces_collector_expiry() -> None:
+    """Forcing concurrent.futures.TimeoutError in as_completed:
+    strict mode raises UpstreamValidationError naming unreached server,
+    and warn_and_skip returns an empty registry without raising.
+    """
+    from ralph.mcp.upstream.validation import UpstreamValidationError
+
+    servers = _make_servers("srv-1", "srv-2")
+
+    def timeout_as_completed(*args: object, **kwargs: object) -> object:
+        class _RaisingIterator:
+            def __iter__(self) -> _RaisingIterator:
+                return self
+
+            def __next__(self) -> object:
+                raise concurrent.futures.TimeoutError("forced collector timeout")
+
+        return _RaisingIterator()
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "ralph.mcp.upstream.registry.concurrent.futures.as_completed",
+            timeout_as_completed,
+        )
+
+        # Strict mode: raises UpstreamValidationError naming unreached server
+        with pytest.raises(UpstreamValidationError) as exc_info:
+            UpstreamRegistry.build(
+                servers,
+                client_factory=cast(
+                    "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                    lambda s: _LateSuccessfulClient(s, lambda _: None, 0.0),
+                ),
+                on_unreachable="raise",
+            )
+        assert "is unreachable" in str(exc_info.value)
+        assert any(name in str(exc_info.value) for name in ("srv-1", "srv-2"))
+
+        # Warn and skip mode: does not raise and returns empty registry (no late tools)
+        registry = UpstreamRegistry.build(
+            servers,
+            client_factory=cast(
+                "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                lambda s: _LateSuccessfulClient(s, lambda _: None, 0.0),
+            ),
+            on_unreachable="warn_and_skip",
+        )
+        assert registry.tool_definitions() == []
+
+
+def test_all_late_successful_completion_discarded() -> None:
+    """All workers complete successfully, but past the shared deadline:
+    strict mode raises UpstreamValidationError naming unreached server,
+    and warn_and_skip returns empty registry without late tools.
+    """
+    from ralph.mcp.upstream.validation import UpstreamValidationError
+
+    servers = _make_servers("late-1", "late-2")
+
+    # --- Strict mode ---
+    clock_strict = _FakeMonotonic()
+    with pytest.raises(UpstreamValidationError) as exc_info:
+        UpstreamRegistry.build(
+            servers,
+            client_factory=cast(
+                "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+                lambda s: _LateSuccessfulClient(s, clock_strict.advance, 30.0),
+            ),
+            on_unreachable="raise",
+            _monotonic=clock_strict,
+        )
+    assert "is unreachable" in str(exc_info.value)
+    assert any(name in str(exc_info.value) for name in ("late-1", "late-2"))
+
+    # --- Warn and skip mode ---
+    clock_warn = _FakeMonotonic()
+    registry = UpstreamRegistry.build(
+        servers,
+        client_factory=cast(
+            "Callable[[UpstreamMcpServer], HttpUpstreamClient | StdioUpstreamClient] | None",
+            lambda s: _LateSuccessfulClient(s, clock_warn.advance, 30.0),
+        ),
+        on_unreachable="warn_and_skip",
+        _monotonic=clock_warn,
+    )
+    # Both probes succeeded, but landed after deadline -> all discarded as late results.
+    # Registry must contain no late tools!
+    assert registry.tool_definitions() == []

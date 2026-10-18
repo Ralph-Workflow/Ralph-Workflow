@@ -497,7 +497,141 @@ class RestartAwareMcpBridge:
             lines.pop()  # trailing newline, not a line of content
         return tuple(lines[-_LOG_TAIL_LINES:])
 
-    def check_health_and_restart_if_needed(self) -> bool:  # noqa: PLR0912 — see audit_lint_bypass._NOQA_ALLOWLIST
+    def _run_health_probe(self) -> tuple[bool, float | None, bool]:
+        """Run the configured probe under lock.
+
+        Returns (probe_failed, probe_duration_s, infra_error).
+        """
+        if self._probe_fn is None:
+            return False, None, False
+        probe_timeout = (
+            self._probe_timeout_fn() if self._probe_timeout_fn is not None else timedelta(seconds=5)
+        )
+        probe_start = time.monotonic()
+        try:
+            self._probe_fn(self._inner.endpoint, probe_timeout)
+            return False, None, False
+        except Exception as exc:
+            if (
+                isinstance(exc, PreflightError)
+                and self._activity_relay is not None
+                and "SUPERVISION_INFRASTRUCTURE_FAILURE" in str(exc)
+            ):
+                self._activity_relay.record_sender_error(str(exc))
+                return False, None, True
+            return True, time.monotonic() - probe_start, False
+
+    def _perform_restart(
+        self,
+        *,
+        process_exited: bool,
+        probe_duration_s: float | None,
+    ) -> bool:
+        """Perform MCP server restart under lock and record the decision.
+
+        Must be called with self._lock held.
+        """
+        if self._restart_count >= self._restart_policy.max_restarts:
+            reason = "probe failed" if not process_exited else "exited"
+            raise McpServerError(
+                f"MCP server {reason} and restart budget exhausted "
+                f"(current={self._restart_count}, "
+                f"max={self._restart_policy.max_restarts})",
+                restart_count=self._restart_count,
+            )
+
+        self._restart_count += 1
+        attempt_index = self._restart_count
+        if not process_exited:
+            logger.warning(
+                "MCP server unresponsive (probe timed out or failed); restarting ({}/{})",
+                attempt_index,
+                self._restart_policy.max_restarts,
+            )
+        else:
+            logger.warning(
+                "MCP server process exited unexpectedly; restarting ({}/{})",
+                attempt_index,
+                self._restart_policy.max_restarts,
+            )
+        log_tail = self._read_mcp_log_tail()
+        _record_restart_decision(
+            sink_path=self._durable_sink_path,
+            reason=(RestartReason.PROCESS_EXITED if process_exited else RestartReason.PROBE_FAILED),
+            exit_status=self._inner.process.poll() if process_exited else None,
+            probe_duration_s=probe_duration_s if not process_exited else None,
+            log_tail=log_tail,
+            stage="process_exited" if process_exited else "probe_failed",
+        )
+        self._cooldown_after_failure()
+        try:
+            self._inner.shutdown()
+            self._inner = self._restart_fn()
+        except Exception as restart_exc:
+            raise McpServerError(
+                f"MCP restart attempt {attempt_index}/"
+                f"{self._restart_policy.max_restarts} failed: {restart_exc}",
+                restart_count=self._restart_count,
+                last_stage=_restart_error_fields(restart_exc)[0],
+                elapsed_s=_restart_error_fields(restart_exc)[1],
+            ) from restart_exc
+        self._consecutive_probe_failures = 0
+        self._consecutive_probe_failures_deferred = 0
+        logger.info(
+            "MCP server restarted on stable endpoint {}; restart_count={}",
+            self._inner.endpoint,
+            self._restart_count,
+        )
+        return True
+
+    def _handle_failed_probe_under_lock(
+        self,
+        *,
+        fresh_b_signal: bool,
+        probe_duration_s: float | None,
+    ) -> bool:
+        """Handle contention and failure accounting after a failed probe under lock."""
+        with self._lock:
+            if self._inner.process.poll() is not None:
+                return self._perform_restart(process_exited=True, probe_duration_s=None)
+
+            fresh_w_signal = bool(
+                pop_recent_host_contention_signals(self._host_contention_window_seconds)
+            )
+            fresh_contention = fresh_w_signal or fresh_b_signal
+            if fresh_contention:
+                self._consecutive_probe_failures_deferred += 1
+                if (
+                    self._consecutive_probe_failures_deferred
+                    > self._restart_policy.max_contention_deferrals
+                ):
+                    self._consecutive_probe_failures_deferred = 0
+                    self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART
+                    return self._perform_restart(
+                        process_exited=False, probe_duration_s=probe_duration_s
+                    )
+                logger.debug(
+                    "MCP server probe failed with fresh contention signal; deferring restart "
+                    "(deferred={}/{}, w={}, b={})",
+                    self._consecutive_probe_failures_deferred,
+                    self._restart_policy.max_contention_deferrals,
+                    fresh_w_signal,
+                    fresh_b_signal,
+                )
+                return False
+
+            self._consecutive_probe_failures += 1
+            if self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART:
+                logger.debug(
+                    "MCP server probe failed ({}/{} before restart); server still running",
+                    self._consecutive_probe_failures,
+                    _PROBE_FAILURES_BEFORE_RESTART,
+                )
+                return False
+
+            return self._perform_restart(process_exited=False, probe_duration_s=probe_duration_s)
+
+    def check_health_and_restart_if_needed(self) -> bool:
         """Check if MCP server is alive and responsive; restart if not.
 
         Treats the bridge as unhealthy when either (a) the subprocess has exited
@@ -511,181 +645,29 @@ class RestartAwareMcpBridge:
         Thread-safe: may be called from a background McpSupervisor thread.
         """
         with self._lock:
-            process_exited = self._inner.process.poll() is not None
-            probe_failed = False
-            probe_duration_s: float | None = None
-            if not process_exited and self._probe_fn is not None:
-                try:
-                    probe_timeout = (
-                        self._probe_timeout_fn()
-                        if self._probe_timeout_fn is not None
-                        else timedelta(seconds=5)
-                    )
-                    probe_start = time.monotonic()
-                    self._probe_fn(self._inner.endpoint, probe_timeout)
-                except Exception as exc:
-                    if (
-                        isinstance(exc, PreflightError)
-                        and self._activity_relay is not None
-                        and "SUPERVISION_INFRASTRUCTURE_FAILURE" in str(exc)
-                    ):
-                        self._activity_relay.record_sender_error(str(exc))
-                        return False
-                    probe_failed = True
-                    probe_duration_s = time.monotonic() - probe_start
+            if self._inner.process.poll() is not None:
+                return self._perform_restart(process_exited=True, probe_duration_s=None)
 
-            if probe_failed:
-                # R3 host-contention guard: consult BOTH signals
-                # (workspace-monitor ``watch_capacity_predicted`` deque
-                # + a producer-injected B-signal). When either is
-                # fresh, the probe miss is likely a load artifact, not
-                # a server fault, so DEFER instead of counting toward
-                # the regular 3-miss restart policy. The deferral is
-                # bounded by ``max_contention_deferrals``; once the
-                # budget is exhausted the guard yields back to the
-                # existing restart path.
-                fresh_w_signal = bool(
-                    pop_recent_host_contention_signals(self._host_contention_window_seconds)
-                )
-                producer = self._contention_signal_producer or current_host_is_contended
-                try:
-                    fresh_b_signal = bool(producer())
-                except Exception:
-                    # Producer raised — a blocked /proc reader, a stale
-                    # mock. Treat as no fresh signal; the existing
-                    # restart path stays in charge.
-                    fresh_b_signal = False
-                fresh_contention = fresh_w_signal or fresh_b_signal
-                if fresh_contention:
-                    self._consecutive_probe_failures_deferred += 1
-                    if (
-                        self._consecutive_probe_failures_deferred
-                        > self._restart_policy.max_contention_deferrals
-                    ):
-                        # Guard YIELDS: deferral budget exhausted,
-                        # fall through to the existing restart path.
-                        # Reset the deferred counter (restart signals
-                        # "host contention is over" for accounting
-                        # purposes). Charge the regular probe-failure
-                        # counter to the restart threshold so the
-                        # existing ``< _PROBE_FAILURES_BEFORE_RESTART``
-                        # branch passes through to the restart below.
-                        self._consecutive_probe_failures_deferred = 0
-                        self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART
-                        # FALL THROUGH to the restart branch below
-                    else:
-                        logger.debug(
-                            "MCP server probe failed with fresh contention signal; deferring restart "
-                            "(deferred={}/{}, w={}, b={})",
-                            self._consecutive_probe_failures_deferred,
-                            self._restart_policy.max_contention_deferrals,
-                            fresh_w_signal,
-                            fresh_b_signal,
-                        )
-                        return False
-                else:
-                    self._consecutive_probe_failures += 1
-            else:
-                # Successful probe: BOTH counters reset.
+            probe_failed, probe_duration_s, infra_error = self._run_health_probe()
+            if infra_error:
+                return False
+
+            if not probe_failed:
                 self._consecutive_probe_failures = 0
                 self._consecutive_probe_failures_deferred = 0
-
-            if not process_exited and not probe_failed:
                 return False
 
-            if (
-                not process_exited
-                and self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART
-            ):
-                logger.debug(
-                    "MCP server probe failed ({}/{} before restart); server still running",
-                    self._consecutive_probe_failures,
-                    _PROBE_FAILURES_BEFORE_RESTART,
-                )
-                return False
+        # Probe failed: lock is RELEASED before calling producer()
+        producer = self._contention_signal_producer or current_host_is_contended
+        try:
+            fresh_b_signal = bool(producer())
+        except Exception:
+            fresh_b_signal = False
 
-            if self._restart_count >= self._restart_policy.max_restarts:
-                reason = "probe failed" if probe_failed and not process_exited else "exited"
-                raise McpServerError(
-                    f"MCP server {reason} and restart budget exhausted "
-                    f"(current={self._restart_count}, "
-                    f"max={self._restart_policy.max_restarts})",
-                    restart_count=self._restart_count,
-                )
-
-            # S1: increment the counter BEFORE calling restart_fn so a
-            # raised exception (a foreign process holding the port,
-            # a sub-process crash, an OOM-killed runtime) is reflected
-            # in ``restart_count`` and the budget-exhausted check
-            # above fires on the NEXT call. The previous ordering
-            # ("call first, increment after") left the counter at
-            # the pre-attempt value forever, so the budget never
-            # tripped and the supervisor kept retrying until it
-            # starved the run.
-            self._restart_count += 1
-            attempt_index = self._restart_count
-            if probe_failed and not process_exited:
-                logger.warning(
-                    "MCP server unresponsive (probe timed out or failed); restarting ({}/{})",
-                    attempt_index,
-                    self._restart_policy.max_restarts,
-                )
-            else:
-                logger.warning(
-                    "MCP server process exited unexpectedly; restarting ({}/{})",
-                    attempt_index,
-                    self._restart_policy.max_restarts,
-                )
-            # R3-sink: record this restart decision in the bounded
-            # health-event sink so an incident triage has direct
-            # evidence of every restart reason, exit status, and
-            # probe duration — no loguru parsing required.
-            # Capture the child log tail (last _LOG_TAIL_LINES lines) so an incident
-            # investigator can see the subprocess output at decision time;
-            # ``None`` signals "log was unavailable" and is stored as
-            # ``None`` so the durable record distinguishes unavailable
-            # from "log was present but empty".
-            log_tail = self._read_mcp_log_tail()
-            _record_restart_decision(
-                sink_path=self._durable_sink_path,
-                reason=(
-                    RestartReason.PROCESS_EXITED if not probe_failed else RestartReason.PROBE_FAILED
-                ),
-                exit_status=self._inner.process.poll() if process_exited else None,
-                probe_duration_s=probe_duration_s if probe_failed else None,
-                log_tail=log_tail,
-                stage="process_exited" if process_exited else "probe_failed",
-            )
-            # S4: space every restart by the policy cooldown. The
-            # backoff is unconditional — process-exit and probe-failure
-            # restarts are backed off identically to McpServerError
-            # restarts (fresh child processes spike the same host
-            # load regardless of why the previous one died).
-            self._cooldown_after_failure()
-            try:
-                self._inner.shutdown()
-                self._inner = self._restart_fn()
-            except Exception as restart_exc:
-                # The restart attempt itself failed. The counter has
-                # already advanced (S1) so the next call will see
-                # this attempt counted. The typed McpServerError
-                # path stays — the exception is propagated to the
-                # caller (typically the supervisor thread) with the
-                # actual ``restart_count`` visible.
-                raise McpServerError(
-                    f"MCP restart attempt {attempt_index}/"
-                    f"{self._restart_policy.max_restarts} failed: {restart_exc}",
-                    restart_count=self._restart_count,
-                    last_stage=_restart_error_fields(restart_exc)[0],
-                    elapsed_s=_restart_error_fields(restart_exc)[1],
-                ) from restart_exc
-            self._consecutive_probe_failures = 0
-            logger.info(
-                "MCP server restarted on stable endpoint {}; restart_count={}",
-                self._inner.endpoint,
-                self._restart_count,
-            )
-            return True
+        return self._handle_failed_probe_under_lock(
+            fresh_b_signal=fresh_b_signal,
+            probe_duration_s=probe_duration_s,
+        )
 
     def reset_tool_registry(self) -> None:
         """Rebuild the visible tool list by rerunning the restart path.

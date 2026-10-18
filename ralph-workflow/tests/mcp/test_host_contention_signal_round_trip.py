@@ -1,10 +1,18 @@
-"""W-signal: workspace monitor → bridge contention signal transport."""
+import pytest
 
 from ralph.mcp.server._mcp_health_event import (
     _clear_host_contention_signals,
     pop_recent_host_contention_signals,
     record_host_contention_signal,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_contention_signals():
+    """Clear the module-level contention deque before and after each test."""
+    _clear_host_contention_signals()
+    yield
+    _clear_host_contention_signals()
 
 
 def test_record_and_pop_round_trip():

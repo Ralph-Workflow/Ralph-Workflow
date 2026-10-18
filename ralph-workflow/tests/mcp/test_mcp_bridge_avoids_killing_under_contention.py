@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,11 +17,12 @@ from ralph.mcp.server._mcp_health_event import (
 )
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 
-pytestmark = pytest.mark.subprocess_e2e  # not strictly required, but safe
+if TYPE_CHECKING:
+    from datetime import timedelta
 
 
 @pytest.fixture(autouse=True)
-def _isolate_contention_signals():
+def _isolate_contention_signals() -> Iterator[None]:
     """Clear the module-level contention deque before AND after each test.
 
     The deque is a module-level singleton shared across the whole
@@ -65,7 +68,8 @@ def _make_inner(poll_result: int | None = None) -> lifecycle.StandaloneMcpProces
 
 
 def _make_bridge(
-    probe_fn, contention_producer: Callable[[], bool] | None = None
+    probe_fn: Callable[[str, timedelta], None],
+    contention_producer: Callable[[], bool] | None = None,
 ) -> lifecycle.RestartAwareMcpBridge:
     inner = _make_inner(poll_result=None)
 
@@ -83,8 +87,8 @@ def _make_bridge(
 
 
 # 1. Blocked-reader / no signal: existing 3-miss policy still applies
-def test_no_signal_regular_three_miss_policy_still_fires():
-    def always_fail_probe(endpoint, timeout):
+def test_no_signal_regular_three_miss_policy_still_fires() -> None:
+    def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
 
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: False)
@@ -98,10 +102,10 @@ def test_no_signal_regular_three_miss_policy_still_fires():
 
 
 # 2. W-only: B False, W True → defer
-def test_w_only_defers_restart():
+def test_w_only_defers_restart() -> None:
     record_host_contention_signal("watch_capacity_predicted")
 
-    def always_fail_probe(endpoint, timeout):
+    def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
 
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: False)
@@ -116,8 +120,8 @@ def test_w_only_defers_restart():
 
 
 # 3. B-only: B True, W empty → defer
-def test_b_only_defers_restart():
-    def always_fail_probe(endpoint, timeout):
+def test_b_only_defers_restart() -> None:
+    def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
 
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: True)
@@ -131,10 +135,10 @@ def test_b_only_defers_restart():
 
 
 # 4. Both: B True, W True → defer
-def test_both_defers_restart():
+def test_both_defers_restart() -> None:
     record_host_contention_signal("watch_capacity_predicted")
 
-    def always_fail_probe(endpoint, timeout):
+    def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
 
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: True)
@@ -147,36 +151,43 @@ def test_both_defers_restart():
 
 
 # 5. Successful recovery: contended misses + success resets BOTH counters
-def test_successful_recovery_preserves_server():
+def test_successful_recovery_preserves_server() -> None:
     record_host_contention_signal("watch_capacity_predicted")
-    fail_count = [0]
+    should_fail = [True]
 
-    def sometimes_failing_probe(endpoint, timeout):
-        fail_count[0] += 1
-        if fail_count[0] <= 3:
+    def controllable_probe(endpoint: str, timeout: timedelta) -> None:
+        if should_fail[0]:
             raise RuntimeError("probe failed")
-        # 4th call succeeds
 
-    bridge = _make_bridge(sometimes_failing_probe, contention_producer=lambda: True)
+    bridge = _make_bridge(controllable_probe, contention_producer=lambda: True)
     # 3 contended misses
-    bridge.check_health_and_restart_if_needed()
-    bridge.check_health_and_restart_if_needed()
-    bridge.check_health_and_restart_if_needed()
+    for _ in range(3):
+        bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 0
     assert bridge._consecutive_probe_failures_deferred == 3
+
     # Successful probe → BOTH counters reset
+    should_fail[0] = False
     bridge.check_health_and_restart_if_needed()
     assert bridge._consecutive_probe_failures == 0
     assert bridge._consecutive_probe_failures_deferred == 0
-    # Another 3 contended misses → defer again
+    assert bridge._restart_count == 0
+
+    # Second sequence of 3 contended misses
+    should_fail[0] = True
     for _ in range(3):
-        fail_count[0] += 1
         bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 0
+    assert bridge._consecutive_probe_failures_deferred == 3
+
+    # 4th miss triggers restart
+    bridge.check_health_and_restart_if_needed()
+    assert bridge._restart_count == 1
+    assert bridge._consecutive_probe_failures_deferred == 0
 
 
 # 6. Process-exit: not gated by contention signal
-def test_process_exit_not_gated_by_contention():
+def test_process_exit_not_gated_by_contention() -> None:
     record_host_contention_signal("watch_capacity_predicted")
     # Build a bridge whose process.poll() returns non-None.
     inner = _make_inner(poll_result=1)
@@ -194,3 +205,41 @@ def test_process_exit_not_gated_by_contention():
     )
     bridge.check_health_and_restart_if_needed()
     assert bridge._restart_count == 1
+
+
+# 7. Lock availability: lock is released during contention producer call
+def test_lock_released_during_contention_producer_call() -> None:
+    producer_entered = threading.Event()
+    release_producer = threading.Event()
+    other_thread_acquired_lock = threading.Event()
+
+    def blocking_producer() -> bool:
+        producer_entered.set()
+        release_producer.wait(timeout=5.0)
+        return True
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        raise RuntimeError("probe failed")
+
+    bridge = _make_bridge(failing_probe, contention_producer=blocking_producer)
+
+    supervisor_thread = threading.Thread(
+        target=bridge.check_health_and_restart_if_needed,
+        daemon=True,
+    )
+    supervisor_thread.start()
+
+    assert producer_entered.wait(timeout=2.0) is True
+
+    # While the blocking producer is running outside the lock,
+    # another thread can acquire bridge._lock without blocking.
+    acquired = bridge._lock.acquire(blocking=False)
+    if acquired:
+        other_thread_acquired_lock.set()
+        bridge._lock.release()
+
+    release_producer.set()
+    supervisor_thread.join(timeout=2.0)
+
+    assert other_thread_acquired_lock.is_set() is True
+    assert not supervisor_thread.is_alive()

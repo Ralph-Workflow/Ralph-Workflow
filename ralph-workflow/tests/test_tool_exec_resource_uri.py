@@ -22,6 +22,8 @@ import base64
 import json
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_resource_uri import (
@@ -130,6 +132,7 @@ def test_resolver_truncates_large_spills(tmp_path: Path) -> None:
     assert len(data) == MAX_READ_BYTES
 
 
+@pytest.mark.timeout_seconds(5)
 def test_exec_summary_registers_spill_with_session_resolver(
     tmp_path: Path,
 ) -> None:
@@ -177,6 +180,7 @@ def test_exec_summary_registers_spill_with_session_resolver(
     assert stderr_data == stderr_body
 
 
+@pytest.mark.timeout_seconds(5)
 def test_exec_summary_registers_stderr_spill_even_when_below_individual_threshold(
     tmp_path: Path,
 ) -> None:

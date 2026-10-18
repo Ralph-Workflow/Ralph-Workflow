@@ -44,6 +44,16 @@ def _default_fake_reserve_listening_socket(
     return "127.0.0.1", bound_port, sock
 
 
+@pytest.fixture(autouse=True)
+def _isolate_contention_signals() -> None:
+    """Clear the module-level contention deque before and after each test."""
+    from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
+
+    clear_host_contention_signals()
+    yield
+    clear_host_contention_signals()
+
+
 class FakeProcess:
     def __init__(self, poll_result: int | None = None, pid: int = 12345) -> None:
         self._poll_result = poll_result
