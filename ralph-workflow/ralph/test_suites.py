@@ -137,6 +137,14 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_retained_resolution_handoff.py",
     "tests/test_retained_resolution_dispatch.py",
     "tests/integration/test_retained_integration_acceptance.py",
+    # AC5-AC9 real-Git acceptance proofs: throttle-suppressed publish,
+    # killed-between-landing-and-push recovery, unreachable-then-reachable
+    # auto-push, concurrent remote advance with real ref equality. These
+    # scenarios were previously only mocked; the live git boundary proof
+    # must stay on the default ``make test`` profile so the publication
+    # reconciler cannot regress to fire-once semantics or fire-and-forget
+    # ``origin``/``main`` defaults.
+    "tests/test_auto_integrate_acceptance_scenarios_e2e.py",
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.

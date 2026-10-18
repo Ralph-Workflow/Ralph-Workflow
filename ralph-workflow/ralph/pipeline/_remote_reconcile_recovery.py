@@ -103,9 +103,14 @@ def _maybe_release_target_diagnostic(
     """Release the diagnostic evidence through the typed record store.
 
     Returns ``None`` when there is no diagnostic evidence OR the
-    release succeeded. Returns a typed :class:`RebaseState` for
-    CHANGED/UNKNOWN verdicts (retained skip) or BUSY/UNREADABLE
-    refusals (bounded retry vs intervention).
+    release succeeded. Returns a typed :class:`RebaseState` only for
+    CHANGED verdicts (retained skip -- the only path to operator
+    escalation, which means a different worktree rewrote the
+    durable identity) or BUSY/UNREADABLE refusals (bounded retry
+    vs intervention). The UNKNOWN verdict (expired or unparseable
+    lease) is fail-open: the caller auto-releases and re-derives
+    state from Git, matching the O1 contract that an older or
+    pre-fix version's lease must never block a newer run.
     """
     if not record.diagnostic_evidence:
         return None
@@ -114,9 +119,17 @@ def _maybe_release_target_diagnostic(
     from ralph.pipeline.operation_evidence import EvidenceVerdict
 
     verdict = release_verified_diagnostic(owner, record)
-    if verdict != EvidenceVerdict.UNCHANGED:
-        return _retained(record, diagnostic_evidence_gate_reason(verdict))
-    return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
+    if verdict == EvidenceVerdict.UNCHANGED:
+        return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
+    if verdict == EvidenceVerdict.UNKNOWN:
+        # Fail-open: expired or unparseable lease -> auto-release
+        # through the typed record store. Returns None on success
+        # (caller proceeds) or a refusal RebaseState on BUSY /
+        # UNREADABLE.
+        return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
+    # CHANGED: a different worktree rewrote the durable identity
+    # under us. This is the only path to operator escalation.
+    return _retained(record, diagnostic_evidence_gate_reason(verdict))
 
 
 def _continue_target_reconciliation(

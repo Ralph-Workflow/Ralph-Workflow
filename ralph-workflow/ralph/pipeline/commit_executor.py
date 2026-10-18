@@ -282,11 +282,68 @@ def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
 
 
 def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
-    """Resolve the target branch to safely reattach a detached HEAD to."""
+    """Resolve the target branch to safely reattach a detached HEAD to.
+
+    A detached commit that is not at the tip of the chosen branch
+    is a safety hazard: ``git symbolic-ref HEAD refs/heads/<branch>``
+    would orphan the detached commit. The resolver therefore requires
+    EXACT branch-tip equality (the same invariant
+    ``_auto_integrate_recovery_git_state._resolve_reflog_candidate``
+    enforces for reflog-derived candidates) for every candidate --
+    reflog, config, worktree metadata, or repository name. A
+    candidate whose branch tip is ahead of, behind, or diverged from
+    the detached HEAD is rejected. The caller (``_reattach_head_if_detached``)
+    logs a warning and refuses to reattach when no safe candidate
+    is found; the detached work remains visible and the next
+    commit attempt surfaces the unresolved state instead of
+    silently losing the work.
+    """
+    detached_head_sha = _detached_head_sha(repo_root)
     for candidate in _candidate_branch_names(repo_root, **opts):
-        if _branch_exists(repo_root, candidate):
-            return candidate
+        if not _branch_exists(repo_root, candidate):
+            continue
+        if not _branch_tip_matches(repo_root, candidate, detached_head_sha):
+            logger.debug(
+                "reattach candidate '{}' tip does not match detached HEAD {}; skipping",
+                candidate,
+                detached_head_sha or "<unreadable>",
+            )
+            continue
+        return candidate
     return None
+
+
+def _detached_head_sha(repo_root: Path) -> str | None:
+    """Return the detached HEAD's current OID, or ``None`` if HEAD is attached."""
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", "HEAD"),
+            cwd=repo_root,
+            label="commit:detached-head-sha",
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    head_sha = result.stdout.strip()
+    return head_sha or None
+
+
+def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> bool:
+    """Return True iff ``refs/heads/<branch>`` exists and its tip equals ``head_sha``."""
+    if not head_sha:
+        return False
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", f"refs/heads/{branch}"),
+            cwd=repo_root,
+            label="commit:branch-tip-sha",
+        )
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    return result.stdout.strip() == head_sha
 
 
 def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:

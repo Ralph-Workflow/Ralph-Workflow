@@ -1478,7 +1478,17 @@ def _handle_commit_failure(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle commit failure without unconditionally routing to failed_terminal."""
+    """Handle commit failure without unconditionally routing to failed_terminal.
+
+    A repairable commit failure (detached HEAD, index.lock contention,
+    unmerged paths, conflict, repeated commit failure) is never a
+    terminal failure: Ralph owns the recovery path. The bounded
+    counter only protects against an infinite recovery loop; when
+    the counter is exhausted the policy's commit-recovery phase is
+    still invoked (the counter does not turn a repairable failure
+    into a terminal one). Only when no recovery phase is reachable
+    does the failure escalate to ``failed_terminal``.
+    """
     from ralph.pipeline.commit_executor import get_last_commit_error
 
     if policy is None:
@@ -1487,13 +1497,11 @@ def _handle_commit_failure(
     cleared_state = state.copy_with(pending_cycle_outcome=None)
     last_error = get_last_commit_error() or state.last_error
 
-    if (
-        _is_repairable_git_failure(last_error)
-        and cleared_state.recovery_epoch < _MAX_COMMIT_RECOVERY_ATTEMPTS
-    ):
+    if _is_repairable_git_failure(last_error):
         recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)
         if recovery_phase is not None:
             failure_reason = last_error or commit_failure_reason(state)
+            next_epoch = cleared_state.recovery_epoch + 1
             logger.bind(component="policy.routing").info(
                 explain_routing_decision(
                     cleared_state.phase,
@@ -1508,7 +1516,7 @@ def _handle_commit_failure(
             )
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
                 last_error=failure_reason,
-                recovery_epoch=cleared_state.recovery_epoch + 1,
+                recovery_epoch=next_epoch,
                 pending_cycle_outcome=None,
             )
             return new_state, []

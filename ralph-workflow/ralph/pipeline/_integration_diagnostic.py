@@ -393,9 +393,22 @@ def diagnostic_evidence_verdict(
     """
     if not record.diagnostic_evidence and not record.diagnostic_ownership:
         return EvidenceVerdict.UNCHANGED
+    if record.diagnostic_ownership is None:
+        # No held lease (e.g. a post-migration record whose evidence
+        # was already cleaned by the loader). There is no lease to
+        # release; the record is retained so the recovery path can
+        # either auto-release through the typed record store or block
+        # dispatch if the evidence is still authoritative. The
+        # CHANGED verdict matches the legacy migration contract:
+        # a record whose evidence was rewritten by the loader is
+        # not silently cleared.
+        return EvidenceVerdict.CHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
     if fingerprint is None or held_at is None:
-        return EvidenceVerdict.CHANGED
+        # Unparseable lease: the previous-shape fingerprint string is
+        # not authoritative. Treat as expired/missing (UNKNOWN) so the
+        # caller auto-releases (fail-open) and re-derives from Git.
+        return EvidenceVerdict.UNKNOWN
     if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
         return EvidenceVerdict.UNKNOWN
     if fingerprint != identity_fingerprint(record):

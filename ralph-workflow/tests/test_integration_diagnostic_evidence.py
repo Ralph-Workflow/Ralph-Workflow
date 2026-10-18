@@ -27,7 +27,6 @@ from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
     OperationFact,
     identity_fingerprint,
-    ownership_fingerprint,
 )
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
@@ -67,6 +66,23 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> Non
 def test_diagnostic_changed_evidence_cannot_authorize_recovery(
     changed: str,
 ) -> None:
+    """A held lease whose fingerprint does NOT match the current record is CHANGED.
+
+    The previous-shape single-fingerprint ownership string is
+    unparseable as a lease and routes to UNKNOWN (fail-open). The
+    O1 livelock contract is: a record whose durable identity was
+    rewritten by a different worktree carries a valid lease but a
+    mismatched fingerprint -- that is the only path to operator
+    escalation (CHANGED). The "reflog" parametrize value asserts the
+    collector is no longer consulted for the verdict (the lease alone
+    is the release authority).
+    """
+    import time
+
+    from ralph.pipeline._integration_diagnostic import (
+        identity_fingerprint,
+    )
+
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -74,27 +90,44 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    fingerprint = ownership_fingerprint(record)
+    # Held lease uses the ORIGINAL fingerprint, with a fresh held_at.
+    held_fingerprint = identity_fingerprint(record)
+    held_at = time.time()
     record = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
-            "diagnostic_ownership": fingerprint,
+            "diagnostic_ownership": f"{held_fingerprint}:{held_at}",
         }
     )
-    observed = "changed" if changed == "reflog" else "original"
     if changed == "ownership":
+        # Rewrite the durable identity (forged) so the current
+        # identity_fingerprint differs from the held one. The
+        # collector is irrelevant -- the verdict follows the lease.
         record = record.model_copy(update={"pre_feature_sha": "forged"})
 
     collector = InMemoryOperationEvidenceCollector(
-        facts=(OperationFact(kind="reflog", value=observed),)
+        facts=(OperationFact(kind="reflog", value="changed"),),
     )
-    assert not diagnostic.diagnostic_evidence_unchanged(
+    verdict = diagnostic.diagnostic_evidence_verdict(
         Path("/workspace"), record, collector=collector
     )
-    assert (
-        diagnostic.diagnostic_evidence_verdict(Path("/workspace"), record, collector=collector)
-        == EvidenceVerdict.CHANGED
-    )
+    if changed == "ownership":
+        # Mismatched fingerprint + valid lease + unexpired: CHANGED.
+        assert verdict == EvidenceVerdict.CHANGED
+        assert not diagnostic.diagnostic_evidence_unchanged(
+            Path("/workspace"), record, collector=collector
+        )
+    else:
+        # Held evidence differs from the collector's observation but
+        # the lease is valid and unexpired: UNCHANGED. The collector
+        # is no longer consulted for the verdict (the lease alone
+        # is the release authority). This is the AC4 contract:
+        # Ralph's own actions (e.g. snapshotting HEAD) must never
+        # count as tampering.
+        assert verdict == EvidenceVerdict.UNCHANGED
+        assert diagnostic.diagnostic_evidence_unchanged(
+            Path("/workspace"), record, collector=collector
+        )
 
 
 def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
@@ -117,7 +150,11 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     # 1. Empty evidence + empty ownership -> UNCHANGED (nothing to hold)
     assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
 
-    # 2. Unparseable lease -> CHANGED
+    # 2. Unparseable lease -> UNKNOWN (fail-open auto-release)
+    # The previous-shape fingerprint string is not authoritative; the
+    # record's evidence is no longer trusted. The caller treats
+    # UNKNOWN as "auto-release and re-derive from Git", which is the
+    # O1 contract for state left by an older or pre-fix version.
     record_with_forged = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
@@ -125,7 +162,7 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         }
     )
     assert (
-        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.CHANGED
+        diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.UNKNOWN
     )
 
     # 3. Expired lease (held_at far in the past) -> UNKNOWN

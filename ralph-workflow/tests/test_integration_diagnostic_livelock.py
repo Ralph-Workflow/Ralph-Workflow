@@ -187,6 +187,94 @@ def test_ralph_moves_head_does_not_block(tmp_path: Path) -> None:
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
 
 
+def test_ralph_moves_real_head_does_not_block(tmp_path: Path) -> None:
+    """AC4 with a real-Git fixture: a real fast-forward does not block release.
+
+    This is the real scenario: a worktree held an integration record
+    whose evidence snapshot was captured at the pre-feature SHA. Ralph
+    fast-forwards the worktree (a legitimate, Ralph-owned action that
+    moves ``HEAD``), the snapshot no longer matches live state, and
+    the OLD model refused to release. The NEW model reads the lease
+    only; ``HEAD`` movement is not in the fingerprint, so the verdict
+    is ``UNCHANGED`` and the recovery path releases the hold durably
+    on disk without blocking the next dispatch.
+    """
+    from git import Actor, Repo
+
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        DEFAULT_FILE_BACKEND,
+        read_record,
+        write_record,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    # 1. Set up a real Git repo with feature and target branches.
+    repo = Repo.init(tmp_path)
+    repo.config_writer().set_value("user", "name", "Test").release()
+    repo.config_writer().set_value("user", "email", "t@example.com").release()
+    actor = Actor("Test", "t@example.com")
+    base = tmp_path / "README.md"
+    base.write_text("# Test\n", encoding="utf-8")
+    repo.index.add(["README.md"])
+    repo.index.commit("initial", author=actor, committer=actor)
+    repo.git.branch("-M", "main")
+    feature_file = tmp_path / "feature.txt"
+    feature_file.write_text("feature\n", encoding="utf-8")
+    repo.index.add(["feature.txt"])
+    repo.index.commit("feature base", author=actor, committer=actor)
+    feature_sha = repo.head.commit.hexsha
+    pre_target_sha = repo.branches.main.commit.hexsha
+    # Make a second commit on main so the fast-forward is real
+    (tmp_path / "main.md").write_text("main change\n", encoding="utf-8")
+    repo.git.checkout("main")
+    repo.index.add(["main.md"])
+    repo.index.commit("main advance", author=actor, committer=actor)
+    advanced_target_sha = repo.branches.main.commit.hexsha
+
+    # 2. Write a record with synthetic evidence captured at feature_sha
+    # (i.e. before the fast-forward), and a valid lease.
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feature_sha,
+        pre_target_sha=pre_target_sha,
+        integrated_feature_sha=feature_sha,
+        diagnostic_evidence=(("head", feature_sha), ("reflog", "old_reflog")),
+    )
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(update={"diagnostic_ownership": lease})
+    write_record(tmp_path, record)
+
+    # 3. Ralph fast-forwards: checkout the advanced target. This is a
+    # legitimate Ralph-owned action that moves HEAD, just like a
+    # recovery reset or a fast-forward landing would.
+    repo.git.checkout(advanced_target_sha)
+    new_head = repo.head.commit.hexsha
+    assert new_head != feature_sha, "test setup: HEAD must have moved"
+
+    # 4. Verifier: lease is valid + unexpired + fingerprint matches
+    # durable identity (which did not change). HEAD movement is not
+    # in the fingerprint, so the verdict is UNCHANGED.
+    verdict = diagnostic.release_verified_diagnostic(tmp_path, record)
+    assert verdict == EvidenceVerdict.UNCHANGED
+
+    # 5. Recovery path: hold is released durably on disk
+    recover_incomplete_integration(WorkspaceScope(tmp_path), backend=DEFAULT_FILE_BACKEND)
+
+    # 6. Reload from disk confirms durability and progress
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+    assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
+
+
 def test_legacy_record_loads_without_intervention() -> None:
     """AC1: a record carrying a legacy ``for-each-ref`` key loads cleanly.
 
