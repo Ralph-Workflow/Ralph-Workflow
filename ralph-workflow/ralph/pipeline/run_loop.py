@@ -2447,15 +2447,24 @@ def _durable_record_intervention_guard(
     of truth for the persistent operator handoff. The guard
     attempts to release the held evidence through the diagnostic
     path: ``UNCHANGED`` (fresh lease, fingerprint match) and
-    ``UNKNOWN`` (expired or unparseable lease) both auto-release;
-    only ``CHANGED`` (fingerprint mismatch) or an unreadable record
-    escalates.
+    ``UNKNOWN`` (expired or unparseable lease) both auto-release.
+
+    Per O1 (criterion 1: no durable integration state may block
+    dispatch indefinitely), a record whose held evidence has no
+    valid lease (CHANGED verdict) or whose on-disk file is
+    unreadable also fails open: the held evidence is cleared, the
+    durable record is rebuilt from Git on the next seam, and the
+    caller persists a fresh state without sleeping on the
+    fixed-interval 5-second cooldown. The only path to a true
+    operator handoff is the in-memory ``resolution_exhausted`` /
+    consecutive-conflict cap, which the caller (in
+    :func:`_wait_for_integration_retry`) still respects.
 
     The return is a 2-tuple ``(rebase, durable_cleared)`` where:
 
-    * ``(rebase, False)`` -- no durable intervention is recorded, or
-      the record escalated to ``INTERVENTION_REQUIRED``. The caller
-      proceeds through the standard 5-second cooldown retry wait.
+    * ``(rebase, False)`` -- no durable intervention is recorded.
+      The caller proceeds through the standard 5-second cooldown
+      retry wait (the in-memory exhaustion path).
     * ``(rebase, True)`` -- the held evidence was released (the
       fail-open path). The durable record's intervention flag is
       now ``False``; the caller persists the cleared state and
@@ -2464,7 +2473,9 @@ def _durable_record_intervention_guard(
     from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
+        _read_record_raw,
         read_record_outcome,
+        record_path,
     )
     from ralph.pipeline.auto_integrate_record_store import (
         apply_record_transition,
@@ -2491,8 +2502,29 @@ def _durable_record_intervention_guard(
             False,
         )
     record_obj = outcome.record
-    if record_obj is None or not record_obj.diagnostic_intervention_required:
+    raw_payload = _read_record_raw(record_path(root), backend=backend)
+    raw_intervention = isinstance(raw_payload, dict) and (
+        raw_payload.get("diagnostic_intervention_required") is True
+    )
+    if record_obj is None or (
+        not record_obj.diagnostic_intervention_required and not raw_intervention
+    ):
         return rebase, False
+    if raw_intervention and not record_obj.diagnostic_intervention_required:
+        # Load-time migration cleared diagnostic_intervention_required in memory
+        # due to legacy global evidence or unparseable lease ownership (O1 fail-open).
+        # Persist the cleared state to disk and tell the caller to return immediately.
+        with suppress(Exception):
+            apply_record_transition(
+                root,
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                backend=backend,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+                diagnostic_intervention_required=False,
+                repair_cap_reason=None,
+            )
+        return rebase, True
     if not record_obj.diagnostic_evidence and not record_obj.diagnostic_ownership:
         return (
             rebase.set_intervention_required(
@@ -2503,18 +2535,18 @@ def _durable_record_intervention_guard(
             False,
         )
     verdict = release_verified_diagnostic(root, record_obj)
-    if verdict is EvidenceVerdict.UNCHANGED or verdict is EvidenceVerdict.UNKNOWN:
-        try:
-            apply_record_transition(
-                root,
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                backend=backend,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
-                diagnostic_intervention_required=False,
-                repair_cap_reason=None,
-            )
-        except Exception:
+    try:
+        apply_record_transition(
+            root,
+            RELEASE_DIAGNOSTIC_EVIDENCE,
+            backend=backend,
+            diagnostic_evidence=(),
+            diagnostic_ownership=None,
+            diagnostic_intervention_required=False,
+            repair_cap_reason=None,
+        )
+    except Exception:
+        if verdict is EvidenceVerdict.UNCHANGED or verdict is EvidenceVerdict.UNKNOWN:
             return (
                 rebase.set_intervention_required(
                     "durable integration record unreadable at release; intervention required",
@@ -2522,16 +2554,7 @@ def _durable_record_intervention_guard(
                 ),
                 False,
             )
-        return rebase, True
-    return (
-        rebase.set_intervention_required(
-            f"durable integration record requires intervention "
-            f"(verdict={verdict.value if verdict is not None else 'unreadable'}); "
-            f"target synchronization remains unproven",
-            diagnostic=True,
-        ),
-        False,
-    )
+    return rebase, True
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineState:

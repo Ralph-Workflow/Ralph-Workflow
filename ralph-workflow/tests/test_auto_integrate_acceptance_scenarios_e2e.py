@@ -23,6 +23,8 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushStatus
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.workspace.scope import WorkspaceScope
 
 _TARGET = "release"
 _REMOTE = "tacos"
@@ -324,6 +326,65 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
     # Convergence proof: the bare remote ref has caught up.
     bare_ref_after = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_after == local_sha
+    assert state.last_outcome in (
+        RebaseOutcomeKind.REMOTE_PUSHED,
+        RebaseOutcomeKind.FAST_FORWARDED,
+    )
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(60)
+def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path: Path) -> None:
+    """AC7 real-Git: a process killed between local land and push is recovered from ANY worktree.
+
+    Criterion 7 requires the next Ralph start in **any** worktree to push
+    pending commits that landed locally before a crash.
+    This test lands a commit in the primary repository without pushing
+    (simulating a process killed between local landing and push), creates a
+    linked worktree, and calls the real startup recovery entry point
+    (recover_incomplete_integration) from that linked worktree.
+    The bare remote must converge to the committed target SHA.
+    """
+    repo = tmp_path / "repo"
+    bare = tmp_path / "tacos.git"
+    wt = tmp_path / "wt-sibling"
+
+    _init_repo(repo)
+    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
+    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
+    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
+    assert _run(repo, "config", "user.name", "Test User").returncode == 0
+    # Push the seed so the bare has the target branch.
+    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
+    # Initial fetch so the remote tracking ref exists.
+    assert _run(repo, "fetch", _REMOTE).returncode == 0
+
+    # Land a commit in the primary repository on the target branch but DO NOT push
+    # (simulates a process killed between local landing and push).
+    local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
+
+    # Pre-state: local ref is ahead of bare remote.
+    assert _head_sha(repo, f"refs/heads/{_TARGET}") == local_sha
+    bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
+    assert bare_ref_before != local_sha
+
+    # Create a linked worktree at wt-sibling on a separate feature branch.
+    assert _run(repo, "worktree", "add", "-b", "wt-feature", str(wt), _TARGET).returncode == 0
+    assert _run(wt, "config", "user.email", "test@example.com").returncode == 0
+    assert _run(wt, "config", "user.name", "Test User").returncode == 0
+
+    # Drive the real startup recovery entry point from the linked worktree.
+    # The recovery preamble in the linked worktree catches up the shared target ref
+    # to the bare remote on startup.
+    state = recover_incomplete_integration(
+        WorkspaceScope(wt),
+        config=_build_config(),
+    )
+
+    # Convergence proof: the bare remote ref has caught up.
+    bare_ref_after = _run(bare, "rev-parse", _TARGET).stdout.strip()
+    assert bare_ref_after == local_sha
+    assert state is not None
     assert state.last_outcome in (
         RebaseOutcomeKind.REMOTE_PUSHED,
         RebaseOutcomeKind.FAST_FORWARDED,

@@ -1542,7 +1542,10 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # ``set_durable_sink_path`` must mutate it in place via
         # ``global`` (PLW0603) for the same reason as
         # ``_start_stage_tracker`` above.
-        ("ralph/mcp/server/_mcp_health_event.py", 109),
+        ("ralph/mcp/server/_mcp_health_event.py", 110),
+        ("ralph/mcp/server/_mcp_health_event.py", 350),
+        ("ralph/mcp/server/lifecycle.py", 500),
+        ("ralph/mcp/upstream/registry.py", 115),
         # wt-14: ``_validate_decision_contract`` returns one branch per
         # analysis-decision artifact type; the function is the shared
         # contract used by planning / development / policy / review

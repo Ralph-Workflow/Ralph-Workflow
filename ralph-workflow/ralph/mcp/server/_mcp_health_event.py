@@ -394,11 +394,14 @@ def current_host_is_contended(
     return call_within_budget(_probe, fallback=False, budget_seconds=budget_seconds)
 
 
+clear_host_contention_signals = _clear_host_contention_signals
+
 __all__ = [
     "CONTENDED_WATCH_RATIO",
     "RestartDecision",
     "RestartReason",
     "clear_durable_sink",
+    "clear_host_contention_signals",
     "configure_bridge_sink",
     "current_host_is_contended",
     "get_durable_sink_path",

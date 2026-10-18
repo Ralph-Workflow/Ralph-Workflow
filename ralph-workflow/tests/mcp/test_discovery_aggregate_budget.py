@@ -641,7 +641,7 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
                 _monotonic=clock,
             )
         assert "aggregate discovery budget" in str(exc_info.value)
-        assert any(s in str(exc_info.value) for s in ("ok-1", "ok-2", "too-slow"))
+        assert any(s.name in str(exc_info.value) for s in servers)
         # First two probes ran; third hit the exhausted branch.
         assert len(counter) in (2, 3)
 

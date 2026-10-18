@@ -9,6 +9,7 @@ and in-progress rebase/merge.
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -37,6 +38,151 @@ def _config() -> UnifiedConfig:
             }
         }
     )
+
+
+def _assert_resolution_agrees(
+    readiness: TreeReadinessAssessment,
+    verdict: object,
+    expected_ready: bool,
+    expected_first_reason: str | None,
+) -> None:
+    """Criterion 12: integration-resolution gates agree on clean/blocked."""
+    assert readiness.integration_ready is expected_ready
+    assert verdict.integration_ready is expected_ready
+    if expected_ready:
+        assert readiness.blocking_reasons == ()
+        assert verdict.blocking_reasons == ()
+    else:
+        assert len(readiness.blocking_reasons) > 0
+        assert readiness.blocking_reasons[0] == expected_first_reason
+        assert verdict.blocking_reasons[0] == expected_first_reason
+
+
+def _assert_planning_agrees(
+    planning_module: ModuleType,
+    tmp_path: Path,
+    cfg: UnifiedConfig,
+    scope: WorkspaceScope,
+    state_name: str,
+    expected_ready: bool,
+    expected_first_reason: str | None,
+    readiness: TreeReadinessAssessment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Criterion 12: planning gate agrees with the resolution verdict.
+
+    For every non-ready state, planning MUST record a typed
+    obstruction that agrees with the boundary / integration-resolution
+    verdict. The pre-fix code only did this for staged work and fell
+    through silently for every other non-ready state, which is the
+    three-gates-disagree symptom the criteria call out.
+    """
+    # Pass the pre-computed readiness through so the planning seam
+    # does not need to read the worktree again (the test already
+    # pre-computed the readiness from the parametrized state).
+    planning_block = planning_module._record_staged_block(tmp_path, "main", readiness=readiness)
+    if expected_ready or state_name == "modified-tracked":
+        assert planning_block is None
+        if expected_ready:
+            return
+    else:
+        assert planning_block is not None
+        assert planning_block.last_action == "skipped"
+        assert planning_block.last_reason == expected_first_reason
+        if state_name == "staged":
+            assert (
+                planning_block.last_planning_obstruction
+                == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+            )
+        else:
+            assert planning_block.last_planning_obstruction in (
+                PlanningObstructionKind.NONE.value,
+                PlanningObstructionKind.LOCAL_OVERWRITE.value,
+                PlanningObstructionKind.UNTRACKED_OVERWRITE.value,
+            )
+        assert planning_block.integration_unresolved is False
+
+    # Stage the planning seam: resolve_integration_target returns
+    # "main", assess_tree_readiness is bound to the pre-computed
+    # readiness, the post-merge verifier is a no-op, and the auto
+    # integrator is a stub so the test is hermetic.
+    monkeypatch.setattr(planning_module, "resolve_integration_target", lambda _c, _r: "main")
+    monkeypatch.setattr(planning_module, "assess_tree_readiness", lambda _root: readiness)
+    monkeypatch.setattr(planning_module, "_worktree_is_clean", lambda _root: expected_ready)
+    monkeypatch.setattr(planning_module, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(
+        planning_module,
+        "auto_integrate_after_commit",
+        lambda *_a, **_kw: RebaseState(last_outcome="fast_forwarded", fast_forwarded=True),
+    )
+    monkeypatch.setattr(
+        planning_module,
+        "_integrate_with_force_merge",
+        lambda *_a, **_kw: RebaseState(
+            last_action="skipped",
+            last_reason=expected_first_reason,
+            last_planning_obstruction=PlanningObstructionKind.NONE.value,
+        ),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_recovery_terminal.post_attempt_verify",
+        lambda *_a, **_kw: None,
+    )
+
+    planning_sync = planning_module.integrate_before_planning(cfg, scope, RebaseState())
+    assert planning_sync is not None
+    if state_name == "staged":
+        assert planning_sync.last_action == "skipped"
+        assert planning_sync.last_reason == expected_first_reason
+        assert (
+            planning_sync.last_planning_obstruction
+            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+        )
+    else:
+        # Non-staged non-ready states flow through the planning
+        # obstruction; ``integrate_before_planning`` either records a
+        # skip (when the readiness reason demands) or runs the
+        # force-merge path. Either way, the planning sync state must
+        # carry a verdict that agrees with the readiness assessment.
+        assert planning_sync.last_action == "skipped"
+        assert planning_sync.last_reason == expected_first_reason
+
+
+def _assert_boundary_agrees(
+    boundary_module: ModuleType,
+    cfg: UnifiedConfig,
+    tmp_path: Path,
+    readiness: TreeReadinessAssessment,
+    expected_ready: bool,
+) -> None:
+    """Criterion 12: boundary gate agrees with the resolution verdict."""
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(boundary_module, "assess_tree_readiness", lambda _root: readiness)
+        monkeypatch.setattr(boundary_module, "_worktree_is_clean", lambda _root: expected_ready)
+        monkeypatch.setattr(boundary_module, "branch_sha", lambda _r, _t: "b" * 40)
+        monkeypatch.setattr(boundary_module, "get_head_sha", lambda _r: "a" * 40)
+        monkeypatch.setattr(boundary_module, "is_ancestor", lambda _r, _a, _b: False)
+        monkeypatch.setattr(boundary_module, "pull_and_reconcile_target", lambda *_a, **_kw: None)
+
+        boundary_ended, boundary_outcome = boundary_module.phase_boundary_outcome(
+            cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+        )
+
+        if expected_ready:
+            # Ready tree proceeds to freshness/sync check (not ended
+            # by cleanliness gate)
+            assert boundary_ended is False
+            assert boundary_outcome is None
+        else:
+            # Non-ready tree ends at dirty/readiness gate with a
+            # recorded cleanliness deferral
+            assert boundary_ended is True
+            assert boundary_outcome is not None
+            assert boundary_outcome.last_action == "skipped"
+            assert "worktree not clean" in str(boundary_outcome.last_reason)
+    finally:
+        monkeypatch.undo()
 
 
 def test_clean_tree_matrix(tmp_path: Path) -> None:
@@ -407,78 +553,20 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
         rebase_active=lambda _: rebase_active,
         merge_status=lambda _: merge_status,
     )
+    _assert_resolution_agrees(readiness, verdict, expected_ready, expected_first_reason)
 
-    assert readiness.integration_ready is expected_ready
-    assert verdict.integration_ready is expected_ready
-    if expected_ready:
-        assert readiness.blocking_reasons == ()
-        assert verdict.blocking_reasons == ()
-    else:
-        assert len(readiness.blocking_reasons) > 0
-        assert readiness.blocking_reasons[0] == expected_first_reason
-        assert verdict.blocking_reasons[0] == expected_first_reason
-
-    # 2. Planning entry points (_record_staged_block and integrate_before_planning)
-    planning_block = planning._record_staged_block(tmp_path, "main", readiness=readiness)
-    if state_name == "staged":
-        assert planning_block is not None
-        assert planning_block.last_action == "skipped"
-        assert planning_block.last_reason == expected_first_reason
-        assert (
-            planning_block.last_planning_obstruction
-            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
-        )
-        assert planning_block.integration_unresolved is False
-    else:
-        assert planning_block is None
-
-    monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
-    monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
-    monkeypatch.setattr(planning, "_worktree_is_clean", lambda _root: expected_ready)
-    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
-    monkeypatch.setattr(
+    # 2. Planning entry points
+    _assert_planning_agrees(
         planning,
-        "auto_integrate_after_commit",
-        lambda *_a, **_kw: RebaseState(last_outcome="fast_forwarded", fast_forwarded=True),
+        tmp_path,
+        cfg,
+        scope,
+        state_name,
+        expected_ready,
+        expected_first_reason,
+        readiness,
+        monkeypatch,
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_recovery_terminal.post_attempt_verify",
-        lambda *_a, **_kw: None,
-    )
-
-    if state_name == "staged":
-        planning_sync = planning.integrate_before_planning(cfg, scope, RebaseState())
-        assert planning_sync is not None
-        assert planning_sync.last_action == "skipped"
-        assert planning_sync.last_reason == expected_first_reason
-        assert (
-            planning_sync.last_planning_obstruction
-            == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
-        )
-    elif expected_ready:
-        planning_sync = planning.integrate_before_planning(cfg, scope, RebaseState())
-        assert planning_sync is not None
-        assert planning_sync.fast_forwarded is True
 
     # 3. Boundary entry point (phase_boundary_outcome)
-    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: readiness)
-    monkeypatch.setattr(boundary, "_worktree_is_clean", lambda _root: expected_ready)
-    monkeypatch.setattr(boundary, "branch_sha", lambda _r, _t: "b" * 40)
-    monkeypatch.setattr(boundary, "get_head_sha", lambda _r: "a" * 40)
-    monkeypatch.setattr(boundary, "is_ancestor", lambda _r, _a, _b: False)
-    monkeypatch.setattr(boundary, "pull_and_reconcile_target", lambda *_a, **_kw: None)
-
-    boundary_ended, boundary_outcome = boundary.phase_boundary_outcome(
-        cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
-    )
-
-    if expected_ready:
-        # Ready tree proceeds to freshness/sync check (not ended by cleanliness gate)
-        assert boundary_ended is False
-        assert boundary_outcome is None
-    else:
-        # Non-ready tree ends at dirty/readiness gate with a recorded cleanliness deferral
-        assert boundary_ended is True
-        assert boundary_outcome is not None
-        assert boundary_outcome.last_action == "skipped"
-        assert "worktree not clean" in str(boundary_outcome.last_reason)
+    _assert_boundary_agrees(boundary, cfg, tmp_path, readiness, expected_ready)

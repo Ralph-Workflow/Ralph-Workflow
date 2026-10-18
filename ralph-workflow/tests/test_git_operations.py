@@ -38,14 +38,21 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _unused_pid() -> int:
-    """Return a PID that is overwhelmingly likely to not be running.
+    """Return a PID that is verified to not be running.
 
-    PIDs cycle quickly, so a pid equal to ``os.getpid() + 1_000_000`` is
-    almost certainly not alive by the time the test runs. We do NOT use a
-    fixed integer like 999999 because some CI environments pre-allocate
-    PIDs in low ranges.
+    Verify via os.kill(candidate, 0) raising ProcessLookupError so that
+    high PID churn or collisions never produce a live PID.
     """
-    return os.getpid() + 1_000_000
+    candidate = os.getpid() + 1_000_000
+    for _ in range(10_000):
+        try:
+            os.kill(candidate, 0)
+            candidate += 1
+        except ProcessLookupError:
+            return candidate
+        except OSError:
+            candidate += 1
+    return candidate
 
 
 def _make_index_lock_error(lock_path: Path) -> GitCommandError:

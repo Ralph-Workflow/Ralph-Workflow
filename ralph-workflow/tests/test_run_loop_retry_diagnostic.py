@@ -188,19 +188,20 @@ def test_wait_for_retry_expired_lease_unknown_clears_evidence_without_sleep(
     assert updated_state.rebase.is_intervention_required is False
 
 
-def test_wait_for_retry_changed_record_escalates_to_intervention_with_cooldown_sleep(
+def test_wait_for_retry_changed_record_fails_open_and_does_not_sleep(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Requirement 2(c): CHANGED durable record.
+    """Requirement 2(c): CHANGED durable record fails open (O1).
 
-    Asserts that _wait_for_integration_retry escalates to INTERVENTION_REQUIRED
-    and performs the standard cooldown retry wait.
+    A record whose held evidence has no valid lease (CHANGED verdict)
+    must not block the run on a fixed-interval wait. The guard
+    clears the held evidence, marks the durable record for
+    Git re-derivation on the next seam, and returns immediately.
     """
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
-    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -223,18 +224,65 @@ def test_wait_for_retry_changed_record_escalates_to_intervention_with_cooldown_s
 
     updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was called for cooldown retry
-    assert sleeps == [5.0], "CHANGED record must perform standard cooldown wait"
+    # 1. Assert ctx.sleep was NOT called (O1: no fixed-interval wait
+    # for an unverifiable durable state).
+    assert sleeps == [], "CHANGED record must not sleep; O1 fail-open path"
 
-    # 2. Assert INTERVENTION_REQUIRED is set
-    assert updated_state.rebase.is_intervention_required is True
-    assert updated_state.rebase.last_outcome in (
-        RebaseOutcomeKind.INTERVENTION_REQUIRED,
-        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+    # 2. Assert durable evidence is cleared on disk.
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+
+    # 3. Assert returned state is not in INTERVENTION_REQUIRED.
+    assert updated_state.is_waiting_state is False
+    assert updated_state.rebase.is_intervention_required is False
+
+
+def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """An unparseable lease fails open and does not sleep (O1)."""
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        diagnostic_intervention_required=True,
+        diagnostic_evidence=(("reflog", "some_evidence"),),
+        diagnostic_ownership="unparseable_no_colon",
     )
-    assert "durable integration record requires intervention" in (
-        updated_state.rebase.last_reason or ""
+    write_record(tmp_path, record)
+
+    initial_state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="synchronization unproven",
+        ),
     )
+
+    updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
+
+    # 1. Assert ctx.sleep was NOT called.
+    assert sleeps == [], "Unparseable lease record must not sleep; O1 fail-open path"
+
+    # 2. Assert durable evidence is cleared on disk.
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+
+    # 3. Assert returned state is not in INTERVENTION_REQUIRED.
+    assert updated_state.is_waiting_state is False
+    assert updated_state.rebase.is_intervention_required is False
 
 
 def test_wait_for_retry_unreadable_record_escalates_to_intervention_with_cooldown_sleep(

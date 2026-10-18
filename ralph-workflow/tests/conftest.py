@@ -6,6 +6,7 @@ import shutil
 import signal
 import threading
 import time
+from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -106,6 +107,18 @@ def _isolate_explore_recovery_globals() -> Generator[None, None, None]:
             recovery._DRAIN_WAKEUP.set()
         else:
             recovery._DRAIN_WAKEUP.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_host_contention_signals() -> Generator[None, None, None]:
+    """Isolate the module-level host contention signal deque per test."""
+    from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
+
+    clear_host_contention_signals()
+    try:
+        yield
+    finally:
+        clear_host_contention_signals()
 
 
 @pytest.fixture(scope="session", autouse=True)
