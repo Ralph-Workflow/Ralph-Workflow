@@ -24,7 +24,14 @@ from pydantic import ConfigDict
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
-from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+from ralph.pipeline._auto_integrate_record_restamp import (
+    _clamp_loaded_attempt_counters,
+    _clear_legacy_ownership_and_intervention,
+    _coerce_payload_failure_cause,
+    _is_valid_collector_evidence_key,
+    _parse_raw_evidence_pairs,
+    parse_lease,
+)
 from ralph.pipeline.auto_integrate_transition import (
     ACCEPT_REPAIR_EDITS,
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -51,6 +58,7 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
 
@@ -132,6 +140,8 @@ class IntegrationRecord(RalphBaseModel):
     repair_last_error: str | None = None
     diagnostic_evidence: tuple[tuple[str, str], ...] = ()
     diagnostic_ownership: str | None = None
+    diagnostic_owner_pid: int | None = None
+    diagnostic_owner_boot_id: str | None = None
     # ``diagnostic_intervention_required`` is set by the diagnostic path
     # when the repair-attempt cap is reached. The run-loop's
     # :func:`ralph.pipeline._pipeline_state_machine.decide_phase_transition`
@@ -576,144 +586,59 @@ def _read_record_raw(
     return parsed
 
 
-def _parse_raw_evidence_pairs(raw_evidence: object) -> tuple[tuple[str, str], ...] | None:
-    """Extract (key, value) pairs from list, tuple, or dict raw evidence."""
-    if isinstance(raw_evidence, dict):
-        raw_evidence = list(raw_evidence.items())
-    if not isinstance(raw_evidence, (list, tuple)):
-        return None
-    pairs: list[tuple[str, str]] = []
-    for item in raw_evidence:
-        if isinstance(item, (list, tuple)):
-            match item:
-                case [k, v] if isinstance(k, str) and isinstance(v, str):
-                    pairs.append((k, v))
-        elif isinstance(item, dict):
-            k = item.get("key") or item.get("name")
-            v = item.get("value") or item.get("content")
-            if isinstance(k, str) and isinstance(v, str):
-                pairs.append((k, v))
-    return tuple(pairs)
-
-
-def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, object]:
-    """Ensure last_failure_cause is populated on the payload."""
-    if "last_failure_cause" in data_raw and data_raw.get("last_failure_cause") is not None:
-        return data_raw
-    last_reason = str(data_raw.get("last_reason") or "")
-    repair_err = str(data_raw.get("repair_last_error") or "")
-    if last_reason == "resolution_agent_failure" or repair_err == "resolution_agent_failure":
-        return {**data_raw, "last_failure_cause": ResolutionFailureCause.AGENT_FAILURE}
-    return {**data_raw, "last_failure_cause": ResolutionFailureCause.NONE}
-
-
-#: Default load-time clamp target for diagnostic repair attempts.
-#: Coerces loaded values >= cap to cap - 1. Mirrored here to avoid import cycles.
-_LOAD_TIME_DIAGNOSTIC_COUNTER_CAP: int = 5
-
-
-def _clamp_loaded_attempt_counters(data_raw: dict[str, object]) -> dict[str, object]:
-    """Clamp pre-existing over-cap attempt counters on a loaded payload.
-
-    Inclusive ``>= cap`` check means clamping to ``cap - 1`` allows automated
-    recovery on next run. Clears intervention flag, stale intervention
-    Records written at or above cap (e.g. 200/541 from stuck records)
-    are clamped to cap - 1 so the diagnostic check evaluates to False
-    and the record proceeds to automated recovery on next run.
-    """
-    raw = data_raw.get("merge_commit_repair_attempts", 0)
-    loaded = _safe_int_from_raw(raw)
-    if loaded >= _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP:
-        return {
-            **data_raw,
-            "merge_commit_repair_attempts": _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP - 1,
-        }
-    return data_raw
-
-
-def _safe_int_from_raw(raw: object) -> int:
-    """Best-effort coercion of an on-disk counter to ``int``."""
-    if raw is None:
-        return 0
-    if isinstance(raw, bool):
-        return int(raw)
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return int(raw)
-        except ValueError:
-            return 0
-    return _safe_int_from_float(raw) if isinstance(raw, float) else 0
-
-
-def _safe_int_from_float(raw: float) -> int:
-    """Coerce a float to ``int`` with explicit overflow/value handling."""
-    try:
-        return int(raw)
-    except (ValueError, OverflowError):
-        return 0
-
-
-def parse_lease(ownership: str | None) -> tuple[str | None, float | None]:
-    """Re-export of the lease parser (now lives in the restamp module).
-
-    See :func:`ralph.pipeline._auto_integrate_record_restamp.parse_lease`
-    for the full implementation; the function is re-exported here so
-    existing callers (the diagnostic path, the loader) do not need to
-    move their imports. The loader's load-time re-stamp is in
-    :mod:`ralph.pipeline._auto_integrate_record_restamp` (GAP-5 / AC-4).
-    """
-    from ralph.pipeline._auto_integrate_record_restamp import parse_lease as _parse_lease
-
-    return _parse_lease(ownership)
-
-
 def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
     """Migrate legacy diagnostic evidence keys in payload; return None on parse error.
 
-    For the legacy global evidence case (``for-each-ref`` /
-    ``ls-files``), returns the payload with ``diagnostic_evidence``
-    set to an empty tuple AND any persisted intervention flag
-    cleared, so the loaded record carries no live comparison and
-    no operator-only dispatch action; the durable identity
-    (``target``, SHAs, ``operation_kind``) is preserved, and the
-    diagnostic path re-derives state from Git on the next seam.
-    Surfacing intervention from the loader was the production
-    livelock: the diagnostic could not re-verify the evidence and
-    refused to proceed.
-
-    The ``diagnostic_intervention_required`` flag is also cleared
-    when the ``diagnostic_ownership`` is not parseable as a lease
-    (legacy single-string fingerprint form, or any malformed
-    input) -- the old operator-only flag was set against an
-    unrecognised ownership string and is no longer authoritative.
+    For any evidence payload the current collector cannot interpret
+    (legacy or unknown keys/format, unparseable lease ownership),
+    returns the payload with ``diagnostic_evidence`` set to an empty
+    tuple AND any persisted intervention flag cleared, so the loaded
+    record carries no live comparison and no operator-only dispatch
+    action; the durable identity (``target``, SHAs, ``operation_kind``)
+    is preserved, and the diagnostic path re-derives state from Git
+    on the next seam. Surfacing intervention from the loader was the
+    production livelock: the diagnostic could not re-verify the
+    evidence and refused to proceed.
     """
     raw_evidence = data_raw.get("diagnostic_evidence")
+    is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
     sequence: tuple[tuple[str, str], ...]
     if raw_evidence is None:
         sequence = ()
     else:
         try:
-            sequence = _parse_raw_evidence_pairs(raw_evidence) or ()
+            parsed_sequence = _parse_raw_evidence_pairs(raw_evidence)
+            if parsed_sequence is None:
+                return _clear_legacy_ownership_and_intervention(data_raw)
+            sequence = parsed_sequence
         except Exception:
-            return None
+            return _clear_legacy_ownership_and_intervention(data_raw)
+
     has_legacy_global_evidence = any(_is_legacy_global_evidence_key(key) for key, _ in sequence)
     raw_ownership = data_raw.get("diagnostic_ownership")
     has_unparseable_ownership = (
         isinstance(raw_ownership, str) and parse_lease(raw_ownership) == (None, None)
     ) or (raw_ownership is not None and not isinstance(raw_ownership, str))
-    is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
     if has_legacy_global_evidence or (is_intervention_flagged and has_unparseable_ownership):
         return _clear_legacy_ownership_and_intervention(data_raw)
-    if raw_evidence is None:
+
+    if not sequence:
         return data_raw
-    return _apply_evidence_migration(data_raw, sequence)
+
+    migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
+    if is_intervention_flagged and any(
+        not _is_valid_collector_evidence_key(key) for key, _ in migrated_evidence
+    ):
+        return _clear_legacy_ownership_and_intervention(data_raw)
+
+    return _apply_evidence_migration(data_raw, migrated_evidence, drop_marker, sequence)
 
 
 def _apply_evidence_migration(
     data_raw: dict[str, object],
-    sequence: tuple[tuple[str, str], ...],
+    migrated_evidence: tuple[tuple[str, str], ...],
+    drop_marker: str | None,
+    original_sequence: tuple[tuple[str, str], ...],
 ) -> dict[str, object]:
     """Apply the legacy key-space migration to ``data_raw``.
 
@@ -722,7 +647,6 @@ def _apply_evidence_migration(
     ``PLR0911`` cap. Returns the migrated payload (or ``data_raw``
     unchanged when no migration is needed).
     """
-    migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
     if drop_marker is not None:
         existing_reason = data_raw.get("repair_cap_reason")
         return {
@@ -730,40 +654,9 @@ def _apply_evidence_migration(
             "diagnostic_evidence": migrated_evidence,
             "repair_cap_reason": existing_reason or drop_marker,
         }
-    if migrated_evidence != sequence:
+    if migrated_evidence != original_sequence:
         return {**data_raw, "diagnostic_evidence": migrated_evidence}
     return data_raw
-
-
-def _clear_legacy_ownership_and_intervention(
-    data_raw: dict[str, object],
-) -> dict[str, object]:
-    """Clear legacy formats: evidence to (), ownership to None, intervention to False.
-
-    Used by :func:`_migrate_payload_evidence` for legacy formats
-    (such as repository-global evidence or unparseable lease ownership)
-    so the post-migration record is in a clean state: ownership is None,
-    evidence is an empty tuple, and any persisted intervention flag or
-    stale repair-exhausted reason is cleared.
-    """
-    result = dict(data_raw)
-    result["diagnostic_evidence"] = ()
-    result["diagnostic_ownership"] = None
-    result["diagnostic_intervention_required"] = False
-    last_outcome = result.get("last_outcome")
-    if last_outcome in (
-        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-        RebaseOutcomeKind.INTERVENTION_REQUIRED,
-        "diagnostic_intervention_required",
-        "intervention_required",
-    ):
-        result["last_outcome"] = None
-    cap_reason = result.get("repair_cap_reason")
-    if isinstance(cap_reason, str) and (
-        "exhausted" in cap_reason.lower() or "operator intervention required" in cap_reason.lower()
-    ):
-        result["repair_cap_reason"] = None
-    return result
 
 
 def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:
@@ -976,6 +869,7 @@ __all__ = [
     "RecordUnreadableReason",
     "Transition",
     "clear_record",
+    "parse_lease",
     "parse_record_payload",
     "read_record",
     "read_record_outcome",

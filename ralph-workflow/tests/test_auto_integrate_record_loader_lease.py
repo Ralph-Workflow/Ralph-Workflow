@@ -74,7 +74,7 @@ def test_load_time_counter_clamp_handles_zero_and_missing() -> None:
     """Missing or zero counters are tolerated; the value remains 0."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
-    legacy = {
+    legacy: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
         "pre_feature_sha": "a" * 40,
@@ -89,7 +89,7 @@ def test_load_time_counter_clamp_treats_garbage_as_rejected() -> None:
     """Non-integer values for the counter are rejected by pydantic (fail-closed)."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
-    legacy = {
+    legacy: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
         "pre_feature_sha": "a" * 40,
@@ -175,3 +175,286 @@ def test_migrate_payload_stale_fingerprint_lease_clears_fields() -> None:
     assert parsed.diagnostic_intervention_required is False
     assert parsed.repair_cap_reason is None
     assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_old_format_record_without_owner_fields_round_trips() -> None:
+    """An old-format record (no owner fields) loads and parses lease unchanged."""
+    from ralph.pipeline.auto_integrate_record import parse_lease, parse_record_payload
+    from ralph.pipeline.operation_evidence import identity_fingerprint
+
+    base_record = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": "/tmp/wt",
+        "operation_kind": "feature_integrate",
+    }
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+
+    temp_rec = IntegrationRecord.model_validate(base_record)
+    fp = identity_fingerprint(temp_rec)
+    lease = f"{fp}:1700000000.0"
+
+    old_format: dict[str, object] = {
+        **base_record,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": lease,
+        # No diagnostic_owner_pid or diagnostic_owner_boot_id present
+    }
+    parsed = parse_record_payload(old_format)
+    assert parsed is not None
+    assert parsed.diagnostic_ownership == lease
+    assert parsed.diagnostic_owner_pid is None
+    assert parsed.diagnostic_owner_boot_id is None
+    assert parse_lease(parsed.diagnostic_ownership) == (fp, 1700000000.0)
+
+
+def test_new_format_record_with_owner_fields_round_trips() -> None:
+    """A new-format record (owner fields present) loads and preserves owner identity."""
+    import os
+
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+        parse_lease,
+        parse_record_payload,
+    )
+    from ralph.pipeline.operation_evidence import identity_fingerprint
+
+    base_record: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": "/tmp/wt",
+        "operation_kind": "feature_integrate",
+    }
+    temp_rec = IntegrationRecord.model_validate(base_record)
+    fp = identity_fingerprint(temp_rec)
+    lease = f"{fp}:1700000000.0"
+
+    # Alive PID (current process) so dead-owner release does not trigger on load
+    new_format: dict[str, object] = {
+        **base_record,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": lease,
+        "diagnostic_owner_pid": os.getpid(),
+        "diagnostic_owner_boot_id": None,
+    }
+    parsed = parse_record_payload(new_format)
+    assert parsed is not None
+    assert parsed.diagnostic_ownership == lease
+    assert parsed.diagnostic_owner_pid == os.getpid()
+    assert parsed.diagnostic_owner_boot_id is None
+    assert parse_lease(parsed.diagnostic_ownership) == (fp, 1700000000.0)
+
+
+def test_migrate_payload_unknown_evidence_keys_clears_fields() -> None:
+    """AC1: Any evidence payload containing unrecognized keys drops the hold."""
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": [
+            ["unstaged_work", "clean"],
+            ["completely_unrecognized_key_from_future", "value"],
+        ],
+        "diagnostic_ownership": "owner:12345.0",
+        "diagnostic_intervention_required": True,
+        "repair_cap_reason": "diagnostic repair exhausted; operator intervention required",
+    }
+    parsed = parse_record_payload(payload)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_intervention_required is False
+    assert parsed.repair_cap_reason is None
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_migrate_payload_unparseable_evidence_format_clears_fields() -> None:
+    """AC1: Any uninterpretable evidence payload structure drops the hold."""
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import parse_record_payload
+
+    payload = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "diagnostic_evidence": "corrupted_non_sequence_evidence_string",
+        "diagnostic_ownership": "owner:12345.0",
+        "diagnostic_intervention_required": True,
+    }
+    parsed = parse_record_payload(payload)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_intervention_required is False
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_dead_owner_pid_releases_hold_at_load_time() -> None:
+    """AC3: A record whose owner PID is dead automatically releases at next load."""
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+        parse_record_payload,
+    )
+    from ralph.pipeline.operation_evidence import identity_fingerprint
+
+    base_record = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": "/tmp/wt",
+        "operation_kind": "feature_integrate",
+    }
+    temp_rec = IntegrationRecord.model_validate(base_record)
+    fp = identity_fingerprint(temp_rec)
+
+    # Use a guaranteed non-existent PID
+    dead_pid = 999999999
+    payload = {
+        **base_record,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": f"{fp}:1700000000.0",
+        "diagnostic_owner_pid": dead_pid,
+        "diagnostic_intervention_required": True,
+    }
+    parsed = parse_record_payload(payload)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_owner_pid is None
+    assert parsed.diagnostic_intervention_required is False
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_dead_owner_boot_id_releases_hold_at_load_time() -> None:
+    """AC3: A record whose owner boot ID does not match automatically releases at next load."""
+    from ralph.pipeline._auto_integrate_record_restamp import current_boot_id
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+        parse_record_payload,
+    )
+    from ralph.pipeline.operation_evidence import identity_fingerprint
+
+    live_boot_id = current_boot_id()
+    if live_boot_id is None:
+        return  # Non-Linux environment without /proc/sys/kernel/random/boot_id
+
+    base_record = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": "/tmp/wt",
+        "operation_kind": "feature_integrate",
+    }
+    temp_rec = IntegrationRecord.model_validate(base_record)
+    fp = identity_fingerprint(temp_rec)
+
+    payload = {
+        **base_record,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": f"{fp}:1700000000.0",
+        "diagnostic_owner_boot_id": "different-rebooted-boot-id-0000",
+        "diagnostic_intervention_required": True,
+    }
+    parsed = parse_record_payload(payload)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_ownership is None
+    assert parsed.diagnostic_owner_boot_id is None
+    assert parsed.diagnostic_intervention_required is False
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_alive_owner_pid_preserves_hold_at_load_time() -> None:
+    """AC3: A record whose owner PID is alive does NOT release at load time."""
+    import os
+
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord,
+        parse_record_payload,
+    )
+    from ralph.pipeline.operation_evidence import identity_fingerprint
+
+    base_record = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+        "owning_worktree": "/tmp/wt",
+        "operation_kind": "feature_integrate",
+    }
+    temp_rec = IntegrationRecord.model_validate(base_record)
+    fp = identity_fingerprint(temp_rec)
+    lease = f"{fp}:1700000000.0"
+
+    payload = {
+        **base_record,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": lease,
+        "diagnostic_owner_pid": os.getpid(),
+    }
+    parsed = parse_record_payload(payload)
+    assert parsed is not None
+    assert parsed.diagnostic_ownership == lease
+    assert parsed.diagnostic_owner_pid == os.getpid()
+    assert parsed.diagnostic_evidence == (("unstaged_work", "clean"),)
+
+
+def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
+    """O1: _bump_attempt clamps to cap and never increments past it."""
+    from ralph.pipeline._integration_diagnostic import (
+        DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+        _bump_attempt,
+    )
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1,
+    )
+    # Bumping from cap - 1 reaches cap and triggers intervention
+    bumped = _bump_attempt(record, "error 1", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
+    assert bumped.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert bumped.diagnostic_intervention_required is True
+
+    # Bumping when ALREADY at cap stays at cap (clamped; never exceeds)
+    bumped_again = _bump_attempt(
+        bumped, "error 2", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    )
+    assert bumped_again.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert bumped_again.diagnostic_intervention_required is True
+
+    # Bumping a legacy record already over cap clamps down to cap
+    over_cap_record = record.model_copy(update={"merge_commit_repair_attempts": 200})
+    bumped_over_cap = _bump_attempt(
+        over_cap_record, "error 3", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    )
+    assert bumped_over_cap.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    assert bumped_over_cap.diagnostic_intervention_required is True

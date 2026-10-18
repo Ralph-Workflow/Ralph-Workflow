@@ -95,6 +95,25 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
+def _record_display_outcome(display: object | None, outcome: str, **opts: object) -> None:
+    """Record artifact outcome on display surface to ensure honest phase display."""
+    target: object | None = display
+    if target is None:
+        ctx = opts.get("display_context")
+        if isinstance(ctx, ParallelDisplay):
+            target = ctx
+        elif ctx is not None:
+            with suppress(Exception):
+                target = resolve_active_display(
+                    None, cast("DisplayContext", ctx)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if target is not None and hasattr(target, "record_artifact_outcome"):
+        with suppress(Exception):
+            cast("ParallelDisplay", target).record_artifact_outcome(
+                outcome
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+
+
 @dataclass(frozen=True)
 class _CommitScopeResolution:
     include_paths: tuple[str, ...] | None
@@ -508,13 +527,23 @@ def _perform_commit_creation(
     """Attempt commit creation with repairable git state retry, returning commit sha."""
     expected_head = get_head_sha(repo_root)
     _stage_commit_scope(repo_root, payload, stage_all_fn)
-    result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
-    if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+    try:
+        result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+    except Exception:
         if _attempt_repair_git_state(repo_root, **repair_opts):
             logger.info("Retrying commit creation after git state repair")
             expected_head = get_head_sha(repo_root)
             _stage_commit_scope(repo_root, payload, stage_all_fn)
             result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+        else:
+            raise
+    if result.status is not CommitCreationStatus.CREATED or result.sha is None:
+        if _attempt_repair_git_state(repo_root, **repair_opts):
+            logger.info("Retrying commit creation after git state repair")
+            expected_head = get_head_sha(repo_root)
+            _stage_commit_scope(repo_root, payload, stage_all_fn)
+            with suppress(Exception):
+                result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
         if result.status is not CommitCreationStatus.CREATED or result.sha is None:
             err_msg = result.error or f"commit creation returned {result.status.value}"
             logger.warning("Commit was not created: {}", err_msg)
@@ -594,6 +623,7 @@ def execute_commit_effect(
         err_msg = f"{type(exc).__name__}: {exc}"
         set_last_commit_error(err_msg)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
+        _record_display_outcome(display, "failed", **opts)
         return PipelineEvent.COMMIT_FAILURE
 
     with suppress(Exception):
@@ -605,9 +635,8 @@ def execute_commit_effect(
         )
         render_target: object = display if display is not None else get_display_context(display)
         _render_commit_fn(repo_root, render_target)
-    if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
-        with suppress(Exception):
-            cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
+    if verbosity != Verbosity.QUIET:
+        _record_display_outcome(display, f"sha={sha[:8]}", **opts)
     with suppress(Exception):
         cleanup_commit_message_artifacts(repo_root)
     if _has_residual_work_fn is not None:

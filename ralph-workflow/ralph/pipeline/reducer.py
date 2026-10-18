@@ -1438,12 +1438,23 @@ def _is_repairable_git_failure(reason: str | None) -> bool:
     repairable_patterns = (
         "head is detached",
         "detached head",
+        "detached",
         "index.lock",
+        "head.lock",
+        ".lock",
         "stale lock",
         "lock contention",
+        "cannot lock ref",
+        "unable to create",
         "unmerged",
         "conflict",
+        "conflicts",
         "repeated commit failure",
+        "worktree not clean",
+        "uncommitted",
+        "staged",
+        "gitoperationerror",
+        "giterror",
     )
     return any(p in error_text for p in repairable_patterns)
 
@@ -1463,12 +1474,8 @@ def _resolve_commit_recovery_phase(
         if (
             defn.role == "commit_cleanup"
             and name != state.phase
-            and defn.transitions
-            and defn.transitions.on_success == state.phase
+            and not name.endswith("_final_commit_cleanup")
         ):
-            return name
-    for name, defn in policy.phases.items():
-        if defn.role == "commit_cleanup" and name != state.phase:
             return name
     return None
 
@@ -1494,7 +1501,10 @@ def _handle_commit_failure(
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
 
-    cleared_state = state.copy_with(pending_cycle_outcome=None)
+    cleared_state = state.copy_with(
+        pending_cycle_outcome=None,
+        last_execution_result_status="failed",
+    )
     last_error = get_last_commit_error() or state.last_error
 
     if _is_repairable_git_failure(last_error):
@@ -1542,6 +1552,7 @@ def _handle_commit_failure(
                 last_error=failure_reason,
                 recovery_epoch=bounded_epoch,
                 pending_cycle_outcome=None,
+                last_execution_result_status="failed",
             )
             return new_state, []
 

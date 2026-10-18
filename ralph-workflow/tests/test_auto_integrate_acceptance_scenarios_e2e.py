@@ -359,12 +359,31 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Land a commit in the primary repository on the target branch but DO NOT push
-    # (simulates a process killed between local landing and push).
-    local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
+    # Land a commit in the primary repository via a real subprocess and kill the process
+    # before push (AC7: real interruption between local landing and push).
+    import sys
 
+    sub_code = (
+        "import sys, time, subprocess; "
+        "subprocess.run(['git', 'add', 'local.txt'], check=True, capture_output=True); "
+        "subprocess.run(['git', 'commit', '-m', 'local advance'], check=True, capture_output=True); "
+        "sys.stdout.write('COMMITTED\\n'); sys.stdout.flush(); "
+        "time.sleep(10)"
+    )
+    (repo / "local.txt").write_text("local work\n", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-c", sub_code],
+        cwd=str(repo),
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    line = proc.stdout.readline() if proc.stdout else ""
+    assert "COMMITTED" in line
+    proc.kill()
+    proc.wait()
+
+    local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
     # Pre-state: local ref is ahead of bare remote.
-    assert _head_sha(repo, f"refs/heads/{_TARGET}") == local_sha
     bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_before != local_sha
 

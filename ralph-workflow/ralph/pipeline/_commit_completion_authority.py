@@ -32,13 +32,17 @@ def complete_commit(
     **extra: object,
 ) -> CommitCompletion:
     """Promote ``record`` to the integrated phase via the single transition."""
+    if not integrated_feature_sha or not integrated_feature_sha.strip():
+        raise ValueError(
+            "cannot promote integration record to integrated without a valid integrated_feature_sha"
+        )
     # Caller kwargs override nothing the authority owns: phase and
     # integrated_feature_sha are fixed here; any other with_transition kwarg
     # is forwarded.
     kwargs: dict[str, object] = dict(extra)
     kwargs.setdefault("phase", "integrated")
-    kwargs.setdefault("integrated_feature_sha", integrated_feature_sha)
+    kwargs.setdefault("integrated_feature_sha", integrated_feature_sha.strip())
     return CommitCompletion(
         record=record.with_transition(PROMOTE_TO_INTEGRATED, **kwargs),
-        integrated_feature_sha=integrated_feature_sha,
+        integrated_feature_sha=integrated_feature_sha.strip(),
     )

@@ -14,5 +14,5 @@ class PushEffect:
         branch: Branch name (optional, uses current branch if not specified).
     """
 
-    remote: str = "origin"
+    remote: str
     branch: str | None = None

@@ -186,6 +186,15 @@ def assess_tree_readiness(
         integration_blocking.append(
             "worktree not clean; uncommitted tracked changes deferred catch-up integration"
         )
+    if not integration_blocking and porcelain_output.strip():
+        for raw_line in porcelain_output.splitlines():
+            if len(raw_line) >= _PORCELAIN_MIN_ENTRY_LEN:
+                code = raw_line[:2]
+                if code not in ("??", "!!"):
+                    integration_blocking.append(
+                        "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+                    )
+                    break
 
     return TreeReadinessAssessment(
         development_dispatch_allowed=True,
@@ -444,7 +453,7 @@ def assert_non_resolution_dispatch_allowed(
 
 def _full_porcelain(root: Path) -> tuple[bool, str]:
     result = run_git(
-        (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain"),
+        (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no"),
         cwd=root,
         label="git-integration-resolution-status",
     )

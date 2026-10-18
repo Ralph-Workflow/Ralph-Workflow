@@ -809,7 +809,13 @@ def _integrate_once_owned(
             # ``fast_forwarded`` is carried through ``source_state``
             # so the headline "did the local land" signal survives the
             # publication round-trip.
-            record = reconcile_remote_publication(config, root, target, source_state=record)
+            record = reconcile_remote_publication(
+                config,
+                root,
+                target,
+                rebase_stop_resolver=rebase_stop_resolver,
+                source_state=record,
+            )
             if record.last_push_status == "non_fast_forward":
                 # A non-fast-forward push is a remote race, not a failed local
                 # landing. Re-integrate the feature after reconciling the target

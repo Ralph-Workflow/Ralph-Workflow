@@ -2426,6 +2426,15 @@ def _wait_for_integration_retry(
         return state.clear_waiting()
 
     rebase = durable_rebase
+    if rebase.is_intervention_required:
+        state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
+            WaitReason.EXHAUSTED_RETRY, None
+        )
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        ctx.sleep(5.0)
+        return state.clear_waiting()
+
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
@@ -2438,6 +2447,22 @@ def _wait_for_integration_retry(
     )
     if recovered is not None:
         state = state.copy_with(rebase=recovered)
+    else:
+        bumped_conflicts = rebase.consecutive_conflicts + 1
+        rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
+        if rebase.consecutive_conflicts >= (
+            ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+        ):
+            if not rebase.is_intervention_required:
+                _handoff_retained_failure(ctx, detail)
+                if ctx.latest_state and ctx.latest_state[0].rebase is not None:
+                    rebase = ctx.latest_state[0].rebase.record_consecutive_conflicts(
+                        bumped_conflicts
+                    )
+            rebase = rebase.set_intervention_required(detail)
+        state = state.copy_with(rebase=rebase)
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
     return state.clear_waiting()
 
 

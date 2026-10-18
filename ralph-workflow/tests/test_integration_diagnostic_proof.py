@@ -465,3 +465,106 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
     # Marker on disk preserved!
     assert (gitdir / "MERGE_HEAD").exists()
     assert (gitdir / "MERGE_HEAD").read_bytes() == marker_content
+
+
+@pytest.mark.timeout_seconds(5)
+@pytest.mark.subprocess_e2e
+def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress(
+    tmp_path: Path,
+) -> None:
+    """AC3: Killing the owning process mid-diagnostic releases automatically on next run.
+
+    Runs a diagnostic in a real subprocess until ``HOLD_DIAGNOSTIC_EVIDENCE``
+    is durably written with owner identity (PID/boot ID), hard-kills the owning
+    process with SIGKILL, restarts recovery in a new process, and verifies
+    automated progress is made (hold released, no operator intervention,
+    no retained skip).
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+    from ralph.pipeline._integration_action import (
+        IntegrationAction,
+        next_integration_action,
+    )
+    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "config", "user.name", "Test").returncode == 0
+    assert _git(root, "config", "user.email", "test@example.com").returncode == 0
+    base = _commit(root, "shared.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "shared.txt", "feature\n")
+    assert _git(root, "switch", "main").returncode == 0
+
+    # 1. Run a real subprocess that writes the diagnostic hold with its own PID
+    hold_script = (
+        "import os, sys, time\n"
+        "from pathlib import Path\n"
+        "from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record, HOLD_DIAGNOSTIC_EVIDENCE\n"
+        "from ralph.pipeline.operation_evidence import identity_fingerprint\n"
+        "from ralph.pipeline._auto_integrate_record_restamp import current_boot_id\n"
+        "\n"
+        "root = Path(sys.argv[1])\n"
+        "feature = sys.argv[2]\n"
+        "target = sys.argv[3]\n"
+        "record = IntegrationRecord(\n"
+        "    phase='integrating',\n"
+        "    target='main',\n"
+        "    pre_feature_sha=feature,\n"
+        "    pre_target_sha=target,\n"
+        "    owning_worktree=str(root),\n"
+        "    operation_kind='feature_integrate',\n"
+        ")\n"
+        "fp = identity_fingerprint(record)\n"
+        "lease = f'{fp}:{time.time()}'\n"
+        "held = record.with_transition(\n"
+        "    HOLD_DIAGNOSTIC_EVIDENCE,\n"
+        "    diagnostic_evidence=(('unstaged_work', 'clean'),),\n"
+        "    diagnostic_ownership=lease,\n"
+        "    diagnostic_owner_pid=os.getpid(),\n"
+        "    diagnostic_owner_boot_id=current_boot_id(),\n"
+        ")\n"
+        "write_record(root, held)\n"
+        "sys.stdout.write('HELD\\n')\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(60)\n"
+    )
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", hold_script, str(root), feature, base],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert proc.stdout is not None
+    sync_line = proc.stdout.readline()
+    assert sync_line.strip() == "HELD"
+
+    # Confirm the hold is durably on disk with proc.pid
+    held_on_disk = read_record(root)
+    assert held_on_disk is not None
+    assert held_on_disk.diagnostic_ownership is not None
+    assert held_on_disk.diagnostic_owner_pid == proc.pid
+
+    # 2. Hard-kill the owning process (real SIGKILL, not simulated)
+    os.kill(proc.pid, signal.SIGKILL)
+    proc.wait()
+
+    # 3. Run recovery in this process (which has a different PID and sees proc.pid is dead)
+    _outcome = recover_incomplete_integration(WorkspaceScope(root), backend=DEFAULT_FILE_BACKEND)
+
+    # 4. Assert next run made automated progress: hold released, no intervention, no retained skip
+    after = read_record(root)
+    assert after is not None
+    assert after.diagnostic_ownership is None
+    assert after.diagnostic_evidence == ()
+    assert after.diagnostic_owner_pid is None
+    assert after.diagnostic_intervention_required is False
+    assert next_integration_action(after) != IntegrationAction.REQUIRE_INTERVENTION

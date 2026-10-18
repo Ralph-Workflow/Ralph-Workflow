@@ -85,7 +85,11 @@ def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyP
         "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", failing_hook
     )
 
-    assert (
-        auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record)
-        is record
+    result = auto_integrate_ff.maybe_push_target(
+        _config(enabled=True), Path("/repo"), "release", record
     )
+    assert result.fast_forwarded is True
+    assert result.last_publication_decision == "publish_deferred_remote"
+    assert result.last_remote_sync == "origin unreachable"
+    assert result.last_push_status == "unreachable"
+    assert "remote unavailable" in (result.last_reason or "")

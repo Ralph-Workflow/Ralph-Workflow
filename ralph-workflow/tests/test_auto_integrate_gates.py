@@ -8,6 +8,7 @@ and in-progress rebase/merge.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -754,3 +755,163 @@ def test_unpatched_real_worktree_dirty_target_ahead_records_skip(tmp_path: Path)
     assert outcome is not None
     assert outcome.last_action == "skipped"
     assert "worktree not clean" in str(outcome.last_reason)
+
+
+def _setup_tree_clean(_repo: Repo, _root: Path) -> None:
+    pass
+
+
+def _setup_tree_staged_dirty(repo: Repo, root: Path) -> None:
+    staged_file = root / "staged.txt"
+    staged_file.write_text("staged content\n", encoding="utf-8")
+    repo.index.add(["staged.txt"])
+
+
+def _setup_tree_detached_dirty(repo: Repo, root: Path) -> None:
+    repo.git.checkout("--detach", "HEAD")
+    dirty_file = root / "tracked.txt"
+    dirty_file.write_text("detached dirty content\n", encoding="utf-8")
+    repo.index.add(["tracked.txt"])
+
+
+@pytest.mark.timeout_seconds(5)
+@pytest.mark.parametrize(
+    ("state_name", "setup_state", "expected_clean", "expected_blocked"),
+    [
+        ("clean", _setup_tree_clean, True, False),
+        ("staged-dirty", _setup_tree_staged_dirty, False, True),
+        ("detached+dirty", _setup_tree_detached_dirty, False, True),
+    ],
+)
+def test_all_three_gates_agree_on_tree_state(
+    tmp_path: Path,
+    state_name: str,
+    setup_state: Callable[[Repo, Path], None],
+    expected_clean: bool,
+    expected_blocked: bool,
+) -> None:
+    """AC12: resolution verdict, boundary catch-up gate, and planning sync gate agree.
+
+    Verifies across clean, staged-dirty, and detached+dirty:
+    1. Integration-resolution verdict (integration_ready).
+    2. Boundary catch-up gate (ended / cleanliness deferral).
+    3. Planning sync gate (_record_staged_block / integrate_before_planning).
+    Development dispatch and integration readiness decisions remain distinct.
+    """
+    repo = _make_real_repo(tmp_path)
+    actor = Actor("Test Committer", "test@example.com")
+
+    # Feature branch with work
+    repo.git.checkout("-b", "feature/work")
+
+    # Advance main so boundary catch-up gate observes a target ahead
+    repo.git.checkout("main")
+    main_file = tmp_path / "main.txt"
+    main_file.write_text("main advance\n", encoding="utf-8")
+    repo.index.add(["main.txt"])
+    repo.index.commit("main advance", author=actor, committer=actor)
+
+    # Return to feature branch and apply state
+    repo.git.checkout("feature/work")
+    setup_state(repo, tmp_path)
+
+    cfg = _config()
+    state = RebaseState()
+
+    # Gate 1: Integration resolution verdict
+    readiness = assess_tree_readiness(tmp_path)
+    verdict = inspect_integration_resolution(tmp_path, state)
+    assert readiness.integration_ready is expected_clean
+    assert verdict.integration_ready is expected_clean
+    assert (not verdict.integration_ready) is expected_blocked
+    assert readiness.development_dispatch_allowed is True
+    assert verdict.development_dispatch_allowed is True
+
+    # Gate 2: Boundary catch-up gate
+    handled, outcome = boundary.phase_boundary_outcome(
+        cfg, tmp_path, "main", state, rebase_stop_resolver=None
+    )
+    if expected_clean:
+        assert outcome is None or "worktree not clean" not in str(outcome.last_reason)
+    else:
+        assert handled is True
+        assert outcome is not None
+        assert outcome.last_action == "skipped"
+        assert "worktree not clean" in str(outcome.last_reason) or "staged" in str(
+            outcome.last_reason
+        )
+
+    # Gate 3: Planning sync gate
+    planning_block = planning._record_staged_block(tmp_path, "main")
+    planning_sync = planning.integrate_before_planning(
+        cfg, WorkspaceScope(tmp_path), state, rebase_stop_resolver=None
+    )
+    if expected_clean:
+        assert planning_block is None
+    else:
+        assert planning_block is not None
+        assert planning_block.last_action == "skipped"
+        assert planning_block.last_reason == readiness.blocking_reasons[0]
+        assert planning_sync is not None
+        assert planning_sync.last_action == "skipped"
+        assert planning_sync.last_reason == readiness.blocking_reasons[0]
+
+
+@pytest.mark.timeout_seconds(5)
+def test_persisted_clean_evidence_over_live_dirty_tree_defers_to_live_tree(tmp_path: Path) -> None:
+    """AC12: persisted clean evidence over a live dirty tree defers to live tree."""
+    repo = _make_real_repo(tmp_path)
+    actor = Actor("Test Committer", "test@example.com")
+
+    # Feature branch with work
+    repo.git.checkout("-b", "feature/work")
+
+    # Advance main so boundary catch-up gate observes a target ahead
+    repo.git.checkout("main")
+    main_file = tmp_path / "main.txt"
+    main_file.write_text("main advance\n", encoding="utf-8")
+    repo.index.add(["main.txt"])
+    repo.index.commit("main advance", author=actor, committer=actor)
+
+    # Return to feature branch and dirty it
+    repo.git.checkout("feature/work")
+    (tmp_path / "staged.txt").write_text("staged live work\n", encoding="utf-8")
+    repo.index.add(["staged.txt"])
+
+    cfg = _config()
+    persisted_clean_state = RebaseState(
+        last_action="completed",
+        last_outcome="fast_forwarded",
+        fast_forwarded=True,
+        integration_unresolved=False,
+    )
+
+    # Gate 1: Integration resolution verdict defers to live tree
+    readiness = assess_tree_readiness(tmp_path, state=persisted_clean_state)
+    verdict = inspect_integration_resolution(tmp_path, persisted_clean_state)
+    assert readiness.integration_ready is False
+    assert verdict.integration_ready is False
+    assert readiness.development_dispatch_allowed is True
+    assert verdict.development_dispatch_allowed is True
+
+    # Gate 2: Boundary catch-up gate defers to live tree
+    handled, outcome = boundary.phase_boundary_outcome(
+        cfg, tmp_path, "main", persisted_clean_state, rebase_stop_resolver=None
+    )
+    assert handled is True
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert "worktree not clean" in str(outcome.last_reason) or "staged" in str(outcome.last_reason)
+
+    # Gate 3: Planning sync gate defers to live tree
+    planning_block = planning._record_staged_block(tmp_path, "main")
+    assert planning_block is not None
+    assert planning_block.last_action == "skipped"
+    assert planning_block.last_reason == readiness.blocking_reasons[0]
+
+    planning_sync = planning.integrate_before_planning(
+        cfg, WorkspaceScope(tmp_path), persisted_clean_state, rebase_stop_resolver=None
+    )
+    assert planning_sync is not None
+    assert planning_sync.last_action == "skipped"
+    assert planning_sync.last_reason == readiness.blocking_reasons[0]

@@ -152,11 +152,16 @@ def push_target_after_landing(
     import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
 
     push_fn = _remote_sync.push_single_remote
+    push_record = (
+        record.model_copy(update={"freshness_verdict": "verified"})
+        if record.fast_forwarded
+        else record
+    )
     typed_result, decision = push_fn(
         repo_root,
         target,
         remote=chosen_remote,
-        record=record,
+        record=push_record,
         remote_client=remote_client,
     )
     if typed_result is None:

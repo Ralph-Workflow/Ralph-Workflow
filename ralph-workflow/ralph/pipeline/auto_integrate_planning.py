@@ -14,6 +14,9 @@ from ralph.pipeline.auto_integrate_recovery import (
     recovery_retained_record,
 )
 from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
+from ralph.pipeline.commit_executor import (
+    reattach_head_if_detached as _reattach_head_if_detached,
+)
 from ralph.pipeline.integration_resolution import (
     TreeReadinessAssessment,
     assess_tree_readiness,
@@ -66,6 +69,7 @@ def integrate_before_planning(
     target = resolve_integration_target(config, root)
     if target is None:
         return None
+    _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
     readiness = assess_tree_readiness(root)
     if (
         readiness.integration_ready
@@ -130,7 +134,11 @@ def _record_staged_block(
         readiness = assess_tree_readiness(root)
     if readiness.integration_ready:
         return None
-    reason = readiness.blocking_reasons[0]
+    reason = (
+        readiness.blocking_reasons[0]
+        if readiness.blocking_reasons
+        else "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+    )
     # The single-source-of-truth predicate decides the verdict. The
     # kind is the closed-vocabulary routing signal the run loop reads;
     # the reason is the operator-facing free-form text.

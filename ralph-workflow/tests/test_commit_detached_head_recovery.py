@@ -631,3 +631,69 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
     assert repo.active_branch.name == "feature/work"
     assert (tmp_path / "staged.txt").read_text(encoding="utf-8") == "staged content\n"
     assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "dirty unstaged content\n"
+
+
+@pytest.mark.timeout_seconds(10)
+def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integrates(
+    tmp_path: Path,
+) -> None:
+    """AC10: Worktree on detached HEAD with staged changes commits to feature branch, integrates, and avoids loop."""
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
+
+    repo = _make_test_repo(tmp_path, "feature/work")
+    feature_sha = repo.heads["feature/work"].commit.hexsha
+
+    # Detach HEAD at the feature commit
+    repo.git.checkout(feature_sha)
+    assert repo.head.is_detached
+
+    # Add staged changes
+    staged_file = tmp_path / "staged_feature.txt"
+    staged_file.write_text("staged feature changes\n", encoding="utf-8")
+    repo.index.add(["staged_feature.txt"])
+
+    # Also add uncommitted tracked changes
+    tracked_file = tmp_path / "feature.txt"
+    tracked_file.write_text("feature modified content\n", encoding="utf-8")
+
+    message_file = _make_commit_artifact(tmp_path, "feat: commit staged and tracked changes")
+    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file)),
+        tmp_path,
+        config=config,
+    )
+
+    # Must succeed, reattach to feature/work, and commit onto feature branch
+    assert event == PipelineEvent.COMMIT_SUCCESS
+    repo = Repo(tmp_path)
+    assert not repo.head.is_detached, "HEAD must not be detached after commit"
+    assert repo.active_branch.name == "feature/work"
+    committed_sha = repo.head.commit.hexsha
+
+    # Reducer advances to next phase without failed_terminal
+    policy = _load_pipeline_policy()
+    state = PipelineState(phase="development_commit", previous_phase="development_commit_cleanup")
+    next_state, _ = reduce(state, event, policy)
+    assert next_state.phase != "failed_terminal"
+    assert next_state.phase in ("development_analysis", "development_final_commit_cleanup")
+
+    # Integrate the committed work into 'main'
+    outcome = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_path),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
+    )
+    assert outcome is not None
+    assert outcome.fast_forwarded
+
+    # Verified: work is landed on main, HEAD is on feature branch, no cleanup loop hitting detached HEAD
+    repo = Repo(tmp_path)
+    assert not repo.head.is_detached
+    assert repo.heads.main.commit.hexsha == committed_sha

@@ -207,7 +207,12 @@ RESUME_REPAIR = Transition(
 
 HOLD_DIAGNOSTIC_EVIDENCE = Transition(
     "HOLD_DIAGNOSTIC_EVIDENCE",
-    {"diagnostic_evidence": "diagnostic_evidence", "diagnostic_ownership": "diagnostic_ownership"},
+    {
+        "diagnostic_evidence": "diagnostic_evidence",
+        "diagnostic_ownership": "diagnostic_ownership",
+        "diagnostic_owner_pid": "diagnostic_owner_pid",
+        "diagnostic_owner_boot_id": "diagnostic_owner_boot_id",
+    },
 )
 
 RELEASE_DIAGNOSTIC_EVIDENCE = Transition(
@@ -215,6 +220,8 @@ RELEASE_DIAGNOSTIC_EVIDENCE = Transition(
     {
         "diagnostic_evidence": "diagnostic_evidence",
         "diagnostic_ownership": "diagnostic_ownership",
+        "diagnostic_owner_pid": "diagnostic_owner_pid",
+        "diagnostic_owner_boot_id": "diagnostic_owner_boot_id",
         "diagnostic_intervention_required": "diagnostic_intervention_required",
         "repair_cap_reason": "repair_cap_reason",
     },

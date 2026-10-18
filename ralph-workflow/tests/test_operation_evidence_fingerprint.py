@@ -359,6 +359,8 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "repair_last_error": "last_err",
         "diagnostic_evidence": (("unstaged_work", "clean"),),
         "diagnostic_ownership": "lease:123.0",
+        "diagnostic_owner_pid": 12345,
+        "diagnostic_owner_boot_id": "test-boot-id",
         "diagnostic_intervention_required": True,
         "repair_cap_reason": "exhausted",
         "repair_pending_diff": "diff",

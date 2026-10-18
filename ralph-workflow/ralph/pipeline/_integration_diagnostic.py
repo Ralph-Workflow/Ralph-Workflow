@@ -22,6 +22,7 @@ fixes the linked-worktree reproduction by:
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,6 +31,10 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline._auto_integrate_record_restamp import (
+    current_boot_id,
+    is_owner_dead,
+)
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
@@ -157,13 +162,15 @@ def _bump_attempt(
     Single authority for the attempt-counter emission: when the bumped
     count reaches the cap, the returned record additionally carries the
     ``RAISE_DIAGNOSTIC_INTERVENTION`` transition with ``cap_reason``.
+    The counter is clamped so it never increments past the cap.
     """
+    new_attempts = min(record.merge_commit_repair_attempts + 1, repair_attempt_cap)
     bumped = record.with_transition(
         BUMP_DIAGNOSTIC_ATTEMPT,
-        merge_commit_repair_attempts=record.merge_commit_repair_attempts + 1,
+        merge_commit_repair_attempts=new_attempts,
         repair_last_error=exc,
     )
-    if bumped.merge_commit_repair_attempts >= repair_attempt_cap:
+    if new_attempts >= repair_attempt_cap:
         return _raise_intervention(bumped, cap_reason)
     return bumped
 
@@ -253,16 +260,20 @@ def diagnose_retained_integration(
             record.diagnostic_intervention_required
             or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ):
+            from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
+
             _fingerprint, held_at = parse_lease(record.diagnostic_ownership)
             is_expired_lease = held_at is None or (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
             is_old_flagged = not record.diagnostic_evidence and not record.diagnostic_ownership
-            if is_expired_lease or is_old_flagged:
+            if is_expired_lease or is_old_flagged or is_owner_dead(record):
                 try:
                     apply_record_transition(
                         ctx.workspace_scope.root,
                         RELEASE_DIAGNOSTIC_EVIDENCE,
                         diagnostic_evidence=(),
                         diagnostic_ownership=None,
+                        diagnostic_owner_pid=None,
+                        diagnostic_owner_boot_id=None,
                         diagnostic_intervention_required=False,
                         repair_cap_reason=None,
                     )
@@ -334,6 +345,8 @@ def diagnose_retained_integration(
                     HOLD_DIAGNOSTIC_EVIDENCE,
                     diagnostic_evidence=before,
                     diagnostic_ownership=lease,
+                    diagnostic_owner_pid=os.getpid(),
+                    diagnostic_owner_boot_id=current_boot_id(),
                 )
                 write_record(ctx.workspace_scope.root, record)
             col.snapshot(operation_root, record)
@@ -404,6 +417,8 @@ def diagnostic_evidence_verdict(
     """
     if not record.diagnostic_evidence and not record.diagnostic_ownership:
         return EvidenceVerdict.UNCHANGED
+    if is_owner_dead(record):
+        return EvidenceVerdict.UNKNOWN
     if record.diagnostic_ownership is None:
         # No held lease (e.g. a post-migration record whose evidence
         # was already cleaned by the loader). There is no lease to
@@ -415,16 +430,9 @@ def diagnostic_evidence_verdict(
         # not silently cleared.
         return EvidenceVerdict.CHANGED
     fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    if fingerprint is None or held_at is None:
-        # Unparseable lease: the previous-shape fingerprint string
-        # is no longer a valid durable identity. This is the only
-        # path to operator escalation for a non-empty unparseable
-        # ownership (the fail-open auto-release contract is
-        # preserved for the separate expired-lease branch below).
-        return EvidenceVerdict.CHANGED
-    if (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
+    if held_at is not None and (time.time() - held_at) > EVIDENCE_LEASE_SECONDS:
         return EvidenceVerdict.UNKNOWN
-    if fingerprint != identity_fingerprint(record):
+    if fingerprint is None or fingerprint != identity_fingerprint(record):
         return EvidenceVerdict.CHANGED
     return EvidenceVerdict.UNCHANGED
 
@@ -488,9 +496,16 @@ def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]
     if head_res.returncode != 0:
         return False, "HEAD is unreadable"
     head = head_res.stdout.strip()
-    allowed_heads = {record.integrated_feature_sha, record.pre_target_sha} - {None, ""}
+    allowed_heads = {
+        record.integrated_feature_sha,
+        record.pre_target_sha,
+        record.pre_feature_sha,
+    } - {None, ""}
     if head not in allowed_heads:
-        return False, f"HEAD {head} does not match integrated_feature_sha or pre_target_sha"
+        return (
+            False,
+            f"HEAD {head} does not match integrated_feature_sha, pre_target_sha, or pre_feature_sha",
+        )
     return True, "HEAD matches"
 
 
@@ -878,6 +893,8 @@ def handoff_integration_diagnostic(
                     backend=backend,
                     diagnostic_evidence=(),
                     diagnostic_ownership=None,
+                    diagnostic_owner_pid=None,
+                    diagnostic_owner_boot_id=None,
                     diagnostic_intervention_required=False,
                     repair_cap_reason=None,
                 )
@@ -937,5 +954,9 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    write_record(root, _bump_attempt(record, failure[:8192]), backend=backend)
+    write_record(
+        root,
+        _bump_attempt(record, failure[:8192], repair_attempt_cap=repair_attempt_cap),
+        backend=backend,
+    )
     return invoke(agent, prompt)

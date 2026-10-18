@@ -100,6 +100,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_NO_REMOTE,
     REFRESH_NO_REMOTE_BRANCH,
     REFRESH_ORIGIN_AHEAD,
+    REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
@@ -196,8 +197,11 @@ def _observe_remote_target_sha(
             REFRESH_NO_REMOTE,
             REFRESH_NO_LOCAL_BRANCH,
             REFRESH_ORIGIN_AHEAD,
+            REFRESH_SUPPRESSED,
             "refreshed",
             "already current",
+            "refresh suppressed",
+            "refresh suppressed by throttle",
         ):
             return None, refresh
         observed: str | None = None
@@ -207,6 +211,27 @@ def _observe_remote_target_sha(
             from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
 
             observed = observe_remote_target_sha(repo_root, remote, target)
+        if observed is None and refresh in (
+            REFRESH_SUPPRESSED,
+            "refresh suppressed",
+            "refresh suppressed by throttle",
+        ):
+            try:
+                forced_refresh = refresh_target_from_remote(
+                    repo_root,
+                    target,
+                    timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                    remote=remote,
+                )
+                if hasattr(client, "observe_remote_sha"):
+                    observed = client.observe_remote_sha(repo_root, target, remote=remote)
+                else:
+                    from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
+
+                    observed = observe_remote_target_sha(repo_root, remote, target)
+                return observed, forced_refresh
+            except Exception:
+                pass
         return observed, refresh
     except Exception as exc:
         logger.debug("auto_integrate: remote observation failed: {}", exc)

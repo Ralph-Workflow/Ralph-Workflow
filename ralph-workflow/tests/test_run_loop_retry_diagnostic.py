@@ -464,3 +464,115 @@ def test_wait_for_retry_negative_no_intervention_required_falls_through_to_sleep
 
     # 2. Assert recovery preamble was invoked
     assert preamble_called == [True], "Recovery preamble should be invoked after sleep"
+
+
+def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """AC4: Ralph moving HEAD (snapshot/reset) does not produce a blocked 'evidence changed' state.
+
+    The diagnostic lease is bound to identity_fingerprint, which isolates
+    HEAD/index/worktree movements. When Ralph resets or snapshots HEAD,
+    the diagnostic path re-derives state from Git, clears durable evidence,
+    and makes progress without demanding manual 'restore original evidence'.
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    pre_feature = "a" * 40
+    pre_target = "b" * 40
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=pre_feature,
+        pre_target_sha=pre_target,
+        owning_worktree=str(tmp_path),
+        diagnostic_intervention_required=True,
+        diagnostic_evidence=(("head", "moved_by_ralph_snapshot"),),
+    )
+    # Valid unexpired lease with stable identity fingerprint
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(update={"diagnostic_ownership": lease})
+    write_record(tmp_path, record)
+
+    initial_state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="synchronization unproven",
+        ),
+    )
+
+    updated_state = run_loop._wait_for_integration_retry(initial_state, ctx)
+
+    # 1. Must NOT sleep on a fixed interval wait (fail-open / UNCHANGED lease)
+    assert sleeps == []
+
+    # 2. Durable evidence must be cleared on disk (no 'restore original evidence' hold)
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+
+    # 3. Must not report intervention required
+    assert updated_state.rebase.is_intervention_required is False
+
+
+def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """O1 retry rule: every retry iteration must either change state or escalate.
+
+    When integration cannot be immediately recovered (preamble returns None),
+    iterations must not spin without an in-process satisfier: each iteration
+    charges the conflict attempt counter, and reaching the cap escalates to
+    automated resolver handoff and intervention_required.
+    """
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    saved_checkpoints: list[PipelineState] = []
+
+    def _recording_save(state: PipelineState, _c: run_loop._LoopContext) -> None:
+        saved_checkpoints.append(state)
+
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _recording_save)
+    monkeypatch.setattr(run_loop, "_run_auto_integrate_recovery_preamble", _noop_preamble)
+
+    handoffs: list[str] = []
+
+    def _recording_handoff(_c: object, failure: str) -> None:
+        handoffs.append(failure)
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        diagnostic_intervention_required=False,
+    )
+    write_record(tmp_path, record)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    state = PipelineState(
+        phase="development",
+        rebase=RebaseState(
+            last_action="conflict",
+            last_reason="conflict detail",
+            consecutive_conflicts=cap - 1,
+        ),
+    )
+
+    # Iteration 1: charges the final attempt up to cap and immediately escalates
+    state = run_loop._wait_for_integration_retry(state, ctx)
+    assert state.rebase.consecutive_conflicts == cap
+    assert state.rebase.is_intervention_required is True
+    assert len(handoffs) == 1
+    assert "conflict detail" in handoffs[0]
+    assert len(saved_checkpoints) >= 1

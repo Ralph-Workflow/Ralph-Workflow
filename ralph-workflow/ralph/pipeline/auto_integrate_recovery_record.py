@@ -292,6 +292,8 @@ def _apply_release_or_typed_skip(
             backend=backend,
             diagnostic_evidence=(),
             diagnostic_ownership=None,
+            diagnostic_owner_pid=None,
+            diagnostic_owner_boot_id=None,
             diagnostic_intervention_required=False,
             repair_cap_reason=None,
         )

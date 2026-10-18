@@ -12,6 +12,7 @@ from ralph.pipeline._publication_state_machine import next_publication_action
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
     REFRESH_NO_REMOTE,
+    REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -183,35 +184,15 @@ def _reconcile_in_progress_rebase(
     )
 
 
-def _attempt_reconcile_and_push(
-    *,
+def _align_target_with_remote(
     repo_root: Path,
     target: str,
     remote: str,
+    refresh: str,
     config: UnifiedConfig | None,
-    reintegrate: Callable[[], bool] | None,
     rebase_stop_resolver: RebaseStopResolver | None,
-    record: RebaseState | None = None,
     remote_client: RemoteClient | None = None,
-) -> _PushOutcome:
-    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        _DEFAULT_REMOTE_CLIENT,
-        push_single_remote,
-        reclaim_target_worktree_enabled,
-    )
-
-    client = remote_client or _DEFAULT_REMOTE_CLIENT
-    refresh = client.refresh_target(
-        repo_root,
-        target,
-        timeout_seconds=_FETCH_TIMEOUT_SECONDS,
-        remote=remote,
-    )
-    refresh_outcome = _probe_refresh_outcome(refresh, remote, target)
-    if refresh_outcome is not None:
-        return refresh_outcome
-
+) -> _PushOutcome | None:
     rebase_ongoing = False
     try:
         rebase_ongoing = rebase_in_progress(repo_root)
@@ -226,6 +207,7 @@ def _attempt_reconcile_and_push(
             return ongoing_outcome
     elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
         reconciliation = reconcile_target_onto_remote(
             repo_root,
@@ -246,6 +228,66 @@ def _attempt_reconcile_and_push(
                     else None
                 ),
             )
+    elif refresh == REFRESH_ORIGIN_AHEAD:
+        from ralph.pipeline.auto_integrate_catchup import attempt_catchup_fast_forward
+
+        catchup_res = attempt_catchup_fast_forward(
+            config,
+            repo_root,
+            target=target,
+            remote=remote,
+            remote_client=remote_client,
+        )
+        if catchup_res != "fast-forwarded":
+            return _PushOutcome(
+                success=False,
+                summary="remote ahead but catch-up could not advance local target",
+                pushed=False,
+                status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
+            )
+    return None
+
+
+def _attempt_reconcile_and_push(
+    *,
+    repo_root: Path,
+    target: str,
+    remote: str,
+    config: UnifiedConfig | None,
+    reintegrate: Callable[[], bool] | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    record: RebaseState | None = None,
+    remote_client: RemoteClient | None = None,
+) -> _PushOutcome:
+    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        _DEFAULT_REMOTE_CLIENT,
+        push_single_remote,
+    )
+
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    refresh = client.refresh_target(
+        repo_root,
+        target,
+        timeout_seconds=_FETCH_TIMEOUT_SECONDS,
+        remote=remote,
+    )
+    refresh_outcome = _probe_refresh_outcome(refresh, remote, target)
+    if refresh_outcome is not None:
+        return refresh_outcome
+
+    align_outcome = _align_target_with_remote(
+        repo_root=repo_root,
+        target=target,
+        remote=remote,
+        refresh=refresh,
+        config=config,
+        rebase_stop_resolver=rebase_stop_resolver,
+        remote_client=remote_client,
+    )
+    if align_outcome is not None:
+        return align_outcome
+
     if reintegrate is not None and not reintegrate():
         return _PushOutcome(
             success=False,

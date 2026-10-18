@@ -638,7 +638,7 @@ def create_commit(
 
 def push(
     repo_root: Path | str,
-    remote: str = "origin",
+    remote: str,
     branch: str | None = None,
 ) -> None:
     """Push current branch to remote.
