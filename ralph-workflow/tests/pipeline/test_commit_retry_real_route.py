@@ -1,55 +1,37 @@
-"""End-to-end commit-retry real-route tests (Bug 2 AC 4, WU-4E).
+"""End-to-end commit-retry real-route tests (Bug 2 AC 4, WU-1).
 
 The product brief's AC 4 requires that a ``development_commit`` failure
 caused by lock contention does not reach ``failed_terminal`` on the
 first attempt and the validated commit message is reused on retry.
 
 The existing ``tests/pipeline/test_reducer_lock_retry.py`` covers the
-**reducer** seam (in-place re-route, cap clamp, message file survival),
-but its ``test_valid_message_preserved_through_failure_then_success``
-masks a real-route bug: it calls ``execute_commit_effect`` directly on
-the second attempt, bypassing the **real** effect router
-(``determine_effect_from_policy``). The router's
-``_commit_phase_effect`` (in ``effect_router.py``) gates on
-``state.commit.agent_invoked``: when ``False`` (a fresh
-``CommitState()``), the router returns ``InvokeAgentEffect`` — the
-commit-message agent is re-invoked instead of re-running
-``execute_commit_effect`` on the preserved ``effect.message_file``.
+reducer seam (in-place re-route, cap clamp, message file survival),
+while this module covers both:
+1. The in-place retry route (when policy defines no recovery/cleanup phase).
+2. The default-policy route through ``development_commit_cleanup`` back
+   to ``development_commit``.
 
-The reducer's in-place branch (no recovery phase) called
-``progress.advance_phase(advanced_state, target, policy=policy)`` which
-resets ``commit = CommitState()`` for ``role == "commit"`` target
-phases (``progress.py:190-193``). The fix preserves ``state.commit``
-across the in-place retry by ``.copy_with(commit=state.commit, ...)``
-in the reducer, so the next effect is ``CommitEffect`` (re-reading
-the preserved message file) rather than ``InvokeAgentEffect``.
-
-The default-policy route (``development_commit_cleanup`` per
-``ralph/policy/defaults/pipeline.toml:184-195``) is a **separate
-concern** out of scope for this fix: the cleanup→commit transition
-goes through ``_advance_phase`` →
-``progress.advance_phase`` which resets ``commit = CommitState()``
-(because ``role == "commit"``), so the commit-message agent is
-re-invoked after cleanup. This test documents the current behavior
-and surfaces it as a known follow-up.
+When transitioning from cleanup back to commit following recoverable lock
+contention, the validated commit message state is preserved so that the
+effect router's ``_commit_phase_effect`` emits ``CommitEffect`` (re-reading
+the byte-identical validated message) instead of re-invoking the commit-message
+agent with ``InvokeAgentEffect``.
 
 Each test in this module:
-
 - Places the commit-message artifact inside the actual
   ``WorkspaceScope.root`` so the routed effect (``workspace_scope.root
   / COMMIT_MESSAGE_ARTIFACT``) reads the same file the test wrote.
 - Uses fakes for filesystem, git ops, and clock — no real
-  ``subprocess``, no ``time.sleep``, no type-suppression comments.
-- Drives the real effect router via
-  ``determine_effect_from_policy`` and the real reducer
-  via ``reduce`` (with the recovery phase patched to ``None`` for the
-  in-place branch).
-- Executes the ``next_effect`` returned by the router on retry (NOT
+  ``git.Repo.init``, no subprocess, no ``time.sleep``.
+- Drives the real effect router via ``determine_effect_from_policy``
+  with injectable ``has_uncommitted_changes_fn`` and the real reducer via ``reduce``.
+- Exercises the ``next_effect`` returned by the router on retry (NOT
   the original ``effect``), so the test exercises the real route.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -57,13 +39,15 @@ from unittest.mock import patch
 import pytest
 
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.git.commit_result import CommitCreationResult
 from ralph.pipeline.commit_executor import (
     execute_commit_effect,
     set_last_commit_error,
 )
+from ralph.pipeline.commit_state import CommitState
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -97,6 +81,18 @@ def _make_unified_config() -> UnifiedConfig:
     return UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0))
 
 
+def _make_fake_workspace(tmp_path: Path) -> Path:
+    """Create a faked workspace root directory without real git initialization."""
+    repo_root = tmp_path / "worktree"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    return repo_root
+
+
+def _has_uncommitted_changes(_path: Path) -> bool:
+    """Injectable fake changes checker that always reports pending commit work."""
+    return True
+
+
 def _make_commit_message_file(repo_root: Path, subject: str) -> Path:
     """Place the commit-message artifact inside ``repo_root`` (the
     ``WorkspaceScope.root``).
@@ -116,28 +112,19 @@ def _make_commit_message_file(repo_root: Path, subject: str) -> Path:
     return message_file
 
 
-def _make_git_repo(tmp_path: Path) -> Path:
-    from git import Actor, Repo
-
-    repo_root = tmp_path / "worktree"
-    repo = Repo.init(repo_root)
-    repo.config_writer().set_value("user", "name", "Test User").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
-    actor = Actor("Test User", "test@example.com")
-    init_file = repo_root / "initial.txt"
-    init_file.write_text("initial content", encoding="utf-8")
-    repo.index.add(["initial.txt"])
-    repo.index.commit("initial commit", author=actor, committer=actor)
-    if repo.active_branch.name != "main":
-        repo.git.branch("-M", "main")
-    (repo_root / "feature.txt").write_text("feature body", encoding="utf-8")
-    return repo_root
+@pytest.fixture(autouse=True)
+def _fake_git_ops() -> Iterator[None]:
+    """Ensure test module runs completely without real git operations or subprocesses."""
+    with (
+        patch("ralph.pipeline.effect_router._is_empty_commit_phase", return_value=False),
+        patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
-# In-place route (no recovery phase). After the WU-4E production fix, the
-# next effect is ``CommitEffect`` (re-reading the preserved message file),
-# NOT ``InvokeAgentEffect`` (which would re-invoke the commit-message agent).
+# In-place route (no recovery phase).
 # ---------------------------------------------------------------------------
 
 
@@ -147,8 +134,7 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
     """In-place lock-contention retry preserves commit state across the retry.
 
     Drives the real effect router (``determine_effect_from_policy``) on the
-    post-reduce state. After the WU-4E production fix:
-
+    post-reduce state:
     1. The reducer's in-place branch preserves ``state.commit`` so
        ``state.commit.agent_invoked`` remains True across the retry.
     2. ``_commit_phase_effect`` (``effect_router.py:301-311``) sees
@@ -156,23 +142,8 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
        ``InvokeAgentEffect``) on the second pass.
     3. ``execute_commit_effect`` re-reads the preserved message file and
        lands the commit.
-
-    Before the fix, the in-place branch reset ``commit = CommitState()``
-    via ``progress.advance_phase``, so the next effect was
-    ``InvokeAgentEffect`` — the commit-message agent was re-invoked and
-    the validated message bytes were discarded.
-
-    Crucially, the test exercises the **real effect route**: it places
-    the commit-message artifact at ``workspace_scope.root /
-    COMMIT_MESSAGE_ARTIFACT``, drives the real effect router on the
-    post-reduce state, and executes the returned ``next_effect`` (NOT
-    the original ``effect``). A broken reducer fix that preserved
-    ``state.commit`` but routed the message file to the wrong path
-    would fail this test.
     """
-    from ralph.git.commit_result import CommitCreationResult
-
-    repo_root = _make_git_repo(tmp_path)
+    repo_root = _make_fake_workspace(tmp_path)
     message_file = _make_commit_message_file(
         repo_root, "feat: validated message must be reused on in-place retry"
     )
@@ -180,19 +151,12 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
-    # CommitState seeded with agent_invoked=True to reflect that the
-    # commit-message agent has already run and produced a validated message.
-    from ralph.pipeline.commit_state import CommitState
-
     commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
 
-    # The action callback raises a lock error on the first call, then
-    # succeeds (mirrors the real-world recovery: a stale lock was
-    # unlinked, so the second ``git add -A`` succeeds).
     stage_call_count = {"n": 0}
     observed_messages: list[str] = []
 
-    def fake_stage_all(root: Path) -> None:
+    def fake_stage_all(root: Path | str) -> None:
         del root
         stage_call_count["n"] += 1
         if stage_call_count["n"] == 1:
@@ -205,121 +169,97 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
         observed_messages.append(message)
         return CommitCreationResult.created(sha="cafef00d")
 
-    # The first attempt's effect points to the canonical message-file
-    # path inside ``repo_root`` (the same path the router will build).
     effect = CommitEffect(message_file=str(message_file))
 
-    # First attempt: lock-contention failure.
-    first_event = execute_commit_effect(
-        effect,
-        repo_root,
-        stage_all_fn=fake_stage_all,
-        create_commit_fn=fake_create_commit,
-    )
-    assert first_event is PipelineEvent.COMMIT_FAILURE
-    assert message_file.exists(), "Validated message must be preserved on COMMIT_FAILURE"
+    with (
+        patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
+    ):
+        # First attempt: lock-contention failure.
+        first_event = execute_commit_effect(
+            effect,
+            repo_root,
+            stage_all_fn=fake_stage_all,
+            create_commit_fn=fake_create_commit,
+            has_commit_work_fn=_has_uncommitted_changes,
+        )
+        assert first_event is PipelineEvent.COMMIT_FAILURE
+        assert message_file.exists(), "Validated message must be preserved on COMMIT_FAILURE"
 
-    # Reducer routes in-place for a policy with no commit_recovery/commit_cleanup
-    # phase. We patch _resolve_commit_recovery_phase to None to force the
-    # in-place branch (the default policy DOES define a commit_cleanup phase;
-    # this test focuses on the in-place branch behavior).
-    state = PipelineState(
-        phase="development_commit",
-        phase_chains={
-            "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
-        },
-        commit=commit_state,
-        recovery_epoch=0,
-        pending_cycle_outcome="completed",
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
-    )
-    set_last_commit_error(state.last_error or "")
-    try:
-        with patch(
-            "ralph.pipeline.reducer._resolve_commit_recovery_phase",
-            return_value=None,
-        ):
-            next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
-    finally:
-        set_last_commit_error(None)
+        # Reducer routes in-place when commit_recovery/commit_cleanup phase is absent.
+        state = PipelineState(
+            phase="development_commit",
+            phase_chains={
+                "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
+            commit=commit_state,
+            recovery_epoch=0,
+            pending_cycle_outcome="completed",
+            last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        )
+        set_last_commit_error(state.last_error or "")
+        try:
+            with patch(
+                "ralph.pipeline.reducer._resolve_commit_recovery_phase",
+                return_value=None,
+            ):
+                next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
+        finally:
+            set_last_commit_error(None)
 
-    assert next_state.phase == "development_commit", (
-        f"Reducer must route in-place for a repairable git failure, got phase={next_state.phase}"
-    )
+        assert next_state.phase == "development_commit", (
+            f"Reducer must route in-place for a repairable git failure, got phase={next_state.phase}"
+        )
+        assert next_state.commit.agent_invoked is True, (
+            "state.commit.agent_invoked must be preserved across the in-place "
+            "retry; otherwise the next effect falls through to InvokeAgentEffect"
+        )
 
-    # The fix: state.commit is preserved across the in-place retry, so
-    # agent_invoked remains True and the next effect is CommitEffect.
-    assert next_state.commit.agent_invoked is True, (
-        "state.commit.agent_invoked must be preserved across the in-place "
-        "retry; otherwise the next effect falls through to InvokeAgentEffect "
-        "and the validated message is discarded"
-    )
+        next_effect = determine_effect_from_policy(
+            next_state,
+            policy_bundle,
+            workspace_scope=scope,
+            has_uncommitted_changes_fn=_has_uncommitted_changes,
+        )
+        assert not isinstance(next_effect, InvokeAgentEffect), (
+            "InvokeAgentEffect would mean the commit-message agent is re-invoked; "
+            "the validated message bytes from the first pass must be reused."
+        )
+        assert isinstance(next_effect, CommitEffect), (
+            f"In-place lock-retry next effect must be CommitEffect, got {type(next_effect).__name__}."
+        )
 
-    # Now drive the real effect router on the post-reduce state. The next
-    # effect must be CommitEffect, NOT InvokeAgentEffect.
-    next_effect = determine_effect_from_policy(next_state, policy_bundle, workspace_scope=scope)
-    assert isinstance(next_effect, CommitEffect), (
-        f"In-place lock-retry next effect must be CommitEffect "
-        f"(re-running execute_commit_effect on the preserved message "
-        f"file), got {type(next_effect).__name__}. If this is an "
-        f"InvokeAgentEffect, the commit-message agent is being re-invoked "
-        f"and the validated message is being discarded."
-    )
-    assert not isinstance(next_effect, InvokeAgentEffect), (
-        "InvokeAgentEffect would mean the commit-message agent is re-invoked; "
-        "the validated message bytes from the first pass must be reused, "
-        "not regenerated by re-running the agent."
-    )
+        expected_message_file = scope.root / ".agent" / "artifacts" / "commit_message.md"
+        assert Path(next_effect.message_file) == expected_message_file, (
+            f"next_effect.message_file must point at the canonical artifact path "
+            f"({expected_message_file}); got {next_effect.message_file}"
+        )
 
-    # The routed effect must read the SAME message file the test wrote
-    # (i.e. the artifact is inside the WorkspaceScope.root).
-    expected_message_file = scope.root / ".agent" / "artifacts" / "commit_message.md"
-    assert Path(next_effect.message_file) == expected_message_file, (
-        f"next_effect.message_file must point at the canonical artifact path "
-        f"({expected_message_file}); got {next_effect.message_file}"
-    )
-
-    # Second attempt: the REAL execute_commit_effect, driven by the
-    # ``next_effect`` returned by the router, re-reads the preserved
-    # message and lands the commit. The validated subject reaches the
-    # second (successful) commit unchanged.
-    second_event = execute_commit_effect(
-        next_effect,
-        repo_root,
-        stage_all_fn=fake_stage_all,
-        create_commit_fn=fake_create_commit,
-    )
-    assert second_event is PipelineEvent.COMMIT_SUCCESS, (
-        f"Second attempt must succeed with the reused message, got {second_event}"
-    )
-    assert len(observed_messages) == 1
-    assert observed_messages[0] == "feat: validated message must be reused on in-place retry"
+        # Second attempt succeeds using the reused message file.
+        second_event = execute_commit_effect(
+            next_effect,
+            repo_root,
+            stage_all_fn=fake_stage_all,
+            create_commit_fn=fake_create_commit,
+            has_commit_work_fn=_has_uncommitted_changes,
+        )
+        assert second_event is PipelineEvent.COMMIT_SUCCESS, (
+            f"Second attempt must succeed with the reused message, got {second_event}"
+        )
+        assert len(observed_messages) == 1
+        assert observed_messages[0] == "feat: validated message must be reused on in-place retry"
 
 
 # ---------------------------------------------------------------------------
-# Default-policy ``commit_cleanup`` route. Documented current behavior:
-# the cleanup→commit transition re-invokes the commit-message agent
-# because ``progress.advance_phase`` resets ``commit = CommitState()`` on
-# the cleanup→commit boundary. This is a known follow-up out of scope for
-# WU-4E.
+# Default-policy ``commit_cleanup`` route.
 # ---------------------------------------------------------------------------
 
 
 def test_default_policy_routes_to_commit_cleanup_phase(tmp_path: Path) -> None:
-    """Default-policy lock-contention routes to ``development_commit_cleanup``.
-
-    Documents the default-policy behavior: a ``development_commit`` lock
-    failure on the default pipeline (which defines
-    ``development_commit_cleanup`` per
-    ``ralph/policy/defaults/pipeline.toml:184-195``) routes to
-    ``development_commit_cleanup`` for the cleanup agent, NOT to
-    ``failed_terminal`` on the first attempt.
-    """
+    """Default-policy lock-contention routes to ``development_commit_cleanup``."""
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
-    # Sanity: the default policy does define a development_commit_cleanup
-    # phase (this is what the WU-4E fix does NOT change).
     assert "development_commit_cleanup" in pipeline_policy.phases, (
         "Default policy must define development_commit_cleanup"
     )
@@ -335,64 +275,63 @@ def test_default_policy_routes_to_commit_cleanup_phase(tmp_path: Path) -> None:
     )
     set_last_commit_error(state.last_error or "")
     try:
-        # No patch: the default policy's commit_cleanup phase is honored.
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     finally:
         set_last_commit_error(None)
 
-    # First-attempt lock-contention does NOT reach failed_terminal.
     assert next_state.phase != "failed_terminal", (
         "Default-policy lock-contention must not reach failed_terminal "
         "on the first attempt; the cleanup phase must run first."
     )
-    # Reducer routes to the cleanup phase.
     assert next_state.phase == "development_commit_cleanup", (
         f"Default-policy lock-contention must route to "
         f"development_commit_cleanup, got phase={next_state.phase}"
     )
-    # pending_cycle_outcome cleared (commit did not succeed).
     assert next_state.pending_cycle_outcome is None
 
 
-def test_default_policy_cleanup_to_commit_re_invokes_commit_message_agent(
+def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_commit_effect(
     tmp_path: Path,
 ) -> None:
-    """Default-policy cleanup→commit transition re-invokes the commit-message agent.
+    """Default-policy cleanup→commit transition preserves validated commit message.
 
-    Documents the **current** behavior of the default-policy route
-    through the **real** effect router. After
-    ``reduce(state, PipelineEvent.COMMIT_FAILURE, ...)`` routes the
-    failure to ``development_commit_cleanup`` and a subsequent
-    ``PipelineEvent.PHASE_ADVANCE`` advances cleanup to
-    ``development_commit``, the
-    :func:`progress.advance_phase` helper resets
-    ``commit = CommitState()`` (because ``role == "commit"`` per
-    ``progress.py:190-193``). The routed next effect is therefore
-    ``InvokeAgentEffect`` — the commit-message agent is re-invoked.
-
-    This is the documented current behavior, NOT a defect of this fix.
-    The WU-4E in-place repair preserves ``state.commit`` ONLY in the
-    in-place branch (no recovery phase); the cleanup→commit transition
-    goes through ``_resolve_or_terminal`` →
-    ``progress.advance_phase`` which is out of scope for the in-place
-    repair. The commit-message agent being re-invoked on the
-    cleanup→commit transition is a known follow-up surfaced here so
-    it can be addressed as a separate, larger change.
+    When ``development_commit`` fails due to recoverable lock contention after
+    a validated commit message artifact has been produced (``commit.agent_invoked=True``):
+    1. The reducer routes to ``development_commit_cleanup``, retaining the commit
+       state and recording ``recovery_epoch=1``.
+    2. On cleanup completion (``PHASE_ADVANCE`` / ``AGENT_SUCCESS``), the reducer
+       advances to ``development_commit`` and preserves ``state.commit``
+       (with ``agent_invoked=True``) and ``recovery_epoch``.
+    3. The real effect router (``determine_effect_from_policy``) sees
+       ``commit.agent_invoked=True`` and emits ``CommitEffect`` (NOT
+       ``InvokeAgentEffect``).
+    4. ``execute_commit_effect`` re-reads the byte-identical validated message
+       and lands the commit without re-invoking the commit-message agent.
     """
-    # A real git repo is required so the router's
-    # ``has_uncommitted_changes`` check on the workspace root does not
-    # raise (otherwise it returns ``ExitFailureEffect`` before reaching
-    # the ``_commit_phase_effect`` branch).
-    repo_root = _make_git_repo(tmp_path)
+    repo_root = _make_fake_workspace(tmp_path)
+    expected_subject = "feat: default policy validated message must be reused on retry"
+    message_file = _make_commit_message_file(repo_root, expected_subject)
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
+
+    commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
+    observed_messages: list[str] = []
+
+    def fake_stage_all(root: Path | str) -> None:
+        del root
+
+    def fake_create_commit(root: str, message: str, **kwargs: object) -> CommitCreationResult:
+        del root, kwargs
+        observed_messages.append(message)
+        return CommitCreationResult.created(sha="feedbeef")
 
     state = PipelineState(
         phase="development_commit",
         phase_chains={
             "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
         },
+        commit=commit_state,
         recovery_epoch=0,
         pending_cycle_outcome="completed",
         last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
@@ -408,38 +347,282 @@ def test_default_policy_cleanup_to_commit_re_invokes_commit_message_agent(
         f"Default-policy lock-contention must route to "
         f"development_commit_cleanup, got phase={cleanup_state.phase}"
     )
+    assert cleanup_state.recovery_epoch == 1
+    assert cleanup_state.commit.agent_invoked is True
 
-    # Step 2: simulate cleanup-phase completion by sending
-    # PHASE_ADVANCE. The default-policy cleanup phase transitions to
-    # ``development_commit`` on success.
+    # Step 2: cleanup completes successfully via PHASE_ADVANCE.
     advanced_state, _ = reduce(cleanup_state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
     assert advanced_state.phase == "development_commit", (
         f"Cleanup→commit transition must land on development_commit, "
         f"got phase={advanced_state.phase}"
     )
+    assert advanced_state.commit.agent_invoked is True, (
+        "state.commit.agent_invoked must be preserved across cleanup→commit transition"
+    )
+    assert advanced_state.recovery_epoch == 1
 
-    # Step 3: drive the real effect router on the post-cleanup state.
-    # The router reads ``commit.agent_invoked`` from the post-cleanup
-    # state, which has been reset to a fresh ``CommitState()`` by
-    # ``progress.advance_phase`` (because ``role == "commit"``). The
-    # next effect is therefore ``InvokeAgentEffect`` — the
-    # commit-message agent is re-invoked. This is the documented current
-    # behavior; the follow-up fix (cleanup→commit commit-state
-    # preservation) is out of scope for WU-4E.
-    next_effect = determine_effect_from_policy(advanced_state, policy_bundle, workspace_scope=scope)
+    # Step 3: drive the real effect router. Must emit CommitEffect, NOT InvokeAgentEffect.
+    next_effect = determine_effect_from_policy(
+        advanced_state,
+        policy_bundle,
+        workspace_scope=scope,
+        has_uncommitted_changes_fn=_has_uncommitted_changes,
+    )
+    assert not isinstance(next_effect, InvokeAgentEffect), (
+        "InvokeAgentEffect must NOT be emitted; commit-message agent must not be re-invoked."
+    )
+    assert isinstance(next_effect, CommitEffect), (
+        f"Cleanup→commit next effect must be CommitEffect (reusing validated message), "
+        f"got {type(next_effect).__name__}."
+    )
+    assert Path(next_effect.message_file) == message_file
 
-    # The next effect after cleanup→commit is InvokeAgentEffect
-    # (current behavior); the validated message is NOT reused.
+    # Step 4: execute CommitEffect with fakes — no agent reinvocation.
+    with (
+        patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
+    ):
+        event = execute_commit_effect(
+            next_effect,
+            repo_root,
+            stage_all_fn=fake_stage_all,
+            create_commit_fn=fake_create_commit,
+            has_commit_work_fn=_has_uncommitted_changes,
+        )
+    assert event is PipelineEvent.COMMIT_SUCCESS
+    assert observed_messages == [expected_subject]
+
+
+def test_default_policy_cleanup_to_commit_re_invokes_commit_message_agent(
+    tmp_path: Path,
+) -> None:
+    """Backward-compatible alias verifying message reuse produces CommitEffect."""
+    test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_commit_effect(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Counterexamples and Edge Cases (WU-1 / DEVELOPMENT_ANALYSIS_DECISION.md)
+# ---------------------------------------------------------------------------
+
+
+def test_fresh_commit_entry_resets_commit_state_and_invokes_agent(tmp_path: Path) -> None:
+    """Normal first-entry commit behavior resets CommitState and invokes the agent."""
+    repo_root = _make_fake_workspace(tmp_path)
+    scope = _make_workspace_scope(repo_root)
+    policy_bundle = _load_policy_bundle()
+    pipeline_policy = policy_bundle.pipeline
+
+    # Entering development_commit fresh via the normal development workflow.
+    # In default policy: development -> development_commit_cleanup -> development_commit.
+    # On this fresh path, there is no lock contention or repairable error, so
+    # transitioning into development_commit resets CommitState (agent_invoked=False).
+    stale_commit = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+        },
+        commit=stale_commit,
+        recovery_epoch=0,
+    )
+
+    cleanup_state, _ = reduce(state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert cleanup_state.phase == "development_commit_cleanup"
+    assert cleanup_state.recovery_epoch == 0
+    assert cleanup_state.last_error is None
+
+    commit_state, _ = reduce(cleanup_state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert commit_state.phase == "development_commit"
+    assert commit_state.commit.agent_invoked is False, (
+        "Fresh entry into commit phase must reset CommitState (agent_invoked=False)"
+    )
+    assert commit_state.recovery_epoch == 0
+
+    next_effect = determine_effect_from_policy(
+        commit_state,
+        policy_bundle,
+        workspace_scope=scope,
+        has_uncommitted_changes_fn=_has_uncommitted_changes,
+    )
+    assert not isinstance(next_effect, CommitEffect)
     assert isinstance(next_effect, InvokeAgentEffect), (
-        f"Cleanup→commit transition must currently re-invoke the "
-        f"commit-message agent (InvokeAgentEffect) because "
-        f"progress.advance_phase resets commit on entering "
-        f"role=='commit' phases; got {type(next_effect).__name__}. "
-        f"This is the documented current behavior; the follow-up fix "
-        f"is out of scope for WU-4E."
+        f"Fresh commit entry must emit InvokeAgentEffect, got {type(next_effect).__name__}"
     )
-    assert not isinstance(next_effect, CommitEffect), (
-        "CommitEffect would mean the validated message bytes are "
-        "reused on the cleanup→commit transition; this is the WU-4E "
-        "follow-up behavior, not the current one."
+
+
+def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
+    """Cleanup failure does not mistakenly reuse stale messages or advance to commit."""
+    policy_bundle = _load_policy_bundle()
+    pipeline_policy = policy_bundle.pipeline
+
+    cleanup_state = PipelineState(
+        phase="development_commit_cleanup",
+        previous_phase="development_commit",
+        phase_chains={
+            "development_commit_cleanup": AgentChainState(
+                agents=["claude"], current_index=0, retries=0
+            )
+        },
+        commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
+        recovery_epoch=1,
+        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
     )
+
+    failure_event = PhaseFailureEvent(
+        phase="development_commit_cleanup",
+        reason="cleanup script failed unrecoverably",
+        recoverable=False,
+    )
+    next_state, _ = reduce(cleanup_state, failure_event, pipeline_policy)
+
+    assert next_state.phase == pipeline_policy.recovery.failed_route, (
+        f"Unrecoverable cleanup failure must route to failed_terminal, got {next_state.phase}"
+    )
+    assert next_state.phase != "development_commit"
+
+
+def test_cleanup_without_validated_message_does_not_emit_commit_effect(
+    tmp_path: Path,
+) -> None:
+    """Cleanup transition without a prior validated message emits InvokeAgentEffect."""
+    repo_root = _make_fake_workspace(tmp_path)
+    scope = _make_workspace_scope(repo_root)
+    policy_bundle = _load_policy_bundle()
+    pipeline_policy = policy_bundle.pipeline
+
+    # commit.agent_invoked is False: no validated message exists
+    cleanup_state = PipelineState(
+        phase="development_commit_cleanup",
+        previous_phase="development_commit",
+        phase_chains={
+            "development_commit_cleanup": AgentChainState(
+                agents=["claude"], current_index=0, retries=0
+            )
+        },
+        commit=CommitState(message_prepared=False, diff_prepared=False, agent_invoked=False),
+        recovery_epoch=1,
+        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+    )
+
+    advanced_state, _ = reduce(cleanup_state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert advanced_state.phase == "development_commit"
+    assert advanced_state.commit.agent_invoked is False
+
+    next_effect = determine_effect_from_policy(
+        advanced_state,
+        policy_bundle,
+        workspace_scope=scope,
+        has_uncommitted_changes_fn=_has_uncommitted_changes,
+    )
+    assert not isinstance(next_effect, CommitEffect)
+    assert isinstance(next_effect, InvokeAgentEffect)
+
+
+def test_absent_or_malformed_artifact_on_commit_retry_escalates_to_terminal_failure(
+    tmp_path: Path,
+) -> None:
+    """Missing or corrupted commit artifact on retry terminates instead of retrying."""
+    repo_root = _make_fake_workspace(tmp_path)
+    # Write a malformed commit message artifact (missing required fields / invalid yaml)
+    agent_dir = repo_root / ".agent" / "artifacts"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    corrupt_message_file = agent_dir / "commit_message.md"
+    corrupt_message_file.write_text("invalid artifact content without yaml", encoding="utf-8")
+
+    scope = _make_workspace_scope(repo_root)
+    policy_bundle = _load_policy_bundle()
+    pipeline_policy = policy_bundle.pipeline
+
+    commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
+    state = PipelineState(
+        phase="development_commit",
+        commit=commit_state,
+        recovery_epoch=1,
+        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+    )
+
+    next_effect = determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope=scope,
+        has_uncommitted_changes_fn=_has_uncommitted_changes,
+    )
+    assert isinstance(next_effect, CommitEffect)
+
+    with (
+        patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
+        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
+    ):
+        event = execute_commit_effect(
+            next_effect,
+            repo_root,
+            has_commit_work_fn=_has_uncommitted_changes,
+        )
+    assert event is PipelineEvent.COMMIT_FAILURE
+
+    # Now reduce COMMIT_FAILURE with the invalid artifact error
+    terminal_state, _ = reduce(state, event, pipeline_policy)
+    assert terminal_state.phase == pipeline_policy.recovery.failed_route, (
+        f"Non-repairable artifact failure must reach terminal failure, got {terminal_state.phase}"
+    )
+
+
+def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
+    tmp_path: Path,
+) -> None:
+    """Repeated lock contention advances recovery_epoch across multiple cleanup cycles."""
+    repo_root = _make_fake_workspace(tmp_path)
+    _make_commit_message_file(repo_root, "feat: repeated lock contention test")
+    policy_bundle = _load_policy_bundle()
+    pipeline_policy = policy_bundle.pipeline
+
+    commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
+    lock_error = "GitOperationError: Unable to create '.git/index.lock': File exists"
+
+    # Initial state in development_commit
+    state = PipelineState(
+        phase="development_commit",
+        commit=commit_state,
+        recovery_epoch=0,
+        last_error=lock_error,
+    )
+
+    # Iteration 1: lock failure -> cleanup -> commit (epoch=1)
+    set_last_commit_error(lock_error)
+    cleanup_1, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
+    assert cleanup_1.phase == "development_commit_cleanup"
+    assert cleanup_1.recovery_epoch == 1
+    assert cleanup_1.commit.agent_invoked is True
+
+    commit_1, _ = reduce(cleanup_1, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert commit_1.phase == "development_commit"
+    assert commit_1.recovery_epoch == 1
+    assert commit_1.commit.agent_invoked is True
+
+    # Iteration 2: 2nd lock failure -> cleanup -> commit (epoch=2)
+    cleanup_2, _ = reduce(commit_1, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
+    assert cleanup_2.phase == "development_commit_cleanup"
+    assert cleanup_2.recovery_epoch == 2
+
+    commit_2, _ = reduce(cleanup_2, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert commit_2.phase == "development_commit"
+    assert commit_2.recovery_epoch == 2
+
+    # Iteration 3: 3rd lock failure -> cleanup -> commit (epoch=3, cap reached)
+    cleanup_3, _ = reduce(commit_2, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
+    assert cleanup_3.phase == "development_commit_cleanup"
+    assert cleanup_3.recovery_epoch == 3
+
+    commit_3, _ = reduce(cleanup_3, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    assert commit_3.phase == "development_commit"
+    assert commit_3.recovery_epoch == 3
+
+    # Iteration 4: 4th lock failure -> clamped at cap (3), does not terminate
+    cleanup_4, _ = reduce(commit_3, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
+    assert cleanup_4.phase == "development_commit_cleanup"
+    assert cleanup_4.recovery_epoch == 3
+
+    # On eventual commit success, recovery_epoch resets to 0
+    commit_success_state, _ = reduce(commit_3, PipelineEvent.COMMIT_SUCCESS, pipeline_policy)
+    assert commit_success_state.phase == "development_analysis"
+    assert commit_success_state.recovery_epoch == 0

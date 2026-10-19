@@ -1925,6 +1925,31 @@ def _with_bypassed_cycle_timing(
     )
 
 
+def _should_preserve_commit_retry(
+    state: PipelineState,
+    target_phase: PipelinePhase,
+    policy: PipelinePolicy,
+) -> bool:
+    """Return True if transitioning to a commit phase should preserve commit state.
+
+    Preserves commit state across the cleanup->commit transition when:
+    1. The source phase is a commit cleanup phase (role == "commit_cleanup").
+    2. The target phase is a commit phase (role == "commit").
+    3. The cleanup followed a recoverable git failure / lock contention
+       (repairable last_error or recovery_epoch > 0).
+    4. A validated commit message was already prepared (commit.agent_invoked is True).
+    """
+    source_phase_def = policy.phases.get(state.phase)
+    if source_phase_def is None or source_phase_def.role != "commit_cleanup":
+        return False
+    target_phase_def = policy.phases.get(target_phase)
+    if target_phase_def is None or target_phase_def.role != "commit":
+        return False
+    if not state.commit.agent_invoked:
+        return False
+    return _is_repairable_git_failure(state.last_error) or state.recovery_epoch > 0
+
+
 def _advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
@@ -1946,6 +1971,12 @@ def _advance_phase(
         state, target_phase, policy, routing_timing=routing_timing
     )
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
+    if policy is not None and _should_preserve_commit_retry(state, advanced_target, policy):
+        new_state = new_state.copy_with(
+            commit=state.commit,
+            recovery_epoch=state.recovery_epoch,
+            last_error=state.last_error,
+        )
     return new_state, []
 
 
@@ -1981,6 +2012,25 @@ def _resolve_or_terminal(
         explain_routing_decision(state.phase, advanced_target, "signal", signal)
     )
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
+    if signal == "success" and _should_preserve_commit_retry(state, advanced_target, policy):
+        new_state = new_state.copy_with(
+            commit=state.commit,
+            recovery_epoch=state.recovery_epoch,
+            last_error=state.last_error,
+        )
+    elif signal == "loopback":
+        source_phase_def = policy.phases.get(state.phase)
+        target_phase_def = policy.phases.get(advanced_target)
+        if (
+            source_phase_def is not None
+            and source_phase_def.role == "commit_cleanup"
+            and target_phase_def is not None
+            and target_phase_def.role == "commit_cleanup"
+        ):
+            new_state = new_state.copy_with(
+                recovery_epoch=state.recovery_epoch,
+                last_error=state.last_error,
+            )
     return new_state, []
 
 

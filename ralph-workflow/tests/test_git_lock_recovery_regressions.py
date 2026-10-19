@@ -7,8 +7,9 @@ regressions therefore land here.
 
 Each test in this module:
 
-- Uses a fake clock (``os.utime`` to set the lock's mtime directly) so
-  the lock's apparent age is set without waiting 9 hours.
+- Uses a fake clock (monkeypatching ``time.time`` relative to the lock's
+  mtime) so the lock's apparent age is set without waiting 9 hours or
+  mutating filesystem timestamps via ``os.utime``.
 - Exercises the **public** retry path
   (``_run_git_operation_with_stale_lock_recovery``) by passing a
   ``recover_fn`` argument that wraps the production
@@ -32,8 +33,9 @@ import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
+import pytest
 from git import GitCommandError
 from loguru import logger
 
@@ -42,9 +44,6 @@ from ralph.git._lock_recovery import (
     _recover_stale_git_lock,  # private import for production invocation
     _run_git_operation_with_stale_lock_recovery,  # private import for test seam
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _fake_dead(*args: object, **kwargs: object) -> Literal["live", "dead", "unknown"]:
@@ -81,10 +80,11 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
     with no holder is unlinked and ``stage_all`` is retried successfully.
 
     The product brief records the lock at age 32 404.9 s
-    (about 9 hours, the observed age on 2026-10-18). The test sets
-    the lock's mtime to exactly 32 404.9 s in the past (the real
-    recovery computes age from ``time.time() - path.stat().st_mtime``,
-    so we set the mtime directly rather than mocking ``time.time()``).
+    (about 9 hours, the observed age on 2026-10-18). The test injects
+    a fake clock via monkeypatching ``time.time`` so that
+    ``time.time() - lock_path.stat().st_mtime`` evaluates to exactly
+    32 404.9 s without relying on real wall-clock arithmetic or
+    ``os.utime``.
 
     The test drives the production :func:`_recover_stale_git_lock`
     through the public :func:`_run_git_operation_with_stale_lock_recovery`
@@ -99,12 +99,18 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
     binary_content = b"DIRC\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00"
     lock_path.write_bytes(binary_content)
 
-    # Set the lock's mtime to exactly 32 404.9 s in the past. The real
-    # recovery computes age from ``time.time() - path.stat().st_mtime``,
-    # so we set the mtime directly rather than mocking time.time() in
-    # the production code (production code uses real time).
-    old_time = time.time() - 32_404.9
-    os.utime(lock_path, (old_time, old_time))
+    # Inject a fake clock so that age calculation evaluates to exactly
+    # 32 404.9 s without relying on real wall-clock arithmetic or os.utime.
+    exact_age_seconds = 32_404.9
+    current_mtime = lock_path.stat().st_mtime
+    clock_queries: list[float] = []
+
+    def fake_time() -> float:
+        now = current_mtime + exact_age_seconds
+        clock_queries.append(now)
+        return now
+
+    monkeypatch.setattr(time, "time", fake_time)
 
     # Drive production ``_recover_stale_git_lock`` with a controlled
     # ``liveness_fn=_fake_dead``. If the production age threshold is
@@ -112,9 +118,11 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
     # action retries via backoff (which the test does NOT want for a
     # recoverable lock), surfacing the defect.
     recover_calls: dict[str, int] = {"n": 0}
+    observed_lock_ages: list[float] = []
 
     def production_recover(operation: str, error: Exception) -> bool:
         recover_calls["n"] += 1
+        observed_lock_ages.append(time.time() - lock_path.stat().st_mtime)
         # Production recovery; the liveness_fn parameter is bound to
         # _fake_dead so the liveness probe is deterministic and the
         # age check in production is the only thing under test here.
@@ -149,6 +157,17 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
         f"Expected 2 attempts (1 fail + 1 retry), got {attempt_count['n']}"
     )
     assert recover_calls["n"] == 1, "Recovery must be called exactly once"
+    assert len(observed_lock_ages) == 1, "Expected exactly one lock age check during recovery"
+    assert pytest.approx(observed_lock_ages[0], abs=1e-3) == 32_404.9, (
+        f"Expected lock age ~32404.9s, got {observed_lock_ages[0]}"
+    )
+    assert round(observed_lock_ages[0], 1) == 32_404.9, (
+        f"Expected rounded lock age of 32404.9s, got {observed_lock_ages[0]}"
+    )
+    assert len(clock_queries) >= 1, "Fake clock must be queried during recovery"
+    assert round(clock_queries[0] - current_mtime, 1) == 32_404.9, (
+        f"Expected fake clock delta of 32404.9s, got {clock_queries[0] - current_mtime}"
+    )
     assert not lock_path.exists(), "Stale 9h-old lock with dead holder must be unlinked"
     assert sleep_calls == [], "No backoff sleep is needed when recovery succeeds on the first call"
 
