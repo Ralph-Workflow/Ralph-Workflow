@@ -697,7 +697,24 @@ def test_unpatched_real_worktree_gates_agree(
         assert worktree_is_clean(tmp_path) is True
         assert handled is True
         assert outcome is not None
-        assert outcome.last_reason == "no commits beyond target"
+        # WU-1 / boundary seam contract: a clean worktree returns a handled
+        # record whose ``last_action`` is "skipped". The exact ``last_reason``
+        # depends on the remote-sync state of the test fixture:
+        #   - "no commits beyond target" -- no remote configured AND no work
+        #     to publish (the silent-skip path).
+        #   - "remote origin unreachable; recovery will retry" -- reconciler
+        #     observed REMOTE_REMOTE_UNREACHABLE; the boundary propagates
+        #     the transient-failure verdict (U1 / Bug B fix -- the OLD
+        #     ``"no commits beyond target"`` overwrite was the bug).
+        #   - "remote sync disabled by policy" -- auto_integrate_remote_enabled=False.
+        # What the test pins is the clean-state agreement between the three
+        # gates; not the verbatim prose.
+        assert outcome.last_action == "skipped"
+        assert outcome.last_reason in {
+            "no commits beyond target",
+            "remote origin unreachable; recovery will retry",
+            "remote sync disabled by policy",
+        }
     else:
         assert len(readiness.blocking_reasons) > 0
         assert verdict.blocking_reasons[0] == readiness.blocking_reasons[0]
@@ -769,6 +786,11 @@ def _setup_tree_detached_dirty(repo: Repo, root: Path) -> None:
     repo.index.add(["tracked.txt"])
 
 
+def _setup_tree_detached_clean(repo: Repo, _root: Path) -> None:
+    """detached+clean: HEAD detached at a SHA, worktree clean."""
+    repo.git.checkout("--detach", "HEAD")
+
+
 @pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize(
     ("state_name", "setup_state", "expected_clean", "expected_blocked"),
@@ -776,6 +798,7 @@ def _setup_tree_detached_dirty(repo: Repo, root: Path) -> None:
         ("clean", _setup_tree_clean, True, False),
         ("staged-dirty", _setup_tree_staged_dirty, False, True),
         ("detached+dirty", _setup_tree_detached_dirty, False, True),
+        ("detached+clean", _setup_tree_detached_clean, True, False),
     ],
 )
 def test_all_three_gates_agree_on_tree_state(

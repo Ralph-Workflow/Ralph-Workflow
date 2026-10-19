@@ -96,8 +96,6 @@ def boundary_freshness_outcome(
     remote_record = pull_and_reconcile_target(
         config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=state
     )
-    if remote_record is not None and not remote_record.freshness_safe:
-        return remote_record
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
     if branch_sha(root, target) != get_head_sha(root):
         return None
@@ -125,10 +123,12 @@ def boundary_freshness_outcome(
         "pull failed",
         "origin unreachable",
     }
-    if already_current or is_transient_failure:
-        # No push needed (or no push possible right now); the
-        # boundary is silent when there are no commits to
-        # publish. The next seam retries transient failures.
+    if is_transient_failure:
+        # Transient failure (unreachable remote): preserve the
+        # reconciler's verdict so the next seam retries it.
+        return pending
+    if already_current:
+        # No commits to publish; the boundary is silent.
         if remote_record is not None:
             return remote_record.model_copy(
                 update={
@@ -139,13 +139,7 @@ def boundary_freshness_outcome(
         return record_when_stale(
             _record_skip(reason="no commits beyond target", target=target), refresh
         )
-    if not already_current:
-        return pending
-    # The two branches above cover every reachable case:
-    # ``already_current``/``is_transient_failure`` already returned;
-    # ``not already_current`` returns ``pending`` here. No further
-    # branch is needed.
-    raise AssertionError("unreachable: phase-boundary outcome exhausted branches")
+    return pending
 
 
 def target_is_ahead(root: Path, target_sha: str | None) -> bool:

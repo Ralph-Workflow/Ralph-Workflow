@@ -496,3 +496,83 @@ def test_read_record_outcome_clears_fingerprint_mismatched_lease(tmp_path: Path)
     assert outcome.record.diagnostic_evidence == ()
     assert outcome.record.diagnostic_ownership is None
     assert outcome.record.diagnostic_intervention_required is False
+
+
+def test_parse_record_payload_loads_old_record_when_defaulted_field_is_stripped() -> None:
+    """AC-2: schema evolution that strips a defaulted field does not invalidate held evidence or ownership.
+
+    When an older on-disk record is missing a field that was added with a default value
+    (e.g. ``repair_last_error``), ``parse_record_payload`` must re-populate it with the
+    default and leave the held ``diagnostic_evidence`` and ``diagnostic_ownership`` intact.
+    """
+    import os
+
+    seed = _seed_record(target="main", worktree="wt-a")
+    fp = identity_fingerprint(seed)
+    # Use a live PID so the owner-is-dead gate inside restamp_fingerprint_mismatch
+    # does not clear the evidence before the schema-stripping path is tested.
+    live_pid = os.getpid()
+    seed = seed.model_copy(
+        update={
+            "diagnostic_evidence": (("unstaged_work", "clean"),),
+            "diagnostic_ownership": f"{fp}:1234567.0",
+            "diagnostic_owner_pid": live_pid,
+            "diagnostic_owner_boot_id": None,
+            "diagnostic_intervention_required": False,
+            "repair_cap_reason": None,
+        }
+    )
+    # Build raw dict in the JSON-compatible form that parse_record_payload expects
+    raw: dict[str, object] = {
+        "phase": seed.phase,
+        "target": seed.target,
+        "pre_feature_sha": seed.pre_feature_sha,
+        "pre_target_sha": seed.pre_target_sha,
+        "owning_worktree": seed.owning_worktree,
+        "operation_kind": seed.operation_kind,
+        "diagnostic_evidence": [["unstaged_work", "clean"]],
+        "diagnostic_ownership": f"{fp}:1234567.0",
+        "diagnostic_owner_pid": live_pid,
+        "diagnostic_owner_boot_id": None,
+        "diagnostic_intervention_required": False,
+        "repair_cap_reason": None,
+        "repair_last_error": None,
+    }
+    # Simulate an old on-disk record that predates the repair_last_error field
+    del raw["repair_last_error"]
+    loaded = parse_record_payload(raw)
+    # (a) reload succeeds
+    assert loaded is not None
+    # (b) stripped field reverts to its default
+    assert loaded.repair_last_error is None
+    # (c) held evidence and ownership preserved verbatim
+    assert loaded.diagnostic_evidence == seed.diagnostic_evidence
+    assert loaded.diagnostic_ownership == seed.diagnostic_ownership
+    assert loaded.diagnostic_owner_pid == seed.diagnostic_owner_pid
+    assert loaded.diagnostic_owner_boot_id == seed.diagnostic_owner_boot_id
+    assert loaded.diagnostic_intervention_required == seed.diagnostic_intervention_required
+    # (d) identity fingerprint is stable and lease is still bound to it
+    assert identity_fingerprint(loaded) == identity_fingerprint(seed)
+    assert loaded.diagnostic_ownership == f"{fp}:1234567.0"
+
+
+def test_parse_record_payload_drops_unknown_keys_preserving_lease() -> None:
+    """Forward-compatibility: unknown keys in the on-disk record are ignored without touching evidence or lease."""
+    seed = _seed_record(target="main", worktree="wt-a")
+    fp = identity_fingerprint(seed)
+    valid_lease = f"{fp}:1234567.0"
+    seed = seed.model_copy(
+        update={
+            "diagnostic_evidence": (("unstaged_work", "clean"),),
+            "diagnostic_ownership": valid_lease,
+            "diagnostic_intervention_required": False,
+        }
+    )
+    raw = seed.model_dump()
+    # Inject a key that did not exist when this record was written
+    raw["future_field"] = "x"
+    loaded = parse_record_payload(raw)
+    assert loaded is not None
+    assert loaded.diagnostic_intervention_required is False
+    assert loaded.diagnostic_evidence == seed.diagnostic_evidence
+    assert loaded.diagnostic_ownership == seed.diagnostic_ownership
