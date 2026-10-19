@@ -7,17 +7,18 @@ regressions therefore land here.
 
 Each test in this module:
 
-- Uses a fake clock (``monkeypatch.setattr(time, "time", ...)`` is the
-  pattern already used in
-  ``test_recover_stale_git_lock_old_binary_and_young_locks``) so the
-  lock's apparent age is set without waiting 9 hours.
+- Uses a fake clock (``os.utime`` to set the lock's mtime directly) so
+  the lock's apparent age is set without waiting 9 hours.
 - Exercises the **public** retry path
-  (``_run_git_operation_with_stale_lock_recovery``) by monkeypatching
-  ``ralph.git.operations._recover_stale_git_lock`` to return ``True``
-  (lock unlinked) on the first call and the action callback to raise
-  the lock error on the first call and succeed on the second. The
-  ``_sleep_fn`` seam is monkeypatched to record any backoff calls; a
-  successful first-call recovery must NOT trigger backoff.
+  (``_run_git_operation_with_stale_lock_recovery``) by passing a
+  ``recover_fn`` argument that wraps the production
+  :func:`_recover_stale_git_lock` with a controlled
+  ``liveness_fn=_fake_dead``. This drives the real age + liveness
+  decision (a deliberately broken age threshold would fail this test)
+  while keeping the liveness probe deterministic. The action callback
+  raises the lock error on the first call and succeeds on the second;
+  the ``sleep_fn`` seam records any backoff calls (a successful
+  first-call recovery must NOT trigger backoff).
 - Asserts the platform-specific "unknown" reason logged by the
   liveness probe: the warning text must name either
   ``"no /proc scan succeeded"`` or
@@ -31,20 +32,23 @@ import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from git import GitCommandError
 from loguru import logger
 
 from ralph.git._lock_recovery import (
     _lock_has_no_live_holder,  # private import for test seam
-)
-from ralph.git.operations import (
+    _recover_stale_git_lock,  # private import for production invocation
     _run_git_operation_with_stale_lock_recovery,  # private import for test seam
 )
 
 if TYPE_CHECKING:
     import pytest
+
+
+def _fake_dead(*args: object, **kwargs: object) -> Literal["live", "dead", "unknown"]:
+    return "dead"
 
 
 def _make_index_lock_error(lock_path: Path) -> GitCommandError:
@@ -64,7 +68,8 @@ def _make_index_lock_error(lock_path: Path) -> GitCommandError:
 
 # ---------------------------------------------------------------------------
 # AC 1: exact 32 404.9 s binary index.lock, no holder, recovered through
-# the public ``_run_git_operation_with_stale_lock_recovery`` retry path.
+# the public ``_run_git_operation_with_stale_lock_recovery`` retry path,
+# driving production ``_recover_stale_git_lock`` (NOT a fake replacement).
 # ---------------------------------------------------------------------------
 
 
@@ -77,12 +82,16 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
 
     The product brief records the lock at age 32 404.9 s
     (about 9 hours, the observed age on 2026-10-18). The test sets
-    the lock's mtime to exactly 32 404.9 s in the past via a fake
-    clock (``monkeypatch.setattr(time, "time", ...)``) so the test does
-    not wait 9 hours. It exercises the public
-    ``_run_git_operation_with_stale_lock_recovery`` retry path (not the
-    private ``_recover_stale_git_lock`` callback) by injecting a
-    successful recovery on the first call.
+    the lock's mtime to exactly 32 404.9 s in the past (the real
+    recovery computes age from ``time.time() - path.stat().st_mtime``,
+    so we set the mtime directly rather than mocking ``time.time()``).
+
+    The test drives the production :func:`_recover_stale_git_lock`
+    through the public :func:`_run_git_operation_with_stale_lock_recovery`
+    retry path by passing ``recover_fn=lambda op, err: _recover_stale_git_lock(
+    op, err, liveness_fn=_fake_dead)``. A deliberately broken age
+    threshold in production would refuse to unlink the lock and the test
+    would fail (this is the contract pinned by the AC).
     """
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
@@ -94,24 +103,22 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
     # recovery computes age from ``time.time() - path.stat().st_mtime``,
     # so we set the mtime directly rather than mocking time.time() in
     # the production code (production code uses real time).
-    real_time = time.time
-    fixed_now = real_time()
-    old_time = fixed_now - 32_404.9
+    old_time = time.time() - 32_404.9
     os.utime(lock_path, (old_time, old_time))
 
-    # Fake the recovery to return True (unlink the lock) on the first
-    # call; record whether it was invoked. The real recovery unlinks
-    # the lock when it returns True; we mirror that here.
+    # Drive production ``_recover_stale_git_lock`` with a controlled
+    # ``liveness_fn=_fake_dead``. If the production age threshold is
+    # broken (refuses this 32s-43s lock), this returns False and the
+    # action retries via backoff (which the test does NOT want for a
+    # recoverable lock), surfacing the defect.
     recover_calls: dict[str, int] = {"n": 0}
 
-    def fake_recover(operation: str, error: Exception) -> bool:
-        del operation, error
+    def production_recover(operation: str, error: Exception) -> bool:
         recover_calls["n"] += 1
-        if lock_path.exists():
-            lock_path.unlink()
-        return True
-
-    monkeypatch.setattr("ralph.git.operations._recover_stale_git_lock", fake_recover)
+        # Production recovery; the liveness_fn parameter is bound to
+        # _fake_dead so the liveness probe is deterministic and the
+        # age check in production is the only thing under test here.
+        return _recover_stale_git_lock(operation, error, liveness_fn=_fake_dead)
 
     # Fake sleep to record any backoff calls. Successful first-call
     # recovery must NOT trigger backoff.
@@ -119,8 +126,6 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
 
     def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
-
-    monkeypatch.setattr("ralph.git.operations._sleep_fn", fake_sleep)
 
     # The action raises a lock error on the first call, then succeeds.
     attempt_count: dict[str, int] = {"n": 0}
@@ -132,7 +137,12 @@ def test_recover_stale_9h_binary_index_lock_no_holder_unlinks_and_stage_all_retr
             raise lock_error
         return "staged"
 
-    result = _run_git_operation_with_stale_lock_recovery("stage_all", action)
+    result = _run_git_operation_with_stale_lock_recovery(
+        "stage_all",
+        action,
+        recover_fn=production_recover,
+        sleep_fn=fake_sleep,
+    )
 
     assert result == "staged", "Action must succeed after recovery"
     assert attempt_count["n"] == 2, (

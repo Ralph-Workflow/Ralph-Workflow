@@ -1431,10 +1431,7 @@ def run_test_suites(
             file_weights={path: file_weigher(cwd, path) for path in required_e2e_shard},
         )
         ordered_required_e2e_shard = tuple(
-            item
-            for items in zip_longest(*e2e_buckets)
-            for item in items
-            if item is not None
+            item for items in zip_longest(*e2e_buckets) for item in items if item is not None
         )
     else:
         ordered_required_e2e_shard = required_e2e_shard

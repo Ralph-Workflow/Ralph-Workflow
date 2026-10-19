@@ -78,15 +78,6 @@ persistence is boundary-checked at stage transitions, and the overrun exit path
 bounds diagnostic and stage-recording I/O so stalled filesystem operations cannot
 hold a live child past the preflight deadline.
 
-The real startup deadline is ``mcp_preflight_timeout_from_env - _PROBE_SAFETY_S``
-(default: 28.0s), which is strictly below the preflight ceiling (30.0s). Both
-the aggregate discovery loop and the bootstrap serving architecture operationally
-enforce that spawn-to-serving tools/list completes strictly below the preflight
-timeout by construction, guarded by import-time invariants. Synchronous stage-file
-persistence is boundary-checked at stage transitions, and the overrun exit path
-bounds diagnostic and stage-recording I/O so stalled filesystem operations cannot
-hold a live child past the preflight deadline.
-
 This module deliberately imports nothing from :mod:`ralph.mcp.protocol.startup`
 so the upstream clients -- which ``startup`` transitively imports -- can depend
 on it without an import cycle. ``startup`` re-exports both functions as the
