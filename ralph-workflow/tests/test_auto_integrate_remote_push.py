@@ -40,25 +40,48 @@ def test_enabled_remote_sync_delegates_landing_to_push_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The public landing wrapper forwards its configured target to the push seam."""
-    calls: list[tuple[UnifiedConfig | None, Path, str, RebaseState]] = []
+    from ralph.git.remote_push import PushResult, PushStatus
+    from ralph.pipeline._publication_state_machine import PublicationDecision
+    from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
+
+    calls: list[tuple[Path, str, str | None, RebaseState | None]] = []
     record = _record()
 
     def push_hook(
-        config: UnifiedConfig | None, repo_root: Path, target: str, received: RebaseState
-    ) -> RebaseState:
-        calls.append((config, repo_root, target, received))
-        return received.model_copy(update={"last_push": "pushed release to origin"})
+        repo_root: Path,
+        target: str,
+        *,
+        remote: str | None = None,
+        record: RebaseState | None = None,
+        remote_client: object = None,
+        timeout_seconds: float | None = None,
+    ) -> tuple[PushResult, PublicationDecision]:
+        calls.append((repo_root, target, remote, record))
+        return (
+            PushResult(
+                PushStatus.PUSHED,
+                remote or "origin",
+                target,
+            ),
+            PublicationDecision.PUBLICATION_TERMINAL,
+        )
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", push_hook
-    )
-
-    from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.push_single_remote", push_hook)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_push.push_single_remote", push_hook)
 
     result = push_target_after_landing(_config(enabled=True), Path("/repo"), "release", record)
 
     assert result.last_push == "pushed release to origin"
-    assert calls == [(_config(enabled=True), Path("/repo"), "release", record)]
+    assert result.last_remote == "origin"
+    assert result.last_push_status == "pushed"
+    assert result.last_remote_sync == "pushed"
+    assert result.last_publication_decision == "publication_terminal"
+    assert len(calls) == 1
+    assert calls[0][0] == Path("/repo")
+    assert calls[0][1] == "release"
+    assert calls[0][2] == "origin"
+    assert calls[0][3] is not None
+    assert calls[0][3].freshness_verdict == "verified"
 
 
 def test_disabled_remote_sync_preserves_landing_without_calling_hook(
@@ -67,6 +90,8 @@ def test_disabled_remote_sync_preserves_landing_without_calling_hook(
     """The public wrapper leaves a local landing untouched when sync is disabled."""
     from unittest.mock import MagicMock
 
+    from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
+
     record = _record()
 
     def unexpected_hook(*_args: object, **_kwargs: object) -> None:
@@ -74,14 +99,16 @@ def test_disabled_remote_sync_preserves_landing_without_calling_hook(
 
     recording_double = MagicMock(side_effect=unexpected_hook)
     monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.push_single_remote", recording_double
+    )
+    monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_remote_push.push_single_remote", recording_double
     )
-
-    from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
 
     result = push_target_after_landing(_config(enabled=False), Path("/repo"), "release", record)
 
     assert result.fast_forwarded is True
+    assert result.last_publication_decision == "publication_terminal"
     assert recording_double.call_count == 0
 
 

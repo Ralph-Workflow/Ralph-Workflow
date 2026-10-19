@@ -219,20 +219,15 @@ def parse_lease(ownership: str | None) -> tuple[str | None, float | None]:
     a single ``:`` separator (the legacy single-string fingerprint
     form), an empty fingerprint or held_at, or a lease whose
     ``held_at`` is not numeric. The diagnostic path interprets the
-    ``(None, None)`` outcome as either:
+    ``(None, None)`` outcome (missing, legacy, or malformed lease)
+    as returning an ``UNKNOWN`` verdict, which fails open to
+    auto-release so state can be re-derived from Git.
 
-    * a **legacy migrated record** (``diagnostic_evidence`` non-empty
-      and ``diagnostic_ownership`` empty) -- the verdict is
-      ``CHANGED`` and the migrated observation is preserved on disk
-      because the ``CHANGED`` branch returns a skip verdict and
-      never mutates the record.
-    * a **non-empty unparseable ownership** (the lease is no longer
-      a valid durable identity) -- the verdict is ``CHANGED`` and
-      the caller escalates for operator review.
-
-    The expired-lease branch is a separate code path (lease parseable
-    and ``time.time() - held_at > EVIDENCE_LEASE_SECONDS``) that
-    returns ``UNKNOWN`` and fails open to auto-release.
+    An expired lease (parseable lease where
+    ``time.time() - held_at > EVIDENCE_LEASE_SECONDS``) likewise
+    returns ``UNKNOWN`` and fails open to auto-release. Only a valid,
+    unexpired lease whose fingerprint differs from the record's current
+    identity yields ``CHANGED``, preserving the record on disk.
     """
     if not isinstance(ownership, str) or not ownership:
         return None, None

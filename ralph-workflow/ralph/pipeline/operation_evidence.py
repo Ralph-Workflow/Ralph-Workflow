@@ -77,8 +77,8 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     """SHA-256 fingerprint of the durable record minus its volatile fields.
 
     The fingerprint is the durable evidence the record's *identity*
-    (target, pre-integration SHAs, operation kind) has not been
-    changed underneath the diagnostic path.
+    (target, operation kind, owning worktree) has not been changed
+    underneath the diagnostic path.
 
     All fields that the diagnostic path itself owns are excluded so
     a legitimate diagnostic-path transition (``RAISE_DIAGNOSTIC_INTERVENTION``,
@@ -119,17 +119,20 @@ def identity_fingerprint(record: IntegrationRecord) -> str:
     """SHA-256 fingerprint over the record's CLOSED identity field set.
 
     The fingerprint is the durable evidence the record's *identity*
-    (target, pre-integration SHAs, operation kind, owning worktree)
-    has not been changed underneath the diagnostic path. The set of
-    fields is closed: a future contributor who adds a new defaulted
-    field to :class:`IntegrationRecord` cannot change the fingerprint,
-    because the new field is not in :data:`_IDENTITY_FINGERPRINT_FIELDS`.
+    (target, operation kind, owning worktree) has not been changed
+    underneath the diagnostic path. Pre-integration SHAs and lifecycle
+    fields are excluded because they describe transitions across the
+    record's lifecycle rather than the durable identity of the
+    operation. The set of fields is closed: a future contributor who
+    adds a new defaulted field to :class:`IntegrationRecord` cannot
+    change the fingerprint, because the new field is not in
+    :data:`_IDENTITY_FINGERPRINT_FIELDS`.
 
     The diagnostic path uses the fingerprint as the lease identifier:
     a record whose ``diagnostic_ownership`` carries an equal
     fingerprint is held by the same durable identity. State that
-    Ralph itself mutates (HEAD, the index, reflog, the worktree path)
-    is NOT in the fingerprint, so a legitimate fast-forward or
+    Ralph itself mutates (HEAD, the index, reflog) or lifecycle SHAs
+    are NOT in the fingerprint, so a legitimate fast-forward or
     snapshot/reset never invalidates the lease.
     """
     payload: dict[str, object] = {

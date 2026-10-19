@@ -478,40 +478,50 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
     """AC-1 progress: a record carrying older/unrecognised evidence loads and
     proceeds to automated recovery on the next seam.
 
-    The fixture record uses recognised evidence keys (so the load-time
-    migration preserves ``diagnostic_evidence`` instead of stripping it)
-    plus ``diagnostic_intervention_required=True`` and no held lease.
-    At load, ``restamp_fingerprint_mismatch`` does not fire (lease is
-    empty, owner PID is unset), so the record carries the recognised
-    evidence + the intervention flag into the runtime verdict path.
-    ``_maybe_release_diagnostic`` calls ``release_verified_diagnostic``
-    on ``tmp_path`` (no live Git operation root); the verdict is
-    ``UNKNOWN`` and the function durably clears the record via
-    ``apply_record_transition(RELEASE_DIAGNOSTIC_EVIDENCE, ...)``.
+    A durable legacy payload containing unrecognised/older evidence keys
+    (e.g. legacy repository-global ``for-each-ref`` and an unrecognised key)
+    with ``diagnostic_intervention_required=True`` is parsed and written to disk.
+    On the next seam, ``_maybe_release_diagnostic`` loads the legacy payload,
+    migrates away the unrecognised evidence, clears the intervention flag,
+    and returns a clean record whose next action is not blocked by intervention.
+    Re-reading from disk confirms durable progress.
     """
+    import json
+
     import ralph.pipeline.auto_integrate_recovery_record as recovery_record
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
+        parse_record_payload,
         read_record,
-        write_record,
+        record_path,
     )
     from ralph.workspace.scope import WorkspaceScope
 
-    record = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="0" * 40,
-        pre_target_sha="1" * 40,
-        # Recognised evidence keys (survive _migrate_payload_evidence).
-        diagnostic_evidence=(("head", "0" * 40), ("unstaged_work", "clean")),
-        diagnostic_intervention_required=True,
-    )
-    write_record(tmp_path, record)
+    legacy_payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "0" * 40,
+        "pre_target_sha": "1" * 40,
+        "diagnostic_evidence": [
+            ["for-each-ref", "deadbeef"],
+            ["legacy_unrecognised_sensor", "value"],
+        ],
+        "diagnostic_intervention_required": True,
+    }
 
-    # Runtime seam: next-run release path. Imported from the canonical module
-    # (auto_integrate_recovery_record), not from auto_integrate_recovery which
-    # only re-exports the symbol for the recovery flow.
+    # 1. Parse verification: the payload parses cleanly and migrates away legacy evidence.
+    parsed = parse_record_payload(legacy_payload)
+    assert parsed is not None
+    assert parsed.diagnostic_intervention_required is False
+    assert dict(parsed.diagnostic_evidence) == {}
+
+    # 2. Durable on-disk representation: write raw legacy payload to simulate pre-existing disk state.
+    rec_file = record_path(tmp_path)
+    rec_file.parent.mkdir(parents=True, exist_ok=True)
+    rec_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
+
+    # 3. Runtime seam: next-run release path re-reads through _maybe_release_diagnostic.
     outcome = recovery_record._maybe_release_diagnostic(
         tmp_path,
         WorkspaceScope(tmp_path),
@@ -521,8 +531,14 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
         "next-run release path must NOT escalate to a CHANGED-skip; the "
         "legacy-shape record must progress to a clean, no-intervention state"
     )
+    assert outcome.diagnostic_evidence == ()
+    assert outcome.diagnostic_ownership is None
+    assert outcome.diagnostic_owner_pid is None
+    assert outcome.diagnostic_intervention_required is False
+    assert next_integration_action(outcome) != IntegrationAction.REQUIRE_INTERVENTION
 
-    on_disk = read_record(tmp_path)
+    # 4. Durable record re-read from disk confirms evidence/intervention cleared and progress selected.
+    on_disk = read_record(tmp_path, backend=DEFAULT_FILE_BACKEND)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
