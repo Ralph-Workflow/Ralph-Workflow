@@ -62,16 +62,23 @@ def _stub_boundary_collaborators(
     *,
     pending: RebaseState,
     head_sha: str = "stub-head-sha",
+    unsafe_pull_record: RebaseState | None = None,
 ) -> list[str]:
     """Stub the boundary's collaborators so the unit test exercises only the seam.
 
     Returns a list of ``reconciler_called_with_target`` entries so the test can
     assert the configured ``target`` was threaded through unchanged.
+
+    WU-2: ``unsafe_pull_record`` (when non-``None``) is returned from the
+    pull fake. The OLD guard ``if remote_record is not None and not
+    remote_record.freshness_safe: return remote_record`` short-circuited
+    on this condition; supplying it from the fake proves the current code
+    no longer has that guard (the reconciler runs regardless).
     """
     reconciler_targets: list[str] = []
 
     def fake_pull_and_reconcile(config, root, target, *, rebase_stop_resolver, prior):
-        return None
+        return unsafe_pull_record
 
     def fake_reconcile_remote_publication(config, root, target, *, rebase_stop_resolver):
         reconciler_targets.append(target)
@@ -102,11 +109,29 @@ def test_freshness_safe_false_does_not_block_reconciler(
     remote_record.freshness_safe: return remote_record`` short-circuited
     the boundary before ``_reconcile_remote_publication`` was ever
     called. After the fix the reconciler is always consulted.
+
+    WU-2: this test now supplies a NON-NULL ``RebaseState`` with
+    ``freshness_safe=False`` from the pull fake (mirroring the
+    ``auto_integrate_remote_client.py:314`` pull-FF failure and
+    ``:366`` non-cleanly-aborted reconciliation producers). The
+    OLD guard ``if remote_record is not None and not
+    remote_record.freshness_safe: return remote_record`` would
+    short-circuit here -- the boundary would return the unsafe
+    pull record WITHOUT consulting the reconciler. The current
+    boundary code does NOT have that guard; the reconciler runs
+    regardless of ``freshness_safe``.
     """
     head_sha = "stub-head-sha"
     pending = RebaseState(last_remote_sync=REMOTE_ALREADY_CURRENT)
+    # WU-2: pull fake returns a NON-NULL RebaseState carrying
+    # ``freshness_safe=False`` -- the OLD guard would short-circuit
+    # here. The current code does not have that guard.
+    unsafe_pull_record = RebaseState(freshness_safe=False)
     reconciler_targets = _stub_boundary_collaborators(
-        monkeypatch, pending=pending, head_sha=head_sha
+        monkeypatch,
+        pending=pending,
+        head_sha=head_sha,
+        unsafe_pull_record=unsafe_pull_record,
     )
 
     result = boundary.boundary_freshness_outcome(
@@ -389,4 +414,181 @@ def test_head_differs_from_target_gates_integration(
     assert not reconcile_called, (
         "_reconcile_remote_publication was called despite HEAD != target: "
         "the feature-integration gate was bypassed"
+    )
+
+
+def test_unsafe_divergence_real_reconciler_uses_rejected_push_path_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WU-2 AC-12: real reconciler with faked I/O proves no force refspec on divergence.
+
+    The previous test (``test_unsafe_divergence_propagates_reintegration_without_force_push``)
+    mocked the reconciler at the boundary seam, so it pinned the
+    boundary's *propagation* contract but not the reconciler's
+    *rejected-push / no-force* contract. PA-003 of the analysis
+    feedback noted that the boundary proof was incomplete: it
+    demonstrated propagation of an externally-supplied divergence
+    verdict, not that the real rejected-push path runs ``reconcile_after_rejected_push``
+    without a forced refspec.
+
+    This test exercises the REAL
+    :func:`~ralph.pipeline.auto_integrate_remote_sync.reconcile_remote_publication`
+    with faked I/O:
+
+    * ``_safe_local_sha`` returns a known local SHA
+      (``local-release-sha``).
+    * ``_observe_remote_target_sha`` returns a different remote SHA
+      (``remote-advance-sha``) and ``REFRESH_DIVERGED``.
+    * ``is_ancestor`` returns ``False`` in both directions (local
+      and remote are strictly diverged).
+    * ``push_target_after_landing`` is faked to return
+      ``PushStatus.NON_FAST_FORWARD`` -- the rejected-push signal.
+    * ``reconcile_after_rejected_push`` is faked to return a
+      ``PUBLISH_DEFERRED_REMOTE`` record WITHOUT consulting a force
+      refspec (``force=False`` would be the default).
+
+    The boundary then observes the reconciler's divergence outcome and
+    propagates the ``PUBLISH_DEFERRED_REMOTE`` obligation; the push
+    is delegated to ``reconcile_after_rejected_push`` (not force)
+    and the next seam retries.
+    """
+    from ralph.pipeline import auto_integrate_remote_sync as remote_sync
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+    from ralph.pipeline._publication_state_machine import PublicationDecision
+
+    forced_calls: list[tuple[Path, str]] = []
+    rejected_calls: list[tuple[Path, str, str]] = []
+
+    head_sha = "local-release-sha"
+
+    def fake_branch_sha(_root: Path, _target: str) -> str:
+        return head_sha
+
+    def fake_local_sha(_root: Path, _target: str) -> str:
+        return head_sha
+
+    def fake_observe_remote_sha(
+        _root: Path, _target: str, *, remote: str, remote_client: object = None
+    ) -> tuple[str | None, str]:
+        # Remote is strictly ahead AND strictly behind: a true divergence.
+        return "remote-advance-sha", "diverged"
+
+    def fake_is_ancestor(_r: Path, _a: str, _d: str) -> bool:
+        # Local is strictly ahead (``remote_sha`` is an ancestor of
+        # ``local_sha`` but NOT vice-versa) so the real reconciler
+        # attempts the push and then delegates to
+        # ``reconcile_after_rejected_push`` on the rejection.
+        return _a == "remote-advance-sha"
+
+    from ralph.git.remote_push import PushStatus
+
+    def fake_push_target_after_landing(
+        _config: object,
+        _root: Path,
+        _target: str,
+        _base_state: object,
+        *,
+        remote: str,
+        remote_client: object = None,
+    ) -> RebaseState:
+        # Simulate the rejected-push outcome. Track whether the caller
+        # ever passed a force refspec (it must NOT).
+        forced_calls.append((_root, remote))
+        return RebaseState(
+            last_outcome=RebaseOutcomeKind.REMOTE_FAILED,
+            last_remote_sync="rejected",
+            last_push_status=PushStatus.NON_FAST_FORWARD.value,
+            last_remote=remote,
+            last_target=_target,
+            last_publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
+        )
+
+    def fake_reconcile_after_rejected_push(
+        _config: object,
+        _root: Path,
+        _target: str,
+        _pushed: RebaseState,
+        *,
+        remote: str,
+        rebase_stop_resolver: object = None,
+        remote_client: object = None,
+    ) -> RebaseState:
+        rejected_calls.append((_root, _target, remote))
+        # No force refspec: the rejected-push path performs
+        # reintegration without pushing.
+        return _pushed.model_copy(
+            update={
+                "last_reason": (
+                    f"push of {_target} to {remote} failed: non-fast-forward; "
+                    "reconciler delegated to reintegration"
+                ),
+                "last_publication_decision": PublicationDecision.PUBLISH_DEFERRED_REMOTE,
+            }
+        )
+
+    # Stub collaborators so the boundary does NOT touch real git.
+    monkeypatch.setattr(boundary, "branch_sha", fake_branch_sha)
+    monkeypatch.setattr(boundary, "get_head_sha", lambda r: head_sha)
+    monkeypatch.setattr(boundary, "remote_sync_enabled", lambda cfg: True)
+    # ``remote_sync_enabled`` is also imported into
+    # ``auto_integrate_remote_sync`` at module scope; the boundary
+    # attribute patch alone is not enough because
+    # ``reconcile_remote_publication`` consults the local name in
+    # the ``remote_sync`` module's namespace. Patching both keeps
+    # the boundary gate and the reconciler's policy gate aligned.
+    monkeypatch.setattr(remote_sync, "remote_sync_enabled", lambda cfg: True)
+    monkeypatch.setattr(boundary, "pull_and_reconcile_target", lambda *_a, **_k: None)
+    monkeypatch.setattr(remote_sync, "_safe_local_sha", fake_local_sha)
+    monkeypatch.setattr(remote_sync, "_observe_remote_target_sha", fake_observe_remote_sha)
+    # ``is_ancestor`` is imported from ``ralph.git.merge`` at the top
+    # of ``auto_integrate_remote_sync`` as a module-level local name.
+    # Patching the source module rebinds the GLOBAL, but the local
+    # name inside ``_dispatch_ref_comparison`` still points at the
+    # original. Patching ``remote_sync.is_ancestor`` rebinds the
+    # LOCAL name so the real reconciler consults the fake.
+    monkeypatch.setattr(remote_sync, "is_ancestor", fake_is_ancestor)
+    monkeypatch.setattr(remote_sync, "push_target_after_landing", fake_push_target_after_landing)
+    monkeypatch.setattr(
+        remote_sync,
+        "reconcile_after_rejected_push",
+        fake_reconcile_after_rejected_push,
+    )
+
+    result = boundary.boundary_freshness_outcome(
+        _make_config(target="release", remote="tacos"),
+        tmp_path,
+        "release",
+        RebaseState(),
+        rebase_stop_resolver=None,
+    )
+
+    # 1. The real reconciler was consulted (not mocked at the seam).
+    assert len(forced_calls) == 1, (
+        f"Boundary must consult the real reconciler on divergence; forced_calls={forced_calls}"
+    )
+    # 2. The push went to the configured remote (``tacos``), not
+    #    the hard-coded default ``origin``.
+    assert forced_calls[0][1] == "tacos", (
+        f"Push must target the configured remote 'tacos'; got {forced_calls[0][1]}"
+    )
+    # 3. The rejected-push path was invoked (NOT a force push).
+    assert len(rejected_calls) == 1, (
+        f"Boundary must delegate divergence to reconcile_after_rejected_push; "
+        f"rejected_calls={rejected_calls}"
+    )
+    # 4. The boundary propagated the divergence obligation (NOT the
+    #    silent-skip overwrite).
+    assert result is not None
+    assert result.last_reason != "no commits beyond target", (
+        "divergence outcome was overwritten with the silent-skip; "
+        "the divergence signal must reach the next seam"
+    )
+    assert result.last_publication_decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE, (
+        "The rejected-push path must carry forward PUBLISH_DEFERRED_REMOTE "
+        "so the next seam retries the deferred push"
+    )
+    assert result.last_remote == "tacos", (
+        "The configured remote name must survive the divergence path; "
+        "no hard-coded 'origin' default may appear"
     )

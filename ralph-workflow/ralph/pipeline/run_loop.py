@@ -214,6 +214,22 @@ class _LoopContext:
     # cold-loaded capped-intervention record resets the flag because
     # ``_LoopContext`` is constructed fresh per run.
     _session_handoff_dispatched: bool = False
+    # Session-scoped one-shot flag that prevents the cold-capped
+    # conflict-resolution escalation from running more than once
+    # per session. Distinct from ``_session_handoff_dispatched``
+    # (which guards the INTERVENTION_REQUIRED handoff path); this
+    # flag guards the cold-capped path that fires when the
+    # consecutive-conflict budget is already spent BEFORE the
+    # ordinary resolver ever runs. Without this flag, every cold
+    # retry would re-invoke the escalation resolver against an
+    # exhausted conflict -- unbounded spin. With it, the
+    # escalation runs at most once per session and any subsequent
+    # cold-capped call falls through to the existing
+    # budget-spent branch (which already escalates to
+    # INTERVENTION_REQUIRED). A cold-loaded capped-intervention
+    # record resets the flag because ``_LoopContext`` is
+    # constructed fresh per run.
+    _cold_capped_escalation_attempted: bool = False
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -1439,7 +1455,7 @@ def _run_integration_conflict_resolution(
         return _run_owned_integration_conflict_resolution(ctx, rebase)
 
 
-def _run_owned_integration_conflict_resolution(
+def _run_owned_integration_conflict_resolution(  # noqa: PLR0911 - cold-capped escalation + budget gate + paused-rebase + merge + orphan-index returns are distinct independent branches
     ctx: _LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
@@ -1484,6 +1500,50 @@ def _run_owned_integration_conflict_resolution(
         logger.debug("integration resolution: conflict identity unreadable: {}", identity_exc)
         identity = ConflictIdentity()
     resolver_attempts = resolver_attempt_limit(ctx.config)
+    # Cold-capped escalation (O1 retry-progress rule, distinct from
+    # the ordinary resolver budget). The previous behaviour returned
+    # False at this point WITHOUT consulting a resolver, leaving a
+    # cold-capped ``RebaseState`` (one that loaded with
+    # ``resolution_exhausted=True`` and / or ``consecutive_conflicts``
+    # already at the cap) as an unresolvable dead end. The O1
+    # contract requires that a cold-capped state still receive ONE
+    # session-scoped automated escalation that re-derives from live
+    # Git (the cached state may be stale -- a concurrent push or a
+    # previous worktree's resolution may already have cleared the
+    # conflict) and adopts a successful resolver result. The
+    # ``_cold_capped_escalation_attempted`` flag makes this a
+    # one-shot per session, so a subsequent cold-capped call falls
+    # through to the ordinary budget-spent branch (which already
+    # escalates to INTERVENTION_REQUIRED without spinning). The cap
+    # is NEVER reset or raised -- the escalation is purely
+    # additive, distinct from the exhausted ordinary resolver
+    # budget. The cold-capped condition is identity-aware (the
+    # same identity that already exhausted its budget must still be
+    # the conflict on disk now): a different conflict with a
+    # depleted counter inherits a fresh budget via
+    # ``resolver_allowed`` and falls through to the ordinary path.
+    if (
+        rebase is not None
+        and (rebase.resolution_exhausted or rebase.consecutive_conflicts >= resolver_attempts)
+        and not resolver_allowed(rebase, target, identity, attempts=resolver_attempts)
+    ):
+        session_attempted: bool = getattr(ctx, "_cold_capped_escalation_attempted", False)
+        if not session_attempted:
+            ctx._cold_capped_escalation_attempted = True
+            logger.warning(
+                "integration resolution: cold-capped escalation for target '{}'; "
+                "re-deriving live Git state",
+                target,
+            )
+            with suppress(Exception):
+                emit_integration_warn_line(
+                    ctx.active_display,
+                    "conflict resolution budget spent; attempting cold-capped "
+                    "escalation that re-derives live Git state",
+                )
+            return _run_cold_capped_escalation(ctx, target, rebase)
+        # Same-session re-entry: the escalation already ran. Do not
+        # spin -- the budget gate below handles the escalation.
     if rebase is not None and not resolver_allowed(
         rebase, target, identity, attempts=resolver_attempts
     ):
@@ -1579,6 +1639,152 @@ def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
     except Exception as exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution: orphaned index resolution failed: {}", exc)
         return False
+
+
+def _run_cold_capped_escalation(  # noqa: PLR0911 - rederive-clear + paused-rebase + merge + orphan-index returns are distinct independent branches
+    ctx: _LoopContext,
+    target: str,
+    rebase: RebaseState,
+) -> bool:
+    """Run the cold-capped escalation: re-derive live Git state, then escalate.
+
+    Distinct from the ordinary ``_run_owned_integration_conflict_resolution``
+    budget-guarded path. The O1 retry-progress rule requires that a
+    cold-capped ``RebaseState`` (one that loaded with
+    ``resolution_exhausted=True`` and / or ``consecutive_conflicts``
+    already at the cap) still receive ONE session-scoped automated
+    escalation that:
+
+    1. Re-derives the conflict state from live Git. The cached state
+       in ``rebase`` may be stale -- a concurrent push, a previous
+       worktree's resolution, or a recovery preamble that succeeded
+       between the cold-load and this call may already have cleared
+       the conflict. When the live state is clear, the cached
+       ``is_intervention_required`` / ``resolution_exhausted`` /
+       ``consecutive_conflicts`` flags are cleared on the
+       ``ctx.latest_state`` rebase so the rest of the pipeline
+       observes a clean state.
+    2. If the live state confirms a conflict, picks the right
+       resolver for the live evidence (paused rebase vs. in-progress
+       merge vs. orphaned unmerged index), builds it, and runs it
+       ONCE.
+    3. If the resolver succeeds, returns True so the cold-capped state
+       can be cleared by the caller. If the resolver fails, returns
+       False WITHOUT spinning (the caller already escalates to
+       ``INTERVENTION_REQUIRED`` on the next cold-capped call).
+    4. Never raises. The cap is NEVER reset or raised -- the
+       escalation is purely additive.
+    """
+    root = ctx.workspace_scope.root
+    # Step 1: re-derive from live Git. A clean live state means the
+    # cached record is stale; clear it and adopt the live result.
+    try:
+        live_rebase = _rederive_live_conflict_state(root, target, rebase)
+    except Exception as derive_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
+        live_rebase = None
+    if live_rebase is not None and not live_rebase.is_intervention_required:
+        if ctx.latest_state:
+            ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=live_rebase)]
+            _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+        return True
+    # Step 2: live state still shows a conflict. Decide which
+    # resolver is needed -- the paused-rebase path is the commoner
+    # blocking state, and the merge / unmerged-index paths handle
+    # the rest. Same decision tree as the ordinary path, but no
+    # budget gate.
+    if _paused_rebase_at(root):
+        try:
+            return _resolve_paused_rebase_with_history(ctx, target, rebase)
+        except Exception as resolve_exc:  # pragma: no cover -- defensive
+            logger.warning(
+                "integration resolution: cold-capped paused rebase escalation failed: {}",
+                resolve_exc,
+            )
+            return False
+    try:
+        resolver = build_agent_conflict_resolver(
+            policy_bundle=ctx.policy_bundle,
+            registry=ctx.registry,
+            display=ctx.active_display,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            display_context=ctx.display_context,
+            strategy_history=(
+                rebase.conflict_strategies_tried
+                if rebase is not None
+                and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
+                else ()
+            ),
+        )
+    except Exception as build_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "integration resolution: cold-capped escalation resolver build failed: {}",
+            build_exc,
+        )
+        return False
+    try:
+        if _complete_in_progress_merge(root, target, resolver):
+            return True
+        return _resolve_orphaned_unmerged_index(ctx, target)
+    except Exception as resolve_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "integration resolution: cold-capped escalation resolver failed: {}",
+            resolve_exc,
+        )
+        return False
+
+
+def _rederive_live_conflict_state(
+    root: Path,
+    target: str,
+    rebase: RebaseState,
+) -> RebaseState | None:
+    """Re-derive the live conflict state from Git.
+
+    Returns a cleared ``RebaseState`` (with ``is_intervention_required``,
+    ``resolution_exhausted`` and ``consecutive_conflicts`` reset) when
+    the live Git state shows no conflict -- the cached record is stale
+    and the run can resume without invoking the resolver. Returns
+    ``None`` when the live state still shows a conflict (the caller
+    should invoke the escalation resolver). Never raises: an unreadable
+    live state returns ``None`` (the conservative answer that lets the
+    escalation resolver run rather than silently clearing the cached
+    exhaustion).
+
+    Uses the typed setters on ``RebaseState`` (single-writer
+    ownership of the decision fields), and the central ``_last_reason``
+    projection for the headline text. ``is_intervention_required``
+    and ``integration_unresolved`` are derived from ``last_outcome``
+    -- setting ``last_outcome=COMPLETED`` clears both, so the
+    cached intervention / unresolved flags do not need direct
+    writers.
+    """
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+    from ralph.pipeline.integration_resolution import inspect_integration_resolution
+
+    try:
+        verdict = inspect_integration_resolution(root, rebase)
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.debug(
+            "integration resolution: live re-derivation verdict unreadable: {}",
+            exc,
+        )
+        return None
+    if not verdict.dispatch_allowed:
+        # Live conflict still exists -- let the resolver run.
+        return None
+    return (
+        rebase.clear_resolution_exhausted()
+        .record_consecutive_conflicts(0, cap=0)
+        .model_copy(
+            update={
+                "last_outcome": RebaseOutcomeKind.COMPLETED,
+                "last_reason": ("live Git re-derivation cleared the cold-capped state"),
+            }
+        )
+    )
 
 
 def _paused_rebase_at(root: Path) -> bool:

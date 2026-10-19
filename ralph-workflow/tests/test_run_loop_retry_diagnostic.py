@@ -1260,3 +1260,405 @@ def test_wait_for_retry_successful_cold_exhaustion_handoff_clears_state(
     # 6. The handoff's resolved outcome is observable on the returned state.
     assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
     assert "clearing" not in result.rebase.last_reason
+
+
+# ---------------------------------------------------------------------------
+# WU-1 cold-capped escalation tests (O1 retry-progress rule)
+# ---------------------------------------------------------------------------
+#
+# The cold-capped escalation runs INSIDE
+# ``_run_owned_integration_conflict_resolution`` when the cached
+# ``RebaseState`` carries ``resolution_exhausted=True`` OR
+# ``consecutive_conflicts >= cap`` AND ``resolver_allowed`` returns
+# False (the exhaustion binds the conflict on disk now). The OLD
+# code returned False WITHOUT consulting a resolver, so a
+# cold-loaded capped state was an unresolvable dead end. The
+# escalation re-derives from live Git and runs ONCE per session.
+# The probe in PA-001 printed ``result=False,
+# live_operation_checked=0, resolver_calls=0``; the new tests
+# assert ``resolver_calls > 0`` and the successful/unsuccessful
+# branches each behave correctly.
+
+
+def _make_cold_capped_ctx(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    *,
+    cap: int = 5,
+    target: str = "release",
+) -> tuple[list[float], run_loop._LoopContext, dict[str, int]]:
+    """Set up a minimal context with a low conflict cap so cold-cap is reachable."""
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    # The probe uses cap=5; override the effective cap so
+    # ``resolver_attempt_limit`` returns the value the analysis
+    # feedback probed with (and so consecutive_conflicts=5 is
+    # at the cap).
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.resolver_attempt_limit",
+        lambda _c: cap,
+    )
+    # The integration target resolution requires a real local branch
+    # (it consults ``observe_branch_sha``), which is unavailable in a
+    # ``tmp_path`` workspace. Stub it so the seam gets a valid target.
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target",
+        lambda _cfg, _root: target,
+    )
+    ctx._cold_capped_escalation_attempted = False
+    # ``build_agent_conflict_resolver`` requires ``ctx.registry``,
+    # ``ctx.pipeline_deps`` and ``ctx.display_context`` to thread into
+    # the agent resolver builder. The minimal ``_create_retry_ctx``
+    # doesn't carry them; tests that exercise the escalation path stub
+    # ``build_agent_conflict_resolver`` itself, so these attributes are
+    # not consulted -- but the underlying builders tolerate the empty
+    # SimpleNamespace (``_build`` is mocked out).
+    ctx.registry = SimpleNamespace()
+    ctx.pipeline_deps = None
+    ctx.display_context = None
+    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
+    counters: dict[str, int] = {"built": 0, "merge": 0, "orphan": 0, "rederive": 0, "paused": 0}
+    return sleeps, ctx, counters
+
+
+def test_cold_capped_conflict_invokes_resolver_when_budget_already_spent(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1: cold-capped conflict must invoke a resolver, not return False.
+
+    The OLD behaviour: ``_run_owned_integration_conflict_resolution``
+    returned False when ``resolver_allowed`` was False, leaving a
+    cold-capped ``RebaseState(consecutive_conflicts=cap,
+    resolution_exhausted=True)`` unresolvable. The new cold-capped
+    escalation re-derives from live Git and builds the resolver once
+    per session. With cap=5 and ``consecutive_conflicts=5`` the
+    state is cold-capped; the assertion is that the resolver is
+    actually built and run, not skipped.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, _target, **_k: ConflictIdentity(),
+        raising=False,
+    )
+
+    def _fake_build(**_kwargs: object) -> object:
+        counters["built"] += 1
+        return lambda _root, _target: True
+
+    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
+        counters["merge"] += 1
+        return True
+
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _r: False)
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", _fake_merge)
+    monkeypatch.setattr(
+        run_loop,
+        "_resolve_orphaned_unmerged_index",
+        lambda _c, _t: counters.__setitem__("orphan", counters["orphan"] + 1) or False,
+    )
+    monkeypatch.setattr(
+        run_loop,
+        "_rederive_live_conflict_state",
+        lambda _r, _t, _rb: counters.__setitem__("rederive", counters["rederive"] + 1) or None,
+    )
+
+    cold_capped = RebaseState(
+        last_action="conflict",
+        last_target="release",
+        consecutive_conflicts=5,  # == cap
+    ).model_copy(update={"resolution_exhausted": True})
+
+    result = run_loop._run_owned_integration_conflict_resolution(ctx, cold_capped)
+
+    # 1. The resolver was built (the OLD code never built it).
+    assert counters["built"] == 1, (
+        f"Cold-capped state must invoke the resolver; "
+        f"built={counters['built']}, OLD probe printed "
+        "'resolver_calls=0'. The escalation never ran."
+    )
+    # 2. The live state was re-derived once (Step 1 of the escalation).
+    assert counters["rederive"] == 1, (
+        "Cold-capped escalation must re-derive from live Git once before running the resolver"
+    )
+    # 3. The escalation succeeded via _complete_in_progress_merge.
+    assert counters["merge"] == 1
+    assert result is True
+    # 4. The session flag was set so a same-session repeat call does not
+    # re-dispatch.
+    assert ctx._cold_capped_escalation_attempted is True
+
+
+def test_cold_capped_escalation_rederive_clears_stale_state_without_invoking_resolver(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1: when live Git state shows no conflict, cached exhaustion is stale.
+
+    The cold-capped escalation first re-derives from live Git. When the
+    live state is clean (the cached record is stale -- a concurrent
+    push, a previous worktree's resolution, or a recovery preamble
+    succeeded between the cold-load and this call), the escalation
+    clears the cached flags and returns True WITHOUT invoking the
+    resolver. This is the fast path that prevents the cap from being
+    burned on a state that no longer exists.
+    """
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, _target, **_k: ConflictIdentity(),
+        raising=False,
+    )
+
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _r: False)
+
+    def _fake_rederive(_root: object, _target: object, rebase: RebaseState) -> RebaseState:
+        counters["rederive"] += 1
+        return rebase.model_copy(
+            update={
+                "is_intervention_required": False,
+                "resolution_exhausted": False,
+                "consecutive_conflicts": 0,
+                "integration_unresolved": False,
+                "last_outcome": RebaseOutcomeKind.COMPLETED,
+                "last_reason": "live re-derivation cleared the cold-capped state",
+            }
+        )
+
+    monkeypatch.setattr(run_loop, "_rederive_live_conflict_state", _fake_rederive)
+
+    def _fail_build(**_kwargs: object) -> object:
+        counters["built"] += 1
+        raise AssertionError("resolver must NOT be built when live re-derivation clears the state")
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fail_build)
+
+    cold_capped = RebaseState(
+        last_action="conflict",
+        last_target="release",
+        consecutive_conflicts=5,
+    ).model_copy(update={"resolution_exhausted": True})
+    initial_state = PipelineState(phase="development", rebase=cold_capped)
+    ctx.latest_state[:] = [initial_state]
+
+    result = run_loop._run_owned_integration_conflict_resolution(ctx, cold_capped)
+
+    # 1. Live re-derivation ran once.
+    assert counters["rederive"] == 1
+    # 2. The resolver was NOT built (live state was clean).
+    assert counters["built"] == 0, (
+        "Resolver must not be built when live Git state has no conflict -- "
+        "the cached record is stale and the live re-derivation clears it"
+    )
+    # 3. The function returned True (the caller persists the cleared state).
+    assert result is True
+    # 4. The session flag was set.
+    assert ctx._cold_capped_escalation_attempted is True
+    # 5. The cleared state is observable on ctx.latest_state.
+    cleared = ctx.latest_state[0]
+    assert cleared.rebase.is_intervention_required is False
+    assert cleared.rebase.resolution_exhausted is False
+    assert cleared.rebase.consecutive_conflicts == 0
+    assert cleared.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+
+
+def test_cold_capped_escalation_unsuccessful_returns_false_without_spinning(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1: unsuccessful cold-capped escalation exits without operator-only spin.
+
+    When the resolver FAILS, the cold-capped escalation must return
+    False WITHOUT sleeping and WITHOUT setting
+    ``is_intervention_required`` on the cached rebase (the caller
+    already escalates to ``INTERVENTION_REQUIRED`` on the next cold
+    call). The cap is NEVER reset or raised -- the failure is bounded,
+    and the next cold-capped call falls through to the budget gate.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+
+    sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, _target, **_k: ConflictIdentity(),
+        raising=False,
+    )
+
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _r: False)
+
+    def _fake_build(**_kwargs: object) -> object:
+        counters["built"] += 1
+        return lambda _root, _target: False
+
+    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
+        counters["merge"] += 1
+        return False
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", _fake_merge)
+    monkeypatch.setattr(run_loop, "_resolve_orphaned_unmerged_index", lambda _c, _t: False)
+    monkeypatch.setattr(run_loop, "_rederive_live_conflict_state", lambda _r, _t, _rb: None)
+
+    cold_capped = RebaseState(
+        last_action="conflict",
+        last_target="release",
+        consecutive_conflicts=5,
+    ).model_copy(update={"resolution_exhausted": True})
+    initial_counter = cold_capped.consecutive_conflicts
+
+    result = run_loop._run_owned_integration_conflict_resolution(ctx, cold_capped)
+
+    # 1. The resolver was built and run exactly once.
+    assert counters["built"] == 1
+    assert counters["merge"] == 1
+    # 2. The function returned False (escalation did not clear the state).
+    assert result is False
+    # 3. The session flag is set so a same-session repeat call does not spin.
+    assert ctx._cold_capped_escalation_attempted is True
+    # 4. The counter was NOT reset or raised by the escalation -- it is still
+    # at the cap. The escalation is purely additive and never weakens the cap.
+    assert cold_capped.consecutive_conflicts == initial_counter, (
+        "Cold-capped escalation must NEVER reset or raise the counter; "
+        "the cap is owned by the budget gate, not the escalation"
+    )
+    # 5. No sleep was performed -- the O1 retry-progress rule forbids a
+    # silent fixed-interval spin on a failed escalation.
+    assert sleeps == [], (
+        "Unsuccessful cold-capped escalation must not sleep; the O1 "
+        "retry-progress rule forbids a silent fixed-interval wait"
+    )
+
+
+def test_cold_capped_escalation_is_one_shot_per_session(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1: a same-session repeat call does not re-dispatch the escalation.
+
+    The ``_cold_capped_escalation_attempted`` flag guarantees that the
+    escalation runs at most once per session. The second call falls
+    through to the ordinary budget gate which escalates to
+    ``INTERVENTION_REQUIRED``. This prevents unbounded spin on a
+    truly unresolvable cold conflict -- a fixed-interval wait that
+    nothing satisfies is forbidden by O1.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+
+    sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, _target, **_k: ConflictIdentity(),
+        raising=False,
+    )
+
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _r: False)
+
+    def _fake_build(**_kwargs: object) -> object:
+        counters["built"] += 1
+        return lambda _root, _target: False
+
+    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
+        counters["merge"] += 1
+        return False
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", _fake_merge)
+    monkeypatch.setattr(run_loop, "_resolve_orphaned_unmerged_index", lambda _c, _t: False)
+    monkeypatch.setattr(run_loop, "_rederive_live_conflict_state", lambda _r, _t, _rb: None)
+
+    cold_capped = RebaseState(
+        last_action="conflict",
+        last_target="release",
+        consecutive_conflicts=5,
+    ).model_copy(update={"resolution_exhausted": True})
+
+    # First call: escalation runs.
+    first = run_loop._run_owned_integration_conflict_resolution(ctx, cold_capped)
+    assert first is False
+    assert counters["built"] == 1
+    # Second call within the SAME session: escalation skipped, budget gate fires.
+    second = run_loop._run_owned_integration_conflict_resolution(ctx, cold_capped)
+    assert second is False
+    # The resolver must NOT have been built a second time -- the session
+    # flag prevents unbounded spin (O1 forbids fixed-interval waits).
+    assert counters["built"] == 1, (
+        "Same-session re-entry must not re-dispatch the cold-capped "
+        "escalation; the O1 retry-progress rule forbids unbounded spin"
+    )
+    # No sleep was performed (the function returns False immediately).
+    assert sleeps == []
+
+
+def test_cold_capped_escalation_does_not_fire_for_different_conflict_identity(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1: a different conflict inherits a fresh budget, not the cold-capped escalation.
+
+    The budget is per-identity (a genuinely new conflict must not
+    inherit an older conflict's exhausted count). When the cached
+    state carries ``consecutive_conflicts >= cap`` but the live
+    conflict identity differs, ``resolver_allowed`` returns True
+    and the ordinary resolver path runs -- the cold-capped
+    escalation must NOT fire (the cached counter was about a
+    DIFFERENT conflict).
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    # Live identity is NEW (feature-2/target-2), the cached exhaustion was
+    # about feature-1/target-1. resolver_allowed returns True on this
+    # mismatch; the cold-capped escalation must NOT fire.
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda _root, _target, **_k: ConflictIdentity(
+            feature_sha="feature-2", target_sha="target-2", scope="feature"
+        ),
+        raising=False,
+    )
+
+    monkeypatch.setattr(run_loop, "_paused_rebase_at", lambda _r: False)
+
+    def _fake_build(**_kwargs: object) -> object:
+        counters["built"] += 1
+        return lambda _root, _target: True
+
+    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
+        counters["merge"] += 1
+        return True
+
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
+    monkeypatch.setattr(run_loop, "_complete_in_progress_merge", _fake_merge)
+    monkeypatch.setattr(run_loop, "_resolve_orphaned_unmerged_index", lambda _c, _t: False)
+    monkeypatch.setattr(run_loop, "_rederive_live_conflict_state", lambda _r, _t, _rb: None)
+
+    spent_on_another_conflict = RebaseState(
+        last_action="conflict",
+        last_target="release",
+        consecutive_conflicts=5,
+        last_conflict_feature_sha="feature-1",
+        last_conflict_target_sha="target-1",
+        last_conflict_scope="feature",
+    ).model_copy(update={"resolution_exhausted": True})
+
+    result = run_loop._run_owned_integration_conflict_resolution(ctx, spent_on_another_conflict)
+
+    # 1. The resolver ran via the ordinary path (the cold-capped escalation
+    # must NOT have fired).
+    assert counters["built"] == 1, (
+        f"Ordinary path must run for a different-conflict identity; built={counters['built']}"
+    )
+    assert result is True
+    # 2. The cold-capped flag was NOT set (the escalation did not fire).
+    assert ctx._cold_capped_escalation_attempted is False, (
+        "Cold-capped escalation must not fire for a different-conflict "
+        "identity; the budget is per-identity and the new conflict "
+        "inherits a fresh budget via resolver_allowed"
+    )

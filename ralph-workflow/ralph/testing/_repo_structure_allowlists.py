@@ -1931,5 +1931,29 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # bypass is the documented re-export pattern, mirroring the
         # ``smoke.py`` re-export entry above.
         ("ralph/project_policy/_content_checks.py", 792),
+        # wt-18: ``_run_owned_integration_conflict_resolution`` adds
+        # the cold-capped escalation return path on top of the
+        # existing budget-gate / paused-rebase / merge / orphan-index
+        # branches. Each return is an independent contract: cold-cap
+        # escalation (one-shot per session), budget-spent
+        # escalation (returns False so caller escalates to
+        # ``INTERVENTION_REQUIRED``), paused-rebase path, in-progress
+        # merge completion, and orphaned-unmerged-index resolution.
+        # Flattening them into a single accumulator would obscure
+        # the typed control flow and risk merging paths that must
+        # not merge (cold-cap fires BEFORE the budget gate; budget
+        # gate fires ONLY when cold-cap is not in effect; the
+        # conflict-timeout path is separate from both).
+        ("ralph/pipeline/run_loop.py", 1458),
+        # wt-18: ``_run_cold_capped_escalation`` returns once per
+        # distinct branch: live-rederive-clear (the cached record
+        # was stale), paused-rebase path, in-progress merge
+        # completion, orphaned-unmerged-index resolution. The
+        # one-shot ``_cold_capped_escalation_attempted`` guard plus
+        # the re-derive-first ordering are the O1 contract; flattening
+        # into a single accumulator would break the re-derive-clear
+        # fast path that prevents the cap from being burned on a
+        # state that no longer exists.
+        ("ralph/pipeline/run_loop.py", 1644),
     }
 )
