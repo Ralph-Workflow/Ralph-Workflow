@@ -44,8 +44,13 @@ class _BlockingWorkspace(FsWorkspace):
         return super().read(path)
 
 
-def test_injected_workspace_blocking_read_surfaces_typed_mcpservererror(tmp_path: Path) -> None:
+def test_injected_workspace_blocking_read_surfaces_typed_mcpservererror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Injected workspace whose read() blocks raises McpServerError(last_stage='registry_built')."""
+    # Allow 2500ms preflight to satisfy the probe ceiling invariant
+    # so remaining real startup deadline is ~0.5s (2.5s preflight - 2.0s probe safety).
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._PROBE_BUDGET_SHARE", 0.9)
     blocking_ws = _BlockingWorkspace(tmp_path)
     session = _make_session()
 
@@ -55,7 +60,7 @@ def test_injected_workspace_blocking_read_surfaces_typed_mcpservererror(tmp_path
                 tmp_path,
                 workspace=blocking_ws,
                 extras=McpServerExtras(session=session),
-                env={"RALPH_MCP_REGISTRY_READ_TIMEOUT_MS": "50"},
+                env={"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "2500"},
             )
 
         err = exc_info.value

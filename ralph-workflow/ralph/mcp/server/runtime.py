@@ -247,14 +247,16 @@ def _build_mcp_registry_and_server(
     """
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_budget_s = max(0.0, real_deadline_s - (_clock() - t0))
-    read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
+    # mcp_registry_read_timeout_from_env is retained for diagnostic/compatibility purposes,
+    # while the fatal read bound is the remaining real deadline.
+    _read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
     # Diagnostic-vs-deadline contract: the per-read ceiling is informational only.
     # Slow-but-responsive I/O succeeds as long as it fits the real deadline.
     # Truly hung I/O still fails closed via ``_read_workspace_policy``'s
     # ``done.wait(timeout=...)`` bound, which is set to ``effective_read_timeout_s``
     # below; a hung read therefore surfaces a typed McpServerError with
     # ``last_stage="registry_built"`` before the real deadline elapses.
-    effective_read_timeout_s = min(remaining_budget_s, read_timeout_ceiling_s)
+    effective_read_timeout_s = remaining_budget_s
 
     t_reg_build_start = _clock()
     reg = build_ralph_tool_registry(

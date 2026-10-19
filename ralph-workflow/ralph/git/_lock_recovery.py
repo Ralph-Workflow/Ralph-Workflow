@@ -35,7 +35,6 @@ from git.exc import GitCommandError
 from loguru import logger
 
 from ralph.git.errors import GitOperationError
-from ralph.git.subprocess_runner import run_git
 
 _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
@@ -88,7 +87,6 @@ atexit.register(_reset_probe_executor)
 
 # Bounded backoff constants for git lock contention retry
 _LOCK_BACKOFF_S: tuple[float, ...] = (0.2, 0.5, 1.0)  # total ≤ 1.7s
-_MAX_LOCK_RECOVERY_ATTEMPTS: int = 3
 
 # Seam for time.sleep — patch in tests to avoid real delays
 _sleep_fn: Callable[[float], None] = time.sleep
@@ -102,56 +100,6 @@ def _parse_lock_path_from_error(error_text: str) -> Path | None:
     if lock_path.name not in _RECOVERABLE_GIT_LOCK_FILES:
         return None
     return lock_path
-
-
-def _is_pid_alive(pid: int) -> bool:
-    """Return True iff ``pid`` resolves to a running process.
-
-    Cross-platform best-effort: ``os.kill(pid, 0)`` returns 0 if the
-    process is alive and raises ``ProcessLookupError``/``PermissionError``
-    otherwise. ``PermissionError`` means the PID exists but is owned by
-    another user (we treat that as "alive" so we never unlink a live
-    lock by mistake).
-    """
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def _resolve_gitdirs(repo_root: Path) -> tuple[Path, Path]:
-    """Resolve per-worktree gitdir and common gitdir via git rev-parse."""
-    try:
-        result = run_git(
-            ("rev-parse", "--git-dir"),
-            cwd=repo_root,
-            label="recovery-git-dir",
-        )
-        gitdir_raw = result.stdout.strip() if result.returncode == 0 else None
-    except OSError:
-        gitdir_raw = None
-
-    try:
-        result = run_git(
-            ("rev-parse", "--git-common-dir"),
-            cwd=repo_root,
-            label="recovery-git-common-dir",
-        )
-        gitdir_common_raw = result.stdout.strip() if result.returncode == 0 else None
-    except OSError:
-        gitdir_common_raw = None
-
-    gitdir = Path(gitdir_raw).resolve() if gitdir_raw else (repo_root / ".git").resolve()
-    gitdir_common = Path(gitdir_common_raw).resolve() if gitdir_common_raw else gitdir.parent
-
-    return gitdir, gitdir_common
 
 
 def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
@@ -327,71 +275,77 @@ def _pid_in_repo_cwd(
         return "unknown"
 
 
+def _resolve_environ_gitdir(pid_dir: Path, raw_val: bytes) -> tuple[Path | None, bool]:
+    """Resolve raw GIT_DIR bytes against cwd; returns (resolved_path, resolution_failed)."""
+    if not raw_val:
+        return None, False
+    try:
+        val_str = os.fsdecode(raw_val)
+        raw_path = Path(val_str)
+        if raw_path.is_absolute():
+            return raw_path.resolve(), False
+        proc_cwd = (pid_dir / "cwd").readlink()
+        if not proc_cwd.is_absolute():
+            return None, True
+        return (proc_cwd / raw_path).resolve(), False
+    except (OSError, UnicodeDecodeError):
+        return None, True
+
+
 def _pid_has_gitdir_environ(
     pid_dir: Path,
-    gitdir_bytes: bytes,
-    gitdir_common_bytes: bytes,
+    gitdir: bytes | Path,
+    gitdir_common: bytes | Path,
 ) -> Literal["matches", "no_match", "unknown"]:
-    """Check if process environ sets GIT_DIR matching the repository gitdir."""
+    """Check if process environ sets GIT_DIR matching the repository gitdir.
+
+    Parses exact NUL-separated GIT_DIR=... entries from /proc/<pid>/environ.
+    Relative GIT_DIR paths are resolved against the inspected process's cwd
+    (/proc/<pid>/cwd via readlink). If resolution cannot be established,
+    fails closed to 'unknown'.
+    """
     try:
         environ_path = pid_dir / "environ"
         if not environ_path.is_file():
             return "no_match"
         environ_bytes = environ_path.read_bytes()
-        if (
-            b"GIT_DIR=" + gitdir_bytes in environ_bytes
-            or b"GIT_DIR=" + gitdir_common_bytes in environ_bytes
-        ):
-            return "matches"
-        return "no_match"
     except OSError as e:
-        if _is_unreadable_os_error(e):
-            return "unknown"
         if _is_dead_process_os_error(e):
             return "no_match"
         return "unknown"
 
+    try:
+        targets = {
+            Path(os.fsdecode(g) if isinstance(g, (bytes, bytearray)) else g).resolve()
+            for g in (gitdir, gitdir_common)
+        }
+    except OSError:
+        return "unknown"
+
+    resolution_failed = False
+    for entry in environ_bytes.split(b"\x00"):
+        if entry.startswith(b"GIT_DIR="):
+            candidate, failed = _resolve_environ_gitdir(pid_dir, entry[8:])
+            if failed:
+                resolution_failed = True
+            elif candidate is not None and candidate in targets:
+                return "matches"
+
+    return "unknown" if resolution_failed else "no_match"
+
 
 def _check_non_git_liveness(
-    pid_dir: Path,
     fd_status: Literal["live", "not_live", "unknown"],
-    lock_uid: int | None,
 ) -> Literal["live", "dead", "unknown"]:
     """Resolve liveness for confirmed non-git processes.
 
-    Fail-closed: an unreadable fd table (``unknown``) and an fd table owned by
-    another UID are treated as ``unknown`` (refuse) rather than ``dead``
-    (unlink). A process whose fd dir is owned by another UID can still hold the
-    lock (e.g. via sudo, capability, or running in a user namespace); ownership
-    and process-name heuristics are not proof of inability to hold the lock.
+    Fail-closed: an unreadable fd table (``unknown``) is treated as
+    ``unknown`` (refuse) rather than ``dead`` (unlink).
     """
     if fd_status == "live":
         return "live"
     if fd_status == "not_live":
         return "dead"
-    # Known init / system service managers (systemd, init) cannot hold git locks
-    # and frequently have non-dumpable internal fds that deny readlink to non-ptracers.
-    try:
-        comm_file = pid_dir / "comm"
-        if comm_file.is_file() and comm_file.read_text(
-            encoding="utf-8", errors="replace"
-        ).strip() in ("systemd", "init"):
-            return "dead"
-    except OSError:
-        pass
-    # If the fd directory itself is owned by root / another UID, we cannot prove
-    # the process is not a candidate lock holder: it may have acquired the lock
-    # via sudo, a capability set, or a user namespace. Fail closed and refuse.
-    try:
-        fd_dir = pid_dir / "fd"
-        fd_uid = fd_dir.stat().st_uid
-        current_uid = os.getuid()
-        eff_lock_uid = lock_uid if lock_uid is not None else current_uid
-        if fd_uid not in (current_uid, eff_lock_uid):
-            return "unknown"
-    except OSError:
-        # Unreadable fd metadata is also fail-closed ``unknown``.
-        return "unknown"
     return "unknown"
 
 
@@ -415,12 +369,12 @@ def _check_git_liveness(
     pid_dir: Path,
     live_cwds: set[Path],
     common_worktrees_dir: Path,
-    gitdir_bytes: bytes,
-    gitdir_common_bytes: bytes,
+    gitdir: bytes | Path,
+    gitdir_common: bytes | Path,
 ) -> Literal["live", "dead", "unknown"]:
     """Resolve liveness for candidate git processes by cwd and environ."""
     cwd_status = _pid_in_repo_cwd(pid_dir, live_cwds, common_worktrees_dir)
-    env_status = _pid_has_gitdir_environ(pid_dir, gitdir_bytes, gitdir_common_bytes)
+    env_status = _pid_has_gitdir_environ(pid_dir, gitdir, gitdir_common)
 
     if cwd_status == "unknown" or env_status == "unknown":
         return "unknown"
@@ -441,10 +395,8 @@ def _check_pid_liveness(
     lock_resolved: str,
     live_cwds: set[Path],
     common_worktrees_dir: Path,
-    gitdir_bytes: bytes,
-    gitdir_common_bytes: bytes,
-    *,
-    lock_uid: int | None = None,
+    gitdir: bytes | Path,
+    gitdir_common: bytes | Path,
 ) -> Literal["live", "dead", "unknown"]:
     """Check liveness signals for a single process PID.
 
@@ -464,7 +416,7 @@ def _check_pid_liveness(
     # (i) fd check - open-fd protection applies to ALL processes
     fd_status = _pid_holds_lock_fd(pid_dir, lock_resolved)
     if is_non_git:
-        return _check_non_git_liveness(pid_dir, fd_status, lock_uid)
+        return _check_non_git_liveness(fd_status)
 
     if fd_status != "not_live":
         return fd_status
@@ -476,8 +428,8 @@ def _check_pid_liveness(
         pid_dir,
         live_cwds,
         common_worktrees_dir,
-        gitdir_bytes,
-        gitdir_common_bytes,
+        gitdir,
+        gitdir_common,
     )
 
 
@@ -505,11 +457,6 @@ def _scan_proc(
     except OSError:
         return "unknown"
 
-    try:
-        lock_uid: int | None = lock.stat().st_uid
-    except OSError:
-        lock_uid = None
-
     has_unknown = False
 
     for pid in pids:
@@ -521,7 +468,6 @@ def _scan_proc(
             common_worktrees_dir,
             gitdir_bytes,
             gitdir_common_bytes,
-            lock_uid=lock_uid,
         )
         if status == "live":
             return "live"

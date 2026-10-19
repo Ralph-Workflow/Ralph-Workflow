@@ -463,6 +463,115 @@ def test_registry_read_slow_but_answers_succeeds(
     _check_real_startup_deadline("registry_built", 0.0, {})
 
 
+def test_runtime_read_timeout_selection_slow_read_succeeds_with_configured_400ms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With configured 400ms timeout and a 1.5s successful read, runtime read succeeds."""
+    import ralph.mcp.server.runtime as runtime_mod
+    import ralph.mcp.tools.bridge._registry as reg_mod
+    from ralph.config.mcp_models import McpConfig
+    from ralph.workspace.fs import FsWorkspace
+
+    clock_val = 0.0
+
+    def fake_clock() -> float:
+        return clock_val
+
+    monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
+    monkeypatch.setattr(reg_mod, "_clock", fake_clock)
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
+
+    session = AgentSession(
+        session_id="test-session-slow-read",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"WorkspaceRead"},
+    )
+
+    class _SlowWorkspace(FsWorkspace):
+        def read(self, path: str) -> str:
+            nonlocal clock_val
+            clock_val += 1.5  # Simulate 1.5s read
+            return super().read(path)
+
+    slow_ws = _SlowWorkspace(tmp_path)
+    env_map = {"RALPH_MCP_REGISTRY_READ_TIMEOUT_MS": "400"}
+
+    # Under old code, effective_read_timeout_s was min(28.0, 0.4) = 0.4s, killing the read.
+    # Under new contract, effective_read_timeout_s is remaining real deadline (28.0s),
+    # so the 1.5s slow-but-responsive read succeeds.
+    server = runtime_mod._build_mcp_registry_and_server(
+        effective_session=session,
+        workspace=slow_ws,
+        upstream_reg=None,
+        upstream_servers=(),
+        mcp_cfg=McpConfig(),
+        activity_relay_sender=None,
+        t0=0.0,
+        env_map=env_map,
+    )
+    assert server is not None
+    assert clock_val == 1.5
+    _check_real_startup_deadline("registry_built", 0.0, env_map)
+
+
+def test_runtime_read_timeout_selection_hung_read_fails_at_remaining_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hung read fails closed at remaining deadline with last_stage='registry_built'."""
+    import ralph.mcp.server.runtime as runtime_mod
+    import ralph.mcp.tools.bridge._registry as reg_mod
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.server._mcp_server_error import McpServerError
+    from ralph.workspace.fs import FsWorkspace
+
+    clock_val = 27.95
+
+    def fake_clock() -> float:
+        return clock_val
+
+    monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
+    monkeypatch.setattr(reg_mod, "_clock", fake_clock)
+    monkeypatch.setattr("ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock)
+
+    class _HungWorkspace(FsWorkspace):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            self.hang_event = threading.Event()
+
+        def read(self, path: str) -> str:
+            self.hang_event.wait(timeout=5.0)
+            return super().read(path)
+
+    hung_ws = _HungWorkspace(tmp_path)
+    session = AgentSession(
+        session_id="test-session-hung-read",
+        run_id="test-run",
+        drain="standalone",
+        capabilities={"WorkspaceRead"},
+    )
+
+    try:
+        with pytest.raises(McpServerError) as exc_info:
+            runtime_mod._build_mcp_registry_and_server(
+                effective_session=session,
+                workspace=hung_ws,
+                upstream_reg=None,
+                upstream_servers=(),
+                mcp_cfg=McpConfig(),
+                activity_relay_sender=None,
+                t0=0.0,
+                env_map={},
+            )
+
+        err = exc_info.value
+        assert err.last_stage == "registry_built"
+        assert err.elapsed_s is not None
+        assert err.elapsed_s >= 27.95
+    finally:
+        hung_ws.hang_event.set()
+
+
 def test_blocked_stage_recorder_fails_closed_before_preflight_with_headroom(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

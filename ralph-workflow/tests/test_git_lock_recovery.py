@@ -20,6 +20,8 @@ from loguru import logger
 from ralph.git._lock_recovery import (
     _PROBE_MAX_WORKERS,
     _get_probe_executor,
+    _pid_has_gitdir_environ,
+    _pid_in_repo_cwd,
     _reset_probe_executor,
 )
 from ralph.git.operations import (
@@ -935,3 +937,62 @@ def test_liveness_probe_cwd_in_repo_subdirectory_is_live(
         "the OR-predicate must recognize ANY path under the worktree top, not only "
         "the exact worktree-top path itself"
     )
+
+
+def _make_fake_proc(root: Path, pid: str, comm: str = "git") -> Path:
+    p = root / "proc" / pid
+    p.mkdir(parents=True)
+    (p / "comm").write_text(f"{comm}\n", encoding="utf-8")
+    (p / "fd").mkdir()
+    return p
+
+
+def test_systemd_unreadable_descriptors_returns_unknown(tmp_path: Path) -> None:
+    """systemd/init with unreadable descriptors returns unknown (fails closed, not dead)."""
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    pid_dir = _make_fake_proc(tmp_path, "1", "systemd")
+    (pid_dir / "fd").chmod(0o000)
+    try:
+        res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+        assert res == "unknown"
+    finally:
+        (pid_dir / "fd").chmod(0o755)
+
+
+def test_relative_gitdir_outside_repo_resolves_live(tmp_path: Path) -> None:
+    """relative GIT_DIR with cwd outside repo resolves to repo gitdir and returns live."""
+    gitdir, outside = tmp_path / "repo" / ".git", tmp_path / "outside"
+    gitdir.mkdir(parents=True)
+    outside.mkdir()
+    pid_dir = _make_fake_proc(tmp_path, "42")
+    (pid_dir / "cwd").symlink_to(str(outside.resolve()))
+    rel_gitdir = os.path.relpath(gitdir.resolve(), outside.resolve())
+    (pid_dir / "environ").write_bytes(f"GIT_DIR={rel_gitdir}\x00".encode())
+    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    assert res == "live"
+
+
+def test_relative_gitdir_outside_repo_not_pointing_to_gitdir_no_match(tmp_path: Path) -> None:
+    """relative GIT_DIR that does not point to repo gitdir returns not_in_repo / no_match."""
+    gitdir, outside = tmp_path / "repo" / ".git", tmp_path / "outside"
+    gitdir.mkdir(parents=True)
+    outside.mkdir()
+    pid_dir = _make_fake_proc(tmp_path, "43")
+    (pid_dir / "cwd").symlink_to(str(outside.resolve()))
+    (pid_dir / "environ").write_bytes(b"GIT_DIR=../other/.git\x00")
+    assert _pid_in_repo_cwd(pid_dir, {gitdir.resolve()}, gitdir.resolve() / "wt") == "not_in_repo"
+    assert _pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "no_match"
+    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    assert res == "dead"
+
+
+def test_relative_gitdir_resolution_failure_fails_closed_unknown(tmp_path: Path) -> None:
+    """resolution failure on relative GIT_DIR fails closed to unknown."""
+    gitdir = tmp_path / "repo" / ".git"
+    gitdir.mkdir(parents=True)
+    pid_dir = _make_fake_proc(tmp_path, "44")
+    (pid_dir / "environ").write_bytes(b"GIT_DIR=relative/.git\x00")
+    assert _pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "unknown"
+    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    assert res == "unknown"

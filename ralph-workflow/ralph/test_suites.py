@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import ast
+import multiprocessing
 import os
 import re
 import subprocess
@@ -19,8 +20,9 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE
 from ralph.process._spawn_env import sanitize_process_environment
@@ -748,6 +750,33 @@ def discover_fast_test_files(cwd: Path) -> tuple[str, ...]:
     return FAST_PROFILE_TEST_FILES
 
 
+_DISCOVERY_WORKER_CAP: Final = 8
+_PARALLEL_DISCOVERY_THRESHOLD: Final = 32
+_DISCOVERY_CHUNK_SIZE: Final = 64
+_DISCOVERY_FORK_CONTEXT = multiprocessing.get_context("fork")
+
+
+def _inspect_test_file(
+    payload: tuple[str, str, bool],
+) -> tuple[str, str, int, bool]:
+    cwd_str, path, is_required = payload
+    cwd = Path(cwd_str)
+    if is_required:
+        source = (cwd / path).read_text(encoding="utf-8")
+        weight = estimate_test_file_weight(source)
+        return path, source, weight, True
+    source_bytes = (cwd / path).read_bytes()
+    if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
+        source = source_bytes.decode("utf-8")
+        weight = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(path) or _fast_test_count(source)
+        return path, source, weight, True
+    source = source_bytes.decode("utf-8")
+    if not _is_module_subprocess_e2e(source, filename=path):
+        weight = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(path) or estimate_test_file_weight(source)
+        return path, source, weight, True
+    return path, source, 0, False
+
+
 def discover_test_files(cwd: Path) -> tuple[str, ...]:
     """Return verification files, excluding only statically proven E2E-only modules.
 
@@ -769,29 +798,22 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     files also cache their source; the multiplier is applied once by
     ``_test_file_weight`` when the shard plan is built.
     """
+    all_files = _discover_all_test_files(cwd)
+    req_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+    cwd_str = str(cwd)
+    payloads = [(cwd_str, path, path in req_set) for path in all_files]
+    workers = min(_DISCOVERY_WORKER_CAP, len(payloads), os.cpu_count() or 1)
+    if workers <= 1 or len(payloads) < _PARALLEL_DISCOVERY_THRESHOLD:
+        results = [_inspect_test_file(p) for p in payloads]
+    else:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_DISCOVERY_FORK_CONTEXT) as pool:
+            results = list(pool.map(_inspect_test_file, payloads, chunksize=_DISCOVERY_CHUNK_SIZE))
+
     discovered: list[str] = []
-    for path in _discover_all_test_files(cwd):
-        if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
-            source = (cwd / path).read_text(encoding="utf-8")
+    for path, source, weight, include in results:
+        if include:
             _cache_source(path, source)
-            _FILE_WEIGHT_CACHE[path] = estimate_test_file_weight(source)
-            discovered.append(path)
-            continue
-        source_bytes = (cwd / path).read_bytes()
-        if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
-            source = source_bytes.decode("utf-8")
-            _cache_source(path, source)
-            _FILE_WEIGHT_CACHE[path] = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(
-                path
-            ) or _fast_test_count(source)
-            discovered.append(path)
-            continue
-        source = source_bytes.decode("utf-8")
-        if not _is_module_subprocess_e2e(source, filename=path):
-            _cache_source(path, source)
-            _FILE_WEIGHT_CACHE[path] = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(
-                path
-            ) or estimate_test_file_weight(source)
+            _FILE_WEIGHT_CACHE[path] = weight
             discovered.append(path)
     selected = tuple(discovered)
     validate_required_auto_integrate_selection(selected)
