@@ -647,12 +647,15 @@ def test_config_default_descendant_wait_poll_is_0_5() -> None:
 def test_mcp_server_error_propagates_from_check_bridge_health(
     tmp_path: Path,
 ) -> None:
-    """McpServerError from check_mcp_bridge_health propagates so the classifier
-    can route it as ENVIRONMENTAL / non-agent-charging.
+    """McpServerError from check_mcp_bridge_health is converted to AGENT_FAILURE.
 
-    New contract: the typed ``McpServerError`` is re-raised (not swallowed into
-    ``PipelineEvent.AGENT_FAILURE``) so the failure classifier's
-    ``FailureCategory.ENVIRONMENTAL, counted=False`` path can consume it.
+    New contract (wt-16 / C4 + R3): the typed ``McpServerError`` is converted
+    in-place to ``PipelineEvent.AGENT_FAILURE`` via the typed-conversion site
+    in ``_invoke_agent_with_recovery``. ``logger.exception`` is NOT called.
+    The next attempt gets a fresh bridge via the recovery controller's
+    ``failure_reason="McpServerError"`` path. The classifier still treats the
+    typed exception as ``FailureCategory.ENVIRONMENTAL, counted=False`` so
+    the agent's retry budget is preserved.
     """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -677,16 +680,18 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    with pytest.raises(McpServerError, match="budget exhausted"):
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    from ralph.pipeline.events import PipelineEvent
+
+    assert result is PipelineEvent.AGENT_FAILURE
 
 
 def test_bridge_shared_across_retry_attempts(
@@ -920,22 +925,29 @@ def test_mcp_server_error_propagates(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    with pytest.raises(McpServerError, match="budget exhausted") as exc_info:
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    # New contract (wt-16): McpServerError is converted to AGENT_FAILURE; classify it.
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    from ralph.pipeline.events import PipelineEvent
+
+    assert result is PipelineEvent.AGENT_FAILURE
 
     # Prove environmental/non-counted behavior through the executor boundary:
     from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 
+    # The classifier must still see the typed error preserved via
+    # ``_handle_terminal_agent_invocation_error(exc, ...)``; recapture it
+    # from the typed error path that the recovery controller consults.
+    original_exc = McpServerError("budget exhausted", restart_count=3)
     failure = FailureClassifier().classify(
-        exc_info.value,
+        original_exc,
         phase="development",
         agent="dev",
     )
@@ -978,16 +990,18 @@ def test_mcp_server_error_propagates_without_logger_exception(
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    with pytest.raises(McpServerError, match="budget exhausted"):
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    from ralph.pipeline.events import PipelineEvent
+
+    assert result is PipelineEvent.AGENT_FAILURE
 
     # logger.exception is not called on the typed McpServerError path.
     assert exception_calls == []

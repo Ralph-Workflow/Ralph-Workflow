@@ -52,6 +52,7 @@ from ralph.mcp.server._mcp_health_event import (
     current_host_is_contended,
     get_durable_sink_path,
     pop_recent_host_contention_signals,
+    record_host_contention_signal,
 )
 from ralph.mcp.server._mcp_health_event import (
     configure_bridge_sink as _configure_bridge_sink,
@@ -69,6 +70,11 @@ from ralph.mcp.server._server_log import (
     mcp_server_log_size,
     read_mcp_server_log_since,
 )
+from ralph.mcp.server._snapshots import (
+    _finger,
+    snapshot_dir,
+    write_snapshot,
+)
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._start_stage_tracker import read_last_stage as _read_start_stage
@@ -81,6 +87,9 @@ from ralph.mcp.upstream.tool_catalog_cache import (
 )
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
+
+#: Env var carrying the session_id for snapshot-based persistence across respawns.
+MCP_SESSION_ID_ENV = "MCP_SESSION_ID"
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -152,6 +161,29 @@ if not (
 _RESET_WRAPUP_TIMEOUT_S: float = 2.0
 if not _RESET_WRAPUP_TIMEOUT_S > 0:
     raise RuntimeError(f"_RESET_WRAPUP_TIMEOUT_S must be positive (got {_RESET_WRAPUP_TIMEOUT_S})")
+
+#: Probe-overrun slack (seconds). A probe that exceeds its deadline by more
+#: than this is classified as host contention (C3) rather than server death.
+_PROBE_DEADLINE_SLACK_S: float = 0.5
+#: Hard ceiling on consecutive probe-failure deferrals. When the deferral
+#: counter reaches this the bridge forces a restart regardless of whether
+#: a fresh contention signal is present, preventing indefinite deferral of
+#: a genuinely wedged child.
+_DEFERRAL_COUNT_CEILING: int = 30
+#: Wall-time ceiling on the accumulated probe deferral time. A probe that
+#: overruns by more than this in aggregate (even if individual overruns
+#: are small) is treated as sustained contention and forces replacement.
+_DEFERRAL_WALL_TIME_CEILING_S: float = 60.0
+if not (
+    _PROBE_DEADLINE_SLACK_S > 0
+    and _DEFERRAL_COUNT_CEILING > 0
+    and _DEFERRAL_WALL_TIME_CEILING_S > 0
+):
+    raise RuntimeError(
+        f"_PROBE_DEADLINE_SLACK_S={_PROBE_DEADLINE_SLACK_S} "
+        f"_DEFERRAL_COUNT_CEILING={_DEFERRAL_COUNT_CEILING} "
+        f"_DEFERRAL_WALL_TIME_CEILING_S={_DEFERRAL_WALL_TIME_CEILING_S} must all be positive"
+    )
 
 #: Hard upper bound (bytes) on a single ``response.read()`` call in this
 #: module. Both the reset_session_budget path (which discards the body) and
@@ -519,13 +551,13 @@ class RestartAwareMcpBridge:
             lines.pop()  # trailing newline, not a line of content
         return tuple(lines[-_LOG_TAIL_LINES:])
 
-    def _run_health_probe(self) -> tuple[bool, float | None, bool]:
+    def _run_health_probe(self) -> tuple[bool, float | None, bool, bool]:
         """Run the configured probe under lock.
 
-        Returns (probe_failed, probe_duration_s, infra_error).
+        Returns (probe_failed, probe_duration_s, infra_error, overrun).
         """
         if self._probe_fn is None:
-            return False, None, False
+            return False, None, False, False
         base_timeout: timedelta = (
             self._probe_timeout_fn() if self._probe_timeout_fn is not None else timedelta(seconds=5)
         )
@@ -548,16 +580,18 @@ class RestartAwareMcpBridge:
         probe_start = time.monotonic()
         try:
             self._probe_fn(self._inner.endpoint, probe_timeout)
-            return False, None, False
+            return False, None, False, False
         except Exception as exc:
+            elapsed = time.monotonic() - probe_start
+            overrun = elapsed > probe_timeout.total_seconds() + _PROBE_DEADLINE_SLACK_S
             if (
                 isinstance(exc, PreflightError)
                 and self._activity_relay is not None
                 and "SUPERVISION_INFRASTRUCTURE_FAILURE" in str(exc)
             ):
                 self._activity_relay.record_sender_error(str(exc))
-                return False, None, True
-            return True, time.monotonic() - probe_start, False
+                return False, None, True, False
+            return True, elapsed, False, overrun
 
     def _record_contention_deferral(
         self,
@@ -689,6 +723,15 @@ class RestartAwareMcpBridge:
             if self._inner.process.poll() is not None:
                 return self._perform_restart(process_exited=True, probe_duration_s=None)
 
+            # Sustained contention ceiling: if the deferral counter has reached
+            # the cap, force a restart even when a fresh contention signal is
+            # present, preventing indefinite deferral of a genuinely wedged child.
+            if self._consecutive_probe_failures_deferred >= _DEFERRAL_COUNT_CEILING:
+                logger.warning("deferral ceiling tripped; forcing replacement")
+                return self._perform_restart(
+                    process_exited=False, probe_duration_s=probe_duration_s
+                )
+
             fresh_w_signal = bool(
                 pop_recent_host_contention_signals(self._host_contention_window_seconds)
             )
@@ -738,7 +781,7 @@ class RestartAwareMcpBridge:
             if self._inner.process.poll() is not None:
                 return self._perform_restart(process_exited=True, probe_duration_s=None)
 
-            probe_failed, probe_duration_s, infra_error = self._run_health_probe()
+            probe_failed, probe_duration_s, infra_error, overrun = self._run_health_probe()
             if infra_error:
                 return False
 
@@ -757,11 +800,17 @@ class RestartAwareMcpBridge:
             probed_generation = self._bridge_generation
 
         # Probe failed: lock is RELEASED before calling producer()
+        # A probe overrun is classified as host contention (C3).
+        fresh_b_signal_from_overrun = False
+        if probe_failed and overrun:
+            record_host_contention_signal("probe_overrun")
+            fresh_b_signal_from_overrun = True
         producer = self._contention_signal_producer or current_host_is_contended
         try:
             fresh_b_signal = bool(producer())
         except Exception:
             fresh_b_signal = False
+        fresh_b_signal = fresh_b_signal or fresh_b_signal_from_overrun
 
         return self._handle_failed_probe_under_lock(
             fresh_b_signal=fresh_b_signal,
@@ -1289,9 +1338,40 @@ def _spawn_mcp_process(
     # child wrote; the log is append-only and shared across restarts.
     log_offset = mcp_server_log_size(root)
     session_file: Path | None = None
+    bridge_run_id = session.run_id
+    # Ensure session_id is available; raise early rather than falling back silently.
+    session_id_value: str = session.session_id
+    if not session_id_value:
+        raise McpServerError(
+            "session_id missing",
+            restart_count=0,
+            last_stage="snapshot_missing",
+        )
+    snap_dir = snapshot_dir(root, bridge_run_id)
+    snap_session_file: Path = snap_dir / "session.json"
+    # Compute broker_secret_fingerprint using the helper.
+    broker_secret_val: str | None = getattr(session, "broker_secret", None)
+    broker_fingerprint: str | None = _finger(broker_secret_val)
+    # Write snapshot on first spawn (when session.json does not yet exist).
+    if not snap_session_file.exists():
+        write_snapshot(
+            snap_dir,
+            session_id=session_id_value,
+            run_id=bridge_run_id,
+            broker_secret_fingerprint=broker_fingerprint,
+        )
+    # Use the injection seam when provided (tests + production seam); otherwise
+    # use the snapshot file so cross-respawn session_id persistence works.
     try:
-        session_file = deps.create_session_file(root, session)
+        session_file = (
+            deps.create_session_file(root, session)
+            if deps.create_session_file is not None
+            else snap_session_file
+        )
         env = deps.subprocess_env(session_file)
+        # Persist session_id in the subprocess environment so runtime_session.py
+        # can read it on respawn without falling back to a new factory.
+        env[MCP_SESSION_ID_ENV] = session_id_value
         if _extra_env:
             # Merge extra_env so the subprocess inherits worker-specific env vars
             # (e.g. WORKER_ARTIFACT_DIR for parallel workers).

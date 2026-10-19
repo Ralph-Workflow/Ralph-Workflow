@@ -43,9 +43,20 @@ from ralph.mcp.server._wire_ledger_capture import WireLedgerCapture
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+
+class WireLedgerIOError(Exception):
+    """Raised when the wire ledger cannot append a record due to an I/O error.
+
+    The error message contains the substring ``wire_ledger_io_error`` so consumers
+    can branch on it. This makes the ledger fail-closed: an I/O error during
+    append is surfaced as a typed error rather than silently swallowed.
+    """
+
+
 __all__ = [
     "WIRE_LEDGER_RELPATH",
     "WireLedgerCapture",
+    "WireLedgerIOError",
     "WireLedgerRecord",
     "append_wire_record",
     "collect_captures",
@@ -372,8 +383,13 @@ def append_wire_record(
             capability_profile_digest=capability_profile_digest,
         )
         # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
-        with ledger_path.open("a", encoding="utf-8") as handle:
-            handle.write(record.to_json_line() + "\n")
+        try:
+            with ledger_path.open("a", encoding="utf-8") as handle:
+                handle.write(record.to_json_line() + "\n")
+        except OSError as e:
+            raise WireLedgerIOError(
+                f"wire_ledger_io_error: failed to append wire ledger record: {e}"
+            ) from e
     finally:
         with contextlib.suppress(OSError, ValueError):
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)

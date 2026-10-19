@@ -367,6 +367,30 @@ def pop_recent_host_contention_signals(
     return tuple((ts, reason) for ts, reason in _HOST_CONTENTION_SIGNALS if now - ts <= window_s)
 
 
+def pop_recent_host_contention_signals_extended(
+    window_s: float,
+    *,
+    _now: Callable[[], float] | None = None,
+) -> tuple[tuple[float, str], ...]:
+    """Return and trim signals older than ``window_s`` from the contention deque.
+
+    Unlike :func:`pop_recent_host_contention_signals`, this function
+    mutates ``_HOST_CONTENTION_SIGNALS`` by removing stale entries so
+    the deque does not grow unboundedly when the window is short.
+
+    ``_now`` is a private test seam: when provided, it replaces
+    ``time.monotonic`` as the reference for window computation.
+    """
+    now = (_now if _now is not None else time.monotonic)()
+    kept: deque[tuple[float, str]] = deque(
+        (ts, reason) for ts, reason in _HOST_CONTENTION_SIGNALS if now - ts <= window_s
+    )
+    _HOST_CONTENTION_SIGNALS.clear()
+    for item in kept:
+        _HOST_CONTENTION_SIGNALS.append(item)
+    return tuple(kept)
+
+
 def clear_host_contention_signals() -> None:
     """Clear the host contention signal deque."""
     _HOST_CONTENTION_SIGNALS.clear()
@@ -421,6 +445,7 @@ __all__ = [
     "get_durable_sink_path",
     "get_restart_decisions",
     "pop_recent_host_contention_signals",
+    "pop_recent_host_contention_signals_extended",
     "read_durable_sink",
     "record_host_contention_signal",
     "record_restart_decision",

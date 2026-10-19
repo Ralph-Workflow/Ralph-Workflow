@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -23,7 +27,7 @@ class McpRestartPolicy:
     # ``effective_extras.restart_policy or McpRestartPolicy()`` fallback)
     # so every bridge inherits a named positive cooldown. The cooldown
     # is applied UNCONDITIONALLY at the ``_cooldown_after_failure`` call
-    # sites (``lifecycle.py`` ``check_health_and_restart_if_needed`` and
+    # sites (``llyphase_agent_handler`` ``check_health_and_restart_if_needed`` and
     # ``reset_tool_registry``) for every restart class: ``McpServerError``
     # restarts AND probe-failure restarts AND tool-registry-reset
     # restarts. Fresh child processes spike the same host load
@@ -48,6 +52,11 @@ class McpRestartPolicy:
     # escalate and durable contention deferral records are written. Retained
     # for configuration and backward-compatibility. Capped in [1, 10] below.
     max_contention_deferrals: int = 3
+    # Rolling-window cap: maximum restart events counted within the
+    # rolling window before a "window_drain" decision is returned.
+    # Default 6 — with a 60-second window this allows bursty restarts
+    # while preventing a sustained restart storm from spinning forever.
+    rolling_max_in_window: int = 6
 
 
 #: Lower bound for the host-contention window. Must be strictly above
@@ -58,6 +67,8 @@ _HOST_CONTENTION_WINDOW_MIN_S: float = 6.0
 _MAX_CONTENTION_DEFERRALS_MIN: int = 1
 #: Inclusive upper bound for the contention-deferral budget.
 _MAX_CONTENTION_DEFERRALS_MAX: int = 10
+#: Minimum positive value for rolling_max_in_window.
+_ROLLING_MAX_IN_WINDOW_MIN: int = 1
 
 # Import-time invariants pin the named positive production floor for
 # ``cooldown_seconds``. ``if``/``raise RuntimeError`` (NOT ``assert``)
@@ -91,6 +102,53 @@ if not (
         f"[{_MAX_CONTENTION_DEFERRALS_MIN}, {_MAX_CONTENTION_DEFERRALS_MAX}] "
         f"(got {_DEFAULT_MAX_CONTENTION_DEFERRALS})"
     )
+_DEFAULT_ROLLING_MAX_IN_WINDOW: int = McpRestartPolicy.rolling_max_in_window
+if not _DEFAULT_ROLLING_MAX_IN_WINDOW > 0:
+    raise RuntimeError(
+        f"McpRestartPolicy.rolling_max_in_window default must be positive "
+        f"(got {_DEFAULT_ROLLING_MAX_IN_WINDOW})"
+    )
 
 
-__all__ = ["McpRestartPolicy"]
+def next_budget_decision(
+    policy: McpRestartPolicy,
+    current_count: int,
+    rolling_history: tuple[float, ...],
+    rolling_window_s: float,
+    *,
+    _now: Callable[[], float] | None = None,
+) -> str:
+    """Return ``"ok"``, ``"window_drain"``, or ``"absolute_cap"`` based on restart budget.
+
+    Parameters
+    ----------
+    policy : McpRestartPolicy
+        The active restart policy containing ``max_restarts`` and
+        ``rolling_max_in_window``.
+    current_count : int
+        Total restart attempts made so far in this session.
+    rolling_history : tuple[float, ...]
+        Timestamps (as from ``time.monotonic``) of past restart events.
+    rolling_window_s : float
+        The rolling window in seconds to evaluate.
+    _now : Callable[[], float] | None
+        Private test seam replacing ``time.monotonic``.
+
+    Returns
+    -------
+    str
+        ``"absolute_cap"`` when ``current_count >= policy.max_restarts``;
+        ``"window_drain"`` when the rolling count within ``rolling_window_s``
+        reaches ``policy.rolling_max_in_window``; ``"ok"`` when both checks pass.
+    """
+    now_fn: Callable[[], float] = _now if _now is not None else lambda: 0.0
+    now = now_fn()
+    if current_count >= policy.max_restarts:
+        return "absolute_cap"
+    rolling_count = sum(1 for ts in rolling_history if now - ts <= rolling_window_s)
+    if rolling_count >= policy.rolling_max_in_window:
+        return "window_drain"
+    return "ok"
+
+
+__all__ = ["McpRestartPolicy", "next_budget_decision"]

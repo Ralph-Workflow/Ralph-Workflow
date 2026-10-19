@@ -739,7 +739,29 @@ def _invoke_agent_with_recovery(
         OpenCodeResumableExitError,
         AgentInactivityTimeoutError,
         SupervisionInfrastructureError,
-    ):
+    ) as exc:
+        if isinstance(exc, McpServerError):
+            logger.warning(
+                "MCP server error (retryable): last_stage={last_stage} elapsed_s={elapsed_s} "
+                "restart_reason={restart_reason} handover_step={handover_step} "
+                "probe_duration_s={probe_duration_s} probe_timeout_s={probe_timeout_s} "
+                "child_pid={child_pid} psutil_status={psutil_status} failure_kind={failure_kind} "
+                "error={exc}",
+                last_stage=exc.last_stage,
+                elapsed_s=exc.elapsed_s,
+                restart_reason=exc.restart_reason,
+                handover_step=exc.handover_step,
+                probe_duration_s=exc.probe_duration_s,
+                probe_timeout_s=exc.probe_timeout_s,
+                child_pid=exc.child_pid,
+                psutil_status=exc.psutil_status,
+                failure_kind=exc.failure_kind,
+                exc=exc,
+            )
+            return _handle_terminal_agent_invocation_error(
+                exc,
+                agent_invocation_error_sink=agent_invocation_error_sink,
+            )
         raise
     except Exception:
         logger.exception("Unexpected error during agent invocation")

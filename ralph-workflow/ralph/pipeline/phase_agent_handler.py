@@ -27,6 +27,7 @@ from ralph.display.raw_overflow import (
     raw_log_path_for,
     raw_log_unit_id_for,
 )
+from ralph.mcp.server.lifecycle import McpServerError
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -137,11 +138,23 @@ def _phase_event_after_agent_run(
     except KeyboardInterrupt:
         raise
     except BaseException as exc:
-        logger.exception(
-            "Phase handler crashed in phase={phase}: {err}",
-            phase=effect.phase,
-            err=exc,
-        )
+        if isinstance(exc, McpServerError):
+            logger.warning(
+                "Phase handler McpServerError in phase={phase}: "
+                "last_stage={last_stage} restart_reason={restart_reason} failure_kind={failure_kind} "
+                "error={exc}",
+                phase=effect.phase,
+                last_stage=exc.last_stage,
+                restart_reason=exc.restart_reason,
+                failure_kind=exc.failure_kind,
+                exc=exc,
+            )
+        else:
+            logger.exception(
+                "Phase handler crashed in phase={phase}: {err}",
+                phase=effect.phase,
+                err=exc,
+            )
         events = [
             PhaseFailureEvent(
                 phase=effect.phase,

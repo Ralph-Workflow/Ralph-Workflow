@@ -1738,6 +1738,12 @@ class ProcessManager:
             ):
                 return
             self._mark_termination_failed(record, rc)
+            with contextlib.suppress(Exception):
+                from ralph.mcp.server._host_contention_signal import (  # noqa: PLC0415
+                    record_sigkill_survivor,
+                )
+
+                record_sigkill_survivor(record.pid)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
                 record.pid,
@@ -2087,6 +2093,12 @@ class ProcessManager:
             self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
         logger.error(f"Process {record.pid} termination failed: {reason}")
+        with contextlib.suppress(Exception):
+            from ralph.mcp.server._host_contention_signal import (  # noqa: PLC0415
+                record_d_state,
+            )
+
+            record_d_state(record.pid)
         self._emit(record, prev, ProcessStatus.FAILED)
 
     def _emit(

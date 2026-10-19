@@ -85,6 +85,15 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
     ("_event_classification", "PLC0415"),
+    # wt-16 producer module: the import of _mcp_health_event
+    # transitively loads the heavy workspace / git subtree; the lazy
+    # in-function import keeps the runtime cost flat.
+    ("_host_contention_signal", "PLC0415"),
+    # wt-16 producer call sites: the import of _host_contention_signal
+    # transitively loads ralph.mcp.server which loads the heavy
+    # workspace / git subtree; the lazy-style noqa import keeps the
+    # _process_manager module load flat.
+    ("_process_manager", "PLC0415"),
     ("run_loop", "PLC0415"),
     # wt-012: the deterministic auto-commit producer-level helpers
     # use lazy in-function imports to avoid module-load cycles with
@@ -460,11 +469,18 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": "tests/**/*.py",
         "reason": "Tests preserve externally defined API names exactly.",
     },
+    "TC002": {
+        "pattern": "tests/**/*.py",
+        "reason": "Tests import pytest at runtime for fixtures and markers; type-only annotations live in TYPE_CHECKING where applicable.",
+    },
     "TC003": {
         "pattern": [
             "tests/**/*.py",
             "ralph/mcp/explore/**/*.py",
             "ralph/mcp/tools/workspace/**/*.py",
+            # wt-16 producer module: Callable is used at runtime in
+            # function signatures (e.g. record_d_state's _now test seam).
+            "ralph/mcp/server/_host_contention_signal.py",
         ],
         "reason": (
             "Tests legitimately use Path() at runtime for fixture "

@@ -396,16 +396,25 @@ def test_sustained_contention_writes_durable_sink_records(tmp_path: pathlib.Path
         assert record["probe_duration_s"] >= 0.0
 
 
-def test_sustained_contention_60_failures_no_overflow_no_restart() -> None:
-    """60+ immediate contention probe failures never overflow or restart.
+def test_sustained_contention_ceiling_trips_replacement_at_30() -> None:
+    """Sustained contention never overflows AND the deferral ceiling trips replacement.
 
-    Regression for D-04: a live child kept under sustained host contention
-    would previously raise OverflowError from ``timedelta * 2**N`` once
-    the deferral count crossed ~44, tearing down the health-check path
-    instead of being safely deferred. After the exponent cap, the bridge
-    must keep deferring, observe no exception, and emit zero restarts
-    even past 60 deferrals.
+    Regression for D-04 (no OverflowError from ``timedelta * 2**N``) and
+    for the wt-16 plan's _DEFERRAL_COUNT_CEILING invariant (C3): a live
+    child kept under sustained host contention must defer probes BUT
+    must also be replaced once the ceiling is reached, otherwise
+    indefinite deferral permanently suppresses a needed replacement.
+
+    Before the ceiling (probes 1..29): no exception, no restart,
+    ``_consecutive_probe_failures_deferred`` advances.
+    After the ceiling (probe 31+): a replacement is forced, and the
+    test re-enters the deferral cycle from zero.
+
+    Every observed probe timeout must be bounded by the documented
+    ceiling (max(base_timeout, preflight_timeout - 1s)).
     """
+    from ralph.mcp.server.lifecycle import _DEFERRAL_COUNT_CEILING
+
     observed_timeouts: list[float] = []
 
     def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
@@ -424,13 +433,19 @@ def test_sustained_contention_60_failures_no_overflow_no_restart() -> None:
         contention_signal_producer=lambda: True,
     )
 
-    # Probe 70 times under sustained fresh contention; no exception, no restart.
-    for _ in range(70):
+    # Probe _DEFERRAL_COUNT_CEILING times under sustained fresh contention:
+    # deferred every call, no restart, no exception. The deferred counter
+    # advances from 0 to _DEFERRAL_COUNT_CEILING inclusive (the trip point).
+    for _ in range(_DEFERRAL_COUNT_CEILING):
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is False
-
     assert bridge._restart_count == 0
-    assert bridge._consecutive_probe_failures_deferred == 70
+    assert bridge._consecutive_probe_failures_deferred == _DEFERRAL_COUNT_CEILING
+
+    # The next probe trips the ceiling: a replacement is forced.
+    restarted = bridge.check_health_and_restart_if_needed()
+    assert restarted is True
+    assert bridge._restart_count >= 1
 
     # Every observed probe timeout must be bounded by the ceiling
     # (preflight - 1s = 29s; with base_timeout=5s the ceiling is max(5, 29) = 29s).

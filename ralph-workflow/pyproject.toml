@@ -209,6 +209,7 @@ select = [
 ]
 "tests/**/*.py" = [
     "PLR2004",
+    "TC002",
     "RUF043",
     "PERF401",
     "PLR0124",
@@ -246,6 +247,9 @@ select = [
     "PLR0911",  # Indexed arguments add 6-12 short returns per handler (eligibility, fallback, hash precondition). The live path is preserved; the extra returns are pre-conditions that fan out cleanly.
     "PLR0912",  # Same as PLR0911 for branches; the indexed handler has more decision points but each branch is a short-circuit.
     "PLR0915",  # The grep handler's statements grew with the eligibility/fallback/evidence-id plumbing; the per-branch control flow stays local.
+]
+"ralph/mcp/server/_host_contention_signal.py" = [
+    "TC003",  # Callable is used at runtime in the producer function signatures (record_d_state's _now test seam).
 ]
 "ralph/pipeline/**/*.py" = [
     "PLC0415",  # The dev/fix session lifecycle hook lazily imports the explore lifecycle module to avoid pulling the substrate into every pipeline module's import graph.

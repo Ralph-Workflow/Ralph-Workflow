@@ -165,6 +165,10 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_whole_startup_budget_production.py",
     "tests/mcp/test_bounded_catalog_publish.py",
     "tests/mcp/test_inherited_fd_invalid_fails_closed.py",
+    # wt-16 WU-R4: wire-ledger fail-closed OSError path
+    "tests/mcp/test_wire_ledger_fail_closed.py",
+    # wt-16 WU-Probe: probe-overrun self-measurement
+    "tests/mcp/test_probe_overrun_self_measure.py",
 )
 
 

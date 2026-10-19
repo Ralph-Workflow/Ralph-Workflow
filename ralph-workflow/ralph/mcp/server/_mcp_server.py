@@ -30,7 +30,7 @@ from ralph.mcp.server._session_wrapup import (
     development_wrapup_notice,
     session_warning_scope,
 )
-from ralph.mcp.server._wire_ledger import append_wire_record
+from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
 from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -765,7 +765,10 @@ class McpServer:
                 agent_id=agent_id,
                 capability_profile_digest=capability_profile_digest,
             )
-        except (AttributeError, OSError, TypeError):
+        except WireLedgerIOError as exc:
+            error = {"code": -32603, "message": str(exc)}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+        except (AttributeError, TypeError):
             logger.opt(exception=True).debug(
                 "MCP server: wire-ledger append failed (suppressed); tools/call proceeds"
             )

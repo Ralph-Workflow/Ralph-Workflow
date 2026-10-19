@@ -50,6 +50,8 @@ from ralph.mcp.protocol.session import (
     ToolOutputSinkEntry,
     session_has_capability,
 )
+from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
 
@@ -395,8 +397,32 @@ class FileBackedSession:
 
     @property
     def session_id(self) -> str:
-        value = self._load().get("session_id", self._session_id_factory())
-        return value if isinstance(value, str) else self._session_id_factory()
+        loaded = self._load()
+        # 1) The session file already declared a session_id — return it.
+        value = loaded.get("session_id")
+        if isinstance(value, str):
+            return value
+        # 2) Try snapshot file keyed on run_id for cross-respawn persistence.
+        run_id_raw = loaded.get("run_id")
+        if isinstance(run_id_raw, str):
+            try:
+                snap_dir = snapshot_dir(self._workspace_root, run_id_raw)
+                snap_data = read_snapshot(snap_dir)
+            except OSError:
+                snap_data = None
+            if snap_data:
+                snap_session_id = snap_data.get("session_id")
+                if isinstance(snap_session_id, str):
+                    return snap_session_id
+        # 3) Fall back to the injected factory (kept for backward compatibility).
+        factory_value = self._session_id_factory()
+        if isinstance(factory_value, str) and factory_value:
+            return factory_value
+        raise McpServerError(
+            "session_id missing",
+            restart_count=0,
+            last_stage="snapshot_missing",
+        )
 
     @property
     def run_id(self) -> str:

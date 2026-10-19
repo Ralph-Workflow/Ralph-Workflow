@@ -228,14 +228,16 @@ def _registry_factory(config: object) -> object:
 def test_invoke_agent_with_recovery_health_check_mcp_server_error_returns_agent_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A health-check ``McpServerError`` propagates so the classifier can
-    route it as ``ENVIRONMENTAL, counted=False`` (non-agent-charging).
+    """A health-check ``McpServerError`` is converted to ``AGENT_FAILURE`` (no re-raise).
 
-    New contract: the typed ``McpServerError`` is re-raised (not swallowed
-    into ``AGENT_FAILURE``). The classifier at ``failure_classifier.py``
-    line 1081-1082 still returns ``FailureCategory.ENVIRONMENTAL,
-    counted=False`` (environmental — not agent-charging — is preserved).
-    ``logger.exception`` is NOT called.
+    New contract (wt-16 / C4 + R3): the typed ``McpServerError`` does NOT
+    bubble out as an untyped crash. ``_invoke_agent_with_recovery``
+    converts it through ``_handle_terminal_agent_invocation_error`` which
+    routes the next attempt at a fresh bridge (``failure_reason=...).
+    ``logger.exception`` is NOT called for the typed branch; ``logger.warning``
+    captures the rich fields instead. ``failure_classifier`` still returns
+    ``FailureCategory.ENVIRONMENTAL, counted=False`` for any typed
+    McpServerError so the recovery loop does not charge the agent.
     """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -269,17 +271,22 @@ def test_invoke_agent_with_recovery_health_check_mcp_server_error_returns_agent_
 
     monkeypatch.setattr(effect_executor_module.logger, "exception", _spy_exception)
 
-    # New contract: the typed exception is re-raised so the classifier sees it.
-    with pytest.raises(McpServerError, match="budget exhausted"):
-        effect_executor_module.execute_agent_effect(
-            effect,
-            config,
-            deps,
-            WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
-            invoke_agent=lambda *_a, **_kw: [],
-            agent_invocation_error=RuntimeError,
-        )
+    # New contract (wt-16): the typed ``McpServerError`` is converted to
+    # ``AGENT_FAILURE`` (not re-raised) so the recovery loop never sees the
+    # raw exception as an untyped crash. ``_handle_terminal_agent_invocation_error``
+    # routes the next attempt at a fresh bridge.
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+    )
+    from ralph.pipeline.events import PipelineEvent
+
+    assert result is PipelineEvent.AGENT_FAILURE
 
     # Contract: logger.exception was NOT called.
     assert exception_calls == []

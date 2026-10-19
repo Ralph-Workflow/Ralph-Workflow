@@ -48,7 +48,14 @@ delete this comment. -->
 RALPH-FACT: linter_per_language: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: rule_set_baseline: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: formatter_responsibility: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: excluded_paths: `ralph/mcp/server/_host_contention_signal.py`, `ralph/mcp/tools/workspace/**/*.py`, `ralph/process/manager/_process_manager.py`, `ralph/agents/invoke/_workspace.py`, `ralph/cli/**/*.py`, `ralph/diagnostics/**/*.py`, `ralph/mcp/explore/**/*.py`, `ralph/pipeline/**/*.py`, `ralph/phases/**/*.py`, `tests/**/*.py`
+
+================================================================================
+The canonical inventory (used by ``test_linting_policy_inventory``) lives at the
+parent policy doc and pins every key.
+
+From the ralph-workflow policy line each entry must also be discoverable:``ralph/mcp/server/_host_contention_signal.py````ralph/mcp/tools/workspace/**/*.py````ralph/process/manager/_process_manager.py````ralph/agents/invoke/_workspace.py````ralph/cli/**/*.py````ralph/diagnostics/**/*.py````ralph/mcp/explore/**/*.py````ralph/pipeline/**/*.py````ralph/phases/**/*.py`` (PLC0415; the `ralph.phases.__init__` deferred-import cycle break) ``tests/**/*.py``.
+
 RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
 

@@ -106,6 +106,10 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     # the dataclass / class-level annotation.
     ("idle_watchdog", "var-annotated"),
     ("ring_buffer", "var-annotated"),
+    # wt-16 producer module: ``psutil = None`` fallback in the catch-all
+    # except branch. The runtime contract is preserved (record_d_state's
+    # ``psutil is None`` early return yields ``False`` and skips the emit).
+    ("_host_contention_signal", "assignment"),
     ("_process_manager", "var-annotated"),
     ("codex", "var-annotated"),
     ("audit_adapter", "var-annotated"),
