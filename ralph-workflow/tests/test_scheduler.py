@@ -153,7 +153,9 @@ def build_dag_units(
     return tuple(make_unit(f"unit-{index:02d}", valid_deps[index]) for index in range(num_units))
 
 
-@settings(max_examples=5, database=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(
+    max_examples=5, database=None, derandomize=True, suppress_health_check=[HealthCheck.too_slow]
+)
 @given(
     num_units=st.integers(min_value=1, max_value=12),
     dep_pairs=st.lists(

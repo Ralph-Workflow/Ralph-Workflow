@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 import ralph.pipeline._integration_diagnostic as diagnostic
+from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     parse_record_payload,
@@ -24,6 +23,64 @@ from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     identity_fingerprint,
 )
+
+
+class _InMemoryBackend(FileBackend):
+    """Minimal in-memory FileBackend double for diagnostic livelock tests."""
+
+    def __init__(self) -> None:
+        self.files: dict[Path, bytes] = {}
+        self.write_calls: list[tuple[Path, bytes]] = []
+        self.replace_calls: list[tuple[Path, Path]] = []
+        self.sync_calls: list[Path] = []
+        self.mkdir_calls: list[Path] = []
+        self.unlink_calls: list[Path] = []
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del parents, exist_ok
+        self.mkdir_calls.append(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
+        return self.files[path].decode(encoding)
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.write_bytes(path, content.encode(encoding))
+
+    def read_bytes(self, path: Path) -> bytes:
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
+        return self.files[path]
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        self.write_calls.append((path, content))
+        self.files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        if source not in self.files:
+            raise FileNotFoundError(f"Source not found: {source}")
+        self.replace_calls.append((source, destination))
+        self.files[destination] = self.files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        self.sync_calls.append(path)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        self.unlink_calls.append(path)
+        if missing_ok:
+            self.files.pop(path, None)
+        else:
+            if path not in self.files:
+                raise FileNotFoundError(f"Path not found: {path}")
+            del self.files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        del path, pattern
+        return []
 
 
 def _record_with_lease(held_at: float | None = None) -> IntegrationRecord:
@@ -105,12 +162,12 @@ def test_lease_expired_auto_releases(tmp_path: Path) -> None:
     durably applies ``RELEASE_DIAGNOSTIC_EVIDENCE`` on disk, clearing the
     held evidence and lease so recovery and dispatch proceed.
     """
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
         read_record,
         write_record,
     )
@@ -147,12 +204,12 @@ def test_ralph_moves_head_does_not_block(tmp_path: Path) -> None:
     the verdict is ``UNCHANGED`` and ``_maybe_release_diagnostic``
     releases the hold durably on disk without blocking.
     """
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
         read_record,
         write_record,
     )
@@ -200,13 +257,14 @@ def test_ralph_moves_real_head_does_not_block(tmp_path: Path) -> None:
     on disk without blocking the next dispatch.
     """
     from git import Actor, Repo
+    from git.cmd import Git
 
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
         read_record,
         write_record,
     )
@@ -214,7 +272,8 @@ def test_ralph_moves_real_head_does_not_block(tmp_path: Path) -> None:
     from ralph.workspace.scope import WorkspaceScope
 
     # 1. Set up a real Git repo with feature and target branches.
-    repo = Repo.init(tmp_path)
+    Git().init(str(tmp_path))
+    repo = Repo(tmp_path)
     repo.config_writer().set_value("user", "name", "Test").release()
     repo.config_writer().set_value("user", "email", "t@example.com").release()
     actor = Actor("Test", "t@example.com")
@@ -282,7 +341,7 @@ def test_legacy_record_loads_without_intervention() -> None:
     global evidence key. The NEW model drops the key silently and
     proceeds to recovery; the on-disk durable identity is preserved.
     """
-    legacy = {
+    legacy: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
         "pre_feature_sha": "0" * 40,
@@ -340,12 +399,12 @@ def test_diagnostic_evidence_verdict_expired_lease_with_different_fingerprint_re
 
 def test_recovery_on_flagged_record_without_evidence_auto_releases(tmp_path: Path) -> None:
     """Old flagged record with no evidence auto-releases on recovery instead of livelocking."""
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
         read_record,
         write_record,
     )
@@ -379,10 +438,14 @@ def test_handoff_integration_diagnostic_at_repair_cap_rederives(
     """When repair cap is reached, if automated recovery can re-derive, it does not livelock."""
     from ralph.pipeline.auto_integrate_record import read_record, write_record
 
-    monkeypatch.setattr(diagnostic, "diagnostic_needed", lambda *_: False)
-    monkeypatch.setattr(
-        diagnostic, "_check_operation_completion_proof", lambda *_, **__: (True, "ok")
-    )
+    def _fake_needed(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def _fake_check(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return (True, "ok")
+
+    monkeypatch.setattr(diagnostic, "diagnostic_needed", _fake_needed)
+    monkeypatch.setattr(diagnostic, "_check_operation_completion_proof", _fake_check)
 
     record = IntegrationRecord(
         phase="integrating",
@@ -474,22 +537,22 @@ def test_load_record_with_fingerprint_mismatched_lease_clears_hold_and_prevents_
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
 
 
-def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
+def test_legacy_record_loads_then_next_run_progresses() -> None:
     """AC-1 progress: a record carrying older/unrecognised evidence loads and
     proceeds to automated recovery on the next seam.
 
     A durable legacy payload containing unrecognised/older evidence keys
     (e.g. legacy repository-global ``for-each-ref`` and an unrecognised key)
-    with ``diagnostic_intervention_required=True`` is parsed and written to disk.
+    with ``diagnostic_intervention_required=True`` is parsed and written to
+    an in-memory backend.
     On the next seam, ``_maybe_release_diagnostic`` loads the legacy payload,
     migrates away the unrecognised evidence, clears the intervention flag,
     and returns a clean record whose next action is not blocked by intervention.
-    Re-reading from disk confirms durable progress.
+    Re-reading from the backend confirms durable progress without real filesystem I/O.
     """
     import json
 
     import ralph.pipeline.auto_integrate_recovery_record as recovery_record
-    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
     from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
     from ralph.pipeline.auto_integrate_record import (
         parse_record_payload,
@@ -497,6 +560,9 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
         record_path,
     )
     from ralph.workspace.scope import WorkspaceScope
+
+    root = Path("/virtual/workspace")
+    backend = _InMemoryBackend()
 
     legacy_payload: dict[str, object] = {
         "phase": "integrating",
@@ -516,16 +582,15 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
     assert parsed.diagnostic_intervention_required is False
     assert dict(parsed.diagnostic_evidence) == {}
 
-    # 2. Durable on-disk representation: write raw legacy payload to simulate pre-existing disk state.
-    rec_file = record_path(tmp_path)
-    rec_file.parent.mkdir(parents=True, exist_ok=True)
-    rec_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
+    # 2. Durable in-memory representation: write raw legacy payload to simulate pre-existing state.
+    rec_file = record_path(root)
+    backend.write_text(rec_file, json.dumps(legacy_payload))
 
     # 3. Runtime seam: next-run release path re-reads through _maybe_release_diagnostic.
     outcome = recovery_record._maybe_release_diagnostic(
-        tmp_path,
-        WorkspaceScope(tmp_path),
-        DEFAULT_FILE_BACKEND,
+        root,
+        WorkspaceScope(root),
+        backend,
     )
     assert isinstance(outcome, IntegrationRecord), (
         "next-run release path must NOT escalate to a CHANGED-skip; the "
@@ -537,8 +602,8 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
     assert outcome.diagnostic_intervention_required is False
     assert next_integration_action(outcome) != IntegrationAction.REQUIRE_INTERVENTION
 
-    # 4. Durable record re-read from disk confirms evidence/intervention cleared and progress selected.
-    on_disk = read_record(tmp_path, backend=DEFAULT_FILE_BACKEND)
+    # 4. Durable record re-read from backend confirms evidence/intervention cleared and progress selected.
+    on_disk = read_record(root, backend=backend)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
@@ -547,12 +612,126 @@ def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
 
 
-def test_kill_mid_diagnostic_next_run_releases_dead_owner(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("resolving_rebase", "expect_resolver"),
+    [
+        (False, False),
+        (True, True),
+    ],
+)
+def test_recognized_evidence_intervention_survives_load_and_releases(
+    resolving_rebase: bool,
+    expect_resolver: bool,
+) -> None:
+    """WU4-a: recognized evidence with intervention survives load and executes release.
+
+    Unlike legacy/unrecognized evidence (which is purged at parse time before
+    reaching the runtime release seam), recognized evidence keys
+    (e.g. ``head``, ``unstaged_work``) and ``diagnostic_intervention_required=True``
+    survive payload parsing intact.
+    When ``_maybe_release_diagnostic`` runs, it evaluates the held lease via
+    the runtime verifier (yielding UNCHANGED), reaches the durable release
+    transition, and clears held evidence and intervention in the backend.
+    Direct assertions on the persisted backend verify atomic persistence, and
+    the subsequent integration action either makes progress or dispatches a
+    resolver without requiring manual intervention.
+    """
+    import ralph.pipeline.auto_integrate_recovery_record as recovery_record
+    from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
+    from ralph.pipeline.auto_integrate_record import (
+        parse_record_payload,
+        read_record,
+        record_path,
+        write_record,
+    )
+    from ralph.workspace.scope import WorkspaceScope
+
+    root = Path("/virtual/workspace")
+    backend = _InMemoryBackend()
+
+    evidence = (
+        ("head", "0" * 40),
+        ("unstaged_work", "clean"),
+    )
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        resolving_rebase=resolving_rebase,
+        diagnostic_evidence=evidence,
+        diagnostic_intervention_required=True,
+    )
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(update={"diagnostic_ownership": lease})
+
+    # 1. Parse verification: recognized evidence and intervention flag survive loading intact.
+    raw_payload: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "0" * 40,
+        "pre_target_sha": "1" * 40,
+        "resolving_rebase": resolving_rebase,
+        "diagnostic_evidence": [["head", "0" * 40], ["unstaged_work", "clean"]],
+        "diagnostic_intervention_required": True,
+        "diagnostic_ownership": lease,
+    }
+    parsed = parse_record_payload(raw_payload)
+    assert parsed is not None
+    assert parsed.diagnostic_evidence == evidence
+    assert parsed.diagnostic_intervention_required is True
+    assert parsed.diagnostic_ownership == lease
+    assert next_integration_action(parsed) == IntegrationAction.REQUIRE_INTERVENTION
+
+    # 2. Write to backend and confirm pre-release state requires intervention.
+    write_record(root, record, backend=backend)
+    rec_file = record_path(root)
+    assert backend.exists(rec_file)
+    initial_replace_count = len(backend.replace_calls)
+
+    # 3. Runtime seam: next-run release reaches runtime verdict and applies durable release transition.
+    outcome = recovery_record._maybe_release_diagnostic(
+        root,
+        WorkspaceScope(root),
+        backend,
+    )
+    assert isinstance(outcome, IntegrationRecord)
+    assert outcome.diagnostic_evidence == ()
+    assert outcome.diagnostic_ownership is None
+    assert outcome.diagnostic_intervention_required is False
+
+    # 4. Direct persistence assertion: backend contents were updated through durable transition.
+    assert len(backend.replace_calls) > initial_replace_count, (
+        "durable release transition must atomically persist updated record to backend"
+    )
+    raw_text = backend.read_text(rec_file)
+    assert '"diagnostic_evidence":[]' in raw_text or '"diagnostic_evidence": []' in raw_text
+    assert '"diagnostic_ownership":null' in raw_text or '"diagnostic_ownership": null' in raw_text
+    assert (
+        '"diagnostic_intervention_required":false' in raw_text
+        or '"diagnostic_intervention_required": false' in raw_text
+    )
+
+    # 5. Subsequent recovery action makes progress or dispatches a resolver without intervention.
+    on_disk = read_record(root, backend=backend)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
+    action = next_integration_action(on_disk)
+    assert action != IntegrationAction.REQUIRE_INTERVENTION
+    if expect_resolver:
+        assert action == IntegrationAction.RESOLVE_ACTIVE_OPERATION
+    else:
+        assert action == IntegrationAction.REINTEGRATE_AGAINST_TARGET
+
+
+def test_kill_mid_diagnostic_next_run_releases_dead_owner() -> None:
     """AC-3: process death between HOLD and RELEASE auto-releases on next run.
 
     The diagnostic path writes a valid lease + ``diagnostic_owner_pid`` when it
     holds evidence. Killing the process between HOLD and RELEASE leaves a stale
-    ``diagnostic_owner_pid`` on disk; the next ``_maybe_release_diagnostic``
+    ``diagnostic_owner_pid`` in storage; the next ``_maybe_release_diagnostic``
     call must clear the record without intervention.
 
     The dead-owner predicate MUST be asserted BEFORE the load. The
@@ -571,11 +750,13 @@ def test_kill_mid_diagnostic_next_run_releases_dead_owner(tmp_path: Path) -> Non
     from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
     from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
     from ralph.pipeline.auto_integrate_record import (
-        DEFAULT_FILE_BACKEND,
         read_record,
         write_record,
     )
     from ralph.workspace.scope import WorkspaceScope
+
+    root = Path("/virtual/workspace")
+    backend = _InMemoryBackend()
 
     record = IntegrationRecord(
         phase="integrating",
@@ -599,22 +780,22 @@ def test_kill_mid_diagnostic_next_run_releases_dead_owner(tmp_path: Path) -> Non
         "pre-load dead-owner predicate must fire on diagnostic_owner_pid=99999999"
     )
 
-    write_record(tmp_path, record)
+    write_record(root, record, backend=backend)
 
     # 2. Runtime seam: next-run release path. Load + restamp + verdict +
     #    apply_record_transition happen inside one call.
     outcome = recovery_record._maybe_release_diagnostic(
-        tmp_path,
-        WorkspaceScope(tmp_path),
-        DEFAULT_FILE_BACKEND,
+        root,
+        WorkspaceScope(root),
+        backend,
     )
     assert isinstance(outcome, IntegrationRecord), (
         "dead owner must NOT escalate to a CHANGED-skip; the next-run "
         "release path must clear the record"
     )
 
-    # 3. On-disk: durable record is in a no-intervention state.
-    on_disk = read_record(tmp_path)
+    # 3. In-backend: durable record is in a no-intervention state.
+    on_disk = read_record(root, backend=backend)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None

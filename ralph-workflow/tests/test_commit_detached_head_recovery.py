@@ -14,6 +14,7 @@ import pytest
 from git import Actor, Repo
 
 from ralph.pipeline.commit_executor import execute_commit_effect, set_last_commit_error
+from ralph.pipeline.commit_state import CommitState
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
@@ -27,7 +28,11 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Repo:
-    repo = Repo.init(repo_root)
+    from ralph.git.subprocess_runner import run_git
+
+    repo_root.mkdir(parents=True, exist_ok=True)
+    run_git(("init",), cwd=repo_root, label="test-repo-init")
+    repo = Repo(repo_root)
     repo.config_writer().set_value("user", "name", "Test Committer").release()
     repo.config_writer().set_value("user", "email", "test@example.com").release()
     actor = Actor("Test Committer", "test@example.com")
@@ -366,6 +371,7 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
         assert repo.heads["branch-in-other-wt"].commit.hexsha == other_sha
 
         # Also test descendant case: make a commit on detached HEAD
+        repo = Repo(tmp_path)
         repo.git.checkout(other_sha)
         assert repo.head.is_detached
         descendant_file = tmp_path / "descendant.txt"
@@ -616,6 +622,7 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
     assert "staged.txt" in [item.a_path for item in repo.index.diff("HEAD")]
 
     # Detach again and test auto_integrate_on_phase_transition reattachment
+    repo = Repo(tmp_path)
     repo.git.checkout(feature_sha)
     assert repo.head.is_detached
 
@@ -697,3 +704,162 @@ def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integra
     repo = Repo(tmp_path)
     assert not repo.head.is_detached
     assert repo.heads.main.commit.hexsha == committed_sha
+
+
+def test_persistent_repairable_failure_without_recovery_phase_escalates_to_automated_resolver(
+    tmp_path: Path,
+) -> None:
+    """O1 retry risk: Persistent repairable Git failure under policy without cleanup/recovery.
+
+    Verifies that when a persistent repairable Git failure (such as index.lock
+    contention or detached HEAD error) occurs under a policy defining neither
+    ``commit_recovery`` nor ``commit_cleanup``:
+    1. Retries in-place up to the bounded ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` cap.
+    2. Once the counter is exhausted, does NOT cycle in-place indefinitely.
+    3. Escalates to the policy's automated recovery/resolver route (e.g. upstream
+       execution phase ``development``).
+    4. Preserves the validated commit message state and message file on disk.
+    5. Never reports failed work completed.
+    6. Never escalates a repairable Git state to ``failed_terminal``.
+    """
+    _make_test_repo(tmp_path, "feature/work")
+    tracked_file = tmp_path / "feature.txt"
+    tracked_file.write_text("feature modified\n", encoding="utf-8")
+    message_file = _make_commit_artifact(tmp_path, "feat: black box repairable retry")
+
+    # Construct policy without cleanup/recovery phases
+    base_policy = _load_pipeline_policy()
+    phases = {
+        name: defn
+        for name, defn in base_policy.phases.items()
+        if defn.role != "commit_cleanup" and "cleanup" not in name and "recovery" not in name
+    }
+    dev_phase = phases["development"]
+    phases["development"] = dev_phase.model_copy(
+        update={
+            "transitions": dev_phase.transitions.model_copy(
+                update={"on_success": "development_commit"}
+            )
+        }
+    )
+    policy_no_cleanup = base_policy.model_copy(update={"phases": phases})
+
+    # Ensure policy has no commit_recovery or commit_cleanup phase
+    assert not any(
+        defn.role == "commit_cleanup" or "cleanup" in name or "recovery" in name
+        for name, defn in policy_no_cleanup.phases.items()
+    )
+
+    initial_commit = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
+    state = PipelineState(
+        phase="development_commit",
+        previous_phase="development",
+        commit=initial_commit,
+        recovery_epoch=0,
+        pending_cycle_outcome="completed",
+        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+    )
+
+    # Inject persistent repairable Git failure at the real effect/reducer boundary:
+    # A persistent index.lock contention error
+    effect = CommitEffect(message_file=str(message_file))
+    lock_err = "GitOperationError: Unable to create '.git/index.lock': File exists"
+
+    def failing_stage_all(_root: Path | str) -> None:
+        raise RuntimeError(lock_err)
+
+    # Attempt 1: in-place retry, epoch becomes 1
+    event1 = execute_commit_effect(
+        effect,
+        tmp_path,
+        stage_all_fn=failing_stage_all,
+    )
+    assert event1 is PipelineEvent.COMMIT_FAILURE
+    assert message_file.exists(), "Validated message file must be preserved on disk"
+
+    state1, _ = reduce(state, event1, policy_no_cleanup)
+    assert state1.phase == "development_commit"
+    assert state1.recovery_epoch == 1
+    assert state1.pending_cycle_outcome is None
+    assert state1.commit.agent_invoked is True
+    assert state1.previous_phase == "development"
+
+    # Attempt 2: in-place retry, epoch becomes 2
+    event2 = execute_commit_effect(
+        effect,
+        tmp_path,
+        stage_all_fn=failing_stage_all,
+    )
+    state2, _ = reduce(state1, event2, policy_no_cleanup)
+    assert state2.phase == "development_commit"
+    assert state2.recovery_epoch == 2
+    assert state2.pending_cycle_outcome is None
+    assert state2.commit.agent_invoked is True
+
+    # Attempt 3: in-place retry reaching cap (3)
+    event3 = execute_commit_effect(
+        effect,
+        tmp_path,
+        stage_all_fn=failing_stage_all,
+    )
+    state3, _ = reduce(state2, event3, policy_no_cleanup)
+    assert state3.phase == "development_commit"
+    assert state3.recovery_epoch == 3
+    assert state3.pending_cycle_outcome is None
+    assert state3.commit.agent_invoked is True
+
+    # Attempt 4: beyond the bounded counter — must NOT cycle in-place indefinitely,
+    # must NOT terminally fail, but must escalate to automated resolver route ('development')
+    event4 = execute_commit_effect(
+        effect,
+        tmp_path,
+        stage_all_fn=failing_stage_all,
+    )
+    escalated_state, _ = reduce(state3, event4, policy_no_cleanup)
+
+    # Demonstrates the livelock was broken and automated recovery was dispatched:
+    assert escalated_state.phase != "development_commit", "Must not cycle in-place indefinitely"
+    assert escalated_state.phase != "failed_terminal", (
+        "Must not terminally fail repairable git state"
+    )
+    assert escalated_state.phase == "development", "Must escalate to automated resolver phase"
+    assert escalated_state.recovery_epoch == 3, "Counter remains bounded at cap"
+    assert escalated_state.pending_cycle_outcome is None, "Must never report failed work completed"
+    assert escalated_state.last_execution_result_status == "failed"
+    assert escalated_state.commit.agent_invoked is True, "Validated commit state must be preserved"
+    assert message_file.exists(), "Validated commit message file must remain on disk"
+
+
+def test_persistent_repairable_failure_escalates_to_workflow_fallback_when_configured() -> None:
+    """O1 retry risk: Persistent repairable commit failure honors policy workflow_fallback."""
+    from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
+
+    base_policy = _load_pipeline_policy()
+    phases = {
+        name: defn
+        for name, defn in base_policy.phases.items()
+        if defn.role != "commit_cleanup" and "cleanup" not in name and "recovery" not in name
+    }
+    # Configure workflow_fallback on development_commit to point to planning
+    commit_phase = phases["development_commit"].model_copy(
+        update={"workflow_fallback": PhaseWorkflowFallback(target="planning")}
+    )
+    phases["development_commit"] = commit_phase
+    policy_with_fallback = base_policy.model_copy(update={"phases": phases})
+
+    state = PipelineState(
+        phase="development_commit",
+        previous_phase="development",
+        recovery_epoch=3,  # exhausted
+        pending_cycle_outcome="completed",
+        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+    )
+    set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
+    try:
+        next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy_with_fallback)
+        assert next_state.phase == "planning"
+        assert next_state.phase != "failed_terminal"
+        assert next_state.pending_cycle_outcome is None
+        assert next_state.recovery_epoch == 3
+    finally:
+        set_last_commit_error(None)

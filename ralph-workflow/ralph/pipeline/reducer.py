@@ -1482,6 +1482,50 @@ def _resolve_commit_recovery_phase(
     return None
 
 
+def _resolve_commit_escalation_phase(
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Resolve an automated escalation/recovery target phase when in-place retries are exhausted.
+
+    Under a policy without a dedicated commit_recovery or commit_cleanup phase,
+    exhaustion of the bounded in-place retry counter must not loop indefinitely.
+    This helper identifies the next automated recovery/escalation phase in priority order:
+    1. A declared workflow_fallback on the current phase (if non-terminal and distinct)
+    2. A declared non-terminal on_failure transition on the current phase (distinct)
+    3. The previous non-terminal phase (e.g. execution phase such as 'development')
+    """
+    terminal_states = policy.terminal_states()
+    current_phase_def = policy.phases.get(state.phase)
+    if current_phase_def is not None:
+        if (
+            current_phase_def.workflow_fallback is not None
+            and current_phase_def.workflow_fallback.target != state.phase
+            and current_phase_def.workflow_fallback.target in policy.phases
+            and current_phase_def.workflow_fallback.target not in terminal_states
+        ):
+            return current_phase_def.workflow_fallback.target
+
+        on_failure = current_phase_def.transitions.on_failure
+        if (
+            on_failure is not None
+            and on_failure != state.phase
+            and on_failure in policy.phases
+            and on_failure not in terminal_states
+        ):
+            return on_failure
+
+    if (
+        isinstance(state.previous_phase, str)
+        and state.previous_phase != state.phase
+        and state.previous_phase in policy.phases
+        and state.previous_phase not in terminal_states
+    ):
+        return state.previous_phase
+
+    return None
+
+
 def _recoverable_git_failure_default_target(
     state: PipelineState,
     policy: PipelinePolicy,
@@ -1639,22 +1683,35 @@ def _handle_commit_failure(
             )
             # Cap-enforcement: clamp ``recovery_epoch`` at
             # ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than incrementing
-            # unbounded. Persistent lock contention is recoverable and the
-            # worker's own ``_LOCK_BACKOFF_S`` sequence and the cap on the
-            # commit-operation level are the durable stop-the-line; the cap
-            # here is purely diagnostic and never escalates to
-            # ``failed_terminal`` for a repairable failure.
+            # unbounded. If in-place retries are exhausted, escalate to the
+            # policy's automated recovery/fallback route rather than cycling
+            # indefinitely. The repairable failure is preserved with the
+            # validated commit message and never escalated to failed_terminal.
             raw_next_epoch = cleared_state.recovery_epoch + 1
             if raw_next_epoch > _MAX_COMMIT_RECOVERY_ATTEMPTS:
                 bounded_epoch = _MAX_COMMIT_RECOVERY_ATTEMPTS
-                logger.bind(component="policy.routing").warning(
-                    "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
-                    "clamping epoch and continuing in-place retry of {} -- the "
-                    "repairable failure is preserved, not escalated to failed_terminal",
-                    cleared_state.recovery_epoch,
-                    _MAX_COMMIT_RECOVERY_ATTEMPTS,
-                    in_place_target,
-                )
+                escalation_target = _resolve_commit_escalation_phase(cleared_state, policy)
+                if escalation_target is not None:
+                    logger.bind(component="policy.routing").warning(
+                        "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
+                        "escalating to automated recovery route {} -- the repairable "
+                        "failure is preserved, not escalated to failed_terminal",
+                        cleared_state.recovery_epoch,
+                        _MAX_COMMIT_RECOVERY_ATTEMPTS,
+                        escalation_target,
+                    )
+                    advanced_state, target = _prepare_phase_advance(
+                        cleared_state, escalation_target, policy, routing_timing=routing_timing
+                    )
+                else:
+                    logger.bind(component="policy.routing").warning(
+                        "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
+                        "clamping epoch and continuing in-place retry of {} -- the "
+                        "repairable failure is preserved, not escalated to failed_terminal",
+                        cleared_state.recovery_epoch,
+                        _MAX_COMMIT_RECOVERY_ATTEMPTS,
+                        in_place_target,
+                    )
             else:
                 bounded_epoch = raw_next_epoch
             advanced_after_progress = progress.advance_phase(advanced_state, target, policy=policy)
@@ -1667,13 +1724,16 @@ def _handle_commit_failure(
             # (``progress.py:190-193``), and the next effect would re-invoke the
             # commit-message agent instead of re-running ``execute_commit_effect``
             # on the preserved message file.
-            new_state = advanced_after_progress.copy_with(
-                commit=state.commit,
-                last_error=failure_reason,
-                recovery_epoch=bounded_epoch,
-                pending_cycle_outcome=None,
-                last_execution_result_status="failed",
-            )
+            updates: dict[str, object] = {
+                "commit": state.commit,
+                "last_error": failure_reason,
+                "recovery_epoch": bounded_epoch,
+                "pending_cycle_outcome": None,
+                "last_execution_result_status": "failed",
+            }
+            if target == in_place_target:
+                updates["previous_phase"] = state.previous_phase
+            new_state = advanced_after_progress.copy_with(**updates)
             return new_state, []
 
     # Non-repairable failure: escalate to terminal failure.
