@@ -452,13 +452,6 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     assert observed_messages == [expected_message]
 
 
-def test_default_policy_cleanup_to_commit_re_invokes_commit_message_agent(
-    tmp_path: Path,
-) -> None:
-    """Backward-compatible alias verifying message reuse produces CommitEffect."""
-    test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_commit_effect(tmp_path)
-
-
 # ---------------------------------------------------------------------------
 # Counterexamples and Edge Cases (WU-1 / DEVELOPMENT_ANALYSIS_DECISION.md)
 # ---------------------------------------------------------------------------

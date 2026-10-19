@@ -101,8 +101,9 @@ from ralph.mcp.protocol.env import (
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._start_stage_tracker import read_overruns, record_overrun
 
-# Env var for the pre-serve budget. Follows the same pattern as the other
-# timeout env vars so operators can lower it to force-fail a slow dev setup.
+# Env var for the diagnostic pre-serve stage budget. Retained for diagnostic
+# stage budgeting and backward compatibility; runtime enforcement uses the
+# remaining real startup deadline.
 _MCP_PRE_SERVE_TIMEOUT_MS_ENV = "RALPH_MCP_PRE_SERVE_TIMEOUT_MS"
 
 # Env var for the bounded overrun diagnostic exit budget.
