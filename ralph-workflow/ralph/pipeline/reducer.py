@@ -1657,7 +1657,18 @@ def _handle_commit_failure(
                 )
             else:
                 bounded_epoch = raw_next_epoch
-            new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
+            advanced_after_progress = progress.advance_phase(advanced_state, target, policy=policy)
+            # Preserve the original ``state.commit`` across the in-place retry so
+            # ``_commit_phase_effect`` (``effect_router.py``) sees
+            # ``commit.agent_invoked=True`` and returns ``CommitEffect`` (re-reading
+            # the validated message from ``effect.message_file``) instead of
+            # ``InvokeAgentEffect``. Without this, ``progress.advance_phase`` resets
+            # ``commit = CommitState()`` for ``role == "commit"`` target phases
+            # (``progress.py:190-193``), and the next effect would re-invoke the
+            # commit-message agent instead of re-running ``execute_commit_effect``
+            # on the preserved message file.
+            new_state = advanced_after_progress.copy_with(
+                commit=state.commit,
                 last_error=failure_reason,
                 recovery_epoch=bounded_epoch,
                 pending_cycle_outcome=None,

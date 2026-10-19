@@ -35,24 +35,48 @@ DIAGNOSTIC vs DEADLINE split:
   the preflight envelope (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin)
   and raises ``McpServerError`` when cumulative elapsed time exceeds it.
 
-Stage vocabulary tracked by :func:`record_stage_elapsed`:
+Stage vocabulary tracked by :func:`record_stage_elapsed`. For every stage
+below, the per-stage budget is **DIAGNOSTIC ONLY** (a structured WARNING
+plus a JSONL ``.overruns`` entry — never a fatal check). The ONLY fatal
+startup envelope is :func:`mcp_real_startup_deadline_from_env`
+(preflight minus :data:`_PROBE_SAFETY_S`, default 28.0 s), enforced by
+:func:`_check_real_startup_deadline`.
 
-- ``env_loaded`` — environment loaded; no budget (instant);
-- ``session_ready`` — session initialised; no budget (instant);
-- ``config_loading`` — config being loaded; bounded operationally by the remaining real
-  startup deadline (:func:`mcp_real_startup_deadline_from_env`), allowing slow-but-successful
-  pre-serve operations to complete within the startup envelope. The legacy pre-serve
-  budget constant (:data:`_PRE_SERVE_BUDGET_S`, queryable via :func:`mcp_pre_serve_budget_from_env`)
-  is retained for diagnostic stage reporting and compatibility;
-- ``config_loaded`` — configuration parsed; bounded by ``_CONFIG_LOAD_CUMULATIVE_S``
-  (per-stage individual upper bound ``_CONFIG_LOAD_BUDGET_S``);
-- ``upstream_catalog_or_discovery_done`` — upstream catalog read or discovery finished;
-  bounded by ``mcp_discovery_budget_from_env``;
-- ``registry_built`` — registry built; bounded by ``mcp_registry_built_budget_from_env``
-  (per-stage individual upper bound ``_REGISTRY_BUILD_BUDGET_S``);
-- ``ready_to_serve`` — the port is bound and the server answers requests;
-  bounded by ``mcp_whole_startup_budget_from_env`` (per-stage individual upper bound
-  ``_READY_TO_SERVE_BUDGET_S``).
+- ``env_loaded`` — environment loaded; no per-stage budget (instant);
+- ``session_ready`` — session initialised; no per-stage budget (instant);
+- ``config_loading`` — config being loaded; per-stage budget is
+  :data:`_PRE_SERVE_BUDGET_S` (DIAGNOSTIC ONLY). The operational bound
+  is the remaining real startup deadline
+  (:func:`mcp_real_startup_deadline_from_env`), allowing slow-but-
+  successful pre-serve operations to complete within the startup
+  envelope. The legacy pre-serve budget constant is queryable via
+  :func:`mcp_pre_serve_budget_from_env` and is retained for diagnostic
+  stage reporting and compatibility;
+- ``config_loaded`` — configuration parsed; per-stage budget is
+  :data:`_CONFIG_LOAD_BUDGET_S` (DIAGNOSTIC ONLY). The cumulative
+  constant :data:`_CONFIG_LOAD_CUMULATIVE_S` is an import-time
+  invariant input only, not a runtime per-stage budget; the only
+  runtime bound is :func:`mcp_real_startup_deadline_from_env`;
+- ``upstream_catalog_or_discovery_done`` — upstream catalog read or
+  discovery finished; per-stage budget is
+  :func:`mcp_discovery_budget_from_env` (DIAGNOSTIC ONLY);
+- ``registry_built`` — registry built; per-stage budget is
+  :data:`_REGISTRY_BUILD_BUDGET_S` (DIAGNOSTIC ONLY). The
+  :func:`mcp_registry_built_budget_from_env` accessor is the
+  diagnostic accessor only;
+- ``ready_to_serve`` — the port is bound and the server answers
+  requests; per-stage budget is :data:`_READY_TO_SERVE_BUDGET_S`
+  (DIAGNOSTIC ONLY). The :func:`mcp_whole_startup_budget_from_env`
+  accessor is the diagnostic accessor only.
+
+The real startup deadline is ``mcp_preflight_timeout_from_env - _PROBE_SAFETY_S``
+(default: 28.0s), which is strictly below the preflight ceiling (30.0s). Both
+the aggregate discovery loop and the bootstrap serving architecture operationally
+enforce that spawn-to-serving tools/list completes strictly below the preflight
+timeout by construction, guarded by import-time invariants. Synchronous stage-file
+persistence is boundary-checked at stage transitions, and the overrun exit path
+bounds diagnostic and stage-recording I/O so stalled filesystem operations cannot
+hold a live child past the preflight deadline.
 
 The real startup deadline is ``mcp_preflight_timeout_from_env - _PROBE_SAFETY_S``
 (default: 28.0s), which is strictly below the preflight ceiling (30.0s). Both

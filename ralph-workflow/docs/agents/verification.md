@@ -248,6 +248,35 @@ Documentation review note:
 - *How duplication was contained.* The new bullet on normal/exception exits and the bullet on interrupt/termination now share the same one-sentence description of the two-escape sequence and the same "saved snapshot, never fresh `tcgetattr`" framing, so the contract no longer implies distinct envelopes for each path.
 - *Why the operator route is clearer.* Operators reading this guide now learn the three things they can rely on (saved termios restored, cursor visible, SGR neutral) and the one thing Ralph deliberately does not do (flush their typed input), which is the answerable question behind "will `make verify` eat my unsent prompt?".
 
+## MCP timeout contract (startup)
+
+The MCP server subprocess startup uses a strict **diagnostic-vs-deadline split** so a healthy-but-slow startup never turns into a self-inflicted crash. The contract lives in `ralph/mcp/protocol/_startup_timeouts.py` and is pinned end-to-end by `tests/mcp/test_startup_stalled_stage_io.py`, `tests/test_startup_timeouts_invariants.py`, and `tests/mcp/test_preflight_error_carries_stage_and_elapsed.py`.
+
+**Per-stage budgets are diagnostic only.** The per-stage constants
+
+- `_PRE_SERVE_BUDGET_S` (1.0 s) — config_loading per-stage diagnostic
+- `_CONFIG_LOAD_BUDGET_S` (1.0 s) — config_loaded per-stage diagnostic
+- `_REGISTRY_BUILD_BUDGET_S` (0.4 s) — registry_built per-stage diagnostic
+- `_READY_TO_SERVE_BUDGET_S` (0.4 s) — ready_to_serve per-stage diagnostic
+- `_OVERRUN_DIAGNOSTIC_BUDGET_S` (0.2 s) — overrun-diagnostic write budget
+
+are **DIAGNOSTIC ONLY**. When `record_stage_elapsed(stage, elapsed, budget_s=...)` is called at a stage boundary, an overrun logs a structured WARNING (with the stage name, elapsed time, budget, and remaining headroom) and appends a JSONL entry to the sibling `<stage_file>.overruns` file via `record_overrun`. It never raises. The function returns `None` on overrun so callers can distinguish a logged-overrun from clean completion. This is the contract a "healthy but slow" startup relies on to keep going past a per-stage budget miss without dying.
+
+**The only fatal envelope is the real startup deadline.** The single fatal check during startup is `_check_real_startup_deadline(stage, t0, env_map)` (in `ralph/mcp/protocol/_startup_timeouts.py`), which raises `McpServerError` when cumulative elapsed time measured from `t0` exceeds `mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S` (default 28.0 s = 30.0 s preflight − 2.0 s probe-safety margin). The accessor `mcp_real_startup_deadline_from_env()` is the only runtime per-stage cap that ever causes a fatal. Every call site in `ralph/mcp/server/runtime.py` (`config_loaded`, `upstream_catalog_or_discovery_done`, `registry_built`, `ready_to_serve`, plus the constructor-boundary `record_stage_elapsed` after registry build) passes a per-stage elapsed that is the *per-stage* duration, not the cumulative from `t0`; the cumulative-vs-deadline check is performed separately by `_check_real_startup_deadline`.
+
+**Hung I/O still fails closed.** Truly wedged filesystems (hung FIFOs, NFS hangs, blocked `tomllib.load`) fail closed via the bounded executor and timeout paths, but their timeouts are sized from the remaining real deadline, not from a sub-second per-stage constant. The existing `os._exit` overrun-diagnostics contract is preserved (the `_OVERRUN_DIAGNOSTIC_BUDGET_S` budget bounds how long the diagnostic-write itself may take so a wedged filesystem cannot hold a live child past the preflight deadline).
+
+**MCP server failures are not charged to the agent.** The `McpServerError` raised by the parent preflight is classified as `FailureCategory.ENVIRONMENTAL` with `counts_against_budget=False` by `ralph/recovery/failure_classifier.py:_is_environmental_exc` (the `type(exc).__name__ == "McpServerError"` early-return). The chain `lifecycle.py:1230-1260` (raise) → `failure_classifier.py:371-385` (classify) → `recovery/controller.py:670-684` (build `FailureEvent(counted_against_budget=False)`) → `pipeline/run_loop.py:3270` (emit `FAILURE ... category=environmental counted=False chain_cap=N`) preserves the agent's chain cap. The technical-retry path at `controller.py:705-721, 1370-1378` may still increment the in-session `retries` counter on the chain; that is a separate counter and is allowed to increment. The chain cap (`chain.current_index`) is the agent-budget counter that gates agent selection across phases, and that is the one that must NOT decrement for an environmental failure.
+
+**Operator-facing env vars.**
+
+- `RALPH_MCP_PREFLIGHT_TIMEOUT_MS` (default 30 000) — parent preflight ceiling.
+- `RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS` — single-upstream probe ceiling; strictly below preflight.
+- `RALPH_MCP_PRE_SERVE_TIMEOUT_MS` — legacy pre-serve budget accessor (diagnostic only).
+- `RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS` — bounds the overrun-diagnostic write.
+
+A green `make verify` proves the diagnostic-vs-deadline split end-to-end. Pinned regressions include `tests/test_startup_timeouts_invariants.py:195-218, 225-235` (the 1.128 s `config_loaded` regression), `tests/mcp/test_startup_stalled_stage_io.py` (slow-but-healthy startup), and `tests/mcp/test_preflight_error_carries_stage_and_elapsed.py` (past-real-deadline `McpServerError` with the correct `last_stage` and `elapsed_s`).
+
 ## Cross-links
 
 - `ralph/verify.py` — budget tracker, `_VERIFY_STEPS`, invariant checks
