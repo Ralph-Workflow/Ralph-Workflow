@@ -40,6 +40,7 @@ import pytest
 
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.git.commit_result import CommitCreationResult
+from ralph.mcp.artifacts.commit_message import read_commit_message_from_path
 from ralph.pipeline.commit_executor import (
     execute_commit_effect,
     set_last_commit_error,
@@ -93,7 +94,14 @@ def _has_uncommitted_changes(_path: Path) -> bool:
     return True
 
 
-def _make_commit_message_file(repo_root: Path, subject: str) -> Path:
+def _make_commit_message_file(
+    repo_root: Path,
+    subject: str,
+    *,
+    body_summary: str | None = "Preserve validated commit message artifact across retry.",
+    body_details: str
+    | None = "Assert byte-identical multiline message reuse across router transitions.",
+) -> Path:
     """Place the commit-message artifact inside ``repo_root`` (the
     ``WorkspaceScope.root``).
 
@@ -105,10 +113,12 @@ def _make_commit_message_file(repo_root: Path, subject: str) -> Path:
     agent_dir = repo_root / ".agent" / "artifacts"
     agent_dir.mkdir(parents=True, exist_ok=True)
     message_file = agent_dir / "commit_message.md"
-    message_file.write_text(
-        f"---\ntype: commit\nsubject: {subject}\n---\n",
-        encoding="utf-8",
-    )
+    parts = [f"---\ntype: commit\nsubject: {subject}\n---\n"]
+    if body_summary is not None:
+        parts.append(f"\n## Body Summary\n\n- [BS-1] {body_summary}\n")
+    if body_details is not None:
+        parts.append(f"\n## Body Details\n\n- [BD-1] {body_details}\n")
+    message_file.write_text("".join(parts), encoding="utf-8")
     return message_file
 
 
@@ -147,6 +157,10 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
     message_file = _make_commit_message_file(
         repo_root, "feat: validated message must be reused on in-place retry"
     )
+    original_bytes = message_file.read_bytes()
+    expected_message = read_commit_message_from_path(message_file)
+    assert expected_message is not None
+    assert "\n\n" in expected_message, "Must be a multiline commit message"
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
@@ -235,6 +249,11 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
             f"({expected_message_file}); got {next_effect.message_file}"
         )
 
+        # Assert byte-for-byte artifact preservation before retry.
+        assert message_file.read_bytes() == original_bytes, (
+            "Commit message artifact bytes must be preserved byte-for-byte across lock-retry"
+        )
+
         # Second attempt succeeds using the reused message file.
         second_event = execute_commit_effect(
             next_effect,
@@ -247,7 +266,7 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
             f"Second attempt must succeed with the reused message, got {second_event}"
         )
         assert len(observed_messages) == 1
-        assert observed_messages[0] == "feat: validated message must be reused on in-place retry"
+        assert observed_messages[0] == expected_message
 
 
 # ---------------------------------------------------------------------------
@@ -299,18 +318,31 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     a validated commit message artifact has been produced (``commit.agent_invoked=True``):
     1. The reducer routes to ``development_commit_cleanup``, retaining the commit
        state and recording ``recovery_epoch=1``.
-    2. On cleanup completion (``PHASE_ADVANCE`` / ``AGENT_SUCCESS``), the reducer
-       advances to ``development_commit`` and preserves ``state.commit``
+    2. The real effect router produces an observable cleanup effect
+       (``InvokeAgentEffect``) for ``development_commit_cleanup``.
+    3. The cleanup agent finishes successfully, emitting ``AGENT_SUCCESS``.
+    4. On cleanup success (``AGENT_SUCCESS``), the reducer advances to
+       ``development_commit`` and preserves ``state.commit``
        (with ``agent_invoked=True``) and ``recovery_epoch``.
-    3. The real effect router (``determine_effect_from_policy``) sees
+    5. The real effect router (``determine_effect_from_policy``) sees
        ``commit.agent_invoked=True`` and emits ``CommitEffect`` (NOT
        ``InvokeAgentEffect``).
-    4. ``execute_commit_effect`` re-reads the byte-identical validated message
+    6. ``execute_commit_effect`` re-reads the byte-identical validated multiline message
        and lands the commit without re-invoking the commit-message agent.
     """
     repo_root = _make_fake_workspace(tmp_path)
     expected_subject = "feat: default policy validated message must be reused on retry"
-    message_file = _make_commit_message_file(repo_root, expected_subject)
+    message_file = _make_commit_message_file(
+        repo_root,
+        expected_subject,
+        body_summary="Default policy cleanup recovery preserves multiline message.",
+        body_details="Drive lock contention -> cleanup effect -> AGENT_SUCCESS -> CommitEffect.",
+    )
+    original_bytes = message_file.read_bytes()
+    expected_message = read_commit_message_from_path(message_file)
+    assert expected_message is not None
+    assert "\n\n" in expected_message, "Must be a multiline message"
+
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
@@ -329,7 +361,10 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     state = PipelineState(
         phase="development_commit",
         phase_chains={
-            "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0),
+            "development_commit_cleanup": AgentChainState(
+                agents=["claude"], current_index=0, retries=0
+            ),
         },
         commit=commit_state,
         recovery_epoch=0,
@@ -350,10 +385,29 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     assert cleanup_state.recovery_epoch == 1
     assert cleanup_state.commit.agent_invoked is True
 
-    # Step 2: cleanup completes successfully via PHASE_ADVANCE.
-    advanced_state, _ = reduce(cleanup_state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
+    # Step 2: Request the cleanup effect via the real router. Must emit InvokeAgentEffect.
+    cleanup_effect = determine_effect_from_policy(
+        cleanup_state,
+        policy_bundle,
+        workspace_scope=scope,
+        has_uncommitted_changes_fn=_has_uncommitted_changes,
+    )
+    assert isinstance(cleanup_effect, InvokeAgentEffect), (
+        f"Cleanup phase must emit InvokeAgentEffect, got {type(cleanup_effect).__name__}"
+    )
+    assert cleanup_effect.phase == "development_commit_cleanup", (
+        f"Cleanup effect must target development_commit_cleanup, got {cleanup_effect.phase}"
+    )
+
+    # Step 3: Assert byte-for-byte artifact preservation during cleanup.
+    assert message_file.read_bytes() == original_bytes, (
+        "Commit message artifact bytes must remain intact during cleanup phase"
+    )
+
+    # Step 4: cleanup completes successfully via AGENT_SUCCESS (actual agent success signal).
+    advanced_state, _ = reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, pipeline_policy)
     assert advanced_state.phase == "development_commit", (
-        f"Cleanup→commit transition must land on development_commit, "
+        f"Cleanup AGENT_SUCCESS must advance to development_commit, "
         f"got phase={advanced_state.phase}"
     )
     assert advanced_state.commit.agent_invoked is True, (
@@ -361,7 +415,7 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     assert advanced_state.recovery_epoch == 1
 
-    # Step 3: drive the real effect router. Must emit CommitEffect, NOT InvokeAgentEffect.
+    # Step 5: drive the real effect router. Must emit CommitEffect, NOT InvokeAgentEffect.
     next_effect = determine_effect_from_policy(
         advanced_state,
         policy_bundle,
@@ -377,7 +431,12 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     assert Path(next_effect.message_file) == message_file
 
-    # Step 4: execute CommitEffect with fakes — no agent reinvocation.
+    # Step 6: Assert byte-for-byte artifact preservation before retry commit execution.
+    assert message_file.read_bytes() == original_bytes, (
+        "Commit message artifact bytes must remain intact before retry commit execution"
+    )
+
+    # Step 7: execute CommitEffect with fakes — no agent reinvocation.
     with (
         patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
         patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
@@ -390,7 +449,7 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
             has_commit_work_fn=_has_uncommitted_changes,
         )
     assert event is PipelineEvent.COMMIT_SUCCESS
-    assert observed_messages == [expected_subject]
+    assert observed_messages == [expected_message]
 
 
 def test_default_policy_cleanup_to_commit_re_invokes_commit_message_agent(

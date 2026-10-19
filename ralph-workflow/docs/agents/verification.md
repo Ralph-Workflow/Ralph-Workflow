@@ -252,15 +252,16 @@ Documentation review note:
 
 The MCP server subprocess startup uses a strict **diagnostic-vs-deadline split** so a healthy-but-slow startup never turns into a self-inflicted crash. The contract lives in `ralph/mcp/protocol/_startup_timeouts.py` and is pinned end-to-end by `tests/mcp/test_startup_stalled_stage_io.py`, `tests/test_startup_timeouts_invariants.py`, and `tests/mcp/test_preflight_error_carries_stage_and_elapsed.py`.
 
-**Per-stage budgets are diagnostic only.** The per-stage constants
+**Per-stage budgets are diagnostic only.** The four per-stage constants
 
 - `_PRE_SERVE_BUDGET_S` (1.0 s) — config_loading per-stage diagnostic
 - `_CONFIG_LOAD_BUDGET_S` (1.0 s) — config_loaded per-stage diagnostic
 - `_REGISTRY_BUILD_BUDGET_S` (0.4 s) — registry_built per-stage diagnostic
 - `_READY_TO_SERVE_BUDGET_S` (0.4 s) — ready_to_serve per-stage diagnostic
-- `_OVERRUN_DIAGNOSTIC_BUDGET_S` (0.2 s) — overrun-diagnostic write budget
 
 are **DIAGNOSTIC ONLY**. When `record_stage_elapsed(stage, elapsed, budget_s=...)` is called at a stage boundary, an overrun logs a structured WARNING (with the stage name, elapsed time, budget, and remaining headroom) and appends a JSONL entry to the sibling `<stage_file>.overruns` file via `record_overrun`. It never raises. The function returns `None` on overrun so callers can distinguish a logged-overrun from clean completion. This is the contract a "healthy but slow" startup relies on to keep going past a per-stage budget miss without dying.
+
+In contrast, `_OVERRUN_DIAGNOSTIC_BUDGET_S` (0.2 s) is explicitly a **bounded diagnostic-write timeout**, not a nonfatal stage budget. It sets a hard ceiling on writing the diagnostic overrun record so that an overrun recording attempt on a wedged filesystem cannot block startup indefinitely or breach probe safety.
 
 **The only fatal envelope is the real startup deadline.** The single fatal check during startup is `_check_real_startup_deadline(stage, t0, env_map)` (in `ralph/mcp/protocol/_startup_timeouts.py`), which raises `McpServerError` when cumulative elapsed time measured from `t0` exceeds `mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S` (default 28.0 s = 30.0 s preflight − 2.0 s probe-safety margin). The accessor `mcp_real_startup_deadline_from_env()` is the only runtime per-stage cap that ever causes a fatal. Every call site in `ralph/mcp/server/runtime.py` (`config_loaded`, `upstream_catalog_or_discovery_done`, `registry_built`, `ready_to_serve`, plus the constructor-boundary `record_stage_elapsed` after registry build) passes a per-stage elapsed that is the *per-stage* duration, not the cumulative from `t0`; the cumulative-vs-deadline check is performed separately by `_check_real_startup_deadline`.
 
