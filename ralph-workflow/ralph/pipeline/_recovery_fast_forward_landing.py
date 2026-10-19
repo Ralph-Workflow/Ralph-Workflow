@@ -50,7 +50,7 @@ def _land_and_reconcile(
     proved successful landing releases ownership.
 
     The successful-landing branch routes through
-    :func:`ralph.pipeline.auto_integrate_ff.maybe_push_target` so recovery
+    :func:`reconcile_remote_publication` so recovery
     can publish a retried local landing to its configured remote. With
     ``config=None`` the pre-seam behavior bypasses remote sync byte-for-byte.
 

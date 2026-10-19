@@ -334,7 +334,14 @@ def test_killed_between_landing_and_push_recovery_publishes(
     ``recover_incomplete_integration`` runs its startup publication seam
     and converges local onto remote.
     """
-    client = _RecordingRemoteClient(remote_sha="stale-remote-sha")
+
+    def _branch_sha_getter(_root: Path, _target: str) -> str:
+        return "landed-local-sha"
+
+    client = _RecordingRemoteClient(
+        remote_sha="stale-remote-sha",
+        branch_sha_getter=_branch_sha_getter,
+    )
 
     def _branch_sha(_root: Path, _target: str) -> str:
         return "landed-local-sha"
@@ -362,8 +369,13 @@ def test_killed_between_landing_and_push_recovery_publishes(
         rebase_stop_resolver=_dummy_resolver,
     )
     assert client.pushed == [("tacos", "release")]
+    assert client.remote_sha == "landed-local-sha", (
+        f"local/remote refs must converge after the cross-worktree recovery; "
+        f"remote_sha={client.remote_sha!r} (expected 'landed-local-sha')"
+    )
     assert outcome is not None
     assert outcome.last_push_status == "pushed"
+    assert outcome.last_remote_sync == "pushed"
     assert "origin" not in str(client.pushed)
     assert "main" not in str(client.pushed)
 

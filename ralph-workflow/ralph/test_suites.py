@@ -383,7 +383,11 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_brand_naming.py": 78,
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 76,
-    "tests/test_audit_opts_key_drift.py": 300,
+    "tests/test_audit_opts_key_drift.py": 140,
+    "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 200,
+    "tests/mcp/test_bounded_catalog_publish.py": 100,
+    "tests/mcp/test_whole_startup_budget_production.py": 90,
+    "tests/mcp/test_respawn_no_discovery.py": 80,
     "tests/test_explore_bench_rss_isolation.py": 250,
     # Calibrated from --profile-durations per-file wall-clock on shard 15
     # (weight = round(measured_seconds * 17); band [50, 460] per existing

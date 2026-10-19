@@ -387,56 +387,10 @@ def is_retryable_fast_forward_failure(reason: str) -> bool:
     return reason in _RETRYABLE_REASONS
 
 
-def maybe_push_target(
-    config: UnifiedConfig | None,
-    repo_root: Path,
-    target: str,
-    record: RebaseState,
-    *,
-    remote_client: RemoteClient | None = None,
-) -> RebaseState:
-    """Publish a successful local landing only when remote sync is enabled."""
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        push_target_after_landing as remote_push_hook,
-    )
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        remote_sync_enabled,
-    )
-
-    if not remote_sync_enabled(config):
-        return record
-    try:
-        if remote_client is not None:
-            return remote_push_hook(config, repo_root, target, record, remote_client=remote_client)
-        return remote_push_hook(config, repo_root, target, record)
-    except Exception as push_exc:
-        logger.warning("auto_integrate: remote-sync push hook raised unexpectedly: {}", push_exc)
-        from ralph.pipeline._integration_action import RebaseOutcomeKind
-        from ralph.pipeline._publication_state_machine import PublicationDecision
-        from ralph.pipeline.auto_integrate_remote_sync import (
-            REMOTE_REMOTE_UNREACHABLE,
-            remote_target_name,
-        )
-
-        chosen_remote = remote_target_name(config) if config is not None else None
-        return record.set_publication_decision(
-            PublicationDecision.PUBLISH_DEFERRED_REMOTE
-        ).model_copy(
-            update={
-                "last_remote": chosen_remote,
-                "last_remote_sync": REMOTE_REMOTE_UNREACHABLE,
-                "last_push_status": "unreachable",
-                "last_outcome": RebaseOutcomeKind.REMOTE_FAILED,
-                "last_reason": f"remote push failed: {push_exc}",
-            }
-        )
-
-
 __all__ = [
     "RemoteClient",
     "fast_forward_target",
     "is_retryable_fast_forward_failure",
-    "maybe_push_target",
     "retry_pending_remote_publish",
 ]
 

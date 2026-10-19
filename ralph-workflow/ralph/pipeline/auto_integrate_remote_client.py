@@ -14,7 +14,6 @@ vocabulary.
 from __future__ import annotations
 
 import time
-from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -33,7 +32,6 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     REMOTE_PULLED,
     REMOTE_RECONCILED,
     REMOTE_REMOTE_UNREACHABLE,
-    REMOTE_SYNC_INTERVAL_SECONDS,
     reclaim_target_worktree_enabled,
     remote_sync_enabled,
     remote_target_name,
@@ -434,79 +432,6 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
 
 
 # ----- Throttle ----------------------------------------------------------
-
-#: Per-(root, remote, target) cap for the pull throttle.  The FIFO pop in
-#: :meth:`_RemotePullThrottle.arm` keeps the bounded dict below this size
-#: regardless of how many distinct keys a long-lived process touches.
-_MAX_REMOTE_KEYS = 128
-
-
-class _RemotePullThrottle:
-    """Rate-limits the periodic pull keyed per (root, remote, target)."""
-
-    def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
-        self._max_tracked_keys = max(1, max_tracked_keys)
-        self._last_pull: OrderedDict[tuple[str, str, str], float] = (
-            OrderedDict()
-        )  # bounded-accumulator-ok: _MAX_REMOTE_KEYS FIFO cap applied in arm()
-
-    def should_pull(
-        self,
-        root: Path | str,
-        remote: str,
-        target: str,
-        *,
-        interval_seconds: float,
-        clock: Callable[[], float],
-    ) -> bool:
-        key = self._key(root, remote, target)
-        last = self._last_pull.get(key)
-        if last is None:
-            return True
-        if interval_seconds <= 0.0:
-            return True
-        return clock() - last >= interval_seconds
-
-    def arm(self, root: Path | str, remote: str, target: str, clock: Callable[[], float]) -> None:
-        key = self._key(root, remote, target)
-        self._last_pull.pop(key, None)
-        while len(self._last_pull) >= self._max_tracked_keys:
-            self._last_pull.popitem(last=False)
-        self._last_pull[key] = clock()
-
-    def invalidate(self, root: Path | str, remote: str, target: str) -> None:
-        self._last_pull.pop(self._key(root, remote, target), None)
-
-    @staticmethod
-    def _key(root: Path | str, remote: str, target: str) -> tuple[str, str, str]:
-        return (str(root), remote, target)
-
-
-_REMOTE_PULL_THROTTLE = _RemotePullThrottle()
-
-
-def _throttle_allows_pull(
-    repo_root: Path,
-    remote: str,
-    target: str,
-    config: UnifiedConfig | None,
-    clock: Callable[[], float],
-) -> bool:
-    general: object = getattr(config, "general", config)
-    configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
-    interval = configured if isinstance(configured, (int, float)) else REMOTE_SYNC_INTERVAL_SECONDS
-    # Look up via the orchestrator so a test monkeypatch on
-    # ``ralph.pipeline.auto_integrate_remote_sync._REMOTE_PULL_THROTTLE``
-    # reaches the same binding this client uses.
-    from ralph.pipeline.auto_integrate_remote_sync import _REMOTE_PULL_THROTTLE
-
-    return _REMOTE_PULL_THROTTLE.should_pull(
-        repo_root,
-        remote,
-        target,
-        interval_seconds=interval,
-        clock=clock,
-    )
 
 
 def _arm_throttle(

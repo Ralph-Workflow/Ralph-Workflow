@@ -26,6 +26,7 @@ here so the seam stays stable.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -37,13 +38,6 @@ from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._remote_default_client import (
     _DEFAULT_REMOTE_CLIENT,
     _DefaultRemoteClient,
-)
-from ralph.pipeline._remote_pull_throttle import (
-    _REMOTE_PULL_THROTTLE,
-    _RemotePullThrottle,
-)
-from ralph.pipeline._remote_pull_throttle import (
-    throttle_allows_pull as _throttle_allows_pull,
 )
 from ralph.pipeline._remote_rejected_push import (
     _PushOutcome,
@@ -108,6 +102,7 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -162,6 +157,78 @@ __all__ = [
     "resolver_attempt_limit",
     "start_conflict_attempt",
 ]
+
+
+# ----- Throttle ----------------------------------------------------------
+
+_MAX_REMOTE_KEYS = 128
+
+
+class _RemotePullThrottle:
+    """Rate-limits the periodic pull keyed per (root, remote, target)."""
+
+    def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
+        self._max_tracked_keys = max(1, max_tracked_keys)
+        self._last_pull: OrderedDict[tuple[str, str, str], float] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: _MAX_REMOTE_KEYS FIFO cap applied in arm()
+
+    def should_pull(
+        self,
+        root: Path | str,
+        remote: str,
+        target: str,
+        *,
+        interval_seconds: float,
+        clock: Callable[[], float],
+    ) -> bool:
+        """Return True if enough time has elapsed since the last pull."""
+        key = self._key(root, remote, target)
+        last = self._last_pull.get(key)
+        if last is None:
+            return True
+        if interval_seconds <= 0.0:
+            return True
+        return clock() - last >= interval_seconds
+
+    def arm(self, root: Path | str, remote: str, target: str, clock: Callable[[], float]) -> None:
+        """Record the current timestamp for (root, remote, target)."""
+        key = self._key(root, remote, target)
+        self._last_pull.pop(key, None)
+        while len(self._last_pull) >= self._max_tracked_keys:
+            self._last_pull.popitem(last=False)
+        self._last_pull[key] = clock()
+
+    def invalidate(self, root: Path | str, remote: str, target: str) -> None:
+        """Evict timestamp for (root, remote, target) on failure."""
+        self._last_pull.pop(self._key(root, remote, target), None)
+
+    @staticmethod
+    def _key(root: Path | str, remote: str, target: str) -> tuple[str, str, str]:
+        return (str(root), remote, target)
+
+
+_REMOTE_PULL_THROTTLE = _RemotePullThrottle()
+
+
+def _throttle_allows_pull(
+    repo_root: Path,
+    remote: str,
+    target: str,
+    config: UnifiedConfig | None,
+    clock: Callable[[], float],
+) -> bool:
+    """Check if the periodic pull throttle allows a pull for target on remote."""
+    general: object = getattr(config, "general", config)
+    configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
+    interval = configured if isinstance(configured, (int, float)) else REMOTE_SYNC_INTERVAL_SECONDS
+    return _REMOTE_PULL_THROTTLE.should_pull(
+        repo_root,
+        remote,
+        target,
+        interval_seconds=interval,
+        clock=clock,
+    )
 
 
 # ----- Reconciler: ref-comparison-driven publication --------------------

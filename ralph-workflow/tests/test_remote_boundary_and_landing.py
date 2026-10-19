@@ -20,7 +20,6 @@ from ralph.pipeline.auto_integrate_catchup import (
 )
 from ralph.pipeline.auto_integrate_ff import (
     RemoteClient,
-    maybe_push_target,
     retry_pending_remote_publish,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
@@ -279,23 +278,6 @@ def test_pull_and_reconcile_target_unreachable_returns_typed_unknown() -> None:
     assert result.freshness_verdict == "degraded"
     assert "origin unreachable" in (result.last_reason or "")
     assert len(client.refresh_calls) == 1
-
-
-def test_maybe_push_target_with_remote_client() -> None:
-    """maybe_push_target forwards the injected remote_client."""
-    record = _landed_record(fast_forwarded=True)
-    client = _FakeRemoteClient(push_status=PushStatus.PUSHED)
-
-    result = maybe_push_target(
-        _config(),
-        Path("/repo"),
-        "main",
-        record,
-        remote_client=client,
-    )
-
-    assert result.last_publication_decision == "publication_terminal"
-    assert len(client.push_calls) == 1
 
 
 def test_retry_pending_remote_publish_retries_deferred_push() -> None:

@@ -472,3 +472,136 @@ def test_load_record_with_fingerprint_mismatched_lease_clears_hold_and_prevents_
     assert on_disk.diagnostic_intervention_required is False
     assert on_disk.repair_cap_reason is None
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_legacy_record_loads_then_next_run_progresses(tmp_path: Path) -> None:
+    """AC-1 progress: a record carrying older/unrecognised evidence loads and
+    proceeds to automated recovery on the next seam.
+
+    The fixture record uses recognised evidence keys (so the load-time
+    migration preserves ``diagnostic_evidence`` instead of stripping it)
+    plus ``diagnostic_intervention_required=True`` and no held lease.
+    At load, ``restamp_fingerprint_mismatch`` does not fire (lease is
+    empty, owner PID is unset), so the record carries the recognised
+    evidence + the intervention flag into the runtime verdict path.
+    ``_maybe_release_diagnostic`` calls ``release_verified_diagnostic``
+    on ``tmp_path`` (no live Git operation root); the verdict is
+    ``UNKNOWN`` and the function durably clears the record via
+    ``apply_record_transition(RELEASE_DIAGNOSTIC_EVIDENCE, ...)``.
+    """
+    import ralph.pipeline.auto_integrate_recovery_record as recovery_record
+    from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
+    from ralph.pipeline.auto_integrate_record import (
+        DEFAULT_FILE_BACKEND,
+        read_record,
+        write_record,
+    )
+    from ralph.workspace.scope import WorkspaceScope
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        # Recognised evidence keys (survive _migrate_payload_evidence).
+        diagnostic_evidence=(("head", "0" * 40), ("unstaged_work", "clean")),
+        diagnostic_intervention_required=True,
+    )
+    write_record(tmp_path, record)
+
+    # Runtime seam: next-run release path. Imported from the canonical module
+    # (auto_integrate_recovery_record), not from auto_integrate_recovery which
+    # only re-exports the symbol for the recovery flow.
+    outcome = recovery_record._maybe_release_diagnostic(
+        tmp_path,
+        WorkspaceScope(tmp_path),
+        DEFAULT_FILE_BACKEND,
+    )
+    assert isinstance(outcome, IntegrationRecord), (
+        "next-run release path must NOT escalate to a CHANGED-skip; the "
+        "legacy-shape record must progress to a clean, no-intervention state"
+    )
+
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_owner_pid is None
+    assert on_disk.diagnostic_intervention_required is False
+    assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_kill_mid_diagnostic_next_run_releases_dead_owner(tmp_path: Path) -> None:
+    """AC-3: process death between HOLD and RELEASE auto-releases on next run.
+
+    The diagnostic path writes a valid lease + ``diagnostic_owner_pid`` when it
+    holds evidence. Killing the process between HOLD and RELEASE leaves a stale
+    ``diagnostic_owner_pid`` on disk; the next ``_maybe_release_diagnostic``
+    call must clear the record without intervention.
+
+    The dead-owner predicate MUST be asserted BEFORE the load. The
+    load-time migration (``restamp_fingerprint_mismatch`` inside
+    ``parse_record_payload``) calls ``_clear_legacy_ownership_and_intervention``
+    whenever ``is_owner_dead(record)`` is True, which wipes the
+    ``diagnostic_owner_pid`` and ``diagnostic_evidence`` BEFORE the
+    reloaded record reaches the test. Asserting dead ownership on the
+    reloaded record would always observe a non-dead owner (the cleared
+    record) and trip a deterministic false negative. The corrected
+    design asserts on the in-memory record, then runs the runtime
+    release path which performs the load + restamp + release transition
+    in one call.
+    """
+    import ralph.pipeline.auto_integrate_recovery_record as recovery_record
+    from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
+    from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
+    from ralph.pipeline.auto_integrate_record import (
+        DEFAULT_FILE_BACKEND,
+        read_record,
+        write_record,
+    )
+    from ralph.workspace.scope import WorkspaceScope
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        diagnostic_evidence=(("head", "0" * 40),),
+    )
+    lease = f"{identity_fingerprint(record)}:{time.time()}"
+    record = record.model_copy(
+        update={
+            "diagnostic_ownership": lease,
+            "diagnostic_owner_pid": 99999999,  # not alive on any PID allocator
+        }
+    )
+
+    # 1. Pre-load: the in-memory record carries a dead owner.
+    #    (Load calls restamp_fingerprint_mismatch which clears the dead
+    #    owner, so this assertion must run before the load.)
+    assert is_owner_dead(record) is True, (
+        "pre-load dead-owner predicate must fire on diagnostic_owner_pid=99999999"
+    )
+
+    write_record(tmp_path, record)
+
+    # 2. Runtime seam: next-run release path. Load + restamp + verdict +
+    #    apply_record_transition happen inside one call.
+    outcome = recovery_record._maybe_release_diagnostic(
+        tmp_path,
+        WorkspaceScope(tmp_path),
+        DEFAULT_FILE_BACKEND,
+    )
+    assert isinstance(outcome, IntegrationRecord), (
+        "dead owner must NOT escalate to a CHANGED-skip; the next-run "
+        "release path must clear the record"
+    )
+
+    # 3. On-disk: durable record is in a no-intervention state.
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_owner_pid is None
+    assert on_disk.diagnostic_intervention_required is False
+    assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
