@@ -104,11 +104,19 @@ def boundary_freshness_outcome(
     # ``last_push_status in {None, PUSHED, CREATED}`` filter is
     # gone: terminal state is now detected by the reconciler's
     # own ``local_sha == remote_sha`` short-circuit, not by an
-    # in-memory status. The boundary returns ``None`` when the
-    # ref comparison shows the local is already current (no
-    # push needed) or the remote is unreachable (defer to the
-    # next seam); a successful push returns the reconciler's
-    # ``pending`` so the caller can observe the publication.
+    # in-memory status. The boundary returns the reconciler's
+    # ``pending`` so the caller can observe the publication:
+    # * transient failure (``REMOTE_REMOTE_UNREACHABLE`` /
+    #   ``REMOTE_PULL_FAILED``) -- propagate ``pending`` so the
+    #   next seam retries it (AC-8 defence-in-depth).
+    # * already current (``"already current"``) -- overwrite the
+    #   reconciler's prose with the silent-skip record; no push is
+    #   owed.
+    # * divergence -- propagate ``pending`` so the next seam
+    #   observes the reintegration outcome.
+    # The only ``None``-returning branch above is the HEAD-vs-target
+    # feature-integration gate, which fires BEFORE the reconciler is
+    # consulted.
     pending = _reconcile_remote_publication(
         config,
         root,

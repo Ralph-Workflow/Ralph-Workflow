@@ -1168,3 +1168,95 @@ def test_wait_for_retry_prolonged_unreachable_remote_does_not_increment_conflict
     assert final_state.rebase.is_intervention_required is False
     assert final_state.rebase.consecutive_conflicts == 0
     assert final_state.rebase.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
+
+
+def test_wait_for_retry_successful_cold_exhaustion_handoff_clears_state(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-2 successful cold-exhaustion handoff: resolver success clears the state.
+
+    The companion test
+    :func:`test_wait_for_retry_cold_durable_resolution_exhausted_with_live_conflict_dispatches_session_handoff`
+    proves the cold-exhausted state dispatches one session-scoped
+    handoff and (when the handoff is unsuccessful) escalates to
+    intervention. PA-001 of the analysis identified a gap: that test
+    only proves the handoff was *attempted*, not that a successful
+    cold-exhaustion handoff *clears* the state. This test closes
+    the gap with a handoff that resolves the durable record on the
+    first try.
+
+    O1 retry-progress contract: a successful handoff must return
+    immediately without sleeping, the durable record's
+    ``resolution_exhausted`` flag must be cleared, the consecutive-
+    conflict counter must drop below the cap, intervention must NOT be
+    recorded, and the durable record must be persisted via the
+    standard recovered-checkpoint path so the next run observes the
+    cleared state.
+    """
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+
+    handoff_calls: list[str] = []
+
+    # A mock handoff that successfully resolves the durable record
+    # on the first try. Mirrors the contract of an automated
+    # resolver that succeeds (e.g. a successful git rebase
+    # followed by a clean push).
+    def _clearing_handoff(loop_ctx: run_loop._LoopContext, detail: str) -> None:
+        handoff_calls.append(detail)
+        cleared = RebaseState(
+            last_outcome=RebaseOutcomeKind.COMPLETED,
+            last_reason="conflict resolved by automated resolver",
+            consecutive_conflicts=0,
+        ).clear_resolution_exhausted()
+        loop_ctx.latest_state[:] = [
+            (
+                loop_ctx.latest_state[0]
+                if loop_ctx.latest_state
+                else PipelineState(phase="development")
+            ).copy_with(rebase=cleared)
+        ]
+
+    monkeypatch.setattr(run_loop, "_handoff_retained_failure", _clearing_handoff)
+
+    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cold_exhausted_rebase = RebaseState(
+        last_action="conflict",
+        last_reason="cold exhausted detail cleared by resolver",
+        consecutive_conflicts=cap,
+    ).model_copy(
+        update={
+            "resolution_exhausted": True,
+            "resolution_exhaustion_reason": "all strategies tried",
+        }
+    )
+    initial_state = PipelineState(phase="development", rebase=cold_exhausted_rebase)
+    assert initial_state.rebase.resolution_exhausted is True
+    assert initial_state.rebase.consecutive_conflicts >= cap
+
+    result = run_loop._wait_for_integration_retry(initial_state, ctx)
+
+    # 1. Successful handoff must NOT sleep (O1 retry-progress rule).
+    assert sleeps == [], "Successful cold-exhaustion handoff must not sleep; O1 retry-progress rule"
+    # 2. The handoff was dispatched exactly once.
+    assert len(handoff_calls) == 1, (
+        "Successful cold-exhaustion handoff must be dispatched exactly once "
+        "(session-scoped guard prevents repeat handoffs)."
+    )
+    # 3. The durable resolution_exhausted flag was cleared by the
+    #    handoff -- the live rebase is no longer in the exhausted
+    #    state.
+    assert result.rebase.resolution_exhausted is False, (
+        "resolution_exhausted was not cleared by the successful handoff; "
+        "the next run would re-dispatch and the durable dead-end persists"
+    )
+    # 4. The consecutive-conflict counter is below the cap.
+    assert result.rebase.consecutive_conflicts < cap, (
+        f"consecutive_conflicts must drop below cap after a successful handoff; "
+        f"got {result.rebase.consecutive_conflicts} (cap={cap})"
+    )
+    # 5. Intervention must NOT be recorded.
+    assert result.rebase.is_intervention_required is False
+    # 6. The handoff's resolved outcome is observable on the returned state.
+    assert result.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+    assert "clearing" not in result.rebase.last_reason
