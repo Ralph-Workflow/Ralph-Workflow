@@ -120,6 +120,8 @@ def _prewarm_wire_form_scan_cache() -> None:
             if "mcp__" not in source:
                 continue
             _wire_form_literals_in_source(source)
+    for path in _emission_target_files():
+        _parallel_display_imports(path)
 
 
 def _all_string_literals(source: str) -> set[str]:

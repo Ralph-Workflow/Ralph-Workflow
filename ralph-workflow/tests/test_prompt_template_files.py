@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from ralph.prompts.template_context import TemplateContext
 
 
+@lru_cache(maxsize=1)
+def _default_context() -> TemplateContext:
+    return TemplateContext.default()
+
+
 def _source(name: str) -> str:
-    return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
+    return _default_context().registry.get_template(name.removesuffix(".jinja"))
 
 
 def test_planning_templates_use_standard_markdown_artifact_tools() -> None:

@@ -2478,7 +2478,23 @@ def _wait_for_integration_retry(
     # the recovery preamble after the single handoff has been
     # dispatched.
     cap = _effective_conflict_cap(ctx)
-    if rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap:
+    from ralph.pipeline._publication_state_machine import (
+        PublicationDecision as _PubDec,
+    )
+
+    is_publication_deferred = (
+        rebase.last_publication_decision
+        in (
+            _PubDec.PUBLISH_DEFERRED_REMOTE,
+            _PubDec.PUBLISH_DEFERRED_FRESHNESS,
+            _PubDec.PUBLICATION_PENDING,
+            _PubDec.PUBLISH_NOW,
+        )
+        and not rebase.integration_unresolved
+    )
+    if not is_publication_deferred and (
+        rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap
+    ):
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
             rebase_before = (
@@ -2695,6 +2711,24 @@ def _handle_pending_retry(
             _save_recovered_rebase_checkpoint(state, ctx)
             ctx.latest_state[:] = [state]
             return state
+
+        if recovered.last_publication_decision in (
+            _PubDec.PUBLISH_DEFERRED_REMOTE,
+            _PubDec.PUBLISH_DEFERRED_FRESHNESS,
+            _PubDec.PUBLICATION_PENDING,
+            _PubDec.PUBLISH_NOW,
+        ):
+            # Connectivity/publication retry accounting is separate from
+            # bounded Git-conflict/resolver accounting (O1/O2/AC8). A remote
+            # that is unreachable or deferred with a durable pending
+            # publication obligation must remain automatically retried and
+            # must not consume the Git-conflict cap or set intervention.
+            rebase = recovered.set_operation_display_state(OperationDisplayState.WAITING)
+            state = state.copy_with(rebase=rebase).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            ctx.sleep(5.0)
+            return state.clear_waiting()
 
     cap = _effective_conflict_cap(ctx)
     bumped_conflicts = (

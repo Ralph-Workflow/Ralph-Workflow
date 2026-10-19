@@ -1111,3 +1111,60 @@ def test_wait_for_retry_cold_exhausted_state_with_no_live_conflict_still_dispatc
 
     run_loop._wait_for_integration_retry(first_result, ctx)
     assert len(handoff_calls) == 1, "Same-session calls must not re-dispatch handoff"
+
+
+def test_wait_for_retry_prolonged_unreachable_remote_does_not_increment_conflicts_or_set_intervention(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """WU-1 O1/O2/AC8: prolonged unreachable remote does not trip conflict cap or intervention."""
+    from ralph.pipeline._publication_state_machine import PublicationDecision
+
+    sleeps, ctx = _setup_retry_env(tmp_path, monkeypatch)
+    cap = 2
+    monkeypatch.setattr(run_loop, "_effective_conflict_cap", lambda _c: cap)
+
+    outage_recovered = RebaseState(
+        last_reason="remote tacos unreachable; recovery will retry",
+        last_publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
+        consecutive_conflicts=0,
+    )
+    monkeypatch.setattr(
+        run_loop,
+        "_run_auto_integrate_recovery_preamble",
+        lambda _s, _c, backend=None: outage_recovered,
+    )
+
+    state = PipelineState(
+        phase="development",
+        rebase=outage_recovered,
+    )
+    ctx.latest_state[:] = [state]
+
+    # Retry cap + 2 times (4 times, > cap of 2)
+    for _ in range(cap + 2):
+        state = run_loop._wait_for_integration_retry(state, ctx)
+        assert state.rebase.is_intervention_required is False
+        assert state.rebase.consecutive_conflicts == 0
+        assert state.rebase.last_publication_decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE
+
+    assert len(sleeps) == cap + 2
+    assert sleeps == [5.0] * (cap + 2)
+
+    # Remote recovers: terminal publication outcome
+    restored_recovered = RebaseState(
+        last_outcome=RebaseOutcomeKind.REMOTE_PUSHED,
+        last_push_status="pushed",
+        last_publication_decision=PublicationDecision.PUBLICATION_TERMINAL,
+        consecutive_conflicts=0,
+    )
+    monkeypatch.setattr(
+        run_loop,
+        "_run_auto_integrate_recovery_preamble",
+        lambda _s, _c, backend=None: restored_recovered,
+    )
+
+    final_state = run_loop._wait_for_integration_retry(state, ctx)
+    assert final_state.rebase.is_intervention_required is False
+    assert final_state.rebase.consecutive_conflicts == 0
+    assert final_state.rebase.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED

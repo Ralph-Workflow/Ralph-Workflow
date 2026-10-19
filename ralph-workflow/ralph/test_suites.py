@@ -21,6 +21,7 @@ import tempfile
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from itertools import zip_longest
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -383,7 +384,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_audit_kwargs_forwarding.py": 50,
     "tests/test_no_anti_drift_regression.py": 76,
     "tests/test_audit_opts_key_drift.py": 300,
-    "tests/test_explore_bench_rss_isolation.py": 70,
+    "tests/test_explore_bench_rss_isolation.py": 250,
     # Calibrated from --profile-durations per-file wall-clock on shard 15
     # (weight = round(measured_seconds * 17); band [50, 460] per existing
     # calibration, ~1022 shard weight / 60 s shard budget). These files sit
@@ -391,15 +392,27 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     # underestimates their wall-clock cost.
     "tests/test_deterministic_writers_clean_tree.py": 133,
     "tests/test_audit_artifact_submission_canonical_path.py": 131,
-    "tests/project_policy/test_run_integration.py": 60,
+    "tests/project_policy/test_run_integration.py": 100,
+    "tests/project_policy/test_policy_never_blocks_the_run.py": 130,
+    "tests/project_policy/test_policy_handback_to_pipeline.py": 50,
     "tests/agents/test_workspace_event_backpressure.py": 56,
-    "tests/test_commit_detached_head_recovery.py": 65,
+    "tests/test_commit_detached_head_recovery.py": 95,
+    "tests/test_subprocess_reader_resume_safe.py": 60,
     "tests/test_phases_retry_on_stale_session.py": 53,
     "tests/display/test_operator_display_labels.py": 52,
     "tests/test_filesystem_scenario_baseline.py": 120,
     "tests/test_mcp_supervision_resilience.py": 170,
     "tests/test_mcp_lifecycle.py": 150,
     "tests/test_property_c_liveness_contract.py": 60,
+    "tests/project_policy/test_policy_handback_channel_ledger.py": 130,
+    "tests/test_cli_diagnose_path.py": 150,
+    "tests/project_policy/test_skip_inline_policy_prompt.py": 70,
+    "tests/project_policy/test_policy_handback_ready_route.py": 40,
+    "tests/test_auto_integrate_drift_recovery.py": 50,
+    "tests/test_auto_integrate_gates.py": 80,
+    "tests/unit/test_storage_lifecycle.py": 30,
+    "tests/test_cli_run_skill_sync_warnings.py": 45,
+    "tests/test_explore_mcp_timeout.py": 40,
 }
 
 
@@ -1405,15 +1418,36 @@ def run_test_suites(
         worker_count=int(_pytest_workers()),
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
-    if required_e2e_shard:
+    ordered_required_e2e_shard: tuple[str, ...]
+    if (
+        required_e2e_shard
+        and required_e2e_shard_xdist_workers
+        and required_e2e_shard_xdist_workers.isdigit()
+        and int(required_e2e_shard_xdist_workers) > 1
+    ):
+        e2e_buckets = partition_selected_files(
+            required_e2e_shard,
+            worker_count=int(required_e2e_shard_xdist_workers),
+            file_weights={path: file_weigher(cwd, path) for path in required_e2e_shard},
+        )
+        ordered_required_e2e_shard = tuple(
+            item
+            for items in zip_longest(*e2e_buckets)
+            for item in items
+            if item is not None
+        )
+    else:
+        ordered_required_e2e_shard = required_e2e_shard
+
+    if ordered_required_e2e_shard:
         validate_exact_file_assignment(
-            (*selected_files, *required_e2e_shard), (*shards, required_e2e_shard)
+            (*selected_files, *ordered_required_e2e_shard), (*shards, ordered_required_e2e_shard)
         )
     else:
         validate_exact_file_assignment(selected_files, shards)
     print(
-        f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
-        f"{len(shards) + bool(required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
+        f"pytest preparation: {len(selected_files) + len(ordered_required_e2e_shard)} files, "
+        f"{len(shards) + bool(ordered_required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
         flush=True,
     )
     temp_directory_prefix: str
@@ -1438,8 +1472,8 @@ def run_test_suites(
         # shards using dedicated xdist workers so all shards complete
         # inside the 60 s combined budget in ralph/verify.py. The exclusive
         # subprocess_e2e lane continues to sequence after general shards.
-        run_required_concurrently = bool(required_e2e_shard and not subprocess_e2e_only)
-        all_shards = (*shards, required_e2e_shard) if run_required_concurrently else shards
+        run_required_concurrently = bool(ordered_required_e2e_shard and not subprocess_e2e_only)
+        all_shards = (*shards, ordered_required_e2e_shard) if run_required_concurrently else shards
         general_result = _run_shards(
             all_shards,
             cwd=cwd,
@@ -1460,7 +1494,7 @@ def run_test_suites(
         )
         if general_result not in successful_returncodes:
             return general_result
-        if not required_e2e_shard or run_required_concurrently:
+        if not ordered_required_e2e_shard or run_required_concurrently:
             return general_result
         # The exclusive subprocess-E2E shard contains eight real-PTY
         # regressions that each spawn a fresh Python child importing the
@@ -1475,7 +1509,7 @@ def run_test_suites(
         else:
             xdist_workers_for_required = _xdist_workers_per_shard()
         return _run_shards(
-            (required_e2e_shard,),
+            (ordered_required_e2e_shard,),
             cwd=cwd,
             env=env,
             basetemp_root=basetemp_path,

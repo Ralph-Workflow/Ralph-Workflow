@@ -49,6 +49,7 @@ from __future__ import annotations
 import io
 import re
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -104,6 +105,7 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", text)
 
 
+@lru_cache(maxsize=1)
 def _load_default_policy() -> PolicyBundle:
     """Load the bundled default policy bundle for a deterministic, no-disk test.
 
@@ -668,8 +670,7 @@ def test_setup_active_display_returns_live_context_object() -> None:
     ``time.sleep``, and runs in well under 1s.
     """
     workspace_root = Path("/tmp/wt028-display-context-refresh")
-    with tempfile.TemporaryDirectory() as d:
-        policy_bundle = load_policy(Path(d) / ".agent")
+    policy_bundle = _load_default_policy()
 
     buf = _TtyLikeStringIO()
     console = Console(
@@ -782,7 +783,7 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
     )
     # Seed the watchdog-sourced attention via the host setter.
     pd.set_watchdog_attention("stalled")
-    policy_bundle = load_policy(workspace_root / ".agent")
+    policy_bundle = _load_default_policy()
     state = _make_state("development", 1, 1, 1)
     sig = _push_status_bar_if_changed(
         pd,

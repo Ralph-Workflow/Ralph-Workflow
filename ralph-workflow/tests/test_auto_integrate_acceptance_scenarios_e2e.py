@@ -572,7 +572,10 @@ config = UnifiedConfig.model_validate({
         "auto_integrate_remote": remote,
         "auto_integrate_remote_enabled": True,
         "auto_integrate_remote_interval_seconds": 0.0,
-    }
+    },
+    "conflict_resolution": {
+        "max_consecutive_resolver_attempts": 2,
+    },
 })
 
 # Drive the production publication reconciler against the unreachable
@@ -599,17 +602,25 @@ if observed_rebase.last_remote_sync not in (
     )
     sys.exit(9)
 
+attempt = 0
+
 def sleep_hook(_s):
-    sys.stdout.write(f"DEFERRED:{local_sha}\\n")
+    global attempt
+    attempt += 1
+    sys.stdout.write(f"DEFERRED:{attempt}:{local_sha}\\n")
     sys.stdout.flush()
     signal = sys.stdin.readline().strip()
-    if signal != "RESTORED":
+    if signal == "RETRY":
+        if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
+            # Negative control: disable the runner's scheduling connection (skip second iteration)
+            sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
+            sys.exit(0)
+        return
+    elif signal == "RESTORED":
+        return
+    else:
         sys.stderr.write(f"UNEXPECTED_SIGNAL:{signal}\\n")
         sys.exit(7)
-    if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
-        # Negative control: disable the runner's scheduling connection (skip second iteration)
-        sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
-        sys.exit(0)
 
 defaults_dir = Path("ralph/policy/defaults")
 bundle = load_policy(defaults_dir)
@@ -722,40 +733,44 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     try:
         assert proc.stdout is not None
         assert proc.stdin is not None
-        deferred_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
-        assert deferred_line.startswith("DEFERRED:"), (
-            f"Expected DEFERRED: prefix, got: {deferred_line}"
-        )
-        local_sha = deferred_line.split(":", 1)[1]
-        assert len(local_sha) == 40
 
-        # Point configured tacos remote to the now-reachable bare repo
-        subprocess.run(
-            ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
-            check=True,
-            capture_output=True,
-        )
+        # Conflict cap is configured to 2 in subprocess.
+        # We simulate a prolonged outage by letting retry occur for 3 attempts (> cap of 2).
+        # At attempts 1 and 2, tacos remains unreachable and we send RETRY.
+        # At attempt 3 (> cap 2), we restore tacos to bare, then send RESTORED.
+        for attempt_expected in (1, 2, 3):
+            line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
+            assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
+                f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
+            )
+            if skip_second:
+                proc.stdin.write("RETRY\n")
+                proc.stdin.flush()
+                _out, err = proc.communicate(timeout=15)
+                assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
+                assert "SKIPPED_SECOND_ITERATION" in err
+                bare_sha = subprocess.run(
+                    ["git", "-C", str(bare), "rev-parse", "release"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
+                assert bare_sha == seed_sha
+                assert bare_sha != local_sha
+                return
 
-        # Notify subprocess that remote is restored
-        proc.stdin.write("RESTORED\n")
-        proc.stdin.flush()
-
-        if skip_second:
-            _out, err = proc.communicate(timeout=15)
-            assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
-            assert "SKIPPED_SECOND_ITERATION" in err
-            # Negative control proof: bare was initialized and seeded with seed_sha,
-            # but because retry was disabled, the remote ref remains at seed_sha and
-            # diverges from local_sha.
-            bare_sha = subprocess.run(
-                ["git", "-C", str(bare), "rev-parse", "release"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            assert bare_sha == seed_sha
-            assert bare_sha != local_sha
-            return
+            if attempt_expected < 3:
+                proc.stdin.write("RETRY\n")
+                proc.stdin.flush()
+            else:
+                # Point configured tacos remote to the now-reachable bare repo (after > cap retries)
+                subprocess.run(
+                    ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
+                    check=True,
+                    capture_output=True,
+                )
+                proc.stdin.write("RESTORED\n")
+                proc.stdin.flush()
 
         published_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
         assert published_line == f"PUBLISHED:{local_sha}", (

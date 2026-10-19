@@ -559,7 +559,6 @@ def reconcile_remote_publication(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
             last_reason="local target branch unreadable; recovery will retry",
-            publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     remote_sha, refresh = _observe_remote_target_sha(

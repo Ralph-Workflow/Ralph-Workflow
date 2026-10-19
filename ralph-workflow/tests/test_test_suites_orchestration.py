@@ -839,7 +839,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     assert reap_spawn_counts == [3, 3, 3]
     dedicated_command = spawner.calls[-1][0]
     assert dedicated_command[3] == "tests"
-    assert spawner.manifest_files[-1] == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    assert sorted(spawner.manifest_files[-1]) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     xdist_index = dedicated_command.index("-n")
     assert dedicated_command[xdist_index + 1] == "4"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
