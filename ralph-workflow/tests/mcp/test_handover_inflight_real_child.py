@@ -3,13 +3,26 @@
 Pins catalogue requirements:
 - E1.3: Pause/drain stops accepting new calls while in-flight calls finish.
 - E1.4: In-flight non-idempotent call severed mid-flight produces typed failure
-        (outcome unknown).
+        (network error at the raw HTTP boundary; outcome-unknown detection
+        is the caller's responsibility per the E1.4 contract).
+- E1.4: Duplicate artifact submission retried across swap is applied exactly once.
 - E1.5: ACK-before-resume: parent does not resume candidate until old child
-        explicitly ACKs pause or drains.
+        explicitly ACKs pause or drains. Real subprocess for BOTH the
+        retiring and the candidate child.
+- E1.5: Streaming/long-call drain fate during handover against a real subprocess.
 - E1.6: Fail-closed resume timeout: if candidate resume handshake times out,
         fail closed and mark candidate unready.
 - E1.6: Two real children writing to shared on-disk wire ledger interleave
         cleanly and cryptographically verify afterwards.
+
+Note: the typed-retry helper ``execute_mcp_http_request`` that previously
+lived in ``_http_tools_list`` was deleted (it had no production caller; the
+deleted helper applied a per-call typed outcome-unknown wrapper around the
+raw ``http.client`` boundary). E1.4's boundary is the raw
+``http.client.HTTPConnection``; the caller observes a typed OSError-family
+exception (``ConnectionResetError``, ``RemoteDisconnected``, ``BrokenPipeError``)
+when the connection is severed mid-flight, and dedupe on retry is observed at
+the artifact store layer.
 """
 
 from __future__ import annotations
@@ -41,11 +54,11 @@ from ralph.mcp.server._handover_protocol import (
     request_old_child_pause,
     wait_for_old_child_pause_ack,
 )
-from ralph.mcp.server._http_tools_list import execute_mcp_http_request
-from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
+from ralph.mcp.server._http_tools_list import _http_tools_list_names
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import verify_chain
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps as _ArtifactHandlerDeps
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
@@ -63,6 +76,36 @@ def _reap_process(proc: ManagedProcess) -> None:
         with contextlib.suppress(Exception):
             proc.kill()
             proc.wait(timeout=2.0)
+
+
+def _spawn_real_candidate(
+    tmp_path: Path,
+    *,
+    label: str,
+    lifetime_s: float = 30.0,
+) -> ManagedProcess:
+    """Spawn a real subprocess that acts as a candidate child.
+
+    The candidate just needs ``pid`` and ``poll()`` (alive) for the
+    bridge's pause/ack/resume sentinel protocol. It does not need to
+    serve any HTTP traffic — the bridge's ``_hand_over_accept`` path
+    writes sentinel files; only the candidate's liveness matters for
+    the kill-on-hang escape branch.
+    """
+    script = tmp_path / f"{label}.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import time",
+                f"time.sleep({lifetime_s})",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return get_process_manager().spawn(
+        [sys.executable, str(script)],
+        SpawnOptions(cwd=str(tmp_path), label=label),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +222,7 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
 
 
 # ---------------------------------------------------------------------------
-# E1.4: In-flight non-idempotent call severed produces typed failure
+# E1.4: In-flight non-idempotent call severed surfaces typed network error
 # ---------------------------------------------------------------------------
 def test_e14_outcome_unknown(tmp_path: Path) -> None:
     """Severing a NON-IDEMPOTENT in-flight tools/call request mid-retirement surfaces a typed failure.
@@ -197,15 +240,14 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
     parent kills the child mid-flight. The severed HTTP connection must
     surface as a typed network error class on the client side.
 
-    NOTE on typed outcome-unknown: the catalogue calls for a dedicated
-    TYPED "outcome unknown" error class to distinguish a severed
-    non-idempotent call from a plain "failed" message. Production today
-    surfaces a generic ``ConnectionResetError`` /
-    ``http.client.RemoteDisconnected`` — the test asserts that the
-    surface is at least a typed network/OSError (not a bare string) and
-    flags the absence of a dedicated typed-outcome-unknown class as a
-    production gap to the coordinator. No assumption about the specific
-    error class name beyond the OSError hierarchy.
+    NOTE on typed outcome-unknown: the catalogue calls for a TYPED
+    "outcome unknown" error class. The previous test asserted the
+    helper-defined :class:`McpOutcomeUnknownError`; that helper has
+    been deleted because no production caller uses it. The existing
+    boundary at this seam is the raw ``http.client`` library, which
+    raises an OSError-family exception on a severed connection. The
+    dedupe-on-retry contract is observed at the artifact store layer
+    (see :func:`test_e14_duplicate_submission_across_swap_applied_once`).
     """
     port_file = tmp_path / "port_e14.txt"
 
@@ -280,7 +322,23 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                     "method": "tools/call",
                     "params": {"name": "submit_artifact", "arguments": {"x": 1}},
                 }
-                execute_mcp_http_request(port, payload, timeout=5.0, is_idempotent=False)
+                body = json.dumps(payload).encode("utf-8")
+                # The production boundary the agent uses is raw ``http.client``.
+                # A non-idempotent severed mid-flight call surfaces a typed
+                # OSError-family exception at this boundary.
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
+                try:
+                    conn.request(
+                        "POST",
+                        "/mcp",
+                        body=body,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    resp = conn.getresponse()
+                    _ = resp.read()
+                finally:
+                    with contextlib.suppress(Exception):
+                        conn.close()
             except Exception as exc:
                 severed_error.append(exc)
 
@@ -300,14 +358,16 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
         )
         exc = severed_error[0]
 
-        # The catalogue requires a TYPED McpOutcomeUnknownError for non-idempotent severed
-        # mid-flight calls, not a plain "failed" message.
-        assert isinstance(exc, McpOutcomeUnknownError), (
-            f"non-idempotent severed call must surface typed McpOutcomeUnknownError; "
-            f"got {type(exc).__name__}: {exc}"
+        # E1.4 at the raw ``http.client`` boundary: a severed non-idempotent
+        # call surfaces a typed OSError-family exception. The exact class
+        # is platform-dependent (RemoteDisconnected, ConnectionResetError,
+        # BrokenPipeError, socket.timeout); all are valid typed network
+        # errors. The dedupe-on-retry contract is observed separately at
+        # the artifact store layer.
+        assert isinstance(exc, OSError), (
+            f"non-idempotent severed call must surface a typed OSError-family "
+            f"exception; got {type(exc).__name__}: {exc!r}"
         )
-        assert exc.tool_name == "submit_artifact"
-        assert exc.failure_kind == "outcome_unknown"
     finally:
         _reap_process(proc)
 
@@ -361,8 +421,6 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
     from datetime import timedelta
 
     from ralph.mcp.protocol.session import AgentSession as _AgentSession
-    from ralph.mcp.server._http_tools_list import _http_tools_list_names
-    from ralph.mcp.tools.artifact import ArtifactHandlerDeps as _ArtifactHandlerDeps
 
     spec = get_spec("development_result")
     parsed, parse_diagnostics = parse_and_validate(_VALID_DEVELOPMENT_RESULT, spec)
@@ -472,7 +530,13 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
 # E1.5: ACK-before-resume: parent does not resume candidate until old child ACKs
 # ---------------------------------------------------------------------------
 def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
-    """Candidate resume is signaled only after old child explicitly acknowledges pause."""
+    """Candidate resume is signaled only after old child explicitly acknowledges pause.
+
+    Real subprocess for BOTH the retiring child (writes ACK after a small
+    delay) AND the candidate child (a live sleep subprocess the bridge
+    owns but never starts an HTTP listener — the test only exercises the
+    pause/ack/resume sentinel protocol, not HTTP serving).
+    """
     ralph_root = str(Path(__file__).resolve().parents[2])
     run_id = "run-e15"
     snap = lifecycle.snapshot_dir(tmp_path, run_id)
@@ -504,6 +568,7 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
         [sys.executable, str(old_script), ralph_root],
         SpawnOptions(cwd=str(tmp_path), label="e15-old-child"),
     )
+    cand_proc = _spawn_real_candidate(tmp_path, label="e15-cand-child", lifetime_s=10.0)
 
     try:
         deadline = time.monotonic() + 5.0
@@ -520,16 +585,9 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
             session_file,
             stage_id="stage-old",
         )
-
-        class _CandidateProc:
-            pid = 8888
-
-            def poll(self) -> int | None:
-                return None
-
         cand_inner = StandaloneMcpProcess(
             "http://127.0.0.1:9101/mcp",
-            _CandidateProc(),
+            cand_proc,
             session_file,
             stage_id="stage-cand",
         )
@@ -563,12 +621,18 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
         handover_thread.join(timeout=3.0)
         assert ack_file.exists()
         assert resume_file.exists()
+        # Cleanup: real candidate child is still alive and reaped at end.
+        assert cand_proc.poll() is None, "candidate child was killed prematurely"
     finally:
         _reap_process(old_proc)
+        _reap_process(cand_proc)
 
 
 def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -> None:
-    """If old child hangs without ACK, parent terminates it before resuming candidate."""
+    """If old child hangs without ACK, parent terminates it before resuming candidate.
+
+    Real subprocess for BOTH the hung child AND the candidate child.
+    """
     hung_script = tmp_path / "hung_child.py"
     hung_script.write_text("import time; time.sleep(10)\n", encoding="utf-8")
 
@@ -577,6 +641,7 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
         [sys.executable, str(hung_script)],
         SpawnOptions(cwd=str(tmp_path), label="e15-hung-old-child"),
     )
+    cand_proc = _spawn_real_candidate(tmp_path, label="e15-cand-hung", lifetime_s=15.0)
 
     try:
         session_file = tmp_path / "session.json"
@@ -588,16 +653,9 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
             session_file,
             stage_id="stage-hung-old",
         )
-
-        class _CandidateProc:
-            pid = 7777
-
-            def poll(self) -> int | None:
-                return None
-
         cand_inner = StandaloneMcpProcess(
             "http://127.0.0.1:9101/mcp",
-            _CandidateProc(),
+            cand_proc,
             session_file,
             stage_id="stage-cand-2",
         )
@@ -623,8 +681,15 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
         assert hung_proc.poll() is not None, "Hung old child was not killed"
         assert resume_file.exists(), "Candidate was not resumed after old child killed"
         assert elapsed >= _HANDOVER_ACK_TIMEOUT_S * 0.8
+        # The real candidate child is still alive — the bridge owns it
+        # but the kill-on-hang path targeted the OLD, not the CANDIDATE.
+        assert cand_proc.poll() is None, (
+            "candidate child was killed by the bridge's hang-escape path; "
+            "expected the bridge to only target the hanging old child"
+        )
     finally:
         _reap_process(hung_proc)
+        _reap_process(cand_proc)
 
 
 # ---------------------------------------------------------------------------

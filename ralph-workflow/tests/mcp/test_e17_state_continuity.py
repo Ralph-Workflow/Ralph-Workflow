@@ -14,8 +14,10 @@ Catalogue requirements:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import pathlib
+import sys
 import threading
 import time
 from typing import Protocol
@@ -37,6 +39,7 @@ from ralph.mcp.server._wire_ledger import (
     render_capture_table_markdown,
     verify_chain,
 )
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
@@ -763,19 +766,26 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     assert getattr(old_session, "exec_resource_resolver", None) is not None
 
 
-def test_e17_repetition_tracker_carried_across_real_child_swap(
+def test_e17_repetition_tracker_carried_via_bridge_swap_with_fake_inners(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repetition tracker is CARRIED across a real child swap.
+    """Repetition tracker is CARRIED across a bridge-level swap.
 
     Pinning the E1.7 enumeration line "repetition tracker" with the
     catalogue disposition (carry across): a tracker that observed N
     repetitions on the OLD child must show N+1 on the NEW child
     after the swap (the on-disk state file is parent-owned). The
-    tests at lines 234-320 pin this with the in-process tracker
-    pair; this test pins the SAME contract against a real subprocess
-    child pair via ``_make_inner`` + the production bridge.
+    tests at lines 234-320 pin the same contract via the in-process
+    tracker pair; THIS test pins it through the bridge-level swap
+    (``_perform_restart``) using a :class:`_FakeProcess` for each
+    inner — the swap itself is exercised but the subprocess is not a
+    real OS child (see :class:`_FakeProcess` for the rationale).
+
+    The "real" aspect of this test is the parent-owned state file on
+    disk; the bridge inner objects are test-only stand-ins because the
+    contract is observable at the parent-owned directory level, not at
+    the subprocess level.
     """
     monkeypatch.setenv(MCP_SNAPSHOT_DIR_ENV, str(_parent_owned_snapshot_dir(tmp_path)))
     signature = _loop_signature()
@@ -796,7 +806,7 @@ def test_e17_repetition_tracker_carried_across_real_child_swap(
     assert old_tracker.observe(signature) is False
     assert old_tracker.observe(signature) is False
 
-    # Swap to the NEW child.
+    # Swap to the NEW child via the production bridge-level swap path.
     restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
     assert restarted is True
 
@@ -807,3 +817,122 @@ def test_e17_repetition_tracker_carried_across_real_child_swap(
     new_tracker = TransportRepetitionTracker.from_parent_owned_state()
     assert new_tracker is not old_tracker
     assert new_tracker.observe(signature) is True
+
+
+def test_e17_repetition_tracker_carried_across_real_subprocess_swap(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repetition tracker is CARRIED across a swap of two REAL subprocess children.
+
+    Pins the E1.7 repetition-tracker carry-across disposition against
+    REAL OS subprocesses. Two real ``time.sleep`` loops are spawned via
+    the process manager; the bridge's ``restart_fn`` returns the NEW
+    subprocess wrapped in a :class:`StandaloneMcpProcess`. After the
+    swap, the parent-owned state file shows the streak the OLD child
+    wrote, and the NEXT observe (the NEW child's first attempt)
+    returns True.
+
+    This is the production-grade E1.7 proof: parent-owned state
+    continuity holds across an actual subprocess-to-subprocess
+    transition, not just an in-process bridge swap.
+    """
+    monkeypatch.setenv(MCP_SNAPSHOT_DIR_ENV, str(_parent_owned_snapshot_dir(tmp_path)))
+    signature = _loop_signature()
+
+    pm = get_process_manager()
+
+    old_script = tmp_path / "e17_real_old.py"
+    old_script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+    old_proc = pm.spawn(
+        [sys.executable, str(old_script)],
+        SpawnOptions(cwd=str(tmp_path), label="e17-real-old-child"),
+    )
+
+    new_script = tmp_path / "e17_real_new.py"
+    new_script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+    new_proc = pm.spawn(
+        [sys.executable, str(new_script)],
+        SpawnOptions(cwd=str(tmp_path), label="e17-real-new-child"),
+    )
+
+    try:
+        # Wait for both subprocesses to be alive (poll() is None).
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if old_proc.poll() is None and new_proc.poll() is None:
+                break
+            time.sleep(0.02)
+        assert old_proc.poll() is None, (
+            f"real OLD subprocess died before swap; poll={old_proc.poll()}"
+        )
+        assert new_proc.poll() is None, (
+            f"real NEW subprocess died before swap; poll={new_proc.poll()}"
+        )
+        assert old_proc.pid != new_proc.pid, (
+            "real OLD and NEW subprocesses share a pid (impossible)"
+        )
+
+        session_file = tmp_path / "session_e17_real.json"
+        session_file.write_text("{}", encoding="utf-8")
+
+        old_inner = StandaloneMcpProcess(
+            "http://127.0.0.1:9100/mcp",
+            old_proc,
+            session_file,
+            stage_id="stage-real-old",
+        )
+        new_inner = StandaloneMcpProcess(
+            "http://127.0.0.1:9101/mcp",
+            new_proc,
+            session_file,
+            stage_id="stage-real-new",
+        )
+
+        bridge = lifecycle.RestartAwareMcpBridge(
+            old_inner,
+            restart_fn=lambda: new_inner,
+            restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+            run_id="run-e17-real-tracker",
+            workspace_root=tmp_path,
+            sleep_fn=lambda s: None,
+        )
+
+        # OLD child observes two identical failures. The carried streak
+        # lands on the parent-owned state file.
+        old_tracker = TransportRepetitionTracker.from_parent_owned_state()
+        assert old_tracker.observe(signature) is False
+        assert old_tracker.observe(signature) is False
+
+        # Swap to the NEW child. The bridge swaps the active inner; the
+        # OLD real subprocess is shutdown by the bridge, the NEW real
+        # subprocess is the promoted candidate.
+        restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+        assert restarted is True
+        assert bridge.process.pid == new_proc.pid, (
+            f"bridge did not adopt real NEW subprocess: pid={bridge.process.pid}, "
+            f"expected={new_proc.pid}"
+        )
+        assert bridge._bridge_generation == 1
+
+        # NEW child observes the 3rd identical failure via the SAME
+        # parent-owned state file. The streak carries across the
+        # REAL-subprocess swap.
+        new_tracker = TransportRepetitionTracker.from_parent_owned_state()
+        assert new_tracker is not old_tracker
+        assert new_tracker.observe(signature) is True
+
+        # The OLD real subprocess was reaped by the bridge; the NEW
+        # real subprocess is still serving.
+        assert old_proc.poll() is not None, "OLD real subprocess was not reaped after bridge swap"
+        assert new_proc.poll() is None, "NEW real subprocess died during bridge swap"
+    finally:
+        # Reap both subprocesses if still alive.
+        if old_proc.poll() is None:
+            with contextlib.suppress(Exception):
+                old_proc.kill()
+                old_proc.wait(timeout=2.0)
+        if new_proc.poll() is None:
+            with contextlib.suppress(Exception):
+                new_proc.kill()
+                new_proc.wait(timeout=2.0)

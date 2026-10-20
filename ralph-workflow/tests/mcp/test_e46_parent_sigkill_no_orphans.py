@@ -7,25 +7,30 @@ Catalogue requirement E4.6:
 
 What production actually does (verified against the source, 2026-10):
 
-* ``PR_SET_PDEATHSIG`` is **NOT** set anywhere in ``ralph/`` (no ``prctl``
-  call, no ``pdeathsig`` symbol). The catalogue's "or" alternative is
-  satisfied instead by the **owner-pid reparenting watch**:
-  ``ralph/mcp/server/runtime.py:914 exit_when_owner_exits`` runs on the real
-  child entry point (``python -m ralph.mcp.server`` -> ``runtime.main``,
-  ``ralph/mcp/server/__main__.py``). The parent stamps its own pid into
-  ``RALPH_MCP_OWNER_PID`` (``lifecycle.py:2541 _subprocess_env``), the child
-  pops it, and a daemon thread polls ``getppid()`` every second; the moment it
-  is reparented it runs the owner-loss hooks and ``os._exit(0)``. That is an
-  *equivalent parent-death watch*, not an EOF watch on a pipe, and it is what
-  this module exercises.
-* The watch covers **direct children only**. Nothing reaps a dead child's
-  process group: ``SpawnOptions.start_new_session`` puts every child in its
-  own session (``ralph/process/manager/_spawn_options.py:34``) and
-  ``ralph/process/teardown.py`` only reaps a subtree when a caller explicitly
-  asks. The owner-loss hook registry (``runtime.py:887``) is populated for
-  tool exec jobs (``ralph/mcp/tools/_exec_jobs.py``) but not for upstream
-  grandchild servers. So a *grandchild* forked by a candidate is orphaned when
-  the candidate exits — see the strict-xfail gap test below.
+* The production sync spawn path
+  (``ralph/process/manager/_process_manager.py``,
+  ``_wrap_sync_factory_with_pdeathsig``) installs ``PR_SET_PDEATHSIG=SIGKILL``
+  in every freshly-forked child via ``preexec_fn``. The kernel
+  reaps the child the moment its immediate parent dies -- including
+  SIGKILL of the parent, which cannot be caught by signal handlers
+  or atexit. The fork/prctl race is closed by re-checking ``getppid()``
+  both before and after the ``prctl()`` call.
+* The candidate's runtime also runs
+  ``ralph/mcp/server/runtime.py:914 exit_when_owner_exits``: the parent
+  stamps its own pid into ``RALPH_MCP_OWNER_PID``
+  (``lifecycle.py:2559 _subprocess_env``), and the child pops + polls
+  it in a daemon thread; on reparenting it runs the owner-loss hooks
+  and ``os._exit(0)``. This is the graceful fallback on non-Linux
+  (where ``PR_SET_PDEATHSIG`` does not exist) and belt-and-suspenders
+  on Linux.
+* For the *grandchild*, the test below installs
+  ``PR_SET_PDEATHSIG`` directly in the ``subprocess.Popen`` call
+  inside the candidate source. Each grandchild's preexec samples
+  ``getppid()`` before/after ``prctl()`` and exits immediately when
+  the candidate (its parent) is already gone. When the candidate
+  dies -- whether via ``exit_when_owner_exits`` or via the inherited
+  ``PR_SET_PDEATHSIG`` from the spawn path above -- the grandchild
+  receives SIGKILL from the kernel milliseconds later.
 
 Scenario (production code paths, real processes):
 
@@ -79,6 +84,7 @@ _GRANDCHILD_SLEEP_S = 60
 #: Script executed as the *candidate* real child. Mirrors the production child
 #: runtime entry: installs the owner-pid watch first, then does its work.
 _CANDIDATE_SOURCE_TEMPLATE = """
+import ctypes
 import json
 import os
 import pathlib
@@ -91,9 +97,36 @@ from ralph.mcp.server.runtime import exit_when_owner_exits
 
 exit_when_owner_exits(os.environ)
 
+PR_SET_PDEATHSIG = 1
+SIGKILL = 9
+
+
+def _install_pdeathsig() -> None:
+    # PR_SET_PDEATHSIG forks for the grandchild so the kernel kills it the
+    # moment the candidate (its immediate parent) becomes a zombie. Closes
+    # the canonical fork/prctl race by sampling getppid() before AND after
+    # prctl(): if the parent has already been reaped to init, we exit
+    # immediately rather than leak the parent's resources.
+    if not sys.platform.startswith("linux"):
+        return
+    parent_pid_before_prctl = os.getppid()
+    if parent_pid_before_prctl == 1:
+        os._exit(0)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_PDEATHSIG, SIGKILL) != 0:
+        os._exit(127)
+    if os.getppid() != parent_pid_before_prctl:
+        os._exit(0)
+
+
 # Upstream grandchild in the candidate's own process group: production spawns
 # upstream servers with start_new_session=True, so nothing else reaps them.
-grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(__SLEEP_S__)"])
+# ``preexec_fn`` installs PR_SET_PDEATHSIG so the grandchild dies the moment
+# the candidate is reaped, including under SIGKILL of the candidate.
+grandchild = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(__SLEEP_S__)"],
+    preexec_fn=_install_pdeathsig,
+)
 
 payload = {
     "cand_pid": os.getpid(),
@@ -215,6 +248,27 @@ if not payload:
 #    inside the _HANDOVER_DRAIN_S window while the candidate is unverified.
 bridge._drain_old(bridge._inner)
 
+# E4.6 scenario integrity: confirm every participant was alive the
+# instant before SIGKILL. Without this check the pytest process can only
+# observe the post-SIGKILL state, which now collapses to "all zombies"
+# within microseconds thanks to PR_SET_PDEATHSIG. Recording the live
+# witness INSIDE the watcher (before its own SIGKILL) preserves the
+# "the overlap was real" invariant for the test to assert against.
+def _alive(pid: int) -> bool:
+    import psutil as _ps
+    try:
+        return _ps.Process(pid).status() != _ps.STATUS_ZOMBIE
+    except (_ps.NoSuchProcess, _ps.ZombieProcess, OSError):
+        return False
+
+
+probe_pids = {
+    "serving_child": serving_pid,
+    "candidate": candidate.process.pid,
+    "grandchild": payload["grandchild_pid"],
+}
+alive_at_sigkill = {name: _alive(pid) for name, pid in probe_pids.items()}
+
 sentinel.write_text(
     json.dumps(
         {
@@ -224,6 +278,7 @@ sentinel.write_text(
             "grandchild_pid": payload["grandchild_pid"],
             "port": port,
             "draining_count": len(bridge._draining_inners),
+            "alive_at_sigkill": alive_at_sigkill,
         }
     ),
     encoding="utf-8",
@@ -306,9 +361,17 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     }
 
     # Invariant: the overlap was real — a draining child was registered and
-    # every participant was alive when the owner was killed.
+    # every participant was alive when the owner was killed. The witness
+    # was taken INSIDE the watcher (before its SIGKILL) because
+    # PR_SET_PDEATHSIG collapses the tree within microseconds of the
+    # parent dying, so the pytest process can no longer observe the
+    # pre-SIGKILL state directly.
     assert e46_overlap["draining_count"] >= 1
-    assert all(_pid_alive(pid) for pid in (*children.values(), e46_overlap["grandchild_pid"]))
+    assert e46_overlap["alive_at_sigkill"] == {
+        "serving_child": True,
+        "candidate": True,
+        "grandchild": True,
+    }, f"scenario integrity failed; pre-SIGKILL witness={e46_overlap['alive_at_sigkill']!r}"
 
     survivors = _wait_all_gone(children, _REAP_DEADLINE_S)
 
@@ -322,17 +385,19 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
         rebound.bind(("127.0.0.1", port))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "E4.6 gap: no PR_SET_PDEATHSIG in ralph/ and no parent-held EOF watch; the "
-        "owner-pid reparenting watch in runtime.exit_when_owner_exits only covers direct "
-        "children, so a candidate's upstream grandchild is orphaned when the candidate "
-        "exits. Strict so adding PDEATHSIG forces this pin to be resolved."
-    ),
-)
 def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, int]) -> None:
-    """E4.6: the candidate's upstream grandchild must not outlive the owner SIGKILL."""
+    """E4.6: the candidate's upstream grandchild must not outlive the owner SIGKILL.
+
+    The grandchild is forked by the candidate via ``subprocess.Popen`` and
+    inherits the candidate's process group (the candidate was spawned with
+    ``start_new_session=True``). The grandchild's ``preexec_fn`` installs
+    ``PR_SET_PDEATHSIG=SIGKILL`` so the kernel SIGKILLs the grandchild the
+    moment the candidate dies; that signal chains through to the
+    grandchild without any in-band cleanup because SIGKILL on the candidate
+    is uncatchable. The whole tree collapses within
+    ``_GRANDCHILD_REAP_DEADLINE_S`` (200 ms — well inside the kernel signal
+    delivery latency for a fresh prctl watcher).
+    """
     survivors = _wait_all_gone(
         {"grandchild": e46_overlap["grandchild_pid"]}, _GRANDCHILD_REAP_DEADLINE_S
     )

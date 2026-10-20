@@ -198,7 +198,7 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
     is counted, and the candidate process group is reaped without leaks.
     """
     old_proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c1-old-child",
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-stage-c1")
@@ -675,7 +675,7 @@ def test_c3_timeout_only_deferral_vs_connection_reset(
 ) -> None:
     """Pins C3: TimeoutError probe is deferred under contention; ConnectionResetError is not."""
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-probe-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-probe-stage")
@@ -733,7 +733,7 @@ def test_c3_confirm_before_replace_and_probe_overrun(
 ) -> None:
     """Pins C3: Confirm probe runs before kill; probe overrun records contention."""
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-confirm-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-confirm-stage")
@@ -775,7 +775,7 @@ def test_c3_deferral_ceiling_and_dead_child_never_deferred(
 ) -> None:
     """Pins C3: Deferral ceiling forces replacement; dead child is never deferred."""
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-ceiling-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-ceiling-stage")
@@ -825,7 +825,7 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
 ) -> None:
     """Pins C3 / E5.3: SIGSTOPped child has zero CPU progress and is reaped on replacement."""
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-sigstop-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-sigstop-stage")
@@ -1081,7 +1081,10 @@ def _spawn_e22_stage_failure_child(
     }
     if fail_mode in body_for:
         body, needs_fd = body_for[fail_mode]
-        argv = [sys.executable, "-c", common_preamble + body]
+        if needs_fd:
+            argv = [sys.executable, "-c", common_preamble + body, str(fd), tools_json]
+        else:
+            argv = [sys.executable, "-c", body]
         return argv, {}, (fd,) if needs_fd else ()
 
     if fail_mode == "session_fail":
@@ -1161,7 +1164,7 @@ def test_c5_e22_candidate_stage_failures_parametrized(
     own_pid = os.getpid()
 
     old_proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
+        [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c5-e22-old-child",
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="c5-e22-old")

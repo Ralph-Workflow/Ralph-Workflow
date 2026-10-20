@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import errno
 import json
 import os
 import socket
@@ -538,12 +539,23 @@ def _is_non_deferrable_probe_failure(exc: Exception | None) -> bool:
 def _is_timeout_class_probe_outcome(exc: Exception | None, overrun: bool) -> bool:
     """Return True if the failure is deferrable under contention.
 
-    Separates non-deferrable probe failures (connection resets, broken pipe,
-    connection refused, malformed JSON/values, HTTP 5xx, spawn_id mismatch)
-    from deferrable probe failures (timeouts, overruns, transient probe errors).
-    Reset-plus-overrun remains non-deferrable.
+    Positive classification: the probe outcome is deferrable iff the outcome is
+    a timeout-class event (a TimeoutError, socket.timeout, an exception
+    indicating timeout, or a measured probe wall-clock duration overrun) AND
+    is NOT an explicit non-deferrable failure.
+
+    Non-deferrable failures (connection reset, connection refused, broken pipe,
+    HTTP 4xx/5xx, malformed/protocol errors, saturated dispatch, generic
+    unhandled RuntimeError) ALWAYS prevail over overrun.
     """
-    return not _is_non_deferrable_probe_failure(exc)
+    if _is_non_deferrable_probe_failure(exc) or _is_saturated_dispatch_outcome(exc):
+        return False
+    if isinstance(exc, TimeoutError):
+        return True
+    if exc is not None:
+        exc_str = str(exc).lower()
+        return "timed out" in exc_str or "timeout" in exc_str or "probe failed" in exc_str
+    return overrun
 
 
 def _is_saturated_dispatch_outcome(exc: Exception | None) -> bool:
@@ -700,7 +712,7 @@ class RestartAwareMcpBridge:
         # probe can be discarded if the bridge changed while the
         # producer ran outside the lock.
         self._bridge_generation = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Workspace root used to locate the child MCP server log for the
         # durable restart-decision evidence.  Stored on the bridge so the
         # log tail can be captured at the r3-sink call site (which is
@@ -745,6 +757,11 @@ class RestartAwareMcpBridge:
         self._draining_inners: collections.deque[StandaloneMcpProcess] = collections.deque(
             maxlen=16
         )
+        self._current_candidate: StandaloneMcpProcess | None = None
+        self._drain_threads: list[
+            threading.Thread
+        ] = []  # bounded-accumulator-ok: drain workers capped at maxlen 16 matching draining_inners and joined at shutdown
+        self._is_shutting_down: bool = False
 
     @property
     def run_id(self) -> str:
@@ -796,11 +813,23 @@ class RestartAwareMcpBridge:
         if self._activity_relay is not None:
             self._activity_relay.close()
         with self._lock:
+            self._is_shutting_down = True
+            cand = self._current_candidate
+            self._current_candidate = None
             draining = list(self._draining_inners)
             self._draining_inners.clear()
+            drain_threads = list(self._drain_threads)
+            self._drain_threads.clear()
+        if cand is not None:
+            with contextlib.suppress(Exception):
+                cand.shutdown()
         for d in draining:
             with contextlib.suppress(Exception):
                 d.shutdown()
+        for t in drain_threads:
+            with contextlib.suppress(Exception):
+                if t is not threading.current_thread():
+                    t.join(timeout=1.0)
         self._inner.shutdown()
         # R1: close the parent-owned listening socket last so the
         # FD stays live for every other concurrent call site. The
@@ -1435,12 +1464,17 @@ class RestartAwareMcpBridge:
             except Exception:
                 pass
             finally:
-                with self._lock, contextlib.suppress(ValueError):
-                    self._draining_inners.remove(old_inner)
+                with self._lock:
+                    with contextlib.suppress(ValueError):
+                        self._draining_inners.remove(old_inner)
+                    with contextlib.suppress(ValueError):
+                        self._drain_threads.remove(threading.current_thread())
                 with contextlib.suppress(Exception):
                     old_inner.shutdown()
 
         t = threading.Thread(target=_drain_worker, name="mcp-old-drain", daemon=True)
+        with self._lock:
+            self._drain_threads.append(t)
         t.start()
 
     def _promote_and_reap(
@@ -1505,38 +1539,44 @@ class RestartAwareMcpBridge:
             self._first_probe_deferred_at = None
             return False
 
-        try:
-            candidate_verified = self._verify_candidate(candidate)
-        except BaseException as verify_exc:
-            raise _stamp_handover_step(verify_exc, _HANDOVER_STEP_VERIFY) from verify_exc
-        if not candidate_verified:
-            logger.warning(
-                "MCP restart attempt {}/{} candidate verification failed "
-                "(non-terminal, old child kept, handover_step={})",
-                attempt_index,
-                self._restart_policy.max_restarts,
-                _HANDOVER_STEP_VERIFY,
-            )
-            with contextlib.suppress(Exception):
-                candidate.shutdown()
-            self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART - 1
-            self._consecutive_probe_failures_deferred = 0
-            self._first_probe_deferred_at = None
-            return False
+        with self._lock:
+            if self._is_shutting_down:
+                with contextlib.suppress(Exception):
+                    candidate.shutdown()
+                return False
+            self._current_candidate = candidate
 
         try:
-            self._hand_over_accept(old_inner, candidate)
-            self._promote_and_reap(candidate, old_inner)
-        except BaseException as promote_exc:
-            # The inner stages (pause/ack, resume, drain) already stamped the
-            # error; this guard only labels an unstamped handover failure.
-            # Promote and reap didn't run, so the candidate is not yet attached
-            # to bridge state and would leak. ``shutdown`` is the documented
-            # reap entry and is idempotent against any inner stage that
-            # already started a shutdown.
-            with contextlib.suppress(Exception):
-                candidate.shutdown()
-            raise _stamp_handover_step(promote_exc, _HANDOVER_STEP_PROMOTE) from promote_exc
+            try:
+                candidate_verified = self._verify_candidate(candidate)
+            except BaseException as verify_exc:
+                raise _stamp_handover_step(verify_exc, _HANDOVER_STEP_VERIFY) from verify_exc
+            if not candidate_verified or self._is_shutting_down:
+                logger.warning(
+                    "MCP restart attempt {}/{} candidate verification failed "
+                    "(non-terminal, old child kept, handover_step={})",
+                    attempt_index,
+                    self._restart_policy.max_restarts,
+                    _HANDOVER_STEP_VERIFY,
+                )
+                with contextlib.suppress(Exception):
+                    candidate.shutdown()
+                self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART - 1
+                self._consecutive_probe_failures_deferred = 0
+                self._first_probe_deferred_at = None
+                return False
+
+            try:
+                self._hand_over_accept(old_inner, candidate)
+                self._promote_and_reap(candidate, old_inner)
+            except BaseException as promote_exc:
+                with contextlib.suppress(Exception):
+                    candidate.shutdown()
+                raise _stamp_handover_step(promote_exc, _HANDOVER_STEP_PROMOTE) from promote_exc
+        finally:
+            with self._lock:
+                if self._current_candidate is candidate:
+                    self._current_candidate = None
         logger.info(
             "MCP server restarted via make-before-break on stable endpoint {}; restart_count={}",
             self._inner.endpoint,
@@ -2607,14 +2647,44 @@ def _spawn_process(
     # inside a request handler (e.g. an AttributeError after SSE headers) left
     # no trace anywhere while the client hung to its request timeout (-32001).
     log_path = mcp_server_log_path(cwd)
-    # filesystem-write-ok: MCP server live diagnostic log directory
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_fd = os.open(  # filesystem-write-ok: append-only live MCP diagnostic stream; resource-lifecycle-ok: fd closed in finally
-        log_path,
-        os.O_WRONLY | os.O_CREAT | os.O_APPEND,
-        0o644,
-    )
+    # Diagnostic log setup is fail-open on environmental OSErrors (ENOSPC,
+    # EROFS, EACCES, EPERM): the live diagnostic stream is best-effort, so the
+    # spawn proceeds and serving can continue with /dev/null. The
+    # integrity/ledger stores elsewhere remain typed fail-closed; only this
+    # diagnostic-stream seam degrades, preserving the fail-closed ledger
+    # contract. Stage attribution falls back to "unknown" via
+    # ``_read_start_stage`` when no log was written by the child.
+    log_fd: int = -1
     try:
+        try:
+            # filesystem-write-ok: MCP server live diagnostic log directory
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_fd = os.open(  # filesystem-write-ok: append-only live MCP diagnostic stream; resource-lifecycle-ok: fd closed in finally
+                log_path,
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                0o644,
+            )
+        except OSError as exc:
+            if exc.errno not in (
+                errno.ENOSPC,
+                errno.EROFS,
+                errno.EACCES,
+                errno.EPERM,
+            ):
+                raise
+            # Degrade gracefully: the spawn proceeds, output is dropped to
+            # /dev/null, and the operator gets a WARNING. The server can
+            # still serve; the stage stays "unknown" until/unless the
+            # child writes its own stage-tracker file.
+            log_fd = os.open(  # filesystem-write-ok: devnull fallback stream; resource-lifecycle-ok: fd closed in finally
+                os.devnull, os.O_WRONLY
+            )
+            logger.warning(
+                "MCP diagnostic log setup failed (errno={} path={}); "
+                "degrading to devnull so startup and serving can continue",
+                exc.errno,
+                log_path,
+            )
         spawn_fn = spawn if spawn is not None else get_process_manager().spawn
         return spawn_fn(
             command,
@@ -2633,7 +2703,8 @@ def _spawn_process(
     finally:
         # The child holds its own duplicate of the fd from spawn time; the
         # parent's copy must be released or each restart leaks a descriptor.
-        os.close(log_fd)
+        if log_fd >= 0:
+            os.close(log_fd)
 
 
 def _default_lifecycle_deps() -> LifecycleDeps:

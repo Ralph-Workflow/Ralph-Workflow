@@ -150,6 +150,28 @@ REQUIRED_TABLE_URLS = (
     "https://antigravity.google/docs/mcp/",
 )
 
+# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
+CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
+
+
+def _package_python_index() -> dict[str, list[Path]]:
+    """Return a basename -> candidate-paths index over the shipped package."""
+    index: dict[str, list[Path]] = {}
+    for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        index.setdefault(path.name, []).append(path)
+    return index
+
+
+def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
+    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
+    direct = PACKAGE_ROOT / cited
+    if direct.is_file():
+        return direct
+    candidates = index.get(Path(cited).name, [])
+    return candidates[0] if len(candidates) == 1 else None
+
 
 # Claims that were FALSE against the working tree and must never come
 # back as present-tense assertions. Each maps to the doc line the
@@ -189,34 +211,12 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
     # Cause 5c — child runtime shutdown seam.
-    ("ralph/mcp/server/lifecycle.py", 2472, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 2512, '"ralph.mcp.server",'),
     ("ralph/mcp/server/_standalone_mcp_process.py", 45, "terminate(grace_period_s=5.0)"),
     ("ralph/mcp/server/_standalone_mcp_process.py", 47, "self.process.wait(timeout=5.0)"),
     ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
     ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
 )
-
-# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
-CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
-
-
-def _package_python_index() -> dict[str, list[Path]]:
-    """Return a basename -> candidate-paths index over the shipped package."""
-    index: dict[str, list[Path]] = {}
-    for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
-        if "__pycache__" in path.parts:
-            continue
-        index.setdefault(path.name, []).append(path)
-    return index
-
-
-def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
-    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
-    direct = PACKAGE_ROOT / cited
-    if direct.is_file():
-        return direct
-    candidates = index.get(Path(cited).name, [])
-    return candidates[0] if len(candidates) == 1 else None
 
 
 class TestRootCauseDocCitations:

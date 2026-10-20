@@ -370,16 +370,15 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
         assert verify_started.wait(timeout=2.0), "Verify did not start"
         assert _pid_alive(cand_pid), "Candidate died before in-flight window"
 
-        # 2. Release verify (fails). Candidate is reaped locally.
+        # 2. Shutdown the bridge WHILE replacement is actively in flight!
+        bridge.shutdown()
+
+        # 3. Release verify so restart thread unblocks.
         verify_release.set()
         restart_thread.join(timeout=2.0)
         assert not restart_thread.is_alive(), "Restart thread did not finish"
 
-        assert cand_proc.poll() is not None, "Candidate was not reaped by verify-fail path"
-
-        # 3. Now shutdown (sequential; old child is still alive).
-        bridge.shutdown()
-
+        assert cand_proc.poll() is not None, "Candidate was not reaped by mid-replacement shutdown"
         assert old_proc.poll() is not None, "Old child was not reaped by shutdown"
 
         _assert_no_leaks(
@@ -430,11 +429,14 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
             run_id="test-e44-mid-drain",
-            sleep_fn=lambda s: None,
+            workspace_root=tmp_path,
         )
         bridge._listening_socket = sock
-        bridge._draining_inners.append(old_inner)
+        # Start real background drain worker on old_inner:
+        bridge._drain_old(old_inner)
+        assert len(bridge._draining_inners) == 1, "old_inner not in draining list"
 
+        # Shutdown while drain worker is active in background:
         bridge.shutdown()
 
         assert cand_proc.poll() is not None, "Candidate (_inner) was not reaped"

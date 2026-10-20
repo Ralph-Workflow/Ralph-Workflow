@@ -819,24 +819,8 @@ class ExecJobRegistry:
             self._pm.shutdown_all_for_label("exec_job:")
 
 
-# ---------------------------------------------------------------------------
-# Process-local singleton + public hooks
-# ---------------------------------------------------------------------------
-#
-# The child MCP server runs one ``ExecJobRegistry`` for its lifetime, shared
-# by every tool handler (``exec`` / ``unsafe_exec`` / ``raw_exec`` /
-# ``exec_wait`` / ``exec_cancel``) and the SSE streaming transport. Two
-# callers previously maintained independent singletons (``_JobRegistryState``
-# in ``_exec_job_tools.py`` and ``_default_registry_holder`` in
-# ``exec_sse_streaming.py``), which meant a token-bearing request started
-# against one registry while ``exec_wait`` queried the other. This module
-# owns the single source of truth.
-#
-# The holder is a single-element list so the slot can be re-pointed without
-# changing identity under the lock; see
-# ``test_resource_lifecycle_bounded_accumulators`` for the pattern.
-
-
+# Process-local singleton + public hooks: single ExecJobRegistry shared by
+# tool handlers and SSE transport. Holder is a 1-element list for in-place re-pointing.
 _DEFAULT_REGISTRY_HOLDER: list[ExecJobRegistry | None] = [None]
 _DEFAULT_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
 
