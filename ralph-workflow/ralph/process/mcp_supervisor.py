@@ -107,6 +107,7 @@ class McpSupervisor:
         on_error: Callable[[McpServerError], None] | None = None,
         agent_label_scope: str | None = None,
         terminate_agents: Callable[[str], None] = _terminate_agent_processes,
+        shutdown_bridge: bool = False,
         _now: Callable[[], float] | None = None,
         _record_tick_lateness: Callable[[float], None] | None = None,
         _record_psi_pressure: Callable[[], None] | None = None,
@@ -117,6 +118,7 @@ class McpSupervisor:
         self._on_error = on_error
         self._agent_label_scope = agent_label_scope or bridge.run_id
         self._terminate_agents = terminate_agents
+        self._shutdown_bridge = shutdown_bridge
         self._now = _now or time.monotonic
         self._record_tick_lateness = _record_tick_lateness or record_supervisor_tick_lateness
         self._record_psi_pressure = _record_psi_pressure or record_psi_pressure
@@ -194,6 +196,9 @@ class McpSupervisor:
     ) -> None:
         self._done.set()
         self._thread.join(timeout=self._check_interval.total_seconds() * 2 + 1.0)
+        if self._shutdown_bridge:
+            with contextlib.suppress(Exception):
+                self._bridge.shutdown()
         if (
             self._mcp_error is not None
             and self._mcp_error.failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import IO, TYPE_CHECKING, cast
 
 from ralph.mcp.server._http_tools_list import _LIFECYCLE_MAX_RESPONSE_BYTES
+from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 _HANDOVER_ACK_TIMEOUT_S: float = 1.0
 
 #: Drain deadline (seconds) before terminating the retired child.
-_HANDOVER_DRAIN_S: float = 2.0
+_HANDOVER_DRAIN_S: float = 0.5
 
 #: Private readiness communication timeout (seconds).
 _PRIVATE_READINESS_TIMEOUT_S: float = 5.0
@@ -188,13 +189,45 @@ def create_handover_socketpair() -> tuple[socket.socket, socket.socket]:
     return parent_sock, child_sock
 
 
-def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
+def _resolve_raw_tools(mcp_server: object) -> list[object]:
     registry: object = getattr(mcp_server, "_registry", None)
     tools_attr: object = getattr(registry, "tools", None)
-    if not isinstance(tools_attr, list):
+    if isinstance(tools_attr, list):
+        return tools_attr
+    list_defs: object = getattr(registry, "list_definitions", None)
+    if callable(list_defs):
+        try:
+            defs: object = list_defs()
+            if isinstance(defs, list):
+                return defs
+        except Exception:
+            pass
+    self_tools: object = getattr(mcp_server, "tools", None)
+    if isinstance(self_tools, list):
+        return self_tools
+    return []
+
+
+def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
+    handle_tools: object = getattr(mcp_server, "_handle_tools_list", None)
+    if callable(handle_tools):
+        try:
+            req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=1)
+            raw_res: object = handle_tools(req)
+            if isinstance(raw_res, tuple) and len(raw_res) >= 1:
+                res_dict: object = getattr(raw_res[0], "result", None)
+                if isinstance(res_dict, dict):
+                    tools_val: object = res_dict.get("tools")
+                    if isinstance(tools_val, list):
+                        return canonical_tool_entries(cast("list[object]", tools_val))
+        except Exception:
+            pass
+
+    raw_tools = _resolve_raw_tools(mcp_server)
+    if not raw_tools:
         return []
     raw: list[dict[str, object]] = []
-    for item in tools_attr:
+    for item in raw_tools:
         if isinstance(item, dict):
             raw.append(cast("dict[str, object]", item))
         else:
@@ -569,7 +602,7 @@ def wait_for_old_child_pause_ack(
     while time.monotonic() < deadline:
         if ack_path.exists():
             return True
-        sleeper(0.02)
+        sleeper(0.005)
     return ack_path.exists()
 
 
@@ -593,7 +626,7 @@ def wait_for_candidate_resume(
         if resume_path.exists():
             return True
         # filesystem-poll-ok: bounded poll interval awaiting candidate resume sentinel
-        time.sleep(0.02)
+        time.sleep(0.005)
     return resume_path.exists()
 
 

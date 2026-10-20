@@ -78,7 +78,7 @@ def _poll_registry_build_gate(
                 restart_count=0,
             )
         # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
-        time.sleep(0.02)
+        time.sleep(0.005)
 
 
 def _poll_bounded_pre_serve(

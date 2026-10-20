@@ -158,7 +158,7 @@ class _FallbackStandaloneServer:
                         logger.opt(exception=True).warning("Handover pause acknowledgement failed")
                     break
                 # filesystem-poll-ok: bounded sleep interval in background pause watcher thread
-                time.sleep(0.05)
+                time.sleep(0.005)
 
         threading.Thread(target=_pause_watcher, daemon=True, name="mcp-pause-watcher").start()
 
@@ -228,7 +228,7 @@ class _FallbackStandaloneServer:
                         restart_count=0,
                     )
                 # filesystem-poll-ok: test-only pre-serve gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
-                time.sleep(0.05)
+                time.sleep(0.005)
         # Startup banner announces the live configuration so an operator can
         # confirm which transport, which session class, and which effective
         # timeouts are running. The earlier code only printed host/port —

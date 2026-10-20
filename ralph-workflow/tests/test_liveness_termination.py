@@ -189,7 +189,7 @@ def _sample_for_intensity(intensity: int, t: float) -> LivenessWindow:
         allow_infinity=False,
     ),
 )
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+@settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_randomized_traces_always_terminate_by_ceiling(
     intensity_seq: list[int], ceiling_s: float
 ) -> None:

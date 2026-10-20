@@ -123,10 +123,10 @@ def test_one_missed_probe_does_not_restart_a_running_server() -> None:
 
 
 def test_a_recovered_probe_clears_the_failure_streak() -> None:
-    """Intermittent misses never accumulate into a restart."""
-    bridge, restarts = _make_bridge(probe_outcomes=[False, False, True, False, False])
+    """Intermittent misses never accumulate into a restart once hysteresis threshold is met."""
+    bridge, restarts = _make_bridge(probe_outcomes=[False, False, True, True, True, False, False])
 
-    for _ in range(5):
+    for _ in range(7):
         bridge.check_health_and_restart_if_needed()
 
     assert restarts == []

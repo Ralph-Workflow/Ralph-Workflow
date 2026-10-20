@@ -41,6 +41,8 @@ from ralph.mcp.server._handover_protocol import (
     request_old_child_pause,
     wait_for_old_child_pause_ack,
 )
+from ralph.mcp.server._http_tools_list import execute_mcp_http_request
+from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import verify_chain
@@ -270,7 +272,6 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
         severed_error: list[Exception] = []
 
         def _do_non_idempotent_request() -> None:
-            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
             try:
                 # Non-idempotent method: tools/call with mutate-style params
                 payload: dict[str, object] = {
@@ -279,19 +280,9 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                     "method": "tools/call",
                     "params": {"name": "submit_artifact", "arguments": {"x": 1}},
                 }
-                body = json.dumps(payload)
-                conn.request(
-                    "POST",
-                    "/mcp",
-                    body=body,
-                    headers={"Content-Type": "application/json"},
-                )
-                conn.getresponse()
+                execute_mcp_http_request(port, payload, timeout=5.0, is_idempotent=False)
             except Exception as exc:
                 severed_error.append(exc)
-            finally:
-                with contextlib.suppress(Exception):
-                    conn.close()
 
         t = threading.Thread(target=_do_non_idempotent_request)
         t.start()
@@ -309,24 +300,14 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
         )
         exc = severed_error[0]
 
-        # The catalogue requires a TYPED failure for non-idempotent severed
-        # mid-flight calls, not a plain "failed" message. Production today
-        # surfaces a network disconnection (BrokenPipeError /
-        # ConnectionResetError / RemoteDisconnected / OSError). Asserting
-        # on the typed error class hierarchy keeps the test black-box
-        # without depending on the implementation of the wire framing.
-        assert isinstance(
-            exc,
-            (
-                http.client.RemoteDisconnected,
-                ConnectionResetError,
-                BrokenPipeError,
-                OSError,
-            ),
-        ), (
-            f"non-idempotent severed call must surface a typed network/OS "
-            f"error; got {type(exc).__name__}: {exc}"
+        # The catalogue requires a TYPED McpOutcomeUnknownError for non-idempotent severed
+        # mid-flight calls, not a plain "failed" message.
+        assert isinstance(exc, McpOutcomeUnknownError), (
+            f"non-idempotent severed call must surface typed McpOutcomeUnknownError; "
+            f"got {type(exc).__name__}: {exc}"
         )
+        assert exc.tool_name == "submit_artifact"
+        assert exc.failure_kind == "outcome_unknown"
     finally:
         _reap_process(proc)
 

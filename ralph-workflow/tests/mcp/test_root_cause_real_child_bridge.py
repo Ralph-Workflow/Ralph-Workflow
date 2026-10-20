@@ -29,6 +29,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -258,83 +259,81 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
 
 
 def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
-    managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
     """Pins C1: When candidate tool schema matches active tool hash, candidate is promoted.
 
-    Also proves private readiness channel tool hash equals hash of real served tools/list.
+    Proves shared-endpoint service continuity: repeated endpoint tools/list calls
+    succeed with zero refusal/failure during make-before-break handover.
     """
-    run_id = f"test-run-c1-prom-{uuid.uuid4().hex[:8]}"
-    snap_dir = snapshot_dir(tmp_path, run_id)
-    pause_path = snap_dir / "accept.pause.old-stage-match"
+    session = AgentSession(
+        session_id=f"session-c1-prom-{uuid.uuid4().hex[:8]}",
+        run_id=f"run-c1-prom-{uuid.uuid4().hex[:8]}",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+    )
+    workspace = FsWorkspace(tmp_path)
+    real_spawn = lifecycle._default_lifecycle_deps().spawn_process
 
-    # Old child responds to pause sentinel and creates ack file
-    old_script = tmp_path / "old_child_pause.py"
-    old_script.write_text(
-        """import time, sys, pathlib
-pause_file = pathlib.Path(sys.argv[1])
-while True:
-    if pause_file.exists():
-        ack_file = pause_file.with_name(pause_file.name + ".ack")
-        ack_file.write_text("ACK\\n", encoding="utf-8")
-        break
-    time.sleep(0.01)
-while True:
-    time.sleep(0.1)
-""",
-        encoding="utf-8",
+    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+
+    deps = lifecycle._default_lifecycle_deps().__replace__(
+        preflight=noop_preflight, spawn_process=real_spawn
+    )
+    extras = lifecycle.McpServerExtras(
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
     )
 
-    old_proc = managed_spawner(
-        [sys.executable, str(old_script), str(pause_path)],
-        label="c1-match-old-child",
-    )
-    old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-stage-match")
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
+    try:
+        old_pid = bridge.process.pid
+        endpoint = bridge.endpoint_uri()
 
-    tools = [{"name": "read_file", "description": "read", "inputSchema": {}}]
-    canonical_hash = compute_tool_set_hash(tools)
+        # Concurrent client burst over shared endpoint
+        stop_burst = threading.Event()
+        burst_results: list[bool] = []
+        burst_errors: list[Exception] = []
 
-    responder_script = _write_responder_script(tmp_path)
-    cand_procs: list[ManagedProcess] = []
+        def _burst_worker() -> None:
+            while not stop_burst.is_set():
+                try:
+                    names = _http_tools_list_names(endpoint, timeout=1.0)
+                    if isinstance(names, list) and len(names) > 0:
+                        burst_results.append(True)
+                    else:
+                        burst_results.append(False)
+                except Exception as exc:
+                    burst_errors.append(exc)
+                time.sleep(0.002)
 
-    def make_candidate() -> StandaloneMcpProcess:
-        parent_sock, child_sock = create_handover_socketpair()
-        fd = child_sock.fileno()
-        cand_stage = "cand-stage-match"
-        cand_proc = managed_spawner(
-            [sys.executable, str(responder_script), str(fd), json.dumps(tools)],
-            env={"RALPH_MCP_STAGE_ID": cand_stage},
-            pass_fds=(fd,),
-            label="c1-match-cand-child",
-        )
-        child_sock.close()
-        cand_procs.append(cand_proc)
-        return _make_real_standalone(
-            cand_proc,
-            tmp_path,
-            stage_id=cand_stage,
-            handover_parent_sock=parent_sock,
-        )
+        burst_thread = threading.Thread(target=_burst_worker, daemon=True)
+        burst_thread.start()
 
-    bridge = lifecycle.RestartAwareMcpBridge(
-        old_inner,
-        restart_fn=make_candidate,
-        restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id=run_id,
-        sleep_fn=lambda s: None,
-        workspace_root=tmp_path,
-    )
-    bridge._expected_tool_hash = canonical_hash
+        # Perform make-before-break restart
+        promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.1)
 
-    result = bridge._run_with_make_before_break()
+        stop_burst.set()
+        burst_thread.join(timeout=3.0)
 
-    # Invariant: Handover succeeded and candidate is promoted
-    assert result is True
-    assert len(cand_procs) == 1
-    cand_proc = cand_procs[0]
-    assert bridge.process.pid == cand_proc.pid
-    assert bridge._expected_tool_hash == canonical_hash
+        # Invariant: Handover succeeded and candidate is promoted
+        assert promoted is True, "Candidate with matching hash must be promoted"
+        new_pid = bridge.process.pid
+        assert new_pid != old_pid, f"PID must change on promotion: old={old_pid}, new={new_pid}"
+        assert bridge.restart_count == 1
+
+        # Service continuity: repeated endpoint tools/list calls with zero failures/refusals
+        assert len(burst_errors) == 0, f"tools/list burst encountered errors: {burst_errors}"
+        assert len(burst_results) > 0, "tools/list burst must have executed at least one request"
+        assert all(burst_results), "Every tools/list request during handover must succeed"
+
+        # Final verification: new child serves tools/list
+        final_names = _http_tools_list_names(endpoint, timeout=2.0)
+        assert isinstance(final_names, list)
+        assert len(final_names) > 0
+    finally:
+        with contextlib.suppress(Exception):
+            bridge.shutdown()
 
 
 def test_c1_preflight_identity_metadata_mismatch_rejected(

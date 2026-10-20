@@ -232,11 +232,12 @@ def test_e62_probe_slack_bounds_classification() -> None:
 
 
 # ---------------------------------------------------------------------------
-# E6.3: Flapping (alternating success and failure) resets failure counter
+# E6.3: Flapping (alternating success and failure) hysteresis retains failure counter
 # ---------------------------------------------------------------------------
 def test_e63_flapping_server_resets_consecutive_failures() -> None:
     inner = _make_inner(poll_result=None, pid=1001)
-    probe_results = [True, False, True, False]  # True = fail, False = pass
+    # Sequence: Fail, Pass, Fail, Pass, Pass, Pass, Fail
+    probe_results = [True, False, True, False, False, False, True]  # True = fail, False = pass
 
     def probe_fn(endpoint: str, timeout: timedelta) -> None:
         failed = probe_results.pop(0)
@@ -252,22 +253,41 @@ def test_e63_flapping_server_resets_consecutive_failures() -> None:
         sleep_fn=lambda s: None,
     )
 
-    # 1st probe fails -> consecutive failures = 1
+    # 1st probe fails -> consecutive failures = 1, successes = 0
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge._consecutive_probe_failures == 1
+    assert bridge._consecutive_probe_successes == 0
 
-    # 2nd probe passes -> consecutive failures reset to 0
-    assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 0
-
-    # 3rd probe fails -> consecutive failures = 1
+    # 2nd probe passes (1 success) -> consecutive failures RETAINED at 1 (not cleared by lucky probe)
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge._consecutive_probe_failures == 1
+    assert bridge._consecutive_probe_successes == 1
 
-    # 4th probe passes -> reset to 0 again
+    # 3rd probe fails -> consecutive failures incremented to 2, successes reset to 0
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 2
+    assert bridge._consecutive_probe_successes == 0
+
+    # 4th probe passes (1 success) -> failures still retained at 2
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 2
+    assert bridge._consecutive_probe_successes == 1
+
+    # 5th probe passes (2 consecutive successes) -> failures still retained at 2
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 2
+    assert bridge._consecutive_probe_successes == 2
+
+    # 6th probe passes (3 consecutive successes == _PROBE_SUCCESS_HYSTERESIS_COUNT) -> reset to 0!
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge._consecutive_probe_failures == 0
+    assert bridge._consecutive_probe_successes == 3
     assert bridge.restart_count == 0
+
+    # 7th probe fails -> consecutive failures = 1
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 1
+    assert bridge._consecutive_probe_successes == 0
 
 
 # ---------------------------------------------------------------------------

@@ -206,7 +206,7 @@ while time.monotonic() < deadline:
             payload = {}
         if payload:
             break
-    time.sleep(0.02)
+    time.sleep(0.005)
 
 if not payload:
     raise SystemExit("candidate never reported its pids")
@@ -238,9 +238,9 @@ def _pid_alive(pid: int) -> bool:
     """Return True when ``pid`` is a live (non-zombie) OS process."""
     try:
         proc = psutil.Process(pid)
-    except psutil.NoSuchProcess:
+        return proc.status() != psutil.STATUS_ZOMBIE
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
         return False
-    return proc.status() != psutil.STATUS_ZOMBIE
 
 
 def _wait_all_gone(pids: dict[str, int], timeout_s: float) -> list[str]:
@@ -251,7 +251,7 @@ def _wait_all_gone(pids: dict[str, int], timeout_s: float) -> list[str]:
         survivors = [name for name, pid in pids.items() if _pid_alive(pid)]
         if not survivors:
             break
-        time.sleep(0.05)
+        time.sleep(0.005)
     return survivors
 
 

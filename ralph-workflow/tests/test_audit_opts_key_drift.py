@@ -25,16 +25,16 @@ import pytest
 
 from ralph.testing import audit_opts_key_drift
 
-# Session-scoped cache: keyed by (resolved-path-id, roots-tuple).
+# Session-scoped cache: keyed by (resolved-path-str, roots-tuple).
 _audit_cache: dict[
-    tuple[int, tuple[str, ...]], tuple[list[audit_opts_key_drift.Violation], int]
+    tuple[str, tuple[str, ...]], tuple[list[audit_opts_key_drift.Violation], int]
 ] = {}
 
 
 def _cached_audit_tree(
     package_root: Path, roots: tuple[str, ...]
 ) -> tuple[list[audit_opts_key_drift.Violation], int]:
-    key = (id(package_root.resolve()), roots)
+    key = (str(package_root.resolve()), roots)
     if key not in _audit_cache:
         _audit_cache[key] = audit_opts_key_drift.audit_tree(package_root, roots)
     return _audit_cache[key]

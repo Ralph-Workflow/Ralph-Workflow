@@ -114,7 +114,7 @@ def _read_last_stage_label(workspace: Path, deadline: float) -> str:
                 label = stages[-1].read_text(encoding="utf-8").strip()
                 if label:
                     return label
-        time.sleep(0.02)
+        time.sleep(0.002)
     return ""
 
 

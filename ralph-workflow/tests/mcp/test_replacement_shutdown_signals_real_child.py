@@ -37,6 +37,7 @@ from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.mcp_supervisor import McpSupervisor
 
 if TYPE_CHECKING:
     from ralph.process.manager._managed_process import ManagedProcess
@@ -234,18 +235,18 @@ class _BlockingVerifyBridge(lifecycle.RestartAwareMcpBridge):
 
 
 def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: Path) -> None:
-    """E4.3: bridge.shutdown() during a replacement's verify phase reaps candidate + old.
+    """E4.3: McpSupervisor.__exit__() during a replacement's verify phase reaps candidate + old.
 
     Scenario:
       * Two real children: ``old_proc`` (the bridge's current ``_inner``)
         and ``cand_proc`` (returned by ``restart_fn``). Both are own-
         session leaders, sleeping.
       * ``_verify_candidate`` is a controlled blocker; the candidate enters
-        verify, the test signals "in flight", then calls ``bridge.shutdown``
+        verify, the test signals "in flight", then calls ``supervisor.__exit__``
         from a second thread.
-      * ``bridge.shutdown`` blocks on the lock until ``_perform_restart``
-        releases it. After verify returns ``False``, the candidate is reaped
-        locally, the lock is released, shutdown reaps the old ``_inner``.
+      * ``supervisor.__exit__`` invokes bridge shutdown and blocks on the lock
+        until ``_perform_restart`` releases it. After verify returns ``False``,
+        the candidate is reaped locally, the lock is released, shutdown reaps the old ``_inner``.
       * Invariants asserted: both PIDs dead, listening socket FD closed
         exactly once, no leaked threads.
     """
@@ -275,6 +276,9 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
         )
         bridge._listening_socket = sock
 
+        supervisor = McpSupervisor(bridge, shutdown_bridge=True)
+        supervisor.__enter__()
+
         # 1. Launch _perform_restart in a thread. Verify blocks on event.
         def _do_restart() -> None:
             with contextlib.suppress(Exception):
@@ -287,20 +291,23 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
         assert verify_started.wait(timeout=2.0), "Candidate verify did not start"
         assert _pid_alive(cand_pid), "Candidate died before in-flight window"
 
-        # 3. Concurrent shutdown from another thread. It blocks on the
+        # 3. Concurrent McpSupervisor.__exit__ from another thread. It blocks on the
         #    lock until _perform_restart releases it.
-        shutdown_thread = threading.Thread(target=bridge.shutdown)
-        shutdown_thread.start()
+        def _do_supervisor_exit() -> None:
+            supervisor.__exit__(None, None, None)
+
+        exit_thread = threading.Thread(target=_do_supervisor_exit)
+        exit_thread.start()
 
         # 4. Release verify. Verify fails, candidate is reaped locally,
-        #    _perform_restart returns, lock released, shutdown proceeds
+        #    _perform_restart returns, lock released, supervisor.__exit__ proceeds
         #    and reaps the old _inner.
         verify_release.set()
 
         restart_thread.join(timeout=2.0)
-        shutdown_thread.join(timeout=2.0)
+        exit_thread.join(timeout=2.0)
         assert not restart_thread.is_alive(), "Restart thread did not finish"
-        assert not shutdown_thread.is_alive(), "Shutdown thread did not finish"
+        assert not exit_thread.is_alive(), "Supervisor exit thread did not finish"
 
         assert cand_proc.poll() is not None, "Candidate was not reaped"
         assert old_proc.poll() is not None, "Old child was not reaped"

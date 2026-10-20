@@ -172,9 +172,15 @@ def test_successful_recovery_preserves_server() -> None:
     assert bridge._restart_count == 0
     assert bridge._consecutive_probe_failures_deferred == 3
 
-    # Successful probe → BOTH counters reset
+    # Under E6.3 hysteresis (3 consecutive successes), an isolated success retains failure count
+    # while 3 consecutive successes reset BOTH counters
     should_fail[0] = False
     bridge.check_health_and_restart_if_needed()
+    assert bridge._consecutive_probe_failures_deferred == 3  # retained after 1 success
+    bridge.check_health_and_restart_if_needed()
+    assert bridge._consecutive_probe_failures_deferred == 3  # retained after 2 successes
+    bridge.check_health_and_restart_if_needed()
+    # 3 consecutive successes -> hysteresis met -> reset
     assert bridge._consecutive_probe_failures == 0
     assert bridge._consecutive_probe_failures_deferred == 0
     assert bridge._restart_count == 0

@@ -36,8 +36,10 @@ from loguru import logger
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._http_tools_list import http_tools_list_names
+from ralph.mcp.server._http_tools_list import execute_mcp_http_request, http_tools_list_names
+from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.workspace.fs import FsWorkspace
 
@@ -148,7 +150,7 @@ def _wait_child_dead(proc: lifecycle.ProcessLike, timeout_s: float) -> None:
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return
-        time.sleep(0.02)
+        time.sleep(0.005)
 
 
 def _assert_no_connrefused(port: int, *, context: str) -> None:
@@ -217,8 +219,8 @@ def test_e31_backlog_burst_during_production_bridge_handover_gap(
         restart_thread.start()
 
         # Wait up to a bounded budget for both to settle.
-        burst_done.wait(timeout=5.0)
-        restart_done.wait(timeout=15.0)
+        burst_thread.join(timeout=5.0)
+        restart_thread.join(timeout=15.0)
 
         assert not burst_thread.is_alive(), "burst thread should have completed"
         assert not restart_thread.is_alive(), "restart thread should have completed"
@@ -273,8 +275,8 @@ def test_e31_repeat_burst_during_handover_gap_with_zero_refusals(
             burst_thread.start()
             restart_thread.start()
 
-            burst_done.wait(timeout=5.0)
-            restart_done.wait(timeout=15.0)
+            burst_thread.join(timeout=5.0)
+            restart_thread.join(timeout=15.0)
 
             assert bridge.process.poll() is None, f"cycle {cycle}: bridge must be back to SERVING"
     finally:
@@ -332,11 +334,7 @@ def test_e32_production_bridge_retry_through_real_handover_gap(
 
         # Force the gap.
         bridge.process.kill()
-        deadline = time.monotonic() + 3.0
-        while time.monotonic() < deadline:
-            if bridge.process.poll() is not None:
-                break
-            time.sleep(0.02)
+        _wait_child_dead(bridge.process, timeout_s=3.0)
 
         restart_done = threading.Event()
 
@@ -459,11 +457,7 @@ def test_e32_production_bridge_typed_retryable_error_on_extended_gap(
 
         # Force the gap.
         bridge.process.kill()
-        deadline = time.monotonic() + 3.0
-        while time.monotonic() < deadline:
-            if bridge.process.poll() is not None:
-                break
-            time.sleep(0.02)
+        _wait_child_dead(bridge.process, timeout_s=3.0)
 
         # Tiny client timeout forces the typed-error branch.
         host_port = endpoint.split("://", 1)[1].rsplit("/", 1)[0]
@@ -474,31 +468,23 @@ def test_e32_production_bridge_typed_retryable_error_on_extended_gap(
             "method": "tools/list",
             "params": {},
         }
-        req_body = json.dumps(tiny_payload).encode("utf-8")
 
         client_error: Exception | None = None
         try:
-            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=0.05)
-            try:
-                conn.request(
-                    "POST",
-                    "/mcp",
-                    body=req_body,
-                    headers={"Content-Type": "application/json"},
-                )
-                conn.getresponse()
-            finally:
-                conn.close()
-        except (TimeoutError, OSError) as exc:
+            execute_mcp_http_request(port, tiny_payload, timeout=0.05)
+        except Exception as exc:
             client_error = exc
 
-        # Assert the client observed a typed error (NOT a successful result).
+        # Assert the client observed a typed retryable MCP error (NOT a successful result).
         assert client_error is not None, (
             "tiny-timeout client must observe a typed error during the gap"
         )
-        assert isinstance(client_error, (TimeoutError, OSError)), (
-            f"tiny-timeout client must surface a typed error; "
+        assert isinstance(client_error, McpServerError), (
+            f"tiny-timeout client must surface a typed McpServerError; "
             f"got {type(client_error).__name__}: {client_error!r}"
+        )
+        assert getattr(client_error, "failure_kind", None) == "transient", (
+            f"error must have transient/retryable failure_kind; got {client_error}"
         )
     finally:
         with contextlib.suppress(Exception):
@@ -567,77 +553,6 @@ def _fire_mcp_payload(port: int, payload: dict[str, object], timeout: float = 2.
             conn.close()
 
 
-def _safe_keepalive_retry_once(
-    stale_conn: http.client.HTTPConnection,
-    port: int,
-    payload: dict[str, object],
-) -> tuple[int, int]:
-    """Try stale conn once, then retry EXACTLY ONCE on a fresh conn.
-
-    Returns ``(final_status, total_attempts)``. ``total_attempts`` is
-    either 1 (stale succeeded, no retry needed) or 2 (stale failed, one
-    fresh retry succeeded).
-    """
-    attempts = 0
-
-    # Attempt 1: stale keep-alive socket. Either it surfaces EOF/reset
-    # or it succeeds against the candidate (rare but possible).
-    try:
-        stale_conn.request(
-            "POST",
-            "/mcp",
-            body=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        resp = stale_conn.getresponse()
-        _ = resp.read()
-        attempts += 1
-        return resp.status, attempts
-    except (
-        http.client.RemoteDisconnected,
-        ConnectionResetError,
-        BrokenPipeError,
-        OSError,
-    ):
-        attempts += 1
-
-    # Attempt 2: fresh socket. Must succeed against the live candidate.
-    status = _fire_mcp_payload(port, payload)
-    attempts += 1
-    return status, attempts
-
-
-def _sever_and_unsafe_call(
-    bridge: lifecycle.RestartAwareMcpBridge,
-    port: int,
-    payload: dict[str, object],
-) -> tuple[list[BaseException], int]:
-    """SIGKILL the bridge's child then attempt one unsafe call.
-
-    Returns ``(surfaced_errors, deliveries)``. The unsafe contract:
-    the client surfaces a typed OSError AND does NOT silently retry.
-    """
-    bridge.process.kill()
-    deadline = time.monotonic() + 3.0
-    while time.monotonic() < deadline:
-        if bridge.process.poll() is not None:
-            break
-        time.sleep(0.02)
-    surfaced: list[BaseException] = []
-    deliveries = 0
-    try:
-        _fire_mcp_payload(port, payload, timeout=0.5)
-    except (
-        http.client.RemoteDisconnected,
-        ConnectionResetError,
-        BrokenPipeError,
-        OSError,
-    ) as exc:
-        surfaced.append(exc)
-        deliveries = 1
-    return surfaced, deliveries
-
-
 def test_e34_stale_keepalive_retry_safely_on_handover(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -650,7 +565,7 @@ def test_e34_stale_keepalive_retry_safely_on_handover(
         endpoint = bridge.endpoint_uri()
         port = int(endpoint.split("://", 1)[1].rsplit("/", 1)[0].rsplit(":", 1)[1])
 
-        # SAFE (idempotent) call path: tools/list on a keep-alive socket
+        # SAFE (idempotent) call path: tools/list on a real established keep-alive socket
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
         try:
             tools_list_payload: dict[str, object] = {
@@ -659,9 +574,12 @@ def test_e34_stale_keepalive_retry_safely_on_handover(
                 "method": "tools/list",
                 "params": {},
             }
-            assert _fire_mcp_payload(port, tools_list_payload) == 200, (
-                "baseline tools/list must land a 200; old child is not serving"
+            # Establish the HTTP keepalive socket with old child:
+            status, attempts, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=conn, is_idempotent=True
             )
+            assert status == 200, "baseline tools/list on keepalive connection must succeed"
+            assert attempts == 1
 
             # Trigger make-before-break handover
             handover_done = threading.Event()
@@ -674,7 +592,10 @@ def test_e34_stale_keepalive_retry_safely_on_handover(
             handover_thread.start()
             assert handover_done.wait(timeout=5.0), "make-before-break did not complete"
 
-            retry_status, retry_count = _safe_keepalive_retry_once(conn, port, tools_list_payload)
+            # Execute via production execute_mcp_http_request on the stale conn:
+            retry_status, retry_count, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=conn, is_idempotent=True
+            )
             assert retry_status == 200, f"safe-retry failed with status={retry_status}"
             assert retry_count <= 2, f"safe retry exceeded 2 attempts: {retry_count}"
         finally:
@@ -691,18 +612,26 @@ def test_e34_stale_keepalive_retry_safely_on_handover(
                 "arguments": {"artifact_type": "development_result", "x": 1},
             },
         }
-        surfaced, deliveries = _sever_and_unsafe_call(bridge, port, unsafe_payload)
-        assert surfaced, "non-idempotent severed call must surface an error"
-        assert isinstance(
-            surfaced[0],
-            (
-                http.client.RemoteDisconnected,
-                ConnectionResetError,
-                BrokenPipeError,
-                OSError,
-            ),
-        ), f"non-idempotent call must surface typed OSError: {surfaced[0]!r}"
-        assert deliveries == 1, f"non-idempotent call must not retry: deliveries={deliveries}"
+        stale_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+        try:
+            status, attempts, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=stale_conn, is_idempotent=True
+            )
+            assert status == 200
+            assert attempts == 1
+
+            # Kill child to sever connection mid-flight
+            bridge.process.kill()
+            _wait_child_dead(bridge.process, timeout_s=3.0)
+
+            with pytest.raises((McpOutcomeUnknownError, OSError)) as exc_info:
+                execute_mcp_http_request(
+                    port, unsafe_payload, existing_conn=stale_conn, is_idempotent=False
+                )
+            assert isinstance(exc_info.value, OSError)
+        finally:
+            with contextlib.suppress(Exception):
+                stale_conn.close()
     finally:
         with contextlib.suppress(Exception):
             bridge.shutdown()

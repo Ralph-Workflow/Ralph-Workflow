@@ -157,6 +157,7 @@ from ralph.mcp.server._mcp_health_event import (
 from ralph.mcp.server._mcp_health_event import (
     record_restart_decision as _record_restart_decision,
 )
+from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy, next_budget_decision
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
@@ -403,6 +404,15 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 #: loaded machine a healthy server misses one routinely, and restarting on the
 #: first miss tore down working servers in the middle of agent calls.
 _PROBE_FAILURES_BEFORE_RESTART = 3
+
+#: Consecutive successful probes required to clear accumulated probe failure
+#: history (E6.3). A flapping server alternating between success and failure
+#: must not clear its failure streak on a single lucky probe.
+_PROBE_SUCCESS_HYSTERESIS_COUNT = 3
+if not _PROBE_SUCCESS_HYSTERESIS_COUNT > 0:
+    raise RuntimeError(
+        f"_PROBE_SUCCESS_HYSTERESIS_COUNT must be positive (got {_PROBE_SUCCESS_HYSTERESIS_COUNT})"
+    )
 
 #: Filename of the durable JSONL sink for restart decisions, stored under
 #: ``<workspace>/.agent/`` so it is workspace-local and bounded by the
@@ -676,6 +686,7 @@ class RestartAwareMcpBridge:
         # has actually exited still restarts immediately — that signal is
         # unambiguous.
         self._consecutive_probe_failures = 0
+        self._consecutive_probe_successes = 0
         # Tool-registry resets are tracked separately from crash
         # restarts so the orchestrator can distinguish a "tool-registry
         # rebuild" event from a "MCP server crashed" event. The cap
@@ -1084,6 +1095,7 @@ class RestartAwareMcpBridge:
                 # ``_restart_count`` is left at ``attempt_index`` so the
                 # budget accounting is correct (this attempt counted).
                 self._consecutive_probe_failures = 0
+                self._consecutive_probe_successes = 0
                 self._consecutive_probe_failures_deferred = 0
                 self._first_probe_deferred_at = None
                 return False
@@ -1092,6 +1104,7 @@ class RestartAwareMcpBridge:
             # _handle_failed_probe_under_lock.
             self._bridge_generation += 1
             self._consecutive_probe_failures = 0
+            self._consecutive_probe_successes = 0
             self._consecutive_probe_failures_deferred = 0
             self._first_probe_deferred_at = None
             logger.info(
@@ -1444,6 +1457,7 @@ class RestartAwareMcpBridge:
             self._inner = candidate
             self._bridge_generation += 1
             self._consecutive_probe_failures = 0
+            self._consecutive_probe_successes = 0
             self._consecutive_probe_failures_deferred = 0
             self._first_probe_deferred_at = None
         except BaseException as promote_exc:
@@ -1690,9 +1704,11 @@ class RestartAwareMcpBridge:
                 return False
 
             if not probe_failed:
-                self._consecutive_probe_failures = 0
-                self._consecutive_probe_failures_deferred = 0
-                self._first_probe_deferred_at = None
+                self._consecutive_probe_successes += 1
+                if self._consecutive_probe_successes >= _PROBE_SUCCESS_HYSTERESIS_COUNT:
+                    self._consecutive_probe_failures = 0
+                    self._consecutive_probe_failures_deferred = 0
+                    self._first_probe_deferred_at = None
                 now = _bridge_clock(self)()
                 raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
                 healthy_reset_s: float = (
@@ -1703,6 +1719,8 @@ class RestartAwareMcpBridge:
                     self._restart_count = 0
                 self._last_healthy_at = now
                 return False
+
+            self._consecutive_probe_successes = 0
 
             # Capture the probed bridge identity BEFORE releasing the
             # lock. The producer below runs OFF the lock; while it
@@ -2768,6 +2786,7 @@ def session_payload_json(session: SessionLike) -> str:
 
 __all__ = [
     "LifecycleDeps",
+    "McpOutcomeUnknownError",
     "McpRestartPolicy",
     "McpServerError",
     "McpServerExtras",
