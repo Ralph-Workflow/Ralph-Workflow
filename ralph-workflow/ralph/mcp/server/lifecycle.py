@@ -1,4 +1,55 @@
-"""MCP server lifecycle helpers using a standalone localhost HTTP process."""
+"""MCP server lifecycle helpers using a standalone localhost HTTP process.
+
+Design note: bridge state machine (wt-16 make-before-break work).
+
+The ``RestartAwareMcpBridge`` owns the parent-owned listening socket for
+its full lifetime. Restart is ordered and single-acceptor:
+
+1. Spawn the candidate while the old child keeps serving on the inherited
+   listening fd.
+2. Verify the candidate ONLY over a private channel (a parent-owned
+   socketpair). A preflight over the shared endpoint is meaningless
+   during the overlap because the old child may answer it.
+3. Tell the old child to stop accepting (the pause file
+   ``MCP_ACCEPT_PAUSE_FILE``). Wait for its acknowledgement, bounded by
+   ``_HANDOVER_ACK_TIMEOUT_S``; on timeout, SIGKILL the old child's group
+   and confirm it is gone before promotion.
+4. Tell the candidate to start accepting (the resume file
+   ``MCP_ACCEPT_RESUME_FILE``). At no moment do two children accept.
+5. Promote (_inner swap) under lock, then drain the old child inside
+   ``_DRAIN_S``. Connections queued in the kernel backlog are served
+   by the new child.
+6. Probation: a candidate death after promotion is counted as
+   ``process_exited`` and replaced immediately.
+
+Attempt result classification (C2): ``_attempt_restart_with_candidate``
+returns a typed ``RestartAttemptResult``. Only
+``BUDGET_EXHAUSTED`` may set ``_mcp_error`` or be re-raised from
+``McpSupervisor.__exit__``. All other outcomes (``ATTEMPT_FAILED``,
+``DEFERRAL_CEILING_TRIPPED``, ``REPLACED``, ``KEPT_OLD``) are
+non-terminal while the budget remains.
+
+Probe overrun (C3): ``_run_health_probe`` records its own elapsed
+time. A probe that takes longer than ``probe_timeout +
+_PROBE_DEADLINE_SLACK_S`` is treated as host contention
+(``overrun=True``), not server death. The deferral counter has both a
+count ceiling (``_DEFERRAL_COUNT_CEILING``) and a wall-time ceiling
+(``_DEFERRAL_WALL_TIME_CEILING_S``).
+
+Why this design cannot double-serve, double-write, hang, or storm:
+- The parent owns the only listening socket; children accept only on
+  an FD they explicitly drop after the pause-file acknowledgement.
+- Only the bridge writes the wire ledger under its lock; the two-child
+  interleave test verifies an interleaved append sequence still
+  validates.
+- ``_attempt_restart_with_candidate`` is bounded by the rolling
+  window from ``McpRestartPolicy``; ``ATTEMPT_FAILED`` does not
+  escalate.
+- Backoff is enforced unconditionally before every restart attempt, so
+  the bridge cannot storm even with a wedged ``restart_fn``.
+
+This module contains no async; all I/O is bounded and fails closed.
+"""
 
 from __future__ import annotations
 
@@ -117,6 +168,33 @@ _TOOL_REGISTRY_MAX_RESETS: int = 3
 # observable probe timeout). 32 keeps 2**N < 2**32 = 4.3e9, well
 # below the timedelta microsecond range.
 _PROBE_TIMEOUT_EXPAWN_CAP: int = 32
+
+
+def _bridge_clock(self_or_bridge: object) -> Callable[[], float]:
+    """Return the bridge's monotonic-clock seam, defaulting to ``time.monotonic``.
+
+    Module-level helper used by ``RestartAwareMcpBridge._run_health_probe``
+    so the probe's elapsed-time accounting honours the ``clock_fn`` test
+    injection without open-coding ``getattr(...)`` at every probe site.
+    The narrowing is via ``callable()`` + the type annotation on
+    ``self._clock_fn`` (``Callable[[], float] | None``); if a
+    non-callable slips in, the fallback ``time.monotonic`` keeps the
+    production path fail-closed (an injected non-callable cannot
+    crash the probe).
+    """
+    raw: object = getattr(self_or_bridge, "_clock_fn", None)
+    if callable(raw):
+        # callable() is a runtime narrowing check; the typed
+        # ``Callable[[], float] | None`` annotation on the
+        # ``_clock_fn`` attribute means the value is already
+        # typed at the source. Returning ``raw`` (typed ``object``)
+        # to a function annotated ``-> Callable[[], float]`` is
+        # not flagged by mypy because the attribute type and
+        # the return type both flow from the bridge's own
+        # declaration; the test seam is fail-closed (time.monotonic
+        # is the fallback when the test seam is unused).
+        return raw
+    return time.monotonic
 
 
 def _restart_error_fields(exc: BaseException) -> tuple[str | None, float | None]:
@@ -324,6 +402,7 @@ class RestartAwareMcpBridge:
         workspace_root: Path | None = None,
         contention_signal_producer: Callable[[], bool] | None = None,
         preflight_timeout_fn: Callable[[], timedelta] | None = None,
+        clock_fn: Callable[[], float] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -342,6 +421,13 @@ class RestartAwareMcpBridge:
         # production 2.0-second default does not stall the suite.
         # Production uses ``time.sleep`` (default below).
         self._sleep_fn: Callable[[float], object] | None = sleep_fn
+        # Test seam: a fake ``time.monotonic`` substitute used by
+        # ``_run_health_probe`` and the deferral wall-clock ceiling
+        # accumulator. Production uses ``time.monotonic`` (the default
+        # below). Probe-overrun and deferral-ceiling tests pass a
+        # ``FakeClock``/sentinel so 30+ iter cycles exercise the
+        # production code without blocking a CPU for 33 real seconds.
+        self._clock_fn: Callable[[], float] | None = clock_fn
         self._restart_count = 0
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
@@ -577,12 +663,13 @@ class RestartAwareMcpBridge:
         safe_exponent = min(deferred_count, _PROBE_TIMEOUT_EXPAWN_CAP)
         multiplier: int = 2**safe_exponent
         probe_timeout: timedelta = min(base_timeout * multiplier, ceiling)
-        probe_start = time.monotonic()
+        clock_fn = _bridge_clock(self)
+        probe_start = clock_fn()
         try:
             self._probe_fn(self._inner.endpoint, probe_timeout)
             return False, None, False, False
         except Exception as exc:
-            elapsed = time.monotonic() - probe_start
+            elapsed = clock_fn() - probe_start
             overrun = elapsed > probe_timeout.total_seconds() + _PROBE_DEADLINE_SLACK_S
             if (
                 isinstance(exc, PreflightError)

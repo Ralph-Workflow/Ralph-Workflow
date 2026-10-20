@@ -104,6 +104,7 @@ def record_psi_pressure(
     for name in psi_types:
         try:
             path = Path(f"/proc/pressure/{name}")
+            # filesystem-read-ok: /proc/pressure/* is a virtual kernel file that exists only when the host exposes PSI; the read either succeeds and yields the kernel-formatted ``some`` line or fails (ENOENT) and the producer silently skips. There is no FileBackend abstraction over virtual kernel files; routing through one would silently swallow the kernel's ENOENT signal and turn PSI instrumentation into a no-op.
             with path.open(encoding="utf-8") as fh:
                 for line in fh:
                     if line.startswith("some "):

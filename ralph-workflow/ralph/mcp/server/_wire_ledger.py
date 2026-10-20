@@ -382,8 +382,8 @@ def append_wire_record(
             agent_id=agent_id,
             capability_profile_digest=capability_profile_digest,
         )
-        # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
         try:
+            # filesystem-write-ok: deliberate append-only HMAC-chained JSONL log; each record must append after reading the prior record's hmac, so write_text_if_changed's whole-file replace semantics do not fit.
             with ledger_path.open("a", encoding="utf-8") as handle:
                 handle.write(record.to_json_line() + "\n")
         except OSError as e:

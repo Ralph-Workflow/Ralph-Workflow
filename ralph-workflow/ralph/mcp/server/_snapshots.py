@@ -43,6 +43,7 @@ def write_snapshot(
         "broker_secret_fingerprint": broker_secret_fingerprint,
     }
     tmp = snapshot_dir / ".session.json.tmp"
+    # filesystem-write-ok: atomic write-via-tmp-then-replace for the bridge-owned session.json snapshot; the entire JSON payload is written at once, then tmp.replace() either fully replaces or does nothing, so the bridge-owned snapshot is never partially written.
     with tmp.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, sort_keys=True)
     tmp.replace(snapshot_dir / "session.json")

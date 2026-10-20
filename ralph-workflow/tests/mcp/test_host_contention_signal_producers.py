@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pathlib
 from datetime import timedelta
-from typing import cast
 from unittest import mock
 
 import pytest
@@ -134,7 +133,13 @@ def test_record_psi_pressure_cpu_avg10_80_emits(
         cpu_file_str = str(cpu_file)
         if isinstance(arg, str) and arg == "/proc/pressure/cpu":
             return _FakePath(cpu_file_str)
-        return pathlib.Path(cast("str", arg), *args, **kwargs)
+        # arg is narrowed to str by the two prior str() / isinstance
+        # checks above; the fall-through path constructs a real
+        # pathlib.Path only when ``arg`` is a str-compatible value
+        # (the test always supplies a str), so the str() conversion
+        # here is the production-grade narrowing step.
+        narrowed_arg: str = str(arg) if arg is not None else ""
+        return pathlib.Path(narrowed_arg, *args, **kwargs)
 
     monkeypatch.setattr(hcs, "Path", fake_path_ctor)
     monkeypatch.setattr(mcp_health, "record_host_contention_signal", fake_record)

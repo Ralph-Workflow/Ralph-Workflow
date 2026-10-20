@@ -1,10 +1,21 @@
-"""WU-Probe overrun self-measurement: probe exceeding deadline + slack is C3 contention."""
+"""WU-Probe overrun self-measurement: probe exceeding deadline + slack is C3 contention.
+
+These tests use the bridge's ``clock_fn`` injection seam so each
+``_run_health_probe`` call advances the fake clock by the simulated
+probe latency. A 30-iteration deferral-ceiling cycle completes in
+microseconds of real time instead of 33 real seconds.
+
+The probe function itself returns normally after a bounded amount of
+"fake" work; the bridge's own clock injection advances the monotonic
+clock by the simulated latency so the overrun arithmetic exercises the
+production code path without spinning a CPU.
+"""
 
 from __future__ import annotations
 
 import pathlib
 import tempfile
-import time
+from collections.abc import Callable
 from datetime import timedelta
 
 import pytest
@@ -20,6 +31,28 @@ from ralph.mcp.server.lifecycle import (
 )
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+
+class _FakeClock:
+    """Mutable monotonic-clock substitute used by the probe-overrun tests.
+
+    Each :meth:`advance` call moves the clock forward by the supplied
+    delta. The bridge's ``_run_health_probe`` calls ``clock_fn()`` twice
+    per call (start and end), so a single ``advance`` between those
+    reads is the smallest expression of "the probe took <delta> seconds".
+    ``time.monotonic`` would normally be the production default; this
+    fake replaces it so the tests run in microseconds.
+    """
+
+    def __init__(self, *, start: float = 1000.0) -> None:
+        self._now = start
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, delta: float) -> float:
+        self._now += delta
+        return self._now
 
 
 class _FakeProcess:
@@ -54,6 +87,52 @@ def _make_inner(poll_result: int | None = None) -> lifecycle.StandaloneMcpProces
     )
 
 
+def _make_overrun_clock_probe(
+    clock: _FakeClock,
+    *,
+    simulated_latency_s: float,
+    raise_after: bool = True,
+) -> Callable[[str, timedelta], None]:
+    """Return a probe that advances the fake clock then either returns or raises.
+
+    Real production probes raise (e.g. ``TimeoutError`` from
+    ``urllib.request.urlopen(..., timeout=...)``) when their bounded
+    timeout fires. The bridge only computes ``overrun`` in the
+    ``except Exception`` arm so the raising variant is what exercises
+    the overrun arithmetic. Setting ``raise_after=False`` returns
+    normally instead (used by tests that exercise the success branch).
+    """
+
+    def probe(endpoint: str, timeout: timedelta) -> None:
+        clock.advance(simulated_latency_s)
+        if raise_after:
+            raise RuntimeError("probe timed out")
+
+    return probe
+
+
+def _make_raising_overrun_clock_probe(
+    clock: _FakeClock,
+    *,
+    simulated_latency_s: float,
+) -> Callable[[str, timedelta], None]:
+    """Same as :func:`_make_overrun_clock_probe` but raises after the advance.
+
+    Real-world production probes raise (``TimeoutError`` from
+    ``urllib.request.urlopen(..., timeout=...)``) when their bounded
+    timeout fires. This variant mirrors that contract so the bridge's
+    ``except Exception as exc`` arm sees a real overrun exception
+    instead of an empty success-return that would short-circuit the
+    overrun classification.
+    """
+
+    def probe(endpoint: str, timeout: timedelta) -> None:
+        clock.advance(simulated_latency_s)
+        raise RuntimeError("probe timed out")
+
+    return probe
+
+
 @pytest.fixture(autouse=True)
 def _isolate_contention_signals():
     _clear_host_contention_signals()
@@ -62,53 +141,54 @@ def _isolate_contention_signals():
 
 
 # ----------------------------------------------------------------------
-# Test 1: _run_health_probe returns overrun=True when probe exceeds deadline+slack
+# Test 1: probe that completes past deadline + slack yields overrun=True
 # ----------------------------------------------------------------------
 def test_probe_overrun_returns_true_when_probe_exceeds_deadline_plus_slack():
-    """A probe that overruns deadline + slack has overrun=True in the 4-tuple."""
+    """A probe whose fake-elapsed time exceeds deadline + slack has overrun=True."""
     base_deadline = 0.5  # seconds
-    slack = _PROBE_DEADLINE_SLACK_S  # 0.5 s
-    sleep_duration = (
-        base_deadline + slack + 1.0
-    )  # 2.0s — well past 1.0s threshold — exceeds 1.0 s threshold
-
-    def slow_probe(endpoint: str, timeout: timedelta) -> None:
-        # Simulate a slow probe by spinning in a tight loop until ``sleep_duration``
-        # real-time seconds have elapsed (the test's pytest.mark.timeout_seconds(10)
-        # marker covers the bounded cost). The bookkeeping avoids ``time.sleep`` so
-        # the audit_test_policy ``[sleep]`` audit stays green.
-        end = time.monotonic() + sleep_duration
-        while time.monotonic() < end:
-            pass  # busy-wait to advance the clock without sleeping
-
+    slack = _PROBE_DEADLINE_SLACK_S
+    simulated_latency_s = base_deadline + slack + 1.0  # 2.0s fake elapsed
+    clock = _FakeClock()
+    # raise_after=True mirrors the real production behaviour
+    # where the probe raises on overrun (urllib.request.urlopen with
+    # timeout=... raises TimeoutError). The bridge's overrun
+    # arithmetic only fires in the except arm, so a non-raising
+    # probe is treated as "server alive, no overrun" even at the
+    # boundary.
+    probe = _make_overrun_clock_probe(
+        clock, simulated_latency_s=simulated_latency_s, raise_after=True
+    )
     inner = _make_inner(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: _make_inner(poll_result=None),
         restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
         run_id="test-run",
-        probe_fn=slow_probe,
+        probe_fn=probe,
         probe_timeout_fn=lambda: timedelta(seconds=base_deadline),
         preflight_timeout_fn=lambda: timedelta(seconds=10.0),
+        clock_fn=clock,
     )
 
-    probe_failed, probe_duration_s, infra_error, overrun = bridge._run_health_probe()
+    probe_failed, _pd, infra_error, overrun = bridge._run_health_probe()
 
-    assert probe_failed is True, f"expected probe_failed=True, got {probe_failed}"
-    assert infra_error is False, f"expected infra_error=False, got {infra_error}"
+    assert probe_failed is True
+    assert infra_error is False
     assert overrun is True, (
-        f"expected overrun=True when probe takes {sleep_duration:.2f}s "
-        f"(deadline={base_deadline}s + slack={slack}s = {base_deadline + slack}s), "
-        f"got overrun={overrun}, elapsed={probe_duration_s:.3f}s"
+        f"expected overrun=True when fake-elapsed probe time "
+        f"({simulated_latency_s:.2f}s) exceeds deadline+slack "
+        f"({base_deadline + slack}s), got overrun={overrun}"
     )
+    assert _pd == pytest.approx(simulated_latency_s)
 
 
 # ----------------------------------------------------------------------
-# Test 2: _run_health_probe returns overrun=False when probe fails within deadline
+# Test 2: probe that fails within deadline has overrun=False
 # ----------------------------------------------------------------------
 def test_probe_returns_overrun_false_when_failing_fast():
     """A probe that raises quickly (within deadline) has overrun=False."""
-    base_deadline = 2.0  # seconds
+    base_deadline = 2.0
+    clock = _FakeClock()
 
     def fast_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("fast fail")
@@ -122,47 +202,39 @@ def test_probe_returns_overrun_false_when_failing_fast():
         probe_fn=fast_fail_probe,
         probe_timeout_fn=lambda: timedelta(seconds=base_deadline),
         preflight_timeout_fn=lambda: timedelta(seconds=10.0),
+        clock_fn=clock,
     )
 
-    probe_failed, probe_duration_s, infra_error, overrun = bridge._run_health_probe()
+    probe_failed, _pd, infra_error, overrun = bridge._run_health_probe()
 
     assert probe_failed is True
     assert infra_error is False
-    assert overrun is False, (
-        f"expected overrun=False when probe fails within {base_deadline}s deadline, "
-        f"got overrun={overrun}, elapsed={probe_duration_s:.3f}s"
-    )
+    assert overrun is False
 
 
 # ----------------------------------------------------------------------
 # Test 3: deferral counter increments when overrun probe has contention signal
 # ----------------------------------------------------------------------
 def test_deferral_counter_increments_on_overrun_with_contention_signal():
-    """An overrun probe with a contention signal increments the deferred counter."""
+    """A raising overrun probe with a contention signal increments the deferred counter."""
     base_deadline = 0.5
     slack = _PROBE_DEADLINE_SLACK_S
-
-    def slow_probe(endpoint: str, timeout: timedelta) -> None:
-        # Slow probe that exceeds deadline + slack — overrun=True path.
-        end = time.monotonic() + base_deadline + slack + 0.1
-        while time.monotonic() < end:
-            pass
-        raise RuntimeError("slow probe")
-
+    simulated_latency_s = base_deadline + slack + 0.1
+    clock = _FakeClock()
+    probe = _make_raising_overrun_clock_probe(clock, simulated_latency_s=simulated_latency_s)
     inner = _make_inner(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: _make_inner(poll_result=None),
         restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
         run_id="test-run",
-        probe_fn=slow_probe,
+        probe_fn=probe,
         probe_timeout_fn=lambda: timedelta(seconds=base_deadline),
         preflight_timeout_fn=lambda: timedelta(seconds=10.0),
-        # Producer returns True → contention signal present → deferral path taken
         contention_signal_producer=lambda: True,
+        clock_fn=clock,
     )
 
-    # 3 calls, each should increment the deferred counter
     for i in range(1, 4):
         bridge.check_health_and_restart_if_needed()
         assert bridge._consecutive_probe_failures_deferred == i, (
@@ -171,7 +243,6 @@ def test_deferral_counter_increments_on_overrun_with_contention_signal():
             f"{bridge._consecutive_probe_failures_deferred}"
         )
 
-    # No restart yet — 3-miss threshold not met (and no ceiling reached)
     assert bridge._restart_count == 0
 
 
@@ -179,41 +250,34 @@ def test_deferral_counter_increments_on_overrun_with_contention_signal():
 # Test 4: deferral ceiling forces restart even with contention signal
 # ----------------------------------------------------------------------
 def test_deferral_ceiling_trips_and_forces_restart():
-    """When deferral count >= _DEFERRAL_COUNT_CEILING, next failure forces restart."""
+    """When the deferral count reaches the ceiling, the next failure forces a restart."""
     base_deadline = 0.5
     slack = _PROBE_DEADLINE_SLACK_S
-    ceiling = _DEFERRAL_COUNT_CEILING  # 30
-
-    def slow_probe(endpoint: str, timeout: timedelta) -> None:
-        end = time.monotonic() + base_deadline + slack + 0.1
-        while time.monotonic() < end:
-            pass
-        raise RuntimeError("slow probe")
-
+    ceiling = _DEFERRAL_COUNT_CEILING
+    simulated_latency_s = base_deadline + slack + 0.1
+    clock = _FakeClock()
+    probe = _make_raising_overrun_clock_probe(clock, simulated_latency_s=simulated_latency_s)
     inner = _make_inner(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: _make_inner(poll_result=None),
         restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
         run_id="test-run",
-        probe_fn=slow_probe,
+        probe_fn=probe,
         probe_timeout_fn=lambda: timedelta(seconds=base_deadline),
         preflight_timeout_fn=lambda: timedelta(seconds=10.0),
         contention_signal_producer=lambda: True,
+        clock_fn=clock,
     )
 
-    # Drive deferred counter to ceiling (the check fires when deferred >= ceiling,
-    # which is true on the call AFTER the one that brings counter to ceiling)
     for _ in range(ceiling):
         bridge.check_health_and_restart_if_needed()
     assert bridge._consecutive_probe_failures_deferred == ceiling
     assert bridge._restart_count == 0
 
-    # The next probe failure — with deferred >= ceiling — forces a restart
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True, (
         f"expected restart=True when deferral count hits ceiling ({ceiling}), got {restarted}"
     )
     assert bridge._restart_count == 1
-    # Counter resets after a successful restart
     assert bridge._consecutive_probe_failures_deferred == 0
