@@ -524,7 +524,7 @@ The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
 - `ralph-workflow/ralph/mcp/server/lifecycle.py:2426` and `:2443` invoke
-  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2624-2770`
+  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2654-2806`
   and runs
 
   ```python
@@ -536,11 +536,15 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`lifecycle.py:2719-2729`). The MCP server runs as a separate child
+  (`lifecycle.py:2754-2766`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
-  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:36-66`),
-  which calls `self.process.terminate(grace_period_s=5.0)` at line 45
-  and `self.process.wait(timeout=5.0)` at line 47.
+  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:46-72`),
+  which calls `self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`
+  at line 55 and `self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)` at line 57.
+  Both waits are module constants (`_standalone_mcp_process.py:15` and `:20`,
+  5.0 seconds each) so the E6.4 restart-budget arithmetic in
+  `lifecycle.py:_FAILED_ATTEMPT_CLEANUP_S` is derived from the real teardown
+  bound rather than a duplicated literal.
 
 - `ralph-workflow/ralph/mcp/server/_session_wrapup.py` is the
   *development-timebox* warning path: the module docstring reads

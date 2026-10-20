@@ -275,7 +275,11 @@ from ralph.mcp.server._snapshots import (
     write_snapshot,
 )
 from ralph.mcp.server._spawn_process import SpawnProcess
-from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
+from ralph.mcp.server._standalone_mcp_process import (
+    SHUTDOWN_REAP_WAIT_S,
+    SHUTDOWN_TERMINATE_GRACE_S,
+    StandaloneMcpProcess,
+)
 from ralph.mcp.server._start_stage_tracker import read_last_stage as _read_start_stage
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -284,7 +288,12 @@ from ralph.mcp.upstream.tool_catalog_cache import (
     apply_tool_catalog_env,
     get_tool_catalog_snapshot,
 )
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessManagerPolicy,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.workspace.fs import FsWorkspace
 
 #: Env var carrying the session_id for snapshot-based persistence across respawns.
@@ -448,18 +457,34 @@ _CANDIDATE_STARTUP_DEADLINE_S: Final[float] = mcp_whole_startup_budget_from_env(
 _PREFLIGHT_DEADLINE_S: Final[float] = mcp_preflight_timeout_from_env().total_seconds()
 
 #: Bound (a): Worst-case time to terminal exhaustion with old child dead,
-#: computed from restart policy max_restarts, cooldown, and preflight deadline.
+#: computed from restart policy max_restarts, cooldown, the preflight
+#: deadline, and the bounded teardown of each failed attempt's child.
+#: The teardown term was the omission the acceptance review found: a failed
+#: startup calls ``bridge.shutdown()`` (``lifecycle._start_bridge``), which
+#: escalates SIGTERM -> SIGKILL and then reaps, so an attempt that misses its
+#: preflight deadline still costs that bounded window before the next attempt.
+#: Every term is read from the constant that the runtime path actually uses.
+_FAILED_ATTEMPT_CLEANUP_S: Final[float] = (
+    SHUTDOWN_TERMINATE_GRACE_S + ProcessManagerPolicy.kill_followup_timeout_s + SHUTDOWN_REAP_WAIT_S
+)
 _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S: Final[float] = McpRestartPolicy.max_restarts * (
-    McpRestartPolicy.cooldown_seconds + _PREFLIGHT_DEADLINE_S
+    McpRestartPolicy.cooldown_seconds + _PREFLIGHT_DEADLINE_S + _FAILED_ATTEMPT_CLEANUP_S
 )
 _WORST_CASE_TIME_TO_TERMINAL_EXHAUSTION_S: Final[float] = (
     _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
 )
 
 #: Bound (b): Candidate delay bound with old child alive, computed as
-#: (candidate deadline + handover ack + kill wait + drain).
+#: (candidate deadline + handover ack + kill wait + drain). A candidate that
+#: fails before the accept handover is torn down with the same bounded
+#: ``StandaloneMcpProcess.shutdown`` window, and that teardown is charged to
+#: the agent because it runs on the agent's own replacement path.
 _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S: Final[float] = (
-    _CANDIDATE_DEADLINE_S + _HANDOVER_ACK_TIMEOUT_S + _HANDOVER_KILL_WAIT_S + _HANDOVER_DRAIN_S
+    _CANDIDATE_DEADLINE_S
+    + _HANDOVER_ACK_TIMEOUT_S
+    + _HANDOVER_KILL_WAIT_S
+    + _HANDOVER_DRAIN_S
+    + _FAILED_ATTEMPT_CLEANUP_S
 )
 _CANDIDATE_DELAY_BOUND_S: Final[float] = _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
 
@@ -506,19 +531,23 @@ def _e64_bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
 
 
 #: Per-attempt worst-case durations bound (a) is composed of: the
-#: unconditional pre-restart cooldown plus one preflight deadline.
+#: unconditional pre-restart cooldown, one preflight deadline, and the
+#: bounded teardown of the attempt's own child.
 _E64_BOUND_A_COMPONENTS_S: Final[tuple[float, ...]] = (
     float(McpRestartPolicy.cooldown_seconds),
     _PREFLIGHT_DEADLINE_S,
+    _FAILED_ATTEMPT_CLEANUP_S,
 )
 #: Handover stage durations bound (b) is composed of, in protocol order:
 #: candidate private-channel readiness, old-child pause acknowledgement
-#: (or its kill), the kill confirmation, and the drain window.
+#: (or its kill), the kill confirmation, the drain window, and the bounded
+#: teardown of a candidate that failed before the accept handover.
 _E64_BOUND_B_COMPONENTS_S: Final[tuple[float, ...]] = (
     _CANDIDATE_DEADLINE_S,
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_KILL_WAIT_S,
     _HANDOVER_DRAIN_S,
+    _FAILED_ATTEMPT_CLEANUP_S,
 )
 _E64_MAX_RESTARTS: Final[int] = int(McpRestartPolicy.max_restarts)
 if not (_E64_MAX_RESTARTS > 0):
@@ -2639,14 +2668,15 @@ def _spawn_mcp_process(
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation.
 
-    R1: when ``inherited_fd`` is set, the child is given the FD by
-    number (``pass_fds=``) and the ``RALPH_MCP_INHERITED_FD`` env
-    var; the child adopts the listening socket without re-binding.
-    R2: when ``respawn`` is set, ``RALPH_MCP_RESPAWN=1`` is added so
-    the runtime takes the catalog-only path (zero network I/O before
-    serving). ``tool_catalog_snapshot`` is applied after the extra_env
-    merge so the parent-owned catalog state unconditionally wins over
-    worker-injected env values.
+        R1: when ``inherited_fd`` is set, the child is given the FD by
+        number (``pass_fds=``) and the ``RALPH_MCP_INHERITED_FD`` env
+        var; the child adopts the listening socket without re-binding.
+    R2: when ``respawn`` is set, ``RALPH_MCP_RESPAWN=1`` is added so the
+        runtime takes the catalog-only path (zero network I/O before
+        serving). ``_extra_env`` is merged first and every parent-owned
+        value is assigned after it, so worker-injected env vars can never
+        overwrite the session id, snapshot dir, per-spawn stage id, accept
+        pause/resume path, inherited fd or catalog state (E2.4).
     """
     endpoint = f"http://127.0.0.1:{port}/mcp"
     # Recorded BEFORE the spawn so a startup failure reports only what THIS
@@ -2684,6 +2714,14 @@ def _spawn_mcp_process(
             else snap_session_file
         )
         env = deps.subprocess_env(session_file)
+        if _extra_env:
+            # Merge extra_env so the subprocess inherits worker-specific env vars
+            # (e.g. WORKER_ARTIFACT_DIR for parallel workers). This happens
+            # BEFORE every parent-owned assignment below so a reused extra
+            # mapping cannot overwrite a value this bridge owns (E2.4): the
+            # session id, the snapshot dir, the per-spawn stage id and the
+            # accept-pause path must never be inherited from a stale caller.
+            env.update(_extra_env)
         # Persist session_id in the subprocess environment so runtime_session.py
         # can read it on respawn without falling back to a new factory.
         env[MCP_SESSION_ID_ENV] = session_id_value
@@ -2693,10 +2731,6 @@ def _spawn_mcp_process(
         env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / f"accept.pause.{stage_id}")
         parent_sock: socket.socket | None = None
         child_sock: socket.socket | None = None
-        if _extra_env:
-            # Merge extra_env so the subprocess inherits worker-specific env vars
-            # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
-            env.update(_extra_env)
         # I1b: the parent-owned catalog snapshot takes precedence over
         # anything merged from extra_env (present -> set even if empty,
         # absent -> pop).

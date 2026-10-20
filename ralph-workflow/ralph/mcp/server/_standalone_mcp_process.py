@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.server._mcp_server_error import McpServerError
 
@@ -12,6 +12,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.server._process_like import ProcessLike
+
+#: Upper bound on the graceful SIGTERM window granted to a child before the
+#: process manager escalates to SIGKILL. Named so the restart-budget
+#: arithmetic (E6.4) can be derived from the real teardown bound instead of a
+#: re-typed literal that can silently drift from the call below.
+SHUTDOWN_TERMINATE_GRACE_S: Final[float] = 5.0
+
+#: Upper bound on the post-signal reap wait proving the child reached a
+#: terminal state before its session file is released.
+SHUTDOWN_REAP_WAIT_S: Final[float] = 5.0
 
 
 @dataclass
@@ -42,9 +52,9 @@ class StandaloneMcpProcess:
         recovery action while the server could still touch the workspace.
         """
         if self.process.poll() is None:
-            self.process.terminate(grace_period_s=5.0)
+            self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)
         try:
-            returncode = self.process.wait(timeout=5.0)
+            returncode = self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)
             # ``wait()`` returning an exit code is the subprocess API's
             # terminal-state proof.  The second poll additionally supports
             # wrappers whose wait result is intentionally opaque.
@@ -69,4 +79,4 @@ class StandaloneMcpProcess:
         self.session_file.unlink(missing_ok=True)
 
 
-__all__ = ["StandaloneMcpProcess"]
+__all__ = ["SHUTDOWN_REAP_WAIT_S", "SHUTDOWN_TERMINATE_GRACE_S", "StandaloneMcpProcess"]

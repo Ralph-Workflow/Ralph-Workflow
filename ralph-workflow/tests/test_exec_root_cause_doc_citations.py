@@ -211,9 +211,17 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
     # Cause 5c — child runtime shutdown seam.
-    ("ralph/mcp/server/lifecycle.py", 2723, '"ralph.mcp.server",'),
-    ("ralph/mcp/server/_standalone_mcp_process.py", 45, "terminate(grace_period_s=5.0)"),
-    ("ralph/mcp/server/_standalone_mcp_process.py", 47, "self.process.wait(timeout=5.0)"),
+    ("ralph/mcp/server/lifecycle.py", 2757, '"ralph.mcp.server",'),
+    (
+        "ralph/mcp/server/_standalone_mcp_process.py",
+        55,
+        "terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)",
+    ),
+    (
+        "ralph/mcp/server/_standalone_mcp_process.py",
+        57,
+        "self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)",
+    ),
     ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
     ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
 )

@@ -359,20 +359,26 @@ def test_e64_import_time_invariants_positive() -> None:
     assert lifecycle._RESPAWN_ALIAS_VERIFY_TIMEOUT_S > 0
 
     # Pin both computed bounds (E6.4 + E2.3):
-    # (a) worst-case time to terminal exhaustion with old child dead
+    # (a) worst-case time to terminal exhaustion with old child dead.
+    # Each failed attempt also pays the bounded teardown of its own child
+    # (StandaloneMcpProcess.shutdown), so the cleanup term is part of the
+    # per-attempt cost and not only of the candidate-delay bound.
     assert lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0
     expected_dead_exhaustion = McpRestartPolicy.max_restarts * (
-        McpRestartPolicy.cooldown_seconds + lifecycle._PREFLIGHT_DEADLINE_S
+        McpRestartPolicy.cooldown_seconds
+        + lifecycle._PREFLIGHT_DEADLINE_S
+        + lifecycle._FAILED_ATTEMPT_CLEANUP_S
     )
     assert expected_dead_exhaustion == lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
 
-    # (b) candidate delay bound with old child alive (candidate deadline + handover ack + kill wait + drain)
+    # (b) candidate delay bound with old child alive (candidate deadline + handover ack + kill wait + drain + failed-candidate teardown)
     assert lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0
     expected_alive_bound = (
         lifecycle._CANDIDATE_DEADLINE_S
         + _HANDOVER_ACK_TIMEOUT_S
         + lifecycle._HANDOVER_KILL_WAIT_S
         + _HANDOVER_DRAIN_S
+        + lifecycle._FAILED_ATTEMPT_CLEANUP_S
     )
     assert expected_alive_bound == lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
 

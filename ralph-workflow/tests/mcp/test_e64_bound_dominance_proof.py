@@ -26,13 +26,22 @@ from ralph.mcp.server._handover_protocol import (
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_DRAIN_S,
 )
+from ralph.mcp.server._standalone_mcp_process import (
+    SHUTDOWN_REAP_WAIT_S,
+    SHUTDOWN_TERMINATE_GRACE_S,
+)
+from ralph.process.manager import ProcessManagerPolicy
 
 #: Hand-computed worst case with the old child dead:
-#: ``max_restarts * (cooldown + preflight) == 20 * (2.0 + 30.0) == 640.0``.
-_E64_BOUND_A_PINNED_S = 640.0
+#: ``max_restarts * (cooldown + preflight + teardown)``
+#: ``== 20 * (2.0 + 30.0 + 12.0) == 880.0`` where the teardown term is
+#: ``5.0`` (graceful SIGTERM window) + ``2.0`` (post-SIGKILL follow-up)
+#: + ``5.0`` (terminal reap wait).
+_E64_BOUND_A_PINNED_S = 880.0
 #: Hand-computed candidate delay with the old child alive:
-#: ``candidate_readiness + ack + kill_wait + drain == 5.0 + 1.0 + 1.0 + 0.5``.
-_E64_BOUND_B_PINNED_S = 7.5
+#: ``candidate_readiness + ack + kill_wait + drain + teardown``
+#: ``== 5.0 + 1.0 + 1.0 + 0.5 + 12.0 == 19.5``.
+_E64_BOUND_B_PINNED_S = 19.5
 
 
 def test_e64_dominance_predicate_rejects_a_bound_that_drops_a_stage() -> None:
@@ -56,18 +65,70 @@ def test_e64_dominance_predicate_rejects_a_bound_that_drops_a_stage() -> None:
 def test_e64_bound_a_dominates_every_stage_it_is_composed_of() -> None:
     """Bound (i) must dominate the sum of its per-attempt stage durations."""
     components = lifecycle._E64_BOUND_A_COMPONENTS_S
-    assert components == (2.0, 30.0)
+    assert components == (2.0, 30.0, 12.0)
     assert lifecycle._e64_bound_dominates(
         lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S / 20.0, components
     )
 
 
 def test_e64_bound_b_dominates_every_stage_it_is_composed_of() -> None:
-    """Bound (ii) must dominate the sum of its four handover stage durations."""
+    """Bound (ii) must dominate the sum of its per-stage durations."""
     components = lifecycle._E64_BOUND_B_COMPONENTS_S
-    assert components == (5.0, 1.0, 1.0, 0.5)
+    assert components == (5.0, 1.0, 1.0, 0.5, 12.0)
     assert lifecycle._e64_bound_dominates(
         lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S, components
+    )
+
+
+def test_e64_cleanup_term_is_derived_from_the_real_shutdown_bounds() -> None:
+    """The teardown term must track the constants the teardown path actually uses.
+
+    This is the acceptance-review fix: the previous inventory declared only
+    ``cooldown + preflight`` while the failed-startup path also pays
+    ``StandaloneMcpProcess.shutdown``. Recomputing the term from the source
+    constants means a future drift in either the process-manager policy or the
+    standalone shutdown fails here instead of silently under-reporting.
+    """
+    expected_cleanup = (
+        SHUTDOWN_TERMINATE_GRACE_S
+        + ProcessManagerPolicy.kill_followup_timeout_s
+        + SHUTDOWN_REAP_WAIT_S
+    )
+    assert expected_cleanup == lifecycle._FAILED_ATTEMPT_CLEANUP_S
+    assert expected_cleanup in lifecycle._E64_BOUND_A_COMPONENTS_S
+    assert expected_cleanup in lifecycle._E64_BOUND_B_COMPONENTS_S
+
+
+def test_e64_import_time_check_rejects_a_bound_that_drops_the_cleanup_term() -> None:
+    """Dropping the teardown term must make the dominance predicate fail.
+
+    Without this, a bound computed over the shortened component list would
+    still be positive and would pass the import-time ``if``/``raise`` gate
+    while under-reporting the real worst case.
+    """
+    cleanup = lifecycle._FAILED_ATTEMPT_CLEANUP_S
+    under_counted_a = lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S / 20.0 - cleanup
+    assert (
+        lifecycle._e64_bound_dominates(under_counted_a, lifecycle._E64_BOUND_A_COMPONENTS_S)
+        is False
+    )
+    assert lifecycle._e64_bound_dominates(
+        lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S / 20.0,
+        lifecycle._E64_BOUND_A_COMPONENTS_S,
+    )
+
+    under_counted_b = (
+        lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
+        - cleanup
+        - lifecycle._E64_BOUND_B_COMPONENTS_S[-2]
+    )
+    assert (
+        lifecycle._e64_bound_dominates(under_counted_b, lifecycle._E64_BOUND_B_COMPONENTS_S)
+        is False
+    )
+    assert lifecycle._e64_bound_dominates(
+        lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S,
+        lifecycle._E64_BOUND_B_COMPONENTS_S,
     )
 
 
@@ -80,6 +141,11 @@ def test_e64_bounds_match_independently_recomputed_numbers() -> None:
     assert _HANDOVER_ACK_TIMEOUT_S == 1.0
     assert lifecycle._HANDOVER_KILL_WAIT_S == 1.0
     assert _HANDOVER_DRAIN_S == 0.5
+    assert SHUTDOWN_TERMINATE_GRACE_S == 5.0
+    assert ProcessManagerPolicy.kill_followup_timeout_s == 2.0
+    assert SHUTDOWN_REAP_WAIT_S == 5.0
+
+    assert lifecycle._FAILED_ATTEMPT_CLEANUP_S == 12.0
 
     assert lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S == _E64_BOUND_A_PINNED_S
     assert lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S == _E64_BOUND_B_PINNED_S

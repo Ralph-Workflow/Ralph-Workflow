@@ -99,6 +99,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_filesystem_polling_invocation.py",  # subprocess.run literal in an audit-fixture source string
     "test_audit_skill_mirror_freshness.py",  # invokes the audit module as a subprocess to verify the CLI entry point end-to-end
     "test_audit_resource_lifecycle.py",  # subprocess/asyncio spawn literals as audit-fixture code strings
+    "e72_descendant_helper.py",  # E7.2 footprint tree fixture: parent-side spawn goes through ProcessManager; the subprocess.Popen literal lives in a real child launcher script that must create the upstream grandchild the acceptance criterion requires, and os.killpg appears only in its explanatory docstring
     "test_audit_parallelization_dormant.py",
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
     "test_smoke_multimodal_end_to_end.py",  # per-harness multimodal smoke proof; drives mock_multimodal_agent as a subprocess
