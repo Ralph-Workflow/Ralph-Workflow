@@ -213,11 +213,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
     # Cause 5c — child runtime shutdown seam.
-    # Line moved from 2757 to 3148 after the spawn-environment helper
-    # extraction in commit 56c461b06 (referenced as the ``spawn``-module
-    # argv in ``_spawn_mcp_process``). The destination was re-anchored to
-    # the working tree when this commit replayed onto ``main``.
-    ("ralph/mcp/server/lifecycle.py", 3146, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 3041, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
         55,

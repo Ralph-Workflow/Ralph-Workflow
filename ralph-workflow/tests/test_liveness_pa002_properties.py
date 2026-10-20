@@ -8,14 +8,17 @@ decorator, ``@settings(...)``, assertion and docstring is identical to
 the section it came from.
 
 **Why the score / kill-time monotonicity properties are absent.**
-PRODUCT_CRITERIA Part A ships the literal Sugeno aggregate
-``s = Σwᵢzᵢ / Σwᵢ``. That aggregate admits *dilution*: a new or raised
-rule whose ``zᵢ`` sits below the current score pulls ``s`` DOWN, so ``s``
-is neither globally nor per-signal monotone, and a kill can arrive
-strictly EARLIER when a working signal is raised during a CHANGING
-trace. Three counterexamples defeat the old monotonicity claims, and
-each is locked here as an exact-semantics regression rather than
-asserted away:
+PRODUCT_CRITERIA Verification §3 requires "raising any working signal
+never lowers `s` or speeds up a kill". That criterion is
+**UNSATISFIABLE jointly with the prescribed Part A rule table**, and this
+module carries the reconciliation rather than a weakened assertion of it.
+PART A ships the literal Sugeno aggregate ``s = Σwᵢzᵢ / Σwᵢ``. That
+aggregate admits *dilution*: a new or raised rule whose ``zᵢ`` sits below
+the current score pulls ``s`` DOWN, so ``s`` is neither globally nor
+per-signal monotone, and a kill can arrive strictly EARLIER when a working
+signal is raised during a CHANGING trace. Three counterexamples defeat the
+old monotonicity claims, and each is locked here as an exact-semantics
+DEVIATION CONTRACT rather than asserted away:
 
   * (a) R1 + I/O dilution — score 1.0 -> 0.95
     (``test_extended_property_high_z_baseline_r1_io_dilution``)
@@ -24,6 +27,12 @@ asserted away:
   * (c) kill-timing non-monotonicity under CHANGING I/O — a kill at
     130 s becomes 129 s when only the middle working segment's I/O
     rises (``test_kill_timing_non_monotone_under_changing_io``)
+
+The "AUTHORITATIVE DEVIATION CONTRACT" block further down carries the
+proof that this is SPEC-INTERNAL rather than an implementation defect: the
+membership ramps are exonerated (the drop holds at every interior ramp
+point, ``ds/da = -0.1/(1+a)² < 0``), the literal rule set is the root
+cause, and the normalized weighted average is the amplifier.
 
 The properties that DO survive, and that this module proves, are the
 ones literal Sugeno actually satisfies: score boundedness in [0, 1],
@@ -301,13 +310,70 @@ def test_extended_property_high_z_baseline_r1_io_dilution(io_val: float) -> None
 
 
 # ---------------------------------------------------------------------------
-# PA-002 case (c) -- kill-timing non-monotonicity under CHANGING io (wt-19)
+# AUTHORITATIVE DEVIATION CONTRACT — case (c): kill-timing non-monotonicity
+# under a CHANGING I/O rate (PA-002 / wt-19)
 # ---------------------------------------------------------------------------
 #
-# This is the regression that wt-19 added. The PA-002 / wt-19 closer:
-# the shipped literal-Sugeno weighted average + StallIntegrator can
-# kill EARLIER when a working signal is raised DURING a changing trace,
-# not on a single-window repeated trace.
+# PRODUCT_CRITERIA Verification §3 states, verbatim:
+#
+#     "Monotonic: raising any working signal never lowers `s` or speeds
+#      up a kill."
+#
+# THIS BLOCK IS THE RECONCILIATION of that criterion against Part A.
+# The criterion is UNSATISFIABLE JOINTLY WITH THE PRESCRIBED RULE TABLE,
+# and the test below is a deliberate, LOCKED deviation contract — NOT a
+# regression awaiting a "fix". Three independent reasons, in increasing
+# order of force:
+#
+# 1. (iii) THE MEMBERSHIP RAMPS ARE EXONERATED. The failure is not a
+#    breakpoint artifact. Hold every signal but `io` at the working-window
+#    values (o=0.5 -> OutputRecent=1.0; n=1.0 -> Repetitive=0.0; c=t=w=0).
+#    Then w1 = min(OutputRecent, NOT Repetitive) = 1.0 is CONSTANT and the
+#    only varying weight is w2 = IoActive = a, so
+#
+#         s(a) = (1.0*1.0 + a*0.9) / (1.0 + a)
+#         ds/da = [0.9(1+a) - (1 + 0.9a)] / (1+a)^2 = -0.1/(1+a)^2 < 0
+#
+#    for EVERY a in [0,1]: s is strictly DECREASING in `io` across the
+#    whole ramp, not only at a breakpoint. Every strictly increasing
+#    IoActive ramp (linear, sqrt, min(a,0.5), step) reproduces the drop,
+#    so NO reparameterization of any membership ramp can fix this.
+#
+# 2. (i) THE LITERAL RULE SET IS THE ROOT CAUSE. Two structural facts of
+#    Part A's table, both fixed by the spec and both binding on any
+#    aggregate:
+#      * R2 = IoActive carries NO negated antecedent and z2 = 0.9 <
+#        z1 = 1.0. Admitting R2 to a weighted average currently pinned at
+#        the MAXIMUM z (1.0) can only lower it. NOTHING IS SUPPRESSED in
+#        this trace: w6 (R6) is 0.0 in every branch because
+#        Repetitive = _repetitive(1.0) = 0.0 (novelty 1.0, and
+#        o=0.5 < evidence_window_s=30 so the novelty gate is OPEN), and
+#        w1 stays 1.0 throughout. The dilution is purely ADDITIVE.
+#      * R1 = OutputRecent AND NOT Repetitive, while R6 = Repetitive AND
+#        NOT IoActive. `w1` is therefore NOT monotone in the working
+#        signal `o` across the evidence-window gate: improving recency
+#        across o = 30 -> 29 flips NOT Repetitive from 1.0 to 0.0, so
+#        w1 FALLS 0.6 -> 0.0 while w6 RISES 0 -> 1.0. The weight VECTOR
+#        itself is not coordinate-wise monotone in a working signal.
+#
+# 3. (ii) THE NORMALIZED WEIGHTED AVERAGE s = Swz/Sw (Part A, D2) is the
+#    AMPLIFIER: the normalization is what turns "a lower-z rule joined
+#    the average" into "the average dropped", and it is what lets a
+#    0.05 score drop translate into a one-tick earlier kill.
+#
+# THE REFUTATION THAT CLOSES EVERY CANDIDATE AGGREGATE (including ones
+# that ARE monotone on case (a), e.g. strongest-product): the novel-gate
+# pair is pinned by exact test assertion at BOTH ends —
+#
+#     tests/test_liveness_assessor.py:401   v_30.score == approx(0.6)
+#     tests/test_liveness_assessor.py:414   v_29.score == approx(0.2/1.38)
+#
+# on windows that differ ONLY in `o` (30 -> 29: strictly better recency,
+# the sole working signal raised). No aggregate whatsoever can return
+# both values AND be monotone in `o`. The contradiction is SPEC-INTERNAL:
+# Verification §3 "Monotonic" versus Part A's own R1/R6/evidence-gate
+# loop-detection design. Lifting it requires editing PRODUCT_CRITERIA,
+# not this code.
 #
 # Trace (observed with default liveness config, dt=1.0, stall_window=90):
 #   1. 80 s idle (sso=60, novelty=None, io=0.0) -> each step adds 1.0 to P
@@ -333,16 +399,16 @@ def test_extended_property_high_z_baseline_r1_io_dilution(io_val: float) -> None
 # This rounding off-by-ulp is intrinsic to the StallIntegrator's
 # non-integer-arithmetic path, not a defect.
 #
-# Deviation disposition: this is the SPEC-INTERNAL score / kill-time
-# non-monotonicity that PA-002 closes. The shipped literal-Sugeno
-# weighted average ``s = Σ wᵢzᵢ / Σ wᵢ`` admits dilution; killing
-# earlier when a working signal is raised on a changing trace is a
-# property of the shipped aggregate, not a bug. The remaining
-# guarantees (bounded ``P``, fail-closed unknowns, baseline-relative
-# score monotonicity, all-idle kill at ``stall_window_s`` ± one
-# interval — see scenario 1 and the §3 ramp-offset reconciliation in
-# ``ralph/mcp/ARCHITECTURE.md``) are stated separately in the
-# accepted-deviations section of
+# DEVIATION DISPOSITION (authoritative, PA-002 / wt-19): this is the
+# SPEC-INTERNAL score / kill-time non-monotonicity. The shipped
+# literal-Sugeno weighted average ``s = Σ wᵢzᵢ / Σ wᵢ`` admits additive
+# dilution; killing earlier when a working signal is raised on a changing
+# trace is a property of the shipped aggregate, not a bug, and — per the
+# three numbered reasons above — not repairable without editing
+# PRODUCT_CRITERIA. The surviving guarantees (bounded ``P``, fail-closed
+# unknowns, classification safety, baseline-relative score monotonicity,
+# all-idle kill at ``stall_window_s`` ± one interval — see scenario 1) are
+# asserted above and stated in the accepted-deviations section of
 # ``docs/agents/exec-long-running-root-cause.md``.
 
 
@@ -395,7 +461,26 @@ def _run_changing_io_kill_trace(
 
 
 def test_kill_timing_non_monotone_under_changing_io() -> None:
-    """PA-002 case (c): a changing trace kills EARLIER when I/O is raised.
+    """AUTHORITATIVE DEVIATION CONTRACT (case (c)): a changing trace
+    kills EARLIER when I/O is raised. This is intentional, locked
+    behavior — not a regression awaiting a fix.
+
+    PRODUCT_CRITERIA Verification §3 "Monotonic: raising any working
+    signal never lowers `s` or speeds up a kill" is UNSATISFIABLE
+    jointly with the prescribed rule table; see the AUTHORITATIVE
+    DEVIATION CONTRACT block above for the proof. In short: holding
+    every other signal at its working-window value makes ``w1``
+    (R1, z=1.0) constant at 1.0 and the only varying weight ``w2``
+    (R2, z=0.9) equal to ``IoActive = a``, so
+
+        s(a) = (1.0 + 0.9a) / (1 + a),   ds/da = -0.1/(1+a)^2 < 0
+
+    for EVERY ``a`` in ``[0, 1]`` — the score falls strictly as I/O
+    rises, at every interior point of the ramp, not merely at a
+    breakpoint. No monotone reparameterization of any membership ramp
+    removes it, and no aggregate can remove it while still returning
+    the exact novel-gate pair 0.6 / 0.2/1.38 that
+    ``tests/test_liveness_assessor.py`` pins at lines 401 and 414.
 
     Over the 80s idle / 20s working / idle trace with default liveness
     config, dt=1.0, stall_window=90:
@@ -410,10 +495,12 @@ def test_kill_timing_non_monotone_under_changing_io() -> None:
     accumulated delta off-by-ulp pushes the post-idle cross over
     stall_window one tick later.
 
-    REGRESSION CONTRACT: locking these exact integers locks the
-    non-monotonicity as a property of the shipped aggregate. A future
-    attempt to "fix" the dilution by changing the rule weights, the
-    z-values, theta, or the StallIntegrator update will trip this test.
+    CONTRACT: these exact integers are LOCKED. Changing the rule
+    weights, the z-values, theta, or the StallIntegrator update so as
+    to make the kill arrive later would NOT be a bug fix — it would
+    silently rewrite Part A, and PRODUCT_CRITERIA Verification §3 would
+    have to be re-reconciled in the same change. The test failing on
+    exactly these numbers is the intended tripwire for that event.
     """
     k0, p0 = _run_changing_io_kill_trace(io_during_working=0.0)
     k64, p64 = _run_changing_io_kill_trace(io_during_working=64.0)
@@ -423,16 +510,25 @@ def test_kill_timing_non_monotone_under_changing_io() -> None:
     assert k64 == 129, f"case-(c) io=64 shifted: got kill_time={k64}, expected 129"
     assert k_big == 129, f"case-(c) io=65536 shifted: got kill_time={k_big}, expected 129"
 
-    # The literal-sugeno dilution anti-monotone ordering: raising ONLY
-    # the I/O rate during the middle working segment makes the kill
-    # arrive strictly EARLIER. This is the property PA-002 closes.
+    # The literal-Sugeno dilution ANTI-monotone ordering: raising ONLY the
+    # I/O rate during the middle working segment makes the kill arrive
+    # strictly EARLIER. This is the LOCKED deviation contract, asserted for
+    # BOTH raised-I/O branches (not just the saturated one).
+    assert k64 < k0, (
+        f"case-(c) deviation contract broken: raising I/O to 64 KiB/s during "
+        f"the working segment made the kill arrive LATER ({k0} -> {k64}) "
+        f"instead of earlier (130 -> 129). The contract requires 130 -> 129; "
+        f"a change here means PART A's rule weights, z-values, theta or the "
+        f"StallIntegrator update moved, so PRODUCT_CRITERIA Verification §3 "
+        f"must be re-reconciled in the same change."
+    )
     assert k_big < k0, (
-        f"case-(c) non-monotonicity regression: raising I/O during the "
+        f"case-(c) deviation contract broken: raising I/O during the "
         f"working segment made the kill arrive LATER ({k0} -> {k_big}) "
-        f"instead of earlier (130 -> 129). The regression contract "
-        f"requires 130 -> 129; if the upgrade changed this, it also "
-        f"probably fixed the literal-sugeno dilution root cause and "
-        f"this test should be updated to reflect the new behavior."
+        f"instead of earlier (130 -> 129). The contract requires 130 -> 129; "
+        f"a change here means PART A's rule weights, z-values, theta or the "
+        f"StallIntegrator update moved, so PRODUCT_CRITERIA Verification §3 "
+        f"must be re-reconciled in the same change."
     )
 
     assert p0 >= 90.0 - 1e-9, f"kill pressure below stall_window: {p0!r}"

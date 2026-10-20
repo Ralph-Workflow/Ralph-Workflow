@@ -98,9 +98,29 @@ by ANY aggregate. The aggregate below is therefore kept deliberately
   score is 0.95 vs 1.0, pressure drains slightly slower (per-step
   delta -0.9 instead of -1.0), so the pressure total crosses
   ``stall_window`` sooner in the following idle segment. This does
-  NOT cross the R6/novelty-gate. Locked exactly as a regression by
-  ``tests/test_liveness_properties.py
+  NOT cross the R6/novelty-gate. Locked exactly as a DEVIATION
+  CONTRACT by ``tests/test_liveness_pa002_properties.py
   ::test_kill_timing_non_monotone_under_changing_io``.
+
+  **The precise mathematical reason (WU-D).** Hold every signal but
+  ``io`` at the working-window values (o=0.5 -> OutputRecent=1.0;
+  n=1.0 -> Repetitive=0.0; c=t=w=0). Then ``w1`` (R1, z=1.0) is
+  CONSTANT at 1.0 — nothing is suppressed — and the only varying
+  weight is ``w2 = IoActive = a``. Hence
+
+      s(a) = (1.0*1.0 + a*0.9) / (1.0 + a),
+      ds/da = [0.9(1+a) - (1 + 0.9a)] / (1+a)^2 = -0.1/(1+a)^2 < 0
+
+  for EVERY ``a`` in ``[0, 1]``. The dilution therefore holds at every
+  interior point of the IoActive ramp, not merely at a breakpoint:
+  no monotone reparameterization of any membership ramp removes it,
+  and only ``z2 >= z1`` or gating R2 on ``NOT R1`` would, both of which
+  contradict the literal rule table. The decisive, AGGREGATE-
+  INDEPENDENT refutation is counterexample 3 above: the novel-gate pair
+  pins ``s`` at exactly 0.6 (o=30) and 0.2/1.38 (o=29) on windows that
+  differ only in ``o``, so no aggregate whatsoever can be monotone in
+  ``o`` and satisfy those two locked expectations. The contradiction is
+  SPEC-INTERNAL and unsatisfiable jointly with D2/D3.
 
 Guarantees that DO hold and ARE established by the code (verified by
 ``tests/test_liveness_assessor.py`` and ``tests/test_liveness_properties.py``):

@@ -108,6 +108,28 @@ def _install_pdeathsig() -> None:
         os._exit(0)
 
 
+def _supervisor_invocation(command: Sequence[str]) -> list[str]:
+    """Build the ``argv`` that runs the supervisor with ``command``.
+
+    Invoked as ``python -u -c <inline-import>`` so the supervisor body
+    runs in the same interpreter we'd otherwise pay to start anyway, and
+    the worker command gets pushed into ``sys.argv[1:]`` so the supervisor's
+    ``run(argv)`` sees it cleanly. ``-u`` (unbuffered stdout/stderr) keeps
+    the holder's pipe readable in tests that poll the supervisor's stdout.
+    """
+    return [
+        sys.executable,
+        "-u",
+        "-c",
+        (
+            "import sys;"
+            " from ralph.process.manager._supervisor import run;"
+            " sys.exit(run(sys.argv[1:]))"
+        ),
+        *[os.fsdecode(a) for a in command],
+    ]
+
+
 def _default_sync_process_factory(
     command: Sequence[str],
     opts: SpawnOptions,
@@ -119,14 +141,37 @@ def _default_sync_process_factory(
         allow_broker_secret=opts.allow_broker_secret,
         cwd=opts.cwd,
     )
+    on_linux = sys.platform.startswith("linux")
+    on_main_thread = threading.current_thread() is threading.main_thread()
+    if on_linux and not on_main_thread:
+        # Off-main-thread spawn (the production HTTP dispatch path: see
+        # ``ralph/mcp/server/_saturated_dispatch.py:155-173`` -> the exec
+        # tool's registry.start). Popen with NO ``preexec_fn`` is safe from
+        # any thread; the multi-threaded-fork hazard is contained in the
+        # supervisor itself, which is a fresh single-threaded interpreter.
+        # PG kill from the supervisor's SIGTERM handler cascades to
+        # worker + every descendant because ``start_new_session=True`` puts
+        # the supervisor at the head of a fresh PG, and the worker inherits
+        # that PG at fork time -- covering the documented gap that PR_SET_PDEATHSIG
+        # doesn't survive a sigkill + grandchild hop on the legacy path.
+        popen: _PopenConstructor = subprocess.Popen
+        return popen(
+            _supervisor_invocation(command),
+            cwd=opts.cwd,
+            env=child_env,
+            stdin=opts.stdin,
+            stdout=opts.stdout,
+            stderr=opts.stderr,
+            start_new_session=True,
+            text=opts.text,
+            errors=opts.errors if opts.text else None,
+            pass_fds=opts.pass_fds,
+        )
     preexec: Callable[[], None] | None = (
-        _install_pdeathsig
-        if sys.platform.startswith("linux")
-        and threading.current_thread() is threading.main_thread()
-        else None
+        _install_pdeathsig if on_linux and on_main_thread else None
     )
-    popen: _PopenConstructor = subprocess.Popen
-    return popen(
+    popen_ctor: _PopenConstructor = subprocess.Popen
+    return popen_ctor(
         command,
         cwd=opts.cwd,
         env=child_env,

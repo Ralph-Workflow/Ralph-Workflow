@@ -2,11 +2,17 @@
 
 When the spawn pipeline fails BEFORE ``deps.spawn_process`` runs (a session-file
 creation failure, a ``subprocess_env`` mapper failure, or a fault injected
-immediately after the helper creates the handover socketpair), the original
-typed error must propagate — never an ``UnboundLocalError`` from a local that
-was only bound inside the failed ``try`` block. The session file and socket
-handles must also be cleaned up so no file descriptor is leaked across the
-boundary.
+immediately after ``_spawn_mcp_process`` itself creates the handover
+socketpair), the original typed error must propagate — never an
+``UnboundLocalError`` from a local that was only bound inside the failed
+``try`` block. The session file and socket handles must also be cleaned up so
+no file descriptor is leaked across the boundary.
+
+Every resource the caller owns is bound to ``None`` in the OUTER frame before
+the first fallible call, so the single ``except BaseException`` at the end of
+the ``try`` is the only cleanup point: it closes both socket halves and
+unlinks the handshake file. The env-assembly helper ``_build_spawn_env`` is a
+pure computation — it owns no resource and never appears on this boundary.
 
 Behavioural matrix (each case must pass on the post-fix tree):
 
@@ -14,13 +20,16 @@ Behavioural matrix (each case must pass on the post-fix tree):
   file path is unlinked, open-fd count is unchanged.
 - ``subprocess_env`` failure -> original typed error surfaces, open-fd count is
   unchanged (the session file may or may not yet exist when the helper runs).
-- In-helper fault AFTER ``create_handover_socketpair`` returns. The
-  injection sits on the next statement inside ``_build_spawn_environment``
-  (the ``child_sock.fileno()`` call that runs the instant the helper has a
-  socketpair in hand), so the helper still owns the file descriptors at the
-  moment the fault fires. This proves the helper's cleanup-on-unsuccessful-
-  return contract (PA-002/PA-003): BOTH socket ends must be closed before the
-  helper re-raises, and the caller never observes a leaked fd.
+- In-caller fault AFTER ``create_handover_socketpair`` returns. The
+  injection sits on the next statement in ``_spawn_mcp_process`` itself
+  (the ``child_sock.fileno()`` call that runs the instant the caller has a
+  socketpair in hand), so the caller still owns the file descriptors at the
+  moment the fault fires. This proves the caller's cleanup-on-unsuccessful-
+  return contract (PA-002/PA-003): BOTH socket ends must be closed by the
+  single ``except BaseException`` cleanup point before the caller re-raises,
+  and no caller observes a leaked fd. The live env-assembly helper
+  ``_build_spawn_env`` opens no fd and owns no resource at all, so it is
+  never on this path.
 """
 
 from __future__ import annotations
@@ -197,15 +206,18 @@ def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
 def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(c) Fault after the helper's socketpair: BOTH socket ends are closed.
+    """(c) Fault after the caller's socketpair: BOTH socket ends are closed.
 
-    The injection sits on ``socket.socket.fileno`` inside
-    ``_build_spawn_environment``: the helper calls ``create_handover_socketpair``
-    (which returns a real pair) and then immediately calls ``child_sock.fileno()``
-    to compute the fd number it will hand to the child via env. By wrapping
+    The injection sits on ``socket.socket.fileno`` in ``_spawn_mcp_process``:
+    the caller calls ``create_handover_socketpair`` (which returns a real
+    pair) and then immediately calls ``child_sock.fileno()`` to compute the
+    fd number it hands to the child via env. By wrapping
     ``socket.socket.fileno`` to raise ON THE FIRST CALL ONLY, we inject a fault
-    AFTER the socketpair exists but BEFORE the helper returns. The helper must
-    then close BOTH ends and re-raise the typed error.
+    AFTER the socketpair exists but BEFORE the process object is built. The
+    single ``except BaseException`` cleanup point — which also owns the
+    session-file unlink — must then close BOTH ends and re-raise the typed
+    error. ``_build_spawn_env`` owns nothing here: it has already returned
+    by the time the socketpair exists.
     """
 
     class _PostSocketpairFaultError(RuntimeError):
@@ -259,17 +271,17 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     # Typed error, not UnboundLocalError.
     assert "_PostSocketpairFaultError" in type(excinfo.value).__name__
     assert "UnboundLocalError" not in type(excinfo.value).__name__
-    # The caller's except handler must unlink the session file on
-    # in-helper post-socketpair fault so the temporary file does not
-    # survive across the boundary; the helper itself is only responsible
-    # for the sockets it created.
+    # The caller's single ``except BaseException`` cleanup point owns the
+    # session-file unlink as well, so a fault injected after the socketpair
+    # exists cannot leave the handshake file behind across the boundary.
     assert not session_file.exists(), (
         "session file at "
         f"{session_file} "
         "was not removed after the post-socketpair fault; the caller must "
         "unlink it in its except handler before re-raising."
     )
-    # The helper's cleanup path must have closed both socket ends before
-    # re-raising, so the test process's open-fd count is unchanged.
+    # The caller's single ``except BaseException`` cleanup point must have
+    # closed both socket ends before re-raising, so the test process's
+    # open-fd count is unchanged.
     if fds_before >= 0:
         assert _count_open_fds() == fds_before
