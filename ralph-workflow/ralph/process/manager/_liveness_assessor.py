@@ -29,10 +29,9 @@ from typing import Literal
 from ralph import timeout_defaults as _td
 
 # Unknown-signal policy (D5): an unreadable signal never extends a deadline.
-# Membership functions return ``None`` for an unknown signal (NOT 0.0). The
-# rule evaluator treats ``None`` operands as "this rule cannot fire" so a
-# single unknown input never extends a healthy build's stall window, while
-# every additional known input adds evidence exactly as the spec requires.
+# An unreadable signal sets every working membership built on it to 0.0,
+# and every NOT built on it to 1.0. When all signals are unknown, verdict is
+# "unknown" (score 0.0) and accumulates stall pressure with no extension.
 
 
 # ---------------------------------------------------------------------------
@@ -41,29 +40,29 @@ from ralph import timeout_defaults as _td
 
 
 @dataclass(frozen=True)
-class LivenessConfig:
-    output_recent_min_s: float        # OutputRecent: 1 at o<=min_s, 0 at o>=max_s
+class _LivenessConfig:
+    output_recent_min_s: float  # OutputRecent: 1 at o<=min_s, 0 at o>=max_s
     output_recent_max_s: float
-    cpu_busy_min: float               # CpuBusy:    0 at c<=min, 1 at c>=max
+    cpu_busy_min: float  # CpuBusy:    0 at c<=min, 1 at c>=max
     cpu_busy_max: float
-    io_kbps_inactive: float           # IoActive:   0 at <=inactive, 1 at >=active
+    io_kbps_inactive: float  # IoActive:   0 at <=inactive, 1 at >=active
     io_kbps_active: float
-    tree_active_threshold: int        # TreeActive: 0 at t=0, 1 at t>=threshold
-    repetitive_max: float             # Repetitive: 1 at n<=max, 0 at n>=min
+    tree_active_threshold: int  # TreeActive: 0 at t=0, 1 at t>=threshold
+    repetitive_max: float  # Repetitive: 1 at n<=max, 0 at n>=min
     repetitive_min: float
-    awake_per_s_inactive: float       # Awake:      0 at w<=inactive, 1 at w>=active
+    awake_per_s_inactive: float  # Awake:      0 at w<=inactive, 1 at w>=active
     awake_per_s_active: float
-    stall_theta: float                # theta for StallIntegrator
-    evidence_window_s: float          # informational; included so the config is fully parameterised
+    stall_theta: float  # theta for StallIntegrator
+    evidence_window_s: float  # informational; included so the config is fully parameterised
 
 
 @dataclass(frozen=True)
-class LivenessWindow:
+class _LivenessWindow:
     seconds_since_output: float | None
     cpu_ratio: float | None
-    io_bytes_per_s: float | None        # already in KiB/s; the assessor never converts
+    io_bytes_per_s: float | None  # already in KiB/s; the assessor never converts
     child_events: int | None
-    output_novelty: float | None        # distinct/total in [0,1]; None if total < 20
+    output_novelty: float | None  # distinct/total in [0,1]; None if total < 20
     voluntary_ctx_per_s: float | None
     elapsed_s: float
 
@@ -72,15 +71,20 @@ VerdictKind = Literal["working", "suspicious", "stalled", "unknown"]
 
 
 @dataclass(frozen=True)
-class LivenessVerdict:
+class _LivenessVerdict:
     score: float
-    pressure: float                    # current P
+    pressure: float  # current P
     stall_window_s: float
-    strongest_rule: str                # "" when no rule fires / unknown
+    strongest_rule: str  # "" when no rule fires / unknown
     suspicious: bool
     verdict_kind: VerdictKind
-    signals: dict[str, float | None]   # raw window fields incl. unknowns
+    signals: dict[str, float | None]  # raw window fields incl. unknowns
     elapsed_s: float
+
+
+LivenessConfig = _LivenessConfig
+LivenessWindow = _LivenessWindow
+LivenessVerdict = _LivenessVerdict
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +224,9 @@ def _evaluate_rules(
     return weights, strongest_rule
 
 
+_UNKNOWN_THRESHOLD: float = 0.05
+
+
 def _score_from_weights(weights: tuple[float, ...]) -> float:
     """Compute ``s = sum(w_i * z_i) / sum(w_i)``; 0.0 when sum is degenerate."""
     total_w = 0.0
@@ -227,7 +234,7 @@ def _score_from_weights(weights: tuple[float, ...]) -> float:
     for w, z in zip(weights, _RULE_WEIGHTS, strict=True):
         total_w += w
         total_wz += w * z
-    if total_w < 0.05:
+    if total_w < _UNKNOWN_THRESHOLD:
         return 0.0
     return total_wz / total_w
 
@@ -235,9 +242,6 @@ def _score_from_weights(weights: tuple[float, ...]) -> float:
 # ---------------------------------------------------------------------------
 # Verdict construction
 # ---------------------------------------------------------------------------
-
-
-_UNKNOWN_THRESHOLD: float = 0.05
 
 
 def _kind_from_weights(
@@ -268,48 +272,22 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
     repetitive = _repetitive(window.output_novelty, config)
     awake = _awake(window.voluntary_ctx_per_s, config)
 
-    weights, strongest_rule = _evaluate_rules(
-        output_recent, cpu_busy, io_active, tree_active, repetitive, awake
+    all_none = (
+        window.seconds_since_output is None
+        and window.cpu_ratio is None
+        and window.io_bytes_per_s is None
+        and window.child_events is None
+        and window.output_novelty is None
+        and window.voluntary_ctx_per_s is None
     )
 
-    # D5 fail-closed per-rule gating: a rule needs its positive-evidence
-    # signal(s) KNOWN to be able to fire. An unknown signal cannot
-    # substantiate a strong claim (working OR idle), so the rule weight is
-    # forced to 0 even when the membership layer folded unknown → 0.0.
-    output_known = window.seconds_since_output is not None
-    cpu_known = window.cpu_ratio is not None
-    io_known = window.io_bytes_per_s is not None
-    tree_known = window.child_events is not None
-    repetitive_known = window.output_novelty is not None
-    awake_known = window.voluntary_ctx_per_s is not None
-
-    gated: list[float] = list(weights)
-    if not (output_known and repetitive_known):
-        gated[0] = 0.0  # R1
-    if not io_known:
-        gated[1] = 0.0  # R2
-    if not tree_known:
-        gated[2] = 0.0  # R3
-    if not cpu_known:
-        gated[3] = 0.0  # R4
-    if not (output_known and cpu_known and io_known and tree_known and awake_known):
-        gated[4] = 0.0  # R5 (idle: every signal must be known to claim idleness)
-    if not (repetitive_known and io_known):
-        gated[5] = 0.0  # R6
-    if not awake_known:
-        gated[6] = 0.0  # R7
-
-    weights = tuple(gated)
-
-    # Recompute strongest_rule after gating (gating can drop the strongest rule).
-    strongest_rule = ""
-    strongest_w = -1.0
-    for name, w in zip(_RULE_NAMES, weights, strict=True):
-        if w > strongest_w:
-            strongest_w = w
-            strongest_rule = name
-    if strongest_w <= 0.0:
+    if all_none:
+        weights: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         strongest_rule = ""
+    else:
+        weights, strongest_rule = _evaluate_rules(
+            output_recent, cpu_busy, io_active, tree_active, repetitive, awake
+        )
 
     score = _score_from_weights(weights)
     kind = _kind_from_weights(weights, score, strongest_rule)
@@ -340,7 +318,7 @@ class StallIntegrator:
     ``should_kill(stop_window_s)`` is True iff ``P >= stall_window_s``.
     """
 
-    __slots__ = ("_theta", "_p")
+    __slots__ = ("_p", "_theta")
 
     def __init__(self, *, theta: float) -> None:
         self._theta = theta

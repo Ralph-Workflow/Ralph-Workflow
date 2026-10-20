@@ -2030,7 +2030,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # server -> process_manager for the activity relay seam)
         # and break the existing per-process module-load order
         # that the test fixtures rely on.
-        ("ralph/process/manager/_process_manager.py", 1742),
-        ("ralph/process/manager/_process_manager.py", 2097),
+        ("ralph/process/manager/_process_manager.py", 1746),
+        ("ralph/process/manager/_process_manager.py", 2101),
     }
 )

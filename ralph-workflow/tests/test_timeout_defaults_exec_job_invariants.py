@@ -285,3 +285,88 @@ def test_live_import_succeeds_under_python_o() -> None:
     assert result.returncode == 0, (
         f"import failed under python -O\nstdout={result.stdout!r}\nstderr={result.stderr!r}"
     )
+
+
+def test_timing_safety_invariants_survive_minus_o() -> None:
+    """Verify that _timing_safety.py invariants use if/raise, surviving -O.
+
+    Runs the test in a subprocess so the import-time if/raise runs
+    against the patched source.
+    """
+    timing_safety_path = Path("ralph/mcp/server/_timing_safety.py")
+    original = timing_safety_path.read_text(encoding="utf-8")
+    anchor = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
+    if anchor not in original:  # pragma: no cover
+        raise AssertionError(
+            "timing-safety headroom anchor missing; _timing_safety.py was reformatted."
+        )
+
+    script = textwrap.dedent(
+        """\
+        import importlib.util
+        import io
+        import sys
+        import tempfile
+        import traceback
+        from contextlib import redirect_stderr
+        from pathlib import Path
+
+        path = Path({path!r})
+        marker = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
+        patched = path.read_text(encoding="utf-8").replace(
+            "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
+            marker,
+            1,
+        )
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+        try:
+            tmp.write(patched)
+            tmp.flush()
+            tmp_path = tmp.name
+        finally:
+            tmp.close()
+
+        err = io.StringIO()
+        try:
+            with redirect_stderr(err):
+                spec = importlib.util.spec_from_file_location("timing_safety_case", tmp_path)
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules["timing_safety_case"] = mod
+                spec.loader.exec_module(mod)
+            ok = True
+            stderr = err.getvalue()
+        except Exception:
+            ok = False
+            stderr = err.getvalue() + traceback.format_exc()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        print("OK:" + str(ok))
+        print("STDERR:" + stderr)
+        """
+    )
+
+    script_with_paths = script.format(path=str(timing_safety_path))
+    for minus_o in (False, True):
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", script_with_paths])
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        assert "OK:False" in completed.stdout, (
+            f"expected RuntimeError on import (minus_o={minus_o}); "
+            f"got stdout={completed.stdout!r} stderr={completed.stderr!r}"
+        )
+        assert "RuntimeError" in completed.stdout, (
+            f"expected RuntimeError text (minus_o={minus_o}); got stdout={completed.stdout!r}"
+        )
+        assert "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
+            f"expected the invariant name in stderr (minus_o={minus_o}); "
+            f"got stdout={completed.stdout!r}"
+        )

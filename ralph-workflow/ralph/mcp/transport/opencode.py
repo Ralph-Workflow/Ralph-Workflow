@@ -48,8 +48,7 @@ _OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
 #: ``max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS)`` lower bound, so a
 #: future reduction in the floor cannot silently shrink a working timeout.
 _OPENCODE_MCP_CLIENT_TIMEOUT_MS: Final[int] = (
-    max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS)
-    + _OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS
+    max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS) + _OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS
 )
 
 #: Config file names OpenCode reads out of its GLOBAL config directory, in the

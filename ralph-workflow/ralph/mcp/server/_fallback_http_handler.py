@@ -19,10 +19,25 @@ from ralph.mcp.server._transport_repetition_tracker import (
 )
 from ralph.mcp.server._trust_boundary import require_trust_boundary
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
-from ralph.mcp.tools.names import EXEC_TOOL, claude_tool_name, opencode_tool_name
+from ralph.mcp.tools.names import (
+    EXEC_TOOL,
+    RAW_EXEC_TOOL,
+    UNSAFE_EXEC_TOOL,
+    claude_tool_name,
+    opencode_tool_name,
+)
+
+_EXEC_STREAMING_BASE_NAMES: tuple[str, ...] = (
+    str(EXEC_TOOL),
+    str(UNSAFE_EXEC_TOOL),
+    str(RAW_EXEC_TOOL),
+    "exec_wait",
+)
 
 _EXEC_STREAMING_TOOL_NAMES = frozenset(
-    {str(EXEC_TOOL), claude_tool_name(EXEC_TOOL), opencode_tool_name(EXEC_TOOL)}
+    name
+    for base in _EXEC_STREAMING_BASE_NAMES
+    for name in (base, claude_tool_name(base), opencode_tool_name(base))
 )
 
 

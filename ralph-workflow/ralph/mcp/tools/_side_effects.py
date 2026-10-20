@@ -56,6 +56,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "exec": _contract("exec", "mutate"),
     "unsafe_exec": _contract("unsafe_exec", "mutate"),
     "raw_exec": _contract("raw_exec", "mutate"),
+    "exec_cancel": _contract("exec_cancel", "mutate"),
     "web_search": _contract("web_search", "mutate"),
     "visit_url": _contract("visit_url", "mutate"),
     "download_url": _contract("download_url", "mutate"),
@@ -76,6 +77,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "report_progress": _contract("report_progress", "mutate"),
     "read_env": _contract("read_env", "read"),
     # Read tools — safe to retry on partial failure.
+    "exec_wait": _contract("exec_wait", "read"),
     "read_file": _contract("read_file", "read"),
     "read_multiple_files": _contract("read_multiple_files", "read"),
     "list_directory": _contract("list_directory", "read"),

@@ -314,6 +314,8 @@ SWEEP_CALLS: dict[str, dict[str, Any]] = {
     RalphToolName.EXEC: {"command": "true"},
     RalphToolName.UNSAFE_EXEC: {"command": "true", "timeout_ms": 5000},
     RalphToolName.RAW_EXEC: {"command": "true", "timeout_ms": 5000},
+    RalphToolName.EXEC_WAIT: {"job_id": "sweep_job_id", "wait_ms": 1000},
+    RalphToolName.EXEC_CANCEL: {"job_id": "sweep_job_id"},
     # Explore index — handlers are exercised against the workspace
     # root with the default options. They answer with structured
     # payloads; we do not need to assert specific content here.

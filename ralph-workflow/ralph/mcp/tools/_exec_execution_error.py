@@ -32,7 +32,16 @@ class ExecutionError(ToolError):
         timeout_ms: int | None = None,
         deadline_timeout_ms: int | None = None,
         suggested_timeout_ms: int | None = None,
-        timeout_cause: Literal["inactivity", "hard_cap"] | None = None,
+        timeout_cause: Literal[
+            "inactivity",
+            "hard_cap",
+            "stalled",
+            "no_progress",
+            "abandoned",
+            "session_end",
+            "restart_lost",
+        ]
+        | None = None,
         partial_output: str | None = None,
         # Diagnostics summary line
         diagnostics: str | None = None,
@@ -79,16 +88,41 @@ class ExecutionError(ToolError):
         if self.timeout_cause == "hard_cap":
             lines.append(
                 "The command already ran to the EXEC_MAX_TIMEOUT_MS ceiling; a larger"
-                " timeout_ms cannot extend it. Split the work or run it in the background."
+                " timeout_ms cannot extend it. Split the work into smaller commands. "
+                "Background command execution is not supported; for running jobs, "
+                "call exec_wait to monitor or exec_cancel to stop."
             )
-        elif self.timeout_cause == "inactivity":
+        elif self.timeout_cause in {"stalled", "inactivity"}:
             lines.append(
-                "No output was received for the inactivity window. Output resets that window;"
+                "No output was received for the stall/inactivity window. Output resets that window;"
                 " raise timeout_ms up to the cap for a legitimately quiet command, or fix a"
-                " command stuck waiting on input, deadlocked, or looping."
+                " command stuck waiting on input, deadlocked, or looping. For running jobs, "
+                "call exec_wait to poll or exec_cancel to abort."
             )
             if self.suggested_timeout_ms is not None:
                 lines.append(f"Suggested timeout_ms: {self.suggested_timeout_ms}.")
+        elif self.timeout_cause == "no_progress":
+            lines.append(
+                "The command showed persistent lack of progress across the monitoring window "
+                "(EXEC_NO_PROGRESS_WINDOW_S) and was killed. Check for deadlocks, spins, "
+                "or unbuffered blocking calls. Use exec_wait or exec_cancel for managed jobs."
+            )
+        elif self.timeout_cause == "abandoned":
+            lines.append(
+                "The job was abandoned because no client called exec_wait within the "
+                "abandonment window (EXEC_JOB_ABANDON_S). To track running commands, "
+                "call exec_wait periodically, or call exec_cancel to stop them."
+            )
+        elif self.timeout_cause == "session_end":
+            lines.append(
+                "The job was terminated because the MCP session ended or the server "
+                "is shutting down."
+            )
+        elif self.timeout_cause == "restart_lost":
+            lines.append(
+                "The job was lost during an MCP server restart. Active jobs cannot "
+                "survive server restarts; re-run the command if necessary."
+            )
         else:
             lines.append(
                 "Re-issuing the IDENTICAL call will time out again. A timeout has two"
@@ -108,7 +142,8 @@ class ExecutionError(ToolError):
             lines.append(
                 "2. The command is genuinely stuck (infinite loop, deadlock, or blocked"
                 " waiting on input): raising timeout_ms will only waste more time — fix the"
-                " command itself. Do not retry unchanged."
+                " command itself. Do not retry unchanged. For active detached jobs, use exec_wait "
+                "to monitor or exec_cancel to abort."
             )
         if self.partial_output:
             lines.append(f"Partial output before timeout:\n{self.partial_output}")

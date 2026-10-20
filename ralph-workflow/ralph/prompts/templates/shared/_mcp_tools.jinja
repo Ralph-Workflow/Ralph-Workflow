@@ -12,7 +12,7 @@ WRITE: {{WRITE_FILE_TOOL_REFERENCE}}{% if EDIT_FILE_TOOL_REFERENCE %}, {{EDIT_FI
 These Ralph Workflow edit tools are the parent session's write/edit path. Native sub-agents use their harness's native write and edit tools.
 {% endif %}
 {% if HAS_MCP_EXEC %}
-EXEC: {{EXEC_TOOL_REFERENCE}}{% if UNSAFE_EXEC_TOOL_REFERENCE %} (and {{UNSAFE_EXEC_TOOL_REFERENCE}} / {{RAW_EXEC_TOOL_REFERENCE}} when explicitly granted){% endif %}{% if READ_ENV_TOOL_REFERENCE %}; {{READ_ENV_TOOL_REFERENCE}}{% endif %}{% if REPORT_PROGRESS_TOOL_NAME %}; {{REPORT_PROGRESS_TOOL_REFERENCE}}{% endif %}
+EXEC: {{EXEC_TOOL_REFERENCE}}{% if UNSAFE_EXEC_TOOL_REFERENCE %} (and {{UNSAFE_EXEC_TOOL_REFERENCE}} / {{RAW_EXEC_TOOL_REFERENCE}} when explicitly granted){% endif %}{% if EXEC_WAIT_TOOL_REFERENCE %}, {{EXEC_WAIT_TOOL_REFERENCE}}{% endif %}{% if EXEC_CANCEL_TOOL_REFERENCE %}, {{EXEC_CANCEL_TOOL_REFERENCE}}{% endif %}{% if READ_ENV_TOOL_REFERENCE %}; {{READ_ENV_TOOL_REFERENCE}}{% endif %}{% if REPORT_PROGRESS_TOOL_NAME %}; {{REPORT_PROGRESS_TOOL_REFERENCE}}{% endif %}
 {% endif %}
 {% if HAS_MCP_GIT %}
 GIT: {{GIT_STATUS_TOOL_REFERENCE}}, {{GIT_DIFF_TOOL_REFERENCE}}, {{GIT_LOG_TOOL_REFERENCE}}, {{GIT_SHOW_TOOL_REFERENCE}}

@@ -37,6 +37,8 @@ class RalphToolName(StrEnum):
     EXEC = "exec"
     UNSAFE_EXEC = "unsafe_exec"
     RAW_EXEC = "raw_exec"
+    EXEC_WAIT = "exec_wait"
+    EXEC_CANCEL = "exec_cancel"
     SUBMIT_MD_ARTIFACT = "ralph_submit_md_artifact"
     VERIFY_MD_ARTIFACT = "ralph_verify_md_artifact"
     STAGE_MD_ARTIFACT = "ralph_stage_md_artifact"
@@ -98,6 +100,8 @@ GIT_SHOW_TOOL = RalphToolName.GIT_SHOW
 EXEC_TOOL = RalphToolName.EXEC
 UNSAFE_EXEC_TOOL = RalphToolName.UNSAFE_EXEC
 RAW_EXEC_TOOL = RalphToolName.RAW_EXEC
+EXEC_WAIT_TOOL = RalphToolName.EXEC_WAIT
+EXEC_CANCEL_TOOL = RalphToolName.EXEC_CANCEL
 SUBMIT_MD_ARTIFACT_TOOL = RalphToolName.SUBMIT_MD_ARTIFACT
 VERIFY_MD_ARTIFACT_TOOL = RalphToolName.VERIFY_MD_ARTIFACT
 STAGE_MD_ARTIFACT_TOOL = RalphToolName.STAGE_MD_ARTIFACT

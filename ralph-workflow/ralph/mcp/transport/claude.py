@@ -63,6 +63,7 @@ _CLAUDE_TOOL_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
 #: per-server value we write here, so the overall transport deadline
 #: inherits this number.
 _CLAUDE_TOOL_TIMEOUT_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + _CLAUDE_TOOL_TIMEOUT_HEADROOM_MS
+CLAUDE_TOOL_TIMEOUT_MS: Final[int] = _CLAUDE_TOOL_TIMEOUT_MS
 
 
 def claude_mcp_config(

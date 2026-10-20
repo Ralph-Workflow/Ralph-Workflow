@@ -139,4 +139,29 @@ _SEED_GIT_PROCESS: tuple[AuditEntry, ...] = (
             tool_calls=1,
         ),
     ),
+    AuditEntry(
+        tool=RalphToolName.EXEC_WAIT,
+        family=AuditFamily.PROCESS,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "Exec wait polls or waits on an active detached exec job by job_id. "
+            "Returns snapshot if still running or final result upon completion."
+        ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=768,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.EXEC_CANCEL,
+        family=AuditFamily.PROCESS,
+        outcome=AuditOutcome.KEEP,
+        rationale=("Exec cancel forcibly terminates an active exec job and its process tree."),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
+    ),
 )

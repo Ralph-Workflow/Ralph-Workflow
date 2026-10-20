@@ -77,6 +77,7 @@ SERVER_WORST_CASE_MS: int = DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION
 #: ``_KIMI_TOOL_TIMEOUT_HEADROOM_MS``, ``_CLAUDE_TOOL_TIMEOUT_HEADROOM_MS``,
 #: ``_OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS``, ``MCP_TOOL_CALL_HEADROOM_MS``).
 _TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000
+TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 
 #: Floor (milliseconds) the timing-safety check verifies every
 #: transport-configured timeout against. Clients Ralph cannot
@@ -131,8 +132,7 @@ if _TIMING_SAFETY_TRANSPORT_HEADROOM_MS <= 0:
     )
 if not EXEC_SOFT_REPLY_BUDGET_MS > 0:
     raise RuntimeError(
-        "EXEC_SOFT_REPLY_BUDGET_MS must be positive; "
-        f"got {EXEC_SOFT_REPLY_BUDGET_MS}"
+        f"EXEC_SOFT_REPLY_BUDGET_MS must be positive; got {EXEC_SOFT_REPLY_BUDGET_MS}"
     )
 
 
@@ -149,6 +149,7 @@ __all__ = [
     "KILL_ESCALATION_CEILING_MS",
     "SERVER_WORST_CASE_MS",
     "TIMING_SAFETY_TRANSPORT_FLOOR_MS",
+    "TIMING_SAFETY_TRANSPORT_HEADROOM_MS",
     "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS",
     "timing_safety_margin_ms",
     "verify_transport_timeout_safety",

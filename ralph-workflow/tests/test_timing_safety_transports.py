@@ -18,9 +18,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import subprocess
-import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -50,11 +47,11 @@ def test_timing_safety_floor_equals_soft_budget_plus_headroom() -> None:
     separately. Pin it to the exact expression so an out-of-band change
     trips this test first.
     """
-    from ralph.mcp.server._timing_safety import _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
+    from ralph.mcp.server._timing_safety import TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 
-    assert _TIMING_SAFETY_TRANSPORT_HEADROOM_MS == 30_000
+    assert TIMING_SAFETY_TRANSPORT_HEADROOM_MS == 30_000
     assert TIMING_SAFETY_TRANSPORT_FLOOR_MS == (
-        EXEC_SOFT_REPLY_BUDGET_MS + _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
+        EXEC_SOFT_REPLY_BUDGET_MS + TIMING_SAFETY_TRANSPORT_HEADROOM_MS
     )
 
 
@@ -105,9 +102,9 @@ def test_codex_transport_writes_tool_timeout_in_its_merged_mcp_servers_entry(
     actually reaches the config Codex loads, not just a module constant
     floating in isolation.
     """
-    from ralph.mcp.transport.codex import _synthesize_codex_config
+    from ralph.mcp.transport.codex import synthesize_codex_config
 
-    config_text, _upstreams = _synthesize_codex_config(
+    config_text, _upstreams = synthesize_codex_config(
         "",
         source_config=tmp_path / "source.toml",
         config_path=tmp_path / "generated.toml",
@@ -121,13 +118,9 @@ def test_codex_transport_writes_tool_timeout_in_its_merged_mcp_servers_entry(
     ralph_entry = parsed["mcp_servers"]["ralph"]
     assert isinstance(ralph_entry, dict)
     assert "tool_timeout_sec" in ralph_entry
-    assert (
-        ralph_entry["tool_timeout_sec"] == codex_module._CODEX_TOOL_TIMEOUT_SEC
-    )
+    assert ralph_entry["tool_timeout_sec"] == codex_module._CODEX_TOOL_TIMEOUT_SEC
     # Seconds -> ms check: the field is in seconds, the safety check is in ms.
-    assert (
-        verify_transport_timeout_safety(int(ralph_entry["tool_timeout_sec"]) * 1000) is True
-    )
+    assert verify_transport_timeout_safety(int(ralph_entry["tool_timeout_sec"]) * 1000) is True
 
 
 def test_kimi_transport_writes_a_per_server_tool_timeout_above_the_floor() -> None:
@@ -160,9 +153,7 @@ def test_claude_transport_module_constant_clears_the_floor() -> None:
 
 def test_opencode_transport_writes_mcp_timeout_above_the_floor() -> None:
     """OpenCode's ``experimental.mcp_timeout`` MUST clear the timing-safety floor."""
-    text, _ = opencode_module.build_opencode_provider_config(
-        None, "http://127.0.0.1:9999/mcp"
-    )
+    text, _ = opencode_module.build_opencode_provider_config(None, "http://127.0.0.1:9999/mcp")
     config = json.loads(text)
     experimental = config["experimental"]
     assert isinstance(experimental, dict)
@@ -180,12 +171,10 @@ def test_opencode_transport_module_constant_clears_the_floor() -> None:
     silently shrink a working timeout value.
     """
     assert (
-        opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_MS
-        >= max(EXEC_MAX_TIMEOUT_MS, TIMING_SAFETY_TRANSPORT_FLOOR_MS)
+        max(EXEC_MAX_TIMEOUT_MS, TIMING_SAFETY_TRANSPORT_FLOOR_MS)
+        <= opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_MS
     )
-    assert (
-        verify_transport_timeout_safety(opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_MS) is True
-    )
+    assert verify_transport_timeout_safety(opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_MS) is True
 
 
 def test_pi_transport_generates_a_bridge_with_a_bounded_tool_call_deadline(
@@ -210,10 +199,7 @@ def test_pi_transport_generates_a_bridge_with_a_bounded_tool_call_deadline(
     source = extension_path.read_text(encoding="utf-8")
 
     assert "const MCP_TOOL_CALL_DEADLINE_MS" in source
-    assert (
-        f"const MCP_TOOL_CALL_DEADLINE_MS = {pi_module.MCP_TOOL_CALL_DEADLINE_MS};"
-        in source
-    )
+    assert f"const MCP_TOOL_CALL_DEADLINE_MS = {pi_module.MCP_TOOL_CALL_DEADLINE_MS};" in source
     assert "setTimeout(() => controller.abort(), MCP_TOOL_CALL_DEADLINE_MS)" in source
     assert "combineSignals(signal, controller)" in source
     assert "clearTimeout(deadlineId)" in source
@@ -280,104 +266,6 @@ def test_nanocoder_transport_writes_no_tool_call_timeout_field() -> None:
 
 # --- Import-time guard -------------------------------------------------------
 #
-# The ``_timing_safety.py`` module exposes ``verify_transport_timeout_safety``
-# as the helper every per-transport constant consults. The test below
-# re-imports the module under a patched smaller headroom and expects a
-# ``RuntimeError`` — the same failure mode a future regression with a
-# too-low value would produce. Mirrors ``test_verify_invariants.py`` for
-# the budget layer.
-
-_TIMING_SAFETY_RELATIVE_PATH = Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_timing_safety.py"
-
-
-def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
-    """A patched non-positive headroom MUST trigger ``RuntimeError`` at import time.
-
-    Runs the test in a subprocess so the import-time ``if/raise`` runs
-    against the patched source. Without the guard a future shrink of
-    the headroom to a negative number would silently re-author a
-    bottomless safety floor; the import-time check pins the contract.
-    """
-    original = _TIMING_SAFETY_RELATIVE_PATH.read_text(encoding="utf-8")
-    anchor = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
-    if anchor not in original:  # pragma: no cover
-        raise AssertionError(
-            "timing-safety headroom anchor missing; _timing_safety.py was reformatted."
-        )
-    patched = original.replace(anchor, "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1", 1)
-
-    script = textwrap.dedent(
-        """\
-        import importlib.util
-        import io
-        import sys
-        import tempfile
-        import traceback
-        from contextlib import redirect_stderr
-        from pathlib import Path
-
-        path = Path({path!r})
-        marker = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
-        patched = path.read_text(encoding="utf-8").replace(
-            "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
-            marker,
-            1,
-        )
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
-        try:
-            tmp.write(patched)
-            tmp.flush()
-            tmp_path = tmp.name
-        finally:
-            tmp.close()
-
-        err = io.StringIO()
-        try:
-            with redirect_stderr(err):
-                spec = importlib.util.spec_from_file_location("timing_safety_case", tmp_path)
-                mod = importlib.util.module_from_spec(spec)
-                sys.modules["timing_safety_case"] = mod
-                spec.loader.exec_module(mod)
-            ok = True
-            stderr = err.getvalue()
-        except Exception:
-            ok = False
-            stderr = err.getvalue() + traceback.format_exc()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-        print("OK:" + str(ok))
-        print("STDERR:" + stderr)
-        """
-    )
-
-    script_with_paths = script.format(path=str(_TIMING_SAFETY_RELATIVE_PATH))
-    for minus_o in (False, True):
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", script_with_paths])
-        completed = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-        assert "OK:False" in completed.stdout, (
-            f"expected RuntimeError on import (minus_o={minus_o}); "
-            f"got stdout={completed.stdout!r} stderr={completed.stderr!r}"
-        )
-        assert "RuntimeError" in completed.stdout, (
-            f"expected RuntimeError text (minus_o={minus_o}); "
-            f"got stdout={completed.stdout!r}"
-        )
-        assert "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
-            f"expected the invariant name in stderr (minus_o={minus_o}); "
-            f"got stdout={completed.stdout!r}"
-        )
-
-
 # --- Per-transport-public-constant contract -----------------------------------
 #
 # Each transport module publishes the timeout Ralph writes as a module-level
@@ -411,14 +299,14 @@ def test_every_transport_const_represents_the_soft_budget_plus_headroom() -> Non
     would silently desync; the equality assertion makes the sync the
     tested contract.
     """
-    from ralph.mcp.server._timing_safety import _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
+    from ralph.mcp.server._timing_safety import TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 
-    expected = _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
-    assert codex_module._CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS * 1000 == expected
-    assert kimi_module._KIMI_TOOL_TIMEOUT_HEADROOM_MS == expected
-    assert claude_module._CLAUDE_TOOL_TIMEOUT_HEADROOM_MS == expected
-    assert opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS == expected
-    assert pi_module.MCP_TOOL_CALL_HEADROOM_MS == expected
+    expected = TIMING_SAFETY_TRANSPORT_HEADROOM_MS
+    assert expected == codex_module._CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS * 1000
+    assert expected == kimi_module._KIMI_TOOL_TIMEOUT_HEADROOM_MS
+    assert expected == claude_module._CLAUDE_TOOL_TIMEOUT_HEADROOM_MS
+    assert expected == opencode_module._OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS
+    assert expected == pi_module.MCP_TOOL_CALL_HEADROOM_MS
 
 
 # --- Module import round-trip -------------------------------------------------

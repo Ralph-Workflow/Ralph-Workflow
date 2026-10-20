@@ -15,7 +15,6 @@ Properties:
 
 from __future__ import annotations
 
-import dataclasses
 import os
 
 import pytest
@@ -73,6 +72,29 @@ _WINDOWS = st.builds(
 # ---------------------------------------------------------------------------
 
 
+@st.composite
+def _window_pairs_improved_working(draw: st.DrawFn) -> tuple[LivenessWindow, LivenessWindow]:
+    """Generate (w1, w2) where w2 has equal or improved working signals vs w1."""
+    w1_sso = draw(_AGE)
+    w1_cpu = draw(_CPU)
+    w1_io = draw(_IO)
+    w1_tree = draw(_TREE)
+    w1_nov = draw(_NOVELTY)
+    w1_awake = draw(_AWAKE)
+
+    # In w2, each signal is improved or kept equal:
+    w2_sso = draw(st.floats(min_value=0.0, max_value=w1_sso))
+    w2_cpu = draw(st.floats(min_value=w1_cpu, max_value=w1_cpu + 0.5))
+    w2_io = draw(st.floats(min_value=w1_io, max_value=w1_io + 100.0))
+    w2_tree = draw(st.integers(min_value=w1_tree, max_value=w1_tree + 5))
+    w2_nov = draw(st.floats(min_value=w1_nov, max_value=1.0))
+    w2_awake = draw(st.floats(min_value=w1_awake, max_value=w1_awake + 5.0))
+
+    w1 = LivenessWindow(w1_sso, w1_cpu, w1_io, w1_tree, w1_nov, w1_awake, 10.0)
+    w2 = LivenessWindow(w2_sso, w2_cpu, w2_io, w2_tree, w2_nov, w2_awake, 10.0)
+    return w1, w2
+
+
 @given(window=_WINDOWS)
 @settings(
     max_examples=50,
@@ -97,6 +119,83 @@ def test_score_bounded_by_unit_interval(window: LivenessWindow) -> None:
     """Score is in [0, 1] — every rule z is in [0, 1] and weighting stays in band."""
     v = assess(window, CFG)
     assert 0.0 <= v.score <= 1.0
+
+
+@given(pair=_window_pairs_improved_working())
+@settings(
+    max_examples=50,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
+)
+def test_monotonic_stall_pressure_rate(pair: tuple[LivenessWindow, LivenessWindow]) -> None:
+    """Monotonicity: raising working signals never increases stall pressure accumulation.
+
+    With Sugeno weighted average, adding working rules (e.g. I/O z=0.9 to
+    output z=1.0) can mathematically change the score from 1.0 to 0.95.
+    However, both scores exceed theta (0.5), draining stall pressure to 0.
+    The physical invariant is that raising working signals NEVER increases
+    stall pressure accumulation or speeds up a kill.
+    """
+    w1, w2 = pair
+    v1 = assess(w1, CFG)
+    v2 = assess(w2, CFG)
+
+    rate1 = max(0.0, (CFG.stall_theta - v1.score) / CFG.stall_theta)
+    rate2 = max(0.0, (CFG.stall_theta - v2.score) / CFG.stall_theta)
+    assert rate2 <= rate1 + 1e-9
+
+
+@given(pair=_window_pairs_improved_working())
+@settings(
+    max_examples=50,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
+)
+def test_monotonic_classification_not_demoted(pair: tuple[LivenessWindow, LivenessWindow]) -> None:
+    """Monotonicity: raising working signals never demotes a working process."""
+    w1, w2 = pair
+    v1 = assess(w1, CFG)
+    v2 = assess(w2, CFG)
+
+    if v1.verdict_kind in {"working", "suspicious"}:
+        assert v2.verdict_kind not in {"stalled", "unknown"}
+
+
+@given(
+    pair=_window_pairs_improved_working(),
+    n_steps=st.integers(min_value=10, max_value=100),
+    dt=st.floats(min_value=0.5, max_value=2.0),
+    stall_window=st.floats(min_value=10.0, max_value=100.0),
+)
+@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+def test_monotonic_kill_delay(
+    pair: tuple[LivenessWindow, LivenessWindow],
+    n_steps: int,
+    dt: float,
+    stall_window: float,
+) -> None:
+    """Monotonicity: raising working signals never speeds up a kill."""
+    w1, w2 = pair
+
+    def kill_step(win: LivenessWindow) -> int:
+        si = StallIntegrator(theta=CFG.stall_theta)
+        v = assess(win, CFG)
+        for i in range(1, n_steps + 1):
+            si.step(verdict_score=v.score, dt=dt)
+            if si.should_kill(stall_window):
+                return i
+        return -1
+
+    k1 = kill_step(w1)
+    k2 = kill_step(w2)
+
+    # w2 has improved signals; it must never kill earlier than w1
+    if k1 > 0 and k2 > 0:
+        assert k2 >= k1
+    elif k1 > 0 and k2 < 0:
+        pass  # w2 prevented the kill entirely (strictly safer)
+    elif k1 < 0 and k2 < 0:
+        pass  # neither killed
+    else:
+        raise AssertionError(f"Monotonicity violated: k1={k1}, k2={k2}")
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +235,7 @@ def test_pressure_bounded_by_trim(n_steps: int, dt: float, score: float) -> None
     stall_window=st.floats(min_value=10.0, max_value=200.0, allow_nan=False, allow_infinity=False),
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-def test_fail_closed_none_never_delays_kill(
-    n_steps: int, dt: float, stall_window: float
-) -> None:
+def test_fail_closed_none_never_delays_kill(n_steps: int, dt: float, stall_window: float) -> None:
     """An all-None trace reaches ``should_kill == True`` at the same step
     (or earlier) than a trace where every signal is the worst-case finite
     reading that still maps to membership 0.
@@ -207,6 +304,91 @@ def test_fail_closed_none_never_delays_kill(
             f"fail-closed violated: k_none={k_none}, k_zero={k_zero}, "
             "zero trace kills but None trace does not"
         )
+
+
+def _replace_signal(
+    win: LivenessWindow, signal_name: str, val: float | int | None
+) -> LivenessWindow:
+    sso = (
+        float(val)
+        if signal_name == "seconds_since_output" and val is not None
+        else (win.seconds_since_output if signal_name != "seconds_since_output" else None)
+    )
+    cpu = (
+        float(val)
+        if signal_name == "cpu_ratio" and val is not None
+        else (win.cpu_ratio if signal_name != "cpu_ratio" else None)
+    )
+    io = (
+        float(val)
+        if signal_name == "io_bytes_per_s" and val is not None
+        else (win.io_bytes_per_s if signal_name != "io_bytes_per_s" else None)
+    )
+    child = (
+        int(val)
+        if signal_name == "child_events" and val is not None
+        else (win.child_events if signal_name != "child_events" else None)
+    )
+    nov = (
+        float(val)
+        if signal_name == "output_novelty" and val is not None
+        else (win.output_novelty if signal_name != "output_novelty" else None)
+    )
+    awake = (
+        float(val)
+        if signal_name == "voluntary_ctx_per_s" and val is not None
+        else (win.voluntary_ctx_per_s if signal_name != "voluntary_ctx_per_s" else None)
+    )
+    return LivenessWindow(
+        seconds_since_output=sso,
+        cpu_ratio=cpu,
+        io_bytes_per_s=io,
+        child_events=child,
+        output_novelty=nov,
+        voluntary_ctx_per_s=awake,
+        elapsed_s=win.elapsed_s,
+    )
+
+
+@given(
+    window=_WINDOWS,
+    signal_name=st.sampled_from(
+        [
+            "seconds_since_output",
+            "cpu_ratio",
+            "io_bytes_per_s",
+            "child_events",
+            "output_novelty",
+            "voluntary_ctx_per_s",
+        ]
+    ),
+)
+@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])
+def test_fail_closed_single_signal_unknown_vs_zero(
+    window: LivenessWindow, signal_name: str
+) -> None:
+    """Replacing any single signal with unknown (None) never raises score vs zero."""
+    zero_vals: dict[str, float | int] = {
+        "seconds_since_output": CFG.output_recent_max_s + 10.0,
+        "cpu_ratio": 0.0,
+        "io_bytes_per_s": 0.0,
+        "child_events": 0,
+        "output_novelty": CFG.repetitive_min,
+        "voluntary_ctx_per_s": 0.0,
+    }
+    win_zero = _replace_signal(window, signal_name, zero_vals[signal_name])
+    win_none = _replace_signal(window, signal_name, None)
+
+    v_zero = assess(win_zero, CFG)
+    v_none = assess(win_none, CFG)
+
+    # Replacing zero with unknown must never raise score (D5 fail-closed)
+    assert v_none.score <= v_zero.score + 1e-9
+
+    # And stall pressure accumulation must never decrease
+    p_rate_zero = max(0.0, (CFG.stall_theta - v_zero.score) / CFG.stall_theta)
+    p_rate_none = max(0.0, (CFG.stall_theta - v_none.score) / CFG.stall_theta)
+    assert p_rate_none >= p_rate_zero - 1e-9
 
 
 # ---------------------------------------------------------------------------

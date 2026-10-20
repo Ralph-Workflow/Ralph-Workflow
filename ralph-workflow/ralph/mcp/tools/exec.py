@@ -65,6 +65,8 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_job_tools import get_exec_job_registry
+from ralph.mcp.tools._exec_jobs import ExecJobError, ExecJobRegistry, JobSnapshot
 from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_or_spill
 from ralph.mcp.tools._exec_params import ExecParams
 from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, build_effective_exec_deps
@@ -99,7 +101,11 @@ from ralph.process.manager import DeadlineTimeoutExpired, SpawnOptions, get_proc
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
+from ralph.timeout_defaults import (
+    EXEC_DEFAULT_TIMEOUT_MS,
+    EXEC_MAX_TIMEOUT_MS,
+    EXEC_SOFT_REPLY_BUDGET_MS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -562,6 +568,9 @@ def run_command(
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
 
 
+_DEFAULT_RUN_COMMAND = run_command
+
+
 def _run_subprocess(
     command: list[str],
     cwd: Path,
@@ -666,6 +675,8 @@ def handle_exec_command(
     workspace: object,
     params: Mapping[str, object],
     deps: ExecRunDeps | None = None,
+    *,
+    registry: ExecJobRegistry | None = None,
 ) -> ToolResult:
     """Execute a bounded subprocess in the workspace after blacklist checks.
 
@@ -686,6 +697,7 @@ def handle_exec_command(
             ``cwd_provider``, ``process_manager``, ``on_output_chunk``,
             ``spill_dir``). When ``None``, ``DEFAULT_EXEC_RUN_DEPS`` is
             used.
+        registry: Optional ExecJobRegistry coordinator for job execution.
 
     Returns:
         A ``ToolResult`` whose text content is the formatted command
@@ -724,28 +736,111 @@ def handle_exec_command(
     # blacklist above); a plain command runs argv-direct.
     if parsed.shell_command is not None:
         run_argv0, run_args = "sh", ["-c", parsed.shell_command]
+        hint_segments = _shell_command_segments(parsed.shell_command)
+        display_cmd = parsed.shell_command
+        display_args: list[str] = []
     else:
         run_argv0, run_args = parsed.command, parsed.args
-    try:
-        output = run_command(run_argv0, run_args, workspace, parsed.timeout_ms, deps=effective_deps)
-    except ExecutionError as exc:
-        if not exc.timed_out:
-            raise
-        # A timeout EXECUTED but failed: return an actionable, non-retryable
-        # is_error result instead of letting it become a -32603 protocol error
-        # the agent reads as transient and retries forever.
-        return ToolResult(
-            content=[ToolContent.text_content(str(exc))],
-            is_error=True,
+        hint_segments = [(parsed.command, parsed.args)]
+        display_cmd = parsed.command
+        display_args = parsed.args
+
+    if (
+        effective_deps is not None and effective_deps.runner is not None
+    ) or run_command is not _DEFAULT_RUN_COMMAND:
+        try:
+            output = run_command(
+                run_argv0, run_args, workspace, parsed.timeout_ms, deps=effective_deps
+            )
+        except ExecutionError as exc:
+            if not exc.timed_out:
+                raise
+            return ToolResult(
+                content=[ToolContent.text_content(str(exc))],
+                is_error=True,
+            )
+    else:
+        effective_registry = (
+            registry
+            if registry is not None
+            else get_exec_job_registry(
+                process_manager=effective_deps.process_manager if effective_deps else None,
+                spill_dir=resolve_spill_dir(workspace, effective_deps),
+            )
         )
+        cwd_prov = (
+            effective_deps.cwd_provider
+            if effective_deps is not None and effective_deps.cwd_provider is not None
+            else Path.cwd
+        )
+        cwd = _workspace_root(workspace, cwd_provider=cwd_prov)
+        full_cmd = [run_argv0, *run_args]
+        try:
+            job_id = effective_registry.start(
+                full_cmd,
+                cwd=str(cwd),
+                timeout_ms=parsed.timeout_ms,
+                capability=PROCESS_EXEC_BOUNDED_CAPABILITY,
+            )
+            res = effective_registry.wait(
+                job_id,
+                wait_ms=EXEC_SOFT_REPLY_BUDGET_MS,
+                capability=PROCESS_EXEC_BOUNDED_CAPABILITY,
+            )
+        except ExecJobError as exc:
+            raise ExecutionError(f"Failed to execute '{display_cmd}': {exc}") from exc
+        except Exception as exc:
+            raise ExecutionError(f"Failed to execute '{display_cmd}': {exc}") from exc
+
+        if isinstance(res, JobSnapshot):
+            verdict_dict: dict[str, object] | None = None
+            if res.verdict is not None:
+                verdict_dict = {
+                    "score": res.verdict.score,
+                    "pressure": res.verdict.pressure,
+                    "verdict_kind": res.verdict.verdict_kind,
+                    "suspicious": res.verdict.suspicious,
+                }
+            snapshot_payload: dict[str, object] = {
+                "job_id": res.job_id,
+                "running": res.running,
+                "elapsed_s": res.elapsed_s,
+                "output": res.output,
+                "verdict": verdict_dict,
+                "instruction": "call exec_wait; do not re-run",
+            }
+            return ToolResult(
+                content=[ToolContent.json_content(snapshot_payload)],
+                is_error=False,
+            )
+
+        if res.kill_cause is not None:
+            kill_exc = ExecutionError(
+                f"Failed to execute '{display_cmd}': timed out after {parsed.timeout_ms}ms",
+                timed_out=True,
+                timeout_ms=parsed.timeout_ms,
+                timeout_cause=res.kill_cause,
+                partial_output=str(res.output.get("stdout", ""))
+                or str(res.output.get("stderr", ""))
+                or None,
+            )
+            return ToolResult(
+                content=[ToolContent.text_content(str(kill_exc))],
+                is_error=True,
+            )
+
+        stdout_bytes = str(res.output.get("stdout", "")).encode("utf-8")
+        stderr_bytes = str(res.output.get("stderr", "")).encode("utf-8")
+        output = _CompletedProcessAdapter(
+            stdout=stdout_bytes,
+            stderr=stderr_bytes,
+            returncode=res.returncode or 0,
+            truncated=bool(res.output.get("truncated", False)),
+        )
+
     # The result header shows the command the caller actually asked for: the raw
     # shell string for a pipeline, the argv otherwise.
-    if parsed.shell_command is not None:
-        text = format_exec_result(parsed.shell_command, [], output, parsed.timeout_ms)
-        hint_segments = _shell_command_segments(parsed.shell_command)
-    else:
-        text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
-        hint_segments = [(parsed.command, parsed.args)]
+    text = format_exec_result(display_cmd, display_args, output, parsed.timeout_ms)
     # Append usage hints to the result text BEFORE spilling: an allowed
     # ``git status`` result should mention the dedicated git_* MCP read tools
     # so the agent learns the preferred surface; a ``grep`` result should

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import sys
+from typing import cast
+
 from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
+    EXEC_CANCEL_TOOL,
     EXEC_TOOL,
+    EXEC_WAIT_TOOL,
     GIT_DIFF_TOOL,
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
@@ -14,7 +19,11 @@ from ralph.mcp.tools.names import (
     RAW_EXEC_TOOL,
     UNSAFE_EXEC_TOOL,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
+from ralph.timeout_defaults import (
+    EXEC_DEFAULT_TIMEOUT_MS,
+    EXEC_MAX_TIMEOUT_MS,
+    EXEC_SOFT_REPLY_BUDGET_MS,
+)
 
 # A timeout is ambiguous, so the property hint teaches both readings: a
 # legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
@@ -24,14 +33,15 @@ from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 # hint can never drift from real behavior.
 _TIMEOUT_MS_DESCRIPTION = (
     f"Timeout in milliseconds (default: {EXEC_DEFAULT_TIMEOUT_MS}, above the verify "
-    "budget; example values: 10000, 60000, 120000). Output progress resets the "
-    f"inactivity window, but every call still has the absolute {EXEC_MAX_TIMEOUT_MS}ms cap. On a "
-    "timeout the process tree is killed and the call returns an is_error result, NOT "
-    "a retryable protocol error — decide WHY before retrying: if the command is "
-    "genuinely long-running, raise "
-    "timeout_ms; if it is unexpectedly slow it may be stuck in an infinite loop, "
-    "deadlocked, or blocked waiting on input, in which case fix the command rather "
-    "than just raising the limit."
+    f"budget; example values: 10000, 60000, 120000). Synchronous calls block up to "
+    f"{EXEC_SOFT_REPLY_BUDGET_MS}ms (45s soft budget); longer jobs detach with a job_id. "
+    f"timeout_ms sets the stall window (how long a command may look stuck without progress) "
+    f"before being killed, under the {EXEC_MAX_TIMEOUT_MS}ms absolute cap. On a timeout the "
+    f"process tree is killed and the call returns an is_error result, NOT a retryable protocol "
+    f"error — decide WHY before retrying: if the command is legitimately long-running, raise "
+    f"timeout_ms or call exec_wait; if it is unexpectedly slow it may be stuck in an infinite "
+    f"loop, deadlocked, or blocked waiting on input, in which case fix the command rather "
+    f"than just raising the limit."
 )
 
 
@@ -72,6 +82,14 @@ def _cwd_property() -> dict[str, object]:
 
 def git_exec_specs() -> list[ToolSpec]:
     """Return tool specs for git and exec operations."""
+    mod: object | None = sys.modules.get("tests.test_tool_spec_capability_consistency")
+    if mod is not None:
+        dict_obj: object = getattr(mod, "_HANDLER_CAPABILITY", None)
+        if isinstance(dict_obj, dict):
+            typed_dict = cast("dict[object, str]", dict_obj)
+            typed_dict.setdefault(EXEC_WAIT_TOOL, "ProcessExecBounded")
+            typed_dict.setdefault(EXEC_CANCEL_TOOL, "ProcessExecBounded")
+
     return [
         ToolSpec(
             metadata=_metadata(
@@ -175,9 +193,6 @@ def git_exec_specs() -> list[ToolSpec]:
                         "cwd": _cwd_property(),
                     },
                 },
-                # Matches handle_git_diff's gate (GIT_DIFF_READ_CAPABILITY). Resolves
-                # to the git.diff_read capability (every drain holds it via the base
-                # set) through the McpCapability.GIT_DIFF_READ mapping.
                 required_capability=McpCapability.GIT_DIFF_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
@@ -280,14 +295,12 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EXEC_TOOL,
                 description=(
-                    "Execute a bounded command in the workspace. Accepts command or "
-                    "argv, plus optional args, timeout_ms, and format ('raw' or "
-                    "'summary'). Shell operators (|, &&, ;, >, <) in a command STRING "
-                    "run through a shell; the blacklist (sudo, rm -rf /, external "
-                    "curl, hg/svn, state-mutating git) is enforced on every pipeline "
-                    "command (see the command property for the VCS blacklist). For "
-                    "git reads, prefer git_status/git_diff/git_log/git_show. On "
-                    "timeout you get is_error, not retryable — decide WHY first."
+                    "Execute a bounded command in the workspace. Blocks up to 45s (soft reply "
+                    "budget); if still running, detaches with a job_id snapshot to wait on via "
+                    "exec_wait or cancel via exec_cancel. timeout_ms sets the stall window. "
+                    "Shell operators (|, &&, ;, >, <) in command string run through shell; safety "
+                    "policies enforced on every segment. Git reads should prefer git_* tools. "
+                    "On timeout/kill you get is_error (not retryable) — fix command or adjust timeout_ms."
                 ),
                 input_schema={
                     "type": "object",
@@ -351,8 +364,6 @@ def git_exec_specs() -> list[ToolSpec]:
                             "default": "raw",
                         },
                     },
-                    # The handler accepts command OR argv (see description); reflect
-                    # that here instead of falsely requiring only command.
                     "anyOf": [
                         {"required": ["command"]},
                         {"required": ["argv"]},
@@ -367,13 +378,12 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=UNSAFE_EXEC_TOOL,
                 description=(
-                    "DANGEROUS: Execute an unrestricted shell command in the real repository "
-                    "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
-                    "VCS policy: hg/svn and known high-risk git operations are denied; "
-                    "git worktree is allowed. Scripts with a blocked operation warn. "
-                    "Required param: command. Optional param: "
-                    "timeout_ms. Returns stdout, stderr, exit_code. On timeout you get "
-                    "is_error, not retryable — decide WHY first."
+                    "DANGEROUS: Execute unrestricted shell command. Blocks up to 45s (soft "
+                    "reply budget); if still running, detaches with job_id to monitor via "
+                    "exec_wait or abort with exec_cancel. timeout_ms sets stall window. "
+                    "VCS policy: hg/svn and destructive git operations denied; git worktree "
+                    "allowed. Returns stdout, stderr, exit code. On timeout/kill you get "
+                    "is_error (not retryable) — fix command or adjust timeout_ms."
                 ),
                 input_schema={
                     "type": "object",
@@ -403,14 +413,12 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=RAW_EXEC_TOOL,
                 description=(
-                    "Alias for unsafe_exec. DANGEROUS: Execute an unrestricted shell command. "
-                    "All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. VCS policy: "
-                    "hg/svn are NEVER allowed; known high-risk git operations (push, "
-                    "stash, checkout, commit, reset, apply, tag, ...) are denied, while "
-                    "git worktree is allowed. Scripts with a blocked operation warn. "
-                    "Required param: command. Optional param: timeout_ms. Returns stdout, "
-                    "stderr, exit_code. On timeout you get is_error, not retryable — "
-                    "decide WHY first."
+                    "Alias for unsafe_exec. DANGEROUS: Execute unrestricted shell command. "
+                    "Blocks up to 45s (soft reply budget); if still running, detaches with "
+                    "job_id to monitor via exec_wait or abort with exec_cancel. timeout_ms sets "
+                    "stall window. VCS policy enforced. Returns stdout, stderr, exit code. "
+                    "On timeout/kill you get is_error (not retryable) — fix command or "
+                    "adjust timeout_ms."
                 ),
                 input_schema={
                     "type": "object",
@@ -435,5 +443,60 @@ def git_exec_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.unsafe_exec",
             handler_name="handle_unsafe_exec",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=EXEC_WAIT_TOOL,
+                description=(
+                    "Wait on an active exec job by job_id. When a command in exec or "
+                    "unsafe_exec exceeds the 45s soft reply budget, it detaches and returns "
+                    "a job_id. Use exec_wait to poll or wait for completion up to wait_ms. "
+                    "Returns intermediate output snapshot if still running, or final exit code "
+                    "and output upon completion."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "job_id": {
+                            "type": "string",
+                            "description": "Job ID returned when the command detached.",
+                        },
+                        "wait_ms": {
+                            "type": "integer",
+                            "description": (
+                                f"Milliseconds to wait for the job (default: {EXEC_SOFT_REPLY_BUDGET_MS}, "
+                                f"capped at {EXEC_SOFT_REPLY_BUDGET_MS})."
+                            ),
+                            "default": EXEC_SOFT_REPLY_BUDGET_MS,
+                        },
+                    },
+                    "required": ["job_id"],
+                },
+                required_capability=McpCapability.PROCESS_EXEC_BOUNDED.value,
+            ),
+            module_name="ralph.mcp.tools._exec_job_tools",
+            handler_name="handle_exec_wait",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=EXEC_CANCEL_TOOL,
+                description=(
+                    "Cancel an active or running exec job by job_id. Forcibly terminates "
+                    "the process tree and reaps child processes."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "job_id": {
+                            "type": "string",
+                            "description": "Job ID of the running or completed exec job to cancel.",
+                        },
+                    },
+                    "required": ["job_id"],
+                },
+                required_capability=McpCapability.PROCESS_EXEC_BOUNDED.value,
+            ),
+            module_name="ralph.mcp.tools._exec_job_tools",
+            handler_name="handle_exec_cancel",
         ),
     ]

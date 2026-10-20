@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import threading
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ import pytest
 import ralph.mcp.tools._exec_completed_process as exec_completed_process
 import ralph.mcp.tools.exec as exec_tool
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.tools._exec_jobs import ExecJobRegistry, JobResult, JobSnapshot
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ToolContent,
@@ -440,3 +442,75 @@ class TestExecShellOperators:
         params = parse_exec_params({"command": "echo", "args": ["hello"]})
         assert params.command == "echo"
         assert params.args == ["hello"]
+
+
+class _FakeJobRegistryForExec(ExecJobRegistry):
+    def __init__(self, wait_result: JobSnapshot | JobResult) -> None:
+        self._wait_result = wait_result
+        self.started_commands: list[list[str]] = []
+
+    def start(self, command: object, **kwargs: object) -> str:
+        self.started_commands.append(list(command) if isinstance(command, list) else [str(command)])
+        return "job_fake_test_123"
+
+    def wait(self, job_id: str, **kwargs: object) -> JobSnapshot | JobResult:
+        del job_id, kwargs
+        return self._wait_result
+
+
+class TestExecJobFlowIntegration:
+    """Tests for job flow integration in handle_exec_command."""
+
+    def test_exec_soft_reply_budget_snapshot_returned_when_job_runs_long(
+        self, tmp_path: Path
+    ) -> None:
+        snapshot = JobSnapshot(
+            job_id="job_fake_test_123",
+            running=True,
+            elapsed_s=45.0,
+            output={"stdout": "partial build output", "preview": "partial build output"},
+            verdict=None,
+            instruction="call exec_wait; do not re-run",
+        )
+        registry = _FakeJobRegistryForExec(snapshot)
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "cargo build", "timeout_ms": 90000}
+
+        result = handle_exec_command(session, workspace, params, registry=registry)
+        assert result.is_error is False
+        assert len(result.content) == 1
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        data = json.loads(content.text)
+        assert isinstance(data, dict)
+        assert data["job_id"] == "job_fake_test_123"
+        assert data["running"] is True
+        assert data["instruction"] == "call exec_wait; do not re-run"
+        output_dict = data["output"]
+        assert isinstance(output_dict, dict)
+        assert "partial build output" in str(output_dict["stdout"])
+
+    def test_exec_killed_by_kill_cause_renders_execution_error_without_background_advice(
+        self, tmp_path: Path
+    ) -> None:
+        job_result = JobResult(
+            job_id="job_fake_test_123",
+            returncode=None,
+            output={"stdout": ""},
+            kill_cause="stalled",
+            verdict=None,
+            elapsed_s=10.0,
+        )
+        registry = _FakeJobRegistryForExec(job_result)
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "sleep 100", "timeout_ms": 10000}
+
+        result = handle_exec_command(session, workspace, params, registry=registry)
+        assert result.is_error is True
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        text = content.text.lower()
+        assert "stall" in text or "timed out" in text
+        assert "call exec_wait" in text or "exec_wait" in text

@@ -17,9 +17,13 @@ freeze the server.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_job_tools import get_exec_job_registry
+from ralph.mcp.tools._exec_jobs import ExecJobError, ExecJobRegistry, JobSnapshot
 from ralph.mcp.tools._exec_output_spill import format_or_spill
 from ralph.mcp.tools._exec_vcs_scanner import (
     _VCS_COMMANDS,
@@ -42,6 +46,7 @@ from ralph.mcp.tools.exec import (
     resolve_spill_dir,
     run_command,
 )
+from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -85,6 +90,8 @@ def handle_unsafe_exec(
     workspace: object,
     params: Mapping[str, object],
     deps: ExecRunDeps | None = None,
+    *,
+    registry: ExecJobRegistry | None = None,
 ) -> ToolResult:
     """Execute an unrestricted shell command in the real workspace directory."""
     require_capability(session, PROCESS_EXEC_UNBOUNDED_CAPABILITY, "Unsafe command execution")
@@ -106,20 +113,90 @@ def handle_unsafe_exec(
 
     timeout_ms = parse_exec_timeout(params)
 
-    try:
-        # Run the arbitrary command through a shell, but via the bounded
-        # process-manager path (capped output + process-tree kill on timeout).
-        output = run_command("sh", ["-c", command], workspace, timeout_ms, deps=deps)
-    except ExecutionError as exc:
-        if not exc.timed_out:
-            raise
-        # A timeout becomes an actionable, non-retryable is_error result rather
-        # than a propagated -32603 protocol error the agent re-issues forever (the
-        # retry-storm pathology). The rendered message teaches both meanings of a
-        # timeout (raise the limit vs. fix a genuinely stuck command).
-        return ToolResult(
-            content=[ToolContent.text_content(str(exc))],
-            is_error=True,
+    if deps is not None and deps.runner is not None:
+        try:
+            output = run_command("sh", ["-c", command], workspace, timeout_ms, deps=deps)
+        except ExecutionError as exc:
+            if not exc.timed_out:
+                raise
+            return ToolResult(
+                content=[ToolContent.text_content(str(exc))],
+                is_error=True,
+            )
+    else:
+        effective_registry = (
+            registry
+            if registry is not None
+            else get_exec_job_registry(
+                process_manager=deps.process_manager if deps else None,
+                spill_dir=resolve_spill_dir(workspace, deps),
+            )
+        )
+        cwd_prov = (
+            deps.cwd_provider if deps is not None and deps.cwd_provider is not None else Path.cwd
+        )
+        cwd = _workspace_root(workspace, cwd_provider=cwd_prov)
+        try:
+            job_id = effective_registry.start(
+                ["sh", "-c", command],
+                cwd=str(cwd),
+                timeout_ms=timeout_ms,
+                capability=PROCESS_EXEC_UNBOUNDED_CAPABILITY,
+            )
+            res = effective_registry.wait(
+                job_id,
+                wait_ms=EXEC_SOFT_REPLY_BUDGET_MS,
+                capability=PROCESS_EXEC_UNBOUNDED_CAPABILITY,
+            )
+        except ExecJobError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+        except Exception as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+
+        if isinstance(res, JobSnapshot):
+            verdict_dict: dict[str, object] | None = None
+            if res.verdict is not None:
+                verdict_dict = {
+                    "score": res.verdict.score,
+                    "pressure": res.verdict.pressure,
+                    "verdict_kind": res.verdict.verdict_kind,
+                    "suspicious": res.verdict.suspicious,
+                }
+            snapshot_payload: dict[str, object] = {
+                "job_id": res.job_id,
+                "running": res.running,
+                "elapsed_s": res.elapsed_s,
+                "output": res.output,
+                "verdict": verdict_dict,
+                "instruction": "call exec_wait; do not re-run",
+            }
+            return ToolResult(
+                content=[ToolContent.json_content(snapshot_payload)],
+                is_error=False,
+            )
+
+        if res.kill_cause is not None:
+            kill_exc = ExecutionError(
+                f"Failed to execute '{command}': timed out after {timeout_ms}ms",
+                timed_out=True,
+                timeout_ms=timeout_ms,
+                timeout_cause=res.kill_cause,
+                partial_output=str(res.output.get("stdout", ""))
+                or str(res.output.get("stderr", ""))
+                or None,
+            )
+            return ToolResult(
+                content=[ToolContent.text_content(str(kill_exc))],
+                is_error=True,
+            )
+
+        stdout_bytes = str(res.output.get("stdout", "")).encode("utf-8")
+        stderr_bytes = str(res.output.get("stderr", "")).encode("utf-8")
+        output = _CompletedProcessAdapter(
+            stdout=stdout_bytes,
+            stderr=stderr_bytes,
+            returncode=res.returncode or 0,
+            truncated=bool(res.output.get("truncated", False)),
         )
 
     stdout = output.stdout.decode("utf-8", errors="replace")

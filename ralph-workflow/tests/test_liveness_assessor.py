@@ -249,10 +249,10 @@ def test_assess_r5_idle_stuck_alone() -> None:
     """
     win = LivenessWindow(
         seconds_since_output=CFG.output_recent_max_s + 5.0,  # KNOWN stale => OutputRecent=0
-        cpu_ratio=CFG.cpu_busy_min - 0.01,                   # KNOWN idle   => CpuBusy=0
-        io_bytes_per_s=CFG.io_kbps_inactive - 1.0,           # KNOWN idle   => IoActive=0
-        child_events=0,                                     # KNOWN idle   => TreeActive=0
-        output_novelty=CFG.repetitive_min + 0.1,             # KNOWN novel  => Repetitive=0
+        cpu_ratio=CFG.cpu_busy_min - 0.01,  # KNOWN idle   => CpuBusy=0
+        io_bytes_per_s=CFG.io_kbps_inactive - 1.0,  # KNOWN idle   => IoActive=0
+        child_events=0,  # KNOWN idle   => TreeActive=0
+        output_novelty=CFG.repetitive_min + 0.1,  # KNOWN novel  => Repetitive=0
         voluntary_ctx_per_s=CFG.awake_per_s_inactive - 0.1,  # KNOWN asleep => Awake=0
         elapsed_s=10.0,
     )
@@ -306,10 +306,10 @@ def test_assess_r1_r2_combo_is_working() -> None:
     """R1 + R2 both firing (recent + I/O) blends to ~0.95."""
     win = LivenessWindow(
         seconds_since_output=0.0,
-        cpu_ratio=0.0,            # KNOWN-not-busy so R4 doesn't fire on cpu alone
+        cpu_ratio=0.0,  # KNOWN-not-busy so R4 doesn't fire on cpu alone
         io_bytes_per_s=CFG.io_kbps_active,
-        child_events=0,           # KNOWN no children so R3 doesn't fire
-        output_novelty=1.0,       # KNOWN novel so R1's NOT Repetitive is 1
+        child_events=0,  # KNOWN no children so R3 doesn't fire
+        output_novelty=1.0,  # KNOWN novel so R1's NOT Repetitive is 1
         voluntary_ctx_per_s=0.0,  # KNOWN asleep so R7 doesn't fire
         elapsed_s=10.0,
     )
@@ -442,3 +442,62 @@ def test_stall_integrator_all_idle_trace_kills_at_window() -> None:
     si.step(verdict_score=0.0, dt=dt)
     assert si.pressure == pytest.approx(n_to_kill)
     assert si.should_kill(stall_window_s) is True
+
+
+# ---------------------------------------------------------------------------
+# EV-05 regression tests: D5 unknown signal semantics
+# ---------------------------------------------------------------------------
+
+
+def test_ev05_fresh_sparse_output_with_unknowns_is_working() -> None:
+    """EV-05: fresh sparse output with all non-output signals unknown fires R1.
+
+    When output was just produced (seconds_since_output=0.0) but novelty is
+    None (<20 lines), R1 fires alone with score 1.0 (working). It must NOT
+    produce 0.0 unknown.
+    """
+    win = LivenessWindow(
+        seconds_since_output=0.0,
+        cpu_ratio=None,
+        io_bytes_per_s=None,
+        child_events=None,
+        output_novelty=None,
+        voluntary_ctx_per_s=None,
+        elapsed_s=10.0,
+    )
+    v = assess(win, CFG)
+    assert v.score == 1.0
+    assert v.verdict_kind == "working"
+    assert v.strongest_rule == "R1"
+    assert v.suspicious is False
+
+
+def test_ev05_replacing_io_zero_with_unknown_does_not_raise_score() -> None:
+    """EV-05: replacing I/O zero with unknown does not change score vs zero.
+
+    Replacing a known-zero signal with unknown (None) must never extend a
+    deadline or raise score vs zero (D5 fail-closed).
+    """
+    win_zero = LivenessWindow(
+        seconds_since_output=90.0,
+        cpu_ratio=0.05,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=0.5,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=90.0,
+    )
+    win_unknown = LivenessWindow(
+        seconds_since_output=90.0,
+        cpu_ratio=0.05,
+        io_bytes_per_s=None,
+        child_events=0,
+        output_novelty=0.5,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=90.0,
+    )
+    v_zero = assess(win_zero, CFG)
+    v_unknown = assess(win_unknown, CFG)
+    assert v_zero.score == pytest.approx(v_unknown.score)
+    assert v_zero.verdict_kind == v_unknown.verdict_kind
+    assert v_unknown.score == pytest.approx(0.1)

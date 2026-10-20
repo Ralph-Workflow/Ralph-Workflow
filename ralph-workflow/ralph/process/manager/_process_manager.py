@@ -1368,6 +1368,10 @@ class ProcessManager:
         if first_termination_error is not None:
             raise first_termination_error
 
+    def shutdown_all_exec_jobs(self, *, grace_period_s: float | None = None) -> None:
+        """Terminate all active processes spawned as exec jobs."""
+        self.shutdown_all_for_label("exec_job:", grace_period_s=grace_period_s)
+
     # ------------------------------------------------------------------
     # Termination methods (with pre-kill liveness checks)
     # ------------------------------------------------------------------

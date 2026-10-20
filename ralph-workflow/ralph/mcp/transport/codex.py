@@ -37,8 +37,8 @@ _CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS: Final[int] = 30
 #: ``docs/agents/exec-long-running-root-cause.md``); we set it to
 #: soft-budget + headroom so a legitimately long ``tools/call`` round
 #: trip cannot outrun the verified Codex MCP deadline.
-_CODEX_TOOL_TIMEOUT_SEC: Final[int] = int(
-    math.ceil((EXEC_SOFT_REPLY_BUDGET_MS + _CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS * 1000) / 1000.0)
+_CODEX_TOOL_TIMEOUT_SEC: Final[int] = math.ceil(
+    (EXEC_SOFT_REPLY_BUDGET_MS + _CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS * 1000) / 1000.0
 )
 
 #: Sane upper bound for the in-process Codex-home registry. The deque
@@ -526,4 +526,7 @@ __all__ = [
     "prepare_codex_home",
     "prepare_codex_home_with_upstreams",
     "release_codex_home",
+    "synthesize_codex_config",
 ]
+
+synthesize_codex_config = _synthesize_codex_config

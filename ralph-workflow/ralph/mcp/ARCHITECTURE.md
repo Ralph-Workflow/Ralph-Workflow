@@ -171,6 +171,37 @@ Key guarantees:
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
 
+## Exec Long-Running Job Flow
+
+To prevent client-side MCP timeouts during long-running commands while preserving full observability and process control, Ralph implements an asynchronous job flow architecture:
+
+### 1. Soft Reply Budget and Job Handles
+- **Soft Reply Budget (45s)**: Synchronous execution (`exec`, `unsafe_exec`) blocks up to `EXEC_SOFT_REPLY_BUDGET_MS` (45,000 ms, defined in `ralph.timeout_defaults`). If a command completes within this soft budget, the tool returns the final result directly.
+- **Job Handles**: If a command exceeds the 45s soft budget without completion, execution detaches asynchronously. The server returns a structured response containing a persistent job handle (`job_id`), allowing the client to monitor or manipulate the command across successive MCP tool calls without risking client connection timeouts.
+
+### 2. Job Control Surface
+- `exec_wait`: Polls or blocks on an active job handle until completion or until the next wait timeout. Returns incremental streaming output chunks and exit status.
+- `exec_cancel`: Explicitly aborts a running job handle, terminating child processes and reclaiming process table entries and resources.
+
+### 3. Shift in `timeout_ms` Semantics: Stall Window
+Under the job flow architecture, `timeout_ms` no longer represents a rigid absolute ceiling on execution duration. Instead, it defines the **stall window** — the maximum duration of inactivity or unproductivity permitted before the execution is classified as stalled. Legitimate long-running tasks that continuously demonstrate progress can run up to the multi-hour job ceilings (`EXEC_JOB_CEILING_S` = 1 hour default, `EXEC_JOB_CEILING_MAX_S` = 4 hours max).
+
+### 4. Fuzzy Liveness Assessment and Stall Pressure Integration
+Rather than relying solely on raw stdout/stderr output timestamps, process health is monitored via a pure, multi-signal fuzzy liveness assessor (`ralph.process.manager._liveness_assessor`):
+- **Telemetry Signals**: Evaluates output recency (`OutputRecent`), CPU utilization ratio (`CpuBusy`), I/O throughput in KiB/s (`IoActive`), child subprocess tree activity (`TreeActive`), output novelty (`NotRepetitive`), and voluntary context switches (`Awake`).
+- **Stall Integrator**: Integrates verdict scores into cumulative stall pressure $P$:
+  $$P_{n+1} = \max(0, P_n + \Delta t \cdot \frac{\theta - s}{\theta})$$
+  where $\theta = \text{EXEC\_STALL\_THETA}$ (0.5). A kill is signaled when cumulative stall pressure $P$ exceeds the configured stall window (`stall_window_s`).
+
+### 5. Bounded Kill Causes
+All job terminations enforce bounded, explicit cause classifications:
+- `stalled`: Cumulative stall pressure exceeded the stall window (`timeout_ms`) without sufficient liveness evidence.
+- `no_progress`: Continuous lack of progress across the system-wide threshold `EXEC_NO_PROGRESS_WINDOW_S` (900s / 15 minutes).
+- `hard_cap`: Overall job duration reached the absolute ceiling (`EXEC_JOB_CEILING_S` / `EXEC_JOB_CEILING_MAX_S`).
+- `abandoned`: Client disconnected or failed to poll the job handle within `EXEC_JOB_ABANDON_S` (120s).
+- `session_end`: The MCP agent session ended or was torn down by the orchestrator.
+- `restart_lost`: MCP server restarted and the running job could not be recovered across the restart boundary.
+
 ## Artifact Submission Error Contract
 
 When markdown validation fails, `ralph_submit_md_artifact` / `ralph_verify_md_artifact` return a structured payload of line-anchored diagnostics — `{line, section, rule_id, message, severity}` — with `valid: false` and `is_error` set when any diagnostic has `error` severity. Nothing is persisted on error; the agent fixes the document the diagnostics point at and retries. `InvalidParamsError` is reserved for malformed tool calls (missing `artifact_type`/`content`, or an unregistered artifact type).

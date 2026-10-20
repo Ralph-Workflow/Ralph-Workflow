@@ -49,6 +49,10 @@ class ManagedProcess:
         return self._record
 
     @property
+    def label(self) -> str | None:
+        return self._record.label
+
+    @property
     def pid(self) -> int:
         return self._proc.pid
 

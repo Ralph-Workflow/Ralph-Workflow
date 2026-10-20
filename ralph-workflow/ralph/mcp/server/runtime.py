@@ -33,9 +33,11 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
+import atexit
 import concurrent.futures
 import contextlib
 import os
+import signal
 import sys
 import threading
 import time
@@ -119,6 +121,7 @@ from ralph.mcp.upstream.config import (
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.mcp.upstream.validation import strict_mode_from_env
 from ralph.process._spawn_env import sanitize_process_environment
+from ralph.timeout_defaults import EXEC_OWNER_LOSS_HOOK_BUDGET_S
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -819,19 +822,23 @@ def run_standalone_server(
         )
         _stage("ready_to_serve")
 
-    if stop_event is not None:
-        server.run(
-            transport=DEFAULT_TRANSPORT,
-            ready_event=ready_event,
-            stop_event=stop_event,
-            on_ready=_record_ready_to_serve,
-        )
-    else:
-        server.run(
-            transport=DEFAULT_TRANSPORT,
-            ready_event=ready_event,
-            on_ready=_record_ready_to_serve,
-        )
+    install_shutdown_signal_handlers()
+    try:
+        if stop_event is not None:
+            server.run(
+                transport=DEFAULT_TRANSPORT,
+                ready_event=ready_event,
+                stop_event=stop_event,
+                on_ready=_record_ready_to_serve,
+            )
+        else:
+            server.run(
+                transport=DEFAULT_TRANSPORT,
+                ready_event=ready_event,
+                on_ready=_record_ready_to_serve,
+            )
+    finally:
+        _run_shutdown_hooks()
 
 
 def _agent_transport_choices() -> list[str]:
@@ -864,6 +871,56 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
+_SHUTDOWN_HOOKS: list[Callable[[], None]] = []  # bounded-accumulator-ok: registration hooks only
+_OWNER_LOSS_HOOKS: list[Callable[[], None]] = []  # bounded-accumulator-ok: registration hooks only
+
+
+def register_shutdown_hook(hook: Callable[[], None]) -> None:
+    """Register a callback to run on standalone MCP server shutdown."""
+    if hook not in _SHUTDOWN_HOOKS:
+        _SHUTDOWN_HOOKS.append(hook)
+
+
+def register_owner_loss_hook(hook: Callable[[], None]) -> None:
+    """Register a callback to run before exit when the owner process is lost."""
+    if hook not in _OWNER_LOSS_HOOKS:
+        _OWNER_LOSS_HOOKS.append(hook)
+
+
+def _run_shutdown_hooks() -> None:
+    """Execute all registered shutdown hooks."""
+    for hook in _SHUTDOWN_HOOKS:
+        with contextlib.suppress(Exception):
+            hook()
+
+
+def _run_owner_loss_hooks(timeout_s: float = EXEC_OWNER_LOSS_HOOK_BUDGET_S) -> None:
+    """Execute all registered owner-loss hooks bounded to timeout_s."""
+
+    def _invoke_all() -> None:
+        for hook in _OWNER_LOSS_HOOKS:
+            with contextlib.suppress(Exception):
+                hook()
+
+    t = threading.Thread(target=_invoke_all, name="mcp-owner-loss-hooks", daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+
+
+def install_shutdown_signal_handlers() -> None:
+    """Install SIGTERM handler to invoke shutdown hooks before exit."""
+
+    def _sigterm_handler(signum: int, frame: object) -> None:
+        _run_shutdown_hooks()
+        sys.exit(128 + signal.SIGTERM)
+
+    with contextlib.suppress(ValueError, OSError):
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+
+
+atexit.register(_run_shutdown_hooks)
+
+
 def exit_when_owner_exits(
     env: MutableMapping[str, str],
     *,
@@ -888,12 +945,14 @@ def exit_when_owner_exits(
         return None
     owner = int(raw_owner)
     if owner != get_parent_pid():
+        _run_owner_loss_hooks()
         exit_process(0)
         return None
 
     def watch() -> None:
         while get_parent_pid() == owner:
             sleep(1.0)
+        _run_owner_loss_hooks()
         exit_process(0)
 
     watcher = threading.Thread(target=watch, name="mcp-owner-watch", daemon=True)
@@ -931,6 +990,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         environment variables.
     """
     sanitize_process_environment()
+    install_shutdown_signal_handlers()
     exit_when_owner_exits(os.environ)
     args = parse_args(argv)
     run_standalone_server(
@@ -964,9 +1024,12 @@ __all__ = [
     "__version__",
     "build_standalone_http_server",
     "exit_when_owner_exits",
+    "install_shutdown_signal_handlers",
     "load_runtime_upstream_servers",
     "main",
     "parse_args",
+    "register_owner_loss_hook",
+    "register_shutdown_hook",
     "run_standalone_server",
     "session_from_env",
     "standalone_session_identity",
