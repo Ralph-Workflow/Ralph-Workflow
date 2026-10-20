@@ -19,7 +19,8 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import IO, TYPE_CHECKING, Final, Literal, cast
+from functools import partial
+from typing import IO, TYPE_CHECKING, Final, Literal, TypeGuard
 
 import psutil
 
@@ -41,7 +42,7 @@ from ralph.process.manager._liveness_assessor import (
 from ralph.process.manager._liveness_sampler import TreeSampler, _LivenessProc, _PsutilModuleLike
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
     from pathlib import Path
 
     from ralph.process.manager._managed_process import ManagedProcess
@@ -53,6 +54,9 @@ KillCause = Literal[
 ]
 _MAX_UNTERMINATED_LINE_BYTES = 1000
 
+# Signature of the runtime hook registrars cached in ``_runtime_hook_cache``.
+_HookRegistrar = Callable[[Callable[[], None]], None]
+
 # Module-level lazy initialization of the runtime hook registrars, kept
 # here (after every top-level import) so the import order is preserved
 # while still breaking the ``runtime`` ↔ ``_fallback_http_handler`` ↔
@@ -60,14 +64,31 @@ _MAX_UNTERMINATED_LINE_BYTES = 1000
 # A small bounded cache holds the resolved registrars after first lookup
 # so they aren't re-fetched on every registry construction.
 _runtime_hook_cache: dict[
-    str, Callable[[Callable[[], None]], None]
+    str, _HookRegistrar
 ] = {}  # bounded-accumulator-ok: cache holds at most 2 entries (owner_loss + shutdown) and is read-once after first hit
 
 
-def _ensure_runtime_hooks() -> tuple[
-    Callable[[Callable[[], None]], None],
-    Callable[[Callable[[], None]], None],
-]:
+def _is_hook_registrar(value: object) -> TypeGuard[_HookRegistrar]:
+    """Narrow an untyped runtime attribute to a hook registrar callable."""
+    return callable(value)
+
+
+def _hook_registrar(module: object, attribute: str) -> _HookRegistrar:
+    """Narrow one runtime hook registrar read across the module boundary.
+
+    The registrars live on ``ralph.mcp.server.runtime`` and are fetched
+    through the import machinery to break the import cycle, so the value
+    arrives untyped. This is the registered boundary for that read: it
+    checks the attribute really is a callable registrar and raises rather
+    than asserting the shape.
+    """
+    registrar: object = getattr(module, attribute)
+    if not _is_hook_registrar(registrar):
+        raise TypeError(f"{attribute} is not a hook registrar callable")
+    return registrar
+
+
+def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
     """Lazily import the runtime hook registrars to break the import cycle.
 
     ``_exec_jobs`` is imported by ``exec_sse_streaming``, which is imported by
@@ -78,12 +99,8 @@ def _ensure_runtime_hooks() -> tuple[
     import, so deferring the lookup to first use preserves the public
     contract while removing the cycle.
     """
-    cached_owner_loss: Callable[[Callable[[], None]], None] | None = _runtime_hook_cache.get(
-        "owner_loss"
-    )
-    cached_shutdown: Callable[[Callable[[], None]], None] | None = _runtime_hook_cache.get(
-        "shutdown"
-    )
+    cached_owner_loss = _runtime_hook_cache.get("owner_loss")
+    cached_shutdown = _runtime_hook_cache.get("shutdown")
     if cached_owner_loss is None or cached_shutdown is None:
         # Lazy attribute access (NOT a top-level ``from ... import ...``
         # statement) breaks the ``runtime`` ↔ ``_exec_jobs`` cycle. The
@@ -91,12 +108,8 @@ def _ensure_runtime_hooks() -> tuple[
         # cycle), and the ``runtime`` module is fetched through Python's
         # import machinery after both modules have finished initialising.
         runtime_mod = importlib.import_module("ralph.mcp.server.runtime")
-        cached_owner_loss = cast(
-            "Callable[[Callable[[], None]], None]", runtime_mod.register_owner_loss_hook
-        )
-        cached_shutdown = cast(
-            "Callable[[Callable[[], None]], None]", runtime_mod.register_shutdown_hook
-        )
+        cached_owner_loss = _hook_registrar(runtime_mod, "register_owner_loss_hook")
+        cached_shutdown = _hook_registrar(runtime_mod, "register_shutdown_hook")
         _runtime_hook_cache["owner_loss"] = cached_owner_loss
         _runtime_hook_cache["shutdown"] = cached_shutdown
     return cached_owner_loss, cached_shutdown
@@ -256,6 +269,18 @@ class _ActiveJob:
         self.watcher_thread: threading.Thread | None = None
 
 
+def _merge_stream_buffers(head: bytearray, tail: bytearray, total_bytes: int) -> bytes:
+    """Join a job's head/tail output buffers into the payload shown to callers.
+
+    The truncation marker is emitted only when bytes were actually dropped,
+    and a stream that never filled its head buffer is rendered from the tail
+    alone.
+    """
+    if len(tail) > 0 and total_bytes > len(head):
+        return bytes(head) + b"\n... [truncated] ...\n" + bytes(tail)
+    return bytes(head) if len(head) > 0 else bytes(tail)
+
+
 class ExecJobRegistry:
     """Registry and coordinator for long-running exec jobs."""
 
@@ -325,24 +350,12 @@ class ExecJobRegistry:
     def _render_job_output(self, job: _ActiveJob) -> dict[str, object]:
         """Construct a formatted output dictionary for an active or finished job."""
         with job.lock:
-            if len(job.stdout_tail) > 0 and job.total_stdout_bytes > len(job.stdout_head):
-                stdout_bytes = (
-                    bytes(job.stdout_head) + b"\n... [truncated] ...\n" + bytes(job.stdout_tail)
-                )
-            else:
-                stdout_bytes = (
-                    bytes(job.stdout_head) if len(job.stdout_head) > 0 else bytes(job.stdout_tail)
-                )
-
-            if len(job.stderr_tail) > 0 and job.total_stderr_bytes > len(job.stderr_head):
-                stderr_bytes = (
-                    bytes(job.stderr_head) + b"\n... [truncated] ...\n" + bytes(job.stderr_tail)
-                )
-            else:
-                stderr_bytes = (
-                    bytes(job.stderr_head) if len(job.stderr_head) > 0 else bytes(job.stderr_tail)
-                )
-
+            stdout_bytes = _merge_stream_buffers(
+                job.stdout_head, job.stdout_tail, job.total_stdout_bytes
+            )
+            stderr_bytes = _merge_stream_buffers(
+                job.stderr_head, job.stderr_tail, job.total_stderr_bytes
+            )
             total_stdout = job.total_stdout_bytes
             total_stderr = job.total_stderr_bytes
 
@@ -392,6 +405,52 @@ class ExecJobRegistry:
             for req_id in to_remove:
                 self._subscriptions.pop(req_id, None)
 
+    def _close_job_streams(self, job: _ActiveJob) -> None:
+        """Reap orphaned descendants and close the managed output pipes."""
+        handle = job.handle
+        if handle is None:
+            return
+        with contextlib.suppress(Exception):
+            self._pm.cleanup_orphans(handle)
+        for stream in (handle.stdout, handle.stderr):
+            if stream is not None:
+                with contextlib.suppress(Exception):
+                    stream.close()
+
+    def _build_job_result(
+        self,
+        job: _ActiveJob,
+        *,
+        returncode: int | None,
+        kill_cause: KillCause | None,
+        cancelled: bool,
+    ) -> JobResult:
+        """Render the terminal :class:`JobResult` for a job that has stopped."""
+        now = self._clock()
+        return JobResult(
+            job_id=job.job_id,
+            returncode=returncode,
+            output=self._render_job_output(job),
+            kill_cause=kill_cause,
+            verdict=job.latest_verdict,
+            elapsed_s=max(0.0, now - job.start_time),
+            cancelled=cancelled,
+            ceiling_ms=job.ceiling_ms,
+        )
+
+    def _publish_finished_result(self, job: _ActiveJob, result: JobResult) -> None:
+        """Move a stopped job out of the running set into the bounded result FIFO."""
+        with self._lock:
+            self._running_jobs.pop(job.job_id, None)
+            self._finished_results.append(result)
+            self._finished_capabilities[job.job_id] = job.capability
+            # FIFO prune capabilities dict
+            valid_ids = {r.job_id for r in self._finished_results}
+            self._finished_capabilities = {
+                k: v for k, v in self._finished_capabilities.items() if k in valid_ids
+            }
+        self._teardown_progress_for_job(job.job_id)
+
     def _kill_job(self, job: _ActiveJob, cause: KillCause | None) -> None:
         """Forcibly terminate a running job process tree and record final result."""
         with self._lock:
@@ -403,39 +462,14 @@ class ExecJobRegistry:
         if job.handle is not None:
             with contextlib.suppress(Exception):
                 job.handle.terminate(grace_period_s=0.0)
-            with contextlib.suppress(Exception):
-                self._pm.cleanup_orphans(job.handle)
-            if job.handle.stdout is not None:
-                with contextlib.suppress(Exception):
-                    job.handle.stdout.close()
-            if job.handle.stderr is not None:
-                with contextlib.suppress(Exception):
-                    job.handle.stderr.close()
-
+        self._close_job_streams(job)
         job.done_event.set()
-        now = self._clock()
-        result = JobResult(
-            job_id=job.job_id,
-            returncode=job.returncode,
-            output=self._render_job_output(job),
-            kill_cause=cause,
-            verdict=job.latest_verdict,
-            elapsed_s=max(0.0, now - job.start_time),
-            cancelled=job.cancelled,
-            ceiling_ms=job.ceiling_ms,
+        self._publish_finished_result(
+            job,
+            self._build_job_result(
+                job, returncode=job.returncode, kill_cause=cause, cancelled=job.cancelled
+            ),
         )
-
-        with self._lock:
-            self._running_jobs.pop(job.job_id, None)
-            self._finished_results.append(result)
-            self._finished_capabilities[job.job_id] = job.capability
-            # FIFO prune capabilities dict
-            valid_ids = {r.job_id for r in self._finished_results}
-            self._finished_capabilities = {
-                k: v for k, v in self._finished_capabilities.items() if k in valid_ids
-            }
-
-        self._teardown_progress_for_job(job.job_id)
 
     def _mark_finished(self, job: _ActiveJob, returncode: int) -> None:
         """Record normal process exit and reap orphaned descendants."""
@@ -446,39 +480,14 @@ class ExecJobRegistry:
             job.returncode = returncode
             job.kill_cause = None
 
-        if job.handle is not None:
-            with contextlib.suppress(Exception):
-                self._pm.cleanup_orphans(job.handle)
-            if job.handle.stdout is not None:
-                with contextlib.suppress(Exception):
-                    job.handle.stdout.close()
-            if job.handle.stderr is not None:
-                with contextlib.suppress(Exception):
-                    job.handle.stderr.close()
-
+        self._close_job_streams(job)
         job.done_event.set()
-        now = self._clock()
-        result = JobResult(
-            job_id=job.job_id,
-            returncode=returncode,
-            output=self._render_job_output(job),
-            kill_cause=None,
-            verdict=job.latest_verdict,
-            elapsed_s=max(0.0, now - job.start_time),
-            cancelled=job.cancelled,
-            ceiling_ms=job.ceiling_ms,
+        self._publish_finished_result(
+            job,
+            self._build_job_result(
+                job, returncode=returncode, kill_cause=None, cancelled=job.cancelled
+            ),
         )
-
-        with self._lock:
-            self._running_jobs.pop(job.job_id, None)
-            self._finished_results.append(result)
-            self._finished_capabilities[job.job_id] = job.capability
-            valid_ids = {r.job_id for r in self._finished_results}
-            self._finished_capabilities = {
-                k: v for k, v in self._finished_capabilities.items() if k in valid_ids
-            }
-
-        self._teardown_progress_for_job(job.job_id)
 
     def step_job(self, job_id: str, dt: float | None = None) -> None:
         """Perform one liveness sampling, assessment, and kill check iteration."""
@@ -619,6 +628,13 @@ class ExecJobRegistry:
                 break
             self.step_job(job.job_id)
 
+    @staticmethod
+    def _spawn_daemon(target: Callable[[], None], name: str) -> threading.Thread:
+        """Start and return a named daemon thread running ``target``."""
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        thread.start()
+        return thread
+
     def start(
         self,
         command: Sequence[str],
@@ -674,41 +690,55 @@ class ExecJobRegistry:
             raise ExecJobError(job_id, f"Failed to spawn job: {exc}") from exc
 
         # Spawn stdout and stderr reader threads
-        t_stdout = threading.Thread(
-            target=self._read_stream,
-            args=(active, handle.stdout, True),
-            name=f"job-stdout-{job_id}",
-            daemon=True,
+        t_stdout = self._spawn_daemon(
+            partial(self._read_stream, active, handle.stdout, True), f"job-stdout-{job_id}"
         )
-        t_stderr = threading.Thread(
-            target=self._read_stream,
-            args=(active, handle.stderr, False),
-            name=f"job-stderr-{job_id}",
-            daemon=True,
+        t_stderr = self._spawn_daemon(
+            partial(self._read_stream, active, handle.stderr, False), f"job-stderr-{job_id}"
         )
-        t_stdout.start()
-        t_stderr.start()
 
         if self._background_sampler:
-            watcher = threading.Thread(
-                target=self._watch_job,
-                args=(active, handle, t_stdout, t_stderr),
-                name=f"job-watch-{job_id}",
-                daemon=True,
+            active.watcher_thread = self._spawn_daemon(
+                partial(self._watch_job, active, handle, t_stdout, t_stderr),
+                f"job-watch-{job_id}",
             )
-            active.watcher_thread = watcher
-            watcher.start()
-
-            runner = threading.Thread(
-                target=self._runner_loop,
-                args=(active,),
-                name=f"job-runner-{job_id}",
-                daemon=True,
+            active.runner_thread = self._spawn_daemon(
+                partial(self._runner_loop, active), f"job-runner-{job_id}"
             )
-            active.runner_thread = runner
-            runner.start()
 
         return job_id
+
+    def _lookup_job_locked(self, job_id: str, capability: str) -> _ActiveJob | JobResult:
+        """Resolve ``job_id``, verifying the caller's capability.
+
+        Returns the live :class:`_ActiveJob` or its terminal :class:`JobResult`
+        when it has already finished. Raises :class:`ExecJobError` for an
+        unknown/expired job or a capability mismatch. The caller must hold
+        ``self._lock``.
+        """
+        active = self._running_jobs.get(job_id)
+        if active is not None:
+            if active.capability != capability:
+                raise ExecJobError(
+                    job_id,
+                    f"capability mismatch: expected {active.capability}, got {capability}",
+                )
+            return active
+
+        for res in reversed(self._finished_results):
+            if res.job_id != job_id:
+                continue
+            expected_cap = self._finished_capabilities.get(job_id)
+            if expected_cap is not None and expected_cap != capability:
+                raise ExecJobError(
+                    job_id,
+                    f"capability mismatch: expected {expected_cap}, got {capability}",
+                )
+            return res
+        raise ExecJobError(
+            job_id,
+            "unknown or expired job; process was killed or lost in server restart",
+        )
 
     def wait(
         self,
@@ -720,29 +750,10 @@ class ExecJobRegistry:
     ) -> JobSnapshot | JobResult:
         """Wait up to wait_ms for job completion; return JobResult or JobSnapshot."""
         with self._lock:
-            active = self._running_jobs.get(job_id)
-            if active is None:
-                # Check finished results
-                for res in reversed(self._finished_results):
-                    if res.job_id == job_id:
-                        expected_cap = self._finished_capabilities.get(job_id)
-                        if expected_cap is not None and expected_cap != capability:
-                            raise ExecJobError(
-                                job_id,
-                                f"capability mismatch: expected {expected_cap}, got {capability}",
-                            )
-                        return res
-                raise ExecJobError(
-                    job_id,
-                    "unknown or expired job; process was killed or lost in server restart",
-                )
-
-            if active.capability != capability:
-                raise ExecJobError(
-                    job_id,
-                    f"capability mismatch: expected {active.capability}, got {capability}",
-                )
-
+            found = self._lookup_job_locked(job_id, capability)
+            if isinstance(found, JobResult):
+                return found
+            active = found
             active.last_wait_time = self._clock()
 
         if progress is not None:
@@ -758,16 +769,11 @@ class ExecJobRegistry:
                     for res in reversed(self._finished_results):
                         if res.job_id == job_id:
                             return res
-                    now = self._clock()
-                    return JobResult(
-                        job_id=active.job_id,
+                    return self._build_job_result(
+                        active,
                         returncode=active.returncode,
-                        output=self._render_job_output(active),
                         kill_cause=active.kill_cause,
-                        verdict=active.latest_verdict,
-                        elapsed_s=max(0.0, now - active.start_time),
                         cancelled=active.cancelled,
-                        ceiling_ms=active.ceiling_ms,
                     )
                 else:
                     now = self._clock()
@@ -786,28 +792,10 @@ class ExecJobRegistry:
     def cancel(self, job_id: str, *, capability: str) -> JobResult:
         """Explicitly cancel a running or completed job."""
         with self._lock:
-            active = self._running_jobs.get(job_id)
-            if active is None:
-                for res in reversed(self._finished_results):
-                    if res.job_id == job_id:
-                        expected_cap = self._finished_capabilities.get(job_id)
-                        if expected_cap is not None and expected_cap != capability:
-                            raise ExecJobError(
-                                job_id,
-                                f"capability mismatch: expected {expected_cap}, got {capability}",
-                            )
-                        return res
-                raise ExecJobError(
-                    job_id,
-                    "unknown or expired job; process was killed or lost in server restart",
-                )
-
-            if active.capability != capability:
-                raise ExecJobError(
-                    job_id,
-                    f"capability mismatch: expected {active.capability}, got {capability}",
-                )
-
+            found = self._lookup_job_locked(job_id, capability)
+            if isinstance(found, JobResult):
+                return found
+            active = found
             active.cancelled = True
 
         self._kill_job(active, cause=None)
@@ -816,17 +804,7 @@ class ExecJobRegistry:
             for res in reversed(self._finished_results):
                 if res.job_id == job_id:
                     return res
-        now = self._clock()
-        return JobResult(
-            job_id=active.job_id,
-            returncode=None,
-            output=self._render_job_output(active),
-            kill_cause=None,
-            verdict=active.latest_verdict,
-            elapsed_s=max(0.0, now - active.start_time),
-            cancelled=True,
-            ceiling_ms=active.ceiling_ms,
-        )
+        return self._build_job_result(active, returncode=None, kill_cause=None, cancelled=True)
 
     def shutdown_all(self, cause: KillCause = "session_end") -> None:
         """Forcibly kill all active running jobs."""

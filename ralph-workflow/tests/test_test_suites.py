@@ -278,17 +278,19 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_four() -> None:
-    """Use four workers for the isolated real-git shard.
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_eight() -> None:
+    """Use eight workers for the isolated real-git shard.
 
-    wt-03-fix-bug: reduced from 8 to 4 to cut total concurrent process
-    count from 16 to 12 (8 general + 4 E2E) under high host load;
-    E2E tests take ~1.25x longer per-worker but reduced contention
-    lets general shards complete faster, keeping the combined wall-clock
-    inside the 60 s budget. The 4-worker value is a runner-architecture
-    choice; the cumulative 60 s budget in ``ralph/verify.py`` is preserved.
+    wt-03-fix-bug pinned four to hold total concurrent processes at 12
+    (8 general + 4 E2E) on the then-maintained 12-core host. On the current
+    40-core host the eight general shards finish in 25-35 s while the
+    real-git shard alone spends ~44 s of pytest time on 721 collected
+    tests, so it alone sets the ``make test`` wall clock. Charged together
+    with ``make test-verification-smoke`` (13 s) that pair overflowed the
+    immutable cumulative 60 s budget. The value stays a strict, pinned
+    runner-architecture constant -- a change here must be deliberate.
     """
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "4"
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "8"
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

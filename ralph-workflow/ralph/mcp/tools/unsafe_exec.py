@@ -184,8 +184,7 @@ def handle_unsafe_exec(
             verdict_dict = serialize_liveness_verdict(res.verdict)
             verdict_str = json.dumps(verdict_dict) if verdict_dict is not None else None
             kill_exc = ExecutionError(
-                f"Failed to execute '{command}': job {res.job_id} terminated"
-                f" ({res.kill_cause})",
+                f"Failed to execute '{command}': job {res.job_id} terminated ({res.kill_cause})",
                 timed_out=True,
                 timeout_ms=timeout_ms,
                 timeout_cause=res.kill_cause,

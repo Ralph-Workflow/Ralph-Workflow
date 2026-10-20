@@ -227,7 +227,7 @@ from sampled liveness.
   `_run_subprocess` (`ralph/mcp/tools/exec.py:565`) and the
   `_managed_process.py` output-only inactivity window.
 - A short in-request completion still returns the legacy output shape
-  end-to-end — `exec.py:826-865` converts a terminal `JobResult` into the
+  end-to-end — `exec.py:826-869` converts a terminal `JobResult` into the
   same `_CompletedProcessAdapter` the seam produced — so the *observable*
   output contract is unchanged. What changed is the kill rule, not the
   response shape.
@@ -254,26 +254,26 @@ from sampled liveness.
   (`ralph/process/manager/_process_manager_types.py:27-38`) lacks
   `cpu_times`/`io_counters`/`num_ctx_switches`.
 - `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:52` — `ExecJobRegistry`
-  (`class` at `:246`) runs the job on a sample thread that drives the
+  (`class` at `:264`) runs the job on a sample thread that drives the
   assessor every cycle, accumulates stall pressure, and decides the kill
-  cause. `KillCause` (`:51-53`) names six literals, but only five are
-  actually emitted by the registry today: `abandoned` (`:503`), `hard_cap`
-  (`:508`), `stalled` (`:546`), `no_progress` (`:550`), and `session_end`
-  (`:831`, the `shutdown_all` default). `restart_lost` is declared and
+  cause. `KillCause` (`:52-54`) names six literals, but only five are
+  actually emitted by the registry today: `abandoned` (`:492`), `hard_cap`
+  (`:497`), `stalled` (`:535`), `no_progress` (`:539`), and `session_end`
+  (`:789`, the `shutdown_all` default). `restart_lost` is declared and
   rendered by the error formatter
   (`ralph/mcp/tools/_exec_execution_error.py:243,251-263`) but has no
   producer in `_exec_jobs.py`: a restart destroys the in-memory registry, so
   the only observable restart contract is the non-retryable
   "unknown or expired job; process was killed or lost in server restart"
   error from `wait()`/`cancel()`
-  (`_exec_jobs.py:722-727`, `:801-804`), which is covered by
+  (`_exec_jobs.py:718-721`, `:733`, `:775`), which is covered by
   `tests/test_exec_jobs.py::test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`
   and `tests/test_tool_exec_wait_cancel.py::test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error`.
   A short in-request completion lands in the registry as a regular
   `JobResult` and the legacy output shape is preserved end-to-end;
   only jobs that take longer than the soft-reply budget return a
   snapshot with a `job_id` and the "call exec_wait; do not re-run"
-  instruction (`exec.py:826-838`, `_exec_jobs.py:768`).
+  instruction (`exec.py:826-838`, `_exec_jobs.py:760-767`).
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
@@ -291,16 +291,16 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   production entry path.
 - On the **production entry path**, the wall-clock cap is the registry's
   job ceiling, not `EXEC_MAX_TIMEOUT_MS`:
-  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:202-210` resolves the
+  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:199-203` resolves the
   ceiling once per job (`ceiling_s = min(max_runtime_ms / 1000.0,
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
   `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:563`, 3600 s)) and stores
   it as `job.ceiling_ms`; `step_job` kills with `cause="hard_cap"` at
-  `_exec_jobs.py:507` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
+  `_exec_jobs.py:496-497` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
   (`ralph/timeout_defaults.py:569`, 4 h) is the outer bound.
 - **Historical (pre-§3b) wording**, quoted here because it is the text that
   used to ship: `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
-  `ExecutionError._render_timeout` (now `:187-215`, split into a job path and
+  `ExecutionError._render_timeout` (now `:187-197`, split into a job path and
   a legacy in-request path) rendered `timeout_cause == "hard_cap"` as:
 
   > "The command already ran to the EXEC_MAX_TIMEOUT_MS ceiling; a
@@ -451,7 +451,7 @@ token. The historical "zero matches" claim no longer holds.
   `job_id` until the worker calls `registry.start(...)`, so the
   subscription is bound afterwards by
   `ralph/mcp/tools/_exec_jobs.attach_progress_subscription`
-  (`_exec_jobs.py:919`), which the exec handler hands the subscription
+  (`_exec_jobs.py:890`), which the exec handler hands the subscription
   to at `ralph/mcp/tools/exec.py:805-820`.
 - `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:241-244` wires
   both mechanisms into the streaming POST: the output-chunk sink at
@@ -523,8 +523,8 @@ that the saturation-cap's only job is supposed to prevent.
 The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2158` and `:2175` invoke
-  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2356-2503`
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:2176` and `:2193` invoke
+  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2374-2520`
   and runs
 
   ```python
@@ -536,9 +536,9 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`lifecycle.py:2451-2461`). The MCP server runs as a separate child
+  (`lifecycle.py:2469-2479`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
-  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:36-47`),
+  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:36-66`),
   which calls `self.process.terminate(grace_period_s=5.0)` at line 45
   and `self.process.wait(timeout=5.0)` at line 47.
 
@@ -565,7 +565,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
     (default `os._exit`) at line 939, and the watcher thread does the
     same at line 946 once `get_parent_pid()` stops matching the
     recorded owner.
-  - `ralph-workflow/ralph/mcp/server/runtime.py:953-995` —
+  - `ralph-workflow/ralph/mcp/server/runtime.py:953-1000` —
     `main(argv)` calls `install_shutdown_signal_handlers()` (`:983`),
     then `exit_when_owner_exits(os.environ)` (`:984`), parses args
     (`:985`), and enters `run_standalone_server` (`:986`) which blocks
@@ -575,7 +575,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
     is the parent→child hand-off that lets the watcher know when
     to kill itself.
   - The owner-loss hook the registry installs is registered in
-    `ralph/mcp/tools/_exec_jobs.py:290-291`
+    `ralph/mcp/tools/_exec_jobs.py:306-309`
     (`shutdown_all("session_end")`), run by
     `_run_owner_loss_hooks` (`runtime.py:887-897`) on owner loss and by
     `_run_shutdown_hooks` (`runtime.py:880-884`) on SIGTERM
@@ -621,8 +621,8 @@ stale, and the fastest drift check is a re-read of:
   seam) and `:790-820` (the production registry entry path) — reading
   these two ranges is how a reader tells whether the output-only window
   is still reachable for normal calls.
-- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:202-210` (the registry
-  `hard_cap` ceiling resolution), `:507` (the kill check against
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:199-203` (the registry
+  `hard_cap` ceiling resolution), `:496-497` (the kill check against
   `job.ceiling_ms`) and `:52` (the six kill causes)
 - `ralph-workflow/ralph/mcp/transport/opencode.py:131,148` (Cause 3
   per-server + experimental writes; the comment block at lines 41-45
@@ -639,7 +639,7 @@ stale, and the fastest drift check is a re-read of:
 - `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:161-181`
   (Cause 5b)
 - `ralph-workflow/ralph/mcp/server/runtime.py:914-950`
-  (`exit_when_owner_exits`) and `:953-995` (`main`) — the Cause 5c seam
+  (`exit_when_owner_exits`) and `:953-1000` (`main`) — the Cause 5c seam
 - `ralph-workflow/ralph/mcp/server/_timing_safety.py:84`
   (`TIMING_SAFETY_TRANSPORT_HEADROOM_MS`) and `:91-93`
   (`TIMING_SAFETY_TRANSPORT_FLOOR_MS` — the per-transport floor the

@@ -151,8 +151,82 @@ REQUIRED_TABLE_URLS = (
 )
 
 
+# Claims that were FALSE against the working tree and must never come
+# back as present-tense assertions. Each maps to the doc line the
+# correction replaced. Only the PRESENT-TENSE forms are listed: the
+# doc deliberately keeps the past-tense restatements ("there was no
+# progress-token handling", "had no daemon-style submit-and-poll") as
+# historical evidence, so a substring test on those would flag the
+# history instead of the falsehood.
+FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
+    "returns zero matches",
+    "There is no progress-token handling",
+    "remains the kill rule for short in-request calls",
+    "has no background mode",
+    "there is no `run_in_background` parameter",
+    "Split the work or run it in the background.",
+)
+
+
+# Citations this unit repaired, as (doc-relative path, line, token the
+# doc claims is on that line). Drift in the source fails here, which is
+# the signal to update the doc rather than to widen the range.
+REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
+    # Cause 4 — progress-token extraction and progress-frame emission.
+    ("ralph/mcp/server/exec_sse_streaming.py", 62, "def extract_progress_token"),
+    ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
+    ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
+    # Cause 1 — output-only inactivity window (historical) and its poll loop.
+    ("ralph/process/manager/_managed_process.py", 301, "last_output_at_ref[0] = _time.monotonic()"),
+    ("ralph/process/manager/_managed_process.py", 378, 'timeout_cause = "inactivity"'),
+    # Cause 1 — the production entry path vs the injected-runner seam.
+    ("ralph/mcp/tools/exec.py", 807, "job_id = effective_registry.start("),
+    ("ralph/mcp/tools/exec.py", 817, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
+    # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
+    ("ralph/mcp/tools/exec.py", 634, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
+    ("ralph/mcp/tools/_exec_jobs.py", 220, "EXEC_JOB_CEILING_MAX_S"),
+    ("ralph/mcp/tools/_exec_jobs.py", 516, "job.ceiling_ms / 1000.0"),
+    # Cause 3 — the Pi bridge startup deadline.
+    ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
+    # Cause 5c — child runtime shutdown seam.
+    ("ralph/mcp/server/lifecycle.py", 2472, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/_standalone_mcp_process.py", 45, "terminate(grace_period_s=5.0)"),
+    ("ralph/mcp/server/_standalone_mcp_process.py", 47, "self.process.wait(timeout=5.0)"),
+    ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
+    ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
+)
+
+# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
+CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
+
+
+def _package_python_index() -> dict[str, list[Path]]:
+    """Return a basename -> candidate-paths index over the shipped package."""
+    index: dict[str, list[Path]] = {}
+    for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        index.setdefault(path.name, []).append(path)
+    return index
+
+
+def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
+    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
+    direct = PACKAGE_ROOT / cited
+    if direct.is_file():
+        return direct
+    candidates = index.get(Path(cited).name, [])
+    return candidates[0] if len(candidates) == 1 else None
+
+
 class TestRootCauseDocCitations:
-    """The doc must not contain any of the WU-5 reproduced defect shapes."""
+    """The doc must not contain any of the WU-5 reproduced defect shapes.
+
+    The doc's present-tense claims must also match what the code does
+    today. The two contracts are enforced by a single consolidated
+    class because the repo-structure audit forbids multiple top-level
+    test classes in this file.
+    """
 
     def test_no_workspace_path_masquerading_as_url(self) -> None:
         text = _read_doc()
@@ -354,77 +428,9 @@ class TestRootCauseDocCitations:
             "unknown-vs-implemented separation. Revert the rename."
         )
 
-
-# Claims that were FALSE against the working tree and must never come
-# back as present-tense assertions. Each maps to the doc line the
-# correction replaced. Only the PRESENT-TENSE forms are listed: the
-# doc deliberately keeps the past-tense restatements ("there was no
-# progress-token handling", "had no daemon-style submit-and-poll") as
-# historical evidence, so a substring test on those would flag the
-# history instead of the falsehood.
-FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
-    "returns zero matches",
-    "There is no progress-token handling",
-    "remains the kill rule for short in-request calls",
-    "has no background mode",
-    "there is no `run_in_background` parameter",
-    "Split the work or run it in the background.",
-)
-
-
-# Citations this unit repaired, as (doc-relative path, line, token the
-# doc claims is on that line). Drift in the source fails here, which is
-# the signal to update the doc rather than to widen the range.
-REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
-    # Cause 4 — progress-token extraction and progress-frame emission.
-    ("ralph/mcp/server/exec_sse_streaming.py", 62, "def extract_progress_token"),
-    ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
-    ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
-    # Cause 1 — output-only inactivity window (historical) and its poll loop.
-    ("ralph/process/manager/_managed_process.py", 301, "last_output_at_ref[0] = _time.monotonic()"),
-    ("ralph/process/manager/_managed_process.py", 378, 'timeout_cause = "inactivity"'),
-    # Cause 1 — the production entry path vs the injected-runner seam.
-    ("ralph/mcp/tools/exec.py", 807, "job_id = effective_registry.start("),
-    ("ralph/mcp/tools/exec.py", 817, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
-    # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
-    ("ralph/mcp/tools/exec.py", 634, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
-    ("ralph/mcp/tools/_exec_jobs.py", 207, "EXEC_JOB_CEILING_MAX_S"),
-    ("ralph/mcp/tools/_exec_jobs.py", 507, "job.ceiling_ms / 1000.0"),
-    # Cause 3 — the Pi bridge startup deadline.
-    ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
-    # Cause 5c — child runtime shutdown seam.
-    ("ralph/mcp/server/lifecycle.py", 2454, '"ralph.mcp.server",'),
-    ("ralph/mcp/server/_standalone_mcp_process.py", 45, "terminate(grace_period_s=5.0)"),
-    ("ralph/mcp/server/_standalone_mcp_process.py", 47, "self.process.wait(timeout=5.0)"),
-    ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
-    ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
-)
-
-# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
-CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
-
-
-def _package_python_index() -> dict[str, list[Path]]:
-    """Return a basename -> candidate-paths index over the shipped package."""
-    index: dict[str, list[Path]] = {}
-    for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
-        if "__pycache__" in path.parts:
-            continue
-        index.setdefault(path.name, []).append(path)
-    return index
-
-
-def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
-    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
-    direct = PACKAGE_ROOT / cited
-    if direct.is_file():
-        return direct
-    candidates = index.get(Path(cited).name, [])
-    return candidates[0] if len(candidates) == 1 else None
-
-
-class TestDocCurrentStateMatchesWorkingTree:
-    """The doc's present-tense claims must match what the code does today."""
+    # -----------------------------------------------------------------------
+    # Current-state claims (formerly TestDocCurrentStateMatchesWorkingTree)
+    # -----------------------------------------------------------------------
 
     def test_no_false_present_tense_claims_reintroduced(self) -> None:
         text = _read_doc()

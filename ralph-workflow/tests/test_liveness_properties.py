@@ -306,7 +306,8 @@ def _kill_relevant_signal_raises(draw: st.DrawFn) -> tuple[LivenessWindow, Liven
         # In-window novelty: both windows must have output in evidence window (< 30s)
         sso_in_window = draw(st.floats(min_value=0.0, max_value=CFG.evidence_window_s - 1.0))
         base_nov = nov if nov is not None else draw(st.floats(min_value=0.0, max_value=0.8))
-        delta = draw(st.floats(min_value=0.02, max_value=1.0 - base_nov))
+        headroom = max(0.0, 1.0 - base_nov)
+        delta = draw(st.floats(min_value=min(0.02, headroom), max_value=headroom))
         w1 = LivenessWindow(sso_in_window, cpu, io, tree, base_nov, awake, 10.0)
         w2 = LivenessWindow(sso_in_window, cpu, io, tree, min(1.0, base_nov + delta), awake, 10.0)
     return w1, w2, signal_name

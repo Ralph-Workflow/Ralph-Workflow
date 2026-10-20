@@ -826,20 +826,20 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses four workers for isolated real-git tests.
+    """The dedicated E2E shard uses eight workers for isolated real-git tests.
 
-    wt-03-fix-bug: reduced from 8 to 4 to cut total concurrent process
-    count from 16 to 12 (8 general + 4 E2E) under high host load;
-    E2E tests take ~1.25x longer per-worker but reduced contention
-    lets general shards complete faster, keeping the combined wall-clock
-    inside the 60 s budget. The 4-worker value was previously used
-    and was increased to 8 to match general shard count on 40-core
-    host; reduced back to 4 as part of the subprocess_e2e removal
-    from required E2E files, which reduces the E2E shard workload.
+    The value was pinned to 4 to hold total concurrent processes at 12
+    (8 general + 4 E2E) on the then-maintained 12-core host. On the current
+    40-core host the eight general shards finish in 25-35 s while the
+    real-git shard alone spends ~44 s of pytest time on 721 collected
+    tests, so it alone sets the ``make test`` wall clock. Charged together
+    with ``make test-verification-smoke`` (13 s) that pair overflowed the
+    immutable cumulative 60 s budget, so the tail shard is over-provisioned
+    against the cores the general shards release.
     """
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
@@ -874,7 +874,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_four_xdist_workers(
     assert dedicated_command[3] == "tests"
     assert sorted(spawner.manifest_files[-1]) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "4"
+    assert dedicated_command[xdist_index + 1] == "8"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 
